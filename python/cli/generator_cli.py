@@ -76,12 +76,6 @@ def main():
         help='Output filename'
     )
     generate_parser.add_argument(
-        '--max-ticks',
-        type=int,
-        default=None,
-        help='Max ticks per scenario'
-    )
-    generate_parser.add_argument(
         '--oos-split',
         type=float,
         default=None,
@@ -189,7 +183,6 @@ def main():
             start=args.start,
             end=args.end,
             output=args.output,
-            max_ticks=args.max_ticks,
             oos_split=args.oos_split
         )
     elif args.command == 'generate-profile':

@@ -440,7 +440,7 @@ class BlockSplittingReport(BaseModel):
 
 
 class WorkerStatRow(BaseModel):
-    """Per-worker timing within a unit (#398)."""
+    """Per-worker timing within a unit (#398). call_count = actual computes (#420)."""
     worker_type: str
     worker_name: str
     call_count: int = 0
@@ -448,6 +448,8 @@ class WorkerStatRow(BaseModel):
     avg_time_ms: float = 0.0
     min_time_ms: float = 0.0
     max_time_ms: float = 0.0
+    compute_basis: str = 'live'     # #420 cadence basis (live / bar_close)
+    last_compute_tick: int = -1     # #420 tick index of the last real compute (idle telemetry)
 
 
 class WorkerDecisionUnitRow(BaseModel):

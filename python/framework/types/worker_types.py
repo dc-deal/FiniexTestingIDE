@@ -35,19 +35,24 @@ class WorkerType(Enum):
     EVENT = "event"
 
 
-class RecomputeCadence(Enum):
+class ComputeBasis(Enum):
     """
-    When the orchestrator recomputes a worker.
+    The temporal data a worker computes on — its 'data subscription' (#420).
 
-    PER_TICK is the default and preserves the historical behavior (recompute on
-    every tick pass). ON_BAR_CLOSE is opt-in: the worker recomputes only when one
-    of its required timeframes closes a bar — its cached result is served on the
-    intra-bar ticks in between. Only safe for consumers that read the worker on
-    its bar-close grid; tick-reactive consumers (live %B from tick.mid) must stay
-    PER_TICK.
+    One value per worker instance, declared mandatorily by the worker (config key
+    'compute_basis' overrides per instance). Unifies the former recompute cadence
+    (#384) and current-bar inclusion (#387) into a single binary axis:
+
+    - LIVE: includes the forming (current) bar / tick.mid and recomputes every tick —
+      the value drifts intra-bar, so the worker reacts to events within a bar. The
+      tick-native default; required by tick-reactive consumers (live %B from tick.mid).
+    - BAR_CLOSE: completed bars only, recomputes only when one of the worker's required
+      timeframes closes a bar (cached result served in between). Stable and cheap; only
+      correct for consumers that read on the bar-close grid (an intra-bar event that
+      reverts before the close is invisible to it).
     """
-    PER_TICK = 'per_tick'        # recompute every tick (default)
-    ON_BAR_CLOSE = 'bar_close'   # recompute only when a required timeframe closes
+    LIVE = 'live'              # per-tick, intra-bar (forming bar / tick.mid)
+    BAR_CLOSE = 'bar_close'    # completed bars only, recompute on bar close
 
 
 @dataclass

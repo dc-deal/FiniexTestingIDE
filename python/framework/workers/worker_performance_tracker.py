@@ -26,13 +26,14 @@ class WorkerPerformanceTracker:
 
     _ROLLING_WINDOW = 30
 
-    def __init__(self, worker_type: str, worker_name: str):
+    def __init__(self, worker_type: str, worker_name: str, compute_basis: str = 'live'):
         """
         Initialize performance tracker for worker.
 
         Args:
             worker_type: Worker type
             worker_name: Worker instance name
+            compute_basis: The worker's cadence basis (live / bar_close), for telemetry (#420)
         """
         self.worker_type = worker_type
         self.worker_name = worker_name
@@ -45,7 +46,8 @@ class WorkerPerformanceTracker:
             worker_total_time_ms=0.0,
             worker_avg_time_ms=0.0,
             worker_min_time_ms=0.0,
-            worker_max_time_ms=0.0
+            worker_max_time_ms=0.0,
+            worker_compute_basis=compute_basis,
         )
 
         # Min/Max tracking (not in dataclass)
@@ -55,15 +57,18 @@ class WorkerPerformanceTracker:
         # Rolling window for live display avg
         self._recent_times: deque = deque(maxlen=self._ROLLING_WINDOW)
 
-    def record(self, execution_time_ms: float) -> None:
+    def record(self, execution_time_ms: float, tick_index: int = -1) -> None:
         """
-        Record a single execution time.
+        Record a single (real) compute execution time.
 
         Args:
             execution_time_ms: Execution time in milliseconds
+            tick_index: Loop tick index of this compute, for the idle/ratio telemetry (#420)
         """
         self._stats.worker_call_count += 1
         self._stats.worker_total_time_ms += execution_time_ms
+        if tick_index >= 0:
+            self._stats.worker_last_compute_tick = tick_index
 
         self._min_time_ms = min(self._min_time_ms, execution_time_ms)
         self._max_time_ms = max(self._max_time_ms, execution_time_ms)

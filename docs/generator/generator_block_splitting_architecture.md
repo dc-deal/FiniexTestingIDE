@@ -267,6 +267,8 @@ The generator **consumes** `VolatilityProfileAnalyzer` output (volatility profil
 
 All splitters treat all gap types the same way for block construction (via the shared `ContinuousRegionExtractor`): **weekends, holidays, and short gaps are normal pauses — the algorithm sleeps through them and continues when ticks resume.** Blocks span across these gaps without splitting.
 
+**Block-start snapping (blocks mode).** A block may *span* a weekend, but it must never *begin* inside one — a `start_date` with no ticks fails scenario validation. `BlocksSplit` therefore snaps any block boundary that lands in a market-closed window (weekend / holiday) forward to the next market open via `MarketCalendar.next_market_open` (§37, the single source of truth for market time). The boundary arithmetic (`region_start + k·block_size`) regularly lands on a weekend for multi-day Forex blocks, so this snap is what keeps generated robustness/blocks sets runnable.
+
 Only **moderate** and **large** gaps (real data collection issues) cause region splits — blocks never span across them.
 
 The `GapCategory` classification (weekend, holiday, short, moderate, large) exists primarily for the **Data Coverage Report** to distinguish expected market closures from actual data problems. For block generation and P&L calculation, there is no difference between a weekend gap and any other pause — no ticks arrive, the algorithm waits, the next tick continues processing.
@@ -382,6 +384,21 @@ for role assignment, used by both producer paths), so the split is identical reg
 python python/cli/generator_cli.py generate-blocks kraken_spot ETHUSD \
   --block-size 6 --count 10 --oos-split 0.3
 ```
+
+**Multi-symbol sets.** `generate-blocks` accepts several symbols — one `WindowSet` is produced per
+symbol and the windows are merged into a single scenario set (names stay symbol-prefixed, so they
+remain unique). In robustness mode the IS/OOS split is assigned **per symbol** (each symbol's own
+trailing fraction is OOS), so a multi-symbol set never trains one symbol on another symbol's future.
+The set-wide `global` balance is seeded with every distinct quote currency (#265).
+
+```bash
+python python/cli/generator_cli.py generate-blocks mt5 EURUSD GBPUSD \
+  --block-size 240 --oos-split 0.3 --start 2025-11-01 --end 2026-04-30
+```
+
+**`--start` / `--end`** clip the generated windows to the requested range (regions are clipped by the
+shared `ContinuousRegionExtractor`); omit them to span the full data coverage. Use a later `--start`
+to skip the data-begin window whose indicator warmup is incomplete.
 
 The emitted set carries a top-level `robustness` block and a `role` per scenario. Cascade-capable
 keys (`strategy_config` / `execution_config` / `trade_simulator_config`) are **not** written per

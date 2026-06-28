@@ -12,7 +12,7 @@ only this stage changes — the model and the materializer stay untouched.
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
@@ -59,21 +59,48 @@ class WindowSetSerializer:
 
     def save_scenario_set(
         self,
-        window_set: WindowSet,
+        window_sets: List[WindowSet],
         filename: str,
         robustness: Optional[RobustnessConfig] = None,
     ) -> Path:
         """
-        Save a WindowSet as a runnable scenario-set config.
+        Save one or more WindowSets as a single runnable scenario-set config.
 
         Args:
-            window_set: The window set to serialize
+            window_sets: Window sets to serialize (one per symbol; merged into one set)
             filename: Output filename
             robustness: Optional robustness mode (#367) — writes the top-level block + assigns
-                time-ordered IS/OOS roles to the scenarios when enabled
+                time-ordered IS/OOS roles PER symbol (never train one symbol on another's future)
 
         Returns:
             Path to the saved config file
+        """
+        config = self._build_scenario_set_config(window_sets, filename, robustness)
+
+        output_path = self._scenario_set_output_dir / filename
+        with open(output_path, 'w') as f:
+            json.dump(config, f, indent=2, default=str)
+
+        vLog.info(f"Saved {len(config['scenarios'])} scenarios to {output_path}")
+
+        return output_path
+
+    def _build_scenario_set_config(
+        self,
+        window_sets: List[WindowSet],
+        filename: str,
+        robustness: Optional[RobustnessConfig] = None,
+    ) -> Dict[str, Any]:
+        """
+        Assemble the scenario-set config dict from the window sets (pure, no file write).
+
+        Args:
+            window_sets: Window sets to merge (one per symbol)
+            filename: Output filename (used for scenario_set_name)
+            robustness: Optional robustness mode (#367)
+
+        Returns:
+            The scenario-set config dict
         """
         if not self._template_path.exists():
             raise FileNotFoundError(
@@ -90,16 +117,24 @@ class WindowSetSerializer:
         config['scenario_set_name'] = filename.replace('.json', '')
         config['created'] = datetime.now(timezone.utc).isoformat()
 
-        # Always provide a balance in the symbol's quote currency, so the generated set passes
+        # Always provide a balance in each symbol's quote currency, so the generated set passes
         # validation and runs out of the box (cascade-capable keys are not emitted per scenario,
-        # so the balance lives set-wide in global). The quote is resolved authoritatively from
-        # the broker config (#265).
+        # so the balance lives set-wide in global). Quote currencies are resolved authoritatively
+        # from the broker config (#265) and unioned across all symbols.
         global_config = config.setdefault('global', {})
-        if window_set.windows:
+        ts_config = global_config.get('trade_simulator_config')
+        seeded_currencies = set()
+        for window_set in window_sets:
+            if not window_set.windows:
+                continue
             quote_currency = resolve_quote_currency(
                 window_set.symbol, window_set.broker_type)
-            global_config['trade_simulator_config'] = ensure_quote_balance(
-                global_config.get('trade_simulator_config'), quote_currency)
+            if quote_currency in seeded_currencies:
+                continue
+            ts_config = ensure_quote_balance(ts_config, quote_currency)
+            seeded_currencies.add(quote_currency)
+        if ts_config is not None:
+            global_config['trade_simulator_config'] = ts_config
 
         # Robustness mode (#367): write the set-wide block ABOVE `global` (set-wide mode, not a
         # cascade default).
@@ -113,16 +148,15 @@ class WindowSetSerializer:
             reordered.setdefault('robustness', rob)  # no `global` in template → still present
             config = reordered
 
-        # Add scenarios (role assignment lives in the materializer)
-        config['scenarios'] = self._materializer.to_scenario_dicts(window_set, robustness)
+        # Add scenarios — one symbol after another; role assignment (per symbol, time-ordered)
+        # lives in the materializer.
+        scenarios = []
+        for window_set in window_sets:
+            scenarios.extend(
+                self._materializer.to_scenario_dicts(window_set, robustness))
+        config['scenarios'] = scenarios
 
-        output_path = self._scenario_set_output_dir / filename
-        with open(output_path, 'w') as f:
-            json.dump(config, f, indent=2, default=str)
-
-        vLog.info(f"Saved {len(config['scenarios'])} scenarios to {output_path}")
-
-        return output_path
+        return config
 
     # =========================================================================
     # PROFILE ARTIFACT JSON (volatility / continuous path)

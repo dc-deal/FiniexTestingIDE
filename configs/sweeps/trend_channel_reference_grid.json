@@ -1,0 +1,17 @@
+{
+  "base_scenario_set": "backtesting/trend_channel_reference_sweep_base.json",
+  "objective": "expectancy",
+  "maximize": true,
+  "grid": {
+    "decision_logic_config.sl_mult": [
+      0.8,
+      1.0,
+      1.5
+    ],
+    "decision_logic_config.tp_mult": [
+      1.5,
+      2.0,
+      3.0
+    ]
+  }
+}

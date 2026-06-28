@@ -1,0 +1,60 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "trend_channel_reference_stop_fixture",
+  "created": "2026-06-26T00:00:00.000000",
+  "description": "Test fixture \u2014 CORE/trend_channel_reference in stop_breakout mode (mt5 EURUSD). Drives resting STOP entries + SL/TP + trailing + partial close + gate-flip cancels for behavior assertions.",
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/trend_channel_reference",
+      "worker_instances": {
+        "h1_trend": "CORE/ma_trend",
+        "m15_channel": "CORE/bollinger"
+      },
+      "workers": {
+        "h1_trend": {
+          "periods": {
+            "H1": 50
+          },
+          "ma_type": "ema",
+          "neutral_band": 0.05,
+          "compute_basis": "bar_close"
+        },
+        "m15_channel": {
+          "periods": {
+            "M15": 20
+          },
+          "deviation": 2.0
+        }
+      },
+      "decision_logic_config": {
+        "entry_mode": "stop_breakout",
+        "breakout_offset_mult": 0.25,
+        "sl_mult": 1.0,
+        "tp_mult": 2.0,
+        "trail_mult": 1.5,
+        "partial_rr": 1.0,
+        "partial_fraction": 0.5,
+        "max_positions": 2,
+        "lot_size": 0.1,
+        "min_free_margin": 1000
+      }
+    },
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 10000
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "name": "EURUSD_stop_w1",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-12T00:00:00+00:00",
+      "end_date": "2026-01-16T20:00:00+00:00",
+      "data_mode": "realistic",
+      "enabled": true
+    }
+  ]
+}

@@ -227,6 +227,9 @@ class TestBuildReport:
 class TestPostRunVerdict:
     _ROLES_4 = [RobustnessRole.IN_SAMPLE, RobustnessRole.IN_SAMPLE,
                 RobustnessRole.OUT_OF_SAMPLE, RobustnessRole.OUT_OF_SAMPLE]
+    # 3 IS + 3 OOS — both buckets meet the default min_windows=3, so the verdict fires
+    # on its own merits (not the per-bucket suppression).
+    _ROLES_6 = [RobustnessRole.IN_SAMPLE] * 3 + [RobustnessRole.OUT_OF_SAMPLE] * 3
 
     def test_disabled_emits_nothing(self):
         b = _batch([10.0, 1.0, 1.0, 1.0], roles=self._ROLES_4)
@@ -234,13 +237,20 @@ class TestPostRunVerdict:
         assert 'robustness_overfit' not in _verdicts(b)
 
     def test_overfit_advisory(self):
-        b = _batch([10.0, 10.0, 1.0, 1.0], roles=self._ROLES_4)
+        b = _batch([10.0, 10.0, 10.0, 1.0, 1.0, 1.0], roles=self._ROLES_6)
         out = _verdicts(b)
         assert 'robustness_overfit' in out and 'OVERFIT' in out['robustness_overfit']
 
     def test_robust_emits_no_overfit(self):
-        b = _batch([10.0, 10.0, 9.0, 9.0], roles=self._ROLES_4)
+        b = _batch([10.0, 10.0, 10.0, 9.0, 9.0, 9.0], roles=self._ROLES_6)
         assert 'robustness_overfit' not in _verdicts(b)
+
+    def test_insufficient_oos_bucket_suppresses_verdict(self):
+        # Overall 5 windows ≥ min_windows, but the OOS bucket (2) is below it → no verdict.
+        roles = [RobustnessRole.IN_SAMPLE] * 3 + [RobustnessRole.OUT_OF_SAMPLE] * 2
+        out = _verdicts(_batch([10.0, 10.0, 10.0, 1.0, 1.0], roles=roles))
+        assert 'robustness_insufficient_buckets' in out
+        assert 'robustness_overfit' not in out   # WFE not trusted on OOS n=2
 
     def test_param_drift_advisory(self):
         strategies = [{'a': 1}, {'a': 2}, {'a': 1}, {'a': 1}]

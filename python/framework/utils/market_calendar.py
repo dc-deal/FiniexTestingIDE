@@ -264,6 +264,29 @@ class MarketCalendar:
             close = close + timedelta(days=7)
         return close
 
+    @staticmethod
+    def next_market_open(after: datetime) -> datetime:
+        """
+        The next market-open instant at or after `after`.
+
+        Mirror of next_market_close: when `after` already falls in an open session it is
+        returned unchanged; otherwise it snaps forward to 00:00 UTC of the next open
+        trading day (skipping weekend and holiday closures). Day-granular, matching
+        is_market_open — the snapped instant is always safely inside an open session.
+
+        Args:
+            after: Reference instant, UTC
+
+        Returns:
+            The next market-open instant (UTC); `after` itself if already open
+        """
+        current = after
+        while (not MarketCalendar.is_market_open(current)
+                or MarketCalendar.is_market_holiday(current)):
+            current = (current + timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0)
+        return current
+
     # =========================================================================
     # EXTENDED WEEKEND ANALYSIS
     # =========================================================================

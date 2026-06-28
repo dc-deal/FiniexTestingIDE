@@ -883,6 +883,22 @@
                 "order": 3
             }
         },
+        {
+            "name": "✨ Optimization: Trend Channel Reference Grid",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/optimization_cli.py",
+            "args": [
+                "run",
+                "trend_channel_reference_grid.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "08b_parameter_optimization",
+                "order": 4
+            }
+        },
         // ====================================================
         // ⚡ SCENARIO GENERATION
         // ====================================================
@@ -2141,6 +2157,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Trend Channel Reference (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/simulation/trend_channel_reference/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 50
+            }
+        },
+        {
             "name": "🧩 Pytest: USER Namespace",
             "type": "debugpy",
             "request": "launch",
@@ -2152,7 +2185,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 50
+                "order": 51
             }
         },
         {
@@ -2169,7 +2202,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 51
+                "order": 52
             }
         },
         {
@@ -2569,6 +2602,38 @@
             }
         },
         {
+            "name": "🧪 Simulation: Trend Channel Reference (Robustness)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/trend_channel_reference_robustness_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 74
+            }
+        },
+        {
+            "name": "🧪 Simulation: Trend Channel Reference (Stop Breakout)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/trend_channel_reference_stop_breakout_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 75
+            }
+        },
+        {
             "name": "🧪 Simulation: Zero Balance",
             "type": "debugpy",
             "request": "launch",
@@ -2581,7 +2646,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 74
+                "order": 76
             }
         },
         // ====================================================

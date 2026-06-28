@@ -27,6 +27,7 @@ from python.framework.decision_logic.core.aggressive_trend import AggressiveTren
 from python.framework.decision_logic.core.backtesting.backtesting_deterministic import BacktestingDeterministic
 from python.framework.decision_logic.core.cautious_macd import CautiousMacd
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
+from python.framework.decision_logic.core.trend_channel_reference import TrendChannelReference
 from python.framework.decision_logic.core.backtesting.backtesting_event_probe import BacktestingEventProbe
 from python.framework.decision_logic.core.backtesting.backtesting_margin_stress import BacktestingMarginStress
 from python.framework.decision_logic.core.backtesting.backtesting_multi_position import BacktestingMultiPosition
@@ -77,6 +78,7 @@ class DecisionLogicFactory:
             self._registry['CORE/simple_consensus'] = (SimpleConsensus, None)
             self._registry['CORE/aggressive_trend'] = (AggressiveTrend, None)
             self._registry['CORE/cautious_macd'] = (CautiousMacd, None)
+            self._registry['CORE/trend_channel_reference'] = (TrendChannelReference, None)
             self._registry['CORE/backtesting/backtesting_deterministic'] = (BacktestingDeterministic, None)
             self._registry['CORE/backtesting/backtesting_margin_stress'] = (BacktestingMarginStress, None)
             self._registry['CORE/backtesting/backtesting_multi_position'] = (BacktestingMultiPosition, None)

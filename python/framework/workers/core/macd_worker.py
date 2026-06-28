@@ -11,7 +11,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import REQUIRED, InputParamDef, OutputParamDef
-from python.framework.types.worker_types import WorkerResult, WorkerType
+from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
 
 
@@ -177,6 +177,10 @@ class MacdWorker(AbstractWorker):
             List of timeframes - e.g. ["M5"]
         """
         return list(self.periods.keys())
+
+    def get_default_compute_basis(self) -> ComputeBasis:
+        """LIVE — intra-bar, recompute per tick (#420). BAR_CLOSE is a per-instance opt-in."""
+        return ComputeBasis.LIVE
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         """MACD recomputes when bar updated"""

@@ -388,10 +388,9 @@ class TestValidateScenarioParameters:
         assert 'fast_period_typo' in scenario.validation_result[0].errors[0]
 
     def test_reserved_worker_keys_pass(self):
-        # recompute / include_current_bar are framework opt-ins, not unknown params
+        # compute_basis is a framework opt-in, not an unknown param (#420)
         cfg = _clean_strategy_config()
-        cfg['workers']['macd_main']['recompute'] = 'bar_close'
-        cfg['workers']['macd_main']['include_current_bar'] = False
+        cfg['workers']['macd_main']['compute_basis'] = 'bar_close'
         scenario = _param_scenario('reserved_ok', cfg)
         logger = MagicMock()
 

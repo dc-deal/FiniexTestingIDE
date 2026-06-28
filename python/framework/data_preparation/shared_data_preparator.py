@@ -445,9 +445,11 @@ class SharedDataPreparator:
         symbol's Parquet data once into RAM, then filters per scenario. Replaces
         the previous per-scenario Parquet read (O(n_scenarios) → O(n_symbols) reads).
 
-        NOTE (#21 — Memory Manager): This is a run-scoped in-memory load. When #21
-        implements a persistent file-level cache (get_or_load), replace the
-        pd.concat([pd.read_parquet(f)...]) block in STEP 3 with cache lookups.
+        NOTE (caching — two layers): This is a run-scoped in-memory load.
+        #21 (FileCache) caches the raw Parquet read — replace the
+        pd.concat([pd.read_parquet(f)...]) block in STEP 3 with cache lookups (get_or_load).
+        #417/#418 (mount layer) reuse the whole prepared per-scenario package across runs
+        that share the data identity (sweep / re-run), one level above the file cache.
         The grouping logic (STEP 1+2+4) stays unchanged.
 
         Args:

@@ -12,9 +12,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
-from python.framework.utils.market_calendar import GapCategory
+from python.framework.utils.market_calendar import GapCategory, MarketCalendar
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
 from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,
@@ -65,8 +66,8 @@ class BlocksSplit(AbstractSplitter):
         Args:
             broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             symbol: Trading symbol
-            start_time: Unused (blocks span the full coverage)
-            end_time: Unused (blocks span the full coverage)
+            start_time: Optional lower bound — regions are clipped to it (None = data start)
+            end_time: Optional upper bound — regions are clipped to it (None = data end)
             count_max: Optional limit on number of blocks
 
         Returns:
@@ -81,8 +82,9 @@ class BlocksSplit(AbstractSplitter):
             symbol=symbol, broker_type=broker_type)
         data_coverage_report.analyze()
 
-        # Extract continuous regions with gap information
-        continuous_regions = self._region_extractor.extract(data_coverage_report)
+        # Extract continuous regions with gap information (clipped to start/end if given)
+        continuous_regions = self._region_extractor.extract(
+            data_coverage_report, start_time, end_time)
 
         if not continuous_regions:
             raise ValueError(
@@ -99,6 +101,11 @@ class BlocksSplit(AbstractSplitter):
 
         block_counter = 0
 
+        # Block-start snapping only applies where the market actually closes (forex
+        # weekends/holidays). Crypto is 24/7 (weekend_closure=False) → a boundary is never
+        # inside a closed window, so the snap must NOT fire (§37, MarketCalendar is forex-only).
+        snap_to_market_open = MarketConfigManager().has_weekend_closure(broker_type)
+
         for region in continuous_regions:
             region_start = region['start']
             region_end = region['end']
@@ -114,7 +121,8 @@ class BlocksSplit(AbstractSplitter):
 
             windows_from_region = self._generate_blocks(
                 region, scenario_start,
-                block_duration, min_block_hours, block_hours, block_counter
+                block_duration, min_block_hours, block_hours, block_counter,
+                snap_to_market_open,
             )
 
             # Data-start warning: first block starts at data begin
@@ -204,7 +212,8 @@ class BlocksSplit(AbstractSplitter):
         block_duration: timedelta,
         min_block_hours: int,
         block_hours: int,
-        block_counter: int
+        block_counter: int,
+        snap_to_market_open: bool,
     ) -> List[GeneratedWindow]:
         """
         Generate continuous chronological blocks within a data region.
@@ -216,6 +225,9 @@ class BlocksSplit(AbstractSplitter):
             min_block_hours: Minimum block duration
             block_hours: Target hours per block
             block_counter: Current block counter
+            snap_to_market_open: When True (markets with weekend closure, i.e. forex),
+                snap a boundary landing in a closed window to the next market open;
+                False (crypto, 24/7) leaves boundaries untouched
 
         Returns:
             List of generated windows
@@ -226,6 +238,19 @@ class BlocksSplit(AbstractSplitter):
         local_counter = block_counter
 
         while current_start < region_end:
+            # Gap-aware start (forex only): a boundary landing in a market-closed window
+            # (weekend / holiday) has no ticks → snap forward to the next market open (§37
+            # MarketCalendar). A weekend gap inside a region never splits it, so a block
+            # boundary can otherwise begin where no data exists. Crypto (24/7) is exempt —
+            # snap_to_market_open is False there, so a Saturday boundary keeps its ticks.
+            if snap_to_market_open and (
+                    not MarketCalendar.is_market_open(current_start)
+                    or MarketCalendar.is_market_holiday(current_start)):
+                snapped = MarketCalendar.next_market_open(current_start)
+                if snapped >= region_end:
+                    break
+                current_start = snapped
+
             remaining_hours = (
                 region_end - current_start).total_seconds() / 3600
 

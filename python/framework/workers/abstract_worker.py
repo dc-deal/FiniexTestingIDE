@@ -13,7 +13,7 @@ from python.framework.validators.parameter_validator import validate_parameters
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.worker_types import (
-    RecomputeCadence, WorkerResult, WorkerState, WorkerType)
+    ComputeBasis, WorkerResult, WorkerState, WorkerType)
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
@@ -82,6 +82,10 @@ class AbstractWorker(ABC):
         if self.__class__.get_worker_type() == WorkerType.INDICATOR:
             self.periods = self.params.get('periods')
 
+        # Compute basis (#420) — resolved lazily on first use and cached
+        # (config 'compute_basis' override → the worker's declaration).
+        self._compute_basis: Optional[ComputeBasis] = None
+
     @abstractmethod
     def get_warmup_requirements(self) -> Dict[str, int]:
         """
@@ -146,40 +150,24 @@ class AbstractWorker(ABC):
         """Get last computation result"""
         return self._last_result
 
-    def get_recompute_cadence(self) -> RecomputeCadence:
+    def get_compute_basis(self) -> ComputeBasis:
         """
-        Effective recompute cadence for this worker instance.
+        Effective compute basis for this worker instance (#420), cached.
 
-        The per-instance config key 'recompute' overrides the class default
-        (get_default_recompute_cadence). This is the single per-instance switch:
-        the same CORE worker class can be PER_TICK for a tick-reactive strategy
-        and ON_BAR_CLOSE for a bar-close strategy, decided in the run config.
+        The per-instance config key 'compute_basis' overrides the worker's
+        declaration (get_default_compute_basis): the same CORE worker class can be
+        LIVE for a tick-reactive strategy and BAR_CLOSE for a bar-grid strategy,
+        decided in the run config. Resolved once and cached — no per-tick lookup.
 
         Returns:
-            RecomputeCadence governing when the orchestrator recomputes this worker
+            ComputeBasis governing when/what the orchestrator recomputes this worker
         """
-        configured = self.parameters.get('recompute')
-        if configured is None:
-            return self.__class__.get_default_recompute_cadence()
-        return RecomputeCadence(configured)
-
-    def includes_current_bar(self) -> bool:
-        """
-        Whether this worker instance computes on the current (still-forming, incomplete)
-        bar in addition to completed history (#387).
-
-        The per-instance config key 'include_current_bar' overrides the class default
-        (get_default_includes_current_bar). False = completed-bar-only — the worker's
-        value changes only when a bar closes (the institutional bar-indicator model),
-        which a bar-close consumer reads identically on any finer grid.
-
-        Returns:
-            True to append the current bar (default, live intra-bar view)
-        """
-        configured = self.parameters.get('include_current_bar')
-        if configured is None:
-            return self.__class__.get_default_includes_current_bar()
-        return bool(configured)
+        if self._compute_basis is None:
+            configured = self.parameters.get('compute_basis')
+            self._compute_basis = (
+                ComputeBasis(configured) if configured
+                else self.get_default_compute_basis())
+        return self._compute_basis
 
     def effective_bars(
         self,
@@ -188,11 +176,12 @@ class AbstractWorker(ABC):
         current_bars: Dict[str, Bar],
     ) -> List[Bar]:
         """
-        Bars this worker computes on for a timeframe (#387).
+        Bars this worker computes on for a timeframe (#420).
 
-        Completed history, plus the current (forming) bar unless the worker is
-        configured completed-bar-only (include_current_bar=False). Centralizes the
-        append that was previously duplicated inline in every worker's compute().
+        Completed history, plus the current (forming) bar when the basis is LIVE
+        (intra-bar view); completed-bars-only under BAR_CLOSE (the value changes
+        only on a bar close). Centralizes the append that was previously duplicated
+        inline in every worker's compute().
 
         Args:
             timeframe: Timeframe key
@@ -200,10 +189,10 @@ class AbstractWorker(ABC):
             current_bars: Current (forming) bar per timeframe
 
         Returns:
-            List of bars to compute on (history, optionally with the current bar)
+            List of bars to compute on (history, plus the current bar when LIVE)
         """
         bars = bar_history.get(timeframe, [])
-        if self.includes_current_bar():
+        if self.get_compute_basis() == ComputeBasis.LIVE:
             current_bar = current_bars.get(timeframe)
             if current_bar:
                 bars = list(bars) + [current_bar]
@@ -278,37 +267,30 @@ class AbstractWorker(ABC):
         """
         return ComponentMetadata()
 
-    @classmethod
-    def get_default_recompute_cadence(cls) -> RecomputeCadence:
+    def get_default_compute_basis(self) -> ComputeBasis:
         """
-        Natural recompute cadence for this worker class.
+        Declare the worker's compute basis (#420) — MUST be overridden by every worker.
 
-        Default PER_TICK — preserves the historical behavior and the determinism
-        of existing scenario sets. A bar-derived worker MAY override this to
-        ON_BAR_CLOSE, but CORE workers stay PER_TICK until the event-driven loop
-        (#375) makes a bar-close default safe across all consumers. The per-instance
-        config key 'recompute' overrides this per run.
+        Instance method, so the declaration may depend on the worker's own config
+        (self.params). Return ComputeBasis.LIVE (per-tick, intra-bar — the tick-native
+        default that preserves existing-set determinism) or ComputeBasis.BAR_CLOSE
+        (completed bars only, recompute on close — stable + cheap, only for consumers
+        that read on the bar-close grid). The per-instance config key 'compute_basis'
+        overrides this per run.
 
         Returns:
-            Default RecomputeCadence for this worker class
-        """
-        return RecomputeCadence.PER_TICK
+            The worker's declared ComputeBasis
 
-    @classmethod
-    def get_default_includes_current_bar(cls) -> bool:
+        Raises:
+            NotImplementedError: If a subclass does not override this method.
         """
-        Whether this worker class computes on the current (forming) bar by default (#387).
-
-        Default True — preserves the historical live intra-bar behavior and the
-        determinism of existing scenario sets. The institutional bar-indicator model
-        is completed-bar-only (False); a worker MAY default to that, but CORE workers
-        stay True until consumers migrate (same migration discipline as the recompute
-        cadence default). The per-instance config key 'include_current_bar' overrides.
-
-        Returns:
-            Default current-bar inclusion for this worker class
-        """
-        return True
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must declare get_default_compute_basis(). "
+            f"Return ComputeBasis.LIVE for a tick-reactive worker (intra-bar value, "
+            f"e.g. band position from tick.mid) or ComputeBasis.BAR_CLOSE for a "
+            f"completed-bar indicator read on the bar-close grid. "
+            f"See docs/user_guides/worker_naming_doc.md."
+        )
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
@@ -347,7 +329,7 @@ class AbstractWorker(ABC):
         Validate config against parameter schema (no instance needed).
 
         Rejects unknown config keys — a key that is neither a schema parameter nor a
-        reserved/structural key (recompute, include_current_bar, periods, …) is a typo
+        reserved/structural key (compute_basis, periods, …) is a typo
         that would otherwise be silently ignored at runtime.
 
         Called in Phase 0 (static) and Phase 6 (factory).
@@ -369,14 +351,14 @@ class AbstractWorker(ABC):
         """
         Non-schema config keys the framework accepts on a worker.
 
-        Covers the per-instance framework opt-ins (recompute, include_current_bar),
-        the factory-injected worker_type, and the type-specific structural fields
-        (e.g. 'periods' for INDICATOR) — none of which appear in get_parameter_schema().
+        Covers the per-instance framework opt-in (compute_basis), the factory-injected
+        worker_type, and the type-specific structural fields (e.g. 'periods' for
+        INDICATOR) — none of which appear in get_parameter_schema().
 
         Returns:
             Set of reserved config keys that are not unknown parameters
         """
-        reserved = {'recompute', 'include_current_bar', 'worker_type'}
+        reserved = {'compute_basis', 'worker_type'}
         reserved.update(cls.REQUIRED_CONFIG_FIELDS.get(cls.get_worker_type(), []))
         return reserved
 
@@ -394,23 +376,15 @@ class AbstractWorker(ABC):
         Raises:
             ValueError: If required fields missing
         """
-        # Reserved framework key: recompute cadence (per-instance opt-in)
-        recompute = config.get('recompute')
-        if recompute is not None:
-            valid = [c.value for c in RecomputeCadence]
-            if recompute not in valid:
+        # Reserved framework key: compute basis (per-instance opt-in, #420)
+        compute_basis = config.get('compute_basis')
+        if compute_basis is not None:
+            valid = [c.value for c in ComputeBasis]
+            if compute_basis not in valid:
                 raise ValueError(
-                    f"Worker '{cls.__name__}': invalid 'recompute' cadence "
-                    f"'{recompute}'. Allowed: {valid}"
+                    f"Worker '{cls.__name__}': invalid 'compute_basis' "
+                    f"'{compute_basis}'. Allowed: {valid}"
                 )
-
-        # Reserved framework key: current-bar inclusion (per-instance opt-in)
-        include_current_bar = config.get('include_current_bar')
-        if include_current_bar is not None and not isinstance(include_current_bar, bool):
-            raise ValueError(
-                f"Worker '{cls.__name__}': 'include_current_bar' must be a bool, "
-                f"got {type(include_current_bar).__name__} ({include_current_bar})"
-            )
 
         worker_type = cls.get_worker_type()
         required_fields = cls.REQUIRED_CONFIG_FIELDS.get(worker_type, [])

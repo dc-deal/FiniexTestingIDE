@@ -55,7 +55,6 @@ class GenerationCoordinator:
         start: Optional[str] = None,
         end: Optional[str] = None,
         output: Optional[str] = None,
-        max_ticks: Optional[int] = None,
         oos_split: Optional[float] = None,
     ) -> Path:
         """
@@ -63,13 +62,12 @@ class GenerationCoordinator:
 
         Args:
             broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
-            symbols: List of symbols (first symbol used; multi-symbol not yet implemented)
+            symbols: List of symbols (one WindowSet per symbol, merged into one set)
             count: Max number of blocks (None = all)
             block_size: Block size in hours (None = config default)
             start: Start date filter (ISO format)
             end: End date filter (ISO format)
             output: Output filename
-            max_ticks: Max ticks per scenario
             oos_split: Trailing Out-of-Sample fraction (#367) — enables robustness mode
 
         Returns:
@@ -79,10 +77,6 @@ class GenerationCoordinator:
         end_dt = ensure_utc_aware(datetime.fromisoformat(end)) if end else None
 
         config = GeneratorConfigLoader().get_generator_config()
-        symbol = symbols[0]
-        if len(symbols) > 1:
-            vLog.warning(
-                'Multi-symbol generation not yet implemented. Using first symbol.')
 
         # Resolve block size: CLI override → config default
         hours = block_size or config.blocks.default_block_hours
@@ -94,9 +88,14 @@ class GenerationCoordinator:
         vLog.info('Generating scenarios using blocks strategy')
         splitter = self._splitter_factory.create_splitter(
             GenerationStrategy.BLOCKS, blocks_config)
-        window_set = splitter.split(
-            broker_type, symbol, start_dt, end_dt, count)
-        vLog.info(f"Generated {window_set.block_count} blocks (max {hours}h each)")
+        # One WindowSet per symbol — roles (#367) are assigned per symbol (time-ordered),
+        # so a multi-symbol robustness set never trains one symbol on another's future.
+        window_sets = []
+        for symbol in symbols:
+            window_set = splitter.split(broker_type, symbol, start_dt, end_dt, count)
+            vLog.info(
+                f"Generated {window_set.block_count} blocks for {symbol} (max {hours}h each)")
+            window_sets.append(window_set)
 
         # Robustness mode (#367): --oos-split turns the block set into an IS/OOS set.
         robustness = (
@@ -108,9 +107,9 @@ class GenerationCoordinator:
         output_file = output or self._blocks_output_name(
             symbols, robustness=robustness is not None)
         config_path = self._serializer.save_scenario_set(
-            window_set, output_file, robustness)
+            window_sets, output_file, robustness)
 
-        self._print_blocks_summary(window_set, config_path)
+        self._print_blocks_summary(window_sets, config_path)
 
         return config_path
 
@@ -301,31 +300,34 @@ class GenerationCoordinator:
         mode_short = 'vol' if mode == 'volatility_split' else 'cont'
         return f"{broker_type}_{symbol}_profile_{mode_short}_{timestamp}.json"
 
-    def _print_blocks_summary(self, window_set: WindowSet, config_path: Path) -> None:
+    def _print_blocks_summary(
+        self, window_sets: List[WindowSet], config_path: Path) -> None:
         """
-        Print a short post-save summary for a block set.
+        Print a short post-save summary for a block set (one section per symbol).
 
         Args:
-            window_set: The generated window set
+            window_sets: The generated window sets (one per symbol)
             config_path: Path to the saved config
         """
+        total_blocks = sum(ws.block_count for ws in window_sets)
         print('\n' + '=' * 60)
-        print(f"✅ Generated {window_set.block_count} blocks")
+        print(f"✅ Generated {total_blocks} blocks ({len(window_sets)} symbol(s))")
         print('=' * 60)
 
-        print(f"\nSymbol:     {window_set.symbol}")
-        print(f"Strategy:   {window_set.strategy.value}")
+        for window_set in window_sets:
+            print(f"\nSymbol:     {window_set.symbol}")
+            print(f"Strategy:   {window_set.strategy.value}")
 
-        if window_set.windows:
-            first_start = min(w.start_time for w in window_set.windows)
-            last_end = max(w.end_time for w in window_set.windows)
-            total_hours = window_set.total_coverage_hours
-            avg_hours = total_hours / window_set.block_count
+            if window_set.windows:
+                first_start = min(w.start_time for w in window_set.windows)
+                last_end = max(w.end_time for w in window_set.windows)
+                total_hours = window_set.total_coverage_hours
+                avg_hours = total_hours / window_set.block_count
 
-            print(
-                f"Time range: {first_start.strftime('%Y-%m-%d')} → {last_end.strftime('%Y-%m-%d')}")
-            print(
-                f"Total:      {total_hours:.0f}h ({avg_hours:.1f}h avg/block)")
+                print(
+                    f"Time range: {first_start.strftime('%Y-%m-%d')} → {last_end.strftime('%Y-%m-%d')}")
+                print(
+                    f"Total:      {total_hours:.0f}h ({avg_hours:.1f}h avg/block)")
 
         print(f"\n📂 Config saved to: {config_path}")
         print("\nℹ️  Next steps:")

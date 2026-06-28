@@ -29,7 +29,7 @@ Pre-registered at factory startup. Always available.
 
 **Workers:** `CORE/rsi`, `CORE/bollinger`, `CORE/ma_trend`, `CORE/macd`, `CORE/obv`, `CORE/heavy_rsi`
 
-**Decision Logics:** `CORE/simple_consensus`, `CORE/aggressive_trend`, `CORE/cautious_macd`
+**Decision Logics:** `CORE/simple_consensus`, `CORE/aggressive_trend`, `CORE/cautious_macd`, `CORE/trend_channel_reference`
 
 Backtesting variants: `CORE/backtesting/backtesting_deterministic`, `CORE/backtesting/backtesting_margin_stress`, `CORE/backtesting/backtesting_multi_position`
 
@@ -112,73 +112,44 @@ market-fit warning if the run's market/instrument is outside the recommended set
 
 ---
 
-## Recompute Cadence — When a Worker Recomputes
+## Compute Basis — LIVE vs BAR_CLOSE (#420)
 
-By default a worker recomputes on **every tick** (`RecomputeCadence.PER_TICK`). For a
-bar-derived indicator (Bollinger bands, a moving-average trend) the value only changes when
-a **bar closes** — recomputing it on every intra-bar tick repeats the same result hundreds
-of times. A run config can opt a worker instance into bar-close-only recompute:
+Every worker **must** declare its `compute_basis` (mandatory `get_default_compute_basis()`,
+like `get_required_activity_metric()`). It is a single binary axis — the worker's **data
+subscription** — that decides both *what* the worker computes on and *when* it recomputes:
 
-```json
-"bollinger_main": { "periods": { "M15": 20 }, "deviation": 2.0, "recompute": "bar_close" }
-```
-
-With `"recompute": "bar_close"` the orchestrator recomputes the worker only when one of its
-required timeframes closes a bar; the cached result is served on the ticks in between (the
-bar-close transition is surfaced by the bar renderer as a typed `BarRenderState`).
-
-- **Per-instance, not per-class.** The same CORE worker can be `bar_close` in a bar-close
-  strategy and `per_tick` in a tick-reactive one — the switch lives in the run config.
-- **Determinism — know your sampling grid.** Only opt in when the consumer reads the worker
-  **on its bar-close grid**. A strategy that acts on M15 closes and reads an M15 Bollinger
-  worker is safe (it samples exactly where the worker recomputes). A consumer that reads the
-  worker's value *between* its closes — or a worker that reflects `tick.mid` live (intra-bar
-  `position` / `position_raw`) — must stay `per_tick`, otherwise it sees a frozen value.
-- **Default stays `per_tick`** for all CORE workers — existing scenario sets are unchanged.
-
----
-
-## Current Bar — What a Worker Computes On
-
-A second, independent axis. By default a worker computes on completed bar history **plus the
-current (still-forming, incomplete) bar** of its timeframe (a live, intra-bar view — the value
-drifts with the live price). A run config can make a worker instance **completed-bar-only**:
-
-```json
-"h1_trend": { "periods": { "H1": 24 }, "recompute": "bar_close", "include_current_bar": false }
-```
-
-With `"include_current_bar": false` the worker computes on completed bars only — its value
-changes **only when a bar closes** (the institutional bar-indicator model: nautilus / LEAN /
-Backtrader all update indicators on completed bars).
-
-- **When to use it.** A higher-timeframe filter read on a finer grid (an H1 trend read by an
-  M15-acting strategy) wants completed-bar-only — a stable gate, no intra-bar flicker. A
-  tick-reactive worker that needs the live intra-bar value (e.g. Bollinger `position` from
-  `tick.mid`) keeps the default.
-- **Default stays `true`** (current bar included) for all CORE workers — existing scenario sets
-  are unchanged.
-
-## The Two Axes — Responsibilities and the Dead Cell
-
-The two options answer **different questions** and are owned by **different layers**:
-
-| Option | Question | Affects | Owned by |
+| Basis | Computes on | Recompute | Character |
 |---|---|---|---|
-| `include_current_bar` | *Which* bars does the worker compute on? | the **value** (changes decisions) | the **worker** (computation / window assembly — `effective_bars`) |
-| `recompute` | *When* does the worker recompute? | the **cost** (same decisions) | the **orchestrator** (loop control — only it can skip a compute) |
+| **`LIVE`** | completed history **+ the forming bar** (`tick.mid`) | **every tick** | drifts intra-bar; reacts to events *within* a bar |
+| **`BAR_CLOSE`** | **completed bars only** | only when a required timeframe **closes** (cached in between) | stable, cheap; the institutional bar-indicator model (nautilus / LEAN / Backtrader) |
 
-Combined, three of the four cells are useful; one is nonsense:
+**`BAR_CLOSE` is not a free speedup — it changes behavior.** It freezes the indicator between
+closes, so an intra-bar event that touches a level and reverts before the close is **invisible**
+to it. It is correct only for a consumer that **reads on the bar-close grid** (a swing strategy,
+a higher-timeframe gate). A tick-reactive consumer — anything reading a live value like Bollinger
+`position`/`position_raw` from `tick.mid` — needs `LIVE`.
 
-| | `include_current_bar: true` (live) | `include_current_bar: false` (completed) |
-|---|---|---|
-| `recompute: per_tick` | live default — recomputes every tick, sees the drifting current bar | **dead cell** — recomputes every tick a value that can only change on close → wasted work |
-| `recompute: bar_close` | recomputes on its own close grid (read on that grid → safe) | the institutional higher-TF filter — stable value, cheapest |
+A run config opts a worker **instance** into a basis (sibling of `periods`, one value — not
+per-timeframe; multi-timeframe needs separate instances):
 
-The **dead cell** (`include_current_bar: false` + `recompute: per_tick`) is not wrong, just
-wasteful: a completed-bar-only value cannot change between closes, so per-tick recompute only
-repeats work. The worker factory emits a warning when it is configured — use `recompute:
-bar_close` instead.
+```json
+"h1_trend":    { "periods": { "H1": 50 },  "ma_type": "ema", "compute_basis": "bar_close" },
+"m15_channel": { "periods": { "M15": 20 }, "deviation": 2.0 }
+```
+
+Here the H1 trend gate is a stable `bar_close` screen (~3× cheaper — it recomputes once per H1
+close, not per tick), while `m15_channel` stays `LIVE` (default, omitted) because the strategy
+reads its band `position` live.
+
+- **Per-instance, not per-class.** The same CORE worker is `LIVE` in a tick-reactive strategy and
+  `BAR_CLOSE` in a bar-grid one — the switch lives in the run config.
+- **Default is `LIVE`** for all CORE indicators — existing scenario sets run **bit-identical**
+  (no re-baseline). `BAR_CLOSE` is a conscious opt-in.
+- **Telemetry.** Because a `BAR_CLOSE` worker computes far less than once per tick, the run
+  report's **WORKER DETAILS** shows the basis, the **compute / tick ratio**, and the **ticks
+  idle** since the last compute (e.g. `bar_close 200/49196 computes (0%, 148 idle)`) — so a
+  bar-cadence worker is not misread as "barely ran". The per-compute `Avg` ms is the real worker
+  cost (cadence-independent); a `BAR_CLOSE` run is therefore not comparable to a `LIVE` baseline.
 
 ---
 

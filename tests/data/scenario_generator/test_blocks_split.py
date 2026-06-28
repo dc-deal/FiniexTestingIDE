@@ -457,3 +457,93 @@ class TestWindowProperties:
         assert w.regime == VolatilityRegime.MEDIUM
         assert w.atr == 0.0
         assert w.tick_density == 0.0
+
+
+# =============================================================================
+# START / END CLIPPING (the split now honors the requested time range)
+# =============================================================================
+
+class TestStartEndClipping:
+    """BlocksSplit forwards start_time / end_time to the region extractor (clips the range)."""
+
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
+    def test_clips_blocks_to_requested_range(
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
+    ):
+        """Blocks are restricted to [start_time, end_time], not the full data coverage."""
+        splitter = BlocksSplit(blocks_config)
+        # 24h of data available, but request only the middle 8h
+        report = mock_coverage_report(utc(2025, 10, 1), utc(2025, 10, 2))
+        mock_dcr_cls.return_value = report
+        mock_tim_cls.return_value = MagicMock()
+
+        result = splitter.split(
+            'mt5', 'EURUSD', utc(2025, 10, 1, 8), utc(2025, 10, 1, 16))
+
+        assert result.windows
+        assert result.windows[0].start_time == utc(2025, 10, 1, 8)
+        assert result.windows[-1].end_time <= utc(2025, 10, 1, 16)
+        # 8h clipped range / 4h blocks → 2 blocks
+        assert len(result.windows) == 2
+
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
+    def test_no_range_spans_full_coverage(
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
+    ):
+        """No start/end → blocks span the full coverage (unchanged default)."""
+        splitter = BlocksSplit(blocks_config)
+        report = mock_coverage_report(utc(2025, 10, 1), utc(2025, 10, 1, 8))
+        mock_dcr_cls.return_value = report
+        mock_tim_cls.return_value = MagicMock()
+
+        result = splitter.split('mt5', 'EURUSD', count_max=None)
+
+        assert result.windows[0].start_time == utc(2025, 10, 1)
+        assert result.windows[-1].end_time == utc(2025, 10, 1, 8)
+
+
+# =============================================================================
+# GAP-AWARE BLOCK START (boundaries snap out of market-closed windows)
+# =============================================================================
+
+class TestGapAwareBlockStart:
+    """A block boundary landing in a weekend/holiday snaps to the next market open (§37)."""
+
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
+    def test_weekend_start_snaps_to_monday(
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
+    ):
+        """A region beginning on a Saturday yields a first block snapped to Monday."""
+        splitter = BlocksSplit(blocks_config)
+        # 2025-10-04 is a Saturday, 2025-10-06 a Monday
+        report = mock_coverage_report(utc(2025, 10, 4), utc(2025, 10, 8))
+        mock_dcr_cls.return_value = report
+        mock_tim_cls.return_value = MagicMock()
+
+        result = splitter.split('mt5', 'EURUSD', count_max=None)
+
+        assert result.windows
+        assert result.windows[0].start_time == utc(2025, 10, 6)  # snapped to Monday 00:00
+        # No window starts on a weekend day
+        assert all(w.start_time.weekday() <= 4 for w in result.windows)
+
+    @patch('python.scenario.generator.splitters.blocks_split.TickIndexManager')
+    @patch('python.scenario.generator.splitters.blocks_split.DataCoverageReport')
+    def test_crypto_weekend_start_not_snapped(
+        self, mock_dcr_cls, mock_tim_cls, blocks_config: BlocksStrategyConfig
+    ):
+        """Crypto (24/7, no weekend closure) keeps a Saturday boundary — the snap is gated off."""
+        splitter = BlocksSplit(blocks_config)
+        # Same Saturday-start region, but a crypto broker → weekend_closure=False
+        report = mock_coverage_report(utc(2025, 10, 4), utc(2025, 10, 8))
+        mock_dcr_cls.return_value = report
+        mock_tim_cls.return_value = MagicMock()
+
+        result = splitter.split('kraken_spot', 'BTCUSD', count_max=None)
+
+        assert result.windows
+        # No snap: the first block keeps the Saturday region start (crypto trades weekends)
+        assert result.windows[0].start_time == utc(2025, 10, 4)  # Saturday, unchanged

@@ -96,3 +96,26 @@ def test_next_rollover_skips_weekend():
 def test_next_market_close_is_friday():
     close = MarketCalendar.next_market_close(_utc(2026, 1, 14, 12))  # Wed
     assert close.weekday() == 4 and close > _utc(2026, 1, 14, 12)
+
+
+# --- next_market_open ---
+
+def test_next_market_open_saturday_snaps_to_monday():
+    # 2026-01-17 is a Saturday → next open is Monday 00:00 UTC
+    open_ = MarketCalendar.next_market_open(_utc(2026, 1, 17, 14))
+    assert open_ == _utc(2026, 1, 19, 0)  # Monday 00:00
+
+def test_next_market_open_sunday_snaps_to_monday():
+    # 2026-01-18 is a Sunday → next open is Monday 00:00 UTC
+    open_ = MarketCalendar.next_market_open(_utc(2026, 1, 18, 9))
+    assert open_ == _utc(2026, 1, 19, 0)
+
+def test_next_market_open_already_open_unchanged():
+    # 2026-01-14 is a Wednesday → already open, returned unchanged
+    ref = _utc(2026, 1, 14, 12)
+    assert MarketCalendar.next_market_open(ref) == ref
+
+def test_next_market_open_skips_holiday():
+    # 2025-12-25 (Christmas, Thursday) is a holiday → next open is Friday 2025-12-26 00:00
+    open_ = MarketCalendar.next_market_open(_utc(2025, 12, 25, 10))
+    assert open_ == _utc(2025, 12, 26, 0)

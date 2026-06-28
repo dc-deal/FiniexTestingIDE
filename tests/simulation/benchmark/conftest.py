@@ -379,22 +379,25 @@ def benchmark_report(
         else:
             deviation = 0.0
 
-        # Determine status
+        # Determine status — direction-aware, mirroring the gate in
+        # test_throughput_regression.py: ticks_per_second is higher-is-better, the
+        # *_time_s metrics are lower-is-better (a longer time is a regression, not a gain).
         abs_deviation = abs(deviation)
+        higher_is_better = metric_name == 'ticks_per_second'
+        improved = deviation > 0 if higher_is_better else deviation < 0
         if abs_deviation <= tolerance:
             status = 'PASSED'
+        elif improved:
+            # Better than baseline
+            status = 'PASSED'
+            warnings.append(
+                f"Performance {abs_deviation:.1f}% BETTER than baseline for {metric_name}. "
+                f"Consider updating baseline if code was optimized."
+            )
         else:
-            if deviation > 0:
-                # Faster than baseline
-                status = 'PASSED'
-                warnings.append(
-                    f"Performance {abs_deviation:.1f}% BETTER than baseline for {metric_name}. "
-                    f"Consider updating baseline if code was optimized."
-                )
-            else:
-                # Slower than baseline
-                status = 'FAILED'
-                overall_status = 'FAILED'
+            # Worse than baseline — regression
+            status = 'FAILED'
+            overall_status = 'FAILED'
 
         metrics_list.append({
             'name': metric_name,

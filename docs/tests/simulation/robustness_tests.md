@@ -62,6 +62,7 @@ See the feature: [Robustness Validation guide](../../user_guides/robustness_vali
 | `test_param_drift_advisory` | param drift → fair-test warning |
 | `test_low_windows_advisory` | windows < `min_windows` → statistically-weak warning |
 | `test_disposition_suppresses_verdict` | high distortion → verdict suppressed (only the trust caveat fires) |
+| `test_insufficient_oos_bucket_suppresses_verdict` | overall ≥ `min_windows` but OOS bucket below it → verdict suppressed |
 
 ### `TestLoaderParsing` — config wiring
 | Test | Description |

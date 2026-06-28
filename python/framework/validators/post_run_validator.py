@@ -310,6 +310,18 @@ class PostRunValidator:
                 f"per-window numbers are artifacts (use continuous mode / larger blocks)."))
             return  # numbers unreliable → no OVERFIT/ROBUST verdict
 
+        # Per-bucket sufficiency: the WFE rests on BOTH the IS and OOS means. The overall
+        # window check above can pass while a single bucket — usually OOS — is decimated
+        # (excluded / crashed scenarios), so guard each bucket before trusting the verdict.
+        is_n = report.in_sample.window_count if report.in_sample else 0
+        oos_n = report.out_of_sample.window_count if report.out_of_sample else 0
+        if is_n < config.min_windows or oos_n < config.min_windows:
+            self._add('robustness_insufficient_buckets', (
+                f"ROBUSTNESS: verdict suppressed — IS={is_n} / OOS={oos_n} window(s), one below "
+                f"the {config.min_windows}-window minimum; the Walk-Forward Efficiency rests on "
+                f"too few windows to trust (add windows / recover excluded scenarios)."))
+            return  # a bucket too small → no OVERFIT/ROBUST verdict
+
         # The degradation verdict — only OVERFIT fires a warning (ROBUST is good news, no advisory).
         wfe = report.walk_forward_efficiency
         if wfe is not None and wfe < config.overfit_wfe_threshold:
