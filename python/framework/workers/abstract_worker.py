@@ -174,6 +174,7 @@ class AbstractWorker(ABC):
         timeframe: str,
         bar_history: Dict[str, List[Bar]],
         current_bars: Dict[str, Bar],
+        count: Optional[int] = None,
     ) -> List[Bar]:
         """
         Bars this worker computes on for a timeframe (#420).
@@ -183,19 +184,28 @@ class AbstractWorker(ABC):
         only on a bar close). Centralizes the append that was previously duplicated
         inline in every worker's compute().
 
+        A window-bounded worker passes 'count' — the number of completed bars it
+        actually reads — so only that tail is materialized. For a worker that uses
+        just its last 'count' bars the result is identical to the full-history path,
+        but the per-compute cost drops from O(bar_max_history) to O(count) instead
+        of copying / scanning the whole history on every tick.
+
         Args:
             timeframe: Timeframe key
             bar_history: Completed bars per timeframe
             current_bars: Current (forming) bar per timeframe
+            count: Completed-bar window to keep (None = full history)
 
         Returns:
-            List of bars to compute on (history, plus the current bar when LIVE)
+            List of bars to compute on (history tail, plus the current bar when LIVE)
         """
         bars = bar_history.get(timeframe, [])
+        if count is not None:
+            bars = bars[-count:]
         if self.get_compute_basis() == ComputeBasis.LIVE:
             current_bar = current_bars.get(timeframe)
             if current_bar:
-                bars = list(bars) + [current_bar]
+                bars = (bars if count is not None else list(bars)) + [current_bar]
         return bars
 
     def set_state(self, state: WorkerState):

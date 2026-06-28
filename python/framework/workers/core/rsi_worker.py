@@ -110,7 +110,8 @@ class RsiWorker(AbstractWorker):
         period = self.periods[timeframe]
 
         # Bars to compute on: history + the current bar unless completed-bar-only
-        bars = self.effective_bars(timeframe, bar_history, current_bars)
+        # (window-bounded: RSI needs the last period + 1 closes for period deltas)
+        bars = self.effective_bars(timeframe, bar_history, current_bars, count=period + 1)
 
         # Extract close prices from bars
         close_prices = np.array(

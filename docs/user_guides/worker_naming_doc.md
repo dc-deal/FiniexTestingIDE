@@ -153,6 +153,42 @@ reads its band `position` live.
 
 ---
 
+## Accessing Bar Data — `effective_bars()` and the compute window
+
+A worker never reaches into `bar_history` directly. It calls the base helper, which applies the
+`compute_basis` policy (append the forming bar under `LIVE`, exclude it under `BAR_CLOSE`) and,
+optionally, bounds the depth to the last `count` completed bars:
+
+```python
+# window-bounded: take only the last period + 1 bars (the slope needs one extra)
+bars = self.effective_bars(timeframe, bar_history, current_bars, count=period + 1)
+```
+
+**Pass `count` = the exact depth your `compute()` reads.** `bar_history` is a rolling
+`deque(maxlen=bar_max_history)` (1000 by default) shared across all workers, so without `count`
+every compute materializes the whole history just to use its last `period` bars. With `count`
+the per-compute cost is **O(count)** instead of **O(bar_max_history)** — and stays constant if the
+operator raises `bar_max_history`. The result is bit-identical for a worker that only reads its
+tail (an SMA / RSI band over the last `period` bars); it is **not** correct to bound a worker whose
+output is path-dependent over the whole history — a cumulative indicator (OBV) or a recursive EMA
+(MACD) reads `len(bars)` and must keep the full (timeframe-filtered) history, so it omits `count`.
+
+**Two different "how many bars" concerns — do not conflate them:**
+
+| Declaration | Question it answers | Who consumes it |
+|---|---|---|
+| `get_warmup_requirements()` | how much history to **pre-load** so the worker is warm at tick 0 | data preparation / startup (coarse — "enough") |
+| the `count` window | how much of the available history the worker **reads this compute** | the worker itself, at the point it knows |
+
+The framework filters the **coarse** axis for you — the orchestrator hands each worker only the
+**timeframes** it requires (`get_required_timeframes()`). The **fine** axis — depth — stays with the
+worker via `count`, on purpose: only the worker knows its exact per-compute need, and it can differ
+from the warmup figure (a slope buffer of `+1`, or a guard that wants `len(bars)`). Keeping depth in
+the worker is the more flexible, more transparent choice; the small cost is that each worker states
+its own window.
+
+---
+
 ## Accessing Framework Capabilities — Injected vs Imported
 
 There are two ways your worker or decision logic reaches framework functionality, and one
