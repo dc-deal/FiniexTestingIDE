@@ -222,6 +222,17 @@ class FieldStudyRecorder:
         self._fh.close()
         self._fh = None
 
+        # Operator next-step hint. The capture (this JSONL) is the durable, expensive
+        # artifact; the certificate is a separate, free, re-runnable judgment over it.
+        # Surfacing the generate command here keeps a finished study from being left
+        # un-certified — without a field-study special case in the core shutdown path.
+        self._logger.info(
+            f"✅ Field Study capture complete → {self._path}\n"
+            f"   Next step (no live trade) — generate the acceptance certificate:\n"
+            f"   python python/cli/field_study_certificate_cli.py generate "
+            f"--latest --release-version <X.Y.Z>"
+        )
+
     def get_path(self) -> Path:
         """Return the JSONL output path."""
         return self._path
