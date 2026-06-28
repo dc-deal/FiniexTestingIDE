@@ -302,6 +302,24 @@ class AbstractDecisionLogic(ABC):
         """
         pass
 
+    def get_required_worker_signals(self) -> Dict[str, Set[str]]:
+        """
+        Declare which worker outputs this logic reads, per worker instance.
+
+        Optional optimization hook: a worker computes only its declared outputs
+        plus its always-on core, skipping expensive optional signals (e.g. a
+        Bollinger slope's extra moving average) that nothing consumes. The
+        default — an empty map — means "no declaration": every worker computes
+        all its outputs, so existing strategies stay bit-identical. A declared
+        instance must list every output key the logic reads via get_signal();
+        reading an undeclared key raises (it was never computed) rather than
+        returning a stale value.
+
+        Returns:
+            Dict[instance_name, set of consumed output keys] (empty = compute all)
+        """
+        return {}
+
     @abstractmethod
     def compute_tick(
         self,

@@ -153,6 +153,73 @@ reads its band `position` live.
 
 ---
 
+## Accessing Bar Data — `effective_bars()` and the compute window
+
+A worker never reaches into `bar_history` directly. It calls the base helper, which applies the
+`compute_basis` policy (append the forming bar under `LIVE`, exclude it under `BAR_CLOSE`) and,
+optionally, bounds the depth to the last `count` completed bars:
+
+```python
+# window-bounded: take only the last period + 1 bars (the slope needs one extra)
+bars = self.effective_bars(timeframe, bar_history, current_bars, count=period + 1)
+```
+
+**Pass `count` = the exact depth your `compute()` reads.** `bar_history` is a rolling
+`deque(maxlen=bar_max_history)` (1000 by default) shared across all workers, so without `count`
+every compute materializes the whole history just to use its last `period` bars. With `count`
+the per-compute cost is **O(count)** instead of **O(bar_max_history)** — and stays constant if the
+operator raises `bar_max_history`. The result is bit-identical for a worker that only reads its
+tail (an SMA / RSI band over the last `period` bars); it is **not** correct to bound a worker whose
+output is path-dependent over the whole history — a cumulative indicator (OBV) or a recursive EMA
+(MACD) reads `len(bars)` and must keep the full (timeframe-filtered) history, so it omits `count`.
+
+**Two different "how many bars" concerns — do not conflate them:**
+
+| Declaration | Question it answers | Who consumes it |
+|---|---|---|
+| `get_warmup_requirements()` | how much history to **pre-load** so the worker is warm at tick 0 | data preparation / startup (coarse — "enough") |
+| the `count` window | how much of the available history the worker **reads this compute** | the worker itself, at the point it knows |
+
+The framework filters the **coarse** axis for you — the orchestrator hands each worker only the
+**timeframes** it requires (`get_required_timeframes()`). The **fine** axis — depth — stays with the
+worker via `count`, on purpose: only the worker knows its exact per-compute need, and it can differ
+from the warmup figure (a slope buffer of `+1`, or a guard that wants `len(bars)`). Keeping depth in
+the worker is the more flexible, more transparent choice; the small cost is that each worker states
+its own window.
+
+---
+
+## Computing Only What's Consumed — `get_required_worker_signals()`
+
+A decision logic may declare which worker outputs it actually reads, so a worker skips computing
+expensive optional signals that nothing consumes:
+
+```python
+def get_required_worker_signals(self) -> Dict[str, Set[str]]:
+    return {'rsi_fast': {'rsi_value'}, 'bollinger_main': {'position'}}
+```
+
+- **Opt-in, bit-identical default.** No declaration (the default empty map) = every worker computes
+  all its outputs, so existing strategies are unchanged. Declare only when profiling shows an unused
+  output costs real per-tick time.
+- **⚠️ The default is safe but NOT free — a latent Performance-GAU.** With no declaration a rich
+  worker recomputes *every* optional output *every* tick, even the ones nobody reads (e.g. Bollinger's
+  `slope` = a second moving average). On a hot decision that is silent per-tick waste. It was exactly
+  this — `aggressive_trend` computing an unread Bollinger slope every tick — that caused the ~14% V1.4
+  throughput regression. **For a hot decision on a rich worker, always declare the signals you
+  actually read.**
+- **A worker skips only its *optional* outputs.** The always-on core (e.g. a Bollinger's bands +
+  position) is computed unconditionally; the worker gates the rest via `self.wants_output(key)`.
+  Example: Bollinger's `slope` costs a second moving average — it is skipped unless a consumer
+  declares `'slope'`.
+- **Loud on misdeclaration.** Reading a `get_signal(key)` you did not declare raises `KeyError`
+  (the key was never computed) rather than returning a stale value — so declare every key you read.
+
+This is the framework-side answer to the same "compute only what's needed" principle as the bar
+window above: the consumer declares the *outputs* it reads, the worker the *bars* it reads.
+
+---
+
 ## Accessing Framework Capabilities — Injected vs Imported
 
 There are two ways your worker or decision logic reaches framework functionality, and one

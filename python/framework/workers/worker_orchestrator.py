@@ -69,6 +69,14 @@ class WorkerOrchestrator:
         # Validate that decision logic has all required workers
         self._validate_decision_logic_requirements()
 
+        # Optional-output gating: the decision logic declares which worker
+        # signals it reads; workers skip computing the rest. No declaration =
+        # compute all (existing strategies stay bit-identical).
+        for instance_name, keys in decision_logic.get_required_worker_signals().items():
+            worker = self.workers.get(instance_name)
+            if worker is not None:
+                worker.set_requested_outputs(set(keys))
+
         self.is_initialized = False
         self._worker_results: Dict[str, WorkerResult] = {}
 

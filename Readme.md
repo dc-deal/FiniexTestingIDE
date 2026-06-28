@@ -4,23 +4,25 @@
 
 > ⚠️ **No financial advice.** This software is for educational and research purposes only.
 
-> **Version:** 1.3.0
+> **Version:** 1.3.1
 > **Status:** Alpha
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
 
 ---
 
-## What's New in 1.3.0
+## What's New in 1.3.1
 
-- **Live Field Study — Real-Money Acceptance Certificate** — A deterministic, operator-driven end-to-end run against real Kraken Spot drives the full live pipeline through every order type, the modify/cancel paths, a rejection battery, deterministic partial-close, and idle-heartbeat phases. Everything is captured as machine-analyzable JSONL and distilled into a PASS/FAIL acceptance certificate — the V1.3 live-acceptance gate.
-- **Reconciliation Foundation** — Broker truth-pull (orders, balances, positions) plus a Reconciler running in ALERT_ONLY: the live session gets a real flat-preflight and a continuous broker-truth observation plane, validated on a real account (clean → active → clean).
-- **Decision Event Channel** — A typed, ordered, drain-guaranteed event stream lets decision logic react to order, fill, and lifecycle events between ticks, not only on the next market tick.
-- **Live Loop Clock & Cadence** — Reconciliation, active-order re-poll, and the decision/phase clock are now timer-driven and tick-sourced rather than gated on the arrival of a market tick. On an illiquid pair (30–60 s between ticks) cadence work and phase timeouts keep running. Includes a heartbeat "ghost-pass" for between-tick decision reaction, mirrored in the simulation pipeline.
-- **Order-Lifecycle Hardening** — A cancel requested while an order's submit is still in-flight is now deferred and auto-issued once the broker confirms, instead of being silently dropped — with FILLED-precedence when a fill and a cancel race.
-- **Audit Telemetry & API Performance Monitor** — Read-only local-vs-broker drift and submission-slippage audit, a uniform three-level execution model (Trigger → BrokerOrder → Fills), and per-endpoint broker REST latency telemetry with its own console panel.
+- **Reference Strategy — Full Order Surface** — A didactic CORE reference strategy (a multi-timeframe trend gate plus a channel entry) exercises the complete order surface end-to-end: resting limit and stop entries, stop-loss/take-profit, an always-on trailing stop, a partial-close ladder, and multi-position stacking. A teaching example — not a profitable strategy — it proves the framework carries a full-featured strategy build from backtest to report.
+- **Unified Reporting Pipeline** — One result model feeds console, file, CSV, and the API identically, across both the backtesting and live pipelines. End-of-run reports are derived once, off the hot loop.
+- **Trade Analytics — Excursion & Expectancy** — Every position records its maximum adverse and favorable excursion (MAE/MFE); the report adds R-multiple and expectancy — the standard stop/target-calibration and profitability metrics.
+- **Robustness Validation — In-Sample / Out-of-Sample** — Run one constant strategy across many time windows and read the performance distribution plus an IS/OOS degradation (walk-forward efficiency) verdict — the built-in overfit guard.
+- **Parameter Sweep** — Run a scenario set across a grid of strategy parameters, collect a result per combination, and rank by a configurable objective, with a run-results ledger and per-parameter sensitivity.
+- **Honest-Backtest Tooling** — Overnight swap/funding cost for positions held overnight, and broker-derived instrument precision (pip size) so excursion metrics read in exact per-instrument units.
+- **Restart-Safe Algo Memory** — Opt-in snapshot/restore hooks let a live bot recover its own state across a restart.
 
 ### Previous Releases
 
+- **1.3.0** — Live acceptance certificate (Field Study), reconciliation foundation, decision event channel, timer-driven loop clock & cadence, order-lifecycle hardening, audit telemetry + API performance monitor
 - **1.2.3** — Live execution architecture refactor (symmetric sim/live pipelines, async HTTP dispatch), async modify/cancel/position-modify, broker trade record model (order ↔ executions pairing)
 - **1.2.2** — FiniexAutoTrader Live Trading Pipeline, Live Console UI, Spot Trading Model, Order Guard, AwarenessChannel, REST API Foundation, Dual-Pipeline Parity Tests, User Algo Workspace
 - **1.2.1** — Millisecond-based latency timing, inbound-only fill semantics, tick processing budget, generator profile system
@@ -93,6 +95,10 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
   - **Data Coverage** - Gap detection and data quality assessment
 - **Scenario Generation** - Automatic blocks (chronological) or high-volatility selection
 - **Performance Profiling** - Operation-level breakdown, bottleneck detection
+- **Robustness Validation** - Multi-window In-Sample/Out-of-Sample overfit guard (distribution, walk-forward efficiency)
+- **Parameter Sweep** - Grid search over strategy parameters with objective ranking and per-parameter sensitivity
+- **Trade Analytics** - Per-trade MAE/MFE excursion, R-multiple, and expectancy
+- **Unified Reporting** - One result model rendered identically to console, file, CSV, and API
 
 > See [Discovery System](docs/discovery_system.md) for architecture details.
 
@@ -226,11 +232,11 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 
 ## Current Limitations
 
-- **No Trailing Stop/OCO/Iceberg** - Market, Limit, Stop, and Stop-Limit supported; extended types planned
+- **No native OCO/Iceberg/trailing-stop order types** - Market, Limit, Stop, and Stop-Limit are supported; extended order types are planned. Strategy-level trailing (moving a position's stop as price advances) is supported and demonstrated by the reference strategy.
 - **No Broker-Side Partial-Fill Detection on Live** - A live order is treated as pending until fully filled; a broker-reported *partial* fill (one order, multiple executions) is not yet surfaced as its own state. Partial position close (closing a fraction of an open position) is supported in both backtesting and live.
 - **FiniexViewer in progress** - HTTP API available; browser UI in active development (see [FiniexViewer Setup](docs/user_guides/finiexviewer_setup.md))
 
-> **Note on Multiple Positions:** Full multi-position support is implemented and validated by integration tests. No core decision logic actively uses it yet — example development is planned. See `configs/scenario_sets/backtesting/multi_position_test.json` for a reference on how to build multi-position scenarios.
+> **Note on Multiple Positions:** Full multi-position support is implemented and validated by integration tests, and the reference strategy (`CORE/trend_channel_reference`) actively stacks several positions on a symbol. Holding multiple *symbols* against one shared capital pool — portfolio backtesting — is the next core-engine milestone. See `configs/scenario_sets/backtesting/multi_position_test.json` for a reference on how to build multi-position scenarios.
 
 ---
 
@@ -246,7 +252,8 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 - FiniexAutoTrader pipeline with Kraken Spot, production-validated (V1.2.2)
 - Live execution refactor with async dispatch and broker trade record model (V1.2.3)
 - Live acceptance certificate (Field Study), reconciliation foundation, decision event channel, timer-driven loop cadence (V1.3.0)
-- Next: production-bot case study and restart-safe algo memory (V1.3.1), then state recovery and push-based execution stream (V1.4)
+- Production-bot case study, restart-safe algo memory, unified reporting, trade analytics, robustness validation, and parameter sweep (V1.3.1)
+- Next: state recovery and push-based execution stream (V1.4)
 
 For the full vision, detailed roadmap, and feature path see **[Issue #138 — Vision & Roadmap](https://github.com/dc-deal/FiniexTestingIDE/issues/138)**.
 

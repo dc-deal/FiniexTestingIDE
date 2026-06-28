@@ -168,8 +168,8 @@ class MaTrendWorker(AbstractWorker):
         timeframe = list(self.periods.keys())[0]
         period = self.periods[timeframe]
 
-        # Get bar history for our timeframe
-        bars = self.effective_bars(timeframe, bar_history, current_bars)
+        # Get bar history for our timeframe (window-bounded: last period + 1 for slope)
+        bars = self.effective_bars(timeframe, bar_history, current_bars, count=period + 1)
 
         # Extract close prices from bars (keep one extra bar for slope)
         all_closes = np.array([bar.close for bar in bars])

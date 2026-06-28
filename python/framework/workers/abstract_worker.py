@@ -86,6 +86,10 @@ class AbstractWorker(ABC):
         # (config 'compute_basis' override → the worker's declaration).
         self._compute_basis: Optional[ComputeBasis] = None
 
+        # Consumed-output set, injected by the orchestrator from the decision
+        # logic's declaration. None = no declaration = compute every output.
+        self._requested_outputs: Optional[Set[str]] = None
+
     @abstractmethod
     def get_warmup_requirements(self) -> Dict[str, int]:
         """
@@ -169,11 +173,41 @@ class AbstractWorker(ABC):
                 else self.get_default_compute_basis())
         return self._compute_basis
 
+    def set_requested_outputs(self, keys: Set[str]) -> None:
+        """
+        Declare which output keys a consumer reads — gates optional-output work.
+
+        Injected by the orchestrator from the decision logic's
+        get_required_worker_signals(). Once set, the worker may skip computing
+        outputs not in this set (its always-on core stays unconditional).
+
+        Args:
+            keys: Output keys the consumer reads from this worker instance
+        """
+        self._requested_outputs = set(keys)
+
+    def wants_output(self, key: str) -> bool:
+        """
+        Whether an optional output should be computed for this instance.
+
+        True when no consumer declaration was injected (compute all — the
+        default that keeps existing strategies bit-identical) or the key is in
+        the declared set.
+
+        Args:
+            key: Output key to test
+
+        Returns:
+            True if the output should be computed
+        """
+        return self._requested_outputs is None or key in self._requested_outputs
+
     def effective_bars(
         self,
         timeframe: str,
         bar_history: Dict[str, List[Bar]],
         current_bars: Dict[str, Bar],
+        count: Optional[int] = None,
     ) -> List[Bar]:
         """
         Bars this worker computes on for a timeframe (#420).
@@ -183,19 +217,28 @@ class AbstractWorker(ABC):
         only on a bar close). Centralizes the append that was previously duplicated
         inline in every worker's compute().
 
+        A window-bounded worker passes 'count' — the number of completed bars it
+        actually reads — so only that tail is materialized. For a worker that uses
+        just its last 'count' bars the result is identical to the full-history path,
+        but the per-compute cost drops from O(bar_max_history) to O(count) instead
+        of copying / scanning the whole history on every tick.
+
         Args:
             timeframe: Timeframe key
             bar_history: Completed bars per timeframe
             current_bars: Current (forming) bar per timeframe
+            count: Completed-bar window to keep (None = full history)
 
         Returns:
-            List of bars to compute on (history, plus the current bar when LIVE)
+            List of bars to compute on (history tail, plus the current bar when LIVE)
         """
         bars = bar_history.get(timeframe, [])
+        if count is not None:
+            bars = bars[-count:]
         if self.get_compute_basis() == ComputeBasis.LIVE:
             current_bar = current_bars.get(timeframe)
             if current_bar:
-                bars = list(bars) + [current_bar]
+                bars = (bars if count is not None else list(bars)) + [current_bar]
         return bars
 
     def set_state(self, state: WorkerState):
