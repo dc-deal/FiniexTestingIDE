@@ -60,9 +60,9 @@ multi-symbol is a later milestone), so "multi-position" means several positions 
 | `min_free_margin` | `1000` | Margin floor before opening an entry |
 
 The required workers (`CORE/ma_trend` H1, `CORE/bollinger` M15): keep `m15_channel` on the default
-per-tick recompute (it reads the live band position), and run `h1_trend` with
-`"recompute": "bar_close"` + `"include_current_bar": false` so the gate is a stable, completed-bar
-screen. See [Worker Naming](worker_naming_doc.md) for the recompute/current-bar axes.
+`compute_basis: live` (it reads the live band position), and run `h1_trend` with
+`"compute_basis": "bar_close"` so the gate is a stable, completed-bar screen (~3× cheaper — it
+recomputes once per H1 close). See [Worker Naming](worker_naming_doc.md) for the `compute_basis` axis.
 
 ## Running it
 

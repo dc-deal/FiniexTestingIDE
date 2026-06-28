@@ -144,8 +144,18 @@ class PerformanceSummary(AbstractBatchSummarySection):
             print(f"\n{renderer.bold('   📊 WORKER DETAILS:')}")
 
             for w in unit.workers:
+                # Cadence telemetry (#420): actual computes vs ticks + ticks idle
+                # since the last compute (BAR_CLOSE serves a cached value in between).
+                total_ticks = unit.ticks_processed
+                if total_ticks > 0:
+                    pct = w.call_count / total_ticks * 100
+                    idle = (total_ticks - w.last_compute_tick) if w.last_compute_tick >= 0 else 0
+                    cadence = (f"{w.compute_basis:9} {w.call_count:>5}/{total_ticks} "
+                               f"computes ({pct:4.0f}%, {idle} idle)")
+                else:
+                    cadence = f"{w.compute_basis:9} {w.call_count:>5} computes"
                 print(f"      {renderer.blue(f'{w.worker_name:15}->{w.worker_type:15}')}  "
-                      f"Calls: {w.call_count:>5}  |  "
+                      f"{cadence}  |  "
                       f"Avg: {w.avg_time_ms:>6.3f}ms  |  "
                       f"Range: {w.min_time_ms:>6.3f}-{w.max_time_ms:>6.3f}ms  |  "
                       f"Total: {w.total_time_ms:>8.2f}ms")

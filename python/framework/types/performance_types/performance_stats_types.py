@@ -32,6 +32,12 @@ class WorkerPerformanceStats:
     worker_avg_time_ms: float
     worker_min_time_ms: float
     worker_max_time_ms: float
+    # Cadence telemetry (#420): worker_call_count is the actual COMPUTE count (the
+    # tracker records only on a real compute). With the per-tick count (coordination
+    # ticks_processed) the report derives the tick/compute ratio; last-compute tick
+    # gives "N ticks idle" since the worker last did work (BAR_CLOSE serves cache between).
+    worker_compute_basis: str = 'live'
+    worker_last_compute_tick: int = -1
 
 
 @dataclass

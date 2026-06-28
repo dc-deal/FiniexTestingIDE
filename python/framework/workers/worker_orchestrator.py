@@ -17,7 +17,7 @@ from python.framework.workers.worker_performance_tracker import WorkerPerformanc
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.market_types.market_data_types import Bar, BarRenderState, TickData
 from python.framework.types.performance_types.performance_stats_types import WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
-from python.framework.types.worker_types import RecomputeCadence, WorkerResult, WorkerState
+from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerState
 from python.framework.workers.abstract_worker import AbstractWorker
 
 
@@ -104,7 +104,8 @@ class WorkerOrchestrator:
                 worker_type = self._extract_worker_type(worker)
                 perf_tracker = WorkerPerformanceTracker(
                     worker_type=worker_type,
-                    worker_name=worker_name
+                    worker_name=worker_name,
+                    compute_basis=worker.get_compute_basis().value,
                 )
                 worker.set_performance_logger(perf_tracker)
 
@@ -410,22 +411,22 @@ class WorkerOrchestrator:
         """
         Decide whether a worker recomputes this tick, honoring its recompute cadence.
 
-        ON_BAR_CLOSE workers recompute only when one of their required timeframes
+        BAR_CLOSE workers recompute only when one of their required timeframes
         closed this pass — their cached result is served on the intra-bar ticks in
         between. They still compute once at cold start (no cached result yet) to
-        seed the cache. PER_TICK workers keep the existing should_recompute() contract.
+        seed the cache. LIVE workers keep the existing should_recompute() contract.
 
         Args:
             name: Worker instance name (key into the result cache)
             worker: Worker instance
             tick: Current tick
-            bar_updated: Whether a bar exists this tick (PER_TICK legacy signal)
+            bar_updated: Whether a bar exists this tick (LIVE recompute signal)
             closed_timeframes: Timeframes whose bar closed since the last pass
 
         Returns:
             True if the worker should recompute on this tick
         """
-        if worker.get_recompute_cadence() == RecomputeCadence.ON_BAR_CLOSE:
+        if worker.get_compute_basis() == ComputeBasis.BAR_CLOSE:
             if name not in self._worker_results:
                 return True  # cold start — seed the cache once
             return any(
@@ -465,9 +466,12 @@ class WorkerOrchestrator:
                     self._worker_results[name] = result
                     worker.set_state(WorkerState.READY)
 
-                    # Record worker performance
+                    # Record worker performance (tick index → idle/ratio telemetry, #420)
                     if worker.performance_logger:
-                        worker.performance_logger.record(computation_time_ms)
+                        worker.performance_logger.record(
+                            computation_time_ms,
+                            tick_index=self._coordination_stats.ticks_processed,
+                        )
 
                 except Exception as e:
                     self.logger.error(f"❌ Worker '{name}' failed: {e}")
@@ -528,9 +532,12 @@ class WorkerOrchestrator:
                 # Track sequential time for comparison
                 sequential_time_estimate += computation_time_ms
 
-                # Record worker performance
+                # Record worker performance (tick index → idle/ratio telemetry, #420)
                 if worker.performance_logger:
-                    worker.performance_logger.record(computation_time_ms)
+                    worker.performance_logger.record(
+                        computation_time_ms,
+                        tick_index=self._coordination_stats.ticks_processed,
+                    )
 
             except Exception as e:
                 self.logger.error(

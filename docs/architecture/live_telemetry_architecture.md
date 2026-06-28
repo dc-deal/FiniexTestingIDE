@@ -27,6 +27,13 @@ The shared core is **composed** (a `core: LiveCoreSnapshot` field on each frame)
 the two pipelines stay separate, exactly like the report pipeline's `RunUnit`. A run is a list of
 units: simulation emits N scenario frames; AutoTrader emits 1 session frame.
 
+> **Worker cadence telemetry (#420).** A `BAR_CLOSE` worker computes far less than once per tick,
+> so its per-tick timing reads 0 ms on the ticks it serves a cached value. The honest read —
+> `compute_basis`, the compute/tick ratio, and the ticks-idle-since-last-compute — is carried in
+> the **end-of-run WORKER report** (`performance_summary`, model-fed from `WorkerPerformanceStats`).
+> Surfacing it live on the AutoTrader dashboard (a "last compute: <tf> close, X ms (N idle)" line)
+> is a follow-up — the data already lives on the worker stats.
+
 ## Console flow — both pipelines
 
 The strategy layer is identical in both modes; only the **transport** and the **frame builder**

@@ -23,7 +23,7 @@ from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.config_types.market_config_types import MarketType
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.parameter_types import OutputParamDef
-from python.framework.types.worker_types import WorkerResult, WorkerType
+from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
 
 
@@ -119,6 +119,10 @@ class ObvWorker(AbstractWorker):
             List of timeframes
         """
         return list(self.periods.keys())
+
+    def get_default_compute_basis(self) -> ComputeBasis:
+        """LIVE — intra-bar, recompute per tick (#420). BAR_CLOSE is a per-instance opt-in."""
+        return ComputeBasis.LIVE
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
         """OBV recomputes when bar updated (new close price)"""
