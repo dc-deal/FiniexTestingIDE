@@ -1,9 +1,9 @@
 # Parameter Optimization Tests
 
 Validates the Parameter Optimization system (#390): grid expansion, parameter override, the
-run-results ledger, ranking, sensitivity, and grid validation. The units are pure / config-only, so
-the suite is fast and data-independent — the end-to-end runner (a real batch sweep) is exercised
-manually via the `🎛 Optimization` launch entry.
+run-results ledger, ranking, sensitivity, and grid validation — plus the #419 mount-reuse sweep. The
+#390 units are pure / config-only (fast, data-independent); the #419 `test_sweep_mount_reuse.py` runs a
+**real** warm + cold sweep over the mini set (data-dependent, kraken_spot BTCUSD) to prove warm == cold.
 
 **Location:** `tests/simulation/optimization/`
 **Marks:** `simulation`, `unit`
@@ -24,6 +24,7 @@ System doc: [Parameter Optimization System](../../architecture/parameter_optimiz
 | `test_run_results_ledger.py` | Append→read round-trip (real `RunSummary`), one fragment per run, same-second / distinct-set no overwrite, filter by `sweep_id`, empty-ledger read, JSON round-trip, **typed `read_rows`** (parsed + nullable), **error rows** (explicit error + no-currencies → `status='error'`, no false KPIs), **schema-evolution-safe read** (old fragment without a column still reads), **sweep objective + direction persisted** (report defaults to them) |
 | `test_optimization_analysis.py` | Ranking (maximize / minimize / deterministic / unknown-objective raise), typed rows, one-factor sensitivity (influence + per-level means), **error rows excluded** from ranking + sensitivity, **`summarize_sweeps`** (per-sweep grouping: start/duration, run + ok/error counts, algo, objective; non-sweep runs ignored) |
 | `test_sweep_grid_validator.py` | Valid grid passes; **unknown param + out-of-range value pass** (structural-only — existence/range moved to the run's Phase 0); bad path prefix, wrong decision/worker path length, empty value list all raise (structural fail-fast) |
+| `test_sweep_mount_reuse.py` (#419) | **warm == cold** (a real mount-reused sweep yields ledger results identical to the cold reload path — off-switch toggled); **data-level abort** (an empty base mount records no runs); **OOM-signature detection** (`_has_subprocess_oom` on `BrokenProcessPool`) |
 | `test_optimization_config_loader.py` | Spec fields parsed, `sweep_name` defaults to file stem, missing spec raises, unknown key rejected (`extra='forbid'`) |
 
 ---

@@ -11,6 +11,8 @@ from typing import List, Optional
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig, ScenarioSet
 from python.framework.types.run_results_types import SweepContext
+from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.mount_package_types import MountPackage
 from python.scenario.generator.profile_loader import ProfileLoader
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
@@ -134,21 +136,26 @@ def initialize_batch_and_run(
     scenario_config_data: LoadedScenarioConfig,
     app_config_loader: AppConfigManager,
     sweep_context: SweepContext = None,
-) -> Optional[str]:
+    mount: Optional[MountPackage] = None,
+    run_group: Optional[str] = None,
+) -> Optional[BatchExecutionSummary]:
     """
-    Build the scenario set, run the batch, and generate its report.
+    Build the scenario set, run the batch (cold, or warm against a shared mount), and report.
 
     Args:
         scenario_config_data: The loaded (possibly override-applied) scenario config
         app_config_loader: Application configuration
         sweep_context: Optional sweep tagging when run as a Parameter Optimization combination
+        mount: Optional shared data mount (#419) — when given, the run reuses the loaded data
+            instead of reloading; a data-identity mismatch falls back to a cold reload
+        run_group: Optional log-grouping dir (e.g. 'sweeps/<sweep_id>', #419)
 
     Returns:
-        The run id (run directory name), or None if the run failed
+        The BatchExecutionSummary, or None if the run failed at startup
     """
     try:
         # ScenarioSet creates its own loggers internally
-        scenario_set = ScenarioSet(scenario_config_data, app_config_loader)
+        scenario_set = ScenarioSet(scenario_config_data, app_config_loader, run_group=run_group)
 
         vLog.info("📊 Writing system & version information...")
         scenario_set.write_scenario_system_info_log()
@@ -162,8 +169,8 @@ def initialize_batch_and_run(
             app_config_loader
         )
 
-        # Run test
-        batch_execution_summary = orchestrator.run()
+        # Run test (warm against the shared mount when provided — #419)
+        batch_execution_summary = orchestrator.run(mount=mount)
 
         # ============================================
         # Generate and log batch report
@@ -176,7 +183,7 @@ def initialize_batch_and_run(
         )
         report_coordinator.generate_and_log()
 
-        return scenario_set.logger.get_log_dir().name
+        return batch_execution_summary
 
     except FileNotFoundError as e:
         vLog.config_error(

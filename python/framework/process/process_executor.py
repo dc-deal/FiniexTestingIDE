@@ -33,7 +33,8 @@ class ProcessExecutor:
         scenario_index: int,
         scenario_set_name: str,
         run_timestamp: str,
-        live_stats_config: LiveStatsExportConfig = None
+        live_stats_config: LiveStatsExportConfig = None,
+        run_group: str = None
     ):
         """
         Initialize process executor.
@@ -53,6 +54,7 @@ class ProcessExecutor:
         self.scenario_set_name = scenario_set_name
         self.run_timestamp = run_timestamp
         self.live_stats_config = live_stats_config
+        self.run_group = run_group
 
         # Create config (serializable)
         self.config = ProcessScenarioConfig.from_scenario(
@@ -61,7 +63,8 @@ class ProcessExecutor:
             scenario_index=scenario_index,
             scenario_set_name=scenario_set_name,
             run_timestamp=run_timestamp,
-            live_stats_config=live_stats_config
+            live_stats_config=live_stats_config,
+            run_group=run_group
         )
 
     def run(self,

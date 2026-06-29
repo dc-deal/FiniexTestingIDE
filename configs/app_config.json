@@ -143,6 +143,10 @@
             "brokers": "configs/brokers",
             "generator_template": "configs/generator/template_scenario_set_header.json",
             "generator_output": "configs/scenario_sets"
+        },
+        "parameter_optimization": {
+            "mount_reuse_enabled": true,
+            "villain_abort_enabled": true
         }
     }
 }

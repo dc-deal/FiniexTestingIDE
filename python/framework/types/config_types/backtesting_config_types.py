@@ -71,6 +71,17 @@ class BacktestingPaths(BaseModel):
     generator_output: str = 'configs/scenario_sets'
 
 
+class ParameterOptimizationConfig(BaseModel):
+    """Parameter-sweep (#390) settings: data-mount reuse + fail-fast abort (#419)."""
+    # Reuse the prepared data mount across a sweep's combinations instead of reloading
+    # (the data identity is constant across a grid that varies only strategy_config).
+    mount_reuse_enabled: bool = True
+    # Abort the whole sweep when the first executed combination crashes for a data-level
+    # reason (subprocess OOM) — every combination shares this data, so the rest would fail
+    # identically.
+    villain_abort_enabled: bool = True
+
+
 class BacktestingConfig(BaseModel):
     """
     Top-level model for app_config.json::backtesting.
@@ -81,3 +92,4 @@ class BacktestingConfig(BaseModel):
     monitoring: MonitoringConfig = MonitoringConfig()
     data_validation: DataValidationConfig = DataValidationConfig()
     paths: BacktestingPaths = BacktestingPaths()
+    parameter_optimization: ParameterOptimizationConfig = ParameterOptimizationConfig()

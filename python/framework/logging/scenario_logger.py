@@ -42,6 +42,7 @@ class ScenarioLogger(AbstractLogger):
                  scenario_set_name: str,
                  scenario_name: str,
                  run_timestamp: datetime,
+                 run_group: Optional[str] = None,
                  log_root_override: Optional[Path] = None,
                  file_name_prefix_override: Optional[str] = None,
                  use_global_log_level_for_console: bool = False,
@@ -54,6 +55,7 @@ class ScenarioLogger(AbstractLogger):
             scenario_set_name: Scenario set name
             scenario_name: Scenario name (e.g., "GBPUSD_window_01")
             run_timestamp: Run timestamp string
+            run_group: Optional grouping dir nested under the log root (e.g. 'sweeps/<sweep_id>', #419)
             log_root_override: Custom log root path (bypasses config). Used by AutoTrader for separate log tree.
             file_name_prefix_override: Custom file name prefix (bypasses config). E.g., 'autotrader' → autotrader_<name>.log
             use_scenario_logs_subdir: Place log file in scenario_logs/ subdir (backtesting per-scenario logs only)
@@ -75,7 +77,10 @@ class ScenarioLogger(AbstractLogger):
             # Create scenario run directory
             log_root = log_root_override if log_root_override else self._file_logging_config.scenario_log_root_path
             prefix = file_name_prefix_override if file_name_prefix_override else self._file_logging_config.scenario_file_name_prefix
-            self.run_dir = log_root / scenario_set_name / run_timestamp_str
+            # run_group (e.g. 'sweeps/<sweep_id>', #419) nests the run under a grouping dir so a
+            # sweep's many combination runs land together instead of cluttering the log root.
+            group_root = log_root / run_group if run_group else log_root
+            self.run_dir = group_root / scenario_set_name / run_timestamp_str
             self.run_dir.mkdir(parents=True, exist_ok=True)
 
             # Per-scenario files go into scenario_logs/ subdir (backtesting only)

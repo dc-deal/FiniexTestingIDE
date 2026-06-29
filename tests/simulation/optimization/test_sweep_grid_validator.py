@@ -44,16 +44,24 @@ def test_bad_path_prefix_raises(log):
         validate_sweep_grid({'execution_config.parallel_workers': [True]}, log)
 
 
-def test_decision_path_wrong_length_raises(log):
-    """A decision path must have exactly two segments."""
+def test_decision_path_too_short_raises(log):
+    """A decision path must have at least two segments (the bare prefix is rejected)."""
     with pytest.raises(ValueError):
-        validate_sweep_grid({'decision_logic_config.a.b': [1]}, log)
+        validate_sweep_grid({'decision_logic_config': [1]}, log)
 
 
-def test_worker_path_wrong_length_raises(log):
-    """A worker path must have exactly three segments."""
+def test_worker_path_too_short_raises(log):
+    """A worker path must have at least three segments."""
     with pytest.raises(ValueError):
         validate_sweep_grid({'workers.bollinger_main': [2]}, log)
+
+
+def test_nested_paths_pass(log):
+    """Nested decision + worker paths (sub-parameters) validate cleanly (#419)."""
+    validate_sweep_grid({
+        'decision_logic_config.risk.sl_pips': [100, 150],
+        'workers.bollinger_main.periods.M30': [20, 50],
+    }, log)  # no raise
 
 
 def test_empty_value_list_raises(log):

@@ -152,7 +152,8 @@ class LoadedScenarioConfig:
 class ScenarioSet:
     """Self-contained scenario set with its own logging infrastructure"""
 
-    def __init__(self, scenario_config: LoadedScenarioConfig, app_config: AppConfigManager):
+    def __init__(self, scenario_config: LoadedScenarioConfig, app_config: AppConfigManager,
+                 run_group: Optional[str] = None):
 
         self.scenario_set_name = scenario_config.scenario_set_name
         self._scenarios = scenario_config.scenarios
@@ -161,6 +162,8 @@ class ScenarioSet:
         self._generator_profiles = scenario_config.generator_profiles
         self._generator_profile_paths = scenario_config.generator_profile_paths
         self._robustness = scenario_config.robustness or RobustnessConfig()
+        # Optional grouping dir for the run logs (e.g. 'sweeps/<sweep_id>', #419)
+        self._run_group = run_group
 
         # ScenarioSet creates its own loggers
         self._run_timestamp = datetime.now(
@@ -170,18 +173,25 @@ class ScenarioSet:
             scenario_set_name=self.scenario_set_name,
             scenario_name='global_log',
             run_timestamp=self._run_timestamp,
+            run_group=run_group,
             use_global_log_level_for_console=True
         )
         self.printed_summary_logger = ScenarioLogger(
             scenario_set_name=self.scenario_set_name,
             scenario_name='summary',
-            run_timestamp=self._run_timestamp
+            run_timestamp=self._run_timestamp,
+            run_group=run_group
         )
 
     @property
     def run_timestamp(self) -> datetime:
         """Expose run_timestamp for easy access"""
         return self._run_timestamp
+
+    @property
+    def run_group(self) -> Optional[str]:
+        """Expose the optional log-grouping dir (e.g. 'sweeps/<sweep_id>', #419)."""
+        return self._run_group
 
     def copy_config_snapshot(self) -> None:
         """
@@ -221,7 +231,8 @@ class ScenarioSet:
             system_info_logger = ScenarioLogger(
                 scenario_set_name=self.scenario_set_name,
                 scenario_name='system_info',
-                run_timestamp=self.logger.get_run_timestamp()
+                run_timestamp=self.logger.get_run_timestamp(),
+                run_group=self._run_group
             )
 
             write_system_version_parameters(system_info_logger)

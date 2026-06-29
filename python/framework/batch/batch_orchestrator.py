@@ -115,7 +115,7 @@ RECOMMENDATION:
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
 import time
-from typing import List
+from typing import Any, Dict, List, Optional, Tuple
 from python.framework.validators.scenario_validator import ScenarioValidator
 from python.framework.validators.post_run_validator import PostRunValidator
 from multiprocessing import Manager
@@ -135,6 +135,7 @@ from python.framework.discoveries.data_coverage.data_coverage_report_manager imp
 from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
 from python.framework.data_preparation.broker_data_preparator import BrokerDataPreparator
 from python.framework.types.mount_package_types import DataIdentityKey, MountPackage
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.exceptions.mount_errors import MountIdentityMismatchError
 
 
@@ -211,7 +212,8 @@ class BatchOrchestrator:
             run_timestamp=self.logger_start_time_format,
             app_config=self._app_config_manager,
             live_stats_config=self._live_stats_config,
-            logger=self._logger
+            logger=self._logger,
+            run_group=self._scenario_set.run_group
         )
 
         self._live_stats_coordinator = LiveStatsCoordinator(
@@ -250,16 +252,19 @@ class BatchOrchestrator:
             f"{len(self._scenarios)} scenario(s)"
         )
 
-    def run(self) -> BatchExecutionSummary:
+    def run(self, mount: Optional[MountPackage] = None) -> BatchExecutionSummary:
         """
-        Execute all scenarios cold-path: validate parameters (fail-fast) → prepare the data
-        mount → execute against it.
+        Execute all scenarios: validate parameters (fail-fast) → prepare the data → execute.
 
-        The phase body is split into prepare_mount() (the data-identity-dependent half:
-        validation + load) and execute() (the strategy-dependent half: run + summary), so a
-        prepared MountPackage can be reused across runs that share the same data identity —
-        #418 holds it resident, #419 reuses it across a sweep. run() composes the two for the
-        unchanged single-call path.
+        The body is split into prepare_mount() (the data-identity-dependent half: validation +
+        load) and execute() (the strategy-dependent half: run + summary). Cold path (mount=None)
+        builds its own mount. A sweep (#419) passes a shared mount built once from the base set:
+        the scenarios are prepped and executed against it WITHOUT reloading, as long as the data
+        identity matches; a warmup-affecting swept parameter (identity mismatch) falls back to a
+        cold reload for this combination.
+
+        Args:
+            mount: Optional shared data mount to reuse (#419); None → build a fresh one (cold)
 
         Returns:
             BatchExecutionSummary with aggregated results from all scenarios
@@ -285,7 +290,18 @@ class BatchOrchestrator:
             logger=self._logger,
         )
 
-        mount = self.prepare_mount()
+        if mount is not None:
+            # Warm path (#419): prep the scenarios (cheap), then reuse the shared mount's data
+            # if this combination's data identity matches it; otherwise reload for this combo.
+            self.prepare_scenarios()
+            if not self.matches_mount(mount):
+                self._logger.warning(
+                    "⚠️ Combination data identity differs from the mount "
+                    "(warmup-affecting parameter) — reloading data for this combination")
+                mount = self.prepare_mount()
+        else:
+            mount = self.prepare_mount()
+
         summary = self.execute(
             mount, self._scenario_set.get_all_scenarios())
 
@@ -304,25 +320,18 @@ class BatchOrchestrator:
 
         return summary
 
-    def prepare_mount(self) -> MountPackage:
+    def prepare_scenarios(self) -> Tuple[Dict[BrokerType, Dict[str, Any]], BrokerDataPreparator, WarmupPhaseEntry]:
         """
-        Prepare the reusable data mount: data-identity validation + data load + packaging.
+        Phase 0 — data-identity validation: load broker configs (which set scenario.broker_type and
+        the account currency) and run the five data-identity validators.
 
-        The data-identity-dependent half of a batch (Phase 0 data validators + Phases 1–5).
-        Produces a self-contained MountPackage keyed by the data identity, so it can be held
-        resident (#418) and fed a new parameter set via execute(mount, scenarios) (#419)
-        without reloading. Parameter validation is intentionally NOT here — it is the per-run
-        check owned by the caller (run() / the sweep runner).
+        This is the cheap per-run scenario preparation, separate from the expensive data load — so a
+        sweep can prepare a combination's scenarios and reuse a mount without reloading (#419).
+        prepare_mount runs it first; the sweep runner calls it directly per combination.
 
         Returns:
-            MountPackage with the loaded per-scenario data and the data identity that keys it
+            (broker_configs, broker_preparator, the 'Config Validation' warmup-phase timing)
         """
-        start_time = time.time()
-        warmup_phases = []
-
-        # ========================================================================
-        # PHASE 0: DATA-IDENTITY VALIDATION
-        # ========================================================================
         self._logger.info("🔍 Phase 0: Validating configuration...")
         _phase_t = time.time()
 
@@ -373,7 +382,29 @@ class BatchOrchestrator:
             broker_scenario_map=_broker_scenario_map,
         )
 
-        warmup_phases.append(WarmupPhaseEntry('Config Validation', time.time() - _phase_t))
+        return _broker_configs, _broker_preparator, WarmupPhaseEntry(
+            'Config Validation', time.time() - _phase_t)
+
+    def prepare_mount(self) -> MountPackage:
+        """
+        Prepare the reusable data mount: data-identity validation + data load + packaging.
+
+        The data-identity-dependent half of a batch (Phase 0 data validators + Phases 1–5).
+        Produces a self-contained MountPackage keyed by the data identity, so it can be held
+        resident (#418) and fed a new parameter set via execute(mount, scenarios) (#419)
+        without reloading. Parameter validation is intentionally NOT here — it is the per-run
+        check owned by the caller (run() / the sweep runner).
+
+        Returns:
+            MountPackage with the loaded per-scenario data and the data identity that keys it
+        """
+        start_time = time.time()
+        warmup_phases = []
+
+        # Phase 0 — data-identity validation (broker prep + validators), extracted so the sweep
+        # runner can prep a combination's scenarios without reloading (#419).
+        _broker_configs, _broker_preparator, _config_validation_phase = self.prepare_scenarios()
+        warmup_phases.append(_config_validation_phase)
 
         # ========================================================================
         # PHASE 1: INDEX & COVERAGE SETUP
@@ -621,6 +652,47 @@ class BatchOrchestrator:
                     f"Scenario '{scenario.name}' (index {index}) data identity does not "
                     f"match the mount (expected {expected}, got {actual})"
                 )
+
+    def build_mount(self) -> MountPackage:
+        """
+        Build a reusable data mount from this set without executing it (the #419 sweep base).
+
+        Validates parameters (fail-fast) then prepares the mount. The sweep runner calls this once
+        on the base set to load the data a single time and reuse it across all combinations.
+
+        Returns:
+            The prepared MountPackage (empty scenario_packages = a data-level failure → caller aborts)
+        """
+        ScenarioValidator.validate_scenario_parameters(
+            scenarios=self._scenario_set.get_valid_scenarios(),
+            logger=self._logger,
+        )
+        return self.prepare_mount()
+
+    def matches_mount(self, mount: MountPackage) -> bool:
+        """
+        Whether this set's scenarios share the mount's data identity (so its data is reusable).
+
+        Collects the requirements for the (already-prepped) scenarios and compares each valid
+        scenario's DataIdentityKey to the mount's. A warmup-affecting swept parameter changes the
+        identity → the mount cannot be reused for this combination (#419 falls back to a reload).
+
+        Args:
+            mount: The shared data mount
+
+        Returns:
+            True if every valid scenario's data identity matches the mount
+        """
+        requirements = self._requirements_collector.collect_and_validate(
+            self._scenario_set.get_valid_scenarios())
+        for scenario in self._scenario_set.get_valid_scenarios():
+            index = scenario.scenario_index
+            if index not in mount.data_identity:
+                return False
+            if DataIdentityKey.from_scenario(
+                    scenario, requirements.bar_requirements) != mount.data_identity[index]:
+                return False
+        return True
 
     def flush_all_logs(self, batch_execution_summary: BatchExecutionSummary = None):
         """
