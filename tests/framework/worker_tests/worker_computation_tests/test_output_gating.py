@@ -1,13 +1,18 @@
 """
 Output gating — a worker computes only the outputs a consumer declares it reads
-(get_required_worker_signals), skipping expensive optional signals. No declaration
-means compute-all, so existing strategies stay bit-identical.
+(get_required_workers, #425), skipping expensive optional signals. A SUBSCRIBE_ALL
+requirement keeps compute-all, so existing strategies stay bit-identical.
 """
 
+import pytest
 from conftest import make_bars, make_tick
 
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.workers.core.bollinger_worker import BollingerWorker
+from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
+from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
+from python.framework.types.worker_types import SUBSCRIBE_ALL, WorkerRequirement
 
 # 30 bars > period + 1 → the slope path (the gated 2nd moving average) is exercised
 CLOSES = [100.0 + (i % 5) - 2 + i * 0.1 for i in range(30)]
@@ -72,9 +77,72 @@ class TestBollingerGating:
 
 
 class TestDecisionDeclaration:
-    def test_aggressive_trend_declares_minimal_signals(self):
-        signals = AggressiveTrend.get_required_worker_signals(AggressiveTrend.__new__(AggressiveTrend))
-        assert signals == {
-            "rsi_fast": {"rsi_value"},
-            "bollinger_main": {"position"},
+    def test_aggressive_trend_declares_signals(self):
+        logic = AggressiveTrend.__new__(AggressiveTrend)
+        assert logic.get_required_workers() == {
+            "rsi_fast": WorkerRequirement.of('CORE/rsi', 'rsi_value'),
+            "bollinger_main": WorkerRequirement.of('CORE/bollinger', 'position'),
         }
+
+    def test_compute_all_logic_subscribes_all(self):
+        # A logic that reads every output declares SUBSCRIBE_ALL explicitly (#425)
+        workers = SimpleConsensus.__new__(SimpleConsensus).get_required_workers()
+        assert workers["bollinger_main"].worker_type == 'CORE/bollinger'
+        assert workers["bollinger_main"].signals is SUBSCRIBE_ALL
+
+
+class _StubLogic(AbstractDecisionLogic):
+    """Minimal logic with an injectable worker declaration (subscription-validation tests)."""
+
+    def __init__(self, logger, workers_decl):
+        super().__init__(name='stub', logger=logger, config={})
+        self._workers_decl = workers_decl
+
+    @classmethod
+    def get_required_order_types(cls, decision_logic_config):
+        return []
+
+    def get_required_workers(self):
+        return self._workers_decl
+
+    def compute_tick(self, tick, worker_results):
+        return None
+
+    def _execute_decision_impl(self, decision, tick):
+        return None
+
+
+class TestSubscriptionValidation:
+    """The orchestrator cross-checks declared signals against the worker output schema (#425)."""
+
+    def _build(self, mock_logger, workers_decl):
+        worker = _bollinger(mock_logger)
+        logic = _StubLogic(mock_logger, workers_decl)
+        return WorkerOrchestrator(
+            workers=[worker],
+            decision_logic=logic,
+            strategy_config={'worker_instances': {'bollinger_main': 'CORE/bollinger'}},
+            worker_decision_tracking=False,
+        )
+
+    def test_valid_subset_passes(self, mock_logger):
+        self._build(mock_logger, {
+            'bollinger_main': WorkerRequirement.of('CORE/bollinger', 'position'),
+        })
+
+    def test_subscribe_all_passes(self, mock_logger):
+        self._build(mock_logger, {
+            'bollinger_main': WorkerRequirement.all('CORE/bollinger'),
+        })
+
+    def test_unknown_signal_raises(self, mock_logger):
+        with pytest.raises(ValueError, match='nonexistent'):
+            self._build(mock_logger, {
+                'bollinger_main': WorkerRequirement.of('CORE/bollinger', 'nonexistent'),
+            })
+
+    def test_missing_instance_raises(self, mock_logger):
+        with pytest.raises(ValueError, match='Missing'):
+            self._build(mock_logger, {
+                'absent': WorkerRequirement.all('CORE/rsi'),
+            })

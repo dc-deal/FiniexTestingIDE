@@ -25,7 +25,7 @@ class _DummyDecision(AbstractDecisionLogic):
     def get_required_order_types(cls, decision_logic_config):
         return []
 
-    def get_required_worker_instances(self):
+    def get_required_workers(self):
         return {}
 
     def compute_tick(self, tick, worker_results):

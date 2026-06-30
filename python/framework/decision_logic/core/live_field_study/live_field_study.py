@@ -44,7 +44,7 @@ from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType
-from python.framework.types.worker_types import WorkerResult
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 # Limit-family phases require broker LIMIT support — auto-skipped on adapters without it.
 _LIMIT_FAMILY = frozenset({
@@ -159,11 +159,11 @@ class LiveFieldStudy(AbstractDecisionLogic):
                 break
         return types
 
-    def get_required_worker_instances(self) -> Dict[str, str]:
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         # The phase sequence is wall-clock / state driven and ignores indicator
         # output, but the worker pipeline requires at least one worker — carry a
         # single minimal CORE worker purely for pipeline compatibility (unused).
-        return {'pipeline_rsi': 'CORE/rsi'}
+        return {'pipeline_rsi': WorkerRequirement.all('CORE/rsi')}
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:

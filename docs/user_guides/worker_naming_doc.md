@@ -189,31 +189,35 @@ its own window.
 
 ---
 
-## Computing Only What's Consumed — `get_required_worker_signals()`
+## Computing Only What's Consumed — `get_required_workers()`
 
-A decision logic may declare which worker outputs it actually reads, so a worker skips computing
-expensive optional signals that nothing consumes:
+Every decision logic MUST declare its workers via `get_required_workers()` — the single, mandatory
+wiring of instance name → `WorkerRequirement` (the worker type plus the output signals the logic
+reads). Signals are the worker's output-schema keys; an unknown one is caught at pre-flight:
 
 ```python
-def get_required_worker_signals(self) -> Dict[str, Set[str]]:
-    return {'rsi_fast': {'rsi_value'}, 'bollinger_main': {'position'}}
+def get_required_workers(self) -> Dict[str, WorkerRequirement]:
+    return {
+        'rsi_fast': WorkerRequirement.of('CORE/rsi', 'rsi_value'),
+        'bollinger_main': WorkerRequirement.of('CORE/bollinger', 'position'),
+    }
 ```
 
-- **Opt-in, bit-identical default.** No declaration (the default empty map) = every worker computes
-  all its outputs, so existing strategies are unchanged. Declare only when profiling shows an unused
-  output costs real per-tick time.
-- **⚠️ The default is safe but NOT free — a latent Performance-GAU.** With no declaration a rich
-  worker recomputes *every* optional output *every* tick, even the ones nobody reads (e.g. Bollinger's
+- **Mandatory, no silent default.** The method is abstract — there is no implicit compute-all.
+  "Read every output of this worker" is stated explicitly with `WorkerRequirement.all(type)` (the
+  `SUBSCRIBE_ALL` sentinel); a narrow read-set with `WorkerRequirement.of(type, *signals)`.
+- **⚠️ `SUBSCRIBE_ALL` is safe but NOT free — a latent Performance-GAU.** With `.all()` a rich worker
+  recomputes *every* optional output *every* tick, even the ones nobody reads (e.g. Bollinger's
   `slope` = a second moving average). On a hot decision that is silent per-tick waste. It was exactly
-  this — `aggressive_trend` computing an unread Bollinger slope every tick — that caused the ~14% V1.4
-  throughput regression. **For a hot decision on a rich worker, always declare the signals you
-  actually read.**
+  this — an unread Bollinger slope computed every tick — that caused the ~14% V1.4 throughput
+  regression. **For a hot decision on a rich worker, declare the exact signals with `.of()`.**
 - **A worker skips only its *optional* outputs.** The always-on core (e.g. a Bollinger's bands +
   position) is computed unconditionally; the worker gates the rest via `self.wants_output(key)`.
-  Example: Bollinger's `slope` costs a second moving average — it is skipped unless a consumer
-  declares `'slope'`.
-- **Loud on misdeclaration.** Reading a `get_signal(key)` you did not declare raises `KeyError`
-  (the key was never computed) rather than returning a stale value — so declare every key you read.
+  Bollinger's `slope` costs a second moving average — it is skipped unless a consumer declares it.
+- **Validated up front.** Each declared signal must exist on the worker's output schema. A typo or
+  dead signal is caught at batch pre-flight (the scenario is excluded, the batch continues) and at
+  orchestrator construction in both pipelines — never as a `KeyError` deep inside the run. (Reading an
+  output you forgot to declare still surfaces as a `KeyError`, since it was never computed.)
 
 This is the framework-side answer to the same "compute only what's needed" principle as the bar
 window above: the consumer declares the *outputs* it reads, the worker the *bars* it reads.

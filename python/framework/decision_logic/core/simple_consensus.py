@@ -56,7 +56,7 @@ from python.framework.types.trading_env_types.order_types import (
 )
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.component_metadata_types import ComponentMetadata
-from python.framework.types.worker_types import WorkerResult
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
 class SimpleConsensus(AbstractDecisionLogic):
@@ -360,22 +360,20 @@ class SimpleConsensus(AbstractDecisionLogic):
     # Existing methods (unchanged)
     # ============================================
 
-    def get_required_worker_instances(self) -> Dict[str, str]:
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         """
-        Define required worker instances for SimpleConsensus strategy.
+        Declare required worker instances + consumed signals (#425).
 
-        Requires:
-        - rsi_fast: Fast RSI indicator for overbought/oversold detection
-        - bollinger_main: Bollinger for price position analysis
-        - obv_volume: On-Balance Volume for volume confirmation
+        Requires RSI (overbought/oversold), Bollinger (price position), and OBV
+        (volume confirmation). Reads all outputs (SUBSCRIBE_ALL).
 
         Returns:
-            Dict[instance_name, worker_type]
+            Dict[instance_name, WorkerRequirement]
         """
         return {
-            "rsi_fast": "CORE/rsi",
-            "bollinger_main": "CORE/bollinger",
-            "obv_volume": "CORE/obv"
+            "rsi_fast": WorkerRequirement.all('CORE/rsi'),
+            "bollinger_main": WorkerRequirement.all('CORE/bollinger'),
+            "obv_volume": WorkerRequirement.all('CORE/obv'),
         }
 
     def compute_tick(

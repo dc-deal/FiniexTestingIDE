@@ -159,6 +159,24 @@ class AppConfigManager:
         """
         return self._app_config.backtesting.execution.max_parallel_scenarios
 
+    def get_optimization_mount_reuse_enabled(self) -> bool:
+        """
+        Whether a parameter sweep reuses the prepared data mount across combinations (#419).
+
+        Returns:
+            True if mount reuse is enabled (default; False falls back to the cold per-combo path)
+        """
+        return self._app_config.backtesting.parameter_optimization.mount_reuse_enabled
+
+    def get_optimization_villain_abort_enabled(self) -> bool:
+        """
+        Whether a sweep aborts when its first executed combination crashes data-level (OOM) (#419).
+
+        Returns:
+            True if the fail-fast villain abort is enabled (default)
+        """
+        return self._app_config.backtesting.parameter_optimization.villain_abort_enabled
+
     def get_default_parallel_workers(self) -> bool:
         """
         Get default parallel workers setting.

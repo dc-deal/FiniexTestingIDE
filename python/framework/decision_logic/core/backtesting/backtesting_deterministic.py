@@ -93,7 +93,7 @@ from python.framework.types.decision_logic_types import Decision, DecisionLogicA
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.worker_types import WorkerResult
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType, OrderDirection
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
@@ -312,18 +312,18 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             order_types.add(OrderType[ot_str])
         return list(order_types)
 
-    def get_required_worker_instances(self) -> Dict[str, str]:
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         """
-        Declare required worker instance.
+        Declare required worker instance + signals (#425).
 
-        Requires BacktestingSampleWorker for warmup validation
-        and bar snapshot capture.
+        Requires BacktestingSampleWorker for warmup validation and bar snapshot
+        capture. Reads all outputs (SUBSCRIBE_ALL).
 
         Returns:
             Dict with worker instance mapping
         """
         return {
-            "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+            "backtesting_worker": WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
         }
 
     def compute_tick(

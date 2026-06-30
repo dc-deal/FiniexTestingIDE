@@ -2,7 +2,8 @@
 Sweep-grid validator (#390).
 
 STRUCTURAL fail-fast validation of a sweep grid BEFORE any batch runs: every dotted path
-must have a valid shape (`decision_logic_config.<param>` or `workers.<instance>.<param>`)
+must have a valid shape (`decision_logic_config.<param>[.<sub>…]` or
+`workers.<instance>.<param>[.<sub>…]` — nested paths allowed, e.g. `workers.macd_main.periods.M5`)
 and a non-empty list of values. A spec-structure error affects all combinations and is a
 clear typo → abort the whole sweep early.
 
@@ -44,11 +45,13 @@ def _check_path_shape(path: str) -> None:
     parts = path.split('.')
 
     if parts[0] == 'decision_logic_config':
-        if len(parts) != 2:
-            raise ValueError(f"Grid path '{path}' must be 'decision_logic_config.<param>'")
+        if len(parts) < 2:
+            raise ValueError(
+                f"Grid path '{path}' must be 'decision_logic_config.<param>[.<sub>…]'")
     elif parts[0] == 'workers':
-        if len(parts) != 3:
-            raise ValueError(f"Grid path '{path}' must be 'workers.<instance>.<param>'")
+        if len(parts) < 3:
+            raise ValueError(
+                f"Grid path '{path}' must be 'workers.<instance>.<param>[.<sub>…]'")
     else:
         raise ValueError(
             f"Grid path '{path}' must start with 'decision_logic_config.' or 'workers.<instance>.'")

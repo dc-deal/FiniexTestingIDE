@@ -11,8 +11,10 @@ list-of-configs + external optimizer. All rank over one flat metrics object per 
 is the `RunSummary` from the [reporting pipeline](reporting_pipeline.md).
 
 > A sweep is **N batches** — the execution pipeline is unchanged (see
-> [Process Execution Architecture](process_execution_architecture.md)). Only the orchestration on top
-> and the cross-run ledger are new.
+> [Process Execution Guide](../process_execution_guide.md)). Only the orchestration on top
+> and the cross-run ledger are new. Today each batch reloads its ticks; the mountable prepare/execute
+> seam (#417) lets a sweep prepare the data once and reuse it across all combinations (#419), since the
+> data identity is constant across a grid that varies only `strategy_config`.
 
 ---
 
@@ -45,6 +47,11 @@ strategy parameter mapped to its candidate values:
 - `decision_logic_config.<param>` → a decision-logic parameter
 - `workers.<instance>.<param>` → a worker parameter (instance name from `worker_instances`)
 
+Nested sub-parameters are addressable too (`decision_logic_config.<param>.<sub>…`,
+`workers.<instance>.<param>.<sub>…`) — e.g. `workers.macd_main.periods.M5` sweeps one timeframe's period.
+A nested path that changes a worker's bar lookback shifts the **warmup window** (and thus the data
+identity), so those combinations reload instead of reusing the mount (#419 cold fallback).
+
 ```json
 {
   "base_scenario_set": "cautious_macd_sandbox.json",
@@ -68,7 +75,7 @@ strategy parameter mapped to its candidate values:
 
 **Validation — structural fail-fast, parameter errors per-combination:** before any batch runs,
 `sweep_grid_validator.py` checks the grid **structurally only** — every dotted path must have a valid
-shape (`decision_logic_config.<param>` or `workers.<instance>.<param>`) and a non-empty value list; a
+shape (`decision_logic_config.<param>[.<sub>…]` or `workers.<instance>.<param>[.<sub>…]`) and a non-empty value list; a
 malformed path or empty list is a spec typo affecting all combinations → abort early. Parameter
 **existence / range / type** are NOT checked here: the grid only writes values into each combination's
 `strategy_config`, and the run validates them in **Phase 0** (`ScenarioValidator.validate_scenario_parameters`,
@@ -171,10 +178,34 @@ Launch entries: `🎛 Optimization: Cautious MACD Grid` (run) and `🧩 Pytest: 
 
 ---
 
+## Mount reuse + fail-fast abort (#419)
+
+A sweep varies only `strategy_config`, so every combination shares the **same data identity** (broker ·
+symbol · window · warmup · tick budget). The runner therefore **loads the data once** from the base set
+(`BatchOrchestrator.build_mount()`) and reuses that `MountPackage` across every combination via
+`run(mount=…)` (the #417 seam): each combination only preps its scenarios (broker_type — cheap), validates
+its parameters, and executes against the shared data — skipping the ~97.5%-of-warmup reload. A combination
+whose grid touches a **warmup-affecting** worker parameter (its data identity then differs) falls back to a
+cold reload for that combination, logged.
+
+**Fail-fast abort** — a data-level failure is invariant across every combination, so the sweep stops early
+instead of repeating it N times:
+- **Data-level (mount build):** if the base data cannot be loaded for any scenario (invalid window /
+  missing data), the sweep aborts before any combination runs.
+- **OOM villain:** if the *first executed* combination crashes because a worker subprocess was OOM-killed
+  (`BrokenProcessPool`; #416's `SubprocessPoolMemoryError` once that lands), the sweep aborts the rest.
+- **Strategy-level (per combination):** an out-of-range parameter marks only that combination invalid and
+  is recorded as an error ledger row — the sweep keeps going (unchanged §33).
+
+Off-switches (`app_config.json::backtesting.parameter_optimization`, both default **on**): `mount_reuse_enabled`
+(off → today's cold per-combination path) and `villain_abort_enabled`.
+
+---
+
 ## Scope (v0) and follow-ups
 
-- **In:** grid search, the cross-run ledger (both pipelines — sim batch + live session, #403 · 5.a),
-  objective ranking, one-factor sensitivity.
+- **In:** grid search with single-load **data-mount reuse** across combinations (#419), the cross-run
+  ledger (both pipelines — sim batch + live session, #403 · 5.a), objective ranking, one-factor sensitivity.
 - **Out (follow-ups):** smarter search (random / Bayesian / genetic) = **#32** (new generators on the
   same seam); walk-forward / out-of-sample splitting = **#367**; variance / ANOVA parameter importance
   + worker-contribution = **#31**; composite / weighted objective; per-symbol ledger rows for regime analysis.
@@ -183,5 +214,5 @@ Launch entries: `🎛 Optimization: Cautious MACD Grid` (run) and `🧩 Pytest: 
 
 `tests/simulation/optimization/` — grid expansion + determinism, dotted-path override + base
 immutability, ledger append/read/filter (real `RunSummary` types), ranking + sensitivity on known
-rows, and grid-validator fail-fast. The end-to-end runner is exercised manually via the launch entry
-(a real batch run is data-dependent). Suite doc: `docs/tests/simulation/parameter_optimization_tests.md`.
+rows, grid-validator fail-fast, and the **mount-reuse sweep** (#419: a real warm sweep == the cold path,
+data-level abort, OOM-signature detection). Suite doc: `docs/tests/simulation/parameter_optimization_tests.md`.

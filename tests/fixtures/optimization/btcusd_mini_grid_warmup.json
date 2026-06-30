@@ -1,0 +1,8 @@
+{
+  "base_scenario_set": "tests/fixtures/optimization/btcusd_mini_set.json",
+  "objective": "net_pnl",
+  "maximize": true,
+  "grid": {
+    "workers.bollinger_main.periods.M30": [20, 50]
+  }
+}

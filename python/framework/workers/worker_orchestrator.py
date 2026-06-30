@@ -17,7 +17,7 @@ from python.framework.workers.worker_performance_tracker import WorkerPerformanc
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.market_types.market_data_types import Bar, BarRenderState, TickData
 from python.framework.types.performance_types.performance_stats_types import WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
-from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerState
+from python.framework.types.worker_types import ComputeBasis, SUBSCRIBE_ALL, WorkerRequirement, WorkerResult, WorkerState
 from python.framework.workers.abstract_worker import AbstractWorker
 
 
@@ -70,12 +70,12 @@ class WorkerOrchestrator:
         self._validate_decision_logic_requirements()
 
         # Optional-output gating: the decision logic declares which worker
-        # signals it reads; workers skip computing the rest. No declaration =
-        # compute all (existing strategies stay bit-identical).
-        for instance_name, keys in decision_logic.get_required_worker_signals().items():
+        # signals it reads; workers skip computing the rest. SUBSCRIBE_ALL leaves
+        # the worker computing every output (bit-identical compute-all).
+        for instance_name, requirement in decision_logic.get_required_workers().items():
             worker = self.workers.get(instance_name)
-            if worker is not None:
-                worker.set_requested_outputs(set(keys))
+            if worker is not None and requirement.signals is not SUBSCRIBE_ALL:
+                worker.set_requested_outputs(set(requirement.signals))
 
         self.is_initialized = False
         self._worker_results: Dict[str, WorkerResult] = {}
@@ -215,13 +215,13 @@ class WorkerOrchestrator:
         Raises:
             ValueError: If requirements not met
         """
-        # Get required worker instances (instance_name → worker_type)
-        required_instances = self.decision_logic.get_required_worker_instances()
+        # Get required workers (instance_name → WorkerRequirement: type + signals)
+        required_workers = self.decision_logic.get_required_workers()
 
-        if not required_instances:
+        if not required_workers:
             return  # No requirements
 
-        # Base path for resolving relative refs in get_required_worker_instances()
+        # Base path for resolving relative refs in get_required_workers()
         dl_source = getattr(self.decision_logic, '_source_path', None)
         dl_base = dl_source.parent if dl_source else None
 
@@ -235,7 +235,8 @@ class WorkerOrchestrator:
         errors = []
 
         # Check each required instance
-        for instance_name, required_type in required_instances.items():
+        for instance_name, requirement in required_workers.items():
+            required_type = requirement.worker_type
 
             # 1. Does instance exist in config?
             if instance_name not in config_instances:
@@ -263,6 +264,18 @@ class WorkerOrchestrator:
                     f"Worker '{instance_name}' configured but not created. "
                     f"Check factory logs for creation errors."
                 )
+                continue
+
+            # 4. Do the declared signals exist on the worker? (#425 — typo / dead-signal guard)
+            if requirement.signals is not SUBSCRIBE_ALL:
+                valid_outputs = set(self.workers[instance_name].get_output_schema().keys())
+                unknown = sorted(str(s) for s in set(requirement.signals) - valid_outputs)
+                if unknown:
+                    errors.append(
+                        f"Unknown signal(s) {unknown} declared for instance '{instance_name}' "
+                        f"({required_type}) — not in its output schema "
+                        f"{sorted(str(o) for o in valid_outputs)}."
+                    )
 
         # Raise all errors together
         if errors:
@@ -274,7 +287,7 @@ class WorkerOrchestrator:
 
         self.logger.debug(
             f"✅ DecisionLogic requirements validated: "
-            f"{len(required_instances)} worker instances"
+            f"{len(required_workers)} worker instances"
         )
 
     def _auto_detect_parallel_mode(self, workers):

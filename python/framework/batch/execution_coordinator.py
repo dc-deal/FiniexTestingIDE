@@ -40,7 +40,8 @@ class ExecutionCoordinator:
         run_timestamp: str,
         app_config: AppConfigManager,
         live_stats_config: LiveStatsExportConfig,
-        logger: AbstractLogger
+        logger: AbstractLogger,
+        run_group: str = None
     ):
         """
         Initialize execution coordinator.
@@ -51,12 +52,14 @@ class ExecutionCoordinator:
             app_config: Application configuration manager
             live_stats_config: Live stats configuration
             logger: Logger instance for status messages
+            run_group: Optional grouping dir for the run logs (e.g. 'sweeps/<sweep_id>', #419)
         """
         self._scenario_set_name = scenario_set_name
         self._run_timestamp = run_timestamp
         self._app_config = app_config
         self._live_stats_config = live_stats_config
         self._logger = logger
+        self._run_group = run_group
 
     def execute_sequential(
         self,
@@ -100,7 +103,8 @@ class ExecutionCoordinator:
                 scenario_index=idx,
                 scenario_set_name=self._scenario_set_name,
                 run_timestamp=self._run_timestamp,
-                live_stats_config=self._live_stats_config
+                live_stats_config=self._live_stats_config,
+                run_group=self._run_group
             )
 
             # === Use scenario-specific package ===

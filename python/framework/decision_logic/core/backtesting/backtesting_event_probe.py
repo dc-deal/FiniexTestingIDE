@@ -52,7 +52,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderSide,
     OrderType,
 )
-from python.framework.types.worker_types import WorkerResult
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
 class BacktestingEventProbe(AbstractDecisionLogic):
@@ -161,9 +161,9 @@ class BacktestingEventProbe(AbstractDecisionLogic):
             DecisionEventType.SESSION_END,
         }
 
-    def get_required_worker_instances(self) -> Dict[str, str]:
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         return {
-            "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+            "backtesting_worker": WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
         }
 
     # ============================================

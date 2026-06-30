@@ -2038,6 +2038,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Simulation Core (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/simulation/core/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 42
+            }
+        },
+        {
             "name": "🧩 Pytest: SL/TP & Limit Validation (All)",
             "type": "debugpy",
             "request": "launch",

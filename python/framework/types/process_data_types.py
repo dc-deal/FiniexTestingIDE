@@ -195,6 +195,8 @@ class ProcessScenarioConfig:
     # For ScenarioLogger initialization
     scenario_set_name: str = ""
     run_timestamp: str = ""
+    # Optional grouping dir nested under the log root (e.g. 'sweeps/<sweep_id>', #419)
+    run_group: Optional[str] = None
 
     # Live Stats Config
     live_stats_config: LiveStatsExportConfig = None
@@ -244,7 +246,8 @@ class ProcessScenarioConfig:
         scenario_index: int,
         scenario_set_name: str,
         run_timestamp: str,
-        live_stats_config: LiveStatsExportConfig
+        live_stats_config: LiveStatsExportConfig,
+        run_group: Optional[str] = None
     ) -> 'ProcessScenarioConfig':
         """
         Create ProcessScenarioConfig from SingleScenario + AppConfig.
@@ -364,6 +367,7 @@ class ProcessScenarioConfig:
             tick_loop_profiling=tick_loop_profiling,
             scenario_set_name=scenario_set_name,
             run_timestamp=run_timestamp,  # extracted from json, put into type.
+            run_group=run_group,
             live_stats_config=live_stats_config,
             broker_type=scenario.broker_type,
             market_type=market_type,

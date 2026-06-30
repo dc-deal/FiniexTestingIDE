@@ -104,6 +104,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |
 | [Kraken Adapter Nonce](tests/autotrader/kraken_adapter_tests.md) | Private-call nonce monotonicity + lock (#332) |
 | [Baseline Tests](tests/simulation/baseline_tests.md) | Core functionality validation |
+| [Batch Core Tests](tests/simulation/batch_core_tests.md) | Prepare/execute seam (#417): split equivalence, mount reuse/determinism, data identity |
 | [Margin Validation](tests/simulation/margin_validation_tests.md) | Margin rejection, fill timing |
 | [Multi-Position](tests/simulation/multi_position_tests.md) | Concurrent position management |
 | [Pending Stats](tests/simulation/pending_stats_tests.md) | Pending order statistics |
