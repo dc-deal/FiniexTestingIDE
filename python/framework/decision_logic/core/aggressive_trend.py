@@ -42,7 +42,7 @@ can use the same workers but with completely different strategies.
 """
 
 import traceback
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import \
@@ -52,7 +52,7 @@ from python.framework.types.decision_logic_types import AwarenessLevel, Decision
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.component_metadata_types import ComponentMetadata
-from python.framework.types.worker_types import WorkerResult
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
@@ -333,36 +333,21 @@ class AggressiveTrend(AbstractDecisionLogic):
     # Existing methods (unchanged)
     # ============================================
 
-    def get_required_worker_instances(self) -> Dict[str, str]:
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         """
-        Define required worker instances for AggressiveTrend strategy.
+        Declare worker instances + the signals this strategy reads (#425).
 
-        Requires:
-        - rsi_fast: Fast RSI indicator for trend detection
-        - bollinger_main: Bollinger for price position analysis
-
-        Returns:
-            Dict[instance_name, worker_type]
-        """
-        return {
-            "rsi_fast": "CORE/rsi",
-            "bollinger_main": "CORE/bollinger"
-        }
-
-    def get_required_worker_signals(self) -> Dict[str, Set[str]]:
-        """
-        Declare the worker outputs this strategy reads (optional-output gating).
-
+        Requires a fast RSI (trend detection) and a Bollinger (price position).
         Only the RSI value and the Bollinger band position drive the decision —
         the Bollinger slope / width / raw-position are not read, so the worker
         skips them (the slope's extra moving average in particular).
 
         Returns:
-            Dict[instance_name, consumed output keys]
+            Dict[instance_name, WorkerRequirement]
         """
         return {
-            "rsi_fast": {"rsi_value"},
-            "bollinger_main": {"position"},
+            "rsi_fast": WorkerRequirement.of('CORE/rsi', 'rsi_value'),
+            "bollinger_main": WorkerRequirement.of('CORE/bollinger', 'position'),
         }
 
     def compute_tick(

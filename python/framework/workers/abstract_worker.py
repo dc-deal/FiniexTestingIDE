@@ -178,7 +178,7 @@ class AbstractWorker(ABC):
         Declare which output keys a consumer reads — gates optional-output work.
 
         Injected by the orchestrator from the decision logic's
-        get_required_worker_signals(). Once set, the worker may skip computing
+        get_required_workers(). Once set, the worker may skip computing
         outputs not in this set (its always-on core stays unconditional).
 
         Args:

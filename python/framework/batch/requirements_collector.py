@@ -23,6 +23,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.process_data_types import RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
+from python.framework.types.worker_types import SUBSCRIBE_ALL
 from python.framework.validators.algo_clock_validator import collect_algo_clock_violations
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
 from python.framework.validators.scenario_data_validator import ScenarioDataValidator
@@ -77,6 +78,9 @@ class RequirementsCollector:
         # SOURCE FILES (logic + workers), not of the config — keyed by
         # (decision_logic_type, sorted worker types) only.
         self._clock_preflight_cache: Dict[str, Optional[str]] = {}
+        # #425 worker-signal subscription pre-flight cache. Keyed per distinct
+        # (decision_logic_type, config) — the declared signals depend on the config.
+        self._signal_preflight_cache: Dict[str, Optional[str]] = {}
 
         self._aggregate_requirements = AggregateScenarioDataRequirements(
             logger=self._logger,
@@ -152,6 +156,21 @@ class RequirementsCollector:
                     is_valid=False,
                     scenario_name=scenario.name,
                     errors=[clock_error],
+                    warnings=[],
+                ))
+                continue
+
+            # === STEP 3b: Worker-signal subscription pre-flight (#425) ===
+            # Each declared signal must exist on the worker's output schema; a typo
+            # or dead signal excludes the scenario here rather than crashing the
+            # subprocess (the orchestrator enforces the same check at construction).
+            signal_error = self._worker_signal_preflight(scenario)
+            if signal_error:
+                self._logger.error(f"❌ {scenario.name}: {signal_error}")
+                scenario.validation_result.append(ValidationResult(
+                    is_valid=False,
+                    scenario_name=scenario.name,
+                    errors=[signal_error],
                     warnings=[],
                 ))
                 continue
@@ -297,4 +316,68 @@ class RequirementsCollector:
             result = str(e)
 
         self._state_preflight_cache[cache_key] = result
+        return result
+
+    def _worker_signal_preflight(self, scenario: SingleScenario) -> Optional[str]:
+        """
+        Pre-flight the decision logic's worker-signal subscription (#425).
+
+        Instantiates a bare decision logic and, for each declared WorkerRequirement,
+        resolves the worker class (class resolution only) and checks that the declared
+        signals exist on its output schema. A SUBSCRIBE_ALL requirement skips the key
+        check. An unknown signal is a real bug that would fail the run, so it excludes
+        the scenario; any OTHER resolution problem (a logic that needs a full trading
+        context to construct, an unresolvable worker ref) is a best-effort skip — the
+        real run / orchestrator validates with full context. Cached per distinct
+        (decision_logic_type, config).
+
+        Args:
+            scenario: The scenario whose subscription to pre-flight
+
+        Returns:
+            Error message if a declared signal is unknown, else None
+        """
+        strategy = scenario.strategy_config or {}
+        logic_type = strategy.get('decision_logic_type', '')
+        logic_config = strategy.get('decision_logic_config', {})
+        if not logic_type:
+            return None
+
+        cache_key = f"{logic_type}|{json.dumps(logic_config, sort_keys=True, default=str)}"
+        if cache_key in self._signal_preflight_cache:
+            return self._signal_preflight_cache[cache_key]
+
+        result: Optional[str] = None
+        try:
+            logic = self._decision_logic_factory.create_logic(
+                logic_type=logic_type,
+                logger=self._logger,
+                logic_config=logic_config,
+            )
+            # Relative USER worker refs resolve against the logic's source dir
+            # (same semantics as WorkerOrchestrator).
+            dl_source = getattr(logic, '_source_path', None)
+            worker_base_path = dl_source.parent if dl_source else None
+            for instance_name, requirement in logic.get_required_workers().items():
+                if requirement.signals is SUBSCRIBE_ALL:
+                    continue
+                worker_class, _ = self._worker_factory.resolve_worker_class(
+                    requirement.worker_type, base_path=worker_base_path)
+                valid_outputs = set(worker_class.get_output_schema().keys())
+                unknown = sorted(str(s) for s in set(requirement.signals) - valid_outputs)
+                if unknown:
+                    result = (
+                        f"Decision logic '{logic_type}' declares unknown signal(s) {unknown} "
+                        f"for worker instance '{instance_name}' ({requirement.worker_type}) — "
+                        f"not in its output schema {sorted(str(o) for o in valid_outputs)}."
+                    )
+                    break
+        except Exception as e:
+            self._logger.debug(
+                f"Worker-signal pre-flight skipped for '{logic_type}' "
+                f"(resolution failed: {e})"
+            )
+            result = None
+
+        self._signal_preflight_cache[cache_key] = result
         return result

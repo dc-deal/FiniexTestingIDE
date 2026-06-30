@@ -14,6 +14,7 @@ import pytest
 
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.types.worker_types import WorkerRequirement
 from tests.framework.user_namespace.conftest import (
     write_module,
     VALID_WORKER_CODE,
@@ -269,7 +270,7 @@ class TestWorkerOrchestratorNormalization:
     def _make_orchestrator(self):
         from python.framework.workers.worker_orchestrator import WorkerOrchestrator
         mock_dl = MagicMock()
-        mock_dl.get_required_worker_instances.return_value = {}
+        mock_dl.get_required_workers.return_value = {}
         orch = WorkerOrchestrator.__new__(WorkerOrchestrator)
         orch.decision_logic = mock_dl
         orch.strategy_config = {}
@@ -367,8 +368,8 @@ class TestUserAlgoIntegration:
         finally:
             cleanup_user_loaded()
 
-    def test_user_algo_get_required_instances_returns_paths(self, mock_logger):
-        """get_required_worker_instances() returns a dict of str → str (path or CORE/ ref)."""
+    def test_user_algo_get_required_workers_returns_requirements(self, mock_logger):
+        """get_required_workers() returns a dict of str → WorkerRequirement (#425)."""
         logic_file, _ = self._find_first_algo()
         if logic_file is None:
             pytest.skip('No user algos present in user_algos/')
@@ -385,14 +386,14 @@ class TestUserAlgoIntegration:
         # In that case, verify the contract at class level only.
         try:
             instance = logic_class(name='test', logger=mock_logger)
-            required = instance.get_required_worker_instances()
+            required = instance.get_required_workers()
             assert isinstance(required, dict)
-            for key, val in required.items():
+            for key, req in required.items():
                 assert isinstance(key, str)
-                assert isinstance(val, str)
-                assert val.endswith('.py') or val.startswith('CORE/')
+                assert isinstance(req, WorkerRequirement)
+                assert req.worker_type.endswith('.py') or req.worker_type.startswith('CORE/')
         except Exception:
             # Logic requires config to instantiate — verify method is declared
-            assert hasattr(logic_class, 'get_required_worker_instances')
+            assert hasattr(logic_class, 'get_required_workers')
         finally:
             cleanup_user_loaded()

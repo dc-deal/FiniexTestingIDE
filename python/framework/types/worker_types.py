@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, TypedDict
+from typing import Dict, FrozenSet, TypedDict, Union
 
 from python.framework.types.parameter_types import OutputValue
 
@@ -79,3 +79,67 @@ class WorkerResult:
             Output value
         """
         return self.outputs[name]
+
+
+class _AllSignalsSentinel:
+    """Sentinel: a decision logic reads ALL of a worker's outputs (compute-all)."""
+
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return 'SUBSCRIBE_ALL'
+
+
+# Public sentinel — WorkerRequirement(signals=SUBSCRIBE_ALL) / WorkerRequirement.all(type)
+SUBSCRIBE_ALL = _AllSignalsSentinel()
+
+
+@dataclass(frozen=True)
+class WorkerRequirement:
+    """
+    One decision-logic → worker-instance requirement (#425).
+
+    Unifies the former worker-instance type declaration and the consumed-output
+    declaration into one mandatory, per-instance object. signals is either an
+    explicit frozenset of the worker's output-enum members, or the SUBSCRIBE_ALL
+    sentinel (read everything — the explicit successor of the old empty-map
+    default, bit-identical compute-all).
+
+    Args:
+        worker_type: Worker type string (e.g. 'CORE/bollinger')
+        signals: Consumed output keys (frozenset of enum members) or SUBSCRIBE_ALL
+    """
+    worker_type: str
+    signals: Union[FrozenSet[str], _AllSignalsSentinel]
+
+    @classmethod
+    def of(cls, worker_type: str, *signals: str) -> 'WorkerRequirement':
+        """
+        Build a requirement reading an explicit subset of a worker's outputs.
+
+        Args:
+            worker_type: Worker type string
+            signals: Output enum members the logic reads from this instance
+
+        Returns:
+            WorkerRequirement with the given signal subset
+        """
+        return cls(worker_type=worker_type, signals=frozenset(signals))
+
+    @classmethod
+    def all(cls, worker_type: str) -> 'WorkerRequirement':
+        """
+        Build a requirement reading ALL of a worker's outputs (compute-all).
+
+        Args:
+            worker_type: Worker type string
+
+        Returns:
+            WorkerRequirement with the SUBSCRIBE_ALL sentinel
+        """
+        return cls(worker_type=worker_type, signals=SUBSCRIBE_ALL)

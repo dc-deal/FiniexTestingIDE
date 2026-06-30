@@ -100,7 +100,7 @@ from python.framework.types.decision_logic_types import Decision, DecisionLogicA
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.worker_types import WorkerResult
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType, OrderDirection, OrderSide
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
@@ -298,9 +298,9 @@ class BacktestingMarginStress(AbstractDecisionLogic):
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         return [OrderType.MARKET]
 
-    def get_required_worker_instances(self) -> Dict[str, str]:
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         return {
-            "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+            "backtesting_worker": WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
         }
 
     # ============================================

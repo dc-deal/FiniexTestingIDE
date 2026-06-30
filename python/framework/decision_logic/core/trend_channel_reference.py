@@ -41,7 +41,7 @@ from python.framework.types.decision_logic_types import AwarenessLevel, Decision
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.component_metadata_types import ComponentMetadata
-from python.framework.types.worker_types import WorkerResult
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
@@ -271,16 +271,19 @@ class TrendChannelReference(AbstractDecisionLogic):
         resting = OrderType.STOP if mode == 'stop_breakout' else OrderType.LIMIT
         return [OrderType.MARKET, resting]
 
-    def get_required_worker_instances(self) -> Dict[str, str]:
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         """
-        Declare required worker instances.
+        Declare required worker instances + consumed signals (#425).
+
+        H1 ma_trend is the directional gate, M15 Bollinger the entry channel.
+        Reads all outputs (SUBSCRIBE_ALL).
 
         Returns:
-            Dict[instance_name, worker_type] — H1 trend gate + M15 channel
+            Dict[instance_name, WorkerRequirement] — H1 trend gate + M15 channel
         """
         return {
-            'h1_trend': 'CORE/ma_trend',
-            'm15_channel': 'CORE/bollinger',
+            'h1_trend': WorkerRequirement.all('CORE/ma_trend'),
+            'm15_channel': WorkerRequirement.all('CORE/bollinger'),
         }
 
     # ============================================

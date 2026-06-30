@@ -38,7 +38,7 @@ from python.framework.types.decision_logic_types import AwarenessLevel, Decision
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.component_metadata_types import ComponentMetadata
-from python.framework.types.worker_types import WorkerResult
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
@@ -248,20 +248,19 @@ class CautiousMacd(AbstractDecisionLogic):
             return [OrderType.STOP_LIMIT]
         return [OrderType.STOP]
 
-    def get_required_worker_instances(self) -> Dict[str, str]:
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         """
-        Define required worker instances for CautiousMacd strategy.
+        Declare required worker instances + consumed signals (#425).
 
-        Requires:
-        - macd_main: MACD for crossover signal
-        - rsi_filter: RSI for entry filter
+        Requires MACD (crossover signal) and RSI (entry filter). Reads all of each
+        worker's outputs (SUBSCRIBE_ALL — neither gates optional work).
 
         Returns:
-            Dict[instance_name, worker_type]
+            Dict[instance_name, WorkerRequirement]
         """
         return {
-            "macd_main": "CORE/macd",
-            "rsi_filter": "CORE/rsi",
+            "macd_main": WorkerRequirement.all('CORE/macd'),
+            "rsi_filter": WorkerRequirement.all('CORE/rsi'),
         }
 
     def compute_tick(

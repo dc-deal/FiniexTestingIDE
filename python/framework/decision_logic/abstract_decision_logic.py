@@ -33,7 +33,7 @@ from python.framework.types.persistence_types import RestoreContext
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef, ValidatedParameters
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
-from python.framework.types.worker_types import WorkerResult
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.validators.parameter_validator import validate_parameters
 
 
@@ -275,50 +275,28 @@ class AbstractDecisionLogic(ABC):
     # ============================================
 
     @abstractmethod
-    def get_required_worker_instances(self) -> Dict[str, str]:
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         """
-        Define required worker instances with exact names and types.
+        Declare required worker instances with their type and consumed signals (#425).
 
-        This is the connection between DecisionLogic and configuration.
-        The config MUST provide worker_instances with matching keys and types.
+        The single, mandatory wiring between a decision logic and its workers: each
+        entry maps an instance name to a WorkerRequirement carrying the worker type
+        AND the output signals this logic reads from that instance. The config's
+        worker_instances must provide matching keys and types — type override is not
+        allowed (declaring 'CORE/rsi' forbids a config 'CORE/macd' for the same name).
 
-        Example:
-            {
-                "rsi_fast": "CORE/rsi",
-                "bollinger_main": "CORE/bollinger"
-            }
-
-        Config must match exactly:
-            "worker_instances": {
-                "rsi_fast": "CORE/rsi",        # ✅ Same key, same type
-                "bollinger_main": "CORE/bollinger"  # ✅ Same key, same type
-            }
-
-        Type override is NOT allowed - if DecisionLogic declares
-        "rsi_fast": "CORE/rsi", config cannot use "CORE/macd" instead.
+        Signals are the worker's output-schema keys (strings, e.g. 'position'). A worker
+        computes only its declared optional outputs and skips the rest, so a hot decision
+        pays nothing for signals it never reads. Declare every output accessed via
+        get_signal() — reading an undeclared (hence uncomputed) optional output raises.
+        Use WorkerRequirement.of(type, *signals) for an explicit subset, or
+        WorkerRequirement.all(type) to read every output (explicit compute-all, the
+        successor of the old empty-map default).
 
         Returns:
-            Dict[instance_name, worker_type] - The exact worker instances
+            Dict[instance_name, WorkerRequirement] - the exact worker instances + signals
         """
         pass
-
-    def get_required_worker_signals(self) -> Dict[str, Set[str]]:
-        """
-        Declare which worker outputs this logic reads, per worker instance.
-
-        Optional optimization hook: a worker computes only its declared outputs
-        plus its always-on core, skipping expensive optional signals (e.g. a
-        Bollinger slope's extra moving average) that nothing consumes. The
-        default — an empty map — means "no declaration": every worker computes
-        all its outputs, so existing strategies stay bit-identical. A declared
-        instance must list every output key the logic reads via get_signal();
-        reading an undeclared key raises (it was never computed) rather than
-        returning a stale value.
-
-        Returns:
-            Dict[instance_name, set of consumed output keys] (empty = compute all)
-        """
-        return {}
 
     @abstractmethod
     def compute_tick(
