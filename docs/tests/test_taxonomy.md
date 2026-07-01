@@ -97,6 +97,7 @@ tests/
 │   ├── data_integration/  integration — volume integrity
 │   ├── inter_tick_interval/   unit — interval stats
 │   ├── scenario_generator/    unit — block generation
+│   ├── signal_import/     unit — signal JSONL→parquet import, index, projected reader, v0 parity (#429)
 │   └── tick_processing_budget/ unit — budget filtering
 │
 ├── live_adapters/         live-api — real broker API validation (excluded from runner)

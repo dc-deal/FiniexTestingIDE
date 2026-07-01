@@ -45,6 +45,16 @@ class SingleScenario:
     max_ticks: Optional[int] = None
     data_mode: str = "realistic"
     enabled: bool = True  # Default: enabled
+
+    # ============================================
+    # SIGNAL DATA SOURCE (OPTIONAL, #429)
+    # ============================================
+    # First-class sentiment/signal source, resolved via the signal index
+    # (analogue of data_broker_type for ticks). Keyed by the archive's
+    # pipeline_id (e.g. 'crypto_sentiment'); symbol reuses `symbol` above.
+    # Empty = scenario has no SIGNAL worker input.
+    data_sentiment_type: str = ''
+
     # ============================================
     # STRATEGY PARAMETERS
     # ============================================
@@ -114,10 +124,15 @@ class SingleScenario:
         Returns:
             Human-readable config summary
         """
+        sentiment_line = (
+            f"  Sentiment Source: {self.data_sentiment_type}\n"
+            if self.data_sentiment_type else ''
+        )
         return (
             f"Scenario: {self.name}\n"
             f"  Data Source: {self.data_broker_type}\n"
             f"  Symbol: {self.symbol}\n"
+            f"{sentiment_line}"
             f"  Period: {self.start_date} → {self.end_date}\n"
             f"  Max Ticks: {self.max_ticks or 'unlimited'}\n"
             f"  Enabled: {self.enabled}"

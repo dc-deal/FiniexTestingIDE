@@ -81,10 +81,13 @@ class SignalRequirement:
     scenario_name: str
     broker_type: str
     symbol: str
-    source: str            # e.g. 'llm_sentiment'
-    data_path: str         # explicit archive path ('' = auto-resolve, future)
+    source: str            # e.g. 'llm_sentiment' (the worker's signal source)
     start_time: datetime
     end_time: Optional[datetime] = None
+    # Source identity: data_sentiment_type (first-class, #429) is primary — resolved via the
+    # signal index; data_path is an explicit dev override. At least one must be set (checked at load).
+    data_sentiment_type: str = ''
+    data_path: str = ''
 
 
 @dataclass

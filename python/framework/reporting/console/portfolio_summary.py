@@ -94,6 +94,8 @@ class PortfolioSummary(AbstractBatchSummarySection):
         currency_disp = f"{unit.currency} [SPOT]" if unit.spot_mode else unit.currency
         broker = (unit.broker_name[:30] if unit.broker_name else '—')
         data = f" | Data: {unit.data_source}" if unit.data_source else ''
+        if unit.sentiment_source:
+            data += f" · 📡 Sentiment: {unit.sentiment_source}"
         print(f"💰 {renderer.bold(unit.name)} — {broker} ({currency_disp}){data}")
         if unit.has_error:
             print(renderer.red("   ⚠️ CRITICAL: Errors detected"))

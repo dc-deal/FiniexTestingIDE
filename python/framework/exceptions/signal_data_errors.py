@@ -25,3 +25,15 @@ class SignalSchemaError(FiniexError, ValueError):
     the result structure may have changed and is not safe to consume.
     """
     pass
+
+
+class SignalDataUnavailableError(FiniexError, ValueError):
+    """
+    A scenario declares a SIGNAL source (#429) with no data covering its range.
+
+    A config/data problem (wrong data_sentiment_type, un-imported source, or a range
+    entirely outside the signal coverage), NOT a code bug. Per the batch error model,
+    this excludes ONLY the offending scenario (ValidationResult) — the batch continues.
+    A partial overlap is fine (sentiment resolves where available, stale beyond).
+    """
+    pass
