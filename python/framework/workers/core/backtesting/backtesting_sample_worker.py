@@ -38,10 +38,10 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
-from python.framework.workers.abstract_worker import AbstractWorker
+from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 
 
-class BacktestingSampleWorker(AbstractWorker):
+class BacktestingSampleWorker(AbstractIndicatorWorker):
     """
     Validation worker for backtesting - captures warmup status and bar snapshots.
 

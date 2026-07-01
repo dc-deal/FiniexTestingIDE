@@ -24,10 +24,10 @@ from python.framework.types.config_types.market_config_types import MarketType
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.parameter_types import OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
-from python.framework.workers.abstract_worker import AbstractWorker
+from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 
 
-class ObvWorker(AbstractWorker):
+class ObvWorker(AbstractIndicatorWorker):
     """
     On-Balance Volume (OBV) indicator worker.
 

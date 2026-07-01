@@ -2021,6 +2021,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Signal Workers (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/signal_workers/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 42
+            }
+        },
+        {
             "name": "🧩 Pytest: Sim Modify Lifecycle",
             "type": "debugpy",
             "request": "launch",
@@ -2584,6 +2601,22 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 71
+            }
+        },
+        {
+            "name": "🧪 Simulation: Sentiment Smoke (SIGNAL)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/sentiment_smoke_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 72
             }
         },
         {

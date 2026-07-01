@@ -1,0 +1,57 @@
+{
+    "version": "1.0",
+    "scenario_set_name": "sentiment_smoke_test",
+    "created": "2026-04-27T00:00:00.000000",
+    "description": "SIGNAL worker smoke — drives the hybrid_sentiment_reference decision (RSI + CORE/llm_sentiment) over BTCUSD ticks with a pre-collected sentiment week, validating the end-to-end SIGNAL data path (load → provider injection → decision fusion). Didactic, not a profit claim.",
+    "global": {
+        "data_mode": "realistic",
+        "strategy_config": {
+            "decision_logic_type": "CORE/hybrid_sentiment_reference",
+            "worker_instances": {
+                "rsi_fast": "CORE/rsi",
+                "sentiment": "CORE/llm_sentiment"
+            },
+            "workers": {
+                "rsi_fast": {
+                    "periods": {
+                        "M5": 14
+                    }
+                },
+                "sentiment": {
+                    "data_path": "data/processed/signals/crypto_sentiment/full_week_2026-04-27.jsonl",
+                    "max_staleness_minutes": 30
+                }
+            },
+            "decision_logic_config": {
+                "rsi_buy_threshold": 35,
+                "rsi_sell_threshold": 65,
+                "lot_size": 0.001,
+                "min_free_margin": 100
+            }
+        },
+        "execution_config": {
+            "parallel_workers": false
+        },
+        "trade_simulator_config": {
+            "balances": { "USD": 10000 },
+            "seeds": {
+                "inbound_latency_seed": 42424
+            }
+        }
+    },
+    "scenarios": [
+        {
+            "name": "BTCUSD_sentiment_smoke",
+            "symbol": "BTCUSD",
+            "data_broker_type": "kraken_spot",
+            "start_date": "2026-04-27T00:00:00+00:00",
+            "end_date": "2026-04-27T12:00:00+00:00",
+            "max_ticks": 3000,
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {},
+            "execution_config": {},
+            "trade_simulator_config": {}
+        }
+    ]
+}

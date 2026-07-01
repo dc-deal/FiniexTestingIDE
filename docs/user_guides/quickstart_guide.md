@@ -20,9 +20,14 @@ A trading bot consists of three parts:
 
 | Component | Responsibility | Base Class |
 |-----------|----------------|------------|
-| **Worker** | Compute indicators from bar data | `AbstractWorker` |
+| **Worker** | Compute indicators from bar data | `AbstractIndicatorWorker` |
 | **Decision Logic** | Make trading decisions from worker results | `AbstractDecisionLogic` |
 | **Config** | Connect workers + decision + scenarios | JSON file |
+
+> **Two worker types:** this guide builds an **INDICATOR** worker (computes from bars,
+> `AbstractIndicatorWorker`). The second type, **SIGNAL** (`AbstractSignalWorker`, looks up
+> pre-collected external data by timestamp instead of computing from bars), is covered in the
+> [Worker Naming Guide](worker_naming_doc.md). Both share the lean `AbstractWorker` contract.
 
 ---
 
@@ -35,7 +40,7 @@ Workers compute technical indicators. They receive bar history and return a `Wor
 ```python
 # Location: python/framework/workers/core/rsi_worker.py
 
-class RsiWorker(AbstractWorker):
+class RsiWorker(AbstractIndicatorWorker):
     """RSI computation from bar close prices"""
     
     def __init__(
@@ -51,7 +56,7 @@ class RsiWorker(AbstractWorker):
             logger=logger,
             trading_context=trading_context, 
         )
-        # periods auto-extracted by AbstractWorker for INDICATOR type
+        # periods auto-extracted by AbstractIndicatorWorker for INDICATOR type
     
     @classmethod
     def get_worker_type(cls) -> WorkerType:
@@ -118,7 +123,7 @@ This prevents silent configuration errors (e.g., `deviation: 0.02` instead of `2
 ```python
 from python.framework.types.parameter_types import InputParamDef, REQUIRED
 
-class BollingerWorker(AbstractWorker):
+class BollingerWorker(AbstractIndicatorWorker):
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
@@ -148,7 +153,7 @@ Workers declare their output fields via `get_output_schema()`. This enables the 
 ```python
 from python.framework.types.parameter_types import OutputParamDef
 
-class RsiWorker(AbstractWorker):
+class RsiWorker(AbstractIndicatorWorker):
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:
@@ -225,7 +230,7 @@ raw-difference indicators (MACD) have no normalization step — leave them as-is
 **Example: Market-aware warning in worker:**
 
 ```python
-class ObvWorker(AbstractWorker):
+class ObvWorker(AbstractIndicatorWorker):
     def __init__(self, name, parameters, logger, trading_context=None):
         super().__init__(name, parameters, logger, trading_context=trading_context)
         
@@ -586,7 +591,7 @@ Create a directory under `user_algos/` for your strategy and place your files th
 ### Create a Worker
 
 1. Create `user_algos/my_strategy/my_indicator.py`
-2. Define one class inheriting from `AbstractWorker` (any class name)
+2. Define one class inheriting from `AbstractIndicatorWorker` (any class name)
 3. Implement `compute()`, `get_warmup_requirements()`, `get_parameter_schema()`
 
 See `python/framework/workers/core/rsi_worker.py` as a reference implementation.
@@ -727,7 +732,7 @@ Current limitations:
 ```python
 # 1. Worker: SMA (you could also just use bars directly in decision)
 
-class SMAWorker(AbstractWorker):
+class SMAWorker(AbstractIndicatorWorker):
     def compute(self, tick, bar_history, current_bars):
         bars = bar_history.get("M5", [])
         closes = [b.close for b in bars[-self.period:]]

@@ -12,10 +12,10 @@ from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import REQUIRED, InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
-from python.framework.workers.abstract_worker import AbstractWorker
+from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 
 
-class MacdWorker(AbstractWorker):
+class MacdWorker(AbstractIndicatorWorker):
     """
     MACD (Moving Average Convergence Divergence) worker.
 

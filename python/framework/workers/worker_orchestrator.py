@@ -19,6 +19,8 @@ from python.framework.types.market_types.market_data_types import Bar, BarRender
 from python.framework.types.performance_types.performance_stats_types import WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
 from python.framework.types.worker_types import ComputeBasis, SUBSCRIBE_ALL, WorkerRequirement, WorkerResult, WorkerState
 from python.framework.workers.abstract_worker import AbstractWorker
+from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
+from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 
 
 class WorkerOrchestrator:
@@ -110,10 +112,17 @@ class WorkerOrchestrator:
         if worker_decision_tracking:
             for worker_name, worker in self.workers.items():
                 worker_type = self._extract_worker_type(worker)
+                # SIGNAL/other non-indicator workers have no compute basis (#420 is
+                # bar-centric) — label them by worker type for telemetry.
+                compute_basis = (
+                    worker.get_compute_basis().value
+                    if isinstance(worker, AbstractIndicatorWorker)
+                    else worker.get_worker_type().value
+                )
                 perf_tracker = WorkerPerformanceTracker(
                     worker_type=worker_type,
                     worker_name=worker_name,
-                    compute_basis=worker.get_compute_basis().value,
+                    compute_basis=compute_basis,
                 )
                 worker.set_performance_logger(perf_tracker)
 
@@ -447,6 +456,13 @@ class WorkerOrchestrator:
         Returns:
             True if the worker should recompute on this tick
         """
+        # SIGNAL workers gate on snapshot-window crossing (no bars / no compute
+        # basis); seed once at cold start so a result always exists.
+        if isinstance(worker, AbstractSignalWorker):
+            if name not in self._worker_results:
+                return True  # cold start — seed the cache once
+            return worker.should_refresh(tick)
+
         if worker.get_compute_basis() == ComputeBasis.BAR_CLOSE:
             if name not in self._worker_results:
                 return True  # cold start — seed the cache once
@@ -454,6 +470,32 @@ class WorkerOrchestrator:
                 tf in closed_timeframes for tf in worker.get_required_timeframes()
             )
         return worker.should_recompute(tick, bar_updated)
+
+    def _run_worker(
+        self,
+        worker: AbstractWorker,
+        tick: TickData,
+        bar_history: Dict[str, List[Bar]],
+        current_bars: Dict[str, Bar],
+    ) -> WorkerResult:
+        """
+        Dispatch a worker's compute by type (#141).
+
+        INDICATOR workers compute from bars; SIGNAL workers look up the
+        point-in-time external value (the bar args are unused for them).
+
+        Args:
+            worker: Worker instance
+            tick: Current tick
+            bar_history: Historical bars per timeframe (indicator workers)
+            current_bars: Current bars per timeframe (indicator workers)
+
+        Returns:
+            WorkerResult from the worker's type-specific compute
+        """
+        if isinstance(worker, AbstractSignalWorker):
+            return worker.compute_signal(tick)
+        return worker.compute(tick, bar_history, current_bars)
 
     def _process_workers_sequential(
         self,
@@ -478,8 +520,8 @@ class WorkerOrchestrator:
                     worker.set_state(WorkerState.WORKING)
                     filtered_bar_history = self._filter_bar_history_for_worker(
                         worker, bar_history)
-                    result = worker.compute(
-                        tick, filtered_bar_history, current_bars)
+                    result = self._run_worker(
+                        worker, tick, filtered_bar_history, current_bars)
                     computation_time_ms = (
                         time.perf_counter() - start_time
                     ) * 1000
@@ -613,7 +655,7 @@ class WorkerOrchestrator:
         start_time = time.perf_counter()
 
         try:
-            result = worker.compute(tick, bar_history, current_bars)
+            result = self._run_worker(worker, tick, bar_history, current_bars)
             computation_time_ms = (time.perf_counter() - start_time) * 1000
 
             return result, computation_time_ms

@@ -253,7 +253,7 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 - Live execution refactor with async dispatch and broker trade record model (V1.2.3)
 - Live acceptance certificate (Field Study), reconciliation foundation, decision event channel, timer-driven loop cadence (V1.3.0)
 - Production-bot case study, restart-safe algo memory, unified reporting, trade analytics, robustness validation, and parameter sweep (V1.3.1)
-- Next: state recovery and push-based execution stream (V1.4)
+- Next: state recovery, push-based execution stream, and SIGNAL workers — external / LLM-sentiment data as a worker input (V1.4)
 
 For the full vision, detailed roadmap, and feature path see **[Issue #138 — Vision & Roadmap](https://github.com/dc-deal/FiniexTestingIDE/issues/138)**.
 

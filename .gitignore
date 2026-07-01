@@ -130,6 +130,7 @@ dmypy.json
 # FiniexTestingIDE specific - Data directories
 data/runtime/
 data/raw/*.json
+data/raw/*.jsonl
 data/finished/*
 !data/finished/.gitkeep
 data/cache/

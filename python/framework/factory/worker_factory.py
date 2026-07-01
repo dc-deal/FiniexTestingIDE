@@ -26,6 +26,8 @@ from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ValidatedParameters
 from python.framework.validators.parameter_validator import apply_defaults
 from python.framework.workers.abstract_worker import AbstractWorker
+from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
+from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.rsi_worker import RsiWorker
@@ -33,6 +35,12 @@ from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.obv_worker import ObvWorker
+from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
+
+
+# Abstract worker bases — excluded when introspecting a user file for its one
+# concrete worker subclass (a path worker subclasses one of these).
+_ABSTRACT_WORKER_BASES = (AbstractWorker, AbstractIndicatorWorker, AbstractSignalWorker)
 
 
 class WorkerFactory:
@@ -80,6 +88,7 @@ class WorkerFactory:
             self._registry['CORE/heavy_rsi'] = (HeavyRsiWorker, None)
             self._registry['CORE/macd'] = (MacdWorker, None)
             self._registry['CORE/obv'] = (ObvWorker, None)
+            self._registry['CORE/llm_sentiment'] = (LlmSentimentWorker, None)
             self._registry['CORE/backtesting/backtesting_sample_worker'] = (BacktestingSampleWorker, None)
 
             self._logger.debug(
@@ -341,7 +350,7 @@ class WorkerFactory:
             cls for cls in vars(module).values()
             if isinstance(cls, type)
             and issubclass(cls, AbstractWorker)
-            and cls is not AbstractWorker
+            and cls not in _ABSTRACT_WORKER_BASES
         ]
 
         if len(candidates) != 1:

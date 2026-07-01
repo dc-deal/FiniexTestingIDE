@@ -17,6 +17,8 @@ from python.framework.types.process_data_types import ProcessDataPackage, Proces
 from python.framework.utils.process_debug_info_utils import debug_warmup_bars_check, log_trade_simulator_config
 from python.framework.utils.process_serialization_utils import process_deserialize_ticks_batch
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
+from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
+from python.framework.signal_data.signal_data_provider import SignalDataProvider
 
 
 def process_startup_preparation(
@@ -92,6 +94,11 @@ def process_startup_preparation(
     workers = list(workers_dict.values())
 
     scenario_logger.debug(f"✅ Created {len(workers)} workers")
+
+    # === PHASE 4.5: Inject Signal Data Providers (#141) ===
+    # SIGNAL workers read an injected provider, built from the prepared signal
+    # series in the data package. No-op when there is no SIGNAL worker.
+    _inject_signal_providers(workers, shared_data, scenario_logger)
 
     # === PHASE 5: Create Decision Logic (with context) ===
     decision_logic = decision_logic_factory.create_logic(
@@ -171,6 +178,40 @@ def process_startup_preparation(
         f"🔄 De-Serialization of {len(ticks):,} ticks finished")
 
     return worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks
+
+
+def _inject_signal_providers(
+    workers: list,
+    shared_data: ProcessDataPackage,
+    logger: ScenarioLogger,
+) -> None:
+    """
+    Build + inject SignalDataProviders into the scenario's SIGNAL workers (#141).
+
+    A provider is built per source from the prepared signal series in the data
+    package and injected into each AbstractSignalWorker reading that source.
+
+    Args:
+        workers: The scenario's worker instances
+        shared_data: The data package (carries signal_series per source)
+        logger: Scenario logger
+    """
+    if not shared_data.signal_series:
+        return
+
+    providers = {
+        source: SignalDataProvider(series)
+        for source, series in shared_data.signal_series.items()
+    }
+    for worker in workers:
+        if isinstance(worker, AbstractSignalWorker):
+            provider = providers.get(worker.get_signal_source())
+            if provider is not None:
+                worker.set_signal_provider(provider)
+                logger.debug(
+                    f"📡 Injected signal provider '{worker.get_signal_source()}' "
+                    f"into worker '{worker.name}'"
+                )
 
 
 def _match_and_validate_warmup_bars(
