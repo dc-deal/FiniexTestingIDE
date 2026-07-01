@@ -11,6 +11,7 @@ fields are the strict contract).
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -114,3 +115,61 @@ class ResolvedSignal:
     """
     collected_msc: datetime
     result: SentimentResult
+
+
+# Sentinel `symbol` value for an envelope-level parquet row (#429). One is emitted per
+# envelope so every envelope's collected_msc stays resolvable for EVERY covered symbol —
+# preserving the v0 behavior where a partial/error snapshot (symbol absent) still resolves
+# to a defensive HOLD instead of an earlier snapshot. Not a valid trading symbol.
+SIGNAL_ENVELOPE_SYMBOL = '*'
+
+
+class SignalParquetColumn(str, Enum):
+    """
+    Columns of the imported signal parquet (#429). Granularity: one row per
+    (collected_msc, symbol) for present result symbols, plus one envelope-level row
+    (symbol = SIGNAL_ENVELOPE_SYMBOL) per envelope. str-based Enum: values are usable
+    directly as DataFrame column names. SIGNAL_RUNTIME_COLUMNS is what the reader projects
+    into the runtime SignalSeries; the rest is envelope metadata + provenance kept for the
+    archive / report path (the #128/#429 field projection).
+    """
+    # --- lookup keys ---
+    COLLECTED_MSC = 'collected_msc'      # int64 epoch-ms, the no-look-ahead merge key
+    SYMBOL = 'symbol'
+    # --- consumed by the worker (from SentimentResult) ---
+    SIGNAL = 'signal'
+    SENTIMENT_SCORE = 'sentiment_score'
+    CONFIDENCE = 'confidence'
+    REASONING = 'reasoning'
+    URGENCY = 'urgency'
+    IS_BREAKING = 'is_breaking'
+    STATUS = 'status'                    # envelope status — reconstructs error/empty snapshots
+    # --- envelope metadata (archive) ---
+    SCHEMA_VERSION = 'schema_version'
+    PIPELINE_ID = 'pipeline_id'
+    PROMPT_VERSION = 'prompt_version'
+    OUTCOME_TYPE = 'outcome_type'
+    TIMESTAMP = 'timestamp'              # envelope wall-clock, NOT the merge key
+    # --- provenance (archive, JSON-encoded strings) ---
+    SOURCES = 'sources'
+    METADATA = 'metadata'
+    ERRORS = 'errors'
+
+
+# What the reader loads into the runtime SignalSeries (projection — ship only consumed
+# fields, the seam shared with #128). collected_msc + symbol are the lookup keys; status
+# reconstructs error/empty (defensive-HOLD) snapshots; schema_version is required to build
+# the SignalSnapshot model. The heavy archive columns (sources / metadata / errors /
+# pipeline_id / prompt_version / outcome_type / timestamp) are NOT loaded at runtime.
+SIGNAL_RUNTIME_COLUMNS = frozenset({
+    SignalParquetColumn.COLLECTED_MSC.value,
+    SignalParquetColumn.SYMBOL.value,
+    SignalParquetColumn.SIGNAL.value,
+    SignalParquetColumn.SENTIMENT_SCORE.value,
+    SignalParquetColumn.CONFIDENCE.value,
+    SignalParquetColumn.REASONING.value,
+    SignalParquetColumn.URGENCY.value,
+    SignalParquetColumn.IS_BREAKING.value,
+    SignalParquetColumn.STATUS.value,
+    SignalParquetColumn.SCHEMA_VERSION.value,
+})

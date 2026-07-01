@@ -140,6 +140,41 @@ class ImportConfigManager:
         return path
 
     # ============================================
+    # Paths — Signal Data Source (#429)
+
+    def get_signal_data_raw_path(self) -> str:
+        """
+        Get source directory for raw signal JSONL archives.
+
+        Returns:
+            Path string for the raw signal directory
+        """
+        paths = self._config.get("signal_paths", {})
+        path = paths.get("data_raw")
+        if not path:
+            raise ValueError(
+                "Missing required path 'data_raw' in import_config.json. "
+                "Add to 'signal_paths' section: \"data_raw\": \"data/raw/signals\""
+            )
+        return path
+
+    def get_signal_import_output_path(self) -> str:
+        """
+        Get output directory for processed signal Parquet files + index.
+
+        Returns:
+            Path string for the signal import output directory
+        """
+        paths = self._config.get("signal_paths", {})
+        path = paths.get("import_output")
+        if not path:
+            raise ValueError(
+                "Missing required path 'import_output' in import_config.json. "
+                "Add to 'signal_paths' section: \"import_output\": \"data/processed/signals\""
+            )
+        return path
+
+    # ============================================
     # Paths — Test Environment
     # ============================================
 

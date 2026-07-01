@@ -26,8 +26,11 @@ from python.framework.types.process_data_types import (
     BarRequirement
 )
 from python.data_management.index.tick_index_manager import TickIndexManager
+from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 from python.framework.signal_data.signal_jsonl_loader import load_signal_series
+from python.framework.signal_data.signal_parquet_reader import load_signal_series_from_parquet
+from python.framework.exceptions.signal_data_errors import SignalDataUnavailableError
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
@@ -80,10 +83,15 @@ class SharedDataPreparator:
         self.bar_index_manager = BarsIndexManager(self._logger)
         self.bar_index_manager.build_index()  # Auto-loads or rebuilds
 
+        # Signal index manager (#429) — empty when no signals imported
+        self.signal_index_manager = SignalIndexManager(self._logger)
+        self.signal_index_manager.build_index()  # Auto-loads or rebuilds
+
         self._logger.info(
             f"✅ Indices loaded: "
             f"{len(self.tick_index_manager.list_symbols())} tick symbols, "
-            f"{len(self.bar_index_manager.list_symbols())} bar symbols"
+            f"{len(self.bar_index_manager.list_symbols())} bar symbols, "
+            f"{len(self.signal_index_manager.list_sentiment_types())} signal sources"
         )
 
     def prepare_scenario_packages(
@@ -168,6 +176,19 @@ class SharedDataPreparator:
                 scenario, all_bars_dict, all_bar_counts
             )
 
+            # Load SIGNAL data (#429). A config/data problem (source not imported, or the
+            # scenario range entirely outside the signal coverage) excludes ONLY this
+            # scenario (§33) — never crashes the batch. A partial overlap is fine.
+            try:
+                signal_series = self._load_signals_for_scenario(
+                    scenario, requirements_map)
+            except SignalDataUnavailableError as e:
+                self._logger.error(f"❌ {scenario.name}: {e}")
+                scenario.validation_result.append(ValidationResult(
+                    is_valid=False, scenario_name=scenario.name,
+                    errors=[str(e)], warnings=[]))
+                continue
+
             # Create scenario-specific package
             scenario_packages[scenario_index] = ProcessDataPackage(
                 ticks=scenario_ticks['ticks'],
@@ -176,8 +197,7 @@ class SharedDataPreparator:
                 tick_counts=scenario_ticks['counts'],
                 tick_ranges=scenario_ticks['ranges'],
                 bar_counts=scenario_bars['counts'],
-                signal_series=self._load_signals_for_scenario(
-                    scenario, requirements_map),
+                signal_series=signal_series,
             )
 
             # Collect data_format_versions from actually loaded Parquet files
@@ -229,17 +249,40 @@ class SharedDataPreparator:
         for req in requirements_map.signal_requirements:
             if req.scenario_name != scenario.name:
                 continue
-            if not req.data_path:
-                raise ValueError(
-                    f"SIGNAL source '{req.source}' for scenario '{scenario.name}' "
-                    f"has no 'data_path' configured (auto-resolution not yet available)."
+
+            # Primary path (#429): resolve the first-class data_sentiment_type via the
+            # signal index → projected parquet read. data_path is an explicit dev override.
+            if req.data_sentiment_type:
+                # No end_date → include everything from start onward; the reader trims.
+                lookup_end = ensure_utc_aware(req.end_time) if req.end_time else \
+                    datetime(2100, 1, 1, tzinfo=timezone.utc)
+                files = self.signal_index_manager.get_relevant_files(
+                    req.data_sentiment_type, req.symbol,
+                    ensure_utc_aware(req.start_time), lookup_end)
+                if not files:
+                    raise SignalDataUnavailableError(
+                        f"SIGNAL source '{req.data_sentiment_type}' has no imported data "
+                        f"for symbol '{req.symbol}' in scenario '{scenario.name}' "
+                        f"(range {req.start_time} → {req.end_time}). Run the signal import "
+                        f"or check the scenario's 'data_sentiment_type'."
+                    )
+                series = load_signal_series_from_parquet(
+                    files, source=req.source, symbol=req.symbol,
+                    start=req.start_time, end=req.end_time)
+            elif req.data_path:
+                # Explicit dev override — read the raw JSONL directly (v0).
+                path = Path(req.data_path)
+                if not path.is_absolute():
+                    path = Path.cwd() / path
+                series = load_signal_series(
+                    path, source=req.source,
+                    start=req.start_time, end=req.end_time)
+            else:
+                raise SignalDataUnavailableError(
+                    f"SIGNAL source '{req.source}' for scenario '{scenario.name}' has "
+                    f"neither a 'data_sentiment_type' nor a 'data_path' override configured."
                 )
-            path = Path(req.data_path)
-            if not path.is_absolute():
-                path = Path.cwd() / path
-            series = load_signal_series(
-                path, source=req.source,
-                start=req.start_time, end=req.end_time)
+
             series_by_source[req.source] = series
             self._logger.debug(
                 f"📡 Loaded signal '{req.source}' for {scenario.name}: "

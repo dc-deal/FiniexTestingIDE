@@ -47,6 +47,7 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         max_drawdown=stats.max_drawdown,
         total_fees=stats.total_fees,
         data_source=unit.data_source,
+        sentiment_source=unit.sentiment_source,
         broker_name=stats.broker_name,
         spot_mode=stats.spot_mode,
         total_long_trades=stats.total_long_trades,

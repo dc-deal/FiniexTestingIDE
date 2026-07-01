@@ -250,6 +250,8 @@ class ScenarioConfigLoader:
                 scenario_index=current_scenario_index,
                 symbol=scenario_data['symbol'],
                 data_broker_type=data_broker_type,
+                # First-class sentiment source (#429), optional — '' = no SIGNAL input
+                data_sentiment_type=scenario_data.get('data_sentiment_type', ''),
                 start_date=parse_datetime(scenario_data['start_date']),
                 end_date=parse_datetime(scenario_data['end_date']) if scenario_data.get(
                     'end_date') else None,

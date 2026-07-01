@@ -122,6 +122,68 @@
             }
         },
         {
+            "name": "📥 Signal Import (Override)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "import",
+                "--override"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 8
+            }
+        },
+        {
+            "name": "🛠️ Inspect Sentiment: crypto_sentiment BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "inspect",
+                "crypto_sentiment",
+                "BTCUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 9
+            }
+        },
+        {
+            "name": "📡 Signal Index: Status",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "status"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 10
+            }
+        },
+        {
+            "name": "📡 Signal Index: Rebuild",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "rebuild"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 11
+            }
+        },
+        {
             "name": "🧩 Pytest: Run All Core Tests",
             "type": "debugpy",
             "request": "launch",
@@ -129,7 +191,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "02_data_pipeline",
-                "order": 8
+                "order": 12
             }
         },
         // ====================================================
@@ -339,6 +401,26 @@
             "args": [
                 "run",
                 "eurusd_3_windows_reference.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 6
+            }
+        },
+        // 📡 SIGNAL feature demo: forex_macro_sentiment on mt5/EURUSD. The window straddles the
+        // sentiment coverage end (…05-03T23:50) → the tail runs on STALE sentiment (worker
+        // is_stale=True), so the hybrid decision falls back to pure-indicator mode. Shows the
+        // signal data source on a 2nd market + graceful degradation beyond the sentiment segment.
+        {
+            "name": "📡 Run Sentiment Forex Demo (EURUSD, degradation)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/sentiment_forex_demo.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -2018,6 +2100,23 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 41
+            }
+        },
+        {
+            "name": "🧩 Pytest: Signal Import (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/data/signal_import/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 42
             }
         },
         {

@@ -71,6 +71,7 @@
 |----------|-------------|
 | [TickCollector Guide](data_pipeline/tick_collector_guide.md) | MQL5 data collection, JSON schema, error classification |
 | [Data Import Pipeline](data_pipeline/data_import_pipeline.md) | JSON→Parquet conversion, UTC normalization, bar rendering |
+| [Signal Data Source](data_pipeline/signal_data_source.md) | Sentiment/signal source: JSONL→Parquet import, index, `data_sentiment_type` resolution |
 | [Batch Preparation](data_pipeline/batch_preparation_system.md) | 7-phase orchestration system |
 | [Duplicate Detection](data_pipeline/duplicate_detection_usage.md) | Artificial duplicate detection, data integrity protection |
 
@@ -121,6 +122,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Trend Channel Reference](tests/simulation/trend_channel_reference_tests.md) | Didactic full-order-surface reference: LIMIT/STOP entries, SL/TP, trailing, partial, multi-position (#118) |
 | [Benchmark](tests/simulation/benchmark_tests.md) | Performance regression (environment-specific) |
 | [Import Pipeline](tests/data/import_pipeline_tests.md) | Tick/bar import pipeline |
+| [Signal Import](tests/data/signal_import_tests.md) | Signal JSONL→parquet import, index, projected reader, v0 parity (#429) |
 | [Data Integration](tests/data/data_integration_tests.md) | Data chain integration |
 | [Inter-Tick Interval](tests/data/inter_tick_interval_tests.md) | Market-side interval measurement |
 | [Tick Processing Budget](tests/data/tick_processing_budget_tests.md) | Virtual clock filtering, ClippingStats |

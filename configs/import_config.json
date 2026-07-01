@@ -11,6 +11,10 @@
         "import_output": "data/test/import/processed",
         "data_finished": "data/test/import/finished"
     },
+    "signal_paths": {
+        "data_raw": "data/raw/signals",
+        "import_output": "data/processed/signals"
+    },
     "offset_registry": {
         "mt5": {
             "default_offset_hours": -3,

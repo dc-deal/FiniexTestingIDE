@@ -29,6 +29,7 @@ class RunUnit:
     name: str
     symbol: str
     data_source: str = ''           # data broker type (sim: scenario; live: '')
+    sentiment_source: str = ''      # data_sentiment_type (#429; sim scenario, '' if none/live)
     has_error: bool = False         # hybrid: partial data + error (sim) / emergency (live)
     trade_history: List[TradeRecord] = field(default_factory=list)
     order_history: List[OrderResult] = field(default_factory=list)
@@ -63,6 +64,7 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
             name=result.scenario_name,
             symbol=scenario.symbol,
             data_source=scenario.data_broker_type,
+            sentiment_source=scenario.data_sentiment_type,
             has_error=bool(result.error_type or result.error_message),
             trade_history=tick_loop.trade_history or [],
             order_history=tick_loop.order_history or [],

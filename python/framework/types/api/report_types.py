@@ -157,6 +157,7 @@ class PortfolioUnitRow(BaseModel):
     # Full projection — the per-scenario linear block renders purely from these (defaulted:
     # additive columns; the per-currency aggregated section stays on PortfolioAggregator).
     data_source: str = ''       # the scenario's data broker type (box line "Data: …")
+    sentiment_source: str = ''  # the scenario's data_sentiment_type, if any (#429; box line "· Sentiment: …")
     broker_name: str = ''
     spot_mode: bool = False
     total_long_trades: int = 0

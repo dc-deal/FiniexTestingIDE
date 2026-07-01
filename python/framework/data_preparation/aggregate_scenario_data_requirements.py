@@ -132,6 +132,7 @@ class AggregateScenarioDataRequirements:
                     broker_type=scenario.data_broker_type,
                     symbol=scenario.symbol,
                     source=worker_class.get_signal_source(),
+                    data_sentiment_type=scenario.data_sentiment_type,
                     data_path=worker_config.get('data_path', ''),
                     start_time=start_time,
                     end_time=end_time,
