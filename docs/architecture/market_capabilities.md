@@ -52,6 +52,11 @@ Return values:
 
 The method is declared on `AbstractWorker` with `raise NotImplementedError(...)` — missing overrides fail loudly with an actionable message. There is no silent default.
 
+> **SIGNAL workers are exempt:** `AbstractSignalWorker` already returns `None` (they look up
+> pre-collected external data instead of computing from bars, so they have no market-activity
+> dependency). A concrete SIGNAL worker inherits this and does not override the method — only
+> INDICATOR workers must declare a metric.
+
 ## Pre-Flight Validation Flow
 
 Validation happens in **Phase 3 — Requirements Collection**, inside `RequirementsCollector.collect_and_validate()` as the first per-scenario step — before the warmup-requirements aggregator touches the scenario:
@@ -96,7 +101,7 @@ The message is built by `MarketCompatibilityError` with structured fields so it 
 
 ## Adding a New Worker
 
-1. Inherit from `AbstractWorker` and override `get_required_activity_metric()`. Omitting it is a runtime error, caught at pre-flight.
+1. Inherit from `AbstractIndicatorWorker` and override `get_required_activity_metric()`. Omitting it is a runtime error, caught at pre-flight. (SIGNAL workers inherit `None` from `AbstractSignalWorker` — this section is about INDICATOR workers.)
 2. If the worker is price-based, return `None`.
 3. If it depends on an activity metric, return the exact string declared in `market_config.json`.
 4. No further wiring — the factory resolves the class, the validator handles the rest.

@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Type
 
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
+from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference
 from python.framework.decision_logic.core.backtesting.backtesting_deterministic import BacktestingDeterministic
 from python.framework.decision_logic.core.cautious_macd import CautiousMacd
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
@@ -79,6 +80,7 @@ class DecisionLogicFactory:
             self._registry['CORE/aggressive_trend'] = (AggressiveTrend, None)
             self._registry['CORE/cautious_macd'] = (CautiousMacd, None)
             self._registry['CORE/trend_channel_reference'] = (TrendChannelReference, None)
+            self._registry['CORE/hybrid_sentiment_reference'] = (HybridSentimentReference, None)
             self._registry['CORE/backtesting/backtesting_deterministic'] = (BacktestingDeterministic, None)
             self._registry['CORE/backtesting/backtesting_margin_stress'] = (BacktestingMarginStress, None)
             self._registry['CORE/backtesting/backtesting_multi_position'] = (BacktestingMultiPosition, None)

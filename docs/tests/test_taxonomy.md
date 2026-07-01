@@ -81,6 +81,7 @@ tests/
 │   ├── batch_validations/ unit — ScenarioValidator, BrokerDataPreparator (Phase 0 batch pipeline)
 │   ├── config/            unit — execution_config 3-level cascade (#137)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
+│   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141)
 │   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)
 │   ├── market_compatibility/ unit — market activity metric, validator
 │   ├── tick_parquet_reader/  unit — parquet reader normalization

@@ -24,6 +24,7 @@ from python.framework.types.portfolio_types.portfolio_aggregation_types import P
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.signal_data_types import SignalSeries
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
@@ -70,6 +71,23 @@ class BarRequirement:
 
 
 @dataclass
+class SignalRequirement:
+    """
+    Signal-data requirement for one scenario's SIGNAL worker (#141).
+
+    Mirrors BarRequirement: the data identity (source + symbol + range) the
+    SharedDataPreparator loads into the scenario's SignalSeries.
+    """
+    scenario_name: str
+    broker_type: str
+    symbol: str
+    source: str            # e.g. 'llm_sentiment'
+    data_path: str         # explicit archive path ('' = auto-resolve, future)
+    start_time: datetime
+    end_time: Optional[datetime] = None
+
+
+@dataclass
 class RequirementsMap:
     """
     Aggregated requirements from all scenarios.
@@ -79,6 +97,7 @@ class RequirementsMap:
     """
     tick_requirements: List[TickRequirement] = field(default_factory=list)
     bar_requirements: List[BarRequirement] = field(default_factory=list)
+    signal_requirements: List[SignalRequirement] = field(default_factory=list)
 
     def add_tick_requirement(self, req: TickRequirement) -> None:
         """Add tick requirement (deduplication handled in finalize)."""
@@ -87,6 +106,10 @@ class RequirementsMap:
     def add_bar_requirement(self, req: BarRequirement) -> None:
         """Add bar requirement (deduplication handled in finalize)."""
         self.bar_requirements.append(req)
+
+    def add_signal_requirement(self, req: SignalRequirement) -> None:
+        """Add signal-data requirement for a SIGNAL worker."""
+        self.signal_requirements.append(req)
 
 
 # ============================================================================
@@ -139,6 +162,10 @@ class ProcessDataPackage:
     # Bar counts per (symbol, timeframe, start_time)
     bar_counts: Dict[Tuple[str, str, datetime],
                      int] = field(default_factory=dict)
+
+    # Signal data per source (e.g. 'llm_sentiment' → SignalSeries) — loaded for
+    # the scenario range; the SignalDataProvider is built + injected subprocess-side.
+    signal_series: Dict[str, SignalSeries] = field(default_factory=dict)
 
 
 # ============================================================================

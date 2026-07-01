@@ -19,8 +19,10 @@ from python.framework.types.process_data_types import (
     RequirementsMap,
     TickRequirement,
     BarRequirement,
+    SignalRequirement,
 )
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.worker_types import WorkerType
 
 
 class AggregateScenarioDataRequirements:
@@ -122,6 +124,19 @@ class AggregateScenarioDataRequirements:
             )
             for w in warnings:
                 self._logger.warning(f"⚠️ {w}")
+
+            # SIGNAL workers contribute a signal-data requirement (no warmup/bars).
+            if worker_class.get_worker_type() == WorkerType.SIGNAL:
+                self.requirements.add_signal_requirement(SignalRequirement(
+                    scenario_name=scenario.name,
+                    broker_type=scenario.data_broker_type,
+                    symbol=scenario.symbol,
+                    source=worker_class.get_signal_source(),
+                    data_path=worker_config.get('data_path', ''),
+                    start_time=start_time,
+                    end_time=end_time,
+                ))
+                continue
 
             # Calculate requirements via CLASSMETHOD (no instance!)
             requirements = worker_class.calculate_requirements(worker_config)

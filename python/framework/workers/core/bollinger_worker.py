@@ -14,11 +14,11 @@ from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
 from python.framework.utils.trading_math.moving_average import moving_average
 from python.framework.utils.trading_math.normalizer import Normalizer
-from python.framework.workers.abstract_worker import \
-    AbstractWorker
+from python.framework.workers.abstract_indicator_worker import \
+    AbstractIndicatorWorker
 
 
-class BollingerWorker(AbstractWorker):
+class BollingerWorker(AbstractIndicatorWorker):
     """Bollinger Band worker - Bar-based computation"""
 
     def __init__(self, name, parameters, logger, trading_context=None):

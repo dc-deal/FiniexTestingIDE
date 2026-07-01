@@ -27,11 +27,13 @@ from python.framework.types.process_data_types import (
 )
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
+from python.framework.signal_data.signal_jsonl_loader import load_signal_series
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
 from python.framework.utils.process_serialization_utils import serialize_ticks_for_transport, time_range_from_transport_ticks
 from python.framework.utils.time_utils import ensure_utc_aware
+from python.framework.types.signal_data_types import SignalSeries
 
 
 class SharedDataPreparator:
@@ -173,7 +175,9 @@ class SharedDataPreparator:
                 broker_configs=broker_configs,
                 tick_counts=scenario_ticks['counts'],
                 tick_ranges=scenario_ticks['ranges'],
-                bar_counts=scenario_bars['counts']
+                bar_counts=scenario_bars['counts'],
+                signal_series=self._load_signals_for_scenario(
+                    scenario, requirements_map),
             )
 
             # Collect data_format_versions from actually loaded Parquet files
@@ -201,6 +205,47 @@ class SharedDataPreparator:
             bars_s=bars_s,
             packaging_s=packaging_s
         )
+
+    def _load_signals_for_scenario(
+        self,
+        scenario: SingleScenario,
+        requirements_map: RequirementsMap,
+    ) -> Dict[str, SignalSeries]:
+        """
+        Load the SIGNAL worker archives for one scenario (#141).
+
+        For each of the scenario's SignalRequirements, loads + validates +
+        time-orders the archive for the scenario range into a SignalSeries, keyed
+        by source. The SignalDataProvider is built + injected subprocess-side.
+
+        Args:
+            scenario: The scenario to load signal data for
+            requirements_map: Aggregated requirements (carries the SignalRequirements)
+
+        Returns:
+            Dict[source, SignalSeries] (empty when the scenario has no SIGNAL worker)
+        """
+        series_by_source: Dict[str, SignalSeries] = {}
+        for req in requirements_map.signal_requirements:
+            if req.scenario_name != scenario.name:
+                continue
+            if not req.data_path:
+                raise ValueError(
+                    f"SIGNAL source '{req.source}' for scenario '{scenario.name}' "
+                    f"has no 'data_path' configured (auto-resolution not yet available)."
+                )
+            path = Path(req.data_path)
+            if not path.is_absolute():
+                path = Path.cwd() / path
+            series = load_signal_series(
+                path, source=req.source,
+                start=req.start_time, end=req.end_time)
+            series_by_source[req.source] = series
+            self._logger.debug(
+                f"📡 Loaded signal '{req.source}' for {scenario.name}: "
+                f"{len(series.snapshots)} snapshots"
+            )
+        return series_by_source
 
     def _collect_parquet_versions(
         self,

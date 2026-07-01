@@ -30,6 +30,7 @@ class WorkerState(Enum):
 class WorkerType(Enum):
     """Worker type classification for monitoring and performance tracking."""
     INDICATOR = "indicator"   # Synchronous calculations (RSI, SMA, etc.)
+    SIGNAL = "signal"         # Pre-collected external data lookup (#141)
     API = "api"               # HTTP requests (News API, Sentiment) - Post-V1
     # Live connections (WebSocket, AI alerts) - Post-V1
     EVENT = "event"

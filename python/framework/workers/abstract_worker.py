@@ -11,18 +11,18 @@ from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef, ValidatedParameters
 from python.framework.validators.parameter_validator import validate_parameters
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
-from python.framework.types.market_types.market_data_types import Bar, TickData
-from python.framework.types.worker_types import (
-    ComputeBasis, WorkerResult, WorkerState, WorkerType)
+from python.framework.types.worker_types import WorkerResult, WorkerState, WorkerType
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
 class AbstractWorker(ABC):
     """
-    Abstract base class for all blackbox workers
+    Abstract base class for all blackbox workers.
 
-    Workers compute indicators/signals based on bar data
+    The lean cross-type contract: identity, parameters, output schema, the
+    consumed-output subscription (#425), metadata, and lifecycle. The compute
+    surface itself is type-specific — bar-centric workers extend
+    AbstractIndicatorWorker, external-data workers extend AbstractSignalWorker.
     """
 
     # Type-specific required config fields
@@ -76,102 +76,13 @@ class AbstractWorker(ABC):
         # which reads: worker.parameters['worker_type']
         self.parameters = self.params.as_dict()
 
-        # --- Infrastructure: auto-extract 'periods' for INDICATOR workers ---
-        # This eliminates the #1 boilerplate pattern across all INDICATOR workers
-        # and prevents the OBV bug (missing self.periods) from ever recurring.
-        if self.__class__.get_worker_type() == WorkerType.INDICATOR:
-            self.periods = self.params.get('periods')
-
-        # Compute basis (#420) — resolved lazily on first use and cached
-        # (config 'compute_basis' override → the worker's declaration).
-        self._compute_basis: Optional[ComputeBasis] = None
-
         # Consumed-output set, injected by the orchestrator from the decision
         # logic's declaration. None = no declaration = compute every output.
         self._requested_outputs: Optional[Set[str]] = None
 
-    @abstractmethod
-    def get_warmup_requirements(self) -> Dict[str, int]:
-        """
-        Get warmup requirements per timeframe.
-
-        Calculated from instance parameters (e.g., self.period).
-
-        Returns:
-            Dict[timeframe, bars_needed]
-            Example: {"M5": 20, "M15": 20}
-        """
-        pass
-
-    @abstractmethod
-    def get_required_timeframes(self) -> List[str]:
-        """
-        Get required timeframes for this worker instance.
-
-        Calculated from instance parameters (e.g., self.timeframe).
-
-        Returns:
-            List of timeframe strings
-            Example: ["M5"]
-        """
-        pass
-
-    @abstractmethod
-    def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
-        """
-        Determine if worker should recompute on this tick
-
-        Args:
-            tick: Current tick data
-            bar_updated: Whether a bar was updated/completed
-
-        Returns:
-            True if recomputation needed
-        """
-        pass
-
-    @abstractmethod
-    def compute(
-        self,
-        tick: TickData,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
-    ) -> WorkerResult:
-        """
-        Compute worker output based on bar data
-
-        Args:
-            tick: Current tick (for metadata/timestamp)
-            bar_history: Historical bars per timeframe
-            current_bars: Current bars per timeframe
-
-        Returns:
-            WorkerResult with outputs dict matching get_output_schema() keys
-        """
-        pass
-
     def get_last_result(self) -> WorkerResult:
         """Get last computation result"""
         return self._last_result
-
-    def get_compute_basis(self) -> ComputeBasis:
-        """
-        Effective compute basis for this worker instance (#420), cached.
-
-        The per-instance config key 'compute_basis' overrides the worker's
-        declaration (get_default_compute_basis): the same CORE worker class can be
-        LIVE for a tick-reactive strategy and BAR_CLOSE for a bar-grid strategy,
-        decided in the run config. Resolved once and cached — no per-tick lookup.
-
-        Returns:
-            ComputeBasis governing when/what the orchestrator recomputes this worker
-        """
-        if self._compute_basis is None:
-            configured = self.parameters.get('compute_basis')
-            self._compute_basis = (
-                ComputeBasis(configured) if configured
-                else self.get_default_compute_basis())
-        return self._compute_basis
 
     def set_requested_outputs(self, keys: Set[str]) -> None:
         """
@@ -201,45 +112,6 @@ class AbstractWorker(ABC):
             True if the output should be computed
         """
         return self._requested_outputs is None or key in self._requested_outputs
-
-    def effective_bars(
-        self,
-        timeframe: str,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
-        count: Optional[int] = None,
-    ) -> List[Bar]:
-        """
-        Bars this worker computes on for a timeframe (#420).
-
-        Completed history, plus the current (forming) bar when the basis is LIVE
-        (intra-bar view); completed-bars-only under BAR_CLOSE (the value changes
-        only on a bar close). Centralizes the append that was previously duplicated
-        inline in every worker's compute().
-
-        A window-bounded worker passes 'count' — the number of completed bars it
-        actually reads — so only that tail is materialized. For a worker that uses
-        just its last 'count' bars the result is identical to the full-history path,
-        but the per-compute cost drops from O(bar_max_history) to O(count) instead
-        of copying / scanning the whole history on every tick.
-
-        Args:
-            timeframe: Timeframe key
-            bar_history: Completed bars per timeframe
-            current_bars: Current (forming) bar per timeframe
-            count: Completed-bar window to keep (None = full history)
-
-        Returns:
-            List of bars to compute on (history tail, plus the current bar when LIVE)
-        """
-        bars = bar_history.get(timeframe, [])
-        if count is not None:
-            bars = bars[-count:]
-        if self.get_compute_basis() == ComputeBasis.LIVE:
-            current_bar = current_bars.get(timeframe)
-            if current_bar:
-                bars = (bars if count is not None else list(bars)) + [current_bar]
-        return bars
 
     def set_state(self, state: WorkerState):
         """Update worker state"""
@@ -310,31 +182,6 @@ class AbstractWorker(ABC):
         """
         return ComponentMetadata()
 
-    def get_default_compute_basis(self) -> ComputeBasis:
-        """
-        Declare the worker's compute basis (#420) — MUST be overridden by every worker.
-
-        Instance method, so the declaration may depend on the worker's own config
-        (self.params). Return ComputeBasis.LIVE (per-tick, intra-bar — the tick-native
-        default that preserves existing-set determinism) or ComputeBasis.BAR_CLOSE
-        (completed bars only, recompute on close — stable + cheap, only for consumers
-        that read on the bar-close grid). The per-instance config key 'compute_basis'
-        overrides this per run.
-
-        Returns:
-            The worker's declared ComputeBasis
-
-        Raises:
-            NotImplementedError: If a subclass does not override this method.
-        """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must declare get_default_compute_basis(). "
-            f"Return ComputeBasis.LIVE for a tick-reactive worker (intra-bar value, "
-            f"e.g. band position from tick.mid) or ComputeBasis.BAR_CLOSE for a "
-            f"completed-bar indicator read on the bar-close grid. "
-            f"See docs/user_guides/worker_naming_doc.md."
-        )
-
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
         """
@@ -394,14 +241,15 @@ class AbstractWorker(ABC):
         """
         Non-schema config keys the framework accepts on a worker.
 
-        Covers the per-instance framework opt-in (compute_basis), the factory-injected
-        worker_type, and the type-specific structural fields (e.g. 'periods' for
-        INDICATOR) — none of which appear in get_parameter_schema().
+        Covers the factory-injected worker_type and the type-specific structural
+        fields (e.g. 'periods' for INDICATOR) — none of which appear in
+        get_parameter_schema(). Type-specific bases extend this (the indicator
+        base adds 'compute_basis').
 
         Returns:
             Set of reserved config keys that are not unknown parameters
         """
-        reserved = {'compute_basis', 'worker_type'}
+        reserved = {'worker_type'}
         reserved.update(cls.REQUIRED_CONFIG_FIELDS.get(cls.get_worker_type(), []))
         return reserved
 
@@ -410,7 +258,8 @@ class AbstractWorker(ABC):
         """
         Validate config has type-specific required fields.
 
-        Raises ValueError if required fields missing.
+        Raises ValueError if required fields missing. Type-specific bases extend
+        this (the indicator base adds compute_basis + periods validation).
         Called by WorkerFactory before instantiation.
 
         Args:
@@ -419,16 +268,6 @@ class AbstractWorker(ABC):
         Raises:
             ValueError: If required fields missing
         """
-        # Reserved framework key: compute basis (per-instance opt-in, #420)
-        compute_basis = config.get('compute_basis')
-        if compute_basis is not None:
-            valid = [c.value for c in ComputeBasis]
-            if compute_basis not in valid:
-                raise ValueError(
-                    f"Worker '{cls.__name__}': invalid 'compute_basis' "
-                    f"'{compute_basis}'. Allowed: {valid}"
-                )
-
         worker_type = cls.get_worker_type()
         required_fields = cls.REQUIRED_CONFIG_FIELDS.get(worker_type, [])
 
@@ -439,44 +278,18 @@ class AbstractWorker(ABC):
                     f"'{field}' in config"
                 )
 
-            # Validate 'periods' is not empty for INDICATOR
-            if field == "periods" and not config[field]:
-                raise ValueError(
-                    f"INDICATOR worker '{cls.__name__}' requires non-empty "
-                    f"'periods' dict (e.g. {{'M5': 20}})"
-                )
-
-            # Validate timeframe keys inside 'periods'
-            if field == "periods":
-                for tf in config[field].keys():
-                    # uses our central registry
-                    TimeframeConfig.normalize(tf)
-
     @classmethod
     def calculate_requirements(cls, config: Dict[str, Any]) -> Dict[str, int]:
         """
-        Calculate warmup requirements from config WITHOUT creating instance.
+        Calculate warmup requirements from config WITHOUT creating an instance.
 
-        This is THE KEY METHOD that eliminates double worker creation:
-        - Phase 0: Call this to get requirements (no instance needed)
-        - Phase 6: Create actual worker instance for execution
-
-        Override in subclass for custom logic (e.g., MACD max(fast, slow)).
+        Base default: no warmup (empty). Bar-centric workers override —
+        AbstractIndicatorWorker returns the 'periods' map.
 
         Args:
             config: Worker configuration dict
 
         Returns:
-            Dict[timeframe, bars_needed] - e.g. {"M5": 20, "M30": 50}
-
-        Example:
-            >>> config = {"periods": {"M5": 20, "M30": 50}, "deviation": 2.0}
-            >>> BollingerWorker.calculate_requirements(config)
-            {"M5": 20, "M30": 50}
+            Dict[timeframe, bars_needed] (empty for workers with no warmup)
         """
-        # Default implementation: Use 'periods' directly for INDICATOR
-        if cls.get_worker_type() == WorkerType.INDICATOR:
-            return config.get("periods", {})
-
-        # Non-INDICATOR workers return empty (no warmup needed)
         return {}

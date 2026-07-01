@@ -27,11 +27,34 @@ Components are referenced by type strings in scenario configs and in `get_requir
 
 Pre-registered at factory startup. Always available.
 
-**Workers:** `CORE/rsi`, `CORE/bollinger`, `CORE/ma_trend`, `CORE/macd`, `CORE/obv`, `CORE/heavy_rsi`
+**Workers (INDICATOR):** `CORE/rsi`, `CORE/bollinger`, `CORE/ma_trend`, `CORE/macd`, `CORE/obv`, `CORE/heavy_rsi`
 
-**Decision Logics:** `CORE/simple_consensus`, `CORE/aggressive_trend`, `CORE/cautious_macd`, `CORE/trend_channel_reference`
+**Workers (SIGNAL):** `CORE/llm_sentiment` (#141 — pre-collected sentiment lookup, see *Worker Types* below)
+
+**Decision Logics:** `CORE/simple_consensus`, `CORE/aggressive_trend`, `CORE/cautious_macd`, `CORE/trend_channel_reference`, `CORE/hybrid_sentiment_reference`
 
 Backtesting variants: `CORE/backtesting/backtesting_deterministic`, `CORE/backtesting/backtesting_margin_stress`, `CORE/backtesting/backtesting_multi_position`
+
+---
+
+## Worker Types — INDICATOR vs SIGNAL
+
+Every worker inherits the lean `AbstractWorker` contract through one of two type-specialized bases:
+
+- **INDICATOR** (`AbstractIndicatorWorker`) — synchronous computation from bars/ticks (RSI,
+  Bollinger, MACD, …). Declares `periods`, a compute basis (#420), and recomputes on bar updates.
+- **SIGNAL** (`AbstractSignalWorker`, #141) — looks up **pre-collected external data** by timestamp
+  instead of computing from bars. No warmup, no timeframes, no compute basis. The first SIGNAL
+  worker is `CORE/llm_sentiment`, reading archived LLM sentiment.
+
+A SIGNAL worker resolves, per tick, the most recent snapshot with `collected_msc ≤ tick` (the
+no-look-ahead key) via an injected `SignalDataProvider`, and refreshes only when the tick crosses
+into a new snapshot window. The provider is built from the prepared signal series in the data
+package and injected by the framework (sim subprocess / live boot) — never constructed by the
+worker. Both types return a `WorkerResult`, so the decision logic sees no difference.
+
+The signal archive is referenced today via the worker's `data_path` param (a pragmatic v0); the
+first-class `data_sentiment_type` data source (import → index → parquet) is the deferred follow-up.
 
 ---
 

@@ -12,11 +12,11 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
-from python.framework.workers.abstract_worker import \
-    AbstractWorker
+from python.framework.workers.abstract_indicator_worker import \
+    AbstractIndicatorWorker
 
 
-class HeavyRsiWorker(AbstractWorker):
+class HeavyRsiWorker(AbstractIndicatorWorker):
     """
     RSI worker with artificial CPU load.
     Simulates complex calculations (e.g., ML models, FFT, etc.)
