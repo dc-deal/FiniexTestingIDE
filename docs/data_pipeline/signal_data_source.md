@@ -72,8 +72,39 @@ A worker config may still carry an explicit `data_path` (raw JSONL) as a develop
 takes effect only when `data_sentiment_type` is not set on the scenario. The first-class
 `data_sentiment_type` is the normal path.
 
+## AutoTrader mock feed — `sentiment_source` (profile block)
+
+The AutoTrader mock pipeline consumes the same archives through a profile block that mirrors
+`tick_source`:
+
+```json
+"sentiment_source": {
+  "type": "mock",
+  "data_sentiment_type": "crypto_sentiment"
+}
+```
+
+At startup (`setup_sentiment_feed`, mirror of the sim's provider injection) the feed is resolved
+against the **mock tick parquet's time range**, read through the same projected reader, and injected
+as a `SignalDataProvider` into each SIGNAL worker. Validation is strict and fails at startup, never
+at the first tick:
+
+| Case | Behavior |
+|------|----------|
+| SIGNAL worker, no `sentiment_source` | Startup abort (clear config error) |
+| `sentiment_source`, no SIGNAL worker | Warning (dead config), feed skipped |
+| `type` other than `mock` | Startup abort (live sentiment = future event path) |
+| `tick_source.type` not `mock` | Startup abort (recorded sentiment vs. live ticks is meaningless) |
+| No index overlap with the tick window | Startup abort (`SignalDataUnavailableError`) |
+
+`parquet_path` (a processed signal parquet) is the explicit override — used e.g. for **deliberate
+outage tests**: a tick file entirely after the archive end resolves only the aged last snapshot, so
+the worker reports `is_stale` for the whole session and the decision degrades (the index path would
+correctly reject that window as non-overlapping). The session summary tags the feed as
+`· 📡 Sentiment: <type>`.
+
 ## Scope
 
-Sim (backtesting) pipeline. Live/AutoTrader sentiment resolution is the API/EVENT path (a separate
-follow-up); the processed parquet is intentionally directly loadable so a future AutoTrader mock
-`sentiment_source` can reuse the same reader.
+Sim (backtesting) pipeline + the AutoTrader **mock** feed above. Real-time/live sentiment
+(API/EVENT, push) is a separate follow-up on the event timeline; the shared reader keeps both
+worlds on one load path.

@@ -6,18 +6,38 @@ End-to-end validation of the AutoTrader mock pipeline and unit testing of AutoTr
 
 ## Test Files
 
-### test_autotrader_mock_session.py (2 Tests)
+### test_autotrader_mock_session.py (4 Tests)
 
-Full pipeline integration: runs a complete session with deterministic parquet replay data and asserts on the `AutoTraderResult`.
+Full pipeline integration: runs a complete session with deterministic parquet replay data and asserts on the `AutoTraderResult`. Plus profile-loader parse guards (no session run).
 
 | Test | What it validates |
 |------|-------------------|
 | `test_full_mock_session` | Normal shutdown, tick count (29780), 0 clipping, 0 warnings/errors, trades produced, stats collected |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
+| `test_broker_report_written` | Broker report persisted (unified model) + rendered in the summary |
+| `test_tick_source_fields_fully_parsed` | Every `tick_source` profile key reaches the config (no silently dropped keys) |
 
 **Data Dependency:** Uses `configs/autotrader_profiles/backtesting/mock_session_test.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`.
 
 **Runtime:** ~6 seconds total (session shared across both tests via `scope='module'`).
+
+### test_autotrader_sentiment_feed.py (12 Tests)
+
+End-to-end validation of the `sentiment_source` mock feed (#431): index/override resolution,
+provider injection into SIGNAL workers, decision fusion in a live mock session, and the startup
+validation matrix.
+
+| Class | Tests | What it validates |
+|-------|-------|-------------------|
+| `TestSentimentMockSession` | 3 | Full session with index-resolved feed: normal shutdown, tick count (20000), clean pot; SIGNAL worker recomputed on snapshot crossings; portfolio report carries `sentiment_source` |
+| `TestSentimentOutageSession` | 2 | Deliberate outage (tick replay after archive end, `parquet_path` override): graceful `is_stale` degradation, single cold-start compute, no errors |
+| `TestSentimentFeedValidation` | 7 | Startup abort matrix: SIGNAL worker without feed, unknown type, live tick source, no index overlap, empty feed config; dead-config warning path; loader unknown-key guard |
+
+**Data Dependency:** `sentiment_mock_test.json` / `sentiment_outage_test.json` with BTCUSD tick
+parquets (2026-04-27 / 2026-05-04) and the imported `crypto_sentiment` signal archive
+(`data/processed/signals/crypto_sentiment/`).
+
+**Runtime:** ~16 seconds total (both sessions shared via `scope='module'`).
 
 ### test_autotrader_trade_lifecycle.py (15 Tests)
 

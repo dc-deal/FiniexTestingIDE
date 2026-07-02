@@ -19,8 +19,8 @@ from python.framework.autotrader.tick_sources.abstract_tick_source import Abstra
 from python.framework.autotrader.autotrader_startup import (
     create_autotrader_loggers,
     setup_pipeline,
-    setup_tick_source,
 )
+from python.framework.autotrader.tick_sources.tick_source_setup import setup_tick_source
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.reporting.autotrader_report_coordinator import AutotraderReportCoordinator
 from python.framework.bars.bar_rendering_controller import BarRenderingController

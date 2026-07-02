@@ -70,7 +70,7 @@ class LlmSentimentWorker(AbstractSignalWorker):
             'signal': OutputParamDef(
                 param_type=str, choices=('BUY', 'SELL', 'HOLD'),
                 description='Discrete sentiment signal',
-                category='SIGNAL',
+                category='SIGNAL', display=True, display_label='signal',
             ),
             'urgency': OutputParamDef(
                 param_type=float, min_val=0.0, max_val=1.0,
@@ -85,7 +85,7 @@ class LlmSentimentWorker(AbstractSignalWorker):
             'is_stale': OutputParamDef(
                 param_type=bool,
                 description='Snapshot older than max_staleness_minutes (or a gap)',
-                category='INFO',
+                category='INFO', display=True, display_label='stale',
             ),
             'reasoning': OutputParamDef(
                 param_type=str,

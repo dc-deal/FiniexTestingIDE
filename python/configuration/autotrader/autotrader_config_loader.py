@@ -13,6 +13,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import (
     AccountConfig,
     AutoTraderConfig,
     SafetyConfig,
+    SentimentSourceConfig,
     TickSourceConfig,
 )
 from python.framework.types.config_types.autotrader_defaults_config_types import (
@@ -60,6 +61,7 @@ _KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = _allowlist_from(StatePersistenceDe
 _KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
 _KNOWN_ACCOUNT_KEYS: frozenset              = _allowlist_from(AccountConfig)
 _KNOWN_TICK_SOURCE_KEYS: frozenset          = _allowlist_from(TickSourceConfig)
+_KNOWN_SENTIMENT_SOURCE_KEYS: frozenset     = _allowlist_from(SentimentSourceConfig)
 
 
 def load_autotrader_config(config_path: str) -> AutoTraderConfig:
@@ -108,6 +110,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     # Parse nested config sections
     account_raw = raw.get('account', {})
     tick_source_raw = raw.get('tick_source', {})
+    sentiment_source_raw = raw.get('sentiment_source', {})
     execution_raw = raw.get('execution', {})
     clipping_raw = raw.get('clipping_monitor', {})
     display_raw = raw.get('display', {})
@@ -133,6 +136,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('state_persistence',   state_persistence_raw, _KNOWN_STATE_PERSISTENCE_KEYS)
     check_unknown_keys('account',             account_raw,      _KNOWN_ACCOUNT_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
+    check_unknown_keys('sentiment_source',    sentiment_source_raw, _KNOWN_SENTIMENT_SOURCE_KEYS)
 
     # Drift-audit default depends on adapter_type. Mock adapters produce
     # synthetic fee/volume figures that don't reflect any real broker — the
@@ -188,8 +192,17 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             type=tick_source_raw.get('type', 'mock'),
             parquet_path=tick_source_raw.get('parquet_path', ''),
             max_ticks=tick_source_raw.get('max_ticks', 0),
+            tick_delay_ms=tick_source_raw.get('tick_delay_ms', 0),
+            ws_url=tick_source_raw.get('ws_url', 'wss://ws.kraken.com/v2'),
+            reconnect_initial_delay_s=tick_source_raw.get('reconnect_initial_delay_s', 1.0),
+            reconnect_max_delay_s=tick_source_raw.get('reconnect_max_delay_s', 60.0),
             connection_check_interval_s=tick_source_raw.get('connection_check_interval_s', 30.0),
             connection_dead_s=tick_source_raw.get('connection_dead_s', 90.0),
+        ),
+        sentiment_source=SentimentSourceConfig(
+            type=sentiment_source_raw.get('type', ''),
+            data_sentiment_type=sentiment_source_raw.get('data_sentiment_type', ''),
+            parquet_path=sentiment_source_raw.get('parquet_path', ''),
         ),
         execution=AutotraderExecutionDefaults(
             parallel_workers=execution_raw.get('parallel_workers', False),

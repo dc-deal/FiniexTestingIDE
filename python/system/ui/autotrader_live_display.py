@@ -996,6 +996,16 @@ class AutoTraderLiveDisplay:
                 worker_lines.append(f'{worker_name:<16s} {", ".join(parts)}')
         if worker_lines:
             lines.append('─' * 40)
+            # Sentiment feed line (#431) — flagged when any SIGNAL worker reports staleness
+            if cache.sentiment_source:
+                feed_stale = any(
+                    outputs.get('is_stale') is True
+                    for outputs in stats.worker_outputs.values()
+                )
+                if feed_stale:
+                    lines.append(f'[yellow]📡 Feed: {cache.sentiment_source} [STALE][/yellow]')
+                else:
+                    lines.append(f'📡 Feed: {cache.sentiment_source}')
             lines.extend(worker_lines)
 
         if not lines:

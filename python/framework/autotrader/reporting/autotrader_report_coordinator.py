@@ -88,7 +88,7 @@ class AutotraderReportCoordinator:
         self._global_logger = global_logger
         # Already-resolved BrokerConfig — the sim `data_broker_type` vs. live `broker_type`
         # config-key asymmetry is resolved UPSTREAM (at AutoTrader startup, `config.broker_type`
-        # → `_create_broker_config`); here we only ever see the resolved object (its
+        # → `create_broker_config`); here we only ever see the resolved object (its
         # `broker_type` is a `BrokerType` enum), so reporting needs no key translation.
         self._broker_config = broker_config
 
@@ -110,7 +110,10 @@ class AutotraderReportCoordinator:
         # The session is one run unit → tagged with the profile/symbol name (#393).
         name = self._config.name or self._config.symbol
         # Extract the session's single run unit once (#391 Phase 2).
-        units = run_units_from_session(result, name, self._config.symbol)
+        # Sentiment feed label (#431): pipeline_id when index-resolved, file name on override.
+        units = run_units_from_session(
+            result, name, self._config.symbol,
+            sentiment_source=self._config.sentiment_source.get_feed_label())
 
         # Report artifacts (JSON + CSV) go into the session's io/ subfolder (#396 housekeeping).
         io_dir = self._run_dir / IO_SUBDIR
