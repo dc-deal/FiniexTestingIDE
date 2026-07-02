@@ -2133,7 +2133,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 42
+                "order": 43
             }
         },
         {
@@ -2150,7 +2150,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 42
+                "order": 44
             }
         },
         {
@@ -2167,7 +2167,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 42
+                "order": 45
             }
         },
         {
@@ -2184,7 +2184,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 43
+                "order": 46
             }
         },
         {
@@ -2201,7 +2201,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 44
+                "order": 47
             }
         },
         {
@@ -2218,7 +2218,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 45
+                "order": 48
             }
         },
         {
@@ -2235,7 +2235,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 46
+                "order": 49
             }
         },
         {
@@ -2252,7 +2252,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 47
+                "order": 50
             }
         },
         {
@@ -2269,7 +2269,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 48
+                "order": 51
             }
         },
         {
@@ -2286,7 +2286,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 49
+                "order": 52
             }
         },
         {
@@ -2303,7 +2303,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 50
+                "order": 53
             }
         },
         {
@@ -2318,7 +2318,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 51
+                "order": 54
             }
         },
         {
@@ -2335,7 +2335,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 52
+                "order": 55
             }
         },
         {
@@ -2355,7 +2355,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 52
+                "order": 56
             }
         },
         {
@@ -2375,7 +2375,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 53
+                "order": 57
             }
         },
         {
@@ -2395,7 +2395,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 54
+                "order": 58
             }
         },
         {
@@ -2415,7 +2415,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 55
+                "order": 59
             }
         },
         {
@@ -2435,7 +2435,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 56
+                "order": 60
             }
         },
         {
@@ -2455,7 +2455,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 57
+                "order": 61
             }
         },
         {
@@ -2475,7 +2475,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 58
+                "order": 62
             }
         },
         {
@@ -2495,7 +2495,47 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 59
+                "order": 63
+            }
+        },
+        {
+            "name": "🧪 AutoTrader: Sentiment Mock (BTCUSD)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/sentiment_mock_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 64
+            }
+        },
+        {
+            "name": "🧪 AutoTrader: Sentiment Outage (BTCUSD, stale tail)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/sentiment_outage_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 65
             }
         },
         {
@@ -2515,7 +2555,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 60
+                "order": 66
             }
         },
         {
@@ -2535,7 +2575,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 61
+                "order": 67
             }
         },
         {
@@ -2555,7 +2595,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 62
+                "order": 68
             }
         },
         {
@@ -2571,7 +2611,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 63
+                "order": 69
             }
         },
         {
@@ -2587,7 +2627,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 64
+                "order": 70
             }
         },
         {
@@ -2603,7 +2643,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 65
+                "order": 71
             }
         },
         {
@@ -2619,7 +2659,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 66
+                "order": 72
             }
         },
         {
@@ -2635,7 +2675,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 67
+                "order": 73
             }
         },
         {
@@ -2651,7 +2691,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 68
+                "order": 74
             }
         },
         {
@@ -2667,7 +2707,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 69
+                "order": 75
             }
         },
         {
@@ -2683,7 +2723,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 70
+                "order": 76
             }
         },
         {
@@ -2699,7 +2739,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 71
+                "order": 77
             }
         },
         {
@@ -2715,7 +2755,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 72
+                "order": 78
             }
         },
         {
@@ -2731,7 +2771,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 72
+                "order": 79
             }
         },
         {
@@ -2747,7 +2787,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 73
+                "order": 80
             }
         },
         {
@@ -2763,7 +2803,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 74
+                "order": 81
             }
         },
         {
@@ -2779,7 +2819,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 75
+                "order": 82
             }
         },
         {
@@ -2795,7 +2835,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 76
+                "order": 83
             }
         },
         // ====================================================

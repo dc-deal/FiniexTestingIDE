@@ -6,6 +6,7 @@ Uses mock_session_test.json profile with parquet replay data.
 Deterministic: same data + same config = same results.
 """
 
+import json
 import shutil
 from pathlib import Path
 
@@ -120,3 +121,34 @@ class TestAutotraderMockSession:
         summary = (run_dir / 'autotrader_summary.log').read_text()
         assert 'BROKER CONFIGURATION' in summary
         assert 'Company: Kraken' in summary
+
+
+class TestProfileLoader:
+    """Profile → AutoTraderConfig parse guards (no session run)."""
+
+    def test_tick_source_fields_fully_parsed(self, tmp_path):
+        """
+        Every tick_source field a profile may set must reach the config —
+        a key the allowlist accepts but the loader drops is a silent misconfig.
+        """
+        profile = json.loads(Path(MOCK_PROFILE).read_text())
+        profile['tick_source'] = {
+            'type': 'mock',
+            'parquet_path': 'data/some.parquet',
+            'max_ticks': 123,
+            'tick_delay_ms': 7,
+            'ws_url': 'wss://example/v2',
+            'reconnect_initial_delay_s': 2.5,
+            'reconnect_max_delay_s': 90.0,
+            'connection_check_interval_s': 15.0,
+            'connection_dead_s': 45.0,
+        }
+        profile_path = tmp_path / 'tick_source_profile.json'
+        profile_path.write_text(json.dumps(profile))
+
+        tick_source = load_autotrader_config(str(profile_path)).tick_source
+        for key, expected in profile['tick_source'].items():
+            assert getattr(tick_source, key) == expected, (
+                f"tick_source.{key} not parsed: expected {expected!r}, "
+                f"got {getattr(tick_source, key)!r}"
+            )

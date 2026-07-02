@@ -29,7 +29,7 @@ class RunUnit:
     name: str
     symbol: str
     data_source: str = ''           # data broker type (sim: scenario; live: '')
-    sentiment_source: str = ''      # data_sentiment_type (#429; sim scenario, '' if none/live)
+    sentiment_source: str = ''      # sentiment feed label (#429 sim scenario / #431 live profile; '' if none)
     has_error: bool = False         # hybrid: partial data + error (sim) / emergency (live)
     trade_history: List[TradeRecord] = field(default_factory=list)
     order_history: List[OrderResult] = field(default_factory=list)
@@ -79,7 +79,8 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
 
 
 def run_units_from_session(
-    session: AutoTraderResult, name: str, symbol: str) -> List[RunUnit]:
+    session: AutoTraderResult, name: str, symbol: str,
+    sentiment_source: str = '') -> List[RunUnit]:
     """
     The single run unit of a live session.
 
@@ -87,6 +88,7 @@ def run_units_from_session(
         session: The collected session result
         name: Unit label (profile name / symbol)
         symbol: Traded symbol
+        sentiment_source: The session's sentiment feed label (#431; '' if none)
 
     Returns:
         A one-element list with the session's RunUnit
@@ -94,6 +96,7 @@ def run_units_from_session(
     return [RunUnit(
         name=name,
         symbol=symbol,
+        sentiment_source=sentiment_source,
         has_error=session.emergency_reason is not None,
         trade_history=session.trade_history or [],
         order_history=session.order_history or [],

@@ -210,6 +210,7 @@ Config file: `configs/autotrader_profiles/backtesting/mock_session_test.json` �
   "strategy_config": { ... },
   "account": { "balances": { "USD": 10000.0, "BTC": 0.0 } },
   "tick_source": { "type": "mock", "parquet_path": "..." },
+  "sentiment_source": { "type": "mock", "data_sentiment_type": "crypto_sentiment" },
   "display": { "enabled": false }
 }
 ```
@@ -226,6 +227,7 @@ Sections not listed here (`execution`, `clipping_monitor`, `order_guard`) inheri
 | `strategy_config` | Workers + DecisionLogic | Same format as scenario sets |
 | `account` | Asset balances | Spot: `"balances": {"USD": X, "ETH": Y}`. Live: overridden by API fetch (#230) |
 | `tick_source` | Data source config | Mock: parquet replay. Live: WebSocket (#232) |
+| `sentiment_source` | Sentiment feed for SIGNAL workers | Mock only (requires mock tick source). Omit = no feed; mandatory when the strategy has a SIGNAL worker. See "Sentiment Feed (Mock)" |
 | `execution` | Runtime parameters | Inherits from `app_config.autotrader.execution`; override per profile if needed |
 | `clipping_monitor` | Timing config | Inherits from `app_config.autotrader.clipping_monitor`; strategy: `queue_all` or `drop_stale` |
 | `display` | Dashboard config | Inherits `enabled: true`, `update_interval_ms: 300` — test profiles set `enabled: false` |
@@ -291,6 +293,34 @@ JSON → Parquet           Queue → Algo
 ```
 
 Minimal config (all defaults): `{"tick_source": {"type": "kraken"}}`.
+
+## Sentiment Feed (Mock)
+
+A profile whose strategy contains a SIGNAL worker (e.g. `CORE/llm_sentiment`) needs a
+`sentiment_source` block — the sentiment analogue of `tick_source`:
+
+```json
+"sentiment_source": {
+  "type": "mock",
+  "data_sentiment_type": "crypto_sentiment"
+}
+```
+
+Unlike ticks, sentiment does **not** drive the loop — it is passive lookup data. At startup
+(`setup_sentiment_feed`, phase 6b in `setup_pipeline`) the archive is resolved via the signal
+index against the mock tick parquet's time range, loaded through the shared projected reader,
+and injected as a `SignalDataProvider` into each SIGNAL worker. On every tick pass the worker
+resolves the newest snapshot with `collected_msc ≤ tick.timestamp` (as-of lookup, no second
+thread or queue). Misconfiguration (SIGNAL worker without a feed, non-mock tick source, no
+archive overlap) aborts at startup — never at the first tick. Details, validation matrix, and
+the deliberate-outage override: signal data source doc (`docs/data_pipeline/signal_data_source.md`).
+
+Real-time/live sentiment is a future event-path feature — `type: mock` is the only supported
+value today.
+
+**Live dashboard:** the ALGO STATE panel shows the feed (`📡 Feed: <label>`, flagged
+`[STALE]` in yellow when the SIGNAL worker reports staleness) plus the worker's
+`display=True` outputs (`sentiment`, `conf`, `signal`, `stale`).
 
 ## Live Console UI (#228)
 
@@ -613,7 +643,7 @@ For `adapter_type='live'`, AutoTrader fetches broker config and account balance 
 ### Startup Flow (Live Mode)
 
 ```
-_create_broker_config(config, logger)
+create_broker_config(config, logger)   (autotrader_broker_config_setup.py)
   → config_mode=DYNAMIC (from market_config.json)
   → entry = MarketConfigManager().get_broker_entry(broker_type)
   → KrakenConfigFetcher(entry.credentials_file, entry.broker_transport.api_base_url)

@@ -48,6 +48,41 @@ class TickSourceConfig:
 
 
 @dataclass
+class SentimentSourceConfig:
+    """
+    Configuration for the sentiment signal feed (#431).
+
+    Mock mode replays a pre-collected signal archive (#429 parquet) into the
+    session's SIGNAL workers — the file-backed counterpart of the future live
+    API/EVENT sentiment path. Empty type = no sentiment feed.
+
+    Args:
+        type: Sentiment source type ('' = off, 'mock' = parquet replay)
+        data_sentiment_type: Signal archive pipeline_id (e.g. 'crypto_sentiment'),
+            resolved via the signal index — the primary path, mirrors the sim's
+            scenario field of the same name
+        parquet_path: Explicit signal parquet file (dev override; used only
+            when data_sentiment_type is unset)
+    """
+    type: str = ''
+    data_sentiment_type: str = ''
+    parquet_path: str = ''
+
+    def get_feed_label(self) -> str:
+        """
+        Human-readable feed label for reports and the live display.
+
+        Returns:
+            pipeline_id when index-resolved, file name on parquet override,
+            '' when the feed is off
+        """
+        if not self.type:
+            return ''
+        return self.data_sentiment_type or (
+            Path(self.parquet_path).name if self.parquet_path else '')
+
+
+@dataclass
 class AccountConfig:
     """
     Account configuration for AutoTrader session.
@@ -97,6 +132,7 @@ class AutoTraderConfig:
         strategy_config: Complete strategy configuration (workers + decision logic)
         account: Account configuration
         tick_source: Tick source configuration
+        sentiment_source: Sentiment signal feed configuration (#431; off by default)
         execution: Execution parameters
         clipping_monitor: Clipping monitor configuration
         dry_run: Optional per-profile dry-run override. None = use the broker's
@@ -110,6 +146,7 @@ class AutoTraderConfig:
     strategy_config: Dict[str, Any] = field(default_factory=dict)
     account: AccountConfig = field(default_factory=AccountConfig)
     tick_source: TickSourceConfig = field(default_factory=TickSourceConfig)
+    sentiment_source: SentimentSourceConfig = field(default_factory=SentimentSourceConfig)
     execution: AutotraderExecutionDefaults = field(default_factory=AutotraderExecutionDefaults)
     clipping_monitor: ClippingMonitorDefaults = field(default_factory=ClippingMonitorDefaults)
     display: DisplayDefaults = field(default_factory=DisplayDefaults)

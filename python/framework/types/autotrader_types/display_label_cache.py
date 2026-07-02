@@ -33,8 +33,11 @@ class DisplayLabelCache:
             display_label is set — callers fall back to raw_key.
         decision_output_labels: Decision logic output key → display_label.
             Only contains entries where display_label is set.
+        sentiment_source: Sentiment feed label for the ALGO STATE panel
+            (#431; '' when the session has no feed).
     """
     config_param_specs: Tuple[Tuple[str, str], ...] = field(default_factory=tuple)
     worker_display_output_keys: Dict[str, Tuple[str, ...]] = field(default_factory=dict)
     worker_output_labels: Dict[str, Dict[str, str]] = field(default_factory=dict)
     decision_output_labels: Dict[str, str] = field(default_factory=dict)
+    sentiment_source: str = ''
