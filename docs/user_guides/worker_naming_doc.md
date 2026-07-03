@@ -68,6 +68,12 @@ workers never declare or set it themselves). It is delivered with EVERY result r
 Backtests on complete archives simply never see it flip; deliberate outage drills (stale-tail
 profiles / gapped archives) are how the reaction is exercised.
 
+**Type-level contract params:** every SIGNAL worker inherits `max_staleness_minutes` (default 30 —
+drives the base's age-based `_evaluate_stale`, so age staleness works out of the box) and
+`data_path` (dev override) — merged by the base into `get_parameter_schema()` over the worker's
+`_get_domain_parameter_schema()`. The schema getter stays the single visible config surface
+(validation, defaults, tooling unchanged); concrete workers declare only their domain params.
+
 On top of that, a decision logic whose `get_required_workers()` includes a SIGNAL worker MUST
 override `on_signal_stale(worker_name, source)` — enforced at startup in BOTH pipelines
 (orchestrator validation; a strategy consuming a SIGNAL worker cannot even start without it).

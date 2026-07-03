@@ -7,7 +7,7 @@ from typing import Dict, Optional
 
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.parameter_types import InputParamDef, OutputParamDef
+from python.framework.types.parameter_types import OutputParamDef
 from python.framework.types.signal_data_types import ResolvedSignal
 from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
@@ -33,25 +33,6 @@ class LlmSentimentWorker(AbstractSignalWorker):
             doc_link='docs/user_guides/worker_naming_doc.md',
             recommended_markets=('crypto',),
         )
-
-    @classmethod
-    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
-        """LLM sentiment worker parameters."""
-        return {
-            'max_staleness_minutes': InputParamDef(
-                param_type=int,
-                default=30,
-                min_val=1,
-                description='Snapshot age (tick − collected_msc) above which the '
-                            'result is flagged is_stale',
-            ),
-            'data_path': InputParamDef(
-                param_type=str,
-                default='',
-                description='Optional explicit signal archive path '
-                            '(empty = auto-resolved from broker + symbol by the loader)',
-            ),
-        }
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:
@@ -88,25 +69,6 @@ class LlmSentimentWorker(AbstractSignalWorker):
                 category='INFO',
             ),
         }
-
-    def _evaluate_stale(self, resolved: Optional[ResolvedSignal], tick: TickData) -> bool:
-        """
-        Stale when the snapshot is older than max_staleness_minutes (or a gap).
-
-        The one staleness definition (#434) — drives both the is_stale output
-        and the base class's staleness-flip refresh trigger.
-
-        Args:
-            resolved: The point-in-time signal, or None on a gap
-            tick: Current tick (age reference)
-
-        Returns:
-            True if the signal is stale at this tick
-        """
-        if resolved is None:
-            return True
-        age_minutes = (tick.timestamp - resolved.collected_msc).total_seconds() / 60.0
-        return age_minutes > self.params.get('max_staleness_minutes')
 
     def _build_result(
         self,

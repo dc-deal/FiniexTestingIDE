@@ -10,6 +10,7 @@ from python.framework.exceptions.signal_data_errors import SignalProviderNotInje
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
+from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.signal_data_types import ResolvedSignal
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
@@ -91,6 +92,48 @@ class AbstractSignalWorker(AbstractWorker):
         return self._signal_provider
 
     @classmethod
+    def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
+        """
+        SIGNAL contract params merged over the worker's domain params.
+
+        max_staleness_minutes and data_path are TYPE-level (every SIGNAL feed
+        ages; every archive can be dev-overridden) — declared ONCE here so no
+        concrete worker can forget them. Concrete workers declare their own
+        params via _get_domain_parameter_schema(); all consumers (factory
+        validation, defaults, tooling) keep reading THIS method — the config
+        JSON surface stays fully visible.
+
+        Returns:
+            Dict[param_name, InputParamDef]
+        """
+        return {
+            **cls._get_domain_parameter_schema(),
+            'max_staleness_minutes': InputParamDef(
+                param_type=int,
+                default=30,
+                min_val=1,
+                description='Snapshot age (tick − collected_msc) above which the '
+                            'result envelope is flagged is_stale',
+            ),
+            'data_path': InputParamDef(
+                param_type=str,
+                default='',
+                description='Optional explicit signal archive path '
+                            '(dev override; empty = resolved via the data source)',
+            ),
+        }
+
+    @classmethod
+    def _get_domain_parameter_schema(cls) -> Dict[str, InputParamDef]:
+        """
+        Domain-specific parameters of the concrete SIGNAL worker.
+
+        Returns:
+            Dict[param_name, InputParamDef] (empty when the contract params suffice)
+        """
+        return {}
+
+    @classmethod
     def get_worker_type(cls) -> WorkerType:
         """SIGNAL — pre-collected external data lookup."""
         return WorkerType.SIGNAL
@@ -165,8 +208,10 @@ class AbstractSignalWorker(AbstractWorker):
         Whether the resolved signal counts as stale at this tick (#434).
 
         The ONE staleness definition per worker — should_refresh (flip trigger)
-        and _build_result (the is_stale output) must both read it. Default: only
-        a gap is stale. Concrete workers with an age threshold override this.
+        and the result envelope both read it. Default: a gap, or a snapshot
+        older than max_staleness_minutes (the type-level contract param) —
+        every SIGNAL worker gets age-based staleness out of the box. Override
+        for source-specific semantics (e.g. event expiry instead of age).
 
         Args:
             resolved: The point-in-time signal, or None on a gap
@@ -175,7 +220,10 @@ class AbstractSignalWorker(AbstractWorker):
         Returns:
             True if the signal is stale at this tick
         """
-        return resolved is None
+        if resolved is None:
+            return True
+        age_minutes = (tick.timestamp - resolved.collected_msc).total_seconds() / 60.0
+        return age_minutes > self.params.get('max_staleness_minutes')
 
     @abstractmethod
     def _build_result(
