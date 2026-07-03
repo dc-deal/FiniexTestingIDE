@@ -552,6 +552,27 @@ class AbstractDecisionLogic(ABC):
         pass
 
     # ============================================
+    # Signal-Outage Contract (#434)
+    # ============================================
+
+    def on_signal_stale(self, worker_name: str, source: str) -> None:
+        """
+        React to a SIGNAL worker's feed turning stale (fresh→stale transition).
+
+        MANDATORY override when get_required_workers() consumes a SIGNAL worker
+        (startup-validated in both pipelines): the staleness reaction — keep an
+        indicator fallback, go flat, HALT, or deliberately ignore — is a strategy
+        decision the author must write out. Edge-triggered by the orchestrator
+        (once per fresh→stale flip, including a session that starts stale), NOT
+        on every tick; recovery is visible via is_stale in worker_results.
+
+        Args:
+            worker_name: The SIGNAL worker instance that turned stale
+            source: Its signal source key (e.g. 'llm_sentiment')
+        """
+        pass
+
+    # ============================================
     # State Persistence (#354) — restart-safe algo memory (Category B)
     # ============================================
 

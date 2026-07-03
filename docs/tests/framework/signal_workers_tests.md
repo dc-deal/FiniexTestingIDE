@@ -40,6 +40,18 @@ fixtures via direct provider injection — no batch, no tick loop.
 - #425 subscription — declared sentiment signals exist on the worker output schema.
 - Factory registration.
 
+### test_signal_outage_contract.py (#434)
+- Staleness-flip refresh — a feed dying mid-session triggers exactly one recompute
+  (envelope `is_stale` flips); recovery refreshes via the new snapshot window.
+- Envelope guarantee — `result.is_stale` survives #425 subscription narrowing (status is
+  the envelope, never a payload output).
+- Startup validation — SIGNAL consumption without an `on_signal_stale` override is
+  rejected; indicator-only decisions are unaffected.
+- Edge-triggered dispatch — the hook fires once per fresh→stale flip (including a session
+  that starts stale), resets on recovery.
+- Reference reaction — `hybrid_sentiment_reference` warns to the session channel and emits a
+  `signal_stale` event-tape entry.
+
 ---
 
 ## Fixtures

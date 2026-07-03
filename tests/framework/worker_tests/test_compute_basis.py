@@ -154,6 +154,8 @@ def _orchestrator(worker: BollingerWorker) -> WorkerOrchestrator:
     orch.is_initialized = True
     orch.workers = {worker.name: worker}
     orch._worker_results = {}
+    orch._signal_workers = {}
+    orch._signal_stale_state = {}
     orch.logger = MagicMock()
     orch.parallel_workers = False
     orch._coordination_stats = SimpleNamespace(ticks_processed=0)

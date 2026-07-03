@@ -35,7 +35,9 @@ class TestContract:
 
     def test_output_schema_keys(self):
         keys = set(LlmSentimentWorker.get_output_schema().keys())
-        assert {'sentiment_score', 'confidence', 'signal', 'is_stale', 'is_breaking'} <= keys
+        assert {'sentiment_score', 'confidence', 'signal', 'is_breaking'} <= keys
+        # Feed status is the result ENVELOPE (#434), not a payload output
+        assert 'is_stale' not in keys
 
     def test_no_warmup(self, mock_logger):
         worker = _worker(mock_logger)
@@ -60,30 +62,30 @@ class TestComputeSignal:
     def test_gap_returns_empty(self, mock_logger):
         worker = _worker(mock_logger)
         worker.set_signal_provider(make_provider(snapshot(utc(2026, 1, 15, 8, 0), 0.1, 0.5)))
-        out = worker.compute_signal(make_tick(utc(2026, 1, 15, 7, 0))).outputs
-        assert out['confidence'] == 0.0
-        assert out['signal'] == 'HOLD'
-        assert out['is_stale'] is True
+        result = worker.compute_signal(make_tick(utc(2026, 1, 15, 7, 0)))
+        assert result.outputs['confidence'] == 0.0
+        assert result.outputs['signal'] == 'HOLD'
+        assert result.is_stale is True
 
     def test_maps_snapshot_fields(self, mock_logger):
         worker = _worker(mock_logger)
         worker.set_signal_provider(make_provider(
             snapshot(utc(2026, 1, 15, 8, 0), 0.35, 0.8,
                      signal='BUY', urgency=0.9, is_breaking=True)))
-        out = worker.compute_signal(make_tick(utc(2026, 1, 15, 8, 5))).outputs
-        assert out['sentiment_score'] == 0.35
-        assert out['confidence'] == 0.8
-        assert out['signal'] == 'BUY'
-        assert out['is_breaking'] is True
-        assert out['is_stale'] is False
+        result = worker.compute_signal(make_tick(utc(2026, 1, 15, 8, 5)))
+        assert result.outputs['sentiment_score'] == 0.35
+        assert result.outputs['confidence'] == 0.8
+        assert result.outputs['signal'] == 'BUY'
+        assert result.outputs['is_breaking'] is True
+        assert result.is_stale is False
 
     def test_staleness(self, mock_logger):
         worker = _worker(mock_logger, max_staleness=30)
         worker.set_signal_provider(make_provider(snapshot(utc(2026, 1, 15, 8, 0), 0.1, 0.5)))
-        fresh = worker.compute_signal(make_tick(utc(2026, 1, 15, 8, 20))).outputs
-        stale = worker.compute_signal(make_tick(utc(2026, 1, 15, 9, 0))).outputs
-        assert fresh['is_stale'] is False
-        assert stale['is_stale'] is True
+        fresh = worker.compute_signal(make_tick(utc(2026, 1, 15, 8, 20)))
+        stale = worker.compute_signal(make_tick(utc(2026, 1, 15, 9, 0)))
+        assert fresh.is_stale is False
+        assert stale.is_stale is True
 
 
 class TestShouldRefresh:
@@ -115,6 +117,8 @@ def _orchestrator(worker) -> WorkerOrchestrator:
     orch.is_initialized = True
     orch.workers = {worker.name: worker}
     orch._worker_results = {}
+    orch._signal_workers = {worker.name: worker}
+    orch._signal_stale_state = {}
     orch.logger = MagicMock()
     orch.parallel_workers = False
     orch._coordination_stats = SimpleNamespace(ticks_processed=0)

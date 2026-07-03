@@ -252,6 +252,15 @@ class AutotraderDisplayExporter:
                 if display_outputs:
                     worker_outputs[name] = display_outputs
 
+        # Feed-status envelope (#434): any stale worker result flags the feed line
+        feed_stale = any(
+            result is not None and result.is_stale
+            for result in (
+                self._worker_orchestrator.get_worker_result(name)
+                for name in self._worker_orchestrator.workers
+            )
+        )
+
         # Decision outputs (display=True)
         decision_outputs: Dict[str, OutputValue] = {}
         decision_schema = self._decision_logic.__class__.get_output_schema()
@@ -310,6 +319,7 @@ class AutotraderDisplayExporter:
             worker_max_times_ms=worker_max_times,
             worker_rolling_avg_times_ms=worker_rolling_avgs,
             worker_outputs=worker_outputs,
+            feed_stale=feed_stale,
             last_decision_action=decision.action,
             decision_outputs=decision_outputs,
             config_params=config_params,

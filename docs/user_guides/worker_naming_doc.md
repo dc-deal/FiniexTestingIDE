@@ -48,13 +48,36 @@ Every worker inherits the lean `AbstractWorker` contract through one of two type
   worker is `CORE/llm_sentiment`, reading archived LLM sentiment.
 
 A SIGNAL worker resolves, per tick, the most recent snapshot with `collected_msc ≤ tick` (the
-no-look-ahead key) via an injected `SignalDataProvider`, and refreshes only when the tick crosses
-into a new snapshot window. The provider is built from the prepared signal series in the data
+no-look-ahead key) via an injected `SignalDataProvider`, and refreshes on two triggers: the tick
+crosses into a new snapshot window, OR the served result's staleness flips (`_evaluate_stale` —
+the one staleness definition per worker; without the flip trigger a feed dying mid-session would
+stay fresh-flagged forever). The provider is built from the prepared signal series in the data
 package and injected by the framework (sim subprocess / live boot) — never constructed by the
 worker. Both types return a `WorkerResult`, so the decision logic sees no difference.
 
-The signal archive is referenced today via the worker's `data_path` param (a pragmatic v0); the
-first-class `data_sentiment_type` data source (import → index → parquet) is the deferred follow-up.
+The signal archive is resolved through the first-class `data_sentiment_type` data source
+(import → index → parquet; sim scenario field / AutoTrader `sentiment_source` block) — see the
+signal data source doc. The worker's `data_path` param remains a dev-only override.
+
+### Signal-outage contract (mandatory when consuming a SIGNAL worker)
+
+Feed status is **envelope, not payload**: every `WorkerResult` carries `is_stale` as a
+framework-stamped field (`result.is_stale` — the SIGNAL base sets it after `_build_result`;
+workers never declare or set it themselves). It is delivered with EVERY result regardless of
+#425 subscription narrowing — staleness-blind consumption is designed away, not validated.
+Backtests on complete archives simply never see it flip; deliberate outage drills (stale-tail
+profiles / gapped archives) are how the reaction is exercised.
+
+On top of that, a decision logic whose `get_required_workers()` includes a SIGNAL worker MUST
+override `on_signal_stale(worker_name, source)` — enforced at startup in BOTH pipelines
+(orchestrator validation; a strategy consuming a SIGNAL worker cannot even start without it).
+The hook is edge-triggered by the orchestrator once per fresh→stale flip (a session that
+starts stale fires on the first result). Fallback, go flat, HALT, or deliberately ignore:
+even "ignore" is a written line. Recovery is visible via `result.is_stale` (no separate hook).
+
+Reference implementation: `CORE/hybrid_sentiment_reference.on_signal_stale` — warns to the
+session channel (error pot) and emits an event-tape entry, while its fusion degrades to
+pure-indicator mode (`_read_sentiment` reads the envelope).
 
 ---
 

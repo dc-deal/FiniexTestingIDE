@@ -60,6 +60,8 @@ class AbstractSignalWorker(AbstractWorker):
         self._signal_provider: Optional[SignalDataProvider] = None
         # collected_msc of the last served snapshot (refresh-window tracking).
         self._last_snapshot_msc = None
+        # Staleness of the last served result (staleness-flip refresh tracking, #434).
+        self._last_served_stale: Optional[bool] = None
 
     def set_signal_provider(self, provider: SignalDataProvider) -> None:
         """
@@ -113,10 +115,13 @@ class AbstractSignalWorker(AbstractWorker):
 
     def should_refresh(self, tick: TickData) -> bool:
         """
-        Whether the tick crossed into a new snapshot window (recompute trigger).
+        Whether the worker should recompute its result this tick.
 
-        True at cold start and whenever the most recent snapshot with
-        collected_msc <= tick differs from the last one served.
+        Two triggers (#434): the tick crossed into a NEW snapshot window (cold
+        start included), OR the staleness of the served result FLIPPED (the feed
+        died mid-session — the snapshot stops changing, but its age crosses the
+        staleness boundary; without this trigger the cached result would stay
+        fresh-flagged forever).
 
         Args:
             tick: Current tick
@@ -126,16 +131,18 @@ class AbstractSignalWorker(AbstractWorker):
         """
         resolved = self._require_provider().nearest(tick.timestamp, self._symbol)
         current_msc = resolved.collected_msc if resolved else None
-        return current_msc != self._last_snapshot_msc
+        if current_msc != self._last_snapshot_msc:
+            return True
+        return self._evaluate_stale(resolved, tick) != self._last_served_stale
 
     def compute_signal(self, tick: TickData) -> WorkerResult:
         """
         Resolve the point-in-time signal for this tick and map it to a WorkerResult.
 
         Looks up the most recent snapshot (collected_msc <= tick), records its
-        receive stamp for refresh-window tracking, and delegates field mapping to
-        the concrete worker (_build_result). A gap (no snapshot) yields an empty
-        result via _build_result(None, tick).
+        receive stamp + staleness for refresh tracking, and delegates field
+        mapping to the concrete worker (_build_result). A gap (no snapshot)
+        yields an empty result via _build_result(None, tick).
 
         Args:
             tick: Current tick
@@ -144,8 +151,31 @@ class AbstractSignalWorker(AbstractWorker):
             WorkerResult with outputs matching get_output_schema()
         """
         resolved = self._require_provider().nearest(tick.timestamp, self._symbol)
+        stale = self._evaluate_stale(resolved, tick)
         self._last_snapshot_msc = resolved.collected_msc if resolved else None
-        return self._build_result(resolved, tick)
+        self._last_served_stale = stale
+        # Envelope stamp (#434): the framework owns the feed-status channel —
+        # the payload mapping (_build_result) never sets it.
+        result = self._build_result(resolved, tick)
+        result.is_stale = stale
+        return result
+
+    def _evaluate_stale(self, resolved: Optional[ResolvedSignal], tick: TickData) -> bool:
+        """
+        Whether the resolved signal counts as stale at this tick (#434).
+
+        The ONE staleness definition per worker — should_refresh (flip trigger)
+        and _build_result (the is_stale output) must both read it. Default: only
+        a gap is stale. Concrete workers with an age threshold override this.
+
+        Args:
+            resolved: The point-in-time signal, or None on a gap
+            tick: Current tick (age reference)
+
+        Returns:
+            True if the signal is stale at this tick
+        """
+        return resolved is None
 
     @abstractmethod
     def _build_result(

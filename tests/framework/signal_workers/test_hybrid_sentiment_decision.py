@@ -22,9 +22,11 @@ def _rsi(value: float) -> WorkerResult:
 
 
 def _sentiment(score: float, confidence: float = 0.8, is_stale: bool = False) -> WorkerResult:
-    return WorkerResult(outputs={
-        'sentiment_score': score, 'confidence': confidence, 'is_stale': is_stale,
-    })
+    # Feed status rides the result ENVELOPE (#434), not the payload outputs
+    return WorkerResult(
+        outputs={'sentiment_score': score, 'confidence': confidence},
+        is_stale=is_stale,
+    )
 
 
 def _tick():

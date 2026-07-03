@@ -64,10 +64,19 @@ class WorkerResult:
     Workers declare their outputs via get_output_schema(). The compute()
     method returns WorkerResult(outputs={...}) with keys matching the schema.
 
+    Envelope vs payload (#434): outputs carry the DOMAIN payload; is_stale is
+    the type-level feed-status envelope — stamped by the framework (SIGNAL
+    base after _build_result), never by the payload mapping, and delivered
+    with EVERY result regardless of subscription narrowing (#425). INDICATOR
+    results keep the False default (computed fresh from bars by definition).
+
     Args:
         outputs: Dict of output values keyed by schema-declared names
+        is_stale: Feed-status envelope — True when the underlying external
+            data is stale or a gap (SIGNAL workers; framework-stamped)
     """
     outputs: Dict[str, OutputValue]
+    is_stale: bool = False
 
     def get_signal(self, name: str) -> OutputValue:
         """

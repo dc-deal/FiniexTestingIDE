@@ -227,6 +227,9 @@ class AutoTraderDisplayStats:
     # Worker Outputs (display=True only)
     worker_outputs: Dict[str, Dict[str, OutputValue]] = field(default_factory=dict)
 
+    # Feed-status envelope (#434): any SIGNAL worker result currently stale
+    feed_stale: bool = False
+
     # Decision State
     last_decision_action: DecisionLogicAction = DecisionLogicAction.FLAT
     decision_outputs: Dict[str, OutputValue] = field(default_factory=dict)
