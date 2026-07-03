@@ -172,6 +172,17 @@ class TestSentimentOutageSession:
             f"Expected the single cold-start compute, got {stats.worker_call_count}"
         )
 
+    def test_outage_hook_fired(self, outage_session):
+        """
+        Signal-outage contract (#434): the session starts stale → the decision's
+        on_signal_stale reaction fires once and surfaces in the warning pot.
+        """
+        result, _ = outage_session
+        stale_warnings = [w for w in result.warning_messages if 'Signal feed stale' in w]
+        assert len(stale_warnings) == 1, (
+            f"Expected exactly one stale-feed warning, got {stale_warnings}"
+        )
+
 
 class TestSentimentFeedValidation:
     """Startup validation matrix for setup_sentiment_feed (§35 ABORT semantics)."""

@@ -21,7 +21,7 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 
 **Runtime:** ~6 seconds total (session shared across both tests via `scope='module'`).
 
-### test_autotrader_sentiment_feed.py (12 Tests)
+### test_autotrader_sentiment_feed.py (14 Tests)
 
 End-to-end validation of the `sentiment_source` mock feed (#431): index/override resolution,
 provider injection into SIGNAL workers, decision fusion in a live mock session, and the startup
@@ -30,8 +30,8 @@ validation matrix.
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
 | `TestSentimentMockSession` | 3 | Full session with index-resolved feed: normal shutdown, tick count (20000), clean pot; SIGNAL worker recomputed on snapshot crossings; portfolio report carries `sentiment_source` |
-| `TestSentimentOutageSession` | 2 | Deliberate outage (tick replay after archive end, `parquet_path` override): graceful `is_stale` degradation, single cold-start compute, no errors |
-| `TestSentimentFeedValidation` | 7 | Startup abort matrix: SIGNAL worker without feed, unknown type, live tick source, no index overlap, empty feed config; dead-config warning path; loader unknown-key guard |
+| `TestSentimentOutageSession` | 3 | Deliberate outage (tick replay after archive end, `parquet_path` override): graceful `is_stale` degradation, single cold-start compute, no errors; the #434 `on_signal_stale` reaction surfaces exactly once in the warning pot |
+| `TestSentimentFeedValidation` | 8 | Startup abort matrix: SIGNAL worker without feed, unknown type, live tick source, no index overlap, empty feed config; dead-config warning path; loader unknown-key guard; feed-label resolution |
 
 **Data Dependency:** `sentiment_mock_test.json` / `sentiment_outage_test.json` with BTCUSD tick
 parquets (2026-04-27 / 2026-05-04) and the imported `crypto_sentiment` signal archive

@@ -138,7 +138,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
     def get_metadata(cls) -> ComponentMetadata:
         """CORE reference decision logic metadata (crypto sentiment demo)."""
         return ComponentMetadata(
-            version='1.0.0',
+            version='1.1.0',
             doc_link='docs/user_guides/worker_naming_doc.md',
             recommended_markets=('crypto',),
         )
@@ -161,8 +161,32 @@ class HybridSentimentReference(AbstractDecisionLogic):
         return {
             'rsi_fast': WorkerRequirement.of('CORE/rsi', 'rsi_value'),
             'sentiment': WorkerRequirement.of(
-                'CORE/llm_sentiment', 'sentiment_score', 'confidence', 'is_stale'),
+                'CORE/llm_sentiment', 'sentiment_score', 'confidence'),
         }
+
+    # ============================================
+    # Signal-Outage Contract (#434)
+    # ============================================
+
+    def on_signal_stale(self, worker_name: str, source: str) -> None:
+        """
+        Programmed staleness reaction (didactic): degrade to pure-indicator mode.
+
+        The fusion already ignores stale sentiment per tick (_read_sentiment);
+        this hook makes the DEGRADATION MOMENT visible to the operator — a
+        warning in the session channel (error pot) + an event-tape entry.
+
+        Args:
+            worker_name: The SIGNAL worker instance that turned stale
+            source: Its signal source key (e.g. 'llm_sentiment')
+        """
+        self.logger.warning(
+            f"📡 Signal feed stale: '{worker_name}' ({source}) — "
+            f"degrading to pure-indicator mode until fresh data arrives."
+        )
+        self.emit_event(
+            f"📡 sentiment stale ({source}) — indicator-only mode",
+            AwarenessLevel.NOTICE, 'signal_stale')
 
     # ============================================
     # Decision
@@ -252,9 +276,10 @@ class HybridSentimentReference(AbstractDecisionLogic):
         if not sentiment_result:
             return 0.0, False
         confidence = sentiment_result.get_signal('confidence')
-        is_stale = sentiment_result.get_signal('is_stale')
         score = sentiment_result.get_signal('sentiment_score')
-        usable = (not is_stale) and confidence >= self.min_sentiment_confidence
+        # Feed status comes from the result ENVELOPE (#434), not the payload —
+        # delivered with every result regardless of subscription narrowing.
+        usable = (not sentiment_result.is_stale) and confidence >= self.min_sentiment_confidence
         return score, usable
 
     def _flat(self, tick: TickData, confidence: float, reason: str) -> Decision:

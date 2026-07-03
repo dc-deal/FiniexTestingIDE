@@ -82,6 +82,13 @@ class WorkerOrchestrator:
         self.is_initialized = False
         self._worker_results: Dict[str, WorkerResult] = {}
 
+        # Signal-outage edge detection (#434): SIGNAL workers + last stale state
+        self._signal_workers: Dict[str, AbstractSignalWorker] = {
+            name: worker for name, worker in self.workers.items()
+            if isinstance(worker, AbstractSignalWorker)
+        }
+        self._signal_stale_state: Dict[str, bool] = {}
+
         # Parallelization configuration
         if parallel_workers is None:
             self.parallel_workers = self._auto_detect_parallel_mode(workers)
@@ -286,6 +293,19 @@ class WorkerOrchestrator:
                         f"{sorted(str(o) for o in valid_outputs)}."
                     )
 
+        # 5. SIGNAL consumption requires a programmed outage reaction (#434):
+        #    on_signal_stale must be overridden — even "ignore" is a written line.
+        consumes_signal = any(
+            isinstance(self.workers.get(name), AbstractSignalWorker)
+            for name in required_workers
+        )
+        if consumes_signal and type(self.decision_logic).on_signal_stale is AbstractDecisionLogic.on_signal_stale:
+            errors.append(
+                f"Decision logic consumes SIGNAL worker(s) but does not override "
+                f"on_signal_stale() — the staleness reaction (fallback / flat / HALT / "
+                f"deliberate ignore) must be programmed explicitly."
+            )
+
         # Raise all errors together
         if errors:
             error_msg = (
@@ -361,6 +381,11 @@ class WorkerOrchestrator:
                 tick, bar_updated, bar_history, current_bars, closed_timeframes
             )
 
+        # Signal-outage contract (#434): fire on_signal_stale on fresh→stale
+        # transitions BEFORE the decision computes, so it reacts in this pass.
+        if self._signal_workers:
+            self._dispatch_signal_stale_transitions()
+
         # ============================================
         # Delegate to DecisionLogic
         # ============================================
@@ -391,6 +416,25 @@ class WorkerOrchestrator:
                 decision_time_ms, decision)
 
         return decision
+
+    def _dispatch_signal_stale_transitions(self) -> None:
+        """
+        Fire on_signal_stale for every SIGNAL worker whose result flipped
+        fresh→stale (#434 edge trigger).
+
+        Edge-triggered: once per flip (a session that STARTS stale fires on the
+        first result). Recovery (stale→fresh) only resets the edge state — the
+        decision sees freshness via is_stale in worker_results.
+        """
+        for name, worker in self._signal_workers.items():
+            result = self._worker_results.get(name)
+            if result is None:
+                continue
+            is_stale = result.is_stale
+            if is_stale and not self._signal_stale_state.get(name, False):
+                self.decision_logic.on_signal_stale(
+                    worker_name=name, source=worker.get_signal_source())
+            self._signal_stale_state[name] = is_stale
 
     def process_heartbeat(self) -> Optional[Decision]:
         """

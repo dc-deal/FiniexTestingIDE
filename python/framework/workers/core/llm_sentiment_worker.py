@@ -29,7 +29,7 @@ class LlmSentimentWorker(AbstractSignalWorker):
     def get_metadata(cls) -> ComponentMetadata:
         """CORE worker metadata (version + doc pointer + market fit)."""
         return ComponentMetadata(
-            version='1.0.0',
+            version='1.1.0',
             doc_link='docs/user_guides/worker_naming_doc.md',
             recommended_markets=('crypto',),
         )
@@ -82,17 +82,31 @@ class LlmSentimentWorker(AbstractSignalWorker):
                 description='Whether this snapshot is a breaking-news event',
                 category='INFO',
             ),
-            'is_stale': OutputParamDef(
-                param_type=bool,
-                description='Snapshot older than max_staleness_minutes (or a gap)',
-                category='INFO', display=True, display_label='stale',
-            ),
             'reasoning': OutputParamDef(
                 param_type=str,
                 description='Model reasoning for the sentiment (transparency)',
                 category='INFO',
             ),
         }
+
+    def _evaluate_stale(self, resolved: Optional[ResolvedSignal], tick: TickData) -> bool:
+        """
+        Stale when the snapshot is older than max_staleness_minutes (or a gap).
+
+        The one staleness definition (#434) — drives both the is_stale output
+        and the base class's staleness-flip refresh trigger.
+
+        Args:
+            resolved: The point-in-time signal, or None on a gap
+            tick: Current tick (age reference)
+
+        Returns:
+            True if the signal is stale at this tick
+        """
+        if resolved is None:
+            return True
+        age_minutes = (tick.timestamp - resolved.collected_msc).total_seconds() / 60.0
+        return age_minutes > self.params.get('max_staleness_minutes')
 
     def _build_result(
         self,
@@ -116,13 +130,10 @@ class LlmSentimentWorker(AbstractSignalWorker):
                 'signal': 'HOLD',
                 'urgency': 0.0,
                 'is_breaking': False,
-                'is_stale': True,
                 'reasoning': 'No signal data',
             })
 
         result = resolved.result
-        age_minutes = (tick.timestamp - resolved.collected_msc).total_seconds() / 60.0
-        is_stale = age_minutes > self.params.get('max_staleness_minutes')
 
         return WorkerResult(outputs={
             'sentiment_score': float(result.sentiment_score),
@@ -130,6 +141,5 @@ class LlmSentimentWorker(AbstractSignalWorker):
             'signal': result.signal,
             'urgency': float(result.urgency),
             'is_breaking': bool(result.is_breaking),
-            'is_stale': is_stale,
             'reasoning': result.reasoning,
         })
