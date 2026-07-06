@@ -111,6 +111,16 @@ class TestStalenessFlipRefresh:
         assert worker.should_refresh(recovery_tick) is True
         assert worker.compute_signal(recovery_tick).is_stale is False
 
+    def test_contract_params_inherited_from_base(self):
+        """
+        max_staleness_minutes + data_path are TYPE-level params — merged into
+        every SIGNAL worker's schema by the base (no worker can forget them),
+        while the schema getter stays the single visible config surface.
+        """
+        schema = LlmSentimentWorker.get_parameter_schema()
+        assert schema['max_staleness_minutes'].default == 30
+        assert schema['data_path'].default == ''
+
     def test_envelope_survives_subscription_narrowing(self, mock_logger):
         """
         The feed-status envelope is delivered with EVERY result — #425 output
