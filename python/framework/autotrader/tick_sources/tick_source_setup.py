@@ -43,6 +43,8 @@ def setup_tick_source(
             tick_queue=tick_queue,
             max_ticks=config.tick_source.max_ticks,
             tick_delay_ms=config.tick_source.tick_delay_ms,
+            freeze_after_ticks=config.tick_source.freeze_after_ticks,
+            freeze_duration_s=config.tick_source.freeze_duration_s,
         )
 
     elif config.tick_source.type == 'kraken':

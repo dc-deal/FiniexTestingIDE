@@ -22,6 +22,12 @@ class AutotraderExecutionDefaults(BaseModel):
     # gated by poll_interval_ms, reconcile by min_interval_seconds). 500 ms for
     # snappier between-tick reaction; event-driven wake-on-arrival is #331.
     heartbeat_interval_ms: int = 500
+    # Market-data staleness contract (#436): no real tick for this many wall
+    # seconds → session-level stale (pot warning + on_market_data_stale hook +
+    # OrderGuard entry block). Evaluated on the idle heartbeat, LIVE loop only
+    # (sim replay gaps are data). 0 disables the contract. Per-profile
+    # overridable; matches the sim inter_tick_gap_threshold_s magnitude.
+    market_data_stale_after_s: float = 300.0
     performance_tracking: AutoTraderPerformanceTrackingConfig = AutoTraderPerformanceTrackingConfig()
 
 
@@ -41,6 +47,9 @@ class OrderGuardDefaults(BaseModel):
     """Order guard pre-validation defaults."""
     cooldown_seconds: float = 60.0
     max_consecutive_rejections: int = 2
+    # #436 framework floor: reject NEW entries while market data is stale
+    # (closes/cancels unaffected). Inert in sim — status is always fresh there.
+    block_stale_market_data: bool = True
 
 
 class DriftAuditConfig(BaseModel):

@@ -53,6 +53,7 @@ from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
@@ -183,10 +184,28 @@ class AggressiveTrend(AbstractDecisionLogic):
     def get_metadata(cls) -> ComponentMetadata:
         """CORE showcase decision logic metadata (RSI + Bollinger → price-based, any market)."""
         return ComponentMetadata(
-            version='1.0.0',
+            version='1.1.0',
             doc_link='docs/user_guides/quickstart_guide.md',
             recommended_markets=('forex', 'crypto'),
         )
+
+    def on_market_data_stale(self, status: MarketDataStatus) -> None:
+        """
+        Programmed market-outage reaction (#436): hold and wait.
+
+        The OrderGuard blocks new entries while stale; this logic holds its
+        state, surfaces the blind moment, and waits for ticks to resume.
+
+        Args:
+            status: Session-level market-data health snapshot
+        """
+        self.logger.warning(
+            f"🔌 Market data stale ({status.seconds_since_last_tick:.0f}s "
+            f"since last tick) — holding until ticks resume."
+        )
+        self.emit_event(
+            '🔌 market data stale — holding until ticks resume',
+            AwarenessLevel.NOTICE, 'market_data_stale')
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

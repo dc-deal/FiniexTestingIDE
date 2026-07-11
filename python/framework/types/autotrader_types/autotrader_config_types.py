@@ -34,6 +34,8 @@ class TickSourceConfig:
         reconnect_max_delay_s: Maximum reconnect backoff delay cap in seconds (kraken mode)
         connection_check_interval_s: WS connection-liveness check interval in seconds (kraken mode)
         connection_dead_s: Silence threshold to force reconnect in seconds (kraken mode)
+        freeze_after_ticks: Outage drill (#436, mock mode): pause emission once after N ticks. 0 = off
+        freeze_duration_s: Outage drill (#436, mock mode): pause duration in wall seconds
     """
     type: str = 'mock'
     parquet_path: str = ''
@@ -45,6 +47,9 @@ class TickSourceConfig:
     reconnect_max_delay_s: float = 60.0
     connection_check_interval_s: float = 30.0
     connection_dead_s: float = 90.0
+    # Outage drill (#436) — deliberate mid-replay feed silence (mock mode)
+    freeze_after_ticks: int = 0
+    freeze_duration_s: float = 0.0
 
 
 @dataclass

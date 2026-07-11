@@ -40,6 +40,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderType,
     OrderDirection,
@@ -101,12 +102,13 @@ class DecisionTradingApi:
         # CRITICAL: Validate order types BEFORE scenario starts!
         self._validate_order_types(required_order_types)
 
-        # Spam-protection guard — rejection cooldown only. Business rules
-        # (market type, balance, etc.) live in the executor.
+        # Pre-trade guard — rejection cooldown + stale-market-data block (#436).
+        # Business rules (market type, balance, etc.) live in the executor.
         guard_cfg = order_guard_config or OrderGuardDefaults()
         self._order_guard = OrderGuard(
             cooldown_seconds=guard_cfg.cooldown_seconds,
             max_consecutive_rejections=guard_cfg.max_consecutive_rejections,
+            block_stale_market_data=guard_cfg.block_stale_market_data,
         )
 
         # Register for async order outcomes (margin rejection at fill time, etc.)
@@ -219,11 +221,13 @@ class DecisionTradingApi:
             comment=comment,
         )
 
-        # Spam-protection guard — cooldown only. Time source is the
-        # executor's current tick timestamp: simulated in backtests (keeps
-        # cooldowns deterministic and sim-correct), wall-clock in live.
+        # Pre-trade guard — rejection cooldown + stale-market-data block (#436).
+        # Time source is the executor's current tick timestamp: simulated in
+        # backtests (keeps cooldowns deterministic and sim-correct), wall-clock
+        # in live. The market-data status is always fresh in sim.
         now = self._executor.get_current_time()
-        guard_result = self._order_guard.validate(request, now)
+        guard_result = self._order_guard.validate(
+            request, now, self._executor.get_market_data_status())
         if guard_result is not None:
             self._executor.record_guard_rejection(guard_result)
             return guard_result
@@ -524,6 +528,20 @@ class DecisionTradingApi:
             Current tick timestamp (timezone-aware UTC)
         """
         return self._executor.get_current_time()
+
+    def get_market_data_status(self) -> MarketDataStatus:
+        """
+        Session-level tick-stream health (#436).
+
+        The escalation instrument next to the on_market_data_stale wake-up
+        call: readable on every pass (seconds_since_last_tick keeps growing
+        while the feed is silent), so a heartbeat-driven logic can escalate
+        on its own timescale. Always fresh in sim (replay gaps are data).
+
+        Returns:
+            Current MarketDataStatus
+        """
+        return self._executor.get_market_data_status()
 
     def get_broker_name(self) -> str:
         """Get name of connected broker"""

@@ -82,6 +82,10 @@ class PostRunValidator:
                 ro = config.reject_open_order
                 parts.append(
                     f"reject_open_order: probability={ro.probability:.0%}, seed={ro.seed}")
+            if config.stale_data_stress and config.stale_data_stress.enabled:
+                sd = config.stale_data_stress
+                parts.append(
+                    f"stale_data_stress: {len(sd.events)} planned window(s)")
             signature = ' | '.join(parts)
             config_groups.setdefault(signature, []).append(scenario.name)
 

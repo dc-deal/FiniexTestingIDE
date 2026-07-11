@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
@@ -28,6 +29,10 @@ class DiagnosticsProbeDecision(AbstractDecisionLogic):
 
     def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         return {'rsi_fast': WorkerRequirement.all('CORE/rsi')}
+
+    def on_market_data_stale(self, status: MarketDataStatus) -> None:
+        """Deliberate pass (#436): probe never trades — nothing to protect."""
+        pass
 
     def compute_tick(
         self,

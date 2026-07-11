@@ -7,6 +7,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from conftest import SYMBOL, make_provider, make_tick, snapshot, utc
+from python.framework.signal_data.signal_data_provider import SignalDataProvider
+from python.framework.stress_test.stale_data_slicer import StaleDataSlicer
+from python.framework.types.signal_data_types import SignalSeries
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
@@ -38,6 +41,10 @@ class _StubDecisionBase(AbstractDecisionLogic):
 
     def _execute_decision_impl(self, decision, tick):
         return []
+
+    def on_market_data_stale(self, status):
+        # Mandatory contract override (#436) — stubs test the SIGNAL side.
+        pass
 
 
 class _NoHookDecision(_StubDecisionBase):
@@ -133,6 +140,67 @@ class TestStalenessFlipRefresh:
         result = worker.compute_signal(make_tick(utc(2026, 1, 15, 9, 0)))
         assert result.is_stale is True
         assert 'is_stale' not in result.outputs  # status is envelope, not payload
+
+
+class TestStaleDataSlicer:
+    """#436 stress data-plane cut: windows are carved out of the refined series."""
+
+    def _series(self) -> SignalSeries:
+        return SignalSeries(source='llm_sentiment', snapshots=[
+            snapshot(utc(2026, 1, 15, 8, 0), 0.5, 0.8),
+            snapshot(utc(2026, 1, 15, 8, 10), 0.6, 0.8),
+            snapshot(utc(2026, 1, 15, 8, 20), 0.7, 0.8),
+        ])
+
+    def test_carve_removes_snapshots_inside_window(self):
+        # Feed dies 08:05 → 08:15: the 08:10 snapshot is carved out
+        carved = StaleDataSlicer.carve_signal_series(
+            self._series(), [(utc(2026, 1, 15, 8, 5), utc(2026, 1, 15, 8, 15))])
+        provider = SignalDataProvider(carved)
+        # Inside the window the lookup resolves as-of the last pre-window snapshot
+        resolved = provider.nearest(utc(2026, 1, 15, 8, 12), SYMBOL)
+        assert resolved.collected_msc == utc(2026, 1, 15, 8, 0)
+        assert resolved.result.sentiment_score == 0.5
+        # After the window the feed recovered — newest snapshot visible again
+        assert provider.nearest(
+            utc(2026, 1, 15, 8, 21), SYMBOL).collected_msc == utc(2026, 1, 15, 8, 20)
+
+    def test_window_boundaries_start_inclusive_end_exclusive(self):
+        carved = StaleDataSlicer.carve_signal_series(
+            self._series(), [(utc(2026, 1, 15, 8, 10), utc(2026, 1, 15, 8, 20))])
+        kept = [s.collected_msc for s in carved.snapshots]
+        assert utc(2026, 1, 15, 8, 10) not in kept   # at start → carved
+        assert utc(2026, 1, 15, 8, 20) in kept       # at end → kept
+
+    def test_input_unchanged_and_empty_windows_passthrough(self):
+        series = self._series()
+        assert StaleDataSlicer.carve_signal_series(series, []) is series
+        StaleDataSlicer.carve_signal_series(
+            series, [(utc(2026, 1, 15, 8, 5), utc(2026, 1, 15, 8, 15))])
+        assert len(series.snapshots) == 3  # source series untouched
+
+    def test_cut_drives_the_real_staleness_chain(self, mock_logger):
+        """
+        The carved gap ages the resolved snapshot → the worker's own
+        _evaluate_stale flips is_stale (no flag forcing — the #434 machinery
+        itself is under test).
+        """
+        worker = _worker(mock_logger, max_staleness=30)
+        series = SignalSeries(source='llm_sentiment', snapshots=[
+            snapshot(utc(2026, 1, 15, 8, 0), 0.5, 0.8),
+            snapshot(utc(2026, 1, 15, 8, 10), 0.6, 0.8),
+        ])
+        worker.set_signal_provider(SignalDataProvider(
+            StaleDataSlicer.carve_signal_series(
+                series, [(utc(2026, 1, 15, 8, 5), utc(2026, 1, 15, 9, 30))])))
+
+        # Inside the window, before threshold: aged snapshot but still fresh
+        assert worker.compute_signal(
+            make_tick(utc(2026, 1, 15, 8, 20))).is_stale is False
+        # Age crosses max_staleness_minutes (anchor = 08:00 snapshot) → stale
+        stale_tick = make_tick(utc(2026, 1, 15, 8, 31))
+        assert worker.should_refresh(stale_tick) is True
+        assert worker.compute_signal(stale_tick).is_stale is True
 
 
 class TestContractValidation:

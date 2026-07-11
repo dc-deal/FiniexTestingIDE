@@ -30,6 +30,7 @@ from python.framework.types.decision_event_types import (
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.persistence_types import RestoreContext
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef, ValidatedParameters
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
@@ -569,6 +570,33 @@ class AbstractDecisionLogic(ABC):
         Args:
             worker_name: The SIGNAL worker instance that turned stale
             source: Its signal source key (e.g. 'llm_sentiment')
+        """
+        pass
+
+    # ============================================
+    # Market-Data Staleness Contract (#436)
+    # ============================================
+
+    def on_market_data_stale(self, status: MarketDataStatus) -> None:
+        """
+        React to the tick stream itself turning stale (session-level, #436).
+
+        MANDATORY override for EVERY decision logic (startup-validated in both
+        pipelines): when the market goes blind — feed frozen, transport dead —
+        the reaction (go flat, wait with a timeout, block entries only, or a
+        deliberate `pass`) is a strategy decision the author must write out.
+        The framework cannot answer it; it only enforces that it IS answered.
+        The OrderGuard additionally blocks NEW entries while stale
+        (order_guard.block_stale_market_data) as the framework floor.
+
+        Dispatched by the LIVE loop only, edge-triggered (once per fresh→stale
+        episode); sim never fires it — replay gaps are data. Recovery = ticks
+        resuming (the next compute_tick call). For time-based escalation, read
+        trading_api.get_market_data_status() on heartbeat passes
+        (wants_heartbeat) — seconds_since_last_tick keeps growing while silent.
+
+        Args:
+            status: Session-level market-data health snapshot
         """
         pass
 

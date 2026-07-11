@@ -162,6 +162,7 @@ class RejectionReason(Enum):
     ORDER_TYPE_NOT_SUPPORTED = "order_type_not_supported"
     BROKER_ERROR = "broker_error"
     REJECTION_COOLDOWN = "rejection_cooldown"
+    STALE_MARKET_DATA = "stale_market_data"
 
 
 # ============================================

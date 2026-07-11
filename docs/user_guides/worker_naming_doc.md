@@ -85,6 +85,18 @@ Reference implementation: `CORE/hybrid_sentiment_reference.on_signal_stale` — 
 session channel (error pot) and emits an event-tape entry, while its fusion degrades to
 pure-indicator mode (`_read_sentiment` reads the envelope).
 
+### Market-data staleness contract (mandatory for EVERY decision logic, #436)
+
+The session-level sibling: when the TICK STREAM itself goes blind, EVERY decision logic must
+have programmed its reaction — `on_market_data_stale(status)` is a **mandatory override for
+all decision logics** (startup-validated in both pipelines; an explicit `pass` is a conscious,
+written answer). It is dispatched by the LIVE loop's heartbeat evaluation
+(`execution.market_data_stale_after_s`, default 300 s) — never in sim (replay gaps are data),
+unless a planned `stale_data_stress` window drives it deterministically. The OrderGuard
+additionally blocks NEW entries while stale (framework floor). Instruments, escalation ladder,
+and the outage decision tree: **read
+[Live Outage Handling](live_outage_handling_guide.md)** before writing the override.
+
 ---
 
 ## User Algorithm Files

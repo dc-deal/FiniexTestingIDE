@@ -51,6 +51,7 @@ from python.framework.trading_env.portfolio_manager import PortfolioManager, Pos
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation, PendingOrder, PendingOrderAction
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, TradeRecord
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.order_types import (
@@ -149,6 +150,11 @@ class AbstractTradeExecutor(ABC):
         # on a ghost-pass/heartbeat, the timer time). Decoupled from _current_tick
         # so the clock advances during idle periods (#360).
         self._clock_time: Optional[datetime] = None
+
+        # Session-level tick-stream health (#436) — updated by the LIVE loop's
+        # heartbeat evaluation only. Sim never sets it: default fresh is the
+        # deliberate sim semantics (replay gaps are data, not outages).
+        self._market_data_status = MarketDataStatus()
 
         # Order tracking with configurable limit
         self._order_counter = 0
@@ -1231,6 +1237,27 @@ class AbstractTradeExecutor(ABC):
     def get_market_clock(self) -> MarketClock:
         """Market clock for rollover / weekend awareness (#365)."""
         return self._market_clock
+
+    def set_market_data_status(self, status: MarketDataStatus) -> None:
+        """
+        Inject the session-level tick-stream health status (#436).
+
+        Called by the LIVE tick loop only (heartbeat evaluation + tick-path
+        recovery). The sim never calls this — default fresh is by design.
+
+        Args:
+            status: Current market-data health snapshot
+        """
+        self._market_data_status = status
+
+    def get_market_data_status(self) -> MarketDataStatus:
+        """
+        Session-level tick-stream health (#436).
+
+        Returns:
+            The current MarketDataStatus (always fresh in sim)
+        """
+        return self._market_data_status
 
     def get_current_time(self) -> datetime:
         """

@@ -61,12 +61,13 @@ tests/
 │   ├── swap_cost/         unit — overnight swap accrual: debit/credit/triple, spot=0, determinism (#365)
 │   ├── robustness/        unit — multi-window + IS/OOS validation: roles, distribution, WFE, constancy, verdict (#367)
 │   ├── trend_channel_reference/ integration — didactic full-order-surface reference: LIMIT/STOP entries, SL/TP, trailing, partial, multi-position (#118)
+│   ├── stale_stress/      integration — planned stale-data windows drive both staleness contracts + overlap guard (#436)
 │   └── benchmark/         benchmark — throughput regression (excluded from runner)
 │
 ├── autotrader/
 │   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
 │   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query/polling_cadence/drift_audit/decision_event_dispatcher (#319, #321, #318, #326, #320, #327, #348)
-│   ├── loop_cadence/      unit — clock injection + heartbeat re-poll + decision ghost-pass cadence (#360)
+│   ├── loop_cadence/      unit — clock injection + heartbeat re-poll + decision ghost-pass cadence (#360) + market-data staleness contract (#436)
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   ├── safety/            unit — circuit breaker (margin + spot)
 │   ├── reconciliation/    unit — broker truth-pull + Reconciler ALERT_ONLY (#151)

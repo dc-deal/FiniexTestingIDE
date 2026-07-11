@@ -31,6 +31,9 @@ from python.framework.data_preparation.tick_parquet_reader import read_tick_parq
 from python.framework.signal_data.signal_jsonl_loader import load_signal_series
 from python.framework.signal_data.signal_parquet_reader import load_signal_series_from_parquet
 from python.framework.exceptions.signal_data_errors import SignalDataUnavailableError
+from python.framework.stress_test.stale_data_slicer import StaleDataSlicer
+from python.framework.types.trading_env_types.stress_test_types import (
+    StressTestConfig, StressTestStaleDataConfig)
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
@@ -176,12 +179,23 @@ class SharedDataPreparator:
                 scenario, all_bars_dict, all_bar_counts
             )
 
+            # #436 stale_data_stress: every event must reference a data source
+            # the scenario binds (§33 — a config error excludes ONLY this
+            # scenario); signal-source windows are carved at load time below.
+            stale_error, stale_cfg = self._resolve_stale_stress(scenario)
+            if stale_error:
+                self._logger.error(f"❌ {scenario.name}: {stale_error}")
+                scenario.validation_result.append(ValidationResult(
+                    is_valid=False, scenario_name=scenario.name,
+                    errors=[stale_error], warnings=[]))
+                continue
+
             # Load SIGNAL data (#429). A config/data problem (source not imported, or the
             # scenario range entirely outside the signal coverage) excludes ONLY this
             # scenario (§33) — never crashes the batch. A partial overlap is fine.
             try:
                 signal_series = self._load_signals_for_scenario(
-                    scenario, requirements_map)
+                    scenario, requirements_map, stale_cfg)
             except SignalDataUnavailableError as e:
                 self._logger.error(f"❌ {scenario.name}: {e}")
                 scenario.validation_result.append(ValidationResult(
@@ -226,10 +240,48 @@ class SharedDataPreparator:
             packaging_s=packaging_s
         )
 
+    def _resolve_stale_stress(
+        self,
+        scenario: SingleScenario,
+    ) -> Tuple[Optional[str], Optional[StressTestStaleDataConfig]]:
+        """
+        Parse + source-validate a scenario's stale_data_stress config (#436).
+
+        Every event blocks a DATA SOURCE the scenario binds — its data_source
+        must match the scenario's data_broker_type or data_sentiment_type.
+
+        Args:
+            scenario: The scenario to validate
+
+        Returns:
+            (error_message, stale_cfg) — error set on a config problem (§33),
+            stale_cfg set when enabled events exist, both None otherwise
+        """
+        try:
+            cfg = StressTestConfig.from_dict(scenario.stress_test_config)
+        except ValueError as e:
+            return str(e), None
+        stale_cfg = cfg.stale_data_stress
+        if stale_cfg is None or not stale_cfg.enabled:
+            return None, None
+        bound = {scenario.data_broker_type}
+        if scenario.data_sentiment_type:
+            bound.add(scenario.data_sentiment_type)
+        unknown = [
+            s for s in stale_cfg.get_referenced_sources() if s not in bound]
+        if unknown:
+            return (
+                f"stale_data_stress: unknown data source(s) "
+                f"{', '.join(repr(s) for s in unknown)} — this scenario binds: "
+                f"{', '.join(sorted(bound))}"
+            ), None
+        return None, stale_cfg
+
     def _load_signals_for_scenario(
         self,
         scenario: SingleScenario,
         requirements_map: RequirementsMap,
+        stale_cfg: Optional[StressTestStaleDataConfig] = None,
     ) -> Dict[str, SignalSeries]:
         """
         Load the SIGNAL worker archives for one scenario (#141).
@@ -237,10 +289,13 @@ class SharedDataPreparator:
         For each of the scenario's SignalRequirements, loads + validates +
         time-orders the archive for the scenario range into a SignalSeries, keyed
         by source. The SignalDataProvider is built + injected subprocess-side.
+        Planned stale windows (#436) are carved out of the refined series here —
+        source-level, so every consumer of the source sees the same gap.
 
         Args:
             scenario: The scenario to load signal data for
             requirements_map: Aggregated requirements (carries the SignalRequirements)
+            stale_cfg: Validated stale_data_stress config (None = no stress)
 
         Returns:
             Dict[source, SignalSeries] (empty when the scenario has no SIGNAL worker)
@@ -282,6 +337,21 @@ class SharedDataPreparator:
                     f"SIGNAL source '{req.source}' for scenario '{scenario.name}' has "
                     f"neither a 'data_sentiment_type' nor a 'data_path' override configured."
                 )
+
+            # #436 stale_data_stress: carve the planned windows out of the
+            # refined series (the data-plane cut the #434 chain then reacts to).
+            if stale_cfg is not None and req.data_sentiment_type:
+                windows = stale_cfg.get_windows_for_source(
+                    req.data_sentiment_type)
+                if windows:
+                    before = len(series.snapshots)
+                    series = StaleDataSlicer.carve_signal_series(
+                        series, windows)
+                    self._logger.info(
+                        f"🧪 [STRESS] {len(windows)} stale window(s) carved out "
+                        f"of signal source '{req.data_sentiment_type}' for "
+                        f"{scenario.name} "
+                        f"({before} → {len(series.snapshots)} snapshots)")
 
             series_by_source[req.source] = series
             self._logger.debug(

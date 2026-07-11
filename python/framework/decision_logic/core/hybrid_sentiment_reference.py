@@ -20,6 +20,7 @@ from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderResult,
@@ -138,7 +139,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
     def get_metadata(cls) -> ComponentMetadata:
         """CORE reference decision logic metadata (crypto sentiment demo)."""
         return ComponentMetadata(
-            version='1.1.0',
+            version='1.2.0',
             doc_link='docs/user_guides/worker_naming_doc.md',
             recommended_markets=('crypto',),
         )
@@ -187,6 +188,30 @@ class HybridSentimentReference(AbstractDecisionLogic):
         self.emit_event(
             f"📡 sentiment stale ({source}) — indicator-only mode",
             AwarenessLevel.NOTICE, 'signal_stale')
+
+    # ============================================
+    # Market-Data Staleness Contract (#436)
+    # ============================================
+
+    def on_market_data_stale(self, status: MarketDataStatus) -> None:
+        """
+        Programmed market-outage reaction (didactic): hold and wait.
+
+        Long-only spot demo with market orders only — no resting orders to
+        pull, and the OrderGuard already blocks new entries while stale. The
+        written reaction here is: make the blind moment visible and wait for
+        ticks to resume.
+
+        Args:
+            status: Session-level market-data health snapshot
+        """
+        self.logger.warning(
+            f"🔌 Market data stale ({status.seconds_since_last_tick:.0f}s "
+            f"since last tick) — holding, entries guard-blocked until recovery."
+        )
+        self.emit_event(
+            '🔌 market data stale — holding until ticks resume',
+            AwarenessLevel.NOTICE, 'market_data_stale')
 
     # ============================================
     # Decision

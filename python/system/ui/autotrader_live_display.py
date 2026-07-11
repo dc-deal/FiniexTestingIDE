@@ -789,6 +789,11 @@ class AutoTraderLiveDisplay:
         else:
             tick_age_str = '[dim]—[/dim]'
 
+        # Market-data staleness contract (#436) — contract-driven tag next to
+        # the transport colors above (threshold from the profile, not hardcoded)
+        if stats and stats.market_stale:
+            tick_age_str += ' [yellow][STALE][/yellow]'
+
         # Emitted tick rate (session average)
         if stats and emitted > 0:
             uptime_min = max(0.001, (datetime.now(

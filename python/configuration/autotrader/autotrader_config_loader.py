@@ -198,6 +198,8 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             reconnect_max_delay_s=tick_source_raw.get('reconnect_max_delay_s', 60.0),
             connection_check_interval_s=tick_source_raw.get('connection_check_interval_s', 30.0),
             connection_dead_s=tick_source_raw.get('connection_dead_s', 90.0),
+            freeze_after_ticks=tick_source_raw.get('freeze_after_ticks', 0),
+            freeze_duration_s=tick_source_raw.get('freeze_duration_s', 0.0),
         ),
         sentiment_source=SentimentSourceConfig(
             type=sentiment_source_raw.get('type', ''),
@@ -208,6 +210,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             parallel_workers=execution_raw.get('parallel_workers', False),
             bar_max_history=execution_raw.get('bar_max_history', 1000),
             heartbeat_interval_ms=execution_raw.get('heartbeat_interval_ms', 500),
+            market_data_stale_after_s=execution_raw.get('market_data_stale_after_s', 300.0),
             performance_tracking=AutoTraderPerformanceTrackingConfig(
                 worker_decision_tracking=performance_tracking_raw.get('worker_decision_tracking', False),
             ),
@@ -229,6 +232,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         order_guard=OrderGuardDefaults(
             cooldown_seconds=order_guard_raw.get('cooldown_seconds', 60.0),
             max_consecutive_rejections=order_guard_raw.get('max_consecutive_rejections', 2),
+            block_stale_market_data=order_guard_raw.get('block_stale_market_data', True),
         ),
         drift_audit=DriftAuditConfig(
             enabled=drift_audit_enabled_resolved,

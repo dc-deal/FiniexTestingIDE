@@ -29,6 +29,8 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_live_export import process_live_export, process_live_setup
 from python.framework.process.process_live_queue_helper import send_status_update_process
+from python.framework.stress_test.stale_data_stress_driver import (
+    StaleDataStressDriver, warn_events_outside_range)
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
@@ -163,6 +165,26 @@ def execute_tick_loop(
         algo_tick_count = sum(1 for t in ticks if not t.is_clipped)
         has_clipping = algo_tick_count < len(ticks)
 
+        # #436: planned stale windows on the TICK source (stale_data_stress) —
+        # status-plane driver on the sim time axis (events hitting the signal
+        # source are already carved out of the series at preparation time).
+        # The overlap guard warns about windows the data range can never reach.
+        stale_stress_driver: Optional[StaleDataStressDriver] = None
+        stale_cfg = (
+            config.stress_test_config.stale_data_stress
+            if config.stress_test_config else None
+        )
+        if stale_cfg is not None and stale_cfg.enabled and ticks:
+            warn_events_outside_range(
+                stale_cfg.events, ticks[0].timestamp, ticks[-1].timestamp,
+                scenario_logger)
+            tick_source_events = stale_cfg.get_events_for_source(
+                config.broker_type.value)
+            if tick_source_events:
+                stale_stress_driver = StaleDataStressDriver(
+                    tick_source_events, trade_simulator, decision_logic,
+                    scenario_logger)
+
         if has_clipping:
             scenario_logger.info(
                 f"🔄 Starting tick loop ({live_setup.tick_count:,} ticks, "
@@ -233,6 +255,11 @@ def execute_tick_loop(
 
             # === ALGO PATH (non-clipped ticks only) ===
 
+            # #436: advance the planned stale-window state machine BEFORE the
+            # decision computes — status + edge hook are visible this pass.
+            if stale_stress_driver is not None:
+                stale_stress_driver.on_tick(tick.timestamp)
+
             # === 3+4. Bar History + Worker Processing + Decision (shared core, #303) ===
             # 'worker_decision' now also covers the (tiny) bar-history
             # retrieval — the former 'bar_history' timer had no report consumer.
@@ -287,6 +314,11 @@ def execute_tick_loop(
             # Total tick time
             if profiling_enabled:
                 profile_times['total_per_tick'] += (time.perf_counter() - tick_start) * 1000
+
+        # #436: close a stale window still active at scenario end (episode
+        # span reaches the pot even without a recovery tick).
+        if stale_stress_driver is not None:
+            stale_stress_driver.finish()
 
         # === Session end event (#348) — emitted once the loop ends (tick
         # exhaustion or session-end request). Delivered before reporting.

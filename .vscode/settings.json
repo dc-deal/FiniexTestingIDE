@@ -24,6 +24,8 @@
         "**/data/processed": true,
         "**/data/cache": true
     },
+    // gitignored files (github_issues/, ISSUE_*, user_configs/ ...) in search + Ctrl+P anzeigen
+    "search.useIgnoreFiles": false,
     // Schriftart ändern, damit Emojis die richtige länge haben (wichtig für boxen)
     // ev. herunterladen falls nciht vorhanden https://github.com/microsoft/cascadia-code/releases
     // Terminal

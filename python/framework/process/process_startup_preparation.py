@@ -98,6 +98,8 @@ def process_startup_preparation(
     # === PHASE 4.5: Inject Signal Data Providers (#141) ===
     # SIGNAL workers read an injected provider, built from the prepared signal
     # series in the data package. No-op when there is no SIGNAL worker.
+    # Planned stale windows (#436 stress) are already carved out of the series
+    # at preparation time (StaleDataSlicer) — nothing stress-specific here.
     _inject_signal_providers(workers, shared_data, scenario_logger)
 
     # === PHASE 5: Create Decision Logic (with context) ===
@@ -190,6 +192,9 @@ def _inject_signal_providers(
 
     A provider is built per source from the prepared signal series in the data
     package and injected into each AbstractSignalWorker reading that source.
+    Planned stale windows (#436 stale-data stress) are already carved out of
+    the series at preparation time (StaleDataSlicer) — source-level, so every
+    consumer of a stressed source sees the same gap.
 
     Args:
         workers: The scenario's worker instances
@@ -205,13 +210,15 @@ def _inject_signal_providers(
     }
     for worker in workers:
         if isinstance(worker, AbstractSignalWorker):
-            provider = providers.get(worker.get_signal_source())
-            if provider is not None:
-                worker.set_signal_provider(provider)
-                logger.debug(
-                    f"📡 Injected signal provider '{worker.get_signal_source()}' "
-                    f"into worker '{worker.name}'"
-                )
+            source = worker.get_signal_source()
+            provider = providers.get(source)
+            if provider is None:
+                continue
+            worker.set_signal_provider(provider)
+            logger.debug(
+                f"📡 Injected signal provider '{source}' "
+                f"into worker '{worker.name}'"
+            )
 
 
 def _match_and_validate_warmup_bars(

@@ -29,6 +29,8 @@ class MockTickSource(AbstractTickSource):
         tick_queue: Thread-safe queue for tick delivery to main thread
         max_ticks: Stop after N ticks. 0 = no limit (full file)
         tick_delay_ms: Artificial per-tick delay in ms (0 = full speed)
+        freeze_after_ticks: Outage drill (#436): pause emission once after N ticks. 0 = off
+        freeze_duration_s: Outage drill (#436): pause duration in wall seconds
     """
 
     def __init__(
@@ -38,12 +40,16 @@ class MockTickSource(AbstractTickSource):
         tick_queue: queue.Queue,
         max_ticks: int = 0,
         tick_delay_ms: int = 0,
+        freeze_after_ticks: int = 0,
+        freeze_duration_s: float = 0.0,
     ):
         self._parquet_path = parquet_path
         self._symbol = symbol
         self._tick_queue = tick_queue
         self._max_ticks = max_ticks  # 0 = no limit
         self._tick_delay_s = tick_delay_ms / 1000.0 if tick_delay_ms > 0 else 0.0
+        self._freeze_after_ticks = freeze_after_ticks  # 0 = off
+        self._freeze_duration_s = freeze_duration_s
         self._running = False
         self._exhausted = False
         self._ticks: List[TickData] = []
@@ -64,6 +70,15 @@ class MockTickSource(AbstractTickSource):
                 break
             if self._max_ticks > 0 and self._ticks_emitted >= self._max_ticks:
                 break
+
+            # Outage drill (#436): one deliberate mid-replay silence. The loop's
+            # heartbeats keep running against the wall clock, so the session-level
+            # staleness contract fires organically, then recovers on resume.
+            if (
+                self._freeze_after_ticks > 0
+                and self._ticks_emitted == self._freeze_after_ticks
+            ):
+                time.sleep(self._freeze_duration_s)
 
             # Throttle for visual debugging
             if self._tick_delay_s > 0:

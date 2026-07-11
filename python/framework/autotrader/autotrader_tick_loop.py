@@ -39,6 +39,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
 )
 from python.framework.types.decision_event_types import SessionEndEvent, SessionEndSeverity
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -121,6 +122,15 @@ class AutotraderTickLoop:
         # (and how often it acts), reported once at session end.
         self._ghost_pass_count: int = 0
         self._ghost_action_count: int = 0
+
+        # #436: market-data staleness contract — no real tick for this many wall
+        # seconds → session-level stale (pot warning + on_market_data_stale +
+        # OrderGuard entry block). 0 disables. Edge state + episode start below.
+        self._market_data_stale_after_s = config.execution.market_data_stale_after_s
+        self._market_stale = False
+        self._market_stale_since: Optional[datetime] = None
+        self._market_stale_since_wall: float = 0.0
+        self._last_reconnect_count: int = 0
 
         # Resolve symbol currencies from broker config (avoids string splitting heuristic)
         symbol_spec = executor.broker.adapter.get_symbol_specification(config.symbol)
@@ -233,6 +243,10 @@ class AutotraderTickLoop:
                 # #320 + #360: drain async responses + check timeouts + re-poll
                 # active orders (the fill/cancel-confirm query now fires during idle).
                 self._executor.heartbeat()
+                # #436: market-data staleness contract — evaluate the last real
+                # tick's age BEFORE events/ghost-pass, so the decision sees the
+                # stale status (and the edge hook) in this very pass.
+                self._evaluate_market_data_staleness()
                 # #151 + #360: reconcile on the timer too (was tick-only). Time-bounded
                 # by min_interval_seconds → self-throttled, no API storm during idle.
                 if self._reconciler is not None and self._reconciler.is_due(ticks_processed):
@@ -280,6 +294,10 @@ class AutotraderTickLoop:
 
             # === 1. Trade Executor — BROKER PATH (all ticks) ===
             self._executor.on_tick(tick)
+
+            # #436: a real tick ends a stale episode (recovery, edge reset).
+            if self._market_stale:
+                self._end_market_stale_episode()
 
             # Capture spot equity baseline on first tick (first live price available)
             if ticks_processed == 1 and self._trading_model == TradingModel.SPOT:
@@ -530,6 +548,82 @@ class AutotraderTickLoop:
             self._display_queue.put_nowait(stats)
         except queue.Full:
             pass  # Display will use last known state
+
+    def _evaluate_market_data_staleness(self) -> None:
+        """
+        Evaluate the session-level market-data staleness contract (#436).
+
+        Runs on the idle heartbeat. Wall-clock is valid here as a DURATION
+        measurement (elapsed since the last real tick arrived); episode
+        RECORDS (stale_since, log lines) are stamped from the canonical
+        clock. Edge-triggered: pot warning + on_market_data_stale fire once
+        per fresh→stale episode; recovery happens on the tick path. While
+        stale, the readable status stays current (escalation input for
+        heartbeat-driven logics).
+        """
+        # Reconnect visibility (error channel v0): surface transport
+        # reconnects to the session pot; typed connection events are #375/#331.
+        if self._tick_source is not None:
+            reconnects = self._tick_source.get_reconnect_count()
+            if reconnects > self._last_reconnect_count:
+                self._logger.warning(
+                    f'🔌 Tick stream reconnected '
+                    f'(+{reconnects - self._last_reconnect_count}, total {reconnects})')
+                self._last_reconnect_count = reconnects
+
+        if self._market_data_stale_after_s <= 0:
+            return
+        if self._last_real_tick_wall_time <= 0:
+            return  # no tick yet — startup wait, not an outage
+        seconds_since = time.time() - self._last_real_tick_wall_time
+        if seconds_since <= self._market_data_stale_after_s:
+            return
+
+        flipped = not self._market_stale
+        if flipped:
+            self._market_stale = True
+            self._market_stale_since = self._executor.get_current_time()
+            # Wall anchor: the outage physically began when ticks stopped.
+            self._market_stale_since_wall = self._last_real_tick_wall_time
+        status = MarketDataStatus(
+            is_stale=True,
+            stale_since=self._market_stale_since,
+            seconds_since_last_tick=seconds_since,
+            reconnect_count=self._last_reconnect_count,
+        )
+        self._executor.set_market_data_status(status)
+        if flipped:
+            self._logger.warning(
+                f"⚠️ Market data stale since "
+                f"{self._market_stale_since.strftime('%H:%M:%S')}: no tick for "
+                f"{seconds_since:.0f}s (threshold "
+                f"{self._market_data_stale_after_s:.0f}s) — entries guard-blocked"
+            )
+            self._decision_logic.on_market_data_stale(status)
+
+    def _end_market_stale_episode(self) -> None:
+        """
+        Close a stale episode on tick resumption (#436): fresh status, edge
+        reset, and the from–to episode span into the warnings pot (the v0
+        stale protocol — the #433 stability table aggregates these later).
+        The duration is measured on the WALL axis (§9 duration rule) — in a
+        mock session the canonical from–to can span two time axes (replay
+        tick timestamps vs wall heartbeat), while live they coincide.
+        """
+        recovered_at = self._executor.get_current_time()
+        span = ''
+        if self._market_stale_since is not None:
+            duration_s = max(0.0, time.time() - self._market_stale_since_wall)
+            span = (
+                f": stale {self._market_stale_since.strftime('%H:%M:%S')} → "
+                f"{recovered_at.strftime('%H:%M:%S')} "
+                f"({int(duration_s // 60)}m {int(duration_s % 60)}s)"
+            )
+        self._logger.warning(f'✅ Market data recovered{span}')
+        self._market_stale = False
+        self._market_stale_since = None
+        self._executor.set_market_data_status(MarketDataStatus(
+            reconnect_count=self._last_reconnect_count))
 
     def _safety_state(self) -> SafetyState:
         """Bundle the current circuit-breaker state for the display exporter."""
