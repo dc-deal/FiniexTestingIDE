@@ -51,6 +51,10 @@ fixtures via direct provider injection — no batch, no tick loop.
   that starts stale), resets on recovery.
 - Reference reaction — `hybrid_sentiment_reference` warns to the session channel and emits a
   `signal_stale` event-tape entry.
+- Stale-data slicer (#436 stress, data-plane carve) — `StaleDataSlicer` removes the snapshots
+  inside a planned stale window from the refined series ([start, end) semantics, input series
+  unchanged); lookups then resolve as-of the last pre-window snapshot and drive the REAL
+  staleness chain: the aged resolution flips the worker's own `_evaluate_stale` (no flag forcing).
 
 ---
 

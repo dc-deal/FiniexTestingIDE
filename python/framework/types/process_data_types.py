@@ -372,6 +372,8 @@ class ProcessScenarioConfig:
                     'cooldown_seconds', 60.0),
                 max_consecutive_rejections=scenario.order_guard_config.get(
                     'max_consecutive_rejections', 2),
+                block_stale_market_data=scenario.order_guard_config.get(
+                    'block_stale_market_data', True),
             )
         else:
             order_guard_config = OrderGuardDefaults()

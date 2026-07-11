@@ -230,6 +230,9 @@ class AutoTraderDisplayStats:
     # Feed-status envelope (#434): any SIGNAL worker result currently stale
     feed_stale: bool = False
 
+    # Market-data staleness contract (#436): session-level tick-stream stale
+    market_stale: bool = False
+
     # Decision State
     last_decision_action: DecisionLogicAction = DecisionLogicAction.FLAT
     decision_outputs: Dict[str, OutputValue] = field(default_factory=dict)

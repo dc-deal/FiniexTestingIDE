@@ -111,6 +111,10 @@ class _StubLogic(AbstractDecisionLogic):
     def _execute_decision_impl(self, decision, tick):
         return None
 
+    def on_market_data_stale(self, status):
+        # Mandatory contract override (#436) — stub never trades.
+        pass
+
 
 class TestSubscriptionValidation:
     """The orchestrator cross-checks declared signals against the worker output schema (#425)."""

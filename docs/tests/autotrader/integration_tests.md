@@ -15,7 +15,8 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 | `test_full_mock_session` | Normal shutdown, tick count (29780), 0 clipping, 0 warnings/errors, trades produced, stats collected |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
 | `test_broker_report_written` | Broker report persisted (unified model) + rendered in the summary |
-| `test_tick_source_fields_fully_parsed` | Every `tick_source` profile key reaches the config (no silently dropped keys) |
+| `test_tick_source_fields_fully_parsed` | Every `tick_source` profile key reaches the config (no silently dropped keys, incl. the #436 freeze-lever fields) |
+| `test_staleness_contract_fields_parsed` | #436 knobs: `execution.market_data_stale_after_s` + `order_guard.block_stale_market_data` — per-profile override AND app_config JIC defaults |
 
 **Data Dependency:** Uses `configs/autotrader_profiles/backtesting/mock_session_test.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`.
 
@@ -38,6 +39,24 @@ parquets (2026-04-27 / 2026-05-04) and the imported `crypto_sentiment` signal ar
 (`data/processed/signals/crypto_sentiment/`).
 
 **Runtime:** ~16 seconds total (both sessions shared via `scope='module'`).
+
+### test_market_data_outage.py (5 Tests)
+
+The #436 combined outage session (`market_data_outage_test.json`): the mock feeder freezes
+mid-replay (`freeze_after_ticks: 1500`, `freeze_duration_s: 2.0`, threshold 1 s) while the
+aged sentiment archive keeps the SIGNAL side stale — "runs fine → silence → notified →
+recovered", both staleness contracts in ONE fast session driven by the
+`CORE/backtesting/backtesting_outage_probe` decision logic.
+
+| Test | What it validates |
+|------|-------------------|
+| `test_session_completes_normally` | Normal shutdown, 3000 ticks, empty error pot despite the outage |
+| `test_stale_episode_reaches_the_pot_with_span` | Exactly one flip warning + one recovery line with the from–to span (the v0 stale protocol) |
+| `test_decision_hook_fired_once` | `on_market_data_stale` edge-dispatched exactly once per episode |
+| `test_guard_blocked_the_stale_entry` | The probe's deliberate ghost-pass entry was rejected (`STALE_MARKET_DATA` floor) |
+| `test_signal_side_fired_too` | `on_signal_stale` fired once (aged archive) — both contracts in one session |
+
+**Runtime:** ~10 seconds (one shared session; includes the 2 s deliberate freeze).
 
 ### test_autotrader_trade_lifecycle.py (15 Tests)
 

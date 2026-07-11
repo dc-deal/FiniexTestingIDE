@@ -39,10 +39,10 @@ _KNOWN_TRADE_SIM_KEYS: frozenset = frozenset({
     'inbound_latency_max_ms', 'broker_config_path', 'account_currency',
 })
 _KNOWN_ORDER_GUARD_KEYS: frozenset = frozenset({
-    'cooldown_seconds', 'max_consecutive_rejections',
+    'cooldown_seconds', 'max_consecutive_rejections', 'block_stale_market_data',
 })
 _KNOWN_STRESS_TEST_KEYS: frozenset = frozenset({
-    'reject_open_order',
+    'reject_open_order', 'stale_data_stress',
 })
 
 

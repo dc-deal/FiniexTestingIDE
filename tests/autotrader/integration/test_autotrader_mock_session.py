@@ -142,6 +142,8 @@ class TestProfileLoader:
             'reconnect_max_delay_s': 90.0,
             'connection_check_interval_s': 15.0,
             'connection_dead_s': 45.0,
+            'freeze_after_ticks': 500,
+            'freeze_duration_s': 1.5,
         }
         profile_path = tmp_path / 'tick_source_profile.json'
         profile_path.write_text(json.dumps(profile))
@@ -152,3 +154,24 @@ class TestProfileLoader:
                 f"tick_source.{key} not parsed: expected {expected!r}, "
                 f"got {getattr(tick_source, key)!r}"
             )
+
+    def test_staleness_contract_fields_parsed(self, tmp_path):
+        """
+        #436 contract knobs reach the config: the execution threshold
+        (per-profile override over the app_config default) and the
+        order_guard stale-entry block flag.
+        """
+        profile = json.loads(Path(MOCK_PROFILE).read_text())
+        profile['execution'] = {'market_data_stale_after_s': 42.0}
+        profile['order_guard'] = {'block_stale_market_data': False}
+        profile_path = tmp_path / 'staleness_profile.json'
+        profile_path.write_text(json.dumps(profile))
+
+        config = load_autotrader_config(str(profile_path))
+        assert config.execution.market_data_stale_after_s == 42.0
+        assert config.order_guard.block_stale_market_data is False
+
+        # JIC defaults (app_config mirror) when the profile stays silent
+        default_config = load_autotrader_config(MOCK_PROFILE)
+        assert default_config.execution.market_data_stale_after_s == 300.0
+        assert default_config.order_guard.block_stale_market_data is True

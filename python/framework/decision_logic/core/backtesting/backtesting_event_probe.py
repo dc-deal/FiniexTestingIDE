@@ -52,6 +52,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderSide,
     OrderType,
 )
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
@@ -192,6 +193,17 @@ class BacktestingEventProbe(AbstractDecisionLogic):
     def on_session_end(self, event: SessionEndEvent) -> None:
         self._received_events.append(DecisionEventType.SESSION_END.value)
         self.logger.info(f"[EVENT] session_end ({event.reason})")
+
+    def on_market_data_stale(self, status: MarketDataStatus) -> None:
+        """
+        Deliberate pass (#436): replay gaps are data — sim dispatches this
+        only under a planned stale_data_stress window, which this probe's
+        scenarios do not configure.
+
+        Args:
+            status: Session-level market-data health snapshot
+        """
+        pass
 
     # ============================================
     # Core Logic: compute() + execute()

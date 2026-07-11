@@ -231,6 +231,21 @@ class WorkerOrchestrator:
         Raises:
             ValueError: If requirements not met
         """
+        # Market-data staleness contract (#436): EVERY decision logic must
+        # program its reaction to the tick stream going blind — session-level,
+        # so this runs BEFORE the no-requirements early exit (unlike the
+        # per-worker SIGNAL check below). Sim never dispatches it (replay gaps
+        # are data, unless a stale_data_stress window drives it); the override
+        # is the uniform authoring contract: sim-validated = live-ready.
+        if type(self.decision_logic).on_market_data_stale is AbstractDecisionLogic.on_market_data_stale:
+            raise ValueError(
+                f"DecisionLogic '{self.decision_logic.__class__.__name__}' does not "
+                f"override on_market_data_stale() — the market-outage reaction "
+                f"(flat / wait-with-timeout / entries-block / deliberate pass) must "
+                f"be programmed explicitly. See "
+                f"docs/user_guides/live_outage_handling_guide.md."
+            )
+
         # Get required workers (instance_name → WorkerRequirement: type + signals)
         required_workers = self.decision_logic.get_required_workers()
 

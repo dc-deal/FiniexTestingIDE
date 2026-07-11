@@ -226,7 +226,7 @@ Sections not listed here (`execution`, `clipping_monitor`, `order_guard`) inheri
 | `dry_run` | `true` / `false` / omit | Optional per-profile override of the global `market_config` dry_run. Omit = inherit the broker default. Setting it (especially `false` = live) overrides the global default for this profile only and logs a loud override warning at startup |
 | `strategy_config` | Workers + DecisionLogic | Same format as scenario sets |
 | `account` | Asset balances | Spot: `"balances": {"USD": X, "ETH": Y}`. Live: overridden by API fetch (#230) |
-| `tick_source` | Data source config | Mock: parquet replay. Live: WebSocket (#232) |
+| `tick_source` | Data source config | Mock: parquet replay (+ `freeze_after_ticks`/`freeze_duration_s` outage drill, #436). Live: WebSocket (#232) |
 | `sentiment_source` | Sentiment feed for SIGNAL workers | Mock only (requires mock tick source). Omit = no feed; mandatory when the strategy has a SIGNAL worker. See "Sentiment Feed (Mock)" |
 | `execution` | Runtime parameters | Inherits from `app_config.autotrader.execution`; override per profile if needed |
 | `clipping_monitor` | Timing config | Inherits from `app_config.autotrader.clipping_monitor`; strategy: `queue_all` or `drop_stale` |
@@ -321,6 +321,39 @@ value today.
 **Live dashboard:** the ALGO STATE panel shows the feed (`📡 Feed: <label>`, flagged
 `[STALE]` in yellow when the SIGNAL worker reports staleness) plus the worker's
 `display=True` outputs (`sentiment`, `conf`, `signal`, `stale`).
+
+## Market-Data Staleness Contract (#436)
+
+The tick-stream sibling of the per-worker SIGNAL contract: when no real tick arrives for
+`execution.market_data_stale_after_s` wall seconds (default 300; `0` disables), the session-level
+market data counts as stale. Evaluated on the EXISTING idle heartbeat (no extra timing
+mechanism) — the wall-clock is used only as a DURATION measurement; episode records are
+stamped from the canonical clock.
+
+**On the fresh→stale flip (edge, once per episode):**
+1. `MarketDataStatus` set on the executor — readable any time via
+   `trading_api.get_market_data_status()` (`seconds_since_last_tick` keeps growing while
+   silent → the escalation input for heartbeat-driven logics).
+2. Pot warning `⚠️ Market data stale since …` (reaches the session summary).
+3. `on_market_data_stale(status)` dispatched — a **mandatory override for EVERY decision
+   logic** (startup-validated in both pipelines; an explicit `pass` is a conscious answer).
+4. The OrderGuard rejects NEW entries while stale (`STALE_MARKET_DATA`,
+   `order_guard.block_stale_market_data`, default on); closes/cancels stay allowed.
+
+**Recovery** = the next real tick: fresh status, edge reset, and a from–to episode span into
+the pot (`✅ Market data recovered: stale 12:03:10 → 12:05:23 (2m 13s)`) — the v0 stale
+protocol; the aggregated stability table is #433 scope. Transport reconnects
+(`get_reconnect_count()` delta) are surfaced as pot warnings too. The CONNECTION panel's
+"Last Tick" line carries a contract-driven `[STALE]` tag.
+
+**Boundaries:** sim never evaluates this (replay gaps are DATA — weekend/holiday); the planned
+`stale_data_stress` windows drive the same surface deterministically in backtests (see
+`docs/stress_test.md`). The mock outage drill is `tick_source.freeze_after_ticks` +
+`freeze_duration_s` (one deliberate mid-replay silence). Live sources today are crypto/24-7 —
+the forex weekend gate (don't flag market closure as stale) lands with the MT5 adapter via
+MarketClock. On #375 the evaluation trigger moves onto the event timeline; the contract
+surface (status, hook, guard reason, config) carries over unchanged. Authoring guidance:
+`docs/user_guides/live_outage_handling_guide.md`.
 
 ## Live Console UI (#228)
 

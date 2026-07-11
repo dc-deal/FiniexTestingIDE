@@ -42,6 +42,7 @@ from python.framework.types.decision_logic_types import AwarenessLevel, Decision
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
@@ -237,6 +238,23 @@ class LiveFieldStudy(AbstractDecisionLogic):
         # ticks (cancel-confirm, phase-advance, re-arm) on the idle heartbeat (#360),
         # not only when a real market tick arrives.
         return True
+
+    def on_market_data_stale(self, status: MarketDataStatus) -> None:
+        """
+        Programmed market-outage reaction (#436): surface loudly, let the
+        phase machine wait — its wall-clock timeouts already bound every
+        phase, and the OrderGuard blocks new entries while stale.
+
+        Args:
+            status: Session-level market-data health snapshot
+        """
+        self.logger.warning(
+            f"🔌 Market data stale ({status.seconds_since_last_tick:.0f}s "
+            f"since last tick) — field study waiting; phase timeouts guard progress."
+        )
+        self.emit_event(
+            '🔌 market data stale — field study waiting for ticks',
+            AwarenessLevel.NOTICE, 'market_data_stale')
 
     def on_order_filled(self, event: OrderFilledEvent) -> None:
         self._filled_flag = True
