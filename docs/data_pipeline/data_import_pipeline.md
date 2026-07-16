@@ -239,10 +239,18 @@ Import configuration lives in `configs/import_config.json` with optional user ov
     "processing": {
         "move_processed_files": true,
         "auto_render_bars": true,
-        "bar_render_workers": 16
+        "bar_render_workers": 2
     }
 }
 ```
+
+> ⚠️ **Known issue — parallel bar rendering can exhaust memory (work in progress):**
+> Each render worker loads the complete tick history of its symbol into RAM. On large tick
+> archives (multi-GB per broker type), too many parallel workers can exceed the available
+> memory — the OS kills a worker and the whole pool aborts with
+> `A process in the process pool was terminated abruptly while the future was running or pending.`
+> (`BrokenProcessPool`). Until memory-aware worker scheduling lands, `bar_render_workers`
+> stays at a conservative default of `2`. Raise it only for small datasets or RAM-rich systems.
 
 ### Offset Registry
 
@@ -287,7 +295,7 @@ data/test/import/
 | `get_data_finished_path()` | Finished directory path |
 | `get_move_processed_files()` | bool |
 | `get_auto_render_bars()` | bool |
-| `get_bar_render_workers()` | int (fallback: 1, see `processing.bar_render_workers` in config) |
+| `get_bar_render_workers()` | int (fallback: 2, see `processing.bar_render_workers` in config) |
 
 ---
 

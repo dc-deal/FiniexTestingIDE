@@ -599,7 +599,9 @@ Useful for understanding the raw data structure:
 
 > ⚠️ **Warning:** Can take a very long time with large datasets!
 >
-> Bar rendering runs symbols in parallel via `ProcessPoolExecutor`. Worker count is configured in `import_config.json` → `processing.bar_render_workers` (default: 16). Set to `1` for sequential mode.
+> Bar rendering runs symbols in parallel via `ProcessPoolExecutor`. Worker count is configured in `import_config.json` → `processing.bar_render_workers` (default: 2). Set to `1` for sequential mode.
+>
+> ⚠️ **Known issue (work in progress):** each worker loads its symbol's complete tick history into RAM. On large tick archives, too many parallel workers can exceed the available memory — the OS kills a worker and the run aborts with `A process in the process pool was terminated abruptly while the future was running or pending.` The conservative default of `2` avoids this; memory-aware worker scheduling is planned.
 
 ---
 
