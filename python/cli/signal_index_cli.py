@@ -22,6 +22,8 @@ import pandas as pd
 from python.configuration.import_config_manager import ImportConfigManager
 from python.data_management.importers.signal_importer import SignalDataImporter
 from python.data_management.index.signal_index_manager import SignalIndexManager
+from python.framework.types.signal_data_types import (
+    SIGNAL_ENVELOPE_SYMBOL, SIGNAL_RUNTIME_COLUMNS, SignalParquetColumn)
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 vLog = get_global_logger()
@@ -78,7 +80,7 @@ class SignalIndexCli:
 
     def cmd_inspect(self, data_sentiment_type: str, symbol: str):
         """
-        Inspect one signal source/symbol: coverage + sample rows.
+        Inspect one signal source/symbol: coverage, parquet structure, quality, sample.
 
         Args:
             data_sentiment_type: Source identity (= pipeline_id)
@@ -101,12 +103,44 @@ class SignalIndexCli:
         print(f"Range:   {coverage['start_time']} → {coverage['end_time']}")
         print(f"Name(s): {', '.join(coverage['files'])}")
 
-        files = manager.index[data_sentiment_type][symbol]
-        df = pd.read_parquet(files[0]['path'])
-        sample = df[df['symbol'] == symbol].head(5)
+        # Load all of the symbol's parquet buckets for structure + distributions.
+        entries = manager.index[data_sentiment_type][symbol]
+        frames = [pd.read_parquet(e['path']) for e in entries]
+        df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+
+        # Column manifest — runtime projection vs. traceability scalar, with dtype.
+        print("\nParquet columns (lean projection):")
+        for col in SignalParquetColumn:
+            tag = 'runtime' if col.value in SIGNAL_RUNTIME_COLUMNS else 'traceability'
+            dtype = df[col.value].dtype if col.value in df.columns else '—'
+            print(f"   {col.value:16s} {str(dtype):8s} [{tag}]")
+
+        # Row composition — envelope sentinels ('*') vs. the symbol's own rows.
+        sentinels = int(
+            (df[SignalParquetColumn.SYMBOL.value] == SIGNAL_ENVELOPE_SYMBOL).sum())
+        sym_rows = df[df[SignalParquetColumn.SYMBOL.value] == symbol]
+        print("\nRow composition:")
+        print(f"   Envelope sentinels ('*'): {sentinels:,}")
+        print(f"   {symbol} rows:            {len(sym_rows):,}")
+
+        # Signal-quality picture — basis distribution + breaking count (the Fehlerbild lens).
+        print(f"\n{symbol} basis distribution:")
+        for basis, count in sym_rows[SignalParquetColumn.BASIS.value].value_counts().items():
+            label = basis if basis else '(absent/synthesized)'
+            print(f"   {label:24s} {count:,}")
+        breaking = int(sym_rows[SignalParquetColumn.IS_BREAKING.value].sum())
+        print(f"   is_breaking=True:        {breaking:,}")
+
+        # Sample rows — including the new fields (basis, prompt provenance).
+        cols = [
+            SignalParquetColumn.COLLECTED_MSC.value, SignalParquetColumn.SIGNAL.value,
+            SignalParquetColumn.SENTIMENT_SCORE.value, SignalParquetColumn.CONFIDENCE.value,
+            SignalParquetColumn.URGENCY.value, SignalParquetColumn.IS_BREAKING.value,
+            SignalParquetColumn.BASIS.value, SignalParquetColumn.STATUS.value,
+            SignalParquetColumn.PROMPT_VERSION.value, SignalParquetColumn.PROMPT_HASH.value,
+        ]
         print("\nSample rows:")
-        print(sample[['collected_msc', 'symbol', 'signal',
-                      'sentiment_score', 'confidence', 'is_breaking', 'status']].to_string(index=False))
+        print(sym_rows[cols].head(5).to_string(index=False))
         print("=" * 80)
 
 

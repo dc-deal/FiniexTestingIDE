@@ -35,7 +35,10 @@ matching the JSONL behavior. `collected_msc` is stored as int epoch-ms (the merg
 
 The `SignalIndexManager` keys the index as `{data_sentiment_type: {symbol: [files]}}` and resolves
 files by range via `get_relevant_files(data_sentiment_type, symbol, start, end)` — the same contract
-as `TickIndexManager`.
+as `TickIndexManager`. The raw archive may be **rotated into time buckets**
+(`<pipeline_id>/<bucket>.jsonl`, e.g. daily `2026-05-03.jsonl`); the importer converts each bucket to
+its own parquet and the reader concatenates the buckets that overlap the query range — rotation
+changes *where* lines live, not what they mean.
 
 ## Scenario usage
 
@@ -57,14 +60,22 @@ projected reader (`load_signal_series_from_parquet`) → the resulting `SignalSe
 A missing `(data_sentiment_type, symbol)` in the index is a hard error at pre-flight (import it
 first, or fix the type) — mirroring the tick "symbol not found in broker index" path.
 
-## Projection — ship only consumed fields
+## Parquet columns — lean projection
 
-The runtime reader loads only the worker-consumed columns (`signal`, `sentiment_score`,
-`confidence`, `reasoning`, `urgency`, `is_breaking`, plus the lookup keys). The audit-only
-provenance columns (`sources`, `metadata`, `errors`) and envelope metadata stay in the parquet for a
-reporting / archive path but are **not** loaded into the subprocess payload — the columnar store
-gives this projection for free. The projected runtime series is bit-identical to the raw-JSONL path
-on the consumed fields (a parity test guards this).
+The parquet is the **runtime + report layer**, not the archive. It carries only the worker-consumed
+fields plus a small set of cheap, dictionary-encoded prompt-provenance scalars:
+
+- **Runtime (worker-consumed):** `signal`, `sentiment_score`, `confidence`, `reasoning`, `urgency`,
+  `is_breaking`, `basis` (per-symbol signal quality — `llm` / `no_data` / `degraded`), `status`,
+  `schema_version`, plus the `collected_msc` / `symbol` lookup keys. This is `SIGNAL_RUNTIME_COLUMNS`
+  — the exact set the reader projects into the subprocess payload.
+- **Traceability (envelope-scalar):** `pipeline_id`, `prompt_version`, `prompt_id`, `prompt_hash` —
+  so a prompt change stays visible in the data. Read by the index / report path only, not at runtime.
+
+The heavy provenance (`sources`, `metadata`, `errors`) is **deliberately not persisted** — it lives
+in the raw JSONL archive, the audit source. Dropping it shrinks the parquet by ~80–85%. The projected
+runtime series is bit-identical to the raw-JSONL path on the consumed fields, `basis` included (a
+parity test guards this).
 
 ## `data_path` override (dev)
 

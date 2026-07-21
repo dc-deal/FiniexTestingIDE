@@ -10,7 +10,6 @@ symbol — preserving the v0 provider's partial/error → defensive-HOLD behavio
 <target_dir>/<pipeline_id>/<stem>.parquet, keyed by pipeline_id (= data_sentiment_type).
 """
 
-import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -140,12 +139,8 @@ class SignalDataImporter:
                 SignalParquetColumn.SCHEMA_VERSION.value: snap.schema_version,
                 SignalParquetColumn.PIPELINE_ID.value: snap.pipeline_id,
                 SignalParquetColumn.PROMPT_VERSION.value: snap.prompt_version,
-                SignalParquetColumn.OUTCOME_TYPE.value: snap.outcome_type,
-                SignalParquetColumn.TIMESTAMP.value: (
-                    snap.timestamp.isoformat() if snap.timestamp else ''),
-                SignalParquetColumn.METADATA.value: json.dumps(snap.metadata),
-                SignalParquetColumn.ERRORS.value: json.dumps(
-                    [e.model_dump(mode='json') for e in snap.errors]),
+                SignalParquetColumn.PROMPT_ID.value: snap.prompt_id,
+                SignalParquetColumn.PROMPT_HASH.value: snap.prompt_hash,
             }
             # Envelope sentinel row (symbol = '*') — keeps this collected_msc resolvable
             # for every covered symbol even when the envelope omits it (partial/error).
@@ -168,7 +163,7 @@ class SignalDataImporter:
             row[SignalParquetColumn.REASONING.value] = ''
             row[SignalParquetColumn.URGENCY.value] = 0.0
             row[SignalParquetColumn.IS_BREAKING.value] = False
-            row[SignalParquetColumn.SOURCES.value] = '[]'
+            row[SignalParquetColumn.BASIS.value] = ''
         else:
             row[SignalParquetColumn.SIGNAL.value] = result.signal
             row[SignalParquetColumn.SENTIMENT_SCORE.value] = result.sentiment_score
@@ -176,8 +171,7 @@ class SignalDataImporter:
             row[SignalParquetColumn.REASONING.value] = result.reasoning
             row[SignalParquetColumn.URGENCY.value] = result.urgency
             row[SignalParquetColumn.IS_BREAKING.value] = result.is_breaking
-            row[SignalParquetColumn.SOURCES.value] = json.dumps(
-                [s.model_dump(mode='json') for s in result.sources])
+            row[SignalParquetColumn.BASIS.value] = result.basis
         return row
 
     def _rebuild_index(self) -> None:

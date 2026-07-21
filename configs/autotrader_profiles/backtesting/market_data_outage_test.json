@@ -35,7 +35,7 @@
   },
   "sentiment_source": {
     "type": "mock",
-    "parquet_path": "data/processed/signals/crypto_sentiment/crypto_sentiment_2026-04-06_4w.parquet"
+    "parquet_path": "data/processed/signals/crypto_sentiment/2026-05-03.parquet"
   },
   "display": {
     "enabled": false
