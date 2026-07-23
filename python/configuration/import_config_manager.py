@@ -264,7 +264,7 @@ class ImportConfigManager:
         Get number of parallel worker processes for bar rendering.
 
         Returns:
-            Number of worker processes (default: 1)
+            Number of worker processes (default: 2)
         """
         processing = self.get_processing_config()
-        return processing.get("bar_render_workers", 1)
+        return processing.get("bar_render_workers", 2)

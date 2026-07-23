@@ -40,7 +40,7 @@ def _consumed(resolved):
     return (
         int(resolved.collected_msc.timestamp() * 1000), r.signal,
         round(r.sentiment_score, 9), round(r.confidence, 9),
-        r.reasoning, round(r.urgency, 9), r.is_breaking,
+        r.reasoning, round(r.urgency, 9), r.is_breaking, r.basis,
     )
 
 
@@ -62,12 +62,16 @@ def test_parquet_schema_and_dtypes(imported_signals):
     assert df['is_breaking'].dtype == 'bool'
 
 
-def test_provenance_kept_for_archive(imported_signals):
+def test_lean_projection_drops_heavy_provenance(imported_signals):
     df = pd.read_parquet(imported_signals['parquet'])
+    cols = set(df.columns)
+    # heavy provenance is NOT persisted — it lives in the raw JSONL archive (audit source)
+    assert {'sources', 'metadata', 'errors', 'timestamp', 'outcome_type'}.isdisjoint(cols)
+    # new fields ARE persisted: per-symbol basis + prompt provenance (traceability)
+    assert {'basis', 'prompt_id', 'prompt_hash'} <= cols
     btc0 = df[(df['symbol'] == 'BTCUSD') & (df['collected_msc'] == BASE_MSC)].iloc[0]
-    # sources/metadata are JSON-encoded and preserved (archive path), not dropped at import
-    assert 'article_id' in btc0['sources']
-    assert 'model' in btc0['metadata']
+    assert btc0['basis'] == 'llm'
+    assert btc0['prompt_id'] == 'test-prompt'
 
 
 # ---------------------------------------------------------------- index

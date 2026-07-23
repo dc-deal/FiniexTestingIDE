@@ -47,6 +47,7 @@ class SentimentResult(BaseModel):
     reasoning: str = ''
     urgency: float = 0.0              # 0.0 .. 1.0 (breaking gate input)
     is_breaking: bool = False
+    basis: str = ''                   # signal quality: llm / no_data / degraded
     sources: List[ArticleRef] = Field(default_factory=list)
 
 
@@ -62,6 +63,8 @@ class AnalysisEnvelope(BaseModel):
     pipeline_id: str = ''
     outcome_type: str = ''
     prompt_version: str = ''
+    prompt_id: str = ''                    # prompt identity — traceability, must not be lost
+    prompt_hash: str = ''                  # prompt content hash — traceability
     timestamp: Optional[datetime] = None   # analysis wall-clock — NOT the merge key
     status: str = 'success'                # success / partial / error
     result: List[SentimentResult] = Field(default_factory=list)
@@ -129,9 +132,14 @@ class SignalParquetColumn(str, Enum):
     Columns of the imported signal parquet (#429). Granularity: one row per
     (collected_msc, symbol) for present result symbols, plus one envelope-level row
     (symbol = SIGNAL_ENVELOPE_SYMBOL) per envelope. str-based Enum: values are usable
-    directly as DataFrame column names. SIGNAL_RUNTIME_COLUMNS is what the reader projects
-    into the runtime SignalSeries; the rest is envelope metadata + provenance kept for the
-    archive / report path (the #128/#429 field projection).
+    directly as DataFrame column names.
+
+    Lean projection: the parquet carries only the worker-consumed fields plus a small
+    set of cheap, dictionary-encoded prompt-provenance scalars. The heavy provenance
+    (sources / metadata / errors) stays in the raw JSONL archive — the audit source —
+    and is deliberately NOT persisted here. SIGNAL_RUNTIME_COLUMNS is what the reader
+    projects into the runtime SignalSeries; the prompt-provenance columns are read by
+    the index / report path only.
     """
     # --- lookup keys ---
     COLLECTED_MSC = 'collected_msc'      # int64 epoch-ms, the no-look-ahead merge key
@@ -143,24 +151,22 @@ class SignalParquetColumn(str, Enum):
     REASONING = 'reasoning'
     URGENCY = 'urgency'
     IS_BREAKING = 'is_breaking'
+    BASIS = 'basis'                      # per-symbol signal quality (llm / no_data / degraded)
     STATUS = 'status'                    # envelope status — reconstructs error/empty snapshots
-    # --- envelope metadata (archive) ---
+    # --- prompt provenance (traceability — cheap, envelope-scalar) ---
     SCHEMA_VERSION = 'schema_version'
     PIPELINE_ID = 'pipeline_id'
     PROMPT_VERSION = 'prompt_version'
-    OUTCOME_TYPE = 'outcome_type'
-    TIMESTAMP = 'timestamp'              # envelope wall-clock, NOT the merge key
-    # --- provenance (archive, JSON-encoded strings) ---
-    SOURCES = 'sources'
-    METADATA = 'metadata'
-    ERRORS = 'errors'
+    PROMPT_ID = 'prompt_id'
+    PROMPT_HASH = 'prompt_hash'
 
 
 # What the reader loads into the runtime SignalSeries (projection — ship only consumed
 # fields, the seam shared with #128). collected_msc + symbol are the lookup keys; status
-# reconstructs error/empty (defensive-HOLD) snapshots; schema_version is required to build
-# the SignalSnapshot model. The heavy archive columns (sources / metadata / errors /
-# pipeline_id / prompt_version / outcome_type / timestamp) are NOT loaded at runtime.
+# reconstructs error/empty (defensive-HOLD) snapshots; basis carries per-symbol signal
+# quality; schema_version is required to build the SignalSnapshot model. The prompt-
+# provenance scalars (pipeline_id / prompt_version / prompt_id / prompt_hash) are NOT
+# loaded at runtime.
 SIGNAL_RUNTIME_COLUMNS = frozenset({
     SignalParquetColumn.COLLECTED_MSC.value,
     SignalParquetColumn.SYMBOL.value,
@@ -170,6 +176,7 @@ SIGNAL_RUNTIME_COLUMNS = frozenset({
     SignalParquetColumn.REASONING.value,
     SignalParquetColumn.URGENCY.value,
     SignalParquetColumn.IS_BREAKING.value,
+    SignalParquetColumn.BASIS.value,
     SignalParquetColumn.STATUS.value,
     SignalParquetColumn.SCHEMA_VERSION.value,
 })

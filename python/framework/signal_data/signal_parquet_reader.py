@@ -77,6 +77,7 @@ def load_signal_series_from_parquet(
                 reasoning=getattr(row, SignalParquetColumn.REASONING.value),
                 urgency=getattr(row, SignalParquetColumn.URGENCY.value),
                 is_breaking=bool(getattr(row, SignalParquetColumn.IS_BREAKING.value)),
+                basis=getattr(row, SignalParquetColumn.BASIS.value),
             )]
         snapshots.append(SignalSnapshot(
             schema_version=getattr(row, SignalParquetColumn.SCHEMA_VERSION.value),

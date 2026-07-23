@@ -28,7 +28,7 @@ from python.framework.types.market_types.market_types import TradingContext
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/sentiment_mock_test.json'
 OUTAGE_PROFILE = 'configs/autotrader_profiles/backtesting/sentiment_outage_test.json'
-# Tick file entirely before the crypto_sentiment archive (2026-04-06 → 05-03)
+# Tick file entirely before the crypto_sentiment archive (2026-04-27 → 05-03)
 NO_OVERLAP_TICK_PARQUET = 'data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet'
 
 
@@ -234,7 +234,7 @@ class TestSentimentFeedValidation:
         assert mock_config.sentiment_source.get_feed_label() == 'crypto_sentiment'
         outage_config = load_autotrader_config(OUTAGE_PROFILE)
         assert outage_config.sentiment_source.get_feed_label() == \
-            'crypto_sentiment_2026-04-06_4w.parquet'
+            '2026-05-03.parquet'
         outage_config.sentiment_source.type = ''
         assert outage_config.sentiment_source.get_feed_label() == ''
 

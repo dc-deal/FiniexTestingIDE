@@ -10,7 +10,7 @@ fields.
 
 | Area | Checks |
 |---|---|
-| Import / explode | row counts (one row per `(collected_msc, symbol)` + one envelope sentinel per envelope), parquet schema + dtypes, provenance kept as JSON columns |
+| Import / explode | row counts (one row per `(collected_msc, symbol)` + one envelope sentinel per envelope), parquet schema + dtypes, lean projection (heavy provenance `sources`/`metadata`/`errors` dropped; `basis` + `prompt_id`/`prompt_hash` persisted) |
 | Index | sources + symbols, whole-file coverage per symbol (incl. symbols absent in some envelopes), range resolution, unknown symbol → empty |
 | Reader projection | one snapshot per envelope for the projected symbol; audit-only `sources` dropped from the runtime series |
 | v0 parity | `SignalDataProvider` over the raw JSONL vs. over the parquet resolve identically across the range, for a symbol present in every envelope AND one absent in `partial`/`error` envelopes (defensive HOLD) |
