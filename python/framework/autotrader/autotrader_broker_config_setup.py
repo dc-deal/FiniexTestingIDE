@@ -6,6 +6,7 @@ Loads the session's broker config and attaches the right adapter
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Dict
 
 from python.configuration.autotrader.broker_config_fetcher_factory import BrokerConfigFetcherFactory
 from python.configuration.market_config_manager import MarketConfigManager
@@ -18,18 +19,24 @@ from python.framework.types.config_types.market_config_types import ConfigMode
 from python.framework.types.trading_env_types.broker_types import BrokerType
 
 
-def create_broker_config(config: AutoTraderConfig, logger: ScenarioLogger) -> BrokerConfig:
+def create_broker_config(
+    config: AutoTraderConfig, logger: ScenarioLogger, balances: Dict[str, float]
+) -> BrokerConfig:
     """
     Load broker config and attach appropriate adapter.
 
-    For adapter_type='mock': always uses static JSON + MockBrokerAdapter.
-    For adapter_type='live': routes by config_mode from market_config.json.
+    For adapter_type='mock': always uses static JSON + MockBrokerAdapter (balances untouched —
+    the mock replays a scenario and uses its scenario_settings.balances).
+    For adapter_type='live': routes by config_mode from market_config.json. The live paths FILL
+    `balances` for the symbol's authoritative base/quote currencies (#265) — the profile declares
+    no balances; dynamic fetches the real amounts from the broker, static seeds 0.
       - DYNAMIC: fetches from broker API with runtime cache + staleness guard
       - STATIC:  loads static JSON with info log (no API fetch)
 
     Args:
         config: AutoTrader configuration
         logger: ScenarioLogger for status messages
+        balances: Balances dict, filled in place for live (mock: left untouched)
 
     Returns:
         BrokerConfig with adapter
@@ -51,11 +58,13 @@ def create_broker_config(config: AutoTraderConfig, logger: ScenarioLogger) -> Br
     # Live: route by config_mode
     config_mode = MarketConfigManager().get_config_mode(config.broker_type)
     if config_mode == ConfigMode.DYNAMIC:
-        return _create_live_broker_config_dynamic(config, logger)
-    return _create_live_broker_config_static(config, logger)
+        return _create_live_broker_config_dynamic(config, logger, balances)
+    return _create_live_broker_config_static(config, logger, balances)
 
 
-def _create_live_broker_config_dynamic(config: AutoTraderConfig, logger: ScenarioLogger) -> BrokerConfig:
+def _create_live_broker_config_dynamic(
+    config: AutoTraderConfig, logger: ScenarioLogger, balances: Dict[str, float]
+) -> BrokerConfig:
     """
     Fetch broker config from broker API with runtime cache and staleness guard.
 
@@ -104,8 +113,17 @@ def _create_live_broker_config_dynamic(config: AutoTraderConfig, logger: Scenari
         broker_type=config.broker_type,
     )
 
+    # Build BrokerConfig from fetched dict
+    broker_config = BrokerConfigFactory.from_serialized_dict(
+        broker_type=BrokerType(config.broker_type),
+        config_dict=config_dict,
+    )
+
     # === Fetch account balances (no fallback — must succeed for live) ===
-    for currency in list(config.account.balances.keys()):
+    # Currencies come from the symbol's authoritative base/quote (#265) — the profile declares no
+    # balances; the broker provides the real amounts.
+    spec = broker_config.get_symbol_specification(config.symbol)
+    for currency in (spec.base_currency, spec.quote_currency):
         balance = fetcher.fetch_account_balance(currency)
         if balance is None:
             raise ConnectionError(
@@ -113,18 +131,9 @@ def _create_live_broker_config_dynamic(config: AutoTraderConfig, logger: Scenari
                 f"Live trading requires a confirmed balance. "
                 f"Check API credentials and account permissions."
             )
-        logger.info(
-            f"💰 Live balance: {balance} {currency} "
-            f"(profile default was {config.account.balances.get(currency, 0.0)})"
-        )
+        logger.info(f"💰 Live balance: {balance} {currency}")
         print(f"  ▸ Live balance: {balance} {currency}")
-        config.account.balances[currency] = balance
-
-    # Build BrokerConfig from fetched dict
-    broker_config = BrokerConfigFactory.from_serialized_dict(
-        broker_type=BrokerType(config.broker_type),
-        config_dict=config_dict,
-    )
+        balances[currency] = balance
 
     # === Enable live execution on adapter ===
     broker_config.adapter.enable_live(
@@ -143,7 +152,9 @@ def _create_live_broker_config_dynamic(config: AutoTraderConfig, logger: Scenari
     return broker_config
 
 
-def _create_live_broker_config_static(config: AutoTraderConfig, logger: ScenarioLogger) -> BrokerConfig:
+def _create_live_broker_config_static(
+    config: AutoTraderConfig, logger: ScenarioLogger, balances: Dict[str, float]
+) -> BrokerConfig:
     """
     Load broker config from static JSON for live sessions with config_mode=static.
 
@@ -168,6 +179,11 @@ def _create_live_broker_config_static(config: AutoTraderConfig, logger: Scenario
     print(f"  ▸ Static broker config: {broker_config_path}")
 
     broker_config = BrokerConfigFactory.build_broker_config(broker_config_path)
+    # Static live has no API fetch — seed the symbol's base/quote at 0 (#265); real amounts
+    # come from the broker/operator at runtime.
+    spec = broker_config.get_symbol_specification(config.symbol)
+    for currency in (spec.base_currency, spec.quote_currency):
+        balances.setdefault(currency, 0.0)
     _log_broker_config_loaded(broker_config, broker_config_path, logger)
     return broker_config
 

@@ -144,7 +144,11 @@ class MountPreparer:
         return _broker_configs, _broker_preparator, WarmupPhaseEntry(
             'Config Validation', time.time() - _phase_t)
 
-    def prepare_mount(self, scenarios: List[SingleScenario]) -> MountPackage:
+    def prepare_mount(
+        self,
+        scenarios: List[SingleScenario],
+        include_warmup_bars: bool = True,
+    ) -> MountPackage:
         """
         Prepare the reusable data mount: data-identity validation + data load + packaging.
 
@@ -156,6 +160,9 @@ class MountPreparer:
 
         Args:
             scenarios: The scenarios to prepare data for (mutated in place: validation_result)
+            include_warmup_bars: Prepare + validate warmup bars (sim default). The AutoTrader-mock
+                (#438) passes False: its adapter loads warmup bars itself (mock from the bar index,
+                live from the API), so the shared prepare skips bar preparation — ticks + signals only
 
         Returns:
             MountPackage with the loaded per-scenario data and the data identity that keys it
@@ -213,6 +220,12 @@ class MountPreparer:
         # Collect requirements from valid scenarios only
         requirements_map = self._requirements_collector.collect_and_validate(
             self._valid(scenarios))
+
+        # AutoTrader-mock path (#438): the adapter loads warmup bars itself (mock from the bar
+        # index, live from the API), so the shared prepare skips bar preparation entirely — no bar
+        # load (Phase 4) and no window-based warmup validation (Phase 5). Ticks + signals only.
+        if not include_warmup_bars:
+            requirements_map.bar_requirements = []
         warmup_phases.append(WarmupPhaseEntry('Requirements', time.time() - _phase_t))
 
         # ========================================================================

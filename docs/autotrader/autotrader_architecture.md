@@ -208,12 +208,23 @@ Config file: `configs/autotrader_profiles/backtesting/mock_session_test.json` �
   "broker_type": "kraken_spot",
   "adapter_type": "mock",
   "strategy_config": { ... },
-  "account": { "balances": { "USD": 10000.0, "BTC": 0.0 } },
-  "tick_source": { "type": "mock", "parquet_path": "..." },
-  "sentiment_source": { "type": "mock", "data_sentiment_type": "crypto_sentiment" },
+  "scenario_settings": {
+    "data_sentiment_type": "crypto_sentiment",
+    "start_date": "2026-04-27T05:26:21+00:00",
+    "max_ticks": 20000,
+    "balances": { "USD": 10000.0, "BTC": 0.0 }
+  },
+  "tick_source": { "type": "mock" },
   "display": { "enabled": false }
 }
 ```
+
+A **mock** session replays scenario base data: `scenario_settings` describes the data window
+(broker/symbol/window/sentiment) resolved through the **same index/preparation stack the
+backtesting batch uses** (the shared `MountPreparer`, #438) — the mock is "a scenario replayed
+through the live decision path". `tick_source` then carries only the transport (`type`, replay
+delay, the `freeze_after_ticks` outage drill). A **live** session has no `scenario_settings` —
+its data streams from the broker.
 
 Sections not listed here (`execution`, `clipping_monitor`, `order_guard`) inherit their values from `app_config.json::autotrader` — only specify them in the profile when overriding a default.
 
@@ -225,9 +236,8 @@ Sections not listed here (`execution`, `clipping_monitor`, `order_guard`) inheri
 | `adapter_type` | `mock` or `live` | Mock: no credentials needed |
 | `dry_run` | `true` / `false` / omit | Optional per-profile override of the global `market_config` dry_run. Omit = inherit the broker default. Setting it (especially `false` = live) overrides the global default for this profile only and logs a loud override warning at startup |
 | `strategy_config` | Workers + DecisionLogic | Same format as scenario sets |
-| `account` | Asset balances | Spot: `"balances": {"USD": X, "ETH": Y}`. Live: overridden by API fetch (#230) |
-| `tick_source` | Data source config | Mock: parquet replay (+ `freeze_after_ticks`/`freeze_duration_s` outage drill, #436). Live: WebSocket (#232) |
-| `sentiment_source` | Sentiment feed for SIGNAL workers | Mock only (requires mock tick source). Omit = no feed; mandatory when the strategy has a SIGNAL worker. See "Sentiment Feed (Mock)" |
+| `scenario_settings` | Mock data + account (#438) | **Mock only.** Data window (`start_date`/`end_date`/`max_ticks`, optional `data_broker_type`) resolved via the shared index/prep stack; `data_sentiment_type` for SIGNAL workers; `balances` (spot: `{"USD": X, "ETH": Y}`; live: fetched from the broker at startup); optional `stress_test_config.stale_data_stress`. Absent for live |
+| `tick_source` | Tick transport | Mock: `tick_delay_ms` replay speed + `freeze_after_ticks`/`freeze_duration_s` outage drill (#436). Live: WebSocket (#232). The data window lives in `scenario_settings` |
 | `execution` | Runtime parameters | Inherits from `app_config.autotrader.execution`; override per profile if needed |
 | `clipping_monitor` | Timing config | Inherits from `app_config.autotrader.clipping_monitor`; strategy: `queue_all` or `drop_stale` |
 | `display` | Dashboard config | Inherits `enabled: true`, `update_interval_ms: 300` — test profiles set `enabled: false` |
@@ -248,7 +258,7 @@ autotrader_profiles/*.json           ← Level 2 (session-specific overrides)
 
 | Source | Status | Description |
 |--------|--------|-------------|
-| `MockTickSource` | ✅ Built | Parquet replay — ticks as fast as possible, optional `tick_delay_ms` for visual debugging |
+| `MockTickSource` | ✅ Built | Scenario base-data replay (#438) — ticks as fast as possible, optional `tick_delay_ms` for visual debugging |
 | `KrakenTickSource` | ✅ Built (#232) | Kraken WS v2 trade channel, auto-reconnect |
 
 ### KrakenTickSource (#232)
@@ -296,27 +306,30 @@ Minimal config (all defaults): `{"tick_source": {"type": "kraken"}}`.
 
 ## Sentiment Feed (Mock)
 
-A profile whose strategy contains a SIGNAL worker (e.g. `CORE/llm_sentiment`) needs a
-`sentiment_source` block — the sentiment analogue of `tick_source`:
+A profile whose strategy contains a SIGNAL worker (e.g. `CORE/llm_sentiment`) declares the feed
+through `scenario_settings.data_sentiment_type` — the same field a simulation scenario uses:
 
 ```json
-"sentiment_source": {
-  "type": "mock",
-  "data_sentiment_type": "crypto_sentiment"
+"scenario_settings": {
+  "data_sentiment_type": "crypto_sentiment",
+  "start_date": "2026-04-27T05:26:21+00:00",
+  "max_ticks": 20000,
+  "balances": { "USD": 10000.0, "BTC": 0.0 }
 }
 ```
 
-Unlike ticks, sentiment does **not** drive the loop — it is passive lookup data. At startup
-(`setup_sentiment_feed`, phase 6b in `setup_pipeline`) the archive is resolved via the signal
-index against the mock tick parquet's time range, loaded through the shared projected reader,
-and injected as a `SignalDataProvider` into each SIGNAL worker. On every tick pass the worker
+Unlike ticks, sentiment does **not** drive the loop — it is passive lookup data. It is prepared
+alongside the ticks by the shared `MountPreparer` (#438): the archive is resolved via the signal
+index against the scenario window, carried in the data package as a `SignalSeries`, and injected
+as a `SignalDataProvider` into each SIGNAL worker (`inject_signal_providers`, phase 6b in
+`setup_pipeline` — the same function the sim subprocess uses). On every tick pass the worker
 resolves the newest snapshot with `collected_msc ≤ tick.timestamp` (as-of lookup, no second
-thread or queue). Misconfiguration (SIGNAL worker without a feed, non-mock tick source, no
-archive overlap) aborts at startup — never at the first tick. Details, validation matrix, and
-the deliberate-outage override: signal data source doc (`docs/data_pipeline/signal_data_source.md`).
+thread or queue). Misconfiguration (SIGNAL worker without a feed, no archive overlap for the
+window) aborts at startup (§35) — never at the first tick. Details: signal data source doc
+(`docs/data_pipeline/signal_data_source.md`).
 
-Real-time/live sentiment is a future event-path feature — `type: mock` is the only supported
-value today.
+Real-time/live sentiment is a future event-path feature (#375) — a mock `scenario_settings` feed
+is the only supported path today.
 
 **Live dashboard:** the ALGO STATE panel shows the feed (`📡 Feed: <label>`, flagged
 `[STALE]` in yellow when the SIGNAL worker reports staleness) plus the worker's
@@ -348,8 +361,10 @@ protocol; the aggregated stability table is #433 scope. Transport reconnects
 
 **Boundaries:** sim never evaluates this (replay gaps are DATA — weekend/holiday); the planned
 `stale_data_stress` windows drive the same surface deterministically in backtests (see
-`docs/stress_test.md`). The mock outage drill is `tick_source.freeze_after_ticks` +
-`freeze_duration_s` (one deliberate mid-replay silence). Live sources today are crypto/24-7 —
+`docs/stress_test.md`). Since #438 the AutoTrader-mock also expresses `stale_data_stress`
+(`scenario_settings.stress_test_config`) — the SIGNAL data-plane carve (a stale sentiment window);
+the tick status-plane carve stays sim-only (→ #444). The mock market-data outage drill is
+`tick_source.freeze_after_ticks` + `freeze_duration_s` (one deliberate mid-replay silence). Live sources today are crypto/24-7 —
 the forex weekend gate (don't flag market closure as stale) lands with the MT5 adapter via
 MarketClock. On #375 the evaluation trigger moves onto the event timeline; the contract
 surface (status, hook, guard reason, config) carries over unchanged. Authoring guidance:
@@ -593,7 +608,7 @@ python/framework/autotrader/
     autotrader_csv_file_report.py       Trade/order CSV export
   tick_sources/
     abstract_tick_source.py      AbstractTickSource ABC
-    mock_tick_source.py          Parquet replay tick source
+    mock_tick_source.py          Scenario base-data replay (#438) tick source
     kraken_tick_source.py        Kraken WS v2 live tick source (#232)
     kraken_tick_message_parser.py  WS JSON → TickData parser (#232)
 
@@ -685,7 +700,7 @@ create_broker_config(config, logger)   (autotrader_broker_config_setup.py)
        cache 7–30 days     → try GET /0/public/AssetPairs; on failure: warn + use cache
        cache > 30 days     → try GET /0/public/AssetPairs; on failure: strong stale warning + use cache
        no cache at all     → GET /0/public/AssetPairs; on failure: hard error (first run)
-  → POST /0/private/Balance → account balance (overrides profile balances)
+  → POST /0/private/Balance → account balance (live: the profile declares none; fetched for the symbol's base/quote)
   → BrokerConfigFactory.from_serialized_dict(config_dict)
   → adapter.enable_live(credentials_file, dry_run, transport)  ← Tier 3 activation
   → return BrokerConfig with live-enabled KrakenAdapter
@@ -699,22 +714,22 @@ create_broker_config(config, logger)   (autotrader_broker_config_setup.py)
 
 ### Account Currency & Balance Semantics
 
-The `account.balances` dict in the AutoTrader profile determines which currencies are fetched from Kraken and how P&L is denominated internally. The account currency is derived at startup from the balances keys matched against the symbol's base/quote currencies (quote currency preferred). An optional `account_currency` override allows explicit control.
+For a **mock** session, `scenario_settings.balances` sets the starting capital (a scenario replay needs real balances, like the sim) and determines how P&L is denominated internally. For a **live** session there is no profile balances block — the broker's real balances are fetched at startup for the symbol's base/quote currencies (resolved authoritatively from the symbol spec, #265). The account currency is derived at startup from the balances keys matched against the symbol's base/quote currencies (quote currency preferred). An optional `scenario_settings.account_currency` override allows explicit control.
 
 **Rules:**
-- At least one key in `account.balances` must match either the **base** or **quote** currency of the traded symbol.
-- All currencies listed in `account.balances` are fetched from Kraken at startup — profile values are placeholders.
+- At least one key in `scenario_settings.balances` must match either the **base** or **quote** currency of the traded symbol (mock).
+- Live balances come from the broker for the symbol's base/quote currencies — the profile declares none.
 - Cross-currency accounts (e.g., `balances: {"EUR": 100}` with `SOLUSD`) are not supported and raise a `NotImplementedError` at startup.
 
 **Account currency derivation (in order):**
-1. Explicit `account.account_currency` if set → used as-is
+1. Explicit `scenario_settings.account_currency` if set → used as-is
 2. Quote currency of symbol if present in balances → e.g., USD for ETHUSD
 3. Base currency of symbol if present in balances → e.g., ETH for ETHUSD
 4. First key in balances (fallback)
 
 **Supported configurations for Spot trading:**
 
-| `account.balances` | `account_currency` | Symbol | Meaning |
+| `scenario_settings.balances` | `account_currency` | Symbol | Meaning |
 |---|---|---|---|
 | `{"USD": 100}` | (omitted) | `SOLUSD` | P&L in USD — recommended for multi-pair setups |
 | `{"SOL": 0, "USD": 100}` | (omitted) | `SOLUSD` | Dual-balance, P&L in USD (quote, default) |

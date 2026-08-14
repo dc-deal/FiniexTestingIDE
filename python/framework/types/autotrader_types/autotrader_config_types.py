@@ -17,17 +17,19 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ReconciliationDefaults,
     StatePersistenceDefaults,
 )
+from python.framework.types.config_types.scenario_settings_config_types import ScenarioSettingsConfig
 
 
 @dataclass
 class TickSourceConfig:
     """
-    Configuration for tick data source.
+    Configuration for the tick TRANSPORT (how ticks are delivered).
+
+    Data description (broker/symbol/window) lives in `scenario_settings` (#438) — the mock replay
+    resolves its ticks through the shared index/preparation stack, not from a raw file path.
 
     Args:
-        type: Tick source type ('mock' for parquet replay, 'kraken' for live WebSocket)
-        parquet_path: Path to parquet tick data file (mock mode)
-        max_ticks: Stop after N ticks (mock mode only). 0 = no limit (full file)
+        type: Tick source type ('mock' for scenario-data replay, 'kraken' for live WebSocket)
         tick_delay_ms: Artificial delay per tick in ms (mock replay only). 0 = full speed
         ws_url: WebSocket URL (kraken mode)
         reconnect_initial_delay_s: Initial reconnect backoff delay in seconds (kraken mode)
@@ -38,8 +40,6 @@ class TickSourceConfig:
         freeze_duration_s: Outage drill (#436, mock mode): pause duration in wall seconds
     """
     type: str = 'mock'
-    parquet_path: str = ''
-    max_ticks: int = 0
     tick_delay_ms: int = 0
     # WebSocket fields (used when type='kraken')
     ws_url: str = 'wss://ws.kraken.com/v2'
@@ -50,55 +50,6 @@ class TickSourceConfig:
     # Outage drill (#436) — deliberate mid-replay feed silence (mock mode)
     freeze_after_ticks: int = 0
     freeze_duration_s: float = 0.0
-
-
-@dataclass
-class SentimentSourceConfig:
-    """
-    Configuration for the sentiment signal feed (#431).
-
-    Mock mode replays a pre-collected signal archive (#429 parquet) into the
-    session's SIGNAL workers — the file-backed counterpart of the future live
-    API/EVENT sentiment path. Empty type = no sentiment feed.
-
-    Args:
-        type: Sentiment source type ('' = off, 'mock' = parquet replay)
-        data_sentiment_type: Signal archive pipeline_id (e.g. 'crypto_sentiment'),
-            resolved via the signal index — the primary path, mirrors the sim's
-            scenario field of the same name
-        parquet_path: Explicit signal parquet file (dev override; used only
-            when data_sentiment_type is unset)
-    """
-    type: str = ''
-    data_sentiment_type: str = ''
-    parquet_path: str = ''
-
-    def get_feed_label(self) -> str:
-        """
-        Human-readable feed label for reports and the live display.
-
-        Returns:
-            pipeline_id when index-resolved, file name on parquet override,
-            '' when the feed is off
-        """
-        if not self.type:
-            return ''
-        return self.data_sentiment_type or (
-            Path(self.parquet_path).name if self.parquet_path else '')
-
-
-@dataclass
-class AccountConfig:
-    """
-    Account configuration for AutoTrader session.
-
-    Args:
-        balances: Asset balances (e.g., {'USD': 10000.0} or {'USD': 50.0, 'ETH': 0.0})
-        account_currency: Explicit account currency override. If omitted, derived
-            from balances keys + symbol (quote_currency preferred).
-    """
-    balances: Dict[str, float] = field(default_factory=dict)
-    account_currency: Optional[str] = None
 
 
 @dataclass
@@ -135,9 +86,8 @@ class AutoTraderConfig:
         broker_type: Broker type identifier (e.g., 'kraken_spot')
         adapter_type: Adapter type ('mock' or 'live')
         strategy_config: Complete strategy configuration (workers + decision logic)
-        account: Account configuration
-        tick_source: Tick source configuration
-        sentiment_source: Sentiment signal feed configuration (#431; off by default)
+        scenario_settings: Scenario data + account description (mock replay; #438). None for live.
+        tick_source: Tick transport configuration
         execution: Execution parameters
         clipping_monitor: Clipping monitor configuration
         dry_run: Optional per-profile dry-run override. None = use the broker's
@@ -149,9 +99,8 @@ class AutoTraderConfig:
     broker_type: str = ''
     adapter_type: str = 'mock'
     strategy_config: Dict[str, Any] = field(default_factory=dict)
-    account: AccountConfig = field(default_factory=AccountConfig)
+    scenario_settings: Optional[ScenarioSettingsConfig] = None
     tick_source: TickSourceConfig = field(default_factory=TickSourceConfig)
-    sentiment_source: SentimentSourceConfig = field(default_factory=SentimentSourceConfig)
     execution: AutotraderExecutionDefaults = field(default_factory=AutotraderExecutionDefaults)
     clipping_monitor: ClippingMonitorDefaults = field(default_factory=ClippingMonitorDefaults)
     display: DisplayDefaults = field(default_factory=DisplayDefaults)

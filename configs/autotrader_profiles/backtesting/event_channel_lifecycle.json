@@ -25,17 +25,18 @@
       "session_end_tick": 5000
     }
   },
-  "account": {
-    "balances": {
-      "JPY": 100000.0
-    }
-  },
   "tick_source": {
-    "type": "mock",
-    "parquet_path": "data/processed/mt5/ticks/USDJPY/USDJPY_20250917_205834.parquet",
-    "max_ticks": 12000
+    "type": "mock"
   },
   "display": {
     "enabled": false
+  },
+  "scenario_settings": {
+    "start_date": "2025-09-17T17:58:34+00:00",
+    "max_ticks": 12000,
+    "data_mode": "realistic",
+    "balances": {
+      "JPY": 100000.0
+    }
   }
 }

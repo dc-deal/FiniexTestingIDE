@@ -7,11 +7,10 @@ Mirrors process_startup_preparation.py for backtesting.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.autotrader_broker_config_setup import create_broker_config
-from python.framework.autotrader.autotrader_sentiment_feed import setup_sentiment_feed
 from python.framework.autotrader.autotrader_warmup_preparator import AutotraderWarmupPreparator
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
@@ -21,13 +20,16 @@ from python.framework.factory.live_trade_executor_factory import build_live_exec
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.process.process_startup_preparation import inject_signal_providers
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
+from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -126,7 +128,8 @@ def create_session_file_logger(run_dir: Path, date_suffix: str, log_level) -> Fi
 
 def setup_pipeline(
     config: AutoTraderConfig,
-    logger: ScenarioLogger
+    logger: ScenarioLogger,
+    package: Optional[ProcessDataPackage] = None
 ) -> Tuple[AbstractTradeExecutor, BarRenderingController, WorkerOrchestrator, AbstractDecisionLogic, LiveClippingMonitor, TradingModel, DisplayLabelCache]:
     """
     Create all pipeline objects for AutoTrader session.
@@ -146,12 +149,23 @@ def setup_pipeline(
     Args:
         config: AutoTrader configuration
         logger: ScenarioLogger instance
+        package: Prepared scenario data package (#438, mock) — its signal series is injected
+            into SIGNAL workers; None for live
 
     Returns:
         (executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor, trading_model, display_label_cache)
     """
     # === Phase 1: Broker Config ===
-    broker_config = create_broker_config(config, logger)
+    # Balances source (#438): the mock replays a scenario → its scenario_settings.balances
+    # (starting capital); live is filled from the broker inside create_broker_config (the
+    # profile declares no balances).
+    if config.scenario_settings is not None:
+        balances = dict(config.scenario_settings.balances)
+        explicit_account_currency = config.scenario_settings.account_currency
+    else:
+        balances = {}
+        explicit_account_currency = None
+    broker_config = create_broker_config(config, logger, balances)
 
     # === Phase 2: DecisionLogic Requirements ===
     decision_logic_factory = DecisionLogicFactory(logger=logger)
@@ -171,38 +185,37 @@ def setup_pipeline(
     trading_model = market_config_manager.get_trading_model(config.broker_type)
     spot_mode = trading_model == TradingModel.SPOT
 
-    # Validate: balances must be configured
-    if not config.account.balances:
+    # Validate: balances must be resolved
+    if not balances:
         raise ValueError(
-            f"Configuration error: AutoTrader profile '{config.name}' has no 'balances' "
-            f"defined in account config.\n"
-            f"Add to profile:\n"
-            f'  "account": {{ "balances": {{ "USD": 10000.0 }} }}'
+            f"Configuration error: AutoTrader profile '{config.name}' resolved no balances.\n"
+            f"Mock: set 'scenario_settings.balances' (e.g. {{ \"USD\": 10000.0 }}).\n"
+            f"Live: the broker returned no balance for the symbol's currencies."
         )
 
     # Determine account_currency: explicit override or derive from balances + symbol
     symbol_spec = broker_config.adapter.get_symbol_specification(config.symbol)
-    if config.account.account_currency:
-        account_currency = config.account.account_currency
-    elif symbol_spec.quote_currency in config.account.balances:
+    if explicit_account_currency:
+        account_currency = explicit_account_currency
+    elif symbol_spec.quote_currency in balances:
         account_currency = symbol_spec.quote_currency
-    elif symbol_spec.base_currency in config.account.balances:
+    elif symbol_spec.base_currency in balances:
         account_currency = symbol_spec.base_currency
     else:
-        account_currency = list(config.account.balances.keys())[0]
+        account_currency = list(balances.keys())[0]
 
     # === Phase 4: LiveTradeExecutor ===
     broker_entry = market_config_manager.get_broker_entry(config.broker_type)
     executor = build_live_executor(
         broker_config=broker_config,
-        balances=config.account.balances,
+        balances=balances,
         account_currency=account_currency,
         logger=logger,
         spot_mode=spot_mode,
         poll_interval_ms=broker_entry.broker_transport.poll_interval_ms,
     )
     logger.info(
-        f"💱 LiveTradeExecutor created: balances={config.account.balances}"
+        f"💱 LiveTradeExecutor created: balances={balances}"
     )
 
     # === Phase 5: TradingContext ===
@@ -226,8 +239,20 @@ def setup_pipeline(
     workers = list(workers_dict.values())
     logger.debug(f"✅ Created {len(workers)} workers")
 
-    # === Phase 6b: Sentiment Feed (mock, #431) ===
-    setup_sentiment_feed(config, workers, logger)
+    # === Phase 6b: Signal Providers from the prepared package (#431/#438) ===
+    # The mock's signal series is loaded in the shared data package; inject it into SIGNAL workers
+    # exactly as the sim subprocess does. A SIGNAL worker with no package (live) aborts at startup —
+    # live sentiment feeds are the #375 event path, not available yet.
+    signal_workers = [w for w in workers if isinstance(w, AbstractSignalWorker)]
+    if package is not None:
+        inject_signal_providers(workers, package, logger)
+    elif signal_workers:
+        names = ', '.join(f"'{w.name}'" for w in signal_workers)
+        raise ValueError(
+            f"Configuration error: SIGNAL worker(s) {names} require a mock 'scenario_settings' "
+            f"with a 'data_sentiment_type' in profile '{config.name}'. Live sentiment feeds are "
+            f"not available yet (#375)."
+        )
 
     # === Phase 7: DecisionLogic ===
     decision_logic = decision_logic_factory.create_logic(
@@ -278,7 +303,10 @@ def setup_pipeline(
     display_label_cache = warmup_preparator.build_display_label_cache(
         decision_logic=decision_logic,
         workers=workers,
-        sentiment_source=config.sentiment_source.get_feed_label(),
+        sentiment_source=(
+            config.scenario_settings.data_sentiment_type
+            if config.scenario_settings else ''
+        ),
     )
 
     # === Phase 10: LiveClippingMonitor ===

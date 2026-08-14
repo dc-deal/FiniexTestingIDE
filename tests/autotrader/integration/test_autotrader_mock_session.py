@@ -25,7 +25,7 @@ MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'
 def mock_session():
     """
     Run one full mock session shared across all tests in this module.
-    Avoids running 29780 ticks twice.
+    Avoids running 29782 ticks twice.
     """
     config = load_autotrader_config(MOCK_PROFILE)
     trader = AutotraderMain(config)
@@ -58,8 +58,8 @@ class TestAutotraderMockSession:
         )
 
         # === All ticks processed ===
-        assert result.ticks_processed == 29780, (
-            f"Expected 29780 ticks, got {result.ticks_processed}"
+        assert result.ticks_processed == 29782, (
+            f"Expected 29782 ticks, got {result.ticks_processed}"
         )
 
         # === No clipping in replay mode ===
@@ -89,7 +89,7 @@ class TestAutotraderMockSession:
         assert result.execution_stats is not None, 'Missing execution stats'
 
         # === Clipping monitor reported ===
-        assert result.clipping_summary.total_ticks == 29780
+        assert result.clipping_summary.total_ticks == 29782
 
     def test_log_files_created(self, mock_session):
         """Verify that all expected log files are created."""
@@ -134,8 +134,6 @@ class TestProfileLoader:
         profile = json.loads(Path(MOCK_PROFILE).read_text())
         profile['tick_source'] = {
             'type': 'mock',
-            'parquet_path': 'data/some.parquet',
-            'max_ticks': 123,
             'tick_delay_ms': 7,
             'ws_url': 'wss://example/v2',
             'reconnect_initial_delay_s': 2.5,

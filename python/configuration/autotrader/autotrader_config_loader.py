@@ -10,12 +10,11 @@ from pathlib import Path
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.utils.config_merge_utils import check_unknown_keys, deep_merge
 from python.framework.types.autotrader_types.autotrader_config_types import (
-    AccountConfig,
     AutoTraderConfig,
     SafetyConfig,
-    SentimentSourceConfig,
     TickSourceConfig,
 )
+from python.framework.types.config_types.scenario_settings_config_types import ScenarioSettingsConfig
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     ApiMonitorConfig,
     AutotraderExecutionDefaults,
@@ -59,9 +58,8 @@ _KNOWN_RECONCILIATION_KEYS: frozenset       = _allowlist_from(ReconciliationDefa
 _KNOWN_API_MONITOR_KEYS: frozenset          = _allowlist_from(ApiMonitorConfig)
 _KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = _allowlist_from(StatePersistenceDefaults)
 _KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
-_KNOWN_ACCOUNT_KEYS: frozenset              = _allowlist_from(AccountConfig)
 _KNOWN_TICK_SOURCE_KEYS: frozenset          = _allowlist_from(TickSourceConfig)
-_KNOWN_SENTIMENT_SOURCE_KEYS: frozenset     = _allowlist_from(SentimentSourceConfig)
+_KNOWN_SCENARIO_SETTINGS_KEYS: frozenset    = _allowlist_from(ScenarioSettingsConfig)
 
 
 def load_autotrader_config(config_path: str) -> AutoTraderConfig:
@@ -108,9 +106,8 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         raw = raw_profile_only
 
     # Parse nested config sections
-    account_raw = raw.get('account', {})
+    scenario_settings_raw = raw.get('scenario_settings', None)
     tick_source_raw = raw.get('tick_source', {})
-    sentiment_source_raw = raw.get('sentiment_source', {})
     execution_raw = raw.get('execution', {})
     clipping_raw = raw.get('clipping_monitor', {})
     display_raw = raw.get('display', {})
@@ -134,9 +131,9 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('reconciliation',      reconciliation_raw, _KNOWN_RECONCILIATION_KEYS)
     check_unknown_keys('api_monitor',         api_monitor_raw,  _KNOWN_API_MONITOR_KEYS)
     check_unknown_keys('state_persistence',   state_persistence_raw, _KNOWN_STATE_PERSISTENCE_KEYS)
-    check_unknown_keys('account',             account_raw,      _KNOWN_ACCOUNT_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
-    check_unknown_keys('sentiment_source',    sentiment_source_raw, _KNOWN_SENTIMENT_SOURCE_KEYS)
+    if scenario_settings_raw is not None:
+        check_unknown_keys('scenario_settings', scenario_settings_raw, _KNOWN_SCENARIO_SETTINGS_KEYS)
 
     # Drift-audit default depends on adapter_type. Mock adapters produce
     # synthetic fee/volume figures that don't reflect any real broker — the
@@ -184,14 +181,12 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         adapter_type=adapter_type_resolved,
         dry_run=raw.get('dry_run', None),
         strategy_config=raw.get('strategy_config', {}),
-        account=AccountConfig(
-            balances=account_raw.get('balances', {}),
-            account_currency=account_raw.get('account_currency', None),
+        scenario_settings=(
+            ScenarioSettingsConfig(**scenario_settings_raw)
+            if scenario_settings_raw is not None else None
         ),
         tick_source=TickSourceConfig(
             type=tick_source_raw.get('type', 'mock'),
-            parquet_path=tick_source_raw.get('parquet_path', ''),
-            max_ticks=tick_source_raw.get('max_ticks', 0),
             tick_delay_ms=tick_source_raw.get('tick_delay_ms', 0),
             ws_url=tick_source_raw.get('ws_url', 'wss://ws.kraken.com/v2'),
             reconnect_initial_delay_s=tick_source_raw.get('reconnect_initial_delay_s', 1.0),
@@ -200,11 +195,6 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             connection_dead_s=tick_source_raw.get('connection_dead_s', 90.0),
             freeze_after_ticks=tick_source_raw.get('freeze_after_ticks', 0),
             freeze_duration_s=tick_source_raw.get('freeze_duration_s', 0.0),
-        ),
-        sentiment_source=SentimentSourceConfig(
-            type=sentiment_source_raw.get('type', ''),
-            data_sentiment_type=sentiment_source_raw.get('data_sentiment_type', ''),
-            parquet_path=sentiment_source_raw.get('parquet_path', ''),
         ),
         execution=AutotraderExecutionDefaults(
             parallel_workers=execution_raw.get('parallel_workers', False),
