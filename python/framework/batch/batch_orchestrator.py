@@ -130,9 +130,8 @@ from python.system.ui.live_progress_display import LiveProgressDisplay
 from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
 from python.framework.batch.execution_coordinator import ExecutionCoordinator
 from python.framework.batch.requirements_collector import RequirementsCollector
+from python.framework.batch.mount_preparer import MountPreparer
 from python.framework.utils.runtime_env_utils import is_debug_execution
-from python.framework.discoveries.data_coverage.data_coverage_report_manager import DataCoverageReportManager
-from python.framework.batch.data_preparation_coordinator import DataPreparationCoordinator
 from python.framework.data_preparation.broker_data_preparator import BrokerDataPreparator
 from python.framework.types.mount_package_types import DataIdentityKey, MountPackage
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -220,6 +219,15 @@ class BatchOrchestrator:
             scenarios=self._scenarios,
             live_queue=self._live_queue,
             enabled=self._live_stats_config.enabled
+        )
+
+        # Mount preparer (#438) — the data-heavy + validation half of the batch, extracted so the
+        # AutoTrader-mock reuses the identical index/validation stack for its single scenario.
+        self._mount_preparer = MountPreparer(
+            logger=self._logger,
+            app_config=self._app_config_manager,
+            requirements_collector=self._requirements_collector,
+            live_stats=self._live_stats_coordinator,
         )
 
         # Create display (if monitoring enabled)
@@ -322,201 +330,32 @@ class BatchOrchestrator:
 
     def prepare_scenarios(self) -> Tuple[Dict[BrokerType, Dict[str, Any]], BrokerDataPreparator, WarmupPhaseEntry]:
         """
-        Phase 0 — data-identity validation: load broker configs (which set scenario.broker_type and
-        the account currency) and run the five data-identity validators.
+        Phase 0 — data-identity validation, delegated to the shared MountPreparer (#438).
 
-        This is the cheap per-run scenario preparation, separate from the expensive data load — so a
-        sweep can prepare a combination's scenarios and reuse a mount without reloading (#419).
-        prepare_mount runs it first; the sweep runner calls it directly per combination.
+        Loads broker configs + runs the five data-identity validators on this set's scenarios. Kept
+        as a method so the sweep runner can prep a combination's scenarios without reloading (#419).
 
         Returns:
             (broker_configs, broker_preparator, the 'Config Validation' warmup-phase timing)
         """
-        self._logger.info("🔍 Phase 0: Validating configuration...")
-        _phase_t = time.time()
-
-        # Load broker configs first — sets scenario.broker_type, needed by validators.
-        self._live_stats_coordinator.broadcast_status(ScenarioStatus.WARMUP_TRADER)
-        _broker_preparator = BrokerDataPreparator(
-            self._scenario_set.get_valid_scenarios(), self._logger)
-        _broker_configs = _broker_preparator.prepare()
-        _broker_scenario_map = _broker_preparator.get_broker_scenario_map()
-
-        # 1. Validate scenario names (unique, non-empty)
-        ScenarioValidator.validate_scenario_names(
-            scenarios=self._scenario_set.get_valid_scenarios(),
-            logger=self._logger
-        )
-
-        # 2. Validate scenario boundaries (end_date or max_ticks required)
-        ScenarioValidator.validate_scenario_boundaries(
-            scenarios=self._scenario_set.get_valid_scenarios(),
-            logger=self._logger
-        )
-
-        # 3. Validate each symbol is registered in its broker config
-        ScenarioValidator.validate_scenario_symbols(
-            scenarios=self._scenario_set.get_valid_scenarios(),
-            logger=self._logger,
-            broker_scenario_map=_broker_scenario_map,
-        )
-
-        # 3b. Validate each symbol's swap_mode is modeled by the swap engine (#407)
-        ScenarioValidator.validate_swap_modes(
-            scenarios=self._scenario_set.get_valid_scenarios(),
-            logger=self._logger,
-            broker_scenario_map=_broker_scenario_map,
-        )
-
-        # 4. Validate account_currency compatibility with symbols
-        ScenarioValidator.validate_account_currencies(
-            scenarios=self._scenario_set.get_valid_scenarios(),
-            logger=self._logger,
-            broker_scenario_map=_broker_scenario_map,
-        )
-
-        # set scenario final currencies.
-        ScenarioValidator.set_scenario_account_currency(
-            scenarios=self._scenario_set.get_valid_scenarios(),
-            logger=self._logger,
-            broker_scenario_map=_broker_scenario_map,
-        )
-
-        return _broker_configs, _broker_preparator, WarmupPhaseEntry(
-            'Config Validation', time.time() - _phase_t)
+        return self._mount_preparer.prepare_scenarios(
+            self._scenario_set.get_all_scenarios())
 
     def prepare_mount(self) -> MountPackage:
         """
-        Prepare the reusable data mount: data-identity validation + data load + packaging.
+        Prepare the reusable data mount (Phase 0 validation + Phases 1–5 load), delegated to the
+        shared MountPreparer (#438) on this set's scenarios.
 
-        The data-identity-dependent half of a batch (Phase 0 data validators + Phases 1–5).
-        Produces a self-contained MountPackage keyed by the data identity, so it can be held
-        resident (#418) and fed a new parameter set via execute(mount, scenarios) (#419)
-        without reloading. Parameter validation is intentionally NOT here — it is the per-run
-        check owned by the caller (run() / the sweep runner).
+        The data-identity-dependent half of a batch. Produces a self-contained MountPackage keyed by
+        the data identity, so it can be held resident (#418) and fed a new parameter set via
+        execute(mount, scenarios) (#419) without reloading. Parameter validation is intentionally
+        NOT here — it is the per-run check owned by the caller (run() / the sweep runner).
 
         Returns:
             MountPackage with the loaded per-scenario data and the data identity that keys it
         """
-        start_time = time.time()
-        warmup_phases = []
-
-        # Phase 0 — data-identity validation (broker prep + validators), extracted so the sweep
-        # runner can prep a combination's scenarios without reloading (#419).
-        _broker_configs, _broker_preparator, _config_validation_phase = self.prepare_scenarios()
-        warmup_phases.append(_config_validation_phase)
-
-        # ========================================================================
-        # PHASE 1: INDEX & COVERAGE SETUP
-        # ========================================================================
-        self._logger.info("📊 Phase 1: Index & coverage setup...")
-        _phase_t = time.time()
-
-        data_coordinator = DataPreparationCoordinator(
-            scenarios=self._scenario_set.get_valid_scenarios(),
-            logger=self._logger,
-            app_config=self._app_config_manager
-        )
-
-        # Build tick index and generate coverage reports
-        tick_index_manager = data_coordinator.get_tick_index_manager()
-        coverage_report_manager = DataCoverageReportManager(
-            logger=self._logger,
-            scenarios=self._scenario_set.get_valid_scenarios(),
-            tick_index_manager=tick_index_manager,
-            app_config=self._app_config_manager,
-        )
-        coverage_report_manager.generate_reports()
-        warmup_phases.append(WarmupPhaseEntry('Index & Coverage', time.time() - _phase_t))
-
-        # ========================================================================
-        # PHASE 2: AVAILABILITY VALIDATION
-        # ========================================================================
-        self._logger.info("🔍 Phase 2: Validating data availability...")
-        _phase_t = time.time()
-
-        # Validate that all scenarios have data available
-        # IMPORTANT: Initializes validation_result for ALL SingleScenario objects
-        coverage_report_manager.validate_availability(
-            scenarios=self._scenario_set.get_valid_scenarios()
-        )
-        warmup_phases.append(WarmupPhaseEntry('Availability Check', time.time() - _phase_t))
-
-        # ========================================================================
-        # PHASE 3: REQUIREMENTS COLLECTION
-        # ========================================================================
-        self._logger.info("📋 Phase 3: Collecting data requirements...")
-        _phase_t = time.time()
-
-        # Collect requirements from valid scenarios only
-        requirements_map = self._requirements_collector.collect_and_validate(
-            self._scenario_set.get_valid_scenarios())
-        warmup_phases.append(WarmupPhaseEntry('Requirements', time.time() - _phase_t))
-
-        # ========================================================================
-        # PHASE 4: DATA LOADING
-        # ========================================================================
-        self._logger.info("📦 Phase 4: Loading data...")
-
-        # Prepare data only for scenarios in requirements_map
-        scenario_packages, clipping_stats_map, load_timings = data_coordinator.prepare(
-            requirements_map=requirements_map,
-            broker_configs=_broker_configs,
-            status_broadcaster=self._live_stats_coordinator
-        )
-        warmup_phases.append(WarmupPhaseEntry('Data Loading → Ticks (parquet)', load_timings.ticks_s))
-        warmup_phases.append(WarmupPhaseEntry('Data Loading → Bars (parquet)', load_timings.bars_s))
-        warmup_phases.append(WarmupPhaseEntry('Data Loading → Packaging', load_timings.packaging_s))
-
-        # ========================================================================
-        # PHASE 5: QUALITY VALIDATION
-        # ========================================================================
-        self._logger.info("🔬 Phase 5: Validating data quality...")
-        _phase_t = time.time()
-
-        self._live_stats_coordinator.broadcast_status(
-            ScenarioStatus.WARMUP_COVERAGE)
-
-        coverage_report_manager.validate_after_load(
-            scenarios=self._scenario_set.get_valid_scenarios(),
-            scenario_packages=scenario_packages,  # Dict of packages
-            requirements_map=requirements_map
-        )
-        warmup_phases.append(WarmupPhaseEntry('Quality Validation', time.time() - _phase_t))
-
-        # Calculate total invalid scenarios
-        scenario_count = len(self._scenarios)
-        total_invalid = len(self._scenario_set.get_failed_scenarios())
-        valid_scenario_count = len(self._scenario_set.get_valid_scenarios())
-
-        self._logger.info(
-            f"✅ Continuing with {valid_scenario_count}/{scenario_count} "
-            f"invalid scenario(s) ({total_invalid} filtered out)"
-        )
-
-        # Data identity — fingerprint each loaded scenario's data (broker / symbol / window /
-        # warmup / tick budget, NOT strategy_config). The key #418/#419 reuse a mount on and the
-        # execute() guard checks each fed scenario against.
-        data_identity = {}
-        for scenario in self._scenario_set.get_valid_scenarios():
-            if scenario.scenario_index in scenario_packages:
-                data_identity[scenario.scenario_index] = DataIdentityKey.from_scenario(
-                    scenario, requirements_map.bar_requirements)
-
-        batch_warmup_time = time.time() - start_time
-
-        return MountPackage(
-            scenario_packages=scenario_packages,
-            clipping_stats_map=clipping_stats_map,
-            broker_configs=_broker_configs,
-            broker_scenario_map=_broker_preparator.get_valid_broker_scenario_map(
-                self._scenario_set.get_valid_scenarios()
-            ),
-            requirements_map=requirements_map,
-            warmup_phases=warmup_phases,
-            batch_warmup_time=batch_warmup_time,
-            data_identity=data_identity,
-        )
+        return self._mount_preparer.prepare_mount(
+            self._scenario_set.get_all_scenarios())
 
     def execute(
         self,
