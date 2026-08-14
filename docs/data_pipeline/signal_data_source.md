@@ -83,35 +83,35 @@ A worker config may still carry an explicit `data_path` (raw JSONL) as a develop
 takes effect only when `data_sentiment_type` is not set on the scenario. The first-class
 `data_sentiment_type` is the normal path.
 
-## AutoTrader mock feed — `sentiment_source` (profile block)
+## AutoTrader mock feed — `scenario_settings.data_sentiment_type` (#438)
 
-The AutoTrader mock pipeline consumes the same archives through a profile block that mirrors
-`tick_source`:
+The AutoTrader mock pipeline consumes the same archives through the **same field a sim scenario
+uses** — the profile's `scenario_settings` block, prepared by the shared `MountPreparer`:
 
 ```json
-"sentiment_source": {
-  "type": "mock",
-  "data_sentiment_type": "crypto_sentiment"
+"scenario_settings": {
+  "data_sentiment_type": "crypto_sentiment",
+  "start_date": "2026-04-27T05:26:21+00:00",
+  "max_ticks": 20000,
+  "balances": { "USD": 10000.0 }
 }
 ```
 
-At startup (`setup_sentiment_feed`, mirror of the sim's provider injection) the feed is resolved
-against the **mock tick parquet's time range**, read through the same projected reader, and injected
-as a `SignalDataProvider` into each SIGNAL worker. Validation is strict and fails at startup, never
-at the first tick:
+The feed is resolved via the signal index against the **scenario window** (like the sim), carried
+in the data package as a `SignalSeries`, and injected as a `SignalDataProvider` into each SIGNAL
+worker (`inject_signal_providers`, the same function the sim subprocess uses). Validation is strict
+and fails at startup (§35), never at the first tick:
 
 | Case | Behavior |
 |------|----------|
-| SIGNAL worker, no `sentiment_source` | Startup abort (clear config error) |
-| `sentiment_source`, no SIGNAL worker | Warning (dead config), feed skipped |
-| `type` other than `mock` | Startup abort (live sentiment = future event path) |
-| `tick_source.type` not `mock` | Startup abort (recorded sentiment vs. live ticks is meaningless) |
-| No index overlap with the tick window | Startup abort (`SignalDataUnavailableError`) |
+| SIGNAL worker, no `scenario_settings.data_sentiment_type` | Startup abort (no feed for the worker) |
+| No index overlap with the scenario window | Startup abort (`SignalDataUnavailableError`) |
+| Live tick source with a SIGNAL worker | Startup abort (live sentiment = the #375 event path, not available yet) |
 
-`parquet_path` (a processed signal parquet) is the explicit override — used e.g. for **deliberate
-outage tests**: a tick file entirely after the archive end resolves only the aged last snapshot, so
-the worker reports `is_stale` for the whole session and the decision degrades (the index path would
-correctly reject that window as non-overlapping). The session summary tags the feed as
+A **deliberate outage** is expressed the sim way — a
+`scenario_settings.stress_test_config.stale_data_stress` event carves a window out of the sentiment
+series (data-plane), so the worker reports `is_stale` during that window and the decision degrades
+(#438; the tick status-plane carve stays sim-only → #444). The session summary tags the feed as
 `· 📡 Sentiment: <type>`.
 
 ## Scope

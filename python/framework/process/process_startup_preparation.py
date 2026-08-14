@@ -100,7 +100,7 @@ def process_startup_preparation(
     # series in the data package. No-op when there is no SIGNAL worker.
     # Planned stale windows (#436 stress) are already carved out of the series
     # at preparation time (StaleDataSlicer) — nothing stress-specific here.
-    _inject_signal_providers(workers, shared_data, scenario_logger)
+    inject_signal_providers(workers, shared_data, scenario_logger)
 
     # === PHASE 5: Create Decision Logic (with context) ===
     decision_logic = decision_logic_factory.create_logic(
@@ -182,7 +182,7 @@ def process_startup_preparation(
     return worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks
 
 
-def _inject_signal_providers(
+def inject_signal_providers(
     workers: list,
     shared_data: ProcessDataPackage,
     logger: ScenarioLogger,

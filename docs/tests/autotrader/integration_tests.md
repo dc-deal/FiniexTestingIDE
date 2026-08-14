@@ -12,7 +12,7 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 
 | Test | What it validates |
 |------|-------------------|
-| `test_full_mock_session` | Normal shutdown, tick count (29780), 0 clipping, 0 warnings/errors, trades produced, stats collected |
+| `test_full_mock_session` | Normal shutdown, tick count (29782), 0 clipping, 0 warnings/errors, trades produced, stats collected |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
 | `test_broker_report_written` | Broker report persisted (unified model) + rendered in the summary |
 | `test_tick_source_fields_fully_parsed` | Every `tick_source` profile key reaches the config (no silently dropped keys, incl. the #436 freeze-lever fields) |
@@ -22,17 +22,17 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 
 **Runtime:** ~6 seconds total (session shared across both tests via `scope='module'`).
 
-### test_autotrader_sentiment_feed.py (14 Tests)
+### test_autotrader_sentiment_feed.py (7 Tests)
 
-End-to-end validation of the `sentiment_source` mock feed (#431): index/override resolution,
-provider injection into SIGNAL workers, decision fusion in a live mock session, and the startup
-validation matrix.
+End-to-end validation of the `scenario_settings.data_sentiment_type` mock feed (#438): index
+resolution through the shared `MountPreparer`, provider injection into SIGNAL workers, decision
+fusion in a live mock session, and a deterministic signal outage via `stale_data_stress`.
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
 | `TestSentimentMockSession` | 3 | Full session with index-resolved feed: normal shutdown, tick count (20000), clean pot; SIGNAL worker recomputed on snapshot crossings; portfolio report carries `sentiment_source` |
-| `TestSentimentOutageSession` | 3 | Deliberate outage (tick replay after archive end, `parquet_path` override): graceful `is_stale` degradation, single cold-start compute, no errors; the #434 `on_signal_stale` reaction surfaces exactly once in the warning pot |
-| `TestSentimentFeedValidation` | 8 | Startup abort matrix: SIGNAL worker without feed, unknown type, live tick source, no index overlap, empty feed config; dead-config warning path; loader unknown-key guard; feed-label resolution |
+| `TestSentimentOutageSession` | 3 | Deterministic signal outage (`stale_data_stress` carve of the sentiment series): the worker computes while fresh then goes `is_stale`, graceful degradation, no errors; the #434 `on_signal_stale` reaction surfaces exactly once in the warning pot |
+| `TestScenarioSettingsValidation` | 1 | Structural guard: a typo in `scenario_settings` hard-fails at load (Pydantic `extra='forbid'`) |
 
 **Data Dependency:** `sentiment_mock_test.json` / `sentiment_outage_test.json` with BTCUSD tick
 parquets (2026-04-27 / 2026-05-04) and the imported `crypto_sentiment` signal archive
@@ -62,7 +62,7 @@ recovered", both staleness contracts in ONE fast session driven by the
 
 Trade lifecycle validation through the AutoTrader mock pipeline. Uses `mock_session_test.json` (simple_consensus, parquet replay) which produces real fill prices — unlike dry-run live sessions where entry price is 0.
 
-One session is shared across all test classes (`scope='module'`) to avoid running 29780 ticks multiple times.
+One session is shared across all test classes (`scope='module'`) to avoid running 29782 ticks multiple times.
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|

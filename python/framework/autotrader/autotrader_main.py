@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.autotrader_data_preparer import prepare_mock_session_data
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.autotrader.autotrader_startup import (
     create_autotrader_loggers,
@@ -44,6 +45,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import Auto
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.framework.types.process_data_types import ProcessDataPackage
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
@@ -84,6 +86,7 @@ class AutotraderMain:
         # Tick communication (Threading model 8.a)
         self._tick_queue: queue.Queue = queue.Queue()
         self._tick_source: Optional[AbstractTickSource] = None
+        self._data_package: Optional[ProcessDataPackage] = None
         self._tick_thread = None
         self._tick_loop: Optional[AutotraderTickLoop] = None
 
@@ -165,6 +168,16 @@ class AutotraderMain:
         try:
             self._setup_signal_handlers()
 
+            # === DATA PACKAGE (mock replay, #438) ===
+            # A mock session replays scenario base data: prepare it through the shared MountPreparer
+            # (index-resolved ticks + signal series), the same stack the backtesting batch uses. A
+            # config/data error aborts here at startup (§35), never at the first tick. Live has no
+            # scenario_settings → no package (data streams from the broker).
+            if self._config.scenario_settings is not None:
+                self._print_startup_phase('Preparing scenario data...')
+                self._data_package = prepare_mock_session_data(
+                    self._config, self._session_logger)
+
             # === PIPELINE ===
             # Pipeline objects get session_logger — they produce per-tick output.
             # Startup phases are logged to console via _print_startup_phase().
@@ -175,7 +188,8 @@ class AutotraderMain:
              self._decision_logic,
              self._clipping_monitor,
              self._trading_model,
-             self._display_label_cache) = setup_pipeline(self._config, self._session_logger)
+             self._display_label_cache) = setup_pipeline(
+                self._config, self._session_logger, self._data_package)
             self._print_startup_phase('Pipeline created successfully')
 
             # === ALGO CLOCK VALIDATION (#359) ===
@@ -315,6 +329,7 @@ class AutotraderMain:
                 _symbol_spec.base_currency,
                 _symbol_spec.quote_currency,
                 self._global_logger,
+                self._data_package,
             )
             self._print_startup_phase('Tick source running')
 

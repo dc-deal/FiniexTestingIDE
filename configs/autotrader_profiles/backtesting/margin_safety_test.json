@@ -39,15 +39,8 @@
       "edge_case_orders": []
     }
   },
-  "account": {
-    "balances": {
-      "USD": 10000.0
-    }
-  },
   "tick_source": {
-    "type": "mock",
-    "parquet_path": "data/processed/mt5/ticks/EURUSD/EURUSD_20250923_133009.parquet",
-    "max_ticks": 15000
+    "type": "mock"
   },
   "safety": {
     "enabled": true,
@@ -57,5 +50,13 @@
   },
   "display": {
     "enabled": false
+  },
+  "scenario_settings": {
+    "start_date": "2025-09-23T10:30:10+00:00",
+    "max_ticks": 15000,
+    "data_mode": "realistic",
+    "balances": {
+      "USD": 10000.0
+    }
   }
 }

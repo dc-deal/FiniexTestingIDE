@@ -101,9 +101,13 @@ There is no correct default — every answer is wrong for SOME strategy:
   `data_sentiment_type`) or blind the tick source (`data_source` = its
   `data_broker_type`) at exact timestamps. See the
   [Stress Test System](../stress_test.md).
-- **AutoTrader mock (wall-clock real):** `tick_source.freeze_after_ticks` +
-  `freeze_duration_s` pause the replay feeder mid-session — the REAL heartbeat
-  measurement path flips, your hook fires, the guard blocks, recovery follows.
+- **AutoTrader mock — two drills (#438):** for the **market-data** side,
+  `tick_source.freeze_after_ticks` + `freeze_duration_s` pause the replay feeder mid-session
+  (wall-clock real) — the REAL heartbeat measurement path flips, `on_market_data_stale` fires,
+  the guard blocks, recovery follows. For the **signal** side, a
+  `scenario_settings.stress_test_config.stale_data_stress` event carves a window out of the
+  sentiment series (the same deterministic data-plane carve the sim uses) → the worker goes
+  `is_stale` and `on_signal_stale` fires. (The tick status-plane carve stays sim-only → #444.)
 - Reference implementations: `CORE/hybrid_sentiment_reference` (hold + surface),
   `CORE/backtesting/backtesting_outage_probe` (the test probe asserting the
   whole chain).

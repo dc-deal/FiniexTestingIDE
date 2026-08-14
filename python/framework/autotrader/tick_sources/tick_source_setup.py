@@ -6,11 +6,14 @@ its feeder thread (threading model 8.a).
 
 import queue
 import threading
+from typing import Optional
 
 from python.framework.autotrader.tick_sources.kraken_tick_source import KrakenTickSource
 from python.framework.autotrader.tick_sources.mock_tick_source import MockTickSource
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.process_data_types import ProcessDataPackage
+from python.framework.utils.process_serialization_utils import process_deserialize_ticks_batch
 
 
 def setup_tick_source(
@@ -18,7 +21,8 @@ def setup_tick_source(
     tick_queue: queue.Queue,
     base_currency: str,
     quote_currency: str,
-    logger: ScenarioLogger
+    logger: ScenarioLogger,
+    package: Optional[ProcessDataPackage] = None
 ) -> tuple:
     """
     Create tick source and start it in a separate thread.
@@ -32,16 +36,20 @@ def setup_tick_source(
         base_currency: Symbol base currency from SymbolSpec (e.g., 'BTC', 'DASH')
         quote_currency: Symbol quote currency from SymbolSpec (e.g., 'USD')
         logger: Logger instance
+        package: Prepared scenario data package (#438) — the mock source replays its ticks
 
     Returns:
         (tick_source, tick_thread)
     """
     if config.tick_source.type == 'mock':
+        # Deserialize the prepared transport ticks into TickData (same path the sim subprocess
+        # uses via process_startup_preparation) before replaying them.
+        ticks = list(process_deserialize_ticks_batch(
+            config.symbol, package.ticks)) if package else []
         tick_source = MockTickSource(
-            parquet_path=config.tick_source.parquet_path,
+            ticks=ticks,
             symbol=config.symbol,
             tick_queue=tick_queue,
-            max_ticks=config.tick_source.max_ticks,
             tick_delay_ms=config.tick_source.tick_delay_ms,
             freeze_after_ticks=config.tick_source.freeze_after_ticks,
             freeze_duration_s=config.tick_source.freeze_duration_s,
