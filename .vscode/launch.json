@@ -406,7 +406,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_strategy_runner",
-                "order": 6
+                "order": 8
             }
         },
         // 📡 SIGNAL feature demo: forex_macro_sentiment on mt5/EURUSD. The window straddles the
@@ -429,6 +429,26 @@
                 "order": 6
             }
         },
+        // 📡 SIGNAL on REAL collected data — both planes real on both markets: live-collected
+        // ticks (kraken_spot BTCUSD / mt5 GBPUSD) against a live-produced signal archive.
+        // Window 2026-08-11 → 08-14 = the archive's clean stretch after the producer outage
+        // (zero partial, zero error). The counterpart to the two mock-backed demos above.
+        {
+            "name": "📡 Run Sentiment Real-Data Demo (BTCUSD + GBPUSD)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/sentiment_realdata_demo.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 7
+            }
+        },
         {
             "name": "🔬 Run eurusd_3_windows_sandbox - algo:aggressive_trend",
             "type": "debugpy",
@@ -442,7 +462,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_strategy_runner",
-                "order": 7
+                "order": 9
             }
         },
         {
@@ -458,7 +478,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_strategy_runner",
-                "order": 8
+                "order": 10
             }
         },
         {
@@ -476,7 +496,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_strategy_runner",
-                "order": 9
+                "order": 11
             }
         },
         {
@@ -494,7 +514,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_strategy_runner",
-                "order": 10
+                "order": 12
             }
         },
         // ====================================================

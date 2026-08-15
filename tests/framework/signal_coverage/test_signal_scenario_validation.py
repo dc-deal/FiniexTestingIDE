@@ -34,22 +34,25 @@ SOURCE = 'crypto_sentiment'
 SYMBOL = 'BTCUSD'
 
 
-def _write_series(tmp_path: Path, moments: List[datetime]) -> Path:
-    """Write a minimal signal parquet carrying only the snapshot timeline."""
+def _write_series(tmp_path: Path, moments: List[datetime],
+                  origin: str = 'live') -> Path:
+    """Write a minimal signal parquet carrying the snapshot timeline."""
     rows = []
     for moment in moments:
         msc = int(moment.timestamp() * 1000)
         rows.append({SignalParquetColumn.COLLECTED_MSC.value: msc,
-                     SignalParquetColumn.SYMBOL.value: SIGNAL_ENVELOPE_SYMBOL})
+                     SignalParquetColumn.SYMBOL.value: SIGNAL_ENVELOPE_SYMBOL,
+                     SignalParquetColumn.DATA_ORIGIN.value: origin})
     path = tmp_path / 'series.parquet'
     pd.DataFrame(rows).to_parquet(path)
     return path
 
 
-def _report(tmp_path: Path, moments: List[datetime]) -> SignalCoverageReport:
+def _report(tmp_path: Path, moments: List[datetime],
+            origin: str = 'live') -> SignalCoverageReport:
     """Build an analyzed report over a snapshot list."""
     report = SignalCoverageReport(SOURCE, SYMBOL)
-    report.analyze([_write_series(tmp_path, moments)])
+    report.analyze([_write_series(tmp_path, moments, origin=origin)])
     return report
 
 
@@ -198,6 +201,18 @@ class TestSignalAvailability:
         assert errors == []
         assert len(warnings) == 1
         assert 'starts on a snapshot' in warnings[0]
+
+    def test_synthetic_source_warns(self, tmp_path):
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        report = _report(tmp_path, _grid(start, 36), origin='synthetic')
+        validator = _validator({(SOURCE, SYMBOL): report})
+
+        errors, warnings = validator.validate_signal_availability(
+            _scenario(start + timedelta(hours=1)))
+
+        assert errors == []          # generated data runs, it just says so
+        assert len(warnings) == 1
+        assert 'SYNTHETIC' in warnings[0]
 
     def test_stale_tail_is_not_flagged(self, tmp_path):
         # A window reaching past the series end is contracted degradation (#434)

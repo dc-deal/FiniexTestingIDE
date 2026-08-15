@@ -23,9 +23,10 @@ concern (basis / status / is_stale), not the timeline's.
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.framework.types.coverage_report_types import Gap, GapCategory
@@ -68,6 +69,9 @@ class SignalCoverageReport:
         self.cadence_seconds: float = DEFAULT_CADENCE_SECONDS
         self.snapshot_count: int = 0
 
+        # Distinct data_origin values found (empty when the producer predates the field)
+        self.data_origins: Set[str] = set()
+
         # Analysis results
         self.gaps: List[Gap] = []
         self.gap_counts = {
@@ -85,9 +89,9 @@ class SignalCoverageReport:
         """
         Analyze the signal parquet files for continuity and gaps.
 
-        Reads only the collected_msc column (projection) — the timeline is all
-        this report needs. Paths are resolved by the caller from the signal
-        index, which already scopes files to the symbol.
+        Reads only the timeline column plus the origin marker (projection) —
+        that is all this report needs. Paths are resolved by the caller from the
+        signal index, which already scopes files to the symbol.
 
         Args:
             paths: Signal parquet files covering this (source, symbol)
@@ -142,7 +146,9 @@ class SignalCoverageReport:
 
     def _load_snapshot_times(self, paths: List[Path]) -> List[datetime]:
         """
-        Read the distinct snapshot timestamps from the signal parquet files.
+        Read the distinct snapshot timestamps + the origin marker from the parquets.
+
+        Side effect: fills `data_origins` with the distinct data_origin values found.
 
         Args:
             paths: Signal parquet files to read
@@ -150,17 +156,54 @@ class SignalCoverageReport:
         Returns:
             Ascending, de-duplicated snapshot times (UTC-aware)
         """
-        column = SignalParquetColumn.COLLECTED_MSC.value
-        frames = [pd.read_parquet(path, columns=[column]) for path in paths]
+        msc_column = SignalParquetColumn.COLLECTED_MSC.value
+        origin_column = SignalParquetColumn.DATA_ORIGIN.value
+
+        frames = []
+        for path in paths:
+            # data_origin arrived after the first archives were imported — project it
+            # only where the file actually carries it, so a stale parquet still reads.
+            available = set(pq.read_schema(path).names)
+            columns = [c for c in (msc_column, origin_column) if c in available]
+            frames.append(pd.read_parquet(path, columns=columns))
+
         if not frames:
             return []
 
         df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
-        msc_values = sorted(set(int(v) for v in df[column]))
+
+        if origin_column in df.columns:
+            self.data_origins = {
+                str(v) for v in df[origin_column].dropna().unique() if str(v)}
+
+        msc_values = sorted(set(int(v) for v in df[msc_column]))
         return [
             datetime.fromtimestamp(msc / 1000.0, tz=timezone.utc)
             for msc in msc_values
         ]
+
+    def get_data_origin(self) -> str:
+        """
+        The archive's origin marker — the mock-versus-real discriminator (#447).
+
+        Returns:
+            'synthetic' / 'live' / 'mixed' when a source carries both / '' when the
+            producer predates the field (unknown, not an assertion of realness)
+        """
+        if not self.data_origins:
+            return ''
+        if len(self.data_origins) > 1:
+            return 'mixed'
+        return next(iter(self.data_origins))
+
+    def is_synthetic(self) -> bool:
+        """
+        Whether the archive declares itself generated.
+
+        Returns:
+            True when any snapshot carries data_origin 'synthetic'
+        """
+        return 'synthetic' in self.data_origins
 
     def _measure_cadence(self, snapshots: List[datetime]) -> float:
         """
@@ -319,6 +362,14 @@ class SignalCoverageReport:
         report.append(f"Snapshots:    {self.snapshot_count:,}")
         report.append(
             f"Cadence:      {format_duration(self.cadence_seconds)} (measured median)")
+
+        origin = self.get_data_origin()
+        if origin == 'synthetic':
+            report.append("Origin:       🧪 SYNTHETIC — generated data, not a market record")
+        elif origin:
+            report.append(f"Origin:       {origin}")
+        else:
+            report.append("Origin:       unknown (producer predates the data_origin field)")
 
         report.append(f"\n{'─'*60}")
         report.append("GAP ANALYSIS:")

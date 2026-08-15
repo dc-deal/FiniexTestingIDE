@@ -26,14 +26,16 @@ from python.framework.types.signal_data_types import (
 CADENCE = timedelta(minutes=10)
 
 
-def _write_series(tmp_path: Path, moments: List[datetime], name: str = 'series') -> Path:
+def _write_series(tmp_path: Path, moments: List[datetime], name: str = 'series',
+                  origin: str = None) -> Path:
     """
-    Write a minimal signal parquet carrying only the snapshot timeline.
+    Write a minimal signal parquet carrying the snapshot timeline.
 
     Args:
         tmp_path: pytest tmp dir
         moments: Snapshot times (UTC-aware)
         name: File stem
+        origin: data_origin value; None omits the column entirely (a pre-contract archive)
 
     Returns:
         Path of the written parquet
@@ -42,10 +44,12 @@ def _write_series(tmp_path: Path, moments: List[datetime], name: str = 'series')
     for moment in moments:
         msc = int(moment.timestamp() * 1000)
         # One envelope sentinel + one symbol row per snapshot — the real shape.
-        rows.append({SignalParquetColumn.COLLECTED_MSC.value: msc,
-                     SignalParquetColumn.SYMBOL.value: SIGNAL_ENVELOPE_SYMBOL})
-        rows.append({SignalParquetColumn.COLLECTED_MSC.value: msc,
-                     SignalParquetColumn.SYMBOL.value: 'BTCUSD'})
+        for symbol in (SIGNAL_ENVELOPE_SYMBOL, 'BTCUSD'):
+            row = {SignalParquetColumn.COLLECTED_MSC.value: msc,
+                   SignalParquetColumn.SYMBOL.value: symbol}
+            if origin is not None:
+                row[SignalParquetColumn.DATA_ORIGIN.value] = origin
+            rows.append(row)
 
     path = tmp_path / f'{name}.parquet'
     pd.DataFrame(rows).to_parquet(path)
@@ -208,6 +212,61 @@ class TestWindowQueries:
         ratio = report.coverage_ratio_in_window(start, window_end)
         # ~70min hole inside a 170min window
         assert ratio == pytest.approx(1 - 70 / 170, abs=0.01)
+
+
+class TestDataOrigin:
+    """
+    The mock-versus-real discriminator. Absence is 'unknown', never an
+    assertion of realness — archives produced before the field exists carry
+    no column at all and must still read.
+    """
+
+    def _report(self, tmp_path, origin) -> SignalCoverageReport:
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        path = _write_series(tmp_path, _grid(start, 12), origin=origin)
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([path])
+        return report
+
+    def test_synthetic_is_detected(self, tmp_path):
+        report = self._report(tmp_path, 'synthetic')
+        assert report.get_data_origin() == 'synthetic'
+        assert report.is_synthetic()
+
+    def test_live_is_not_synthetic(self, tmp_path):
+        report = self._report(tmp_path, 'live')
+        assert report.get_data_origin() == 'live'
+        assert not report.is_synthetic()
+
+    def test_missing_column_reads_as_unknown(self, tmp_path):
+        # A parquet written before the field existed — must not raise
+        report = self._report(tmp_path, None)
+        assert report.get_data_origin() == ''
+        assert not report.is_synthetic()
+        assert report.snapshot_count == 12
+
+    def test_empty_value_reads_as_unknown(self, tmp_path):
+        # Column present, producer did not stamp it
+        report = self._report(tmp_path, '')
+        assert report.get_data_origin() == ''
+        assert not report.is_synthetic()
+
+    def test_mixed_origins_are_flagged(self, tmp_path):
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        a = _write_series(tmp_path, _grid(start, 6), name='a', origin='synthetic')
+        b = _write_series(tmp_path, _grid(start + CADENCE * 6, 6), name='b', origin='live')
+
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([a, b])
+
+        assert report.get_data_origin() == 'mixed'
+        assert report.is_synthetic()
+
+    def test_report_text_marks_synthetic(self, tmp_path):
+        assert 'SYNTHETIC' in self._report(tmp_path, 'synthetic').generate_report()
+
+    def test_report_text_marks_unknown(self, tmp_path):
+        assert 'unknown' in self._report(tmp_path, None).generate_report()
 
 
 class TestEmptySource:

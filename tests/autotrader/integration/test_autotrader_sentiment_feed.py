@@ -80,11 +80,18 @@ class TestSentimentMockSession:
             f"Expected 20000 ticks, got {result.ticks_processed}"
         )
 
+        # The profile replays a generated archive, so the synthetic-data advisory
+        # is contracted output, not noise — assert it fires rather than ignoring it.
+        assert any('SYNTHETIC' in w for w in result.warning_messages), (
+            f"Expected the synthetic-data advisory for 'crypto_sentiment_mock', "
+            f"got: {result.warning_messages[:5]}"
+        )
+
         # Clean session — no unexpected warnings or errors
         # Spot mode may leave positions open until scenario_end (no SHORT reversal)
         unexpected_warnings = [
             w for w in result.warning_messages
-            if 'positions remain open' not in w
+            if 'positions remain open' not in w and 'SYNTHETIC' not in w
         ]
         assert len(unexpected_warnings) == 0, (
             f"Unexpected warnings: {unexpected_warnings[:5]}"

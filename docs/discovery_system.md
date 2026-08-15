@@ -141,8 +141,26 @@ Three deliberate differences to the tick report:
 - **Coverage is envelope-level.** An envelope carrying no result for the symbol
   (partial/error) is a *degraded* snapshot, not a gap — that distinction belongs to the
   runtime resolution (`basis` / `status` / `is_stale`), not the timeline.
-- **No cache.** A report reads one projected column from a handful of parquet files;
+- **No cache.** A report reads two projected columns from a handful of parquet files;
   a cache would be dead weight.
+
+### Data origin — the mock-versus-real discriminator
+
+The report also reads the `data_origin` column: `synthetic` (generated), `live`
+(producer output), `mixed` (a source carrying both), or empty. **Empty means unknown,
+never an assertion of realness** — archives produced before the field existed carry no
+column at all, and the reader projects it only where the schema has it.
+
+```
+Origin:       🧪 SYNTHETIC — generated data, not a market record
+Origin:       unknown (producer predates the data_origin field)
+```
+
+The purpose is a guard, not decoration. Without it, a generated archive and a real one
+are indistinguishable in every field — same `pipeline_id`, same `prompt_hash` — so a
+backtest spanning both produces something that looks like a result. A scenario binding a
+`synthetic` source therefore gets a pre-run warning (see the table below); it still runs,
+it just says what it is.
 
 ### Scenario validation
 
@@ -153,6 +171,7 @@ actually-loaded tick stretch:
 | Case | Phase | Outcome |
 |---|---|---|
 | scenario binds no signal source | — | skipped |
+| source declares `data_origin: synthetic` | 2 | **warning** — generated data, not a market record |
 | source/symbol not imported | 2 | **error** — scenario excluded, batch continues (§33) |
 | window closes before the series opens | 2 | **error** — no snapshot can ever resolve |
 | no snapshot at or before `start_date` | 2 | **warning** — run starts blind, blind duration named |

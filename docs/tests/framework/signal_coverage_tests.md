@@ -39,6 +39,14 @@ Signal gaps use their own thresholds from `discoveries_config.json`
 tighter ladder than the tick report's 4h, because no producer restart takes
 longer than an hour.
 
+### Data origin
+
+`TestDataOrigin` pins the mock-versus-real discriminator, including the two
+absence cases that must never read as "real": a parquet written **before** the
+column existed (no column at all — must not raise) and a present-but-empty value.
+Both resolve to `''` = unknown. A source carrying both values reads as `mixed`
+and counts as synthetic.
+
 ### Window queries
 
 `has_snapshot_at_or_before` / `latest_snapshot_at_or_before` mirror the worker's
@@ -50,6 +58,7 @@ verdict matches what the run will actually see.
 | Case | Outcome |
 |---|---|
 | scenario binds no signal source | skipped, no findings |
+| source declares `data_origin: synthetic` | **warning** — generated data, not a market record |
 | source/symbol not imported | **error** — scenario excluded (§33 config/data) |
 | window closes before the series opens | **error** — nothing can ever resolve |
 | no snapshot at or before window start | **warning** — run starts blind, with the blind duration |

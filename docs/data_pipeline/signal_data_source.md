@@ -126,8 +126,16 @@ fields plus a small set of cheap, dictionary-encoded prompt-provenance scalars:
   `is_breaking`, `basis` (per-symbol signal quality — `llm` / `no_data` / `degraded`), `status`,
   `schema_version`, plus the `collected_msc` / `symbol` lookup keys. This is `SIGNAL_RUNTIME_COLUMNS`
   — the exact set the reader projects into the subprocess payload.
-- **Traceability (envelope-scalar):** `pipeline_id`, `prompt_version`, `prompt_id`, `prompt_hash` —
-  so a prompt change stays visible in the data. Read by the index / report path only, not at runtime.
+- **Traceability (envelope-scalar):** `pipeline_id`, `prompt_version`, `prompt_id`, `prompt_hash`,
+  `data_origin` — so a prompt change and the data's nature stay visible in the data. Read by the
+  index / report path only, not at runtime.
+
+`data_origin` (`synthetic` / `live` / empty) is the mock-versus-real discriminator. It exists
+because without it a generated archive and a real one are identical in every other field — the
+generator mirrors the prompt identity on purpose, so `prompt_hash` cannot tell them apart. An
+**empty** value means *unknown*, never "real": archives produced before the producer stamped the
+field carry no column at all, and the reader projects it only where the schema has it. A scenario
+binding a `synthetic` source gets a pre-run warning (see [Discovery System](../discovery_system.md)).
 
 The heavy provenance (`sources`, `metadata`, `errors`) is **deliberately not persisted** — it lives
 in the raw JSONL archive, the audit source. Dropping it shrinks the parquet by ~80–85%. The projected
