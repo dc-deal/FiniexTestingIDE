@@ -33,7 +33,7 @@
     "enabled": false
   },
   "scenario_settings": {
-    "data_sentiment_type": "crypto_sentiment",
+    "data_sentiment_type": "crypto_sentiment_mock",
     "start_date": "2026-04-27T05:26:21+00:00",
     "max_ticks": 20000,
     "data_mode": "realistic",

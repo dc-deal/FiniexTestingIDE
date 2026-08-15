@@ -7,6 +7,7 @@ Commands:
 - volatility-profile: Build volatility profile and show report
 - extreme-moves: Scan for extreme directional price movements
 - data-coverage: Gap analysis and coverage report management
+- signal-coverage: Gap analysis for signal sources (#429)
 - cache: Unified discovery cache operations
 """
 
@@ -21,11 +22,13 @@ from python.framework.discoveries.volatility_profile_analyzer.volatility_profile
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import VolatilityProfileAnalyzerCache
 from python.framework.discoveries.discovery_cache import DiscoveryCache
 from python.framework.discoveries.extreme_move_scanner import ExtremeMoveScanner
+from python.framework.discoveries.signal_coverage.signal_coverage_report_manager import SignalCoverageReportManager
 from python.framework.types.market_types.market_volatility_profile_types import SymbolVolatilityProfile
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_report import print_volatility_profile
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_comparison_report import print_cross_instrument_ranking
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.data_management.index.signal_index_manager import SignalIndexManager
 
 vLog = get_global_logger()
 
@@ -181,6 +184,68 @@ class DiscoveriesCli:
             return
 
         print(report.generate_report())
+
+    def cmd_signal_coverage_show(
+        self, data_sentiment_type: str, symbol: str
+    ) -> None:
+        """
+        Show signal coverage report for one source/symbol.
+
+        Args:
+            data_sentiment_type: Signal source identity (= pipeline_id)
+            symbol: Trading symbol
+        """
+        manager = self._signal_coverage_manager()
+        report = manager.build_report(data_sentiment_type, symbol)
+        print(report.generate_report())
+
+    def cmd_signal_coverage_validate(self) -> None:
+        """Validate all signal sources and show a gap summary."""
+        signal_index = SignalIndexManager()
+        signal_index.build_index()
+        manager = SignalCoverageReportManager(
+            logger=get_global_logger(), scenarios=[],
+            signal_index_manager=signal_index)
+
+        print("\n" + "="*60)
+        print("🔍 Validating All Signal Sources")
+        print("="*60 + "\n")
+
+        issues_found = False
+
+        for sentiment_type in signal_index.list_sentiment_types():
+            print(f"\n📂 {sentiment_type}:")
+            for symbol in signal_index.list_symbols(sentiment_type):
+                report = manager.build_report(sentiment_type, symbol)
+                icon = '🔴' if report.has_issues() else '✅'
+                print(
+                    f"   {icon} {symbol:10} {report.snapshot_count:>7,} snapshots · "
+                    f"{report.gap_counts['short']} short / "
+                    f"{report.gap_counts['moderate']} moderate / "
+                    f"{report.gap_counts['large']} large"
+                )
+                if report.has_issues():
+                    issues_found = True
+
+        print("\n" + "="*60)
+        if issues_found:
+            print("🔴 Gaps found - run 'signal-coverage show <source> <symbol>' for details")
+        else:
+            print("✅ All signal sources continuous")
+        print("="*60 + "\n")
+
+    def _signal_coverage_manager(self) -> SignalCoverageReportManager:
+        """
+        Build a scenario-less signal coverage manager for direct report rendering.
+
+        Returns:
+            SignalCoverageReportManager over a freshly built signal index
+        """
+        signal_index = SignalIndexManager()
+        signal_index.build_index()
+        return SignalCoverageReportManager(
+            logger=get_global_logger(), scenarios=[],
+            signal_index_manager=signal_index)
 
     def cmd_data_coverage_validate(self) -> None:
         """Validate all symbols and show gap summary."""
@@ -401,6 +466,28 @@ def main():
         'clear', help='Clear all cached coverage reports')
 
     # ─────────────────────────────────────────────────────────────────────────
+    # SIGNAL-COVERAGE command group
+    # ─────────────────────────────────────────────────────────────────────────
+    signal_coverage_parser = subparsers.add_parser(
+        'signal-coverage',
+        help='Gap analysis for signal sources (#429)'
+    )
+    signal_coverage_sub = signal_coverage_parser.add_subparsers(
+        dest='signal_coverage_command', help='Signal coverage commands')
+
+    # signal-coverage validate
+    signal_coverage_sub.add_parser(
+        'validate', help='Validate all signal sources, show gap summary')
+
+    # signal-coverage show
+    sig_show = signal_coverage_sub.add_parser(
+        'show', help='Show signal coverage report for a source/symbol')
+    sig_show.add_argument(
+        'data_sentiment_type', help='Signal source (e.g., crypto_sentiment)')
+    sig_show.add_argument(
+        'symbol', help='Symbol (e.g., BTCUSD)')
+
+    # ─────────────────────────────────────────────────────────────────────────
     # CACHE command group (unified)
     # ─────────────────────────────────────────────────────────────────────────
     cache_parser = subparsers.add_parser(
@@ -468,6 +555,19 @@ def main():
             cli.cmd_data_coverage_validate()
         elif args.coverage_command == 'clear':
             cli.cmd_data_coverage_clear()
+
+    elif args.command == 'signal-coverage':
+        if not args.signal_coverage_command:
+            signal_coverage_parser.print_help()
+            sys.exit(1)
+
+        if args.signal_coverage_command == 'validate':
+            cli.cmd_signal_coverage_validate()
+        elif args.signal_coverage_command == 'show':
+            cli.cmd_signal_coverage_show(
+                data_sentiment_type=args.data_sentiment_type,
+                symbol=args.symbol
+            )
 
     elif args.command == 'cache':
         if not args.cache_command:

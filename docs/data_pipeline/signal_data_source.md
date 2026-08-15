@@ -60,6 +60,63 @@ projected reader (`load_signal_series_from_parquet`) → the resulting `SignalSe
 A missing `(data_sentiment_type, symbol)` in the index is a hard error at pre-flight (import it
 first, or fix the type) — mirroring the tick "symbol not found in broker index" path.
 
+## Cadence — what the series actually looks like
+
+The producer runs on a bar-close grid (M10 for the current sources), but the series is **not** a
+fixed interval. Three things make a distance shorter or longer than the nominal one, all of them
+legitimate:
+
+| | Effect on the timeline |
+|---|---|
+| **Processing time** | a pass takes seconds to complete, so a snapshot lands *after* its bar close (measured: ~97% within 60s). `:00:23` is normal, not late. |
+| **Producer restart** | the engine emits an initial-state snapshot immediately on restart, off-grid and *in addition to* the regular one |
+| **Breaking events** | an urgent story jumps the eval queue instead of waiting for the next bar close — deliberately off-grid, and the interesting case |
+
+Consequences for any consumer:
+
+- **Never assume 600s spacing, and never key a record on a rounded timestamp.** Bucket by nearest
+  bar close if a grid is needed; the raw `collected_msc` is the identity.
+- **Extra snapshots are never a defect.** They shorten a distance, so gap detection (which only
+  reacts to distances that grow) is unaffected by both restarts and breaking wakes.
+- **Duplicates per bar are expected**, not a bug — a restart snapshot and the regular one can land
+  in the same bar. The reader keeps one row per `collected_msc`; both survive as distinct snapshots.
+- **Resolution is tick-gated today.** The worker resolves `nearest(tick)`, so a breaking snapshot
+  arriving between two ticks is first seen at the *next* tick. Firing a signal event at its own
+  timestamp — and more than once per bar where the data says so — is what #375's ordered event
+  timeline changes.
+
+## Coverage + gaps
+
+An archive is rarely continuous — a producer outage leaves a hole, and the index range says
+nothing about what is inside it. `SignalCoverageReport` walks the snapshot timeline and
+classifies the holes, mirroring the tick-side `DataCoverageReport`:
+
+```bash
+python python/cli/discoveries_cli.py signal-coverage validate
+python python/cli/discoveries_cli.py signal-coverage show crypto_sentiment BTCUSD
+```
+
+The reports run in the batch's Phase 1 and feed `ScenarioDataValidator`:
+
+- a scenario whose window **closes before the source begins** is an error — no snapshot can ever
+  resolve (the typical cause: a scenario left on an old window after the source was re-imported).
+- a scenario whose window opens **before the first snapshot** gets a warning — every tick until
+  the first snapshot resolves to a gap (empty result, `is_stale=True`). This is the signal
+  analogue of warmup: not "N entries of history", but "a snapshot must exist at the first tick".
+  There is no warmup window for signals — a SIGNAL worker resolves `nearest(tick)` and nothing more.
+- a scenario whose window opens **inside a hole** gets a warning naming the age of the snapshot
+  the run will start on.
+- a hole **inside the loaded tick stretch** whose category is not in
+  `data_validation.allowed_gap_categories` (`app_config.json`, shared with the tick check) is an
+  error — the scenario is excluded, the batch continues (§33).
+- a window reaching **past the last snapshot** is NOT flagged: that is the contracted staleness
+  degradation (#434), and `sentiment_forex_demo` relies on it deliberately.
+
+Signal gaps carry their own thresholds (`discoveries_config.json` → `signal_coverage.thresholds`):
+short < 30min, moderate < 1h, large above. Weekends are never an expected closure here — the
+producing engine runs 24/7 regardless of the traded market, so a weekend hole is a real outage.
+Full detail: [Discovery System](../discovery_system.md).
+
 ## Parquet columns — lean projection
 
 The parquet is the **runtime + report layer**, not the archive. It carries only the worker-consumed

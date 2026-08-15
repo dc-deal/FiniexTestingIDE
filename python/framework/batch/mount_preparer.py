@@ -18,6 +18,7 @@ from python.framework.batch.data_preparation_coordinator import (
 from python.framework.batch.requirements_collector import RequirementsCollector
 from python.framework.data_preparation.broker_data_preparator import BrokerDataPreparator
 from python.framework.discoveries.data_coverage.data_coverage_report_manager import DataCoverageReportManager
+from python.framework.discoveries.signal_coverage.signal_coverage_report_manager import SignalCoverageReportManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.batch_execution_types import WarmupPhaseEntry
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
@@ -189,11 +190,22 @@ class MountPreparer:
 
         # Build tick index and generate coverage reports
         tick_index_manager = data_coordinator.get_tick_index_manager()
+
+        # Signal coverage (#429 sources) — the sibling report the validator reads
+        # alongside the tick one. Empty when no scenario binds a signal source.
+        signal_coverage_manager = SignalCoverageReportManager(
+            logger=self._logger,
+            scenarios=self._valid(scenarios),
+            signal_index_manager=data_coordinator.get_signal_index_manager(),
+        )
+        signal_coverage_manager.generate_reports()
+
         coverage_report_manager = DataCoverageReportManager(
             logger=self._logger,
             scenarios=self._valid(scenarios),
             tick_index_manager=tick_index_manager,
             app_config=self._app_config,
+            signal_coverage_reports=signal_coverage_manager.get_reports(),
         )
         coverage_report_manager.generate_reports()
         warmup_phases.append(WarmupPhaseEntry('Index & Coverage', time.time() - _phase_t))

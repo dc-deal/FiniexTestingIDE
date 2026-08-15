@@ -1,7 +1,7 @@
 {
     "version": "1.0",
     "scenario_set_name": "sentiment_forex_demo",
-    "description": "SIGNAL worker on FOREX (mt5/EURUSD) with the mock forex_macro_sentiment source (#429). Two things on purpose: (1) the data_sentiment_type pipeline on a SECOND market/broker; (2) graceful degradation — the scenario window (2026-05-03T23:00 → 05-04T02:00) straddles the sentiment coverage end (…05-03T23:50), so the tail runs on STALE sentiment → the hybrid decision falls back to pure-indicator mode (worker is_stale=True). Didactic: hybrid_sentiment_reference is crypto-recommended, so a soft market-fit warning is expected; forex sentiment here is random mock. Not a profit claim.",
+    "description": "SIGNAL worker on FOREX (mt5/EURUSD) with the mock forex_macro_sentiment_mock source (#429). Two things on purpose: (1) the data_sentiment_type pipeline on a SECOND market/broker; (2) graceful degradation — the scenario window (2026-05-03T23:00 → 05-04T02:00) straddles the sentiment coverage end (…05-03T23:50), so the tail runs on STALE sentiment → the hybrid decision falls back to pure-indicator mode (worker is_stale=True). Didactic: hybrid_sentiment_reference is crypto-recommended, so a soft market-fit warning is expected; forex sentiment here is random mock. Not a profit claim.",
     "global": {
         "data_mode": "realistic",
         "strategy_config": {
@@ -41,7 +41,7 @@
             "name": "EURUSD_sentiment_forex_scenario_01",
             "symbol": "EURUSD",
             "data_broker_type": "mt5",
-            "data_sentiment_type": "forex_macro_sentiment",
+            "data_sentiment_type": "forex_macro_sentiment_mock",
             "start_date": "2026-05-03T23:00:00+00:00",
             "end_date": "2026-05-04T02:00:00+00:00",
             "max_ticks": 15000,
@@ -55,7 +55,7 @@
             "name": "EURUSD_sentiment_forex_scenario_02",
             "symbol": "GBPUSD",
             "data_broker_type": "mt5",
-            "data_sentiment_type": "forex_macro_sentiment",
+            "data_sentiment_type": "forex_macro_sentiment_mock",
             "start_date": "2026-05-03T23:00:00+00:00",
             "end_date": "2026-05-04T02:00:00+00:00",
             "max_ticks": 15000,

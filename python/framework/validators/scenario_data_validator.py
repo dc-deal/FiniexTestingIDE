@@ -16,9 +16,10 @@ from python.framework.types.validation_types import ValidationResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
+from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.utils.process_serialization_utils import time_range_from_transport_ticks
-from python.framework.utils.time_utils import ensure_utc_aware
+from python.framework.utils.time_utils import ensure_utc_aware, format_duration
 
 
 class ScenarioDataValidator:
@@ -38,7 +39,8 @@ class ScenarioDataValidator:
         self,
         data_coverage_reports: Dict[str, DataCoverageReport],
         app_config: AppConfigManager,
-        logger: AbstractLogger
+        logger: AbstractLogger,
+        signal_coverage_reports: Dict[Tuple[str, str], SignalCoverageReport] = None
     ):
         """
         Initialize validator.
@@ -47,9 +49,12 @@ class ScenarioDataValidator:
             data_coverage_reports: Dict mapping (broker_type, symbol) tuple to DataCoverageReport
             app_config: Application config manager
             logger: Logger instance
+            signal_coverage_reports: Dict mapping (data_sentiment_type, symbol) tuple to
+                SignalCoverageReport — empty when no scenario binds a signal source
         """
 
         self._data_coverage_reports = data_coverage_reports
+        self._signal_coverage_reports = signal_coverage_reports or {}
         self._app_config = app_config
         self._logger = logger
 
@@ -166,6 +171,86 @@ class ScenarioDataValidator:
             )
 
         return errors
+
+    def validate_signal_availability(
+        self,
+        scenario: SingleScenario
+    ) -> Tuple[List[str], List[str]]:
+        """
+        Validate the scenario's signal source against its coverage (pre-load).
+
+        Four checks, scoped to the window — the point where a SIGNAL worker
+        either has something to resolve or does not:
+        - the source/symbol carries no snapshots at all (config/data error)
+        - the window closes before the series opens: nothing can ever resolve
+        - no snapshot at or before start_date: the run begins blind, every tick
+          until the first snapshot resolves to a gap (empty result, is_stale)
+        - start_date sits inside a gap: the run begins on an already-aged snapshot
+
+        The tail is deliberately NOT checked. A window reaching past the last
+        snapshot is a legitimate, contracted degradation (#434) — the signal goes
+        stale and the decision logic reacts.
+
+        Args:
+            scenario: Scenario to validate
+
+        Returns:
+            Tuple of (error messages, warning messages)
+        """
+        errors = []
+        warnings = []
+
+        # Early exit: scenario does not bind a signal source
+        if not scenario.data_sentiment_type:
+            return errors, warnings
+
+        report_key = (scenario.data_sentiment_type, scenario.symbol)
+        report = self._signal_coverage_reports.get(report_key)
+        if not report or not report.snapshot_count:
+            errors.append(
+                f"No signal data for source '{scenario.data_sentiment_type}' / "
+                f"symbol {scenario.symbol}. The source is not imported, or carries "
+                f"no snapshot for this symbol."
+            )
+            return errors, warnings
+
+        start_date = scenario.start_date
+        end_date = scenario.end_date
+
+        # === No overlap at all: the window closes before the series opens ===
+        if end_date and end_date < report.start_time:
+            errors.append(
+                f"Signal '{scenario.data_sentiment_type}': the scenario window "
+                f"({start_date.strftime('%Y-%m-%d %H:%M')} → "
+                f"{end_date.strftime('%Y-%m-%d %H:%M')} UTC) closes before the source "
+                f"begins ({report.start_time.strftime('%Y-%m-%d %H:%M')} UTC). "
+                f"No snapshot can ever resolve."
+            )
+            return errors, warnings
+
+        # === Blind head: nothing to resolve at the first tick ===
+        if not report.has_snapshot_at_or_before(start_date):
+            blind_s = (report.start_time - start_date).total_seconds()
+            warnings.append(
+                f"Signal '{scenario.data_sentiment_type}': no snapshot at or before "
+                f"start_date {start_date.strftime('%Y-%m-%d %H:%M:%S')} UTC — the first "
+                f"{format_duration(blind_s)} resolve to a gap (empty signal, is_stale). "
+                f"First snapshot: {report.start_time.strftime('%Y-%m-%d %H:%M:%S')} UTC"
+            )
+            return errors, warnings
+
+        # === Aged head: start_date sits inside a gap ===
+        resolved = report.latest_snapshot_at_or_before(start_date)
+        age_s = (start_date - resolved).total_seconds()
+        if age_s > report.cadence_seconds * 2:
+            warnings.append(
+                f"Signal '{scenario.data_sentiment_type}': the run starts on a snapshot "
+                f"already {format_duration(age_s)} old "
+                f"({resolved.strftime('%Y-%m-%d %H:%M:%S')} UTC, cadence "
+                f"{format_duration(report.cadence_seconds)})"
+            )
+
+        return errors, warnings
 
     @staticmethod
     def validate_worker_market_compatibility(
@@ -361,6 +446,10 @@ class ScenarioDataValidator:
         errors.extend(warmup_errors)
         warnings.extend(warmup_warnings)
 
+        # === VALIDATION 4: Signal gaps in the tick stretch ===
+        signal_errors = self._validate_signal_stretch(scenario, scenario_package)
+        errors.extend(signal_errors)
+
         return ValidationResult(
             is_valid=len(errors) == 0,
             scenario_name=scenario.name,
@@ -460,6 +549,62 @@ class ScenarioDataValidator:
                         f"{gap_end.strftime('%Y-%m-%d %H:%M:%S')} ({gap.duration_human}). "
                         f"Not allowed in '{self._warmup_quality_mode}' mode"
                     )
+
+        return errors
+
+    def _validate_signal_stretch(
+        self,
+        scenario: SingleScenario,
+        scenario_package: ProcessDataPackage
+    ) -> List[str]:
+        """
+        Validate that the signal series is free of forbidden gaps where ticks flow.
+
+        Mirrors _validate_tick_stretch and shares its allowed_gap_categories
+        config — only gaps inside the loaded tick stretch matter, because a
+        signal is resolved at ticks and nowhere else.
+
+        Args:
+            scenario: Scenario to validate
+            scenario_package: Data package for this specific scenario
+
+        Returns:
+            List of error messages (empty if valid)
+        """
+        errors = []
+
+        # Early exit: scenario does not bind a signal source
+        if not scenario.data_sentiment_type:
+            return errors
+
+        report = self._signal_coverage_reports.get(
+            (scenario.data_sentiment_type, scenario.symbol))
+        if not report:
+            return errors
+
+        tick_data = scenario_package.ticks.get(scenario.name)
+        if not tick_data:
+            # No ticks loaded - cannot validate stretch
+            return errors
+
+        first_tick, last_tick = time_range_from_transport_ticks(tick_data)
+
+        for gap in report.gaps_in_window(first_tick, last_tick):
+            if gap.category in self._allowed_gap_categories:
+                continue
+
+            coverage_pct = report.coverage_ratio_in_window(
+                first_tick, last_tick) * 100
+            errors.append(
+                f"{gap.severity_icon} {gap.category.value.upper()} signal gap detected in tick "
+                f"stretch ({first_tick.strftime('%Y-%m-%d %H:%M:%S')} → "
+                f"{last_tick.strftime('%Y-%m-%d %H:%M:%S')}): "
+                f"{gap.gap_start.strftime('%Y-%m-%d %H:%M:%S')} → "
+                f"{gap.gap_end.strftime('%Y-%m-%d %H:%M:%S')} ({gap.duration_human}) "
+                f"in source '{scenario.data_sentiment_type}'. "
+                f"Signal coverage in stretch: {coverage_pct:.0f}%. "
+                f"Not allowed in '{self._warmup_quality_mode}' mode"
+            )
 
         return errors
 

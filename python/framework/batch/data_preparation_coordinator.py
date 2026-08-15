@@ -5,6 +5,7 @@ Phase 1: Coordinates tick, bar, and broker data preparation
 Extracted from BatchOrchestrator to separate data preparation logic.
 """
 from python.configuration.app_config_manager import AppConfigManager
+from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
 from python.framework.trading_env.broker_config import BrokerType
@@ -52,6 +53,9 @@ class DataPreparationCoordinator:
 
     def get_tick_index_manager(self) -> TickIndexManager:
         return self._data_preparator.tick_index_manager
+
+    def get_signal_index_manager(self) -> SignalIndexManager:
+        return self._data_preparator.signal_index_manager
 
     def prepare(
         self,

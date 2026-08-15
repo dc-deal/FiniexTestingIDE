@@ -96,6 +96,7 @@ def pytest_collection_modifyitems(items):
             '/tests/framework/batch_validations/',
             '/tests/framework/worker_tests/',
             '/tests/framework/market_compatibility/',
+            '/tests/framework/signal_coverage/',
             '/tests/framework/tick_parquet_reader/',
             '/tests/framework/user_namespace/',
             '/tests/simulation/optimization/',

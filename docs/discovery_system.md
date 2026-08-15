@@ -9,6 +9,7 @@ The discovery system provides pre-computed market analyses with automatic cache 
 | **Volatility Profile Analyzer** | ATR volatility, session activity, regime classification | `SymbolVolatilityProfile` |
 | **Extreme Move Scanner** | Directional price movements (strong LONG/SHORT trends) | `ExtremeMoveResult` |
 | **Data Coverage** | Gap detection, data quality assessment | `DataCoverageReport` |
+| **Signal Coverage** | Gap detection on a signal series (#429) | `SignalCoverageReport` |
 
 ## Architecture
 
@@ -17,14 +18,16 @@ discoveries_cli.py
     ├── volatility-profile → VolatilityProfileAnalyzerCache → VolatilityProfileAnalyzer
     ├── extreme-moves      → DiscoveryCache                 → ExtremeMoveScanner
     ├── data-coverage      → DataCoverageReportCache        → DataCoverageReport
-    └── cache              → DiscoveryCacheManager            (coordinates all three)
+    ├── signal-coverage    → SignalCoverageReportManager    → SignalCoverageReport
+    └── cache              → DiscoveryCacheManager            (coordinates the cached three)
 ```
 
 **Code locations:**
 - Volatility profiling: `python/framework/discoveries/volatility_profile_analyzer/`
 - Data coverage: `python/framework/discoveries/data_coverage/`
+- Signal coverage: `python/framework/discoveries/signal_coverage/`
 - Types: `python/framework/types/market_types/market_volatility_profile_types.py`, `coverage_report_types.py`
-- Config: `configs/discoveries/discoveries_config.json` (volatility_profile, cross_instrument_ranking, extreme_moves, data_coverage)
+- Config: `configs/discoveries/discoveries_config.json` (volatility_profile, cross_instrument_ranking, extreme_moves, data_coverage, signal_coverage)
 - CLI: `python/cli/discoveries_cli.py`
 
 ## Cache System
@@ -73,6 +76,8 @@ discoveries_cli.py data-coverage validate
 discoveries_cli.py data-coverage status
 discoveries_cli.py data-coverage build [--force]
 discoveries_cli.py data-coverage clear
+discoveries_cli.py signal-coverage show <data_sentiment_type> <symbol>
+discoveries_cli.py signal-coverage validate
 discoveries_cli.py cache rebuild-all [--force]
 discoveries_cli.py cache status
 ```
@@ -116,6 +121,68 @@ Detects gaps via timestamp jumps between consecutive bars at the configured gran
 - **Large**: > 4h (data collection issue)
 
 Provides `has_issues()` check and actionable `get_recommendations()`.
+
+## Signal Coverage Details
+
+The signal-source sibling of Data Coverage, keyed by `(data_sentiment_type, symbol)`.
+Detects gaps via timestamp jumps between consecutive **snapshots** (the signal series is
+the event sequence itself — there are no bars to walk).
+
+Three deliberate differences to the tick report:
+
+| | Data Coverage | Signal Coverage |
+|---|---|---|
+| Key | `(broker_type, symbol)` | `(data_sentiment_type, symbol)` |
+| Interval | configured granularity (M1) | **measured** median snapshot distance |
+| Weekend | expected closure (per market rules) | **always a real gap** — the producing engine runs 24/7 |
+
+- **Thresholds** (`signal_coverage.thresholds`): short < 30min, moderate < 1h, large above.
+  Tighter than the tick ladder — no producer restart takes longer than an hour.
+- **Coverage is envelope-level.** An envelope carrying no result for the symbol
+  (partial/error) is a *degraded* snapshot, not a gap — that distinction belongs to the
+  runtime resolution (`basis` / `status` / `is_stale`), not the timeline.
+- **No cache.** A report reads one projected column from a handful of parquet files;
+  a cache would be dead weight.
+
+### Scenario validation
+
+The reports feed `ScenarioDataValidator` through the batch's Phase 1 → 2 → 5 path, keyed
+alongside the tick reports. **Phase 2** runs pre-load, **Phase 5** post-load against the
+actually-loaded tick stretch:
+
+| Case | Phase | Outcome |
+|---|---|---|
+| scenario binds no signal source | — | skipped |
+| source/symbol not imported | 2 | **error** — scenario excluded, batch continues (§33) |
+| window closes before the series opens | 2 | **error** — no snapshot can ever resolve |
+| no snapshot at or before `start_date` | 2 | **warning** — run starts blind, blind duration named |
+| `start_date` inside a gap | 2 | **warning** — age of the snapshot the run starts on |
+| window reaches past the last snapshot | — | **no finding** — contracted degradation (#434) |
+| forbidden gap inside the tick stretch | 5 | **error** — category not in `allowed_gap_categories` |
+| gap outside the tick stretch | 5 | ignored — a signal is only resolved at ticks |
+
+Allowed categories come from the **existing** `data_validation.allowed_gap_categories`
+(`app_config.json`) — one setting across both data planes, no second knob.
+
+Example — a scenario left on an old window after its source was re-imported:
+
+```
+❌ EURUSD_sentiment_demo: Signal 'forex_macro_sentiment': the scenario window
+   (2026-05-03 23:00 → 2026-05-04 02:00 UTC) closes before the source begins
+   (2026-07-22 09:37 UTC). No snapshot can ever resolve.
+```
+
+…and one that merely opens early, which still runs:
+
+```
+⚠️  BTCUSD_run: Signal 'crypto_sentiment': no snapshot at or before start_date
+   2026-07-22 07:00:00 UTC — the first 2h 37m resolve to a gap (empty signal,
+   is_stale). First snapshot: 2026-07-22 09:37:33 UTC
+```
+
+There is **no warmup concept for signals** — a SIGNAL worker resolves the nearest snapshot
+at or before the tick and needs no history window. The precondition the Phase 2 check
+enforces is the signal analogue: *a snapshot must already exist at the first tick*.
 
 ## VS Code Launch Configs
 

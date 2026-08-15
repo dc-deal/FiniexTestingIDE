@@ -42,7 +42,7 @@ def sentiment_session():
 def outage_session():
     """
     Run one signal-outage session: a stale_data_stress event carves a window out of the
-    crypto_sentiment series (data-plane), so the signal goes stale mid-session and recovers.
+    crypto_sentiment_mock series (data-plane), so the signal goes stale mid-session and recovers.
     """
     config = load_autotrader_config(OUTAGE_PROFILE)
     trader = AutotraderMain(config)
@@ -108,8 +108,8 @@ class TestSentimentMockSession:
         """The persisted portfolio report tags the session's sentiment feed (#438)."""
         _, run_dir = sentiment_session
         report = read_portfolio_report(run_dir / IO_SUBDIR / PORTFOLIO_ARTIFACT)
-        assert report.units[0].sentiment_source == 'crypto_sentiment', (
-            f"Expected sentiment_source 'crypto_sentiment', "
+        assert report.units[0].sentiment_source == 'crypto_sentiment_mock', (
+            f"Expected sentiment_source 'crypto_sentiment_mock', "
             f"got '{report.units[0].sentiment_source}'"
         )
 
