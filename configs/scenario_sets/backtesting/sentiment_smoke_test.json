@@ -43,7 +43,7 @@
             "name": "BTCUSD_sentiment_smoke",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
-            "data_sentiment_type": "crypto_sentiment",
+            "data_sentiment_type": "crypto_sentiment_mock",
             "start_date": "2026-04-27T00:00:00+00:00",
             "end_date": "2026-04-27T12:00:00+00:00",
             "max_ticks": 3000,

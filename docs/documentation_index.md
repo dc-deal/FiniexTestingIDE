@@ -132,6 +132,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Config Tests (Cascade + Merge Utility)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
 | [Signal Worker Tests](tests/framework/signal_workers_tests.md) | SIGNAL worker type (#141): types, provider, llm_sentiment, hybrid decision, orchestrator dispatch |
+| [Signal Coverage Tests](tests/framework/signal_coverage_tests.md) | Signal-series gap detection + scenario signal-window validation |
 | [Normalizer Tests](tests/framework/normalizer_tests.md) | Central rescale/clamp/normalize apparatus |
 | [Market Calendar / Swap Rollover](tests/framework/market_calendar_tests.md) | Swap-rollover + DST calendar helpers + MarketClock awareness (#365) |
 | [Diagnostics CSV Sink Tests](tests/framework/diagnostics_csv_sink_tests.md) | Strategy-owned diagnostics CSV channel + flush helper |

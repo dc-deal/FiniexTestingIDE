@@ -18,6 +18,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
+from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
 from python.framework.types.coverage_report_types import IndexEntry
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
@@ -39,7 +40,8 @@ class DataCoverageReportManager:
                  scenarios: List[SingleScenario],
                  tick_index_manager: TickIndexManager,
                  app_config: AppConfigManager,
-                 use_cache: bool = True):
+                 use_cache: bool = True,
+                 signal_coverage_reports: Dict[Tuple[str, str], SignalCoverageReport] = None):
         """
         Initialize coverage report manager.
 
@@ -49,11 +51,15 @@ class DataCoverageReportManager:
             tick_index_manager: Tick index manager
             app_config: App configuration
             use_cache: Use cache for coverage reports (default: True)
+            signal_coverage_reports: Signal coverage reports keyed by
+                (data_sentiment_type, symbol) — handed to the validator alongside
+                the tick reports; empty when no scenario binds a signal source
         """
         self._logger = logger
         self._scenarios = scenarios
         self._tick_index_manager = tick_index_manager
         self._data_coverage_reports: Dict[str, DataCoverageReport] = {}
+        self._signal_coverage_reports = signal_coverage_reports or {}
         self._app_config = app_config
         self._use_cache = use_cache
 
@@ -92,7 +98,8 @@ class DataCoverageReportManager:
         self._validator = ScenarioDataValidator(
             data_coverage_reports=self._data_coverage_reports,
             app_config=self._app_config,
-            logger=self._logger
+            logger=self._logger,
+            signal_coverage_reports=self._signal_coverage_reports
         )
 
     def _get_data_coverage_report(self, broker_type: str, symbol: str) -> Optional[DataCoverageReport]:
@@ -190,12 +197,31 @@ class DataCoverageReportManager:
                 scenario.validation_result.append(validation_result)
                 continue
 
+            # === STEP 4: Validate signal availability (#429 sources only) ===
+            signal_errors, signal_warnings = self._validator.validate_signal_availability(
+                scenario)
+
+            for error in signal_errors:
+                self._logger.error(f"❌ {scenario.name}: {error}")
+            for warning in signal_warnings:
+                self._logger.warning(f"⚠️  {scenario.name}: {warning}")
+
+            if signal_errors:
+                validation_result = ValidationResult(
+                    is_valid=False,
+                    scenario_name=scenario.name,
+                    errors=signal_errors,
+                    warnings=signal_warnings
+                )
+                scenario.validation_result.append(validation_result)
+                continue
+
             # All checks passed
             validation_result = ValidationResult(
                 is_valid=True,
                 scenario_name=scenario.name,
                 errors=[],
-                warnings=[]
+                warnings=signal_warnings
             )
             scenario.validation_result.append(validation_result)
 

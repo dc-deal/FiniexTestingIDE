@@ -16,13 +16,13 @@ from python.framework.utils.time_utils import parse_datetime
 
 
 def _scenario(name: str) -> SingleScenario:
-    """A BTCUSD scenario with warmup lead inside the crypto_sentiment archive window."""
+    """A BTCUSD scenario with warmup lead inside the crypto_sentiment_mock archive window."""
     return SingleScenario(
         name=name,
         scenario_index=0,
         symbol='BTCUSD',
         data_broker_type='kraken_spot',
-        data_sentiment_type='crypto_sentiment',
+        data_sentiment_type='crypto_sentiment_mock',
         start_date=parse_datetime('2026-04-27T10:00:00+00:00'),
         max_ticks=5000,
         strategy_config={

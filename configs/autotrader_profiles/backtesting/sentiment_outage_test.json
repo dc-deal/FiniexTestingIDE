@@ -27,7 +27,7 @@
     }
   },
   "scenario_settings": {
-    "data_sentiment_type": "crypto_sentiment",
+    "data_sentiment_type": "crypto_sentiment_mock",
     "start_date": "2026-04-27T06:00:00+00:00",
     "max_ticks": 5000,
     "data_mode": "realistic",
@@ -41,7 +41,7 @@
         "events": [
           {
             "label": "sentiment feed dies 60min",
-            "data_source": "crypto_sentiment",
+            "data_source": "crypto_sentiment_mock",
             "stale_start_date": "2026-04-27T06:10:00+00:00",
             "stale_end_date": "2026-04-27T07:10:00+00:00"
           }

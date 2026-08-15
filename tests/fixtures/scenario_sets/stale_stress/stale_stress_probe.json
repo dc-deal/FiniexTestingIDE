@@ -36,7 +36,7 @@
             "name": "BTCUSD_market_stress",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
-            "data_sentiment_type": "crypto_sentiment",
+            "data_sentiment_type": "crypto_sentiment_mock",
             "start_date": "2026-04-27T06:00:00+00:00",
             "end_date": "2026-04-27T07:00:00+00:00",
             "data_mode": "realistic",
@@ -62,7 +62,7 @@
             "name": "BTCUSD_signal_stress",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
-            "data_sentiment_type": "crypto_sentiment",
+            "data_sentiment_type": "crypto_sentiment_mock",
             "start_date": "2026-04-27T06:00:00+00:00",
             "end_date": "2026-04-27T08:00:00+00:00",
             "data_mode": "realistic",
@@ -76,7 +76,7 @@
                     "events": [
                         {
                             "label": "sentiment feed dies 60min",
-                            "data_source": "crypto_sentiment",
+                            "data_source": "crypto_sentiment_mock",
                             "stale_start_date": "2026-04-27T06:10:00+00:00",
                             "stale_end_date": "2026-04-27T07:10:00+00:00"
                         }
@@ -88,7 +88,7 @@
             "name": "BTCUSD_no_stress_control",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
-            "data_sentiment_type": "crypto_sentiment",
+            "data_sentiment_type": "crypto_sentiment_mock",
             "start_date": "2026-04-27T06:00:00+00:00",
             "end_date": "2026-04-27T06:30:00+00:00",
             "data_mode": "realistic",
@@ -101,7 +101,7 @@
             "name": "BTCUSD_overlap_warning",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
-            "data_sentiment_type": "crypto_sentiment",
+            "data_sentiment_type": "crypto_sentiment_mock",
             "start_date": "2026-04-27T06:00:00+00:00",
             "end_date": "2026-04-27T06:15:00+00:00",
             "data_mode": "realistic",
@@ -127,7 +127,7 @@
             "name": "BTCUSD_unknown_source",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
-            "data_sentiment_type": "crypto_sentiment",
+            "data_sentiment_type": "crypto_sentiment_mock",
             "start_date": "2026-04-27T06:00:00+00:00",
             "end_date": "2026-04-27T06:10:00+00:00",
             "data_mode": "realistic",

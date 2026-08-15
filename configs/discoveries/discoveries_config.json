@@ -7,6 +7,12 @@
             "moderate": 4.0
         }
     },
+    "signal_coverage": {
+        "thresholds": {
+            "short": 0.5,
+            "moderate": 1.0
+        }
+    },
     "volatility_profile": {
         "timeframe": "M5",
         "atr_period": 14,
