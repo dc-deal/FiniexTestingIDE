@@ -311,6 +311,12 @@ class SharedDataPreparator:
                 # No end_date → include everything from start onward; the reader trims.
                 lookup_end = ensure_utc_aware(req.end_time) if req.end_time else \
                     datetime(2100, 1, 1, tzinfo=timezone.utc)
+                # The index may return one file MORE than the window overlaps: the
+                # carrier of the last snapshot at/before start_time (#447). A SIGNAL
+                # worker resolves nearest(tick), so the first tick needs a snapshot
+                # that already exists — with daily buckets that snapshot lives in the
+                # previous file whenever the window opens on a day boundary. The
+                # reader's `start` trim then keeps exactly that one and drops the rest.
                 files = self.signal_index_manager.get_relevant_files(
                     req.data_sentiment_type, req.symbol,
                     ensure_utc_aware(req.start_time), lookup_end)

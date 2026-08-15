@@ -76,6 +76,22 @@ call the batch makes in Phase 5 — rather than reaching into a private method.
 The tick coverage report is stubbed at the `DataCoverageReportCache.get_report`
 seam so only the signal checks can produce findings.
 
+## Related: the preceding-bucket guarantee
+
+The report reads the **whole** archive; the runtime reads a window-scoped file
+subset. That divergence once hid a defect — a window opening at a day boundary
+resolved a gap at tick 1 because the previous bucket was never loaded, while the
+coverage report correctly saw a snapshot 10 minutes earlier. The fix lives in
+`SignalIndexManager.get_relevant_files` (return the preceding bucket when no
+overlapping one begins at or before `start`) and is pinned by
+`tests/data/signal_import/` — `two_bucket_index` plus
+`test_first_tick_resolves_a_signal`.
+
+Worth knowing when changing either side: **a coverage verdict and a runtime
+resolution can legitimately differ**, because they read different file sets. When
+they disagree about whether data exists, the runtime is the one to trust — and
+the disagreement is the bug signal.
+
 ## Fixtures
 
 Both files write minimal signal parquets into `tmp_path` carrying only the

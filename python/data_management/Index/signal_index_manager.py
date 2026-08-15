@@ -188,7 +188,18 @@ class SignalIndexManager:
     ) -> List[Path]:
         """
         Find the signal parquet files covering [start_date, end_date] for one
-        (data_sentiment_type, symbol).
+        (data_sentiment_type, symbol) — PLUS the preceding file when needed.
+
+        The preceding file is part of the contract, not an optimization: a SIGNAL
+        worker resolves the nearest snapshot at or before the tick, so the FIRST
+        tick needs a snapshot that already exists. That snapshot usually lives in
+        the previous bucket — a window starting at a day boundary would otherwise
+        run blind until the first snapshot of its own day. It mirrors the live
+        contract, where the AutoTrader pulls the producer's last known signal at
+        startup regardless of when it was determined.
+
+        Only added when no overlapping file already begins at or before
+        start_date; a window opening inside a file needs no predecessor.
 
         Args:
             data_sentiment_type: Source identity (= pipeline_id)
@@ -197,7 +208,9 @@ class SignalIndexManager:
             end_date: Range end (UTC)
 
         Returns:
-            Overlapping parquet paths (empty if the source/symbol is unknown)
+            Overlapping parquet paths in chronological order, preceded by the
+            carrier of the last pre-start snapshot where one is needed (empty if
+            the source/symbol is unknown)
         """
         if data_sentiment_type not in self.index:
             self.logger.warning(
@@ -211,11 +224,25 @@ class SignalIndexManager:
             return []
 
         relevant = []
+        covers_start = False
+        preceding: Optional[Dict] = None
+
         for entry in self.index[data_sentiment_type][symbol]:
             file_start = pd.to_datetime(entry['start_time'], utc=True)
             file_end = pd.to_datetime(entry['end_time'], utc=True)
+
             if file_start <= end_date and file_end >= start_date:
                 relevant.append(Path(entry['path']))
+                if file_start <= start_date:
+                    covers_start = True
+            elif file_end < start_date:
+                # Entries are sorted by start_time — the last one to land here is
+                # the immediate predecessor.
+                preceding = entry
+
+        if not covers_start and preceding is not None:
+            relevant.insert(0, Path(preceding['path']))
+
         return relevant
 
     # =========================================================================

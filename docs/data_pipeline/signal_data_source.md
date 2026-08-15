@@ -34,11 +34,14 @@ envelope (a symbol is absent) still resolves to a defensive HOLD instead of an e
 matching the JSONL behavior. `collected_msc` is stored as int epoch-ms (the merge key).
 
 The `SignalIndexManager` keys the index as `{data_sentiment_type: {symbol: [files]}}` and resolves
-files by range via `get_relevant_files(data_sentiment_type, symbol, start, end)` — the same contract
-as `TickIndexManager`. The raw archive may be **rotated into time buckets**
-(`<pipeline_id>/<bucket>.jsonl`, e.g. daily `2026-05-03.jsonl`); the importer converts each bucket to
-its own parquet and the reader concatenates the buckets that overlap the query range — rotation
-changes *where* lines live, not what they mean.
+files by range via `get_relevant_files(data_sentiment_type, symbol, start, end)`. The raw archive may
+be **rotated into time buckets** (`<pipeline_id>/<bucket>.jsonl`, e.g. daily `2026-05-03.jsonl`); the
+importer converts each bucket to its own parquet and the reader concatenates the buckets that
+overlap the query range — rotation changes *where* lines live, not what they mean.
+
+Unlike `TickIndexManager`, the signal resolution returns one bucket **beyond** the overlap where
+needed — see *Resolution contract* below. Ticks are consumed as they arrive; a signal is resolved
+backwards from the tick, so the two contracts differ by design.
 
 ## Scenario usage
 
@@ -59,6 +62,39 @@ projected reader (`load_signal_series_from_parquet`) → the resulting `SignalSe
 
 A missing `(data_sentiment_type, symbol)` in the index is a hard error at pre-flight (import it
 first, or fix the type) — mirroring the tick "symbol not found in broker index" path.
+
+## Resolution contract — the first tick is never blind
+
+A SIGNAL worker resolves `nearest(tick)`: the newest snapshot **at or before** the tick. The
+consequence is a rule the file selection must honour, not an optimization:
+
+> **At the window's first tick a snapshot must already exist.** If none does, the worker resolves
+> a gap — empty result, `is_stale=True` — and the mandatory `on_signal_stale` hook fires
+> immediately.
+
+This mirrors the live contract: at startup the AutoTrader pulls the producer's **last known**
+signal, regardless of how long ago it was determined. The backtest must behave the same way.
+
+`SignalIndexManager.get_relevant_files` therefore returns the buckets overlapping
+`[start, end]` **plus the preceding bucket** whenever no overlapping one begins at or before
+`start`. With daily buckets and a producer that stamps *after* the bar close, that is the normal
+case for a window opening at a day boundary:
+
+```
+window start        2026-08-11 00:00:00
+last snapshot       2026-08-10 23:50:29   ← lives in the 08-10 bucket
+first own snapshot  2026-08-11 00:00:31   ← 31s AFTER the first tick
+```
+
+Without the preceding bucket the run starts blind until its own day's first snapshot — seconds
+normally, but bounded only by that first snapshot: after a producer restart (e.g. the archive's
+2026-08-10, whose first entry is 13:20) it would be hours. The reader's `start` trim keeps exactly
+the one pre-start snapshot and drops the rest of that bucket, so the extra file costs one
+projected read and no runtime memory.
+
+**When extending this:** any new consumer of a signal archive resolves through
+`get_relevant_files` — do not re-implement window selection against the index entries directly, or
+the pre-start snapshot is lost again. Tests: `tests/data/signal_import/` (`two_bucket_index`).
 
 ## Cadence — what the series actually looks like
 

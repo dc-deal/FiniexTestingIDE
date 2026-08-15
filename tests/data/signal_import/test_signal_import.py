@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 
 from python.data_management.importers.signal_importer import SignalDataImporter
+from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
 from python.framework.exceptions.signal_data_errors import (
     SignalDataUnavailableError, SignalSchemaError)
@@ -101,6 +102,106 @@ def test_get_relevant_files_range(imported_signals):
 def test_unknown_symbol_returns_empty(imported_signals):
     assert imported_signals['index'].get_relevant_files(
         'test_sentiment', 'XRPUSD', START, END) == []
+
+
+# ------------------------------------------------- index: the preceding bucket (#447)
+
+BUCKET_SYMBOL = 'BTCUSD'
+
+
+@pytest.fixture(scope='module')
+def two_bucket_index(tmp_path_factory):
+    """
+    A two-day archive, each day a bucket on a 10-minute grid.
+
+    Day 1: 2026-03-01 00:00 → 23:50    Day 2: 2026-03-02 00:00:30 → 23:50:30
+
+    Day 2's first snapshot sits 30s AFTER midnight (the producer stamps after the
+    bar close), so a window opening at 2026-03-02 00:00:00 has nothing of its own
+    to resolve — exactly the real-archive shape.
+    """
+    root = tmp_path_factory.mktemp('two_bucket') / 'signals' / 'bucket_source'
+    root.mkdir(parents=True)
+
+    for day, offset_s in ((1, 0), (2, 30)):
+        rows = []
+        for i in range(144):
+            moment = datetime(2026, 3, day, 0, 0, tzinfo=timezone.utc) + \
+                timedelta(minutes=10 * i, seconds=offset_s)
+            msc = int(moment.timestamp() * 1000)
+            for symbol in (SIGNAL_ENVELOPE_SYMBOL, BUCKET_SYMBOL):
+                rows.append({
+                    SignalParquetColumn.COLLECTED_MSC.value: msc,
+                    SignalParquetColumn.SYMBOL.value: symbol,
+                    SignalParquetColumn.PIPELINE_ID.value: 'bucket_source',
+                    # The reader projects the full runtime set — a fixture that
+                    # only satisfies the index would fail on read.
+                    SignalParquetColumn.SIGNAL.value: 'HOLD',
+                    SignalParquetColumn.SENTIMENT_SCORE.value: 0.0,
+                    SignalParquetColumn.CONFIDENCE.value: 0.5,
+                    SignalParquetColumn.REASONING.value: '',
+                    SignalParquetColumn.URGENCY.value: 0.0,
+                    SignalParquetColumn.IS_BREAKING.value: False,
+                    SignalParquetColumn.BASIS.value: 'llm',
+                    SignalParquetColumn.STATUS.value: 'success',
+                    SignalParquetColumn.SCHEMA_VERSION.value: '1.0',
+                })
+        pd.DataFrame(rows).to_parquet(root / f'2026-03-0{day}.parquet')
+
+    index = SignalIndexManager(data_dir=str(root.parent))
+    index.build_index(force_rebuild=True)
+    return index
+
+
+def _bucket_names(paths):
+    """Bucket file stems, in the returned order."""
+    return [p.stem for p in paths]
+
+
+def test_window_at_day_boundary_pulls_the_preceding_bucket(two_bucket_index):
+    # Day 2 opens at 00:00:30 — a window at 00:00:00 needs day 1 to resolve tick 1
+    files = two_bucket_index.get_relevant_files(
+        'bucket_source', BUCKET_SYMBOL,
+        datetime(2026, 3, 2, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 3, 2, 12, 0, tzinfo=timezone.utc))
+
+    assert _bucket_names(files) == ['2026-03-01', '2026-03-02']
+
+
+def test_window_inside_a_bucket_needs_no_predecessor(two_bucket_index):
+    files = two_bucket_index.get_relevant_files(
+        'bucket_source', BUCKET_SYMBOL,
+        datetime(2026, 3, 2, 6, 0, tzinfo=timezone.utc),
+        datetime(2026, 3, 2, 12, 0, tzinfo=timezone.utc))
+
+    assert _bucket_names(files) == ['2026-03-02']
+
+
+def test_window_before_the_archive_has_no_predecessor(two_bucket_index):
+    files = two_bucket_index.get_relevant_files(
+        'bucket_source', BUCKET_SYMBOL,
+        datetime(2026, 2, 28, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc))
+
+    assert _bucket_names(files) == ['2026-03-01']
+
+
+def test_first_tick_resolves_a_signal(two_bucket_index):
+    """The guarantee the preceding bucket exists for: tick 1 is never blind."""
+    window_start = datetime(2026, 3, 2, 0, 0, tzinfo=timezone.utc)
+    files = two_bucket_index.get_relevant_files(
+        'bucket_source', BUCKET_SYMBOL, window_start,
+        datetime(2026, 3, 2, 12, 0, tzinfo=timezone.utc))
+
+    provider = SignalDataProvider(load_signal_series_from_parquet(
+        files, source='x', symbol=BUCKET_SYMBOL, start=window_start,
+        end=datetime(2026, 3, 2, 12, 0, tzinfo=timezone.utc)))
+
+    resolved = provider.nearest(window_start, BUCKET_SYMBOL)
+    assert resolved is not None, 'first tick must resolve the last known signal'
+    # The 23:50 snapshot of the previous day — 10 minutes old, not a gap
+    assert resolved.collected_msc == datetime(
+        2026, 3, 1, 23, 50, tzinfo=timezone.utc)
 
 
 # ---------------------------------------------------------------- reader projection
