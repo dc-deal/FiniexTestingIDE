@@ -163,20 +163,104 @@ fields plus a small set of cheap, dictionary-encoded prompt-provenance scalars:
   `schema_version`, plus the `collected_msc` / `symbol` lookup keys. This is `SIGNAL_RUNTIME_COLUMNS`
   — the exact set the reader projects into the subprocess payload.
 - **Traceability (envelope-scalar):** `pipeline_id`, `prompt_version`, `prompt_id`, `prompt_hash`,
-  `data_origin` — so a prompt change and the data's nature stay visible in the data. Read by the
-  index / report path only, not at runtime.
-
-`data_origin` (`synthetic` / `live` / empty) is the mock-versus-real discriminator. It exists
-because without it a generated archive and a real one are identical in every other field — the
-generator mirrors the prompt identity on purpose, so `prompt_hash` cannot tell them apart. An
-**empty** value means *unknown*, never "real": archives produced before the producer stamped the
-field carry no column at all, and the reader projects it only where the schema has it. A scenario
-binding a `synthetic` source gets a pre-run warning (see [Discovery System](../discovery_system.md)).
+  `data_origin`, `config_fingerprint` — so a prompt change, the data's nature and a producer-config
+  change stay visible in the data. Read by the index / report path only, not at runtime. What each
+  one answers: see *Envelope fields* below.
 
 The heavy provenance (`sources`, `metadata`, `errors`) is **deliberately not persisted** — it lives
 in the raw JSONL archive, the audit source. Dropping it shrinks the parquet by ~80–85%. The projected
 runtime series is bit-identical to the raw-JSONL path on the consumed fields, `basis` included (a
 parity test guards this).
+
+## Envelope fields — what each one actually means
+
+Several fields read as self-explanatory and are not. This is the reference; the traps below were
+each found the hard way against the real archive.
+
+### Time
+
+| Field | Meaning |
+|---|---|
+| `collected_msc` | **The merge key.** Epoch-ms, normalized to a UTC datetime on read. A worker resolves the nearest snapshot with `collected_msc <= tick` — no look-ahead by construction. |
+| `timestamp` | The producer's analysis wall-clock. **Not persisted, never read by us.** Present in the raw JSONL only. Do not reason about look-ahead from it — `collected_msc` is the only key that decides anything. |
+
+The producer stamps *after* the bar close, so a snapshot lands 3–60s past its M10 boundary
+(measured median ~17s, tail to ~580s). See *Cadence* above for why the series is not a fixed
+interval.
+
+### Quality — `status` and `basis`
+
+These two are the most misread fields in the archive.
+
+| `status` | Meaning |
+|---|---|
+| `success` | the pass ran and every configured source was reached |
+| `partial` | results were produced, but something degraded — **most often one quarantined feed** |
+| `error` | nothing could be produced; `result` is empty |
+
+> **`status` is not a quality verdict.** A `partial` envelope's signals can be perfectly sound —
+> the flag says "one of seven feeds was unreachable", not "this analysis is wrong". Filtering on
+> `status == 'success'` silently drops a whole pipeline for as long as one feed is quarantined
+> (up to 24h). Read `metadata.sources_reached` / `sources_configured` in the raw archive if the
+> degree of degradation matters.
+
+| `basis` (per symbol) | Meaning | Share in the real archive |
+|---|---|---|
+| `llm` | a real LLM call on retrieved context | ~94 % |
+| `no_data` | retrieval came back empty → **mechanical HOLD**, no LLM call, no cost | ~4 % |
+| `degraded` | the output guard or the budget breaker rewrote it | ~2 % |
+
+> **`basis` is the field that says what actually happened — read it before trusting a HOLD.**
+> Roughly 11 % of all HOLDs are mechanical, not opinions, and they cluster exactly where it hurts:
+> thin-corpus days and outage windows. A backtest that treats them as a neutral market view reads
+> an outage as a signal. Split on `basis` before aggregating.
+
+### Signal content
+
+| Field | Meaning |
+|---|---|
+| `signal` | `BUY` / `SELL` / `HOLD` — the verdict for this symbol at this snapshot |
+| `sentiment_score` | −1.0 … +1.0, the news tone |
+| `confidence` | 0.0 … 1.0. A `no_data` HOLD carries `0.0` by contract |
+| `urgency` | 0.0 … 1.0, how time-critical the producer judged the story |
+| `is_breaking` | an urgent story drove this symbol's signal. **A content flag, not a scheduling marker** — a normal grid pass carries it too. Real rate: ~6 % of result rows (crypto), ~3 % (forex) |
+| `reasoning` | the producer's one-line justification. Human-readable only; nothing keys on it |
+
+### Provenance
+
+| Field | Answers | Empty means |
+|---|---|---|
+| `pipeline_id` | which producer stream | — (always set; it is the source identity) |
+| `prompt_id` / `prompt_version` | which prompt template | — |
+| `prompt_hash` | *has the prompt text changed?* | — |
+| `data_origin` | *is this real or generated?* | **unknown**, never "real" |
+| `config_fingerprint` | *has the producer's input config changed?* | **unknown**, never "unchanged" |
+
+**`data_origin`** (`synthetic` / `live`) is the mock-versus-real discriminator. Without it a
+generated archive and a real one are identical in every other field — the generator mirrors the
+prompt identity on purpose, so `prompt_hash` cannot tell them apart. A scenario binding a
+`synthetic` source gets a pre-run warning (see [Discovery System](../discovery_system.md)).
+
+**`config_fingerprint`** is a hash over the producer's *effective* input configuration — the feed
+set, weights, retrieval thresholds, model. A feed added, disabled or re-weighted shifts the score
+distribution while every other provenance field stays byte-identical, so this is the only field
+that catches it. Two archive stretches are one comparable series when **`prompt_hash` and
+`config_fingerprint` both agree**.
+
+Its practical use is not bookkeeping: it is a **validity condition for multi-window experiments**.
+In-sample/out-of-sample validation and parameter sweeps assume that window A and window B differ
+only in market conditions. If the fingerprint moved between them, a performance drop in B may be
+the data source changing rather than the strategy overfitting — and without the field those two
+are indistinguishable.
+
+> **Absence is not "unchanged".** Archives collected before the producer stamped these fields carry
+> no column at all; the reader projects each only where the schema has it, and an empty value reads
+> as *unknown*. Backfilling a constant would be a false claim of comparability — the real archive
+> demonstrably changed its symbol set on 2026-07-24, so a single value across it would be wrong.
+
+*Status: `data_origin` is stamped by the producer and present in all four imported sources.
+`config_fingerprint` is contracted and the import path is in place, but the producer does not emit
+it yet — every current archive reads `unknown`.*
 
 ## `data_path` override (dev)
 

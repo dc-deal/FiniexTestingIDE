@@ -27,7 +27,7 @@ CADENCE = timedelta(minutes=10)
 
 
 def _write_series(tmp_path: Path, moments: List[datetime], name: str = 'series',
-                  origin: str = None) -> Path:
+                  origin: str = None, fingerprint: str = None) -> Path:
     """
     Write a minimal signal parquet carrying the snapshot timeline.
 
@@ -35,7 +35,8 @@ def _write_series(tmp_path: Path, moments: List[datetime], name: str = 'series',
         tmp_path: pytest tmp dir
         moments: Snapshot times (UTC-aware)
         name: File stem
-        origin: data_origin value; None omits the column entirely (a pre-contract archive)
+        origin: data_origin value; None omits the column (a pre-contract archive)
+        fingerprint: config_fingerprint value; None omits the column
 
     Returns:
         Path of the written parquet
@@ -49,6 +50,8 @@ def _write_series(tmp_path: Path, moments: List[datetime], name: str = 'series',
                    SignalParquetColumn.SYMBOL.value: symbol}
             if origin is not None:
                 row[SignalParquetColumn.DATA_ORIGIN.value] = origin
+            if fingerprint is not None:
+                row[SignalParquetColumn.CONFIG_FINGERPRINT.value] = fingerprint
             rows.append(row)
 
     path = tmp_path / f'{name}.parquet'
@@ -267,6 +270,72 @@ class TestDataOrigin:
 
     def test_report_text_marks_unknown(self, tmp_path):
         assert 'unknown' in self._report(tmp_path, None).generate_report()
+
+
+class TestConfigFingerprint:
+    """
+    The comparability marker. Same absence semantics as data_origin: empty means
+    'unknown', and 'mixed' means the producer's input config changed inside the
+    archive — the two stretches are then NOT one series.
+    """
+
+    def _report(self, tmp_path, fingerprint) -> SignalCoverageReport:
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        path = _write_series(tmp_path, _grid(start, 12), fingerprint=fingerprint)
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([path])
+        return report
+
+    def test_single_fingerprint(self, tmp_path):
+        report = self._report(tmp_path, '904c2e16bbfb')
+        assert report.get_config_fingerprint() == '904c2e16bbfb'
+
+    def test_missing_column_reads_as_unknown(self, tmp_path):
+        # Every archive imported so far — the producer does not stamp it yet
+        report = self._report(tmp_path, None)
+        assert report.get_config_fingerprint() == ''
+        assert report.snapshot_count == 12
+
+    def test_empty_value_reads_as_unknown(self, tmp_path):
+        assert self._report(tmp_path, '').get_config_fingerprint() == ''
+
+    def test_change_inside_the_archive_is_mixed(self, tmp_path):
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        a = _write_series(tmp_path, _grid(start, 6), name='a',
+                          fingerprint='904c2e16bbfb')
+        b = _write_series(tmp_path, _grid(start + CADENCE * 6, 6), name='b',
+                          fingerprint='691dd9cb879e')
+
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([a, b])
+
+        assert report.get_config_fingerprint() == 'mixed'
+        assert len(report.config_fingerprints) == 2
+
+    def test_report_text_flags_a_config_change(self, tmp_path):
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        a = _write_series(tmp_path, _grid(start, 6), name='a', fingerprint='aaa1')
+        b = _write_series(tmp_path, _grid(start + CADENCE * 6, 6), name='b',
+                          fingerprint='bbb2')
+
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([a, b])
+
+        assert 'input config changed' in report.generate_report()
+
+    def test_report_text_marks_unknown(self, tmp_path):
+        assert 'predates the config_fingerprint' in \
+            self._report(tmp_path, None).generate_report()
+
+    def test_both_provenance_fields_read_independently(self, tmp_path):
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        path = _write_series(tmp_path, _grid(start, 6),
+                             origin='live', fingerprint='904c2e16bbfb')
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([path])
+
+        assert report.get_data_origin() == 'live'
+        assert report.get_config_fingerprint() == '904c2e16bbfb'
 
 
 class TestEmptySource:

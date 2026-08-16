@@ -69,8 +69,9 @@ class SignalCoverageReport:
         self.cadence_seconds: float = DEFAULT_CADENCE_SECONDS
         self.snapshot_count: int = 0
 
-        # Distinct data_origin values found (empty when the producer predates the field)
+        # Distinct provenance values found (empty when the producer predates the field)
         self.data_origins: Set[str] = set()
+        self.config_fingerprints: Set[str] = set()
 
         # Analysis results
         self.gaps: List[Gap] = []
@@ -158,29 +159,62 @@ class SignalCoverageReport:
         """
         msc_column = SignalParquetColumn.COLLECTED_MSC.value
         origin_column = SignalParquetColumn.DATA_ORIGIN.value
+        fingerprint_column = SignalParquetColumn.CONFIG_FINGERPRINT.value
+        wanted = (msc_column, origin_column, fingerprint_column)
 
         frames = []
         for path in paths:
-            # data_origin arrived after the first archives were imported — project it
-            # only where the file actually carries it, so a stale parquet still reads.
+            # The provenance scalars arrived after the first archives were imported —
+            # project each only where the file actually carries it, so a parquet
+            # written before the field existed still reads.
             available = set(pq.read_schema(path).names)
-            columns = [c for c in (msc_column, origin_column) if c in available]
-            frames.append(pd.read_parquet(path, columns=columns))
+            frames.append(pd.read_parquet(
+                path, columns=[c for c in wanted if c in available]))
 
         if not frames:
             return []
 
         df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
 
-        if origin_column in df.columns:
-            self.data_origins = {
-                str(v) for v in df[origin_column].dropna().unique() if str(v)}
+        self.data_origins = self._distinct(df, origin_column)
+        self.config_fingerprints = self._distinct(df, fingerprint_column)
 
         msc_values = sorted(set(int(v) for v in df[msc_column]))
         return [
             datetime.fromtimestamp(msc / 1000.0, tz=timezone.utc)
             for msc in msc_values
         ]
+
+    def _distinct(self, df: pd.DataFrame, column: str) -> Set[str]:
+        """
+        Distinct non-empty values of an optional provenance column.
+
+        Args:
+            df: Concatenated projection
+            column: Column name (may be absent for a pre-contract archive)
+
+        Returns:
+            Set of values; empty when the column is absent or never stamped
+        """
+        if column not in df.columns:
+            return set()
+        return {str(v) for v in df[column].dropna().unique() if str(v)}
+
+    def _one_or_mixed(self, values: Set[str]) -> str:
+        """
+        Collapse a provenance value set to a single label.
+
+        Args:
+            values: Distinct values found in the archive
+
+        Returns:
+            The single value, 'mixed' when several, '' when never stamped
+        """
+        if not values:
+            return ''
+        if len(values) > 1:
+            return 'mixed'
+        return next(iter(values))
 
     def get_data_origin(self) -> str:
         """
@@ -190,11 +224,21 @@ class SignalCoverageReport:
             'synthetic' / 'live' / 'mixed' when a source carries both / '' when the
             producer predates the field (unknown, not an assertion of realness)
         """
-        if not self.data_origins:
-            return ''
-        if len(self.data_origins) > 1:
-            return 'mixed'
-        return next(iter(self.data_origins))
+        return self._one_or_mixed(self.data_origins)
+
+    def get_config_fingerprint(self) -> str:
+        """
+        The producer's input-config hash — the comparability marker.
+
+        Two archive stretches are comparable when prompt_hash AND this agree. A
+        'mixed' result means the producer's configuration changed inside the
+        archive, so the stretches on either side are NOT one series.
+
+        Returns:
+            The fingerprint / 'mixed' when the archive spans several / '' when the
+            producer predates the field
+        """
+        return self._one_or_mixed(self.config_fingerprints)
 
     def is_synthetic(self) -> bool:
         """
@@ -370,6 +414,16 @@ class SignalCoverageReport:
             report.append(f"Origin:       {origin}")
         else:
             report.append("Origin:       unknown (producer predates the data_origin field)")
+
+        fingerprint = self.get_config_fingerprint()
+        if fingerprint == 'mixed':
+            report.append(
+                f"Config:       ⚠️  {len(self.config_fingerprints)} fingerprints — the producer's "
+                f"input config changed inside this archive")
+        elif fingerprint:
+            report.append(f"Config:       #{fingerprint}")
+        else:
+            report.append("Config:       unknown (producer predates the config_fingerprint field)")
 
         report.append(f"\n{'─'*60}")
         report.append("GAP ANALYSIS:")
