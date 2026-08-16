@@ -153,8 +153,16 @@ column at all, and the reader projects it only where the schema has it.
 
 ```
 Origin:       🧪 SYNTHETIC — generated data, not a market record
-Origin:       unknown (producer predates the data_origin field)
+Config:       #mock-1e9e9fc4
+Triggers:     1,008 scheduled · 83 breaking
 ```
+
+Alongside it the report reads `config_fingerprint` (the producer's input-config hash — `mixed`
+flags a config change *inside* the archive) and `trigger_reason` (why each pass ran, counted per
+envelope). The trigger composition replaces a timing heuristic: telling a grid pass from an
+off-grid one used to mean "distance to predecessor < 300s", which misclassifies whenever a
+scheduled pass runs long. Field-level detail:
+[Signal Data Source](data_pipeline/signal_data_source.md).
 
 The purpose is a guard, not decoration. Without it, a generated archive and a real one
 are indistinguishable in every field — same `pipeline_id`, same `prompt_hash` — so a

@@ -163,9 +163,11 @@ fields plus a small set of cheap, dictionary-encoded prompt-provenance scalars:
   `schema_version`, plus the `collected_msc` / `symbol` lookup keys. This is `SIGNAL_RUNTIME_COLUMNS`
   — the exact set the reader projects into the subprocess payload.
 - **Traceability (envelope-scalar):** `pipeline_id`, `prompt_version`, `prompt_id`, `prompt_hash`,
-  `data_origin`, `config_fingerprint` — so a prompt change, the data's nature and a producer-config
-  change stay visible in the data. Read by the index / report path only, not at runtime. What each
-  one answers: see *Envelope fields* below.
+  `data_origin`, `config_fingerprint`, `trigger_reason` — so a prompt change, the data's nature, a
+  producer-config change and the cause of each pass stay visible in the data. Read by the index /
+  report path only, not at runtime. What each one answers: see *Envelope fields* below.
+  `trigger_reason` is the single field taken out of `metadata`; the rest of that block stays
+  archive-only.
 
 The heavy provenance (`sources`, `metadata`, `errors`) is **deliberately not persisted** — it lives
 in the raw JSONL archive, the audit source. Dropping it shrinks the parquet by ~80–85%. The projected
@@ -235,6 +237,7 @@ These two are the most misread fields in the archive.
 | `prompt_hash` | *has the prompt text changed?* | — |
 | `data_origin` | *is this real or generated?* | **unknown**, never "real" |
 | `config_fingerprint` | *has the producer's input config changed?* | **unknown**, never "unchanged" |
+| `trigger_reason` | *why did this pass run?* | **unknown**, never "scheduled" |
 
 **`data_origin`** (`synthetic` / `live`) is the mock-versus-real discriminator. Without it a
 generated archive and a real one are identical in every other field — the generator mirrors the
@@ -253,14 +256,41 @@ only in market conditions. If the fingerprint moved between them, a performance 
 the data source changing rather than the strategy overfitting — and without the field those two
 are indistinguishable.
 
+**`trigger_reason`** says *why the producing pass ran*. Closed vocabulary today — `scheduled` (the
+bar-close grid), `boot` (first pass after an engine restart), `breaking` (an out-of-band wake that
+jumped the eval queue), `manual` (operator at the console), `external` (an API caller). One value
+per envelope; every symbol of that pass shares it.
+
+Two rules the producer states and we honour:
+
+- **`boot` beats `scheduled`.** A restart that happens to land on a bar close still reads `boot` —
+  the field names why the pass ran *now*.
+- **An unrecognized value is "other", never an error.** The vocabulary is closed on the engine side
+  but the field is a plain string, so a future engine version can add one without breaking our
+  reader.
+
+Its use here is to **replace a heuristic with a fact**. Before it, the only way to tell a grid pass
+from an off-grid one was "distance to predecessor < 300s" — which misclassifies whenever a
+scheduled pass runs long (at a 580s pass duration the next scheduled envelope is ~36s behind and
+looks off-grid). Filtering on `scheduled` yields the clean single-cadence series; the rest are real
+analyses, just not points of that grid.
+
+`trigger_reason` is the **one field lifted out of the envelope's `metadata`**, which is otherwise
+archive-only (see below). The exception is deliberate and rests on the same criterion the rule
+does: it is a short, dictionary-encoded scalar of the same weight class as the provenance columns —
+not part of the heavy `sources` / `stage_timings` payload.
+
 > **Absence is not "unchanged".** Archives collected before the producer stamped these fields carry
 > no column at all; the reader projects each only where the schema has it, and an empty value reads
 > as *unknown*. Backfilling a constant would be a false claim of comparability — the real archive
 > demonstrably changed its symbol set on 2026-07-24, so a single value across it would be wrong.
+> For `trigger_reason` the same rule bites harder: mapping a missing value to `scheduled` would
+> silently fold restart and wake passes into the bar-close series.
 
-*Status: `data_origin` is stamped by the producer and present in all four imported sources.
-`config_fingerprint` is contracted and the import path is in place, but the producer does not emit
-it yet — every current archive reads `unknown`.*
+*Status (2026-08-16): `data_origin` is present in all four sources. `config_fingerprint` and
+`trigger_reason` are stamped in the two **mock** sources; the live engine ships them after its next
+restart, so the real archives currently read `unknown` for both. The import path is in place, so a
+newly exported day carries them without a code change.*
 
 ## `data_path` override (dev)
 

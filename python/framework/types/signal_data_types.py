@@ -163,6 +163,11 @@ class SignalParquetColumn(str, Enum):
     PROMPT_HASH = 'prompt_hash'
     DATA_ORIGIN = 'data_origin'          # 'synthetic' (generated) / 'live' / '' (pre-contract)
     CONFIG_FINGERPRINT = 'config_fingerprint'   # producer input-config hash / '' (pre-contract)
+    # Why the producing pass ran: scheduled / boot / breaking / manual / external / ''.
+    # The ONE field lifted out of the envelope's `metadata` (which is otherwise archive-only,
+    # see SIGNAL_RUNTIME_COLUMNS' note) — it is a short scalar of the same weight class as the
+    # provenance columns above, and it replaces a timing heuristic with a stated fact.
+    TRIGGER_REASON = 'trigger_reason'
 
 
 # What the reader loads into the runtime SignalSeries (projection — ship only consumed

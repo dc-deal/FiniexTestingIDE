@@ -27,7 +27,8 @@ CADENCE = timedelta(minutes=10)
 
 
 def _write_series(tmp_path: Path, moments: List[datetime], name: str = 'series',
-                  origin: str = None, fingerprint: str = None) -> Path:
+                  origin: str = None, fingerprint: str = None,
+                  triggers: List[str] = None) -> Path:
     """
     Write a minimal signal parquet carrying the snapshot timeline.
 
@@ -37,12 +38,13 @@ def _write_series(tmp_path: Path, moments: List[datetime], name: str = 'series',
         name: File stem
         origin: data_origin value; None omits the column (a pre-contract archive)
         fingerprint: config_fingerprint value; None omits the column
+        triggers: trigger_reason per moment; None omits the column
 
     Returns:
         Path of the written parquet
     """
     rows = []
-    for moment in moments:
+    for index, moment in enumerate(moments):
         msc = int(moment.timestamp() * 1000)
         # One envelope sentinel + one symbol row per snapshot — the real shape.
         for symbol in (SIGNAL_ENVELOPE_SYMBOL, 'BTCUSD'):
@@ -52,6 +54,8 @@ def _write_series(tmp_path: Path, moments: List[datetime], name: str = 'series',
                 row[SignalParquetColumn.DATA_ORIGIN.value] = origin
             if fingerprint is not None:
                 row[SignalParquetColumn.CONFIG_FINGERPRINT.value] = fingerprint
+            if triggers is not None:
+                row[SignalParquetColumn.TRIGGER_REASON.value] = triggers[index]
             rows.append(row)
 
     path = tmp_path / f'{name}.parquet'
@@ -336,6 +340,63 @@ class TestConfigFingerprint:
 
         assert report.get_data_origin() == 'live'
         assert report.get_config_fingerprint() == '904c2e16bbfb'
+
+
+class TestTriggerReason:
+    """
+    Why each pass ran — the stated fact that replaces the off-grid timing
+    heuristic. Counted per ENVELOPE, not per parquet row.
+    """
+
+    def _report(self, tmp_path, triggers) -> SignalCoverageReport:
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        moments = _grid(start, len(triggers)) if triggers else _grid(start, 12)
+        path = _write_series(tmp_path, moments, triggers=triggers)
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([path])
+        return report
+
+    def test_counts_are_per_envelope_not_per_row(self, tmp_path):
+        # Each snapshot writes 2 rows (sentinel + symbol) — the count must not double
+        report = self._report(tmp_path, ['scheduled'] * 10)
+        assert report.trigger_reasons == {'scheduled': 10}
+
+    def test_mixed_reasons(self, tmp_path):
+        report = self._report(
+            tmp_path, ['scheduled'] * 8 + ['breaking', 'boot'])
+        assert report.trigger_reasons == {
+            'scheduled': 8, 'breaking': 1, 'boot': 1}
+
+    def test_scheduled_share(self, tmp_path):
+        report = self._report(tmp_path, ['scheduled'] * 9 + ['breaking'])
+        assert report.get_scheduled_share() == pytest.approx(0.9)
+
+    def test_missing_column_yields_no_counts(self, tmp_path):
+        # Every real archive today — the producer does not stamp it yet
+        report = self._report(tmp_path, None)
+        assert report.trigger_reasons == {}
+        assert report.get_scheduled_share() is None
+
+    def test_unknown_value_is_kept_not_rejected(self, tmp_path):
+        # A future engine version may add a reason — it must not break the reader
+        report = self._report(tmp_path, ['scheduled'] * 9 + ['some_future_reason'])
+        assert report.trigger_reasons['some_future_reason'] == 1
+
+    def test_empty_value_is_not_counted(self, tmp_path):
+        # '' means unknown and must never be folded into 'scheduled'
+        report = self._report(tmp_path, ['scheduled'] * 8 + ['', ''])
+        assert report.trigger_reasons == {'scheduled': 8}
+        assert report.get_scheduled_share() == pytest.approx(1.0)
+
+    def test_report_text_lists_the_composition(self, tmp_path):
+        report = self._report(tmp_path, ['scheduled'] * 8 + ['breaking'] * 2)
+        text = report.generate_report()
+        assert '8 scheduled' in text
+        assert '2 breaking' in text
+
+    def test_report_text_marks_unknown(self, tmp_path):
+        assert 'predates the trigger_reason' in \
+            self._report(tmp_path, None).generate_report()
 
 
 class TestEmptySource:

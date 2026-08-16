@@ -39,13 +39,23 @@ Signal gaps use their own thresholds from `discoveries_config.json`
 tighter ladder than the tick report's 4h, because no producer restart takes
 longer than an hour.
 
-### Data origin
+### Provenance fields
 
 `TestDataOrigin` pins the mock-versus-real discriminator, including the two
 absence cases that must never read as "real": a parquet written **before** the
 column existed (no column at all — must not raise) and a present-but-empty value.
 Both resolve to `''` = unknown. A source carrying both values reads as `mixed`
 and counts as synthetic.
+
+`TestConfigFingerprint` pins the same absence semantics for the comparability
+marker, plus the case that matters later: two fingerprints inside one archive
+read as `mixed` — the stretches on either side are then not one series.
+
+`TestTriggerReason` pins the pass-cause counts. Two guarantees beyond the usual
+absence handling: counts are per **envelope**, not per parquet row (a naive
+`value_counts` would weight each snapshot by its symbol count), and an
+unrecognized value is kept rather than rejected — the vocabulary is closed on the
+producer side, but a future engine version must not break our reader.
 
 ### Window queries
 

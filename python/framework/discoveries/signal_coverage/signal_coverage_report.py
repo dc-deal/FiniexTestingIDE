@@ -30,7 +30,8 @@ import pyarrow.parquet as pq
 
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.framework.types.coverage_report_types import Gap, GapCategory
-from python.framework.types.signal_data_types import SignalParquetColumn
+from python.framework.types.signal_data_types import (
+    SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn)
 from python.framework.utils.market_calendar import MarketCalendar
 from python.framework.utils.time_utils import format_duration
 
@@ -72,6 +73,8 @@ class SignalCoverageReport:
         # Distinct provenance values found (empty when the producer predates the field)
         self.data_origins: Set[str] = set()
         self.config_fingerprints: Set[str] = set()
+        # Envelope counts per trigger_reason (scheduled / boot / breaking / manual / external)
+        self.trigger_reasons: Dict[str, int] = {}
 
         # Analysis results
         self.gaps: List[Gap] = []
@@ -160,7 +163,10 @@ class SignalCoverageReport:
         msc_column = SignalParquetColumn.COLLECTED_MSC.value
         origin_column = SignalParquetColumn.DATA_ORIGIN.value
         fingerprint_column = SignalParquetColumn.CONFIG_FINGERPRINT.value
-        wanted = (msc_column, origin_column, fingerprint_column)
+        trigger_column = SignalParquetColumn.TRIGGER_REASON.value
+        symbol_column = SignalParquetColumn.SYMBOL.value
+        wanted = (msc_column, symbol_column, origin_column,
+                  fingerprint_column, trigger_column)
 
         frames = []
         for path in paths:
@@ -178,6 +184,8 @@ class SignalCoverageReport:
 
         self.data_origins = self._distinct(df, origin_column)
         self.config_fingerprints = self._distinct(df, fingerprint_column)
+        self.trigger_reasons = self._count_per_envelope(
+            df, trigger_column, msc_column, symbol_column)
 
         msc_values = sorted(set(int(v) for v in df[msc_column]))
         return [
@@ -199,6 +207,33 @@ class SignalCoverageReport:
         if column not in df.columns:
             return set()
         return {str(v) for v in df[column].dropna().unique() if str(v)}
+
+    def _count_per_envelope(self, df: pd.DataFrame, column: str,
+                            msc_column: str, symbol_column: str) -> Dict[str, int]:
+        """
+        Count an envelope-scalar column once per snapshot, not once per row.
+
+        The parquet carries one row per (snapshot, symbol) plus a sentinel, so a
+        naive value_counts would weight every snapshot by its symbol count.
+
+        Args:
+            df: Concatenated projection
+            column: Envelope-scalar column to count (may be absent)
+            msc_column: The snapshot key
+            symbol_column: The symbol column (used to pick one row per snapshot)
+
+        Returns:
+            {value: envelope count}; empty when the column is absent or never stamped
+        """
+        if column not in df.columns or symbol_column not in df.columns:
+            return {}
+
+        # The sentinel row exists for every envelope — exactly one per snapshot.
+        sentinels = df[df[symbol_column] == SIGNAL_ENVELOPE_SYMBOL]
+        source = sentinels if not sentinels.empty else df.drop_duplicates(msc_column)
+
+        counts = source[column].fillna('').astype(str).value_counts().to_dict()
+        return {k: int(v) for k, v in counts.items() if k}
 
     def _one_or_mixed(self, values: Set[str]) -> str:
         """
@@ -225,6 +260,23 @@ class SignalCoverageReport:
             producer predates the field (unknown, not an assertion of realness)
         """
         return self._one_or_mixed(self.data_origins)
+
+    def get_scheduled_share(self) -> Optional[float]:
+        """
+        Share of envelopes produced by the regular bar-close grid.
+
+        The rest are boot, breaking, manual or external passes — real analyses,
+        but not points of the scheduled cadence. Replaces the timing heuristic
+        ("distance to predecessor < 300s") that misclassifies a slow scheduled
+        pass as an off-grid one.
+
+        Returns:
+            Ratio 0.0–1.0, or None when the producer predates trigger_reason
+        """
+        total = sum(self.trigger_reasons.values())
+        if not total:
+            return None
+        return self.trigger_reasons.get('scheduled', 0) / total
 
     def get_config_fingerprint(self) -> str:
         """
@@ -424,6 +476,15 @@ class SignalCoverageReport:
             report.append(f"Config:       #{fingerprint}")
         else:
             report.append("Config:       unknown (producer predates the config_fingerprint field)")
+
+        if self.trigger_reasons:
+            parts = ' · '.join(
+                f"{count:,} {reason}"
+                for reason, count in sorted(
+                    self.trigger_reasons.items(), key=lambda kv: -kv[1]))
+            report.append(f"Triggers:     {parts}")
+        else:
+            report.append("Triggers:     unknown (producer predates the trigger_reason field)")
 
         report.append(f"\n{'─'*60}")
         report.append("GAP ANALYSIS:")
