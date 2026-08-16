@@ -23,13 +23,15 @@ concern (basis / status / is_stale), not the timeline's.
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.framework.types.coverage_report_types import Gap, GapCategory
-from python.framework.types.signal_data_types import SignalParquetColumn
+from python.framework.types.signal_data_types import (
+    SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn)
 from python.framework.utils.market_calendar import MarketCalendar
 from python.framework.utils.time_utils import format_duration
 
@@ -68,6 +70,12 @@ class SignalCoverageReport:
         self.cadence_seconds: float = DEFAULT_CADENCE_SECONDS
         self.snapshot_count: int = 0
 
+        # Distinct provenance values found (empty when the producer predates the field)
+        self.data_origins: Set[str] = set()
+        self.config_fingerprints: Set[str] = set()
+        # Envelope counts per trigger_reason (scheduled / boot / breaking / manual / external)
+        self.trigger_reasons: Dict[str, int] = {}
+
         # Analysis results
         self.gaps: List[Gap] = []
         self.gap_counts = {
@@ -85,9 +93,9 @@ class SignalCoverageReport:
         """
         Analyze the signal parquet files for continuity and gaps.
 
-        Reads only the collected_msc column (projection) — the timeline is all
-        this report needs. Paths are resolved by the caller from the signal
-        index, which already scopes files to the symbol.
+        Reads only the timeline column plus the origin marker (projection) —
+        that is all this report needs. Paths are resolved by the caller from the
+        signal index, which already scopes files to the symbol.
 
         Args:
             paths: Signal parquet files covering this (source, symbol)
@@ -142,7 +150,9 @@ class SignalCoverageReport:
 
     def _load_snapshot_times(self, paths: List[Path]) -> List[datetime]:
         """
-        Read the distinct snapshot timestamps from the signal parquet files.
+        Read the distinct snapshot timestamps + the origin marker from the parquets.
+
+        Side effect: fills `data_origins` with the distinct data_origin values found.
 
         Args:
             paths: Signal parquet files to read
@@ -150,17 +160,146 @@ class SignalCoverageReport:
         Returns:
             Ascending, de-duplicated snapshot times (UTC-aware)
         """
-        column = SignalParquetColumn.COLLECTED_MSC.value
-        frames = [pd.read_parquet(path, columns=[column]) for path in paths]
+        msc_column = SignalParquetColumn.COLLECTED_MSC.value
+        origin_column = SignalParquetColumn.DATA_ORIGIN.value
+        fingerprint_column = SignalParquetColumn.CONFIG_FINGERPRINT.value
+        trigger_column = SignalParquetColumn.TRIGGER_REASON.value
+        symbol_column = SignalParquetColumn.SYMBOL.value
+        wanted = (msc_column, symbol_column, origin_column,
+                  fingerprint_column, trigger_column)
+
+        frames = []
+        for path in paths:
+            # The provenance scalars arrived after the first archives were imported —
+            # project each only where the file actually carries it, so a parquet
+            # written before the field existed still reads.
+            available = set(pq.read_schema(path).names)
+            frames.append(pd.read_parquet(
+                path, columns=[c for c in wanted if c in available]))
+
         if not frames:
             return []
 
         df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
-        msc_values = sorted(set(int(v) for v in df[column]))
+
+        self.data_origins = self._distinct(df, origin_column)
+        self.config_fingerprints = self._distinct(df, fingerprint_column)
+        self.trigger_reasons = self._count_per_envelope(
+            df, trigger_column, msc_column, symbol_column)
+
+        msc_values = sorted(set(int(v) for v in df[msc_column]))
         return [
             datetime.fromtimestamp(msc / 1000.0, tz=timezone.utc)
             for msc in msc_values
         ]
+
+    def _distinct(self, df: pd.DataFrame, column: str) -> Set[str]:
+        """
+        Distinct non-empty values of an optional provenance column.
+
+        Args:
+            df: Concatenated projection
+            column: Column name (may be absent for a pre-contract archive)
+
+        Returns:
+            Set of values; empty when the column is absent or never stamped
+        """
+        if column not in df.columns:
+            return set()
+        return {str(v) for v in df[column].dropna().unique() if str(v)}
+
+    def _count_per_envelope(self, df: pd.DataFrame, column: str,
+                            msc_column: str, symbol_column: str) -> Dict[str, int]:
+        """
+        Count an envelope-scalar column once per snapshot, not once per row.
+
+        The parquet carries one row per (snapshot, symbol) plus a sentinel, so a
+        naive value_counts would weight every snapshot by its symbol count.
+
+        Args:
+            df: Concatenated projection
+            column: Envelope-scalar column to count (may be absent)
+            msc_column: The snapshot key
+            symbol_column: The symbol column (used to pick one row per snapshot)
+
+        Returns:
+            {value: envelope count}; empty when the column is absent or never stamped
+        """
+        if column not in df.columns or symbol_column not in df.columns:
+            return {}
+
+        # The sentinel row exists for every envelope — exactly one per snapshot.
+        sentinels = df[df[symbol_column] == SIGNAL_ENVELOPE_SYMBOL]
+        source = sentinels if not sentinels.empty else df.drop_duplicates(msc_column)
+
+        counts = source[column].fillna('').astype(str).value_counts().to_dict()
+        return {k: int(v) for k, v in counts.items() if k}
+
+    def _one_or_mixed(self, values: Set[str]) -> str:
+        """
+        Collapse a provenance value set to a single label.
+
+        Args:
+            values: Distinct values found in the archive
+
+        Returns:
+            The single value, 'mixed' when several, '' when never stamped
+        """
+        if not values:
+            return ''
+        if len(values) > 1:
+            return 'mixed'
+        return next(iter(values))
+
+    def get_data_origin(self) -> str:
+        """
+        The archive's origin marker — the mock-versus-real discriminator (#447).
+
+        Returns:
+            'synthetic' / 'live' / 'mixed' when a source carries both / '' when the
+            producer predates the field (unknown, not an assertion of realness)
+        """
+        return self._one_or_mixed(self.data_origins)
+
+    def get_scheduled_share(self) -> Optional[float]:
+        """
+        Share of envelopes produced by the regular bar-close grid.
+
+        The rest are boot, breaking, manual or external passes — real analyses,
+        but not points of the scheduled cadence. Replaces the timing heuristic
+        ("distance to predecessor < 300s") that misclassifies a slow scheduled
+        pass as an off-grid one.
+
+        Returns:
+            Ratio 0.0–1.0, or None when the producer predates trigger_reason
+        """
+        total = sum(self.trigger_reasons.values())
+        if not total:
+            return None
+        return self.trigger_reasons.get('scheduled', 0) / total
+
+    def get_config_fingerprint(self) -> str:
+        """
+        The producer's input-config hash — the comparability marker.
+
+        Two archive stretches are comparable when prompt_hash AND this agree. A
+        'mixed' result means the producer's configuration changed inside the
+        archive, so the stretches on either side are NOT one series.
+
+        Returns:
+            The fingerprint / 'mixed' when the archive spans several / '' when the
+            producer predates the field
+        """
+        return self._one_or_mixed(self.config_fingerprints)
+
+    def is_synthetic(self) -> bool:
+        """
+        Whether the archive declares itself generated.
+
+        Returns:
+            True when any snapshot carries data_origin 'synthetic'
+        """
+        return 'synthetic' in self.data_origins
 
     def _measure_cadence(self, snapshots: List[datetime]) -> float:
         """
@@ -319,6 +458,33 @@ class SignalCoverageReport:
         report.append(f"Snapshots:    {self.snapshot_count:,}")
         report.append(
             f"Cadence:      {format_duration(self.cadence_seconds)} (measured median)")
+
+        origin = self.get_data_origin()
+        if origin == 'synthetic':
+            report.append("Origin:       🧪 SYNTHETIC — generated data, not a market record")
+        elif origin:
+            report.append(f"Origin:       {origin}")
+        else:
+            report.append("Origin:       unknown (producer predates the data_origin field)")
+
+        fingerprint = self.get_config_fingerprint()
+        if fingerprint == 'mixed':
+            report.append(
+                f"Config:       ⚠️  {len(self.config_fingerprints)} fingerprints — the producer's "
+                f"input config changed inside this archive")
+        elif fingerprint:
+            report.append(f"Config:       #{fingerprint}")
+        else:
+            report.append("Config:       unknown (producer predates the config_fingerprint field)")
+
+        if self.trigger_reasons:
+            parts = ' · '.join(
+                f"{count:,} {reason}"
+                for reason, count in sorted(
+                    self.trigger_reasons.items(), key=lambda kv: -kv[1]))
+            report.append(f"Triggers:     {parts}")
+        else:
+            report.append("Triggers:     unknown (producer predates the trigger_reason field)")
 
         report.append(f"\n{'─'*60}")
         report.append("GAP ANALYSIS:")

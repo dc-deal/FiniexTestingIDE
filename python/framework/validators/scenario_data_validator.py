@@ -179,8 +179,9 @@ class ScenarioDataValidator:
         """
         Validate the scenario's signal source against its coverage (pre-load).
 
-        Four checks, scoped to the window — the point where a SIGNAL worker
-        either has something to resolve or does not:
+        Five checks. One is about the data's nature, four about the window — the
+        point where a SIGNAL worker either has something to resolve or does not:
+        - the source declares itself synthetic (generated, not a market record)
         - the source/symbol carries no snapshots at all (config/data error)
         - the window closes before the series opens: nothing can ever resolve
         - no snapshot at or before start_date: the run begins blind, every tick
@@ -213,6 +214,14 @@ class ScenarioDataValidator:
                 f"no snapshot for this symbol."
             )
             return errors, warnings
+
+        # === Synthetic data: a result on generated signals is not a market result ===
+        if report.is_synthetic():
+            warnings.append(
+                f"Signal '{scenario.data_sentiment_type}' is SYNTHETIC "
+                f"(data_origin=synthetic) — generated data, not a market record. "
+                f"Valid for pipeline validation, meaningless as a performance statement."
+            )
 
         start_date = scenario.start_date
         end_date = scenario.end_date

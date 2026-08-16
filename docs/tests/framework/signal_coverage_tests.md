@@ -39,6 +39,24 @@ Signal gaps use their own thresholds from `discoveries_config.json`
 tighter ladder than the tick report's 4h, because no producer restart takes
 longer than an hour.
 
+### Provenance fields
+
+`TestDataOrigin` pins the mock-versus-real discriminator, including the two
+absence cases that must never read as "real": a parquet written **before** the
+column existed (no column at all — must not raise) and a present-but-empty value.
+Both resolve to `''` = unknown. A source carrying both values reads as `mixed`
+and counts as synthetic.
+
+`TestConfigFingerprint` pins the same absence semantics for the comparability
+marker, plus the case that matters later: two fingerprints inside one archive
+read as `mixed` — the stretches on either side are then not one series.
+
+`TestTriggerReason` pins the pass-cause counts. Two guarantees beyond the usual
+absence handling: counts are per **envelope**, not per parquet row (a naive
+`value_counts` would weight each snapshot by its symbol count), and an
+unrecognized value is kept rather than rejected — the vocabulary is closed on the
+producer side, but a future engine version must not break our reader.
+
 ### Window queries
 
 `has_snapshot_at_or_before` / `latest_snapshot_at_or_before` mirror the worker's
@@ -50,6 +68,7 @@ verdict matches what the run will actually see.
 | Case | Outcome |
 |---|---|
 | scenario binds no signal source | skipped, no findings |
+| source declares `data_origin: synthetic` | **warning** — generated data, not a market record |
 | source/symbol not imported | **error** — scenario excluded (§33 config/data) |
 | window closes before the series opens | **error** — nothing can ever resolve |
 | no snapshot at or before window start | **warning** — run starts blind, with the blind duration |
@@ -66,6 +85,22 @@ call the batch makes in Phase 5 — rather than reaching into a private method.
 `ValidationResult`, that an error excludes the scenario and a warning does not.
 The tick coverage report is stubbed at the `DataCoverageReportCache.get_report`
 seam so only the signal checks can produce findings.
+
+## Related: the preceding-bucket guarantee
+
+The report reads the **whole** archive; the runtime reads a window-scoped file
+subset. That divergence once hid a defect — a window opening at a day boundary
+resolved a gap at tick 1 because the previous bucket was never loaded, while the
+coverage report correctly saw a snapshot 10 minutes earlier. The fix lives in
+`SignalIndexManager.get_relevant_files` (return the preceding bucket when no
+overlapping one begins at or before `start`) and is pinned by
+`tests/data/signal_import/` — `two_bucket_index` plus
+`test_first_tick_resolves_a_signal`.
+
+Worth knowing when changing either side: **a coverage verdict and a runtime
+resolution can legitimately differ**, because they read different file sets. When
+they disagree about whether data exists, the runtime is the one to trust — and
+the disagreement is the bug signal.
 
 ## Fixtures
 

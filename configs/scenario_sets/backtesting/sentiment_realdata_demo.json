@@ -1,0 +1,75 @@
+{
+    "version": "1.0",
+    "scenario_set_name": "sentiment_realdata_demo",
+    "created": "2026-08-15T00:00:00.000000",
+    "description": "SIGNAL worker on REAL collected sentiment — the first run where both planes are real: live-collected ticks (kraken_spot BTCUSD / mt5 GBPUSD) and a live-produced signal archive (crypto_sentiment / forex_macro_sentiment). Window 2026-08-11 → 08-14: the archive's clean stretch after the producer outage, zero partial and zero error envelopes on both sources. Covers both market worlds in one set. Didactic — hybrid_sentiment_reference is crypto-recommended, so a soft market-fit advisory is expected on the forex leg. Not a profit claim.",
+    "global": {
+        "data_mode": "realistic",
+        "strategy_config": {
+            "decision_logic_type": "CORE/hybrid_sentiment_reference",
+            "worker_instances": {
+                "rsi_fast": "CORE/rsi",
+                "sentiment": "CORE/llm_sentiment"
+            },
+            "workers": {
+                "rsi_fast": {
+                    "periods": {
+                        "M5": 14
+                    }
+                },
+                "sentiment": {
+                    "max_staleness_minutes": 30
+                }
+            },
+            "decision_logic_config": {
+                "rsi_buy_threshold": 35,
+                "rsi_sell_threshold": 65,
+                "lot_size": 0.01,
+                "min_free_margin": 100
+            }
+        },
+        "execution_config": {
+            "parallel_workers": false
+        },
+        "trade_simulator_config": {
+            "balances": { "USD": 10000 },
+            "seeds": {
+                "inbound_latency_seed": 42424
+            }
+        }
+    },
+    "scenarios": [
+        {
+            "name": "BTCUSD_sentiment_realdata",
+            "symbol": "BTCUSD",
+            "data_broker_type": "kraken_spot",
+            "data_sentiment_type": "crypto_sentiment",
+            "start_date": "2026-08-11T00:00:00+00:00",
+            "end_date": "2026-08-14T20:00:00+00:00",
+            "max_ticks": 20000,
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {
+                "decision_logic_config": {
+                    "lot_size": 0.001
+                }
+            },
+            "execution_config": {},
+            "trade_simulator_config": {}
+        },
+        {
+            "name": "GBPUSD_sentiment_realdata",
+            "symbol": "GBPUSD",
+            "data_broker_type": "mt5",
+            "data_sentiment_type": "forex_macro_sentiment",
+            "start_date": "2026-08-11T00:00:00+00:00",
+            "end_date": "2026-08-14T20:00:00+00:00",
+            "max_ticks": 20000,
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {},
+            "execution_config": {},
+            "trade_simulator_config": {}
+        }
+    ]
+}

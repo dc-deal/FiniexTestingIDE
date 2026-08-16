@@ -141,6 +141,13 @@ class SignalDataImporter:
                 SignalParquetColumn.PROMPT_VERSION.value: snap.prompt_version,
                 SignalParquetColumn.PROMPT_ID.value: snap.prompt_id,
                 SignalParquetColumn.PROMPT_HASH.value: snap.prompt_hash,
+                SignalParquetColumn.DATA_ORIGIN.value: snap.data_origin,
+                SignalParquetColumn.CONFIG_FINGERPRINT.value: snap.config_fingerprint,
+                # Lives in metadata, not top-level. Missing key and null collapse to the
+                # same '' = unknown state — never to 'scheduled' (a boot pass would be
+                # mislabelled as a grid point).
+                SignalParquetColumn.TRIGGER_REASON.value: str(
+                    snap.metadata.get('trigger_reason') or ''),
             }
             # Envelope sentinel row (symbol = '*') — keeps this collected_msc resolvable
             # for every covered symbol even when the envelope omits it (partial/error).

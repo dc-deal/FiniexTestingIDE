@@ -65,6 +65,8 @@ class AnalysisEnvelope(BaseModel):
     prompt_version: str = ''
     prompt_id: str = ''                    # prompt identity — traceability, must not be lost
     prompt_hash: str = ''                  # prompt content hash — traceability
+    data_origin: str = ''                  # 'synthetic' / 'live'; empty = producer predates the field
+    config_fingerprint: str = ''           # hash of the producer's effective input config; empty = pre-contract
     timestamp: Optional[datetime] = None   # analysis wall-clock — NOT the merge key
     status: str = 'success'                # success / partial / error
     result: List[SentimentResult] = Field(default_factory=list)
@@ -159,6 +161,13 @@ class SignalParquetColumn(str, Enum):
     PROMPT_VERSION = 'prompt_version'
     PROMPT_ID = 'prompt_id'
     PROMPT_HASH = 'prompt_hash'
+    DATA_ORIGIN = 'data_origin'          # 'synthetic' (generated) / 'live' / '' (pre-contract)
+    CONFIG_FINGERPRINT = 'config_fingerprint'   # producer input-config hash / '' (pre-contract)
+    # Why the producing pass ran: scheduled / boot / breaking / manual / external / ''.
+    # The ONE field lifted out of the envelope's `metadata` (which is otherwise archive-only,
+    # see SIGNAL_RUNTIME_COLUMNS' note) — it is a short scalar of the same weight class as the
+    # provenance columns above, and it replaces a timing heuristic with a stated fact.
+    TRIGGER_REASON = 'trigger_reason'
 
 
 # What the reader loads into the runtime SignalSeries (projection — ship only consumed

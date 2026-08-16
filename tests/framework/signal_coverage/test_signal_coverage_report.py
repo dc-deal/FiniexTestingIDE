@@ -26,26 +26,37 @@ from python.framework.types.signal_data_types import (
 CADENCE = timedelta(minutes=10)
 
 
-def _write_series(tmp_path: Path, moments: List[datetime], name: str = 'series') -> Path:
+def _write_series(tmp_path: Path, moments: List[datetime], name: str = 'series',
+                  origin: str = None, fingerprint: str = None,
+                  triggers: List[str] = None) -> Path:
     """
-    Write a minimal signal parquet carrying only the snapshot timeline.
+    Write a minimal signal parquet carrying the snapshot timeline.
 
     Args:
         tmp_path: pytest tmp dir
         moments: Snapshot times (UTC-aware)
         name: File stem
+        origin: data_origin value; None omits the column (a pre-contract archive)
+        fingerprint: config_fingerprint value; None omits the column
+        triggers: trigger_reason per moment; None omits the column
 
     Returns:
         Path of the written parquet
     """
     rows = []
-    for moment in moments:
+    for index, moment in enumerate(moments):
         msc = int(moment.timestamp() * 1000)
         # One envelope sentinel + one symbol row per snapshot — the real shape.
-        rows.append({SignalParquetColumn.COLLECTED_MSC.value: msc,
-                     SignalParquetColumn.SYMBOL.value: SIGNAL_ENVELOPE_SYMBOL})
-        rows.append({SignalParquetColumn.COLLECTED_MSC.value: msc,
-                     SignalParquetColumn.SYMBOL.value: 'BTCUSD'})
+        for symbol in (SIGNAL_ENVELOPE_SYMBOL, 'BTCUSD'):
+            row = {SignalParquetColumn.COLLECTED_MSC.value: msc,
+                   SignalParquetColumn.SYMBOL.value: symbol}
+            if origin is not None:
+                row[SignalParquetColumn.DATA_ORIGIN.value] = origin
+            if fingerprint is not None:
+                row[SignalParquetColumn.CONFIG_FINGERPRINT.value] = fingerprint
+            if triggers is not None:
+                row[SignalParquetColumn.TRIGGER_REASON.value] = triggers[index]
+            rows.append(row)
 
     path = tmp_path / f'{name}.parquet'
     pd.DataFrame(rows).to_parquet(path)
@@ -208,6 +219,184 @@ class TestWindowQueries:
         ratio = report.coverage_ratio_in_window(start, window_end)
         # ~70min hole inside a 170min window
         assert ratio == pytest.approx(1 - 70 / 170, abs=0.01)
+
+
+class TestDataOrigin:
+    """
+    The mock-versus-real discriminator. Absence is 'unknown', never an
+    assertion of realness — archives produced before the field exists carry
+    no column at all and must still read.
+    """
+
+    def _report(self, tmp_path, origin) -> SignalCoverageReport:
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        path = _write_series(tmp_path, _grid(start, 12), origin=origin)
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([path])
+        return report
+
+    def test_synthetic_is_detected(self, tmp_path):
+        report = self._report(tmp_path, 'synthetic')
+        assert report.get_data_origin() == 'synthetic'
+        assert report.is_synthetic()
+
+    def test_live_is_not_synthetic(self, tmp_path):
+        report = self._report(tmp_path, 'live')
+        assert report.get_data_origin() == 'live'
+        assert not report.is_synthetic()
+
+    def test_missing_column_reads_as_unknown(self, tmp_path):
+        # A parquet written before the field existed — must not raise
+        report = self._report(tmp_path, None)
+        assert report.get_data_origin() == ''
+        assert not report.is_synthetic()
+        assert report.snapshot_count == 12
+
+    def test_empty_value_reads_as_unknown(self, tmp_path):
+        # Column present, producer did not stamp it
+        report = self._report(tmp_path, '')
+        assert report.get_data_origin() == ''
+        assert not report.is_synthetic()
+
+    def test_mixed_origins_are_flagged(self, tmp_path):
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        a = _write_series(tmp_path, _grid(start, 6), name='a', origin='synthetic')
+        b = _write_series(tmp_path, _grid(start + CADENCE * 6, 6), name='b', origin='live')
+
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([a, b])
+
+        assert report.get_data_origin() == 'mixed'
+        assert report.is_synthetic()
+
+    def test_report_text_marks_synthetic(self, tmp_path):
+        assert 'SYNTHETIC' in self._report(tmp_path, 'synthetic').generate_report()
+
+    def test_report_text_marks_unknown(self, tmp_path):
+        assert 'unknown' in self._report(tmp_path, None).generate_report()
+
+
+class TestConfigFingerprint:
+    """
+    The comparability marker. Same absence semantics as data_origin: empty means
+    'unknown', and 'mixed' means the producer's input config changed inside the
+    archive — the two stretches are then NOT one series.
+    """
+
+    def _report(self, tmp_path, fingerprint) -> SignalCoverageReport:
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        path = _write_series(tmp_path, _grid(start, 12), fingerprint=fingerprint)
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([path])
+        return report
+
+    def test_single_fingerprint(self, tmp_path):
+        report = self._report(tmp_path, '904c2e16bbfb')
+        assert report.get_config_fingerprint() == '904c2e16bbfb'
+
+    def test_missing_column_reads_as_unknown(self, tmp_path):
+        # Every archive imported so far — the producer does not stamp it yet
+        report = self._report(tmp_path, None)
+        assert report.get_config_fingerprint() == ''
+        assert report.snapshot_count == 12
+
+    def test_empty_value_reads_as_unknown(self, tmp_path):
+        assert self._report(tmp_path, '').get_config_fingerprint() == ''
+
+    def test_change_inside_the_archive_is_mixed(self, tmp_path):
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        a = _write_series(tmp_path, _grid(start, 6), name='a',
+                          fingerprint='904c2e16bbfb')
+        b = _write_series(tmp_path, _grid(start + CADENCE * 6, 6), name='b',
+                          fingerprint='691dd9cb879e')
+
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([a, b])
+
+        assert report.get_config_fingerprint() == 'mixed'
+        assert len(report.config_fingerprints) == 2
+
+    def test_report_text_flags_a_config_change(self, tmp_path):
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        a = _write_series(tmp_path, _grid(start, 6), name='a', fingerprint='aaa1')
+        b = _write_series(tmp_path, _grid(start + CADENCE * 6, 6), name='b',
+                          fingerprint='bbb2')
+
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([a, b])
+
+        assert 'input config changed' in report.generate_report()
+
+    def test_report_text_marks_unknown(self, tmp_path):
+        assert 'predates the config_fingerprint' in \
+            self._report(tmp_path, None).generate_report()
+
+    def test_both_provenance_fields_read_independently(self, tmp_path):
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        path = _write_series(tmp_path, _grid(start, 6),
+                             origin='live', fingerprint='904c2e16bbfb')
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([path])
+
+        assert report.get_data_origin() == 'live'
+        assert report.get_config_fingerprint() == '904c2e16bbfb'
+
+
+class TestTriggerReason:
+    """
+    Why each pass ran — the stated fact that replaces the off-grid timing
+    heuristic. Counted per ENVELOPE, not per parquet row.
+    """
+
+    def _report(self, tmp_path, triggers) -> SignalCoverageReport:
+        start = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
+        moments = _grid(start, len(triggers)) if triggers else _grid(start, 12)
+        path = _write_series(tmp_path, moments, triggers=triggers)
+        report = SignalCoverageReport('crypto_sentiment', 'BTCUSD')
+        report.analyze([path])
+        return report
+
+    def test_counts_are_per_envelope_not_per_row(self, tmp_path):
+        # Each snapshot writes 2 rows (sentinel + symbol) — the count must not double
+        report = self._report(tmp_path, ['scheduled'] * 10)
+        assert report.trigger_reasons == {'scheduled': 10}
+
+    def test_mixed_reasons(self, tmp_path):
+        report = self._report(
+            tmp_path, ['scheduled'] * 8 + ['breaking', 'boot'])
+        assert report.trigger_reasons == {
+            'scheduled': 8, 'breaking': 1, 'boot': 1}
+
+    def test_scheduled_share(self, tmp_path):
+        report = self._report(tmp_path, ['scheduled'] * 9 + ['breaking'])
+        assert report.get_scheduled_share() == pytest.approx(0.9)
+
+    def test_missing_column_yields_no_counts(self, tmp_path):
+        # Every real archive today — the producer does not stamp it yet
+        report = self._report(tmp_path, None)
+        assert report.trigger_reasons == {}
+        assert report.get_scheduled_share() is None
+
+    def test_unknown_value_is_kept_not_rejected(self, tmp_path):
+        # A future engine version may add a reason — it must not break the reader
+        report = self._report(tmp_path, ['scheduled'] * 9 + ['some_future_reason'])
+        assert report.trigger_reasons['some_future_reason'] == 1
+
+    def test_empty_value_is_not_counted(self, tmp_path):
+        # '' means unknown and must never be folded into 'scheduled'
+        report = self._report(tmp_path, ['scheduled'] * 8 + ['', ''])
+        assert report.trigger_reasons == {'scheduled': 8}
+        assert report.get_scheduled_share() == pytest.approx(1.0)
+
+    def test_report_text_lists_the_composition(self, tmp_path):
+        report = self._report(tmp_path, ['scheduled'] * 8 + ['breaking'] * 2)
+        text = report.generate_report()
+        assert '8 scheduled' in text
+        assert '2 breaking' in text
+
+    def test_report_text_marks_unknown(self, tmp_path):
+        assert 'predates the trigger_reason' in \
+            self._report(tmp_path, None).generate_report()
 
 
 class TestEmptySource:

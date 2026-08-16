@@ -34,11 +34,14 @@ envelope (a symbol is absent) still resolves to a defensive HOLD instead of an e
 matching the JSONL behavior. `collected_msc` is stored as int epoch-ms (the merge key).
 
 The `SignalIndexManager` keys the index as `{data_sentiment_type: {symbol: [files]}}` and resolves
-files by range via `get_relevant_files(data_sentiment_type, symbol, start, end)` — the same contract
-as `TickIndexManager`. The raw archive may be **rotated into time buckets**
-(`<pipeline_id>/<bucket>.jsonl`, e.g. daily `2026-05-03.jsonl`); the importer converts each bucket to
-its own parquet and the reader concatenates the buckets that overlap the query range — rotation
-changes *where* lines live, not what they mean.
+files by range via `get_relevant_files(data_sentiment_type, symbol, start, end)`. The raw archive may
+be **rotated into time buckets** (`<pipeline_id>/<bucket>.jsonl`, e.g. daily `2026-05-03.jsonl`); the
+importer converts each bucket to its own parquet and the reader concatenates the buckets that
+overlap the query range — rotation changes *where* lines live, not what they mean.
+
+Unlike `TickIndexManager`, the signal resolution returns one bucket **beyond** the overlap where
+needed — see *Resolution contract* below. Ticks are consumed as they arrive; a signal is resolved
+backwards from the tick, so the two contracts differ by design.
 
 ## Scenario usage
 
@@ -59,6 +62,39 @@ projected reader (`load_signal_series_from_parquet`) → the resulting `SignalSe
 
 A missing `(data_sentiment_type, symbol)` in the index is a hard error at pre-flight (import it
 first, or fix the type) — mirroring the tick "symbol not found in broker index" path.
+
+## Resolution contract — the first tick is never blind
+
+A SIGNAL worker resolves `nearest(tick)`: the newest snapshot **at or before** the tick. The
+consequence is a rule the file selection must honour, not an optimization:
+
+> **At the window's first tick a snapshot must already exist.** If none does, the worker resolves
+> a gap — empty result, `is_stale=True` — and the mandatory `on_signal_stale` hook fires
+> immediately.
+
+This mirrors the live contract: at startup the AutoTrader pulls the producer's **last known**
+signal, regardless of how long ago it was determined. The backtest must behave the same way.
+
+`SignalIndexManager.get_relevant_files` therefore returns the buckets overlapping
+`[start, end]` **plus the preceding bucket** whenever no overlapping one begins at or before
+`start`. With daily buckets and a producer that stamps *after* the bar close, that is the normal
+case for a window opening at a day boundary:
+
+```
+window start        2026-08-11 00:00:00
+last snapshot       2026-08-10 23:50:29   ← lives in the 08-10 bucket
+first own snapshot  2026-08-11 00:00:31   ← 31s AFTER the first tick
+```
+
+Without the preceding bucket the run starts blind until its own day's first snapshot — seconds
+normally, but bounded only by that first snapshot: after a producer restart (e.g. the archive's
+2026-08-10, whose first entry is 13:20) it would be hours. The reader's `start` trim keeps exactly
+the one pre-start snapshot and drops the rest of that bucket, so the extra file costs one
+projected read and no runtime memory.
+
+**When extending this:** any new consumer of a signal archive resolves through
+`get_relevant_files` — do not re-implement window selection against the index entries directly, or
+the pre-start snapshot is lost again. Tests: `tests/data/signal_import/` (`two_bucket_index`).
 
 ## Cadence — what the series actually looks like
 
@@ -126,13 +162,135 @@ fields plus a small set of cheap, dictionary-encoded prompt-provenance scalars:
   `is_breaking`, `basis` (per-symbol signal quality — `llm` / `no_data` / `degraded`), `status`,
   `schema_version`, plus the `collected_msc` / `symbol` lookup keys. This is `SIGNAL_RUNTIME_COLUMNS`
   — the exact set the reader projects into the subprocess payload.
-- **Traceability (envelope-scalar):** `pipeline_id`, `prompt_version`, `prompt_id`, `prompt_hash` —
-  so a prompt change stays visible in the data. Read by the index / report path only, not at runtime.
+- **Traceability (envelope-scalar):** `pipeline_id`, `prompt_version`, `prompt_id`, `prompt_hash`,
+  `data_origin`, `config_fingerprint`, `trigger_reason` — so a prompt change, the data's nature, a
+  producer-config change and the cause of each pass stay visible in the data. Read by the index /
+  report path only, not at runtime. What each one answers: see *Envelope fields* below.
+  `trigger_reason` is the single field taken out of `metadata`; the rest of that block stays
+  archive-only.
 
 The heavy provenance (`sources`, `metadata`, `errors`) is **deliberately not persisted** — it lives
 in the raw JSONL archive, the audit source. Dropping it shrinks the parquet by ~80–85%. The projected
 runtime series is bit-identical to the raw-JSONL path on the consumed fields, `basis` included (a
 parity test guards this).
+
+## Envelope fields — what each one actually means
+
+Several fields read as self-explanatory and are not. This is the reference; the traps below were
+each found the hard way against the real archive.
+
+### Time
+
+| Field | Meaning |
+|---|---|
+| `collected_msc` | **The merge key.** Epoch-ms, normalized to a UTC datetime on read. A worker resolves the nearest snapshot with `collected_msc <= tick` — no look-ahead by construction. |
+| `timestamp` | The producer's analysis wall-clock. **Not persisted, never read by us.** Present in the raw JSONL only. Do not reason about look-ahead from it — `collected_msc` is the only key that decides anything. |
+
+The producer stamps *after* the bar close, so a snapshot lands 3–60s past its M10 boundary
+(measured median ~17s, tail to ~580s). See *Cadence* above for why the series is not a fixed
+interval.
+
+### Quality — `status` and `basis`
+
+These two are the most misread fields in the archive.
+
+| `status` | Meaning |
+|---|---|
+| `success` | the pass ran and every configured source was reached |
+| `partial` | results were produced, but something degraded — **most often one quarantined feed** |
+| `error` | nothing could be produced; `result` is empty |
+
+> **`status` is not a quality verdict.** A `partial` envelope's signals can be perfectly sound —
+> the flag says "one of seven feeds was unreachable", not "this analysis is wrong". Filtering on
+> `status == 'success'` silently drops a whole pipeline for as long as one feed is quarantined
+> (up to 24h). Read `metadata.sources_reached` / `sources_configured` in the raw archive if the
+> degree of degradation matters.
+
+| `basis` (per symbol) | Meaning | Share in the real archive |
+|---|---|---|
+| `llm` | a real LLM call on retrieved context | ~94 % |
+| `no_data` | retrieval came back empty → **mechanical HOLD**, no LLM call, no cost | ~4 % |
+| `degraded` | the output guard or the budget breaker rewrote it | ~2 % |
+
+> **`basis` is the field that says what actually happened — read it before trusting a HOLD.**
+> Roughly 11 % of all HOLDs are mechanical, not opinions, and they cluster exactly where it hurts:
+> thin-corpus days and outage windows. A backtest that treats them as a neutral market view reads
+> an outage as a signal. Split on `basis` before aggregating.
+
+### Signal content
+
+| Field | Meaning |
+|---|---|
+| `signal` | `BUY` / `SELL` / `HOLD` — the verdict for this symbol at this snapshot |
+| `sentiment_score` | −1.0 … +1.0, the news tone |
+| `confidence` | 0.0 … 1.0. A `no_data` HOLD carries `0.0` by contract |
+| `urgency` | 0.0 … 1.0, how time-critical the producer judged the story |
+| `is_breaking` | an urgent story drove this symbol's signal. **A content flag, not a scheduling marker** — a normal grid pass carries it too. Real rate: ~6 % of result rows (crypto), ~3 % (forex) |
+| `reasoning` | the producer's one-line justification. Human-readable only; nothing keys on it |
+
+### Provenance
+
+| Field | Answers | Empty means |
+|---|---|---|
+| `pipeline_id` | which producer stream | — (always set; it is the source identity) |
+| `prompt_id` / `prompt_version` | which prompt template | — |
+| `prompt_hash` | *has the prompt text changed?* | — |
+| `data_origin` | *is this real or generated?* | **unknown**, never "real" |
+| `config_fingerprint` | *has the producer's input config changed?* | **unknown**, never "unchanged" |
+| `trigger_reason` | *why did this pass run?* | **unknown**, never "scheduled" |
+
+**`data_origin`** (`synthetic` / `live`) is the mock-versus-real discriminator. Without it a
+generated archive and a real one are identical in every other field — the generator mirrors the
+prompt identity on purpose, so `prompt_hash` cannot tell them apart. A scenario binding a
+`synthetic` source gets a pre-run warning (see [Discovery System](../discovery_system.md)).
+
+**`config_fingerprint`** is a hash over the producer's *effective* input configuration — the feed
+set, weights, retrieval thresholds, model. A feed added, disabled or re-weighted shifts the score
+distribution while every other provenance field stays byte-identical, so this is the only field
+that catches it. Two archive stretches are one comparable series when **`prompt_hash` and
+`config_fingerprint` both agree**.
+
+Its practical use is not bookkeeping: it is a **validity condition for multi-window experiments**.
+In-sample/out-of-sample validation and parameter sweeps assume that window A and window B differ
+only in market conditions. If the fingerprint moved between them, a performance drop in B may be
+the data source changing rather than the strategy overfitting — and without the field those two
+are indistinguishable.
+
+**`trigger_reason`** says *why the producing pass ran*. Closed vocabulary today — `scheduled` (the
+bar-close grid), `boot` (first pass after an engine restart), `breaking` (an out-of-band wake that
+jumped the eval queue), `manual` (operator at the console), `external` (an API caller). One value
+per envelope; every symbol of that pass shares it.
+
+Two rules the producer states and we honour:
+
+- **`boot` beats `scheduled`.** A restart that happens to land on a bar close still reads `boot` —
+  the field names why the pass ran *now*.
+- **An unrecognized value is "other", never an error.** The vocabulary is closed on the engine side
+  but the field is a plain string, so a future engine version can add one without breaking our
+  reader.
+
+Its use here is to **replace a heuristic with a fact**. Before it, the only way to tell a grid pass
+from an off-grid one was "distance to predecessor < 300s" — which misclassifies whenever a
+scheduled pass runs long (at a 580s pass duration the next scheduled envelope is ~36s behind and
+looks off-grid). Filtering on `scheduled` yields the clean single-cadence series; the rest are real
+analyses, just not points of that grid.
+
+`trigger_reason` is the **one field lifted out of the envelope's `metadata`**, which is otherwise
+archive-only (see below). The exception is deliberate and rests on the same criterion the rule
+does: it is a short, dictionary-encoded scalar of the same weight class as the provenance columns —
+not part of the heavy `sources` / `stage_timings` payload.
+
+> **Absence is not "unchanged".** Archives collected before the producer stamped these fields carry
+> no column at all; the reader projects each only where the schema has it, and an empty value reads
+> as *unknown*. Backfilling a constant would be a false claim of comparability — the real archive
+> demonstrably changed its symbol set on 2026-07-24, so a single value across it would be wrong.
+> For `trigger_reason` the same rule bites harder: mapping a missing value to `scheduled` would
+> silently fold restart and wake passes into the bar-close series.
+
+*Status (2026-08-16): `data_origin` is present in all four sources. `config_fingerprint` and
+`trigger_reason` are stamped in the two **mock** sources; the live engine ships them after its next
+restart, so the real archives currently read `unknown` for both. The import path is in place, so a
+newly exported day carries them without a code change.*
 
 ## `data_path` override (dev)
 
