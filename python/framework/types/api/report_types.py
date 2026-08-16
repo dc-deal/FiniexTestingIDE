@@ -619,8 +619,8 @@ class BrokerInfoRow(BaseModel):
 class BrokerReport(BaseModel):
     """
     Broker configuration view: one unit per broker, each with its scenario list and
-    per-symbol specs. **Sim-only** for now — the live session's broker_config is loaded
-    at AutoTrader startup but not yet carried into the session report (live follow-up).
+    per-symbol specs. Unified — sim builds one unit per broker from the batch, the live
+    session one unit for its own broker + traded symbol (no scenario grid).
     """
     units: list[BrokerInfoRow]
 
