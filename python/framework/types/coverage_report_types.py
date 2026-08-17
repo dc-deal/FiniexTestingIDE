@@ -33,6 +33,22 @@ class IndexEntry:
 
 
 @dataclass
+class DataFormatVersionSpan:
+    """
+    One contiguous run of tick files sharing the same data_format_version.
+
+    Spans are built from the chronologically sorted tick index, so their boundaries are
+    the first and last tick time of the run. The version is the schema the collector was
+    configured to declare — it carries no claim about the tick timing itself.
+    """
+    version: str
+    start_time: datetime
+    end_time: datetime
+    file_count: int
+    tick_count: int
+
+
+@dataclass
 class Gap:
     """
     Gap between two files or within a file.

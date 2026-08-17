@@ -328,19 +328,26 @@ Original MQL5 metadata is preserved with `source_meta_` prefix:
 `data_format_version` flows from Parquet metadata through the tick index into batch execution reports:
 
 ```
-Parquet metadata → TickIndexManager (index entry) → SharedDataPreparator
-    → SingleScenario.data_format_versions → PortfolioSummary (warning)
+Parquet metadata → TickIndexManager (index entry, persisted) → SharedDataPreparator
+    → SingleScenario.data_format_versions → PostRunValidator (advisory)
 ```
 
-**Index**: `TickIndexManager` extracts `data_format_version` from each Parquet file's custom metadata and stores it per index entry. Cached index files without this field default to `'unknown'` (requires index rebuild to populate).
+**Index**: `TickIndexManager` extracts `data_format_version` from each Parquet file's custom metadata, stores it per index entry and persists it as a column of the index file. An index written before the field was persisted has no such column and reads as `'unknown'` — a one-time `python python/cli/tick_index_cli.py rebuild` populates it.
 
-**Report warning**: When any scenario uses pre-V1.3.0 data (version is `'unknown'` or < `'1.3.0'`), the aggregated portfolio section displays:
+**Report warning**: exactly one advisory, and it speaks only about the index — when no version is recorded for a file (`'unknown'`):
 
 ```
-⚠️  Data includes pre-V1.3.0 files (186/186): inter-tick intervals based on synthesized collected_msc
+⚠️  Data format version unknown for 186/186 file(s) — the tick index carries no version for them
 ```
 
-This warns that inter-tick interval calculations use synthesized `collected_msc` (derived from `time_msc`) rather than authentic collector timestamps. Pre-V1.3.0 data was restored via `restore_collected_msc.py` which synthesizes monotonic `collected_msc` from `time_msc` — accurate for interval ordering but not for true collection timing.
+**The version declares a schema; it is not a quality signal.** `DataFormatVersion` is an operator-set input of the collector, so a collector that starts recording a field without a version bump is invisible in it — which has happened (the MT5 collector gained `collected_msc` while its running instance kept declaring `1.1.0`). Any advisory deriving "this data's `collected_msc` is synthesized" from the version would therefore make false statements on real archives, and none does.
+
+Versions are compared component-wise, never as strings (`'1.10.0' < '1.3.0'` is `True` lexicographically) — see `python/framework/utils/version_utils.py`.
+
+**Coverage report**: `discoveries_cli.py data-coverage show <broker> <symbol>` lists the version as
+time **spans**, so the run-report's file count becomes a window — which collector schema produced
+which period. The version is a declaration (an operator-set collector input), not a measurement of
+how a field was obtained. See [discovery_system.md](../discovery_system.md).
 
 **Data flow**: Uses Channel C (main-process only, no subprocess serialization) — see [architecture_execution_layer.md](../architecture/architecture_execution_layer.md#batch-data-flow-main-process--subprocesses--reports).
 

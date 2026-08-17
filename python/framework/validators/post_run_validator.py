@@ -20,6 +20,7 @@ from python.framework.types.scenario_types.scenario_set_performance_types import
     EXPECTED_OPERATIONS, ProfilingData)
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.validation_types import ValidationResult
+from python.framework.utils.version_utils import parse_version
 
 # Overhead verdict threshold — coordination overhead as a share of computation time.
 _HIGH_OVERHEAD_RATIO = 0.5
@@ -99,36 +100,30 @@ class PostRunValidator:
         self._add('stress_test', '\n'.join(lines))
 
     def _check_data_version(self) -> None:
-        """Warn when pre-V1.3.0 data is present (inter-tick intervals from synthesized collected_msc)."""
+        """
+        Warn when the tick index carries no data format version for a file.
+
+        Deliberately makes no claim about the data itself: data_format_version is an
+        operator-set collector input declaring a schema, not a record of how a field was
+        obtained (a collector that starts recording collected_msc without a version bump
+        is invisible in it). Only the absence of the field is a fact this can state.
+        """
         total_files = 0
-        pre_v130_files = 0
+        unknown_files = 0
         for scenario in self._batch.single_scenario_list:
             for version in scenario.data_format_versions:
                 total_files += 1
-                # 'unknown' or any non-semver string treated as pre-V1.3.0
-                if not version.startswith('1.') or version < '1.3.0':
-                    pre_v130_files += 1
+                if parse_version(version) is None:
+                    unknown_files += 1
 
-        if pre_v130_files == 0:
+        if unknown_files == 0:
             return
 
-        lines = [
-            f"Data includes pre-V1.3.0 files ({pre_v130_files}/{total_files}): "
-            f"inter-tick intervals based on synthesized collected_msc"]
-
-        # Kraken-specific caveat: synthetic 1ms spacing dominates interval statistics
-        has_kraken = any(
-            'kraken' in s.data_broker_type
-            for s in self._batch.single_scenario_list
-            if s.data_format_versions and any(
-                not v.startswith('1.') or v < '1.3.0'
-                for v in s.data_format_versions
-            )
-        )
-        if has_kraken:
-            lines.append(
-                '  → Kraken trade fills: 1ms spacing is synthetic — real arrival cadence unknown')
-        self._add('data_version', '\n'.join(lines))
+        self._add('data_version_unknown', (
+            f"Data format version unknown for {unknown_files}/{total_files} file(s) — "
+            f"the tick index carries no version for them\n"
+            f"  → If the index predates the version field, rebuild it:\n"
+            f"    python python/cli/tick_index_cli.py rebuild"))
 
     def _check_budget(self) -> None:
         """Warn when avg tick processing exceeds the P5 interval (consider setting a budget)."""

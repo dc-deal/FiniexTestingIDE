@@ -303,18 +303,20 @@ class TickIndexManager:
                         # Nested dicts as JSON strings
                         'statistics': json.dumps(entry.get('statistics', {})),
                         'sessions': json.dumps(entry.get('sessions', {})),
+                        'data_format_version': entry.get(
+                            'data_format_version', 'unknown'),
                     }
                     rows.append(row)
 
-        if not rows:
-            # Empty index - create empty parquet with schema
-            df = pd.DataFrame(columns=[
-                'broker_type', 'symbol', 'file', 'path', 'start_time', 'end_time',
-                'tick_count', 'file_size_mb', 'source_file', 'num_row_groups',
-                'statistics', 'sessions'
-            ])
-        else:
-            df = pd.DataFrame(rows)
+        # One column list for both branches - a second, drifting list is how
+        # data_format_version got lost on persist in the first place.
+        columns = [
+            'broker_type', 'symbol', 'file', 'path', 'start_time', 'end_time',
+            'tick_count', 'file_size_mb', 'source_file', 'num_row_groups',
+            'statistics', 'sessions', 'data_format_version'
+        ]
+        df = pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(
+            columns=columns)
 
         # Add metadata
         metadata = {
@@ -365,7 +367,10 @@ class TickIndexManager:
                 'num_row_groups': int(row['num_row_groups']),
                 'statistics': json.loads(row['statistics']) if row['statistics'] else {},
                 'sessions': json.loads(row['sessions']) if row['sessions'] else {},
-                'broker_type': broker_type
+                'broker_type': broker_type,
+                # Tolerant: index files written before the field was persisted
+                # have no such column - they read as 'unknown' until rebuilt.
+                'data_format_version': row.get('data_format_version', 'unknown')
             }
 
             result[broker_type][symbol].append(entry)
@@ -412,6 +417,19 @@ class TickIndexManager:
     # =========================================================================
     # FILE COVERAGE
     # =========================================================================
+
+    def get_symbol_entries(self, broker_type: str, symbol: str) -> List[Dict]:
+        """
+        Get all index entries for a symbol, chronologically sorted.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+
+        Returns:
+            List of index entries, empty when the pair is not indexed
+        """
+        return self.index.get(broker_type, {}).get(symbol, [])
 
     def get_symbol_file_coverage(self, broker_type: str, symbol: str) -> Dict:
         """Get basic coverage statistics for a symbol."""

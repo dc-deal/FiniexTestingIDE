@@ -11,12 +11,18 @@ import pandas as pd
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.data_management.index.tick_index_manager import TickIndexManager
+from python.framework.discoveries.data_coverage.data_format_version_spans import (
+    build_version_spans)
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.coverage_report_types import Gap, IndexEntry
 from python.framework.utils.market_calendar import MarketCalendar, GapCategory
 from python.framework.types.market_types.market_types import VALIDATION_TIMEZONE
 from python.framework.utils.time_utils import ensure_utc_aware, format_duration
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
+
+# Maximum version spans listed before the rest is summarized
+MAX_VERSION_SPANS_DISPLAYED = 20
 
 
 class DataCoverageReport:
@@ -223,6 +229,45 @@ class DataCoverageReport:
 
         return recommendations
 
+    def _version_spans_section(self) -> List[str]:
+        """
+        Build the data format version section from the tick index.
+
+        Render path only — called from generate_report(), never from analyze(). The batch
+        validation path does not read the spans and must not pay for the index load.
+
+        Returns:
+            Report lines for the section
+        """
+        tick_index = TickIndexManager()
+        tick_index.build_index()
+        entries = tick_index.get_symbol_entries(self.broker_type, self.symbol)
+
+        lines = [f"\n{'─'*60}", "DATA FORMAT VERSION:", f"{'─'*60}"]
+
+        spans = build_version_spans(entries)
+
+        if not spans:
+            lines.append("   (no tick index entries for this symbol)")
+            return lines
+
+        for span in spans[:MAX_VERSION_SPANS_DISPLAYED]:
+            file_label = 'file' if span.file_count == 1 else 'files'
+            files = f"{span.file_count:>5} {file_label},"
+            lines.append(
+                f"   {span.version:<7} "
+                f"{span.start_time.strftime('%Y-%m-%d %H:%M')} → "
+                f"{span.end_time.strftime('%Y-%m-%d %H:%M')} "
+                f"{files:<13} "
+                f"{span.tick_count:>12,} ticks"
+            )
+
+        if len(spans) > MAX_VERSION_SPANS_DISPLAYED:
+            lines.append(
+                f"   ... and {len(spans) - MAX_VERSION_SPANS_DISPLAYED} more spans")
+
+        return lines
+
     def generate_report(self) -> str:
         """
         Generate human-readable coverage report.
@@ -252,6 +297,9 @@ class DataCoverageReport:
         duration_hours = duration.total_seconds() / 3600
         report.append(
             f"Duration:     {duration_days}d {int(duration_hours % 24)}h")
+
+        # === SECTION 1b: Data Format Version ===
+        report.extend(self._version_spans_section())
 
         # === SECTION 2: Gap Summary ===
         report.append(f"\n{'─'*60}")

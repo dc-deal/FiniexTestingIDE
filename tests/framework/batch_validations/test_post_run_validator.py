@@ -73,15 +73,24 @@ def test_no_debug_mode_when_not_debug():
     assert 'debug_mode' not in _warnings(_batch([_scenario()], debug=False))
 
 
-def test_data_version_with_kraken_caveat():
-    out = _warnings(_batch([_scenario(versions=['1.2.0'], broker='kraken_spot')]))
-    assert 'data_version' in out
-    assert 'pre-V1.3.0 files (1/1)' in out['data_version']
-    assert 'Kraken' in out['data_version']
+def test_no_advisory_for_any_declared_version():
+    # The version declares a schema, not data quality — no version value is an advisory.
+    # '1.10.0' also guards the lexicographic trap ('1.10.0' < '1.3.0' is True as a string).
+    for version in ('1.2.0', '1.3.0', '1.10.0'):
+        assert _warnings(_batch([_scenario(versions=[version])])) == {}
 
 
-def test_no_data_version_when_current():
-    assert 'data_version' not in _warnings(_batch([_scenario(versions=['1.3.0'])]))
+def test_unknown_version_advisory():
+    # Only the ABSENCE of the field is a fact the validator can state
+    out = _warnings(_batch([_scenario(versions=['unknown'], broker='kraken_spot')]))
+    assert 'data_version_unknown' in out
+    assert 'unknown for 1/1 file(s)' in out['data_version_unknown']
+    assert 'tick_index_cli.py rebuild' in out['data_version_unknown']
+
+
+def test_unknown_counted_against_all_files():
+    out = _warnings(_batch([_scenario(versions=['unknown', '1.2.0', '1.3.0'])]))
+    assert 'unknown for 1/3 file(s)' in out['data_version_unknown']
 
 
 def test_stress_test():
