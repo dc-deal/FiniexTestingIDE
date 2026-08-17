@@ -84,6 +84,26 @@ def test_no_data_version_when_current():
     assert 'data_version' not in _warnings(_batch([_scenario(versions=['1.3.0'])]))
 
 
+def test_data_version_two_digit_minor_not_flagged():
+    # '1.10.0' < '1.3.0' is True as a STRING — components must be compared numerically
+    assert 'data_version' not in _warnings(_batch([_scenario(versions=['1.10.0'])]))
+
+
+def test_unknown_version_is_own_advisory():
+    # An index without the version field is not evidence of old data
+    out = _warnings(_batch([_scenario(versions=['unknown'], broker='kraken_spot')]))
+    assert 'data_version' not in out
+    assert 'data_version_unknown' in out
+    assert 'unknown for 1/1 file(s)' in out['data_version_unknown']
+    assert 'tick_index_cli.py rebuild' in out['data_version_unknown']
+
+
+def test_unknown_and_old_versions_counted_separately():
+    out = _warnings(_batch([_scenario(versions=['unknown', '1.2.0', '1.3.0'])]))
+    assert 'unknown for 1/3 file(s)' in out['data_version_unknown']
+    assert 'pre-V1.3.0 files (1/3)' in out['data_version']
+
+
 def test_stress_test():
     stress = {'reject_open_order': {'enabled': True, 'probability': 0.1, 'seed': 42}}
     out = _warnings(_batch([_scenario(stress=stress)]))

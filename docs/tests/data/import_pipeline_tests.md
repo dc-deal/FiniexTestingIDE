@@ -6,7 +6,7 @@ The import pipeline test suite validates the full tick data import lifecycle: JS
 
 **Test Location:** `tests/data/import_pipeline/`
 **Config Source:** `configs/import_config.json` (offset registry, paths, processing)
-**Total Tests:** 57
+**Total Tests:** 61
 
 ---
 
@@ -173,6 +173,20 @@ Validates quality validation and file management.
 **TestMoveProcessedFiles:**
 - With `move_processed_files=True`, JSON moved to finished directory
 - With `move_processed_files=False`, JSON remains in source directory
+
+---
+
+### test_tick_index_persistence.py (~4 tests)
+
+Validates that `data_format_version` survives the tick index write/read cycle — the index is the only path by which the version reaches a run report.
+
+**TestVersionRoundTrip:**
+- Persisted index file carries the `data_format_version` column
+- A manager loading the index sees the real version, not `'unknown'`
+- The empty-schema branch declares the same columns as a populated index
+
+**TestLegacyIndexTolerance:**
+- An index file without the version column still loads (entries intact) and reads as `'unknown'` — never an exception that silently empties the index
 
 ---
 

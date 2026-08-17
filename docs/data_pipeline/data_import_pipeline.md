@@ -328,19 +328,27 @@ Original MQL5 metadata is preserved with `source_meta_` prefix:
 `data_format_version` flows from Parquet metadata through the tick index into batch execution reports:
 
 ```
-Parquet metadata → TickIndexManager (index entry) → SharedDataPreparator
-    → SingleScenario.data_format_versions → PortfolioSummary (warning)
+Parquet metadata → TickIndexManager (index entry, persisted) → SharedDataPreparator
+    → SingleScenario.data_format_versions → PostRunValidator (advisory)
 ```
 
-**Index**: `TickIndexManager` extracts `data_format_version` from each Parquet file's custom metadata and stores it per index entry. Cached index files without this field default to `'unknown'` (requires index rebuild to populate).
+**Index**: `TickIndexManager` extracts `data_format_version` from each Parquet file's custom metadata, stores it per index entry and persists it as a column of the index file. An index written before the field was persisted has no such column and reads as `'unknown'` — a one-time `python python/cli/tick_index_cli.py rebuild` populates it.
 
-**Report warning**: When any scenario uses pre-V1.3.0 data (version is `'unknown'` or < `'1.3.0'`), the aggregated portfolio section displays:
+**Report warnings**: two distinct advisories, because old data and an index that cannot tell are different facts. When a scenario uses pre-V1.3.0 data (version < `'1.3.0'`):
 
 ```
 ⚠️  Data includes pre-V1.3.0 files (186/186): inter-tick intervals based on synthesized collected_msc
 ```
 
-This warns that inter-tick interval calculations use synthesized `collected_msc` (derived from `time_msc`) rather than authentic collector timestamps. Pre-V1.3.0 data was restored via `restore_collected_msc.py` which synthesizes monotonic `collected_msc` from `time_msc` — accurate for interval ordering but not for true collection timing.
+This warns that inter-tick interval calculations use synthesized `collected_msc` (derived from `time_msc`) rather than authentic collector timestamps. Pre-V1.3.0 data was restored via `restore_collected_msc.py` which synthesizes monotonic `collected_msc` from `time_msc` — accurate for interval ordering but not for true collection timing. On restored Kraken data the synthesis spaces the fills of one trade 1 ms apart, which the advisory names explicitly.
+
+When no version is recorded for a file (`'unknown'`), the advisory says so instead of claiming the data is old:
+
+```
+⚠️  Data format version unknown for 186/186 file(s) — the tick index carries no version for them
+```
+
+Versions are compared component-wise, never as strings (`'1.10.0' < '1.3.0'` is `True` lexicographically) — see `python/framework/utils/version_utils.py`.
 
 **Data flow**: Uses Channel C (main-process only, no subprocess serialization) — see [architecture_execution_layer.md](../architecture/architecture_execution_layer.md#batch-data-flow-main-process--subprocesses--reports).
 

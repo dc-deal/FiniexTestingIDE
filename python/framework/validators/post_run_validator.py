@@ -20,7 +20,10 @@ from python.framework.types.scenario_types.scenario_set_performance_types import
     EXPECTED_OPERATIONS, ProfilingData)
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.validation_types import ValidationResult
+from python.framework.utils.version_utils import parse_version
 
+# First data format version carrying authentic collected_msc (older data is synthesized).
+_MIN_AUTHENTIC_MSC_VERSION = (1, 3, 0)
 # Overhead verdict threshold — coordination overhead as a share of computation time.
 _HIGH_OVERHEAD_RATIO = 0.5
 # Infra-bottleneck verdict threshold — share of scenarios where a non-hot-path op dominated.
@@ -99,15 +102,27 @@ class PostRunValidator:
         self._add('stress_test', '\n'.join(lines))
 
     def _check_data_version(self) -> None:
-        """Warn when pre-V1.3.0 data is present (inter-tick intervals from synthesized collected_msc)."""
+        """Warn on pre-V1.3.0 data (synthesized collected_msc) and on files with no known version."""
         total_files = 0
         pre_v130_files = 0
+        unknown_files = 0
         for scenario in self._batch.single_scenario_list:
             for version in scenario.data_format_versions:
                 total_files += 1
-                # 'unknown' or any non-semver string treated as pre-V1.3.0
-                if not version.startswith('1.') or version < '1.3.0':
+                parsed = parse_version(version)
+                # An unparseable version is NOT evidence of old data — the index
+                # simply carries no version for that file.
+                if parsed is None:
+                    unknown_files += 1
+                elif parsed < _MIN_AUTHENTIC_MSC_VERSION:
                     pre_v130_files += 1
+
+        if unknown_files > 0:
+            self._add('data_version_unknown', (
+                f"Data format version unknown for {unknown_files}/{total_files} file(s) — "
+                f"the tick index carries no version for them\n"
+                f"  → If the index predates the version field, rebuild it:\n"
+                f"    python python/cli/tick_index_cli.py rebuild"))
 
         if pre_v130_files == 0:
             return
@@ -121,14 +136,21 @@ class PostRunValidator:
             'kraken' in s.data_broker_type
             for s in self._batch.single_scenario_list
             if s.data_format_versions and any(
-                not v.startswith('1.') or v < '1.3.0'
+                self._is_pre_v130(v)
                 for v in s.data_format_versions
             )
         )
         if has_kraken:
             lines.append(
-                '  → Kraken trade fills: 1ms spacing is synthetic — real arrival cadence unknown')
+                '  → restored Kraken trade fills: the 1 ms spacing was synthesized by the '
+                'restore — real arrival cadence unknown')
         self._add('data_version', '\n'.join(lines))
+
+    @staticmethod
+    def _is_pre_v130(version: str) -> bool:
+        """True when the version parses AND predates the authentic-collected_msc baseline."""
+        parsed = parse_version(version)
+        return parsed is not None and parsed < _MIN_AUTHENTIC_MSC_VERSION
 
     def _check_budget(self) -> None:
         """Warn when avg tick processing exceeds the P5 interval (consider setting a budget)."""

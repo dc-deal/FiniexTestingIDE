@@ -52,21 +52,6 @@ class BarsIndexManager:
         self.index: Dict[str, Dict[str, Dict[str, Dict]]] = {}
         self.logger = logger
 
-    def _version_less_than(self, version: str, compare_to: str) -> bool:
-        """
-        Compare version strings (e.g., '1.0.5' < '1.1.0').
-        """
-        try:
-            v1 = [int(x) for x in version.split('.')]
-            v2 = [int(x) for x in compare_to.split('.')]
-            while len(v1) < 3:
-                v1.append(0)
-            while len(v2) < 3:
-                v2.append(0)
-            return tuple(v1) < tuple(v2)
-        except (ValueError, AttributeError):
-            return True
-
     # =========================================================================
     # INDEX BUILDING
     # =========================================================================
