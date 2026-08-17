@@ -10,7 +10,11 @@ Usage:
 
 Paths are driven by configs/import_config.json → 'signal_paths' (with user_configs override):
 raw JSONL under data/raw/signals/<pipeline_id>/, processed parquet + index under
-data/processed/signals/<pipeline_id>/.
+data/processed/signals/<pipeline_id>/, imported JSONL archived to
+data/finished/signals/<pipeline_id>/ (switched by 'processing.move_processed_files').
+
+An import without --override reads the raw directory only, so a re-run costs nothing once
+everything is archived. With --override the finished archive is read as well and rebuilt.
 """
 
 import argparse
@@ -51,17 +55,21 @@ class SignalIndexCli:
         """
         source_dir = self._import_config.get_signal_data_raw_path()
         target_dir = self._import_config.get_signal_import_output_path()
+        finished_dir = self._import_config.get_signal_data_finished_path() \
+            if self._import_config.get_move_processed_files() else None
 
         print("\n" + "=" * 80)
         print("📡 Signal Data Import")
         print("=" * 80)
         print(f"Source:         {source_dir}")
         print(f"Target:         {target_dir}")
+        print(f"Finished:       {finished_dir or 'DISABLED (files stay in source)'}")
         print(f"Override Mode:  {'ENABLED' if override else 'DISABLED'}")
         print("=" * 80)
 
         importer = SignalDataImporter(
-            source_dir=source_dir, target_dir=target_dir, override=override)
+            source_dir=source_dir, target_dir=target_dir, override=override,
+            finished_dir=finished_dir)
         importer.process_all_signals()
 
     def cmd_status(self):

@@ -9,6 +9,7 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.reporting.console.block_splitting_disposition import BlockSplittingDisposition
 from python.framework.reporting.console.broker_summary import BrokerSummary
+from python.framework.reporting.console.signal_summary import SignalSummary
 from python.framework.reporting.console.execution_header_summary import ExecutionHeaderSummary
 from python.framework.reporting.console.sim_executive_summary import SimExecutiveSummary
 from python.framework.reporting.console.performance_summary import PerformanceSummary
@@ -103,7 +104,8 @@ class BatchReportCoordinator:
         # coordinator (into the run's io/ subfolder); the names below stay for the console.
         io_dir = run_dir / IO_SUBDIR
         units = run_units_from_batch(self._batch_execution_summary)
-        unified = SharedReportCoordinator.derive_and_persist(units, io_dir)
+        unified = SharedReportCoordinator.derive_and_persist(
+            units, io_dir, self._batch_execution_summary.signal_scenario_map)
         trade_report = unified.trade_history
         order_report = unified.order_history
         portfolio_report = unified.portfolio
@@ -111,6 +113,7 @@ class BatchReportCoordinator:
         execution_stats_report = unified.execution_stats
         run_summary = unified.run_summary
         worker_decision_report = unified.worker_decision
+        signal_report = unified.signal
 
         # === DERIVE the sim-only / pipeline-specific sections ===
         # Scenario details — per-scenario execution/signal metadata incl. failed (sim-only).
@@ -151,6 +154,7 @@ class BatchReportCoordinator:
                 portfolio_report, pending_report, execution_stats_report, aggregated_portfolio_report),
             trade_history_summary=TradeHistorySummary(trade_report, order_report),
             broker_summary=BrokerSummary(broker_report),
+            signal_summary=SignalSummary(signal_report) if signal_report.units else None,
             performance_summary=PerformanceSummary(worker_decision_report),
             profiling_summary=ProfilingSummary(profiling_report),
             worker_decision_breakdown=WorkerDecisionBreakdownSummary(

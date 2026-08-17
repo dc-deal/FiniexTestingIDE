@@ -24,7 +24,7 @@ from python.framework.types.portfolio_types.portfolio_aggregation_types import P
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.signal_data_types import SignalSeries
+from python.framework.types.signal_data_types import SignalResolutionStats, SignalSeries
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
@@ -75,13 +75,13 @@ class SignalRequirement:
     """
     Signal-data requirement for one scenario's SIGNAL worker (#141).
 
-    Mirrors BarRequirement: the data identity (source + symbol + range) the
+    Mirrors BarRequirement: the data identity (kind + symbol + range) the
     SharedDataPreparator loads into the scenario's SignalSeries.
     """
     scenario_name: str
     broker_type: str
     symbol: str
-    source: str            # e.g. 'llm_sentiment' (the worker's signal source)
+    signal_kind: str       # payload kind the worker consumes, e.g. 'llm_sentiment'
     start_time: datetime
     end_time: Optional[datetime] = None
     # Source identity: data_sentiment_type (first-class, #429) is primary — resolved via the
@@ -523,6 +523,9 @@ class ProcessTickLoopResult:
 
     # Worker statistics (list of per-worker stats)
     worker_statistics: List[WorkerPerformanceStats] = None
+
+    # Signal resolution counters (per SIGNAL worker; #433 Part C)
+    signal_statistics: List[SignalResolutionStats] = None
 
     # Coordination statistics (parallel execution, ticks processed)
     coordination_statistics: WorkerCoordinatorPerformanceStats = None

@@ -367,15 +367,11 @@ class TestTriggerReason:
         assert report.trigger_reasons == {
             'scheduled': 8, 'breaking': 1, 'boot': 1}
 
-    def test_scheduled_share(self, tmp_path):
-        report = self._report(tmp_path, ['scheduled'] * 9 + ['breaking'])
-        assert report.get_scheduled_share() == pytest.approx(0.9)
-
     def test_missing_column_yields_no_counts(self, tmp_path):
-        # Every real archive today — the producer does not stamp it yet
+        # A pre-contract archive: no column at all, so nothing to attribute
         report = self._report(tmp_path, None)
         assert report.trigger_reasons == {}
-        assert report.get_scheduled_share() is None
+        assert report.trigger_unknown == 0
 
     def test_unknown_value_is_kept_not_rejected(self, tmp_path):
         # A future engine version may add a reason — it must not break the reader
@@ -386,13 +382,24 @@ class TestTriggerReason:
         # '' means unknown and must never be folded into 'scheduled'
         report = self._report(tmp_path, ['scheduled'] * 8 + ['', ''])
         assert report.trigger_reasons == {'scheduled': 8}
-        assert report.get_scheduled_share() == pytest.approx(1.0)
+        assert report.trigger_unknown == 2
 
     def test_report_text_lists_the_composition(self, tmp_path):
         report = self._report(tmp_path, ['scheduled'] * 8 + ['breaking'] * 2)
         text = report.generate_report()
         assert '8 scheduled' in text
         assert '2 breaking' in text
+        assert 'unknown' not in text.split('Triggers:')[1].split('\n')[0]
+
+    def test_partially_stamped_archive_states_the_unknown_share(self, tmp_path):
+        # The producer gained trigger_reason mid-archive (engine restart). The
+        # composition must not read as if it covered every snapshot.
+        report = self._report(tmp_path, [''] * 90 + ['scheduled'] * 8 + ['boot'] * 2)
+        assert report.trigger_reasons == {'scheduled': 8, 'boot': 2}
+        assert report.trigger_unknown == 90
+        line = report.generate_report().split('Triggers:')[1].split('\n')[0]
+        assert '8 scheduled' in line
+        assert '90 unknown' in line
 
     def test_report_text_marks_unknown(self, tmp_path):
         assert 'predates the trigger_reason' in \

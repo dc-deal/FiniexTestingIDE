@@ -556,7 +556,7 @@ class AbstractDecisionLogic(ABC):
     # Signal-Outage Contract (#434)
     # ============================================
 
-    def on_signal_stale(self, worker_name: str, source: str) -> None:
+    def on_signal_stale(self, worker_name: str, signal_kind: str) -> None:
         """
         React to a SIGNAL worker's feed turning stale (fresh→stale transition).
 
@@ -569,7 +569,7 @@ class AbstractDecisionLogic(ABC):
 
         Args:
             worker_name: The SIGNAL worker instance that turned stale
-            source: Its signal source key (e.g. 'llm_sentiment')
+            signal_kind: The payload kind it consumes (e.g. 'llm_sentiment')
         """
         pass
 

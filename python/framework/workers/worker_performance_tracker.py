@@ -1,6 +1,3 @@
-# DATEI UMBENENNEN VON: performance_log_worker.py
-# DATEI UMBENENNEN ZU:   worker_performance_tracker.py
-
 """
 FiniexTestingIDE - Worker Performance Tracker
 Tracks performance metrics for individual workers

@@ -116,8 +116,14 @@ Read the whole directory back as one table.
 `sweep_id` · `sweep_params` · `scenario_set_name` · `git_commit` / `git_branch` / `git_dirty` ·
 `decision_logic_type` · `decision_version` · `worker_versions` · `config_snapshot` (full resolved
 strategy_config) · `symbols` · `data_broker_type` · `currency` · the `RunSummary` KPIs (`net_pnl`,
-`expectancy`, `profit_factor`, `win_rate`, `max_drawdown`, trade / order counts …). Typed read:
-`read_rows() -> List[RunResultRow]` (the JSON columns parsed; what the analysis + API consume).
+`expectancy`, `profit_factor`, `win_rate`, `max_drawdown`, trade / order counts …) · `signal_fresh_ratio`.
+Typed read: `read_rows() -> List[RunResultRow]` (the JSON columns parsed; what the analysis + API consume).
+
+`signal_fresh_ratio` (#433) is the run's weakest SIGNAL channel — the share of ticks whose signal was
+fresh, minimum over all scenarios; empty when no SIGNAL worker ran. It is not a KPI to rank by but the
+**comparability marker** next to the KPIs: two rows produced at different fresh ratios were effectively
+tested on different data, which matters exactly where a ranking is most tempting (a sweep over
+`max_staleness_minutes`, or a multi-window robustness pass whose windows cross a producer outage).
 
 **Provenance** (`run_provenance_builder.py`): `param_hash = generate_config_fingerprint(strategy_config)`
 (decision + all workers + type strings — the leading key); git via `get_git_info()`; component versions

@@ -103,7 +103,7 @@ class SignalSeries(BaseModel):
     """
     model_config = ConfigDict(extra='ignore')
 
-    source: str                                    # e.g. 'llm_sentiment'
+    signal_kind: str                               # payload kind, e.g. 'llm_sentiment'
     snapshots: List[SignalSnapshot] = Field(default_factory=list)
 
 
@@ -120,6 +120,36 @@ class ResolvedSignal:
     """
     collected_msc: datetime
     result: SentimentResult
+
+
+class SignalResolution(str, Enum):
+    """
+    How a SIGNAL worker's result resolved at one tick (#433 Part C).
+
+    Distinct from an ARCHIVE gap: a hole inside the series resolves to the last
+    snapshot before it — that is STALE. BLIND means nothing was resolvable at
+    all, which in practice only happens at the head of a run.
+    """
+    FRESH = 'fresh'      # snapshot present, within max_staleness_minutes
+    STALE = 'stale'      # snapshot present but aged out
+    BLIND = 'blind'      # nothing resolvable at or before the tick
+
+
+@dataclass
+class SignalResolutionStats:
+    """
+    Per-tick resolution quality of one SIGNAL worker over a run (#433 Part C).
+
+    Counts what the strategy actually DECIDED ON — tick-weighted, not
+    refresh-weighted (worker_call_count already measures the snapshot supply).
+    The three counters are mutually exclusive and sum to the run's tick count.
+    """
+    worker_name: str
+    signal_kind: str
+    symbol: str
+    fresh_ticks: int = 0
+    stale_ticks: int = 0
+    blind_ticks: int = 0
 
 
 # Sentinel `symbol` value for an envelope-level parquet row (#429). One is emitted per

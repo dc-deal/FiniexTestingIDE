@@ -20,7 +20,7 @@ from python.framework.types.signal_data_types import (
 
 def load_signal_series_from_parquet(
     paths: List[Path],
-    source: str,
+    signal_kind: str,
     symbol: str,
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
@@ -35,7 +35,7 @@ def load_signal_series_from_parquet(
 
     Args:
         paths: Signal parquet files (resolved from the index)
-        source: Signal source label stamped on the series
+        signal_kind: Payload kind label stamped on the series
         symbol: Symbol to project
         start: Scenario start — keep one pre-start snapshot (None = no lower bound)
         end: Scenario end — drop later snapshots (None = no upper bound)
@@ -46,7 +46,7 @@ def load_signal_series_from_parquet(
     cols = sorted(SIGNAL_RUNTIME_COLUMNS)
     frames = [pd.read_parquet(path, columns=cols) for path in paths]
     if not frames:
-        return SignalSeries(source=source, snapshots=[])
+        return SignalSeries(signal_kind=signal_kind, snapshots=[])
     df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
 
     keep = df[df[SignalParquetColumn.SYMBOL.value].isin(
@@ -97,4 +97,4 @@ def load_signal_series_from_parquet(
                 break
         snapshots = snapshots[keep_from:]
 
-    return SignalSeries(source=source, snapshots=snapshots)
+    return SignalSeries(signal_kind=signal_kind, snapshots=snapshots)

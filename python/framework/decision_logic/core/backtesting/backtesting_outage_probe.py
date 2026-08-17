@@ -117,17 +117,17 @@ class BacktestingOutageProbe(AbstractDecisionLogic):
     # Staleness Contracts (#434 + #436) — record the hooks
     # ============================================
 
-    def on_signal_stale(self, worker_name: str, source: str) -> None:
+    def on_signal_stale(self, worker_name: str, signal_kind: str) -> None:
         """
         Record the SIGNAL-feed staleness edge (#434).
 
         Args:
             worker_name: The SIGNAL worker instance that turned stale
-            source: Its signal source key
+            signal_kind: The payload kind it consumes
         """
-        self._received_events.append(f'signal_stale:{worker_name}:{source}')
+        self._received_events.append(f'signal_stale:{worker_name}:{signal_kind}')
         self.logger.warning(
-            f"[PROBE] on_signal_stale fired: {worker_name} ({source})")
+            f"[PROBE] on_signal_stale fired: {worker_name} ({signal_kind})")
 
     def on_market_data_stale(self, status: MarketDataStatus) -> None:
         """

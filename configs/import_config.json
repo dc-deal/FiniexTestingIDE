@@ -13,7 +13,8 @@
     },
     "signal_paths": {
         "data_raw": "data/raw/signals",
-        "import_output": "data/processed/signals"
+        "import_output": "data/processed/signals",
+        "data_finished": "data/finished/signals"
     },
     "offset_registry": {
         "mt5": {

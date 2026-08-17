@@ -40,13 +40,13 @@ class TestLoader:
     """JSONL → time-ordered SignalSeries, with schema gate + range trim."""
 
     def test_loads_and_sorts(self):
-        series = load_signal_series(FIXTURE_JSONL, source='llm_sentiment')
+        series = load_signal_series(FIXTURE_JSONL, signal_kind='llm_sentiment')
         assert len(series.snapshots) == 5
         msc = [s.collected_msc for s in series.snapshots]
         assert msc == sorted(msc)
 
     def test_error_status_line_kept_with_empty_result(self):
-        series = load_signal_series(FIXTURE_JSONL, source='llm_sentiment')
+        series = load_signal_series(FIXTURE_JSONL, signal_kind='llm_sentiment')
         errors = [s for s in series.snapshots if s.status == 'error']
         assert len(errors) == 1
         assert errors[0].result == []
@@ -59,12 +59,12 @@ class TestLoader:
             '"status":"success","result":[]}\n'
         )
         with pytest.raises(SignalSchemaError, match='schema_version'):
-            load_signal_series(bad, source='llm_sentiment')
+            load_signal_series(bad, signal_kind='llm_sentiment')
 
     def test_range_keeps_pre_start_snapshot(self):
         # start 08:15 → keep the 08:10 snapshot (last <= start) onward; drop 08:30 (> end)
         series = load_signal_series(
-            FIXTURE_JSONL, source='llm_sentiment',
+            FIXTURE_JSONL, signal_kind='llm_sentiment',
             start=utc(2026, 1, 15, 8, 15), end=utc(2026, 1, 15, 8, 25))
         msc = [s.collected_msc for s in series.snapshots]
         assert utc(2026, 1, 15, 8, 10) in msc

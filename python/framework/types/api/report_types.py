@@ -330,6 +330,11 @@ class RunSummary(BaseModel):
     orders_rejected: int = 0
     sl_tp_triggered: int = 0
     unit_count: int = 0     # sim: N scenarios | live: 1
+    # Weakest SIGNAL channel of the run (#433): min fresh ratio over all usages. None = no
+    # SIGNAL worker was involved — deliberately NOT 1.0, which would claim a perfect feed.
+    # Rides into the run-results ledger so a sweep/robustness ranking carries the data
+    # quality its rows were produced under.
+    signal_fresh_ratio: float | None = None
 
 
 class RunResultRow(BaseModel):
@@ -376,6 +381,8 @@ class RunResultRow(BaseModel):
     orders_executed: int = 0
     orders_rejected: int = 0
     sl_tp_triggered: int = 0
+    # Weakest SIGNAL channel of the run (#433); None = no SIGNAL worker was involved
+    signal_fresh_ratio: float | None = None
 
 
 class RunMetaReport(BaseModel):
@@ -619,10 +626,57 @@ class BrokerInfoRow(BaseModel):
 class BrokerReport(BaseModel):
     """
     Broker configuration view: one unit per broker, each with its scenario list and
-    per-symbol specs. **Sim-only** for now — the live session's broker_config is loaded
-    at AutoTrader startup but not yet carried into the session report (live follow-up).
+    per-symbol specs. Unified — sim builds one unit per broker from the batch, the live
+    session one unit for its own broker + traded symbol (no scenario grid).
     """
     units: list[BrokerInfoRow]
+
+
+class SignalUsageRow(BaseModel):
+    """
+    One scenario's use of a signal source: its window (archive plane) plus what the
+    strategy actually decided on in that window (runtime plane, #433 Part C).
+
+    The two planes answer different questions and can disagree legitimately — an archive
+    gap shorter than max_staleness_minutes produces zero stale ticks.
+    """
+    scenario: str
+    symbol: str = ''
+    window_start: str = ''          # ISO-8601 UTC
+    window_end: str = ''            # ISO-8601 UTC ('' when the scenario ends on max_ticks)
+    coverage_ratio: float = 1.0     # share of the window not swallowed by an archive gap
+    fresh_ticks: int = 0
+    stale_ticks: int = 0
+    blind_ticks: int = 0            # nothing resolvable — NOT an archive gap (that is stale)
+    fresh_ratio: float = 0.0        # fresh / total ticks; 0.0 when the run processed none
+
+
+class SignalSourceRow(BaseModel):
+    """
+    One signal source: its archive provenance + measured cadence, plus one usage row per
+    scenario bound to it. Empty provenance means UNKNOWN, never a positive assertion; a
+    source carrying several values renders as 'mixed'.
+    """
+    source: str
+    data_origin: str = ''                   # 'live' / 'synthetic' / 'mixed' / '' = unknown
+    config_fingerprint: str = ''            # producer input-config hash; '' = pre-contract
+    cadence_seconds: float = 0.0            # measured median snapshot distance
+    snapshot_count: int = 0
+    archive_start: str = ''                 # ISO-8601 UTC
+    archive_end: str = ''                   # ISO-8601 UTC
+    gap_counts: dict[str, int] = {}         # category → count (short / moderate / large / …)
+    trigger_reasons: dict[str, int] = {}    # scheduled / boot / breaking / manual / external
+    trigger_unknown: int = 0                # envelopes with no reason (producer pre-contract)
+    usages: list[SignalUsageRow] = []
+
+
+class SignalReport(BaseModel):
+    """
+    Signal configuration view (#433): one unit per signal source, each with its archive
+    provenance and the scenarios consuming it. Unified — both pipelines build it from the
+    same shared data preparation, so sim batch and AutoTrader-mock session render identically.
+    """
+    units: list[SignalSourceRow]
 
 
 class WarningRow(BaseModel):

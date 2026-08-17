@@ -14,8 +14,15 @@ this doc covers only how the *data* is imported, indexed, and resolved.
 - **`data_sentiment_type` = the archive's `pipeline_id`** (e.g. `crypto_sentiment`,
   `forex_macro_sentiment`). The symbol comes from `scenario.symbol` — exactly like a broker + symbol
   for ticks. One reader (`CORE/llm_sentiment`) consumes many pipelines.
-- **Raw JSONL** lives under `data/raw/signals/<pipeline_id>/`; the import writes **parquet + index**
-  under `data/processed/signals/<pipeline_id>/`. Paths are configured in
+- **Source ≠ kind.** The **source** is that `pipeline_id` — *where* the data comes from. The
+  **kind** is what a worker declares via `CONSUMED_SIGNAL_KIND` (e.g. `llm_sentiment`) — *what
+  shape* of payload it reads, and the slot the preparation layer hands the series to. The two are
+  orthogonal: one kind is read from many sources. Only `pipeline_id` is the identity shared by
+  archive, index, coverage report and run report, so it is the leading id everywhere; the word
+  "source" is reserved for it.
+- **Raw JSONL** arrives under `data/raw/signals/<pipeline_id>/`; the import writes **parquet + index**
+  under `data/processed/signals/<pipeline_id>/` and archives the consumed JSONL to
+  `data/finished/signals/<pipeline_id>/`. Paths are configured in
   `configs/import_config.json → signal_paths`.
 
 ## Import
@@ -42,6 +49,37 @@ overlap the query range — rotation changes *where* lines live, not what they m
 Unlike `TickIndexManager`, the signal resolution returns one bucket **beyond** the overlap where
 needed — see *Resolution contract* below. Ticks are consumed as they arrive; a signal is resolved
 backwards from the tick, so the two contracts differ by design.
+
+### Raw is an inbox, finished is the archive
+
+A successfully imported JSONL moves to `data/finished/signals/`, keeping its directory structure —
+the same convention the tick import follows, switched by the shared
+`import_config.json → processing.move_processed_files`. The raw directory therefore holds only what
+still needs importing, and a re-run costs nothing instead of failing on every file that already has
+a parquet.
+
+The move preserves the path **relative to the directory the file was found in**, rather than
+rebuilding it from the resolved `pipeline_id`. A file sitting in a folder that does not match its
+own `pipeline_id` is an anomaly worth seeing; normalizing it during the move would repair it
+silently. A file whose import failed is not moved.
+
+`--override` reads the finished archive **in addition to** the raw inbox. Overriding means
+rebuilding what is already imported, and that is where those files live — without this, the flag
+would quietly do nothing once the inbox is empty. When the same relative path exists in both, the
+raw copy wins: a re-exported day supersedes its archived copy, and the move then replaces it.
+
+> **The archive is not a by-product.** The parquet is a lean projection; an envelope's `sources`,
+> `metadata` and `errors` survive nowhere else. The archived JSONL is the audit source and must
+> stay readable — this is a move, never a delete.
+
+Once a batch is archived it is typically packed into `data/finished/Archives/signals-<YY-MM-DD>.zip`,
+the same convention the tick archives follow, and the loose folder is removed. The zip keeps the
+`signals/<pipeline_id>/<bucket>.jsonl` structure, so a day stays addressable inside it.
+
+Tooling that rewrites raw envelopes — `python/experiments/restore_signal_envelope_field.py` — works
+on plain files, so an archived day must be unpacked first, stamped, and re-imported with
+`--override`. Read this as a cost, not an obstacle: it is the reason to stamp a day **before** it
+is packed, while it still sits in the inbox.
 
 ## Scenario usage
 
@@ -137,7 +175,7 @@ The reports run in the batch's Phase 1 and feed `ScenarioDataValidator`:
 - a scenario whose window **closes before the source begins** is an error — no snapshot can ever
   resolve (the typical cause: a scenario left on an old window after the source was re-imported).
 - a scenario whose window opens **before the first snapshot** gets a warning — every tick until
-  the first snapshot resolves to a gap (empty result, `is_stale=True`). This is the signal
+  the first snapshot resolves **blind** (empty result, `is_stale=True`). This is the signal
   analogue of warmup: not "N entries of history", but "a snapshot must exist at the first tick".
   There is no warmup window for signals — a SIGNAL worker resolves `nearest(tick)` and nothing more.
 - a scenario whose window opens **inside a hole** gets a warning naming the age of the snapshot
@@ -152,6 +190,44 @@ Signal gaps carry their own thresholds (`discoveries_config.json` → `signal_co
 short < 30min, moderate < 1h, large above. Weekends are never an expected closure here — the
 producing engine runs 24/7 regardless of the traded market, so a weekend hole is a real outage.
 Full detail: [Discovery System](../discovery_system.md).
+
+## Source vs. decision basis — two planes, two questions
+
+The coverage report above describes the **source**: what the archive could offer. It cannot say
+what a run actually consumed. That is the second plane, captured per tick by the SIGNAL workers and
+rendered in the run's **📡 SIGNAL CONFIGURATION** section (#433):
+
+| Plane | Question | Where it comes from |
+|---|---|---|
+| Archive | what *can* happen | `SignalCoverageReport`, read once in preparation Phase 1 |
+| Decision basis | what the strategy *actually decided on* | per-tick counters on every SIGNAL worker |
+
+The counters are three mutually exclusive classes that sum to the run's tick count:
+
+- **fresh** — a snapshot resolved and is younger than `max_staleness_minutes`
+- **stale** — a snapshot resolved but has aged out
+- **blind** — nothing resolved at all
+
+**`blind` is not an archive gap.** A hole *inside* the series resolves to the last snapshot before
+it, which is `stale`. `blind` means there was nothing to resolve at all, which in practice only
+happens at the head of a run — exactly the case the "window opens before the first snapshot"
+warning predicts.
+
+Why both planes are needed, in one example. The real `crypto_sentiment` archive has a 22-minute
+hole on 2026-07-23 (09:30 → 09:52), which the coverage report lists as a SHORT GAP. With
+`max_staleness_minutes: 30` the snapshot is 21 minutes old when the next arrives, so the run
+produces **zero** stale ticks — the strategy never noticed. With `max_staleness_minutes: 15` the
+same hole costs seven minutes of stale ticks. Same data, same coverage report, different outcome:
+the counters measure data **×** parameter, which is precisely what a parameter-centric backtest has
+to be able to see.
+
+The run summary carries the run's weakest channel as `signal_fresh_ratio` (the minimum over all
+scenario usages, unset when no SIGNAL worker ran) and writes it into the run-results ledger, so a
+parameter sweep or a multi-window robustness pass can tell whether two rows were produced on
+comparable data.
+
+Deterministic test cases for all of this are carved with the stress module rather than hand-built —
+see [Stress Test](../stress_test.md) and the `signal_resolution_cases` fixture set.
 
 ## Parquet columns — lean projection
 
@@ -282,15 +358,33 @@ not part of the heavy `sources` / `stage_timings` payload.
 
 > **Absence is not "unchanged".** Archives collected before the producer stamped these fields carry
 > no column at all; the reader projects each only where the schema has it, and an empty value reads
-> as *unknown*. Backfilling a constant would be a false claim of comparability — the real archive
-> demonstrably changed its symbol set on 2026-07-24, so a single value across it would be wrong.
-> For `trigger_reason` the same rule bites harder: mapping a missing value to `scheduled` would
-> silently fold restart and wake passes into the bar-close series.
+> as *unknown*. Backfilling is only ever legitimate where the value is **known** for the whole
+> stretch — never as a convenience. For `trigger_reason` it is not: mapping a missing value to
+> `scheduled` would silently fold restart and wake passes into the bar-close series, and no
+> reconstruction exists that does not use exactly the timing heuristic the field replaces.
 
-*Status (2026-08-16): `data_origin` is present in all four sources. `config_fingerprint` and
-`trigger_reason` are stamped in the two **mock** sources; the live engine ships them after its next
-restart, so the real archives currently read `unknown` for both. The import path is in place, so a
-newly exported day carries them without a code change.*
+`data_origin` and `config_fingerprint` **were** backfilled into the historical real archives, by
+`python/experiments/restore_signal_envelope_field.py`. Both values were known for the whole stretch:
+the folders only ever held producer output, and the operator supplied the running config's hash. The
+one caveat — the archive's symbol set grew on 2026-07-24, so strictly two configs existed — does not
+change a *symbol's* comparability, because retrieval runs per symbol against a feed-driven corpus:
+adding a symbol does not alter the scores of the others. The backfill was later confirmed by the
+producer itself, which computes the same hashes it was given.
+
+**A partially stamped archive states its unknown share.** When a producer gains a field mid-archive,
+the counted composition covers only part of it, and reporting the counts alone would read as if the
+producer had made that many passes in total. Both the coverage report and the run report therefore
+append the unattributed count, so the numbers add up to the snapshot count:
+
+```
+Snapshots:    2,512
+Triggers:     54 scheduled · 2 boot · 2 breaking · 2,454 unknown (pre-contract)
+```
+
+*Status (2026-08-17): `data_origin` and `config_fingerprint` are complete in all four sources.
+`trigger_reason` is complete in the two mock sources; in the real sources it starts at
+2026-08-16 14:51:50 UTC, when the live engine restarted with the field — everything before reads
+`unknown` and stays that way.*
 
 ## `data_path` override (dev)
 

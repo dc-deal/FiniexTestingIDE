@@ -194,7 +194,7 @@ def test_first_tick_resolves_a_signal(two_bucket_index):
         datetime(2026, 3, 2, 12, 0, tzinfo=timezone.utc))
 
     provider = SignalDataProvider(load_signal_series_from_parquet(
-        files, source='x', symbol=BUCKET_SYMBOL, start=window_start,
+        files, signal_kind='x', symbol=BUCKET_SYMBOL, start=window_start,
         end=datetime(2026, 3, 2, 12, 0, tzinfo=timezone.utc)))
 
     resolved = provider.nearest(window_start, BUCKET_SYMBOL)
@@ -209,7 +209,7 @@ def test_first_tick_resolves_a_signal(two_bucket_index):
 def test_reader_projects_symbol(imported_signals):
     files = imported_signals['index'].get_relevant_files('test_sentiment', 'BTCUSD', START, END)
     series = load_signal_series_from_parquet(
-        files, source='test', symbol='BTCUSD', start=START, end=END)
+        files, signal_kind='test', symbol='BTCUSD', start=START, end=END)
     # one snapshot per envelope; BTCUSD present in 5, empty (error) in 1
     assert len(series.snapshots) == 6
     present = [s for s in series.snapshots if s.result]
@@ -223,10 +223,10 @@ def test_reader_projects_symbol(imported_signals):
 @pytest.mark.parametrize('symbol', ['BTCUSD', 'ETHUSD'])
 def test_v0_parity(imported_signals, symbol):
     v0 = SignalDataProvider(load_signal_series(
-        imported_signals['jsonl'], source='x', start=START, end=END))
+        imported_signals['jsonl'], signal_kind='x', start=START, end=END))
     files = imported_signals['index'].get_relevant_files('test_sentiment', symbol, START, END)
     parquet = SignalDataProvider(load_signal_series_from_parquet(
-        files, source='x', symbol=symbol, start=START, end=END))
+        files, signal_kind='x', symbol=symbol, start=START, end=END))
 
     t = START
     while t <= END:
@@ -239,7 +239,7 @@ def test_defensive_hold_on_partial_and_error(imported_signals):
     # ETHUSD absent in envelope 2 (partial) + 3 (error) → defensive HOLD, confidence 0
     files = imported_signals['index'].get_relevant_files('test_sentiment', 'ETHUSD', START, END)
     parquet = SignalDataProvider(load_signal_series_from_parquet(
-        files, source='x', symbol='ETHUSD', start=START, end=END))
+        files, signal_kind='x', symbol='ETHUSD', start=START, end=END))
     for i in (2, 3):
         t = datetime.fromtimestamp((BASE_MSC + i * STEP_MSC) / 1000, tz=timezone.utc)
         resolved = parquet.nearest(t, 'ETHUSD')
@@ -268,6 +268,104 @@ def test_mixed_pipeline_id_rejected(tmp_path):
         importer.convert_jsonl_to_parquet(jsonl)
 
 
+# ---------------------------------------------------------------- finished archive
+
+class TestFinishedArchive:
+    """
+    An imported JSONL moves to the finished archive, so the raw directory holds only
+    what still needs importing. The raw JSONL is the audit source (sources / metadata /
+    errors survive nowhere else), so this is a move, never a delete.
+    """
+
+    def _tree(self, tmp_path, name: str = 'day.jsonl', source: str = 'sentiment_a'):
+        """A raw tree holding one valid one-envelope JSONL under a source folder."""
+        raw = tmp_path / 'raw' / source
+        raw.mkdir(parents=True)
+        line = {'collected_msc': BASE_MSC, 'schema_version': '1.0',
+                'pipeline_id': source, 'status': 'success', 'result': []}
+        (raw / name).write_text(json.dumps(line))
+        return tmp_path / 'raw', tmp_path / 'proc', tmp_path / 'finished'
+
+    def _importer(self, raw, proc, finished, override: bool = False):
+        return SignalDataImporter(
+            source_dir=str(raw), target_dir=str(proc), override=override,
+            finished_dir=str(finished) if finished else None)
+
+    def test_imported_file_moves_and_keeps_its_structure(self, tmp_path):
+        raw, proc, finished = self._tree(tmp_path)
+        self._importer(raw, proc, finished).process_all_signals()
+
+        assert not (raw / 'sentiment_a' / 'day.jsonl').exists()
+        assert (finished / 'sentiment_a' / 'day.jsonl').exists()
+        assert (proc / 'sentiment_a' / 'day.parquet').exists()
+
+    def test_without_finished_dir_the_file_stays(self, tmp_path):
+        raw, proc, _ = self._tree(tmp_path)
+        self._importer(raw, proc, None).process_all_signals()
+
+        assert (raw / 'sentiment_a' / 'day.jsonl').exists()
+
+    def test_rerun_without_override_finds_nothing_and_reports_no_error(self, tmp_path):
+        raw, proc, finished = self._tree(tmp_path)
+        self._importer(raw, proc, finished).process_all_signals()
+
+        # The whole point: a second run costs nothing instead of raising FileExistsError
+        # on every already-imported file.
+        again = self._importer(raw, proc, finished)
+        again.process_all_signals()
+        assert again.processed_files == 0
+        assert again.errors == []
+
+    def test_override_re_reads_the_finished_archive(self, tmp_path):
+        raw, proc, finished = self._tree(tmp_path)
+        self._importer(raw, proc, finished).process_all_signals()
+        (proc / 'sentiment_a' / 'day.parquet').unlink()
+
+        # 'override' means rebuilding what is already imported — which now lives in
+        # the archive, so that is where it must be read from.
+        rebuild = self._importer(raw, proc, finished, override=True)
+        rebuild.process_all_signals()
+        assert rebuild.processed_files == 1
+        assert (proc / 'sentiment_a' / 'day.parquet').exists()
+        assert (finished / 'sentiment_a' / 'day.jsonl').exists()
+
+    def test_a_re_exported_day_supersedes_its_archived_copy(self, tmp_path):
+        raw, proc, finished = self._tree(tmp_path)
+        self._importer(raw, proc, finished).process_all_signals()
+
+        # Same relative path back in raw — the newer export must win, and exactly one
+        # import must run (not two, which would make the outcome order-dependent).
+        (raw / 'sentiment_a').mkdir(parents=True, exist_ok=True)
+        line = {'collected_msc': BASE_MSC + STEP_MSC, 'schema_version': '1.0',
+                'pipeline_id': 'sentiment_a', 'status': 'success', 'result': []}
+        (raw / 'sentiment_a' / 'day.jsonl').write_text(json.dumps(line))
+
+        rerun = self._importer(raw, proc, finished, override=True)
+        rerun.process_all_signals()
+        assert rerun.processed_files == 1
+
+        archived = json.loads((finished / 'sentiment_a' / 'day.jsonl').read_text())
+        assert archived['collected_msc'] == BASE_MSC + STEP_MSC
+
+    def test_a_failed_import_leaves_the_file_in_place(self, tmp_path):
+        raw, proc, finished = self._tree(tmp_path)
+        lines = [
+            {'collected_msc': BASE_MSC, 'schema_version': '1.0',
+             'pipeline_id': 'a', 'status': 'success', 'result': []},
+            {'collected_msc': BASE_MSC + STEP_MSC, 'schema_version': '1.0',
+             'pipeline_id': 'b', 'status': 'success', 'result': []},
+        ]
+        (raw / 'sentiment_a' / 'day.jsonl').write_text(
+            '\n'.join(json.dumps(line) for line in lines))
+
+        importer = self._importer(raw, proc, finished)
+        importer.process_all_signals()
+
+        assert importer.errors
+        assert (raw / 'sentiment_a' / 'day.jsonl').exists()
+        assert not (finished / 'sentiment_a' / 'day.jsonl').exists()
+
+
 # ---------------------------------------------------------------- §33 availability
 
 def test_no_overlap_raises_unavailable(imported_signals):
@@ -279,7 +377,7 @@ def test_no_overlap_raises_unavailable(imported_signals):
     req_map = RequirementsMap()
     req_map.add_signal_requirement(SignalRequirement(
         scenario_name='out_of_range', broker_type='kraken_spot', symbol='BTCUSD',
-        source='llm_sentiment', data_sentiment_type='test_sentiment',
+        signal_kind='llm_sentiment', data_sentiment_type='test_sentiment',
         start_time=datetime(2020, 1, 1, tzinfo=timezone.utc),
         end_time=datetime(2020, 1, 2, tzinfo=timezone.utc)))
     scenario = SingleScenario(

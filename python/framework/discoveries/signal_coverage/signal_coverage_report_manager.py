@@ -21,7 +21,8 @@ from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.framework.discoveries.signal_coverage.signal_coverage_report import (
     SignalCoverageReport)
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import (
+    SignalScenarioInfo, SignalScenarioUsage, SingleScenario)
 
 # Index lookup bounds — a coverage report always spans the source's full history.
 _RANGE_START = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -52,6 +53,7 @@ class SignalCoverageReportManager:
         self._scenarios = scenarios
         self._signal_index_manager = signal_index_manager
         self._reports: Dict[Tuple[str, str], SignalCoverageReport] = {}
+        self._signal_scenario_map: Dict[Tuple[str, str], SignalScenarioInfo] = {}
 
     def generate_reports(self) -> None:
         """Generate coverage reports for all unique (data_sentiment_type, symbol) pairs."""
@@ -64,6 +66,7 @@ class SignalCoverageReportManager:
         # Early exit: no scenario binds a signal source
         if not pairs:
             self._reports = {}
+            self._signal_scenario_map = {}
             return
 
         reports: Dict[Tuple[str, str], SignalCoverageReport] = {}
@@ -74,6 +77,37 @@ class SignalCoverageReportManager:
         self._logger.info(
             f"✅ Generated {len(reports)} signal coverage report(s)")
         self._reports = reports
+        self._signal_scenario_map = self._build_signal_scenario_map(reports)
+
+    def _build_signal_scenario_map(
+        self,
+        reports: Dict[Tuple[str, str], SignalCoverageReport],
+    ) -> Dict[Tuple[str, str], SignalScenarioInfo]:
+        """
+        Join each coverage report with the scenario windows bound to it (#433).
+
+        Args:
+            reports: The generated coverage reports, keyed by (source, symbol)
+
+        Returns:
+            Signal scenario map keyed by (source, symbol)
+        """
+        signal_map = {
+            key: SignalScenarioInfo(
+                data_sentiment_type=key[0], symbol=key[1], coverage=report)
+            for key, report in reports.items()
+        }
+        for scenario in self._scenarios:
+            info = signal_map.get((scenario.data_sentiment_type, scenario.symbol))
+            if info is None:
+                continue
+            info.usages.append(SignalScenarioUsage(
+                scenario_name=scenario.name,
+                symbol=scenario.symbol,
+                window_start=scenario.start_date,
+                window_end=scenario.end_date,
+            ))
+        return signal_map
 
     def build_report(self, sentiment_type: str, symbol: str) -> SignalCoverageReport:
         """
@@ -105,3 +139,15 @@ class SignalCoverageReportManager:
             Report dict (empty when no scenario binds a signal source)
         """
         return self._reports
+
+    def get_signal_scenario_map(self) -> Dict[Tuple[str, str], SignalScenarioInfo]:
+        """
+        Coverage + the scenario windows bound to it, keyed by (source, symbol).
+
+        The signal sibling of the broker scenario map — the report reads it
+        instead of re-opening the parquet at run end (#433).
+
+        Returns:
+            Signal scenario map (empty when no scenario binds a signal source)
+        """
+        return self._signal_scenario_map

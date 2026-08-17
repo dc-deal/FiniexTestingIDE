@@ -1,4 +1,4 @@
-# Stale-Data Stress Tests (#436)
+# Stale-Data Stress Tests (#436, #433)
 
 ## Purpose
 
@@ -12,7 +12,8 @@ cross-process `BacktestingMetadata.received_events` channel (the #348 event-prob
 
 ```
 tests/simulation/stale_stress/
-└── test_stale_data_stress.py   ← 8 tests over one 5-scenario batch run
+├── test_stale_data_stress.py   ← 8 tests over one 5-scenario batch run (#436 contracts)
+└── test_signal_resolution.py   ← 19 tests over one 6-scenario batch run (#433 counters)
 ```
 
 Fixture set: `tests/fixtures/scenario_sets/stale_stress/stale_stress_probe.json` (§34) —
@@ -29,6 +30,28 @@ tick source, `data_sentiment_type` for the signal source).
 | `BTCUSD_overlap_warning` | `kraken_spot` window disjoint from the data range | Overlap-guard warning `data deviation` in the scenario buffer; zero events; scenario still succeeds |
 | `BTCUSD_unknown_source` | `nonexistent_feed` window | Scenario excluded at data preparation with a `ValidationError` naming the unknown source (§33 — the batch continues) |
 
+## Signal resolution counters (#433 Part C)
+
+The second suite asks a different question of the same machinery: not *did the contract fire*
+but **what did the strategy actually decide on** — the per-tick `fresh` / `stale` / `blind`
+counters every SIGNAL worker captures.
+
+Fixture set: `tests/fixtures/scenario_sets/signal_resolution/signal_resolution_cases.json` (§34) —
+the gap-free synthetic archive `crypto_sentiment_mock` (10-min cadence, zero gaps), so every
+anomaly in a case is provably the carved one and never an archive artifact.
+
+| Scenario | Stress | Asserts |
+|----------|--------|---------|
+| `clean` | none | every tick fresh — the control both other cases are compared against |
+| `restart_short_gap` | 10-min carve (one snapshot lost) | **zero stale ticks**: the resulting 20-min hole stays under the 30-min threshold. Counter-identical to `clean` — an archive gap is not a stale run |
+| `outage_2h` | 2-h carve, recovers inside the window | stale majority, fresh again after recovery, never blind (something always resolved) |
+| `stale_tail` | carve reaching past the window | stale to the last tick, still never blind |
+| `blind_head` | carve covering everything before the window | `blind > 0` then fresh — the only case that produces blind ticks |
+| `tight_threshold` | **no carve**, `max_staleness_minutes: 5` | half the run stale from the parameter alone. Same data as `clean`, so it proves the counters measure data × parameter |
+
+Structural invariant asserted for every case: `fresh + stale + blind == ticks_processed` — one
+count per tick, no double count, no miss.
+
 ## Running
 
 ```bash
@@ -37,10 +60,12 @@ pytest tests/simulation/stale_stress/ -v
 
 # Operator inspection with full logs + scenario summary
 # launch.json: 🧪 Simulation: Stale-Data Stress (Probe)
+# launch.json: 🧪 Simulation: Signal Resolution (Stress-Carved)
 ```
 
-**Runtime:** ~7 seconds (one shared 5-scenario batch, `scope='module'`).
+**Runtime:** ~9 seconds (two shared batch runs, `scope='module'`).
 
 **Related docs:** [Stress Test System](../../stress_test.md) ·
+[Signal Data Source](../../data_pipeline/signal_data_source.md) (source vs. decision basis) ·
 [Live Outage Handling](../../user_guides/live_outage_handling_guide.md) ·
 loop-side unit tests in [Loop Cadence Tests](../autotrader/loop_cadence_tests.md).

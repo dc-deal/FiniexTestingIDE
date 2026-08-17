@@ -23,7 +23,7 @@ def _schema_major(version: str) -> str:
 
 def load_signal_series(
     path: Path,
-    source: str,
+    signal_kind: str,
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
 ) -> SignalSeries:
@@ -36,7 +36,7 @@ def load_signal_series(
 
     Args:
         path: Archived JSONL file path
-        source: Signal source label (e.g. 'llm_sentiment')
+        signal_kind: Payload kind label (e.g. 'llm_sentiment')
         start: Scenario start — keep one pre-start snapshot (None = no lower bound)
         end: Scenario end — drop later snapshots (None = no upper bound)
 
@@ -74,4 +74,4 @@ def load_signal_series(
                 break
         snapshots = snapshots[keep_from:]
 
-    return SignalSeries(source=source, snapshots=snapshots)
+    return SignalSeries(signal_kind=signal_kind, snapshots=snapshots)

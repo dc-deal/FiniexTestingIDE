@@ -205,18 +205,18 @@ def inject_signal_providers(
         return
 
     providers = {
-        source: SignalDataProvider(series)
-        for source, series in shared_data.signal_series.items()
+        signal_kind: SignalDataProvider(series)
+        for signal_kind, series in shared_data.signal_series.items()
     }
     for worker in workers:
         if isinstance(worker, AbstractSignalWorker):
-            source = worker.get_signal_source()
-            provider = providers.get(source)
+            signal_kind = worker.get_consumed_signal_kind()
+            provider = providers.get(signal_kind)
             if provider is None:
                 continue
             worker.set_signal_provider(provider)
             logger.debug(
-                f"📡 Injected signal provider '{source}' "
+                f"📡 Injected signal provider '{signal_kind}' "
                 f"into worker '{worker.name}'"
             )
 

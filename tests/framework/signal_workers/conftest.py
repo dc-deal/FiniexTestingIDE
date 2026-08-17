@@ -74,5 +74,5 @@ def error_snapshot(collected_msc: datetime) -> SignalSnapshot:
 def make_provider(*snapshots: SignalSnapshot) -> SignalDataProvider:
     """Build a provider over the given snapshots (any order)."""
     return SignalDataProvider(
-        SignalSeries(source='llm_sentiment', snapshots=list(snapshots))
+        SignalSeries(signal_kind='llm_sentiment', snapshots=list(snapshots))
     )

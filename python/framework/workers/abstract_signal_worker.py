@@ -11,7 +11,7 @@ from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef
-from python.framework.types.signal_data_types import ResolvedSignal
+from python.framework.types.signal_data_types import ResolvedSignal, SignalResolution
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
 
@@ -29,9 +29,11 @@ class AbstractSignalWorker(AbstractWorker):
     rides #375; should_refresh is the forward-compatible seam.
     """
 
-    # Signal source key this worker reads (e.g. 'llm_sentiment') — consumed by the
-    # data-preparation layer to load the matching archive. Concrete workers set it.
-    SIGNAL_SOURCE: str = ''
+    # The signal PAYLOAD KIND this worker consumes (e.g. 'llm_sentiment') — the slot the
+    # data-preparation layer hands the matching series to. Deliberately NOT called a
+    # "source": the source is the archive identity (pipeline_id = data_sentiment_type), and
+    # one kind is read from many sources. Concrete workers set it.
+    CONSUMED_SIGNAL_KIND: str = ''
 
     def __init__(
         self,
@@ -63,6 +65,8 @@ class AbstractSignalWorker(AbstractWorker):
         self._last_snapshot_msc = None
         # Staleness of the last served result (staleness-flip refresh tracking, #434).
         self._last_served_stale: Optional[bool] = None
+        # Resolution class of the last evaluated result (#433 Part C counters).
+        self._last_resolution: SignalResolution = SignalResolution.BLIND
 
     def set_signal_provider(self, provider: SignalDataProvider) -> None:
         """
@@ -139,9 +143,9 @@ class AbstractSignalWorker(AbstractWorker):
         return WorkerType.SIGNAL
 
     @classmethod
-    def get_signal_source(cls) -> str:
-        """The signal source key this worker reads (e.g. 'llm_sentiment')."""
-        return cls.SIGNAL_SOURCE
+    def get_consumed_signal_kind(cls) -> str:
+        """The signal payload kind this worker consumes (e.g. 'llm_sentiment')."""
+        return cls.CONSUMED_SIGNAL_KIND
 
     @classmethod
     def get_required_activity_metric(cls) -> Optional[str]:
@@ -176,7 +180,11 @@ class AbstractSignalWorker(AbstractWorker):
         current_msc = resolved.collected_msc if resolved else None
         if current_msc != self._last_snapshot_msc:
             return True
-        return self._evaluate_stale(resolved, tick) != self._last_served_stale
+        stale = self._evaluate_stale(resolved, tick)
+        # No refresh ahead → the cached result is what this tick serves, so its
+        # resolution class is recorded here for the per-tick counter (#433 Part C).
+        self._last_resolution = self._classify(resolved, stale)
+        return stale != self._last_served_stale
 
     def compute_signal(self, tick: TickData) -> WorkerResult:
         """
@@ -197,6 +205,7 @@ class AbstractSignalWorker(AbstractWorker):
         stale = self._evaluate_stale(resolved, tick)
         self._last_snapshot_msc = resolved.collected_msc if resolved else None
         self._last_served_stale = stale
+        self._last_resolution = self._classify(resolved, stale)
         # Envelope stamp (#434): the framework owns the feed-status channel —
         # the payload mapping (_build_result) never sets it.
         result = self._build_result(resolved, tick)
@@ -224,6 +233,46 @@ class AbstractSignalWorker(AbstractWorker):
             return True
         age_minutes = (tick.timestamp - resolved.collected_msc).total_seconds() / 60.0
         return age_minutes > self.params.get('max_staleness_minutes')
+
+    def _classify(
+        self,
+        resolved: Optional[ResolvedSignal],
+        stale: bool
+    ) -> SignalResolution:
+        """
+        Classify a resolved signal for the per-tick resolution counters (#433).
+
+        Splits the two cases _evaluate_stale collapses into one True: a real
+        snapshot that aged out (STALE) versus nothing resolvable at all (BLIND).
+
+        Args:
+            resolved: The point-in-time signal, or None when nothing resolved
+            stale: The staleness verdict for that signal
+
+        Returns:
+            The resolution class of this result
+        """
+        if resolved is None:
+            return SignalResolution.BLIND
+        return SignalResolution.STALE if stale else SignalResolution.FRESH
+
+    def get_last_resolution(self) -> SignalResolution:
+        """
+        Resolution class of the result this worker currently serves (#433).
+
+        Returns:
+            The last evaluated SignalResolution
+        """
+        return self._last_resolution
+
+    def get_symbol(self) -> Optional[str]:
+        """
+        The scenario symbol this instance reads its per-symbol result for.
+
+        Returns:
+            The symbol, or None when no trading context was injected
+        """
+        return self._symbol
 
     @abstractmethod
     def _build_result(

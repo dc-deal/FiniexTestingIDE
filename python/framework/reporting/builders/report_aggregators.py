@@ -9,13 +9,13 @@ group per account currency; ratios (win rate / profit factor) are recomputed fro
 components, never summed.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from python.framework.types.api.report_types import (
     AggregatedPortfolioRow, AggregatedPortfolioSpotScenarioRow,
     ExecutionStatsRow, ExecutionStatsTotals, PendingOrdersUnitRow, PortfolioAggregateRow,
     PortfolioUnitRow, ProfilingAggregate, ProfilingBottleneckRow, ProfilingOperationRow,
-    ProfilingUnitRow, TradeAnalytics, TradeHistoryRow, TradeScenarioTotals, WorkerDecisionUnitRow,
+    ProfilingUnitRow, SignalReport, TradeAnalytics, TradeHistoryRow, TradeScenarioTotals, WorkerDecisionUnitRow,
     WorkerStatRow)
 from python.framework.types.scenario_types.scenario_set_performance_types import EXPECTED_OPERATIONS
 
@@ -432,3 +432,29 @@ def _bottleneck_status(operation: str, count: int) -> str:
     if count == 0:
         return 'none'
     return 'expected' if operation in EXPECTED_OPERATIONS else 'infra'
+
+
+# --- Signal resolution quality (run-wide, #433) ----------------------------------------
+
+def aggregate_signal_fresh_ratio(report: SignalReport) -> Optional[float]:
+    """
+    The run's weakest SIGNAL channel: the MINIMUM fresh ratio over all usage rows.
+
+    Minimum, not mean: a mean would hide a dead channel behind a healthy one, and the
+    number exists to say how far the run's decisions can be trusted. Usages that
+    processed no tick are skipped (nothing was decided on them).
+
+    Args:
+        report: The built signal report
+
+    Returns:
+        Ratio 0.0–1.0, or None when no SIGNAL worker resolved anything (deliberately not
+        1.0 — that would claim a perfect feed where there was none)
+    """
+    ratios = [
+        usage.fresh_ratio
+        for unit in report.units
+        for usage in unit.usages
+        if usage.fresh_ticks + usage.stale_ticks + usage.blind_ticks > 0
+    ]
+    return min(ratios) if ratios else None

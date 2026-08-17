@@ -16,7 +16,7 @@ from python.framework.reporting.store.report_store import ReportStore
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, OrderHistoryReport,
     PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary, ScenarioDetailsReport,
-    TradeHistoryReport, WarningsErrorsReport, WorkerDecisionReport)
+    SignalReport, TradeHistoryReport, WarningsErrorsReport, WorkerDecisionReport)
 
 router = APIRouter()
 
@@ -266,6 +266,26 @@ def get_broker(run_id: str) -> BrokerReport:
         raise ApiException(
             404, 'run_not_found',
             f"No broker artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/signal', response_model=SignalReport)
+def get_signal(run_id: str) -> SignalReport:
+    """
+    Signal-configuration report for a run (#433): per-source provenance + the run's
+    decision basis (fresh / stale / blind ticks per scenario).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The SignalReport (404 if the run has no signal artifact)
+    """
+    report = ReportStore().get_signal(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No signal artifact for run '{run_id}'")
     return report
 
 

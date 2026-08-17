@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
+from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
@@ -291,6 +292,30 @@ class BrokerScenarioInfo:
     scenarios: List[str]
     symbols: Set[str]
     broker_config: BrokerConfig
+
+
+@dataclass
+class SignalScenarioUsage:
+    """One scenario's use of a signal source — its data window (#433)."""
+    scenario_name: str
+    symbol: str
+    window_start: datetime
+    window_end: Optional[datetime] = None
+
+
+@dataclass
+class SignalScenarioInfo:
+    """
+    Internal mapping of a signal source/symbol to the scenarios using it (#433).
+
+    The signal sibling of BrokerScenarioInfo: it carries the archive-side coverage
+    (built once in the preparation Phase 1) plus every scenario window bound to it,
+    so the report renders both planes without re-reading the parquet.
+    """
+    data_sentiment_type: str
+    symbol: str
+    coverage: SignalCoverageReport
+    usages: List[SignalScenarioUsage] = field(default_factory=list)
 
 
 @dataclass

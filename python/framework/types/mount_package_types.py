@@ -25,7 +25,8 @@ from python.framework.types.process_data_types import (
     ProcessDataPackage,
     RequirementsMap,
 )
-from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import (
+    BrokerScenarioInfo, SignalScenarioInfo, SingleScenario)
 from python.framework.types.trading_env_types.broker_types import BrokerType
 
 
@@ -100,6 +101,8 @@ class MountPackage:
     broker_configs: Dict[BrokerType, Dict[str, Any]]
     # broker type → scenario info (consumed by the run summary)
     broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo]
+    # (signal source, symbol) → coverage + the scenario windows bound to it (#433 report)
+    signal_scenario_map: Dict[Tuple[str, str], SignalScenarioInfo]
     # aggregated data requirements (data-level; the warmup source for the identity guard)
     requirements_map: RequirementsMap
     # per-phase warmup timing breakdown

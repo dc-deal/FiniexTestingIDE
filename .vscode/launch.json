@@ -466,6 +466,22 @@
             }
         },
         {
+            "name": "📡 Run Sentiment Short-Gap (BTCUSD, 22m real gap)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/sentiment_short_gap_realdata.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_strategy_runner",
+                "order": 10
+            }
+        },
+        {
             "name": "🔬🧪 Run User Scenario Set (prompt)",
             "type": "debugpy",
             "request": "launch",
@@ -478,7 +494,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_strategy_runner",
-                "order": 10
+                "order": 11
             }
         },
         {
@@ -496,7 +512,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_strategy_runner",
-                "order": 11
+                "order": 12
             }
         },
         {
@@ -514,7 +530,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_strategy_runner",
-                "order": 12
+                "order": 13
             }
         },
         // ====================================================
@@ -2869,6 +2885,22 @@
             }
         },
         {
+            "name": "🧪 Simulation: Signal Resolution (Stress-Carved)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "tests/fixtures/scenario_sets/signal_resolution/signal_resolution_cases.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 82
+            }
+        },
+        {
             "name": "🧪 Simulation: SL/TP & Limit Validation",
             "type": "debugpy",
             "request": "launch",
@@ -2881,7 +2913,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 82
+                "order": 83
             }
         },
         {
@@ -2897,7 +2929,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 83
+                "order": 84
             }
         },
         {
@@ -2913,7 +2945,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 84
+                "order": 85
             }
         },
         {
@@ -2929,7 +2961,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 85
+                "order": 86
             }
         },
         {
@@ -2945,7 +2977,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 86
+                "order": 87
             }
         },
         {
@@ -2961,7 +2993,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_pytest_validation",
-                "order": 87
+                "order": 88
             }
         },
         // ====================================================

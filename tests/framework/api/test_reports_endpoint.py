@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from python.api.api_app import create_app
 from python.framework.reporting.io.aggregated_portfolio_report_io import write_aggregated_portfolio_report
 from python.framework.reporting.io.broker_report_io import write_broker_report
+from python.framework.reporting.io.signal_report_io import write_signal_report
 from python.framework.reporting.io.execution_stats_report_io import write_execution_stats_report
 from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.io.order_history_report_io import write_order_history_report
@@ -32,6 +33,7 @@ from python.framework.types.api.report_types import (
     OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
     PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow, RunSummary, RunSummaryCurrency,
     ScenarioDetailsReport, ScenarioDetailsRow,
+    SignalReport, SignalSourceRow, SignalUsageRow,
     TradeAnalytics, TradeHistoryReport, TradeHistoryRow,
     UnitErrorRow, WarningRow, WarningsErrorsOutcome, WarningsErrorsReport)
 
@@ -48,6 +50,7 @@ _PENDING_URL = f'/api/v1/reports/runs/{_RUN}/pending-orders'
 _SCENARIO_URL = f'/api/v1/reports/runs/{_RUN}/scenario-details'
 _RUNSUMMARY_URL = f'/api/v1/reports/runs/{_RUN}/run-summary'
 _BROKER_URL = f'/api/v1/reports/runs/{_RUN}/broker'
+_SIGNAL_URL = f'/api/v1/reports/runs/{_RUN}/signal'
 _WARNINGS_URL = f'/api/v1/reports/runs/{_RUN}/warnings-errors'
 _AGG_URL = f'/api/v1/reports/runs/{_RUN}/aggregated-portfolio'
 
@@ -144,6 +147,16 @@ def _broker_report() -> BrokerReport:
         symbols=[BrokerSymbolRow(symbol='BTCUSD', base_currency='BTC', quote_currency='USD')])])
 
 
+def _signal_report() -> SignalReport:
+    return SignalReport(units=[SignalSourceRow(
+        source='crypto_sentiment_mock', data_origin='synthetic',
+        config_fingerprint='mock-1e9e9fc4', cadence_seconds=597.0, snapshot_count=1091,
+        trigger_reasons={'scheduled': 1008, 'breaking': 83},
+        usages=[SignalUsageRow(
+            scenario='btc_run', symbol='BTCUSD', coverage_ratio=1.0,
+            fresh_ticks=900, stale_ticks=100, blind_ticks=0, fresh_ratio=0.9)])])
+
+
 def _warnings_errors_report() -> WarningsErrorsReport:
     return WarningsErrorsReport(
         warnings=[WarningRow(tier='major', scope='run', message='DEBUG MODE')],
@@ -174,6 +187,7 @@ def client(tmp_path: Path):
     write_scenario_details_report(_scenario_details_report(), io_dir)
     write_run_summary(_run_summary(), io_dir)
     write_broker_report(_broker_report(), io_dir)
+    write_signal_report(_signal_report(), io_dir)
     write_warnings_errors_report(_warnings_errors_report(), io_dir)
     write_aggregated_portfolio_report(_aggregated_portfolio_report(), io_dir)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
@@ -303,6 +317,19 @@ def test_broker_returns(client):
 
 def test_broker_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/broker')
+    assert response.status_code == 404
+
+
+def test_signal_returns(client):
+    response = client.get(_SIGNAL_URL)
+    assert response.status_code == 200
+    body = response.json()
+    assert body['units'][0]['source'] == 'crypto_sentiment_mock'
+    assert body['units'][0]['usages'][0]['stale_ticks'] == 100
+
+
+def test_signal_run_not_found(client):
+    response = client.get('/api/v1/reports/runs/nope/signal')
     assert response.status_code == 404
 
 

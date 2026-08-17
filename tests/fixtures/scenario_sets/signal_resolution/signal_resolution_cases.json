@@ -1,0 +1,172 @@
+{
+    "version": "1.0",
+    "scenario_set_name": "signal_resolution_cases",
+    "created": "2026-08-16T00:00:00.000000",
+    "description": "Signal resolution counters (#433 Part C): six deterministic cases on the gap-free synthetic sentiment archive, every anomaly carved by the stress module (stale_data_stress) so the expectation is exact. Covers the two things the archive-side coverage report cannot answer — a gap SHORTER than max_staleness costs zero stale ticks, and a threshold TIGHTER than the producer cadence turns half the run stale without touching the data.",
+    "global": {
+        "data_mode": "realistic",
+        "strategy_config": {
+            "decision_logic_type": "CORE/backtesting/backtesting_outage_probe",
+            "worker_instances": {
+                "sentiment": "CORE/llm_sentiment"
+            },
+            "workers": {
+                "sentiment": {
+                    "max_staleness_minutes": 30
+                }
+            },
+            "decision_logic_config": {
+                "lot_size": 0.001
+            }
+        },
+        "execution_config": {
+            "parallel_workers": false
+        },
+        "trade_simulator_config": {
+            "balances": {
+                "USD": 10000
+            },
+            "seeds": {
+                "inbound_latency_seed": 42424
+            }
+        }
+    },
+    "scenarios": [
+        {
+            "name": "clean",
+            "symbol": "BTCUSD",
+            "data_broker_type": "kraken_spot",
+            "data_sentiment_type": "crypto_sentiment_mock",
+            "start_date": "2026-04-27T06:00:00+00:00",
+            "end_date": "2026-04-27T07:00:00+00:00",
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {},
+            "execution_config": {},
+            "trade_simulator_config": {}
+        },
+        {
+            "name": "restart_short_gap",
+            "symbol": "BTCUSD",
+            "data_broker_type": "kraken_spot",
+            "data_sentiment_type": "crypto_sentiment_mock",
+            "start_date": "2026-04-27T06:00:00+00:00",
+            "end_date": "2026-04-27T07:00:00+00:00",
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {},
+            "execution_config": {},
+            "trade_simulator_config": {},
+            "stress_test_config": {
+                "stale_data_stress": {
+                    "enabled": true,
+                    "events": [
+                        {
+                            "label": "producer restart — one snapshot lost",
+                            "data_source": "crypto_sentiment_mock",
+                            "stale_start_date": "2026-04-27T06:05:00+00:00",
+                            "stale_end_date": "2026-04-27T06:15:00+00:00"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "outage_2h",
+            "symbol": "BTCUSD",
+            "data_broker_type": "kraken_spot",
+            "data_sentiment_type": "crypto_sentiment_mock",
+            "start_date": "2026-04-27T06:00:00+00:00",
+            "end_date": "2026-04-27T09:00:00+00:00",
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {},
+            "execution_config": {},
+            "trade_simulator_config": {},
+            "stress_test_config": {
+                "stale_data_stress": {
+                    "enabled": true,
+                    "events": [
+                        {
+                            "label": "producer outage 2h, recovers inside the window",
+                            "data_source": "crypto_sentiment_mock",
+                            "stale_start_date": "2026-04-27T06:25:00+00:00",
+                            "stale_end_date": "2026-04-27T08:25:00+00:00"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "stale_tail",
+            "symbol": "BTCUSD",
+            "data_broker_type": "kraken_spot",
+            "data_sentiment_type": "crypto_sentiment_mock",
+            "start_date": "2026-04-27T06:00:00+00:00",
+            "end_date": "2026-04-27T08:00:00+00:00",
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {},
+            "execution_config": {},
+            "trade_simulator_config": {},
+            "stress_test_config": {
+                "stale_data_stress": {
+                    "enabled": true,
+                    "events": [
+                        {
+                            "label": "feed dies mid-run and never returns",
+                            "data_source": "crypto_sentiment_mock",
+                            "stale_start_date": "2026-04-27T06:25:00+00:00",
+                            "stale_end_date": "2026-04-27T09:00:00+00:00"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "blind_head",
+            "symbol": "BTCUSD",
+            "data_broker_type": "kraken_spot",
+            "data_sentiment_type": "crypto_sentiment_mock",
+            "start_date": "2026-04-27T06:00:00+00:00",
+            "end_date": "2026-04-27T06:30:00+00:00",
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {},
+            "execution_config": {},
+            "trade_simulator_config": {},
+            "stress_test_config": {
+                "stale_data_stress": {
+                    "enabled": true,
+                    "events": [
+                        {
+                            "label": "no snapshot exists before the window opens",
+                            "data_source": "crypto_sentiment_mock",
+                            "stale_start_date": "2026-04-27T00:00:00+00:00",
+                            "stale_end_date": "2026-04-27T06:05:00+00:00"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "tight_threshold",
+            "symbol": "BTCUSD",
+            "data_broker_type": "kraken_spot",
+            "data_sentiment_type": "crypto_sentiment_mock",
+            "start_date": "2026-04-27T06:00:00+00:00",
+            "end_date": "2026-04-27T07:00:00+00:00",
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {
+                "workers": {
+                    "sentiment": {
+                        "max_staleness_minutes": 5
+                    }
+                }
+            },
+            "execution_config": {},
+            "trade_simulator_config": {}
+        }
+    ]
+}

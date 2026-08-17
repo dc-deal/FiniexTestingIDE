@@ -13,7 +13,7 @@ from python.framework.batch.mount_preparer import MountPreparer
 from python.framework.batch.requirements_collector import RequirementsCollector
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.process_data_types import ProcessDataPackage
+from python.framework.types.autotrader_types.autotrader_session_data_types import PreparedSessionData
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.utils.time_utils import parse_datetime
 
@@ -57,21 +57,22 @@ def build_scenario_from_config(config: AutoTraderConfig) -> SingleScenario:
 def prepare_mock_session_data(
     config: AutoTraderConfig,
     logger: ScenarioLogger,
-) -> ProcessDataPackage:
+) -> PreparedSessionData:
     """
     Prepare the mock session's ticks + warmup bars + signal series via the shared MountPreparer.
 
     Builds the scenario the profile describes and runs it through the same Phase 0–5 stack the
     backtesting batch uses (broker/currency validation + index-resolved tick/bar/signal load). A
     config or data error excludes the single scenario → the session ABORTS at startup (§35), never
-    at the first tick.
+    at the first tick. The signal scenario map travels with the package so the end-of-session
+    report renders the 📡 section from the same preparation the sim batch uses (#433).
 
     Args:
         config: AutoTrader configuration (mock mode; scenario_settings present)
         logger: Session logger
 
     Returns:
-        The prepared ProcessDataPackage (ticks + bars + signal series)
+        The prepared data (ProcessDataPackage + signal scenario map)
     """
     scenario = build_scenario_from_config(config)
     preparer = MountPreparer(
@@ -88,4 +89,5 @@ def prepare_mock_session_data(
         raise ValueError(
             f"AutoTrader mock data preparation failed for '{scenario.name}': {errors}"
         )
-    return package
+    return PreparedSessionData(
+        package=package, signal_scenario_map=mount.signal_scenario_map)
