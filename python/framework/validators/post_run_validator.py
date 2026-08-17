@@ -15,13 +15,12 @@ from typing import Optional
 
 from python.framework.reporting.builders.robustness_report_builder import build_robustness_report_from_batch
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.data_format_types import (
-    TickTimingOrigin, classify_timing_origin)
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.scenario_types.scenario_set_performance_types import (
     EXPECTED_OPERATIONS, ProfilingData)
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.validation_types import ValidationResult
+from python.framework.utils.version_utils import parse_version
 
 # Overhead verdict threshold — coordination overhead as a share of computation time.
 _HIGH_OVERHEAD_RATIO = 0.5
@@ -101,49 +100,30 @@ class PostRunValidator:
         self._add('stress_test', '\n'.join(lines))
 
     def _check_data_version(self) -> None:
-        """Warn on pre-V1.3.0 data (synthesized collected_msc) and on files with no known version."""
+        """
+        Warn when the tick index carries no data format version for a file.
+
+        Deliberately makes no claim about the data itself: data_format_version is an
+        operator-set collector input declaring a schema, not a record of how a field was
+        obtained (a collector that starts recording collected_msc without a version bump
+        is invisible in it). Only the absence of the field is a fact this can state.
+        """
         total_files = 0
-        pre_v130_files = 0
         unknown_files = 0
         for scenario in self._batch.single_scenario_list:
             for version in scenario.data_format_versions:
                 total_files += 1
-                origin = classify_timing_origin(version)
-                # An unparseable version is NOT evidence of old data — the index
-                # simply carries no version for that file.
-                if origin == TickTimingOrigin.UNKNOWN:
+                if parse_version(version) is None:
                     unknown_files += 1
-                elif origin == TickTimingOrigin.RESTORED:
-                    pre_v130_files += 1
 
-        if unknown_files > 0:
-            self._add('data_version_unknown', (
-                f"Data format version unknown for {unknown_files}/{total_files} file(s) — "
-                f"the tick index carries no version for them\n"
-                f"  → If the index predates the version field, rebuild it:\n"
-                f"    python python/cli/tick_index_cli.py rebuild"))
-
-        if pre_v130_files == 0:
+        if unknown_files == 0:
             return
 
-        lines = [
-            f"Data includes pre-V1.3.0 files ({pre_v130_files}/{total_files}): "
-            f"inter-tick intervals based on synthesized collected_msc"]
-
-        # Kraken-specific caveat: synthetic 1ms spacing dominates interval statistics
-        has_kraken = any(
-            'kraken' in s.data_broker_type
-            for s in self._batch.single_scenario_list
-            if s.data_format_versions and any(
-                classify_timing_origin(v) == TickTimingOrigin.RESTORED
-                for v in s.data_format_versions
-            )
-        )
-        if has_kraken:
-            lines.append(
-                '  → restored Kraken trade fills: the 1 ms spacing was synthesized by the '
-                'restore — real arrival cadence unknown')
-        self._add('data_version', '\n'.join(lines))
+        self._add('data_version_unknown', (
+            f"Data format version unknown for {unknown_files}/{total_files} file(s) — "
+            f"the tick index carries no version for them\n"
+            f"  → If the index predates the version field, rebuild it:\n"
+            f"    python python/cli/tick_index_cli.py rebuild"))
 
     def _check_budget(self) -> None:
         """Warn when avg tick processing exceeds the P5 interval (consider setting a budget)."""

@@ -75,7 +75,7 @@ Adding metadata to reports does NOT require threading through subprocesses. The 
 3. **If the data is loaded once for all scenarios** (e.g., broker configs):
    → Distribute via `ProcessDataPackage.broker_configs` AND tag on `BatchExecutionSummary.broker_scenario_map`. No round-trip.
 
-**Example**: `data_format_versions` (V1.3.0 warning) follows pattern 1 — populated from tick index during `SharedDataPreparator.prepare_scenario_packages()`, stored on `SingleScenario`, judged by `PostRunValidator._check_data_version()` and rendered by `WarningsSummary`. Zero subprocess overhead.
+**Example**: `data_format_versions` follows pattern 1 — populated from tick index during `SharedDataPreparator.prepare_scenario_packages()`, stored on `SingleScenario`, judged by `PostRunValidator._check_data_version()` and rendered by `WarningsSummary`. Zero subprocess overhead.
 
 ## Report Sections: Spot-Aware Reporting
 
@@ -93,5 +93,4 @@ Mixed batches (margin + spot scenarios in the same currency group) are split int
 
 Current warnings:
 - **Stress test active** — lists active stress test configs grouped by signature
-- **Data format version** — flags pre-V1.3.0 data with synthesized `collected_msc` intervals, includes the caveat about the restore's synthetic 1ms fill spacing on Kraken
-- **Data format version unknown** — the tick index carries no version for a file; points at the index rebuild instead of claiming the data is old
+- **Data format version unknown** — the tick index carries no version for a file; points at the index rebuild. The version itself is a declared schema (an operator-set collector input), so nothing derives a data-quality claim from it
