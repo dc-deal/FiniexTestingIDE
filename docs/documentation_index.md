@@ -121,6 +121,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Swap Cost Accrual](tests/simulation/swap_cost_tests.md) | Overnight swap accrual: debit/credit/triple, spot=0, determinism (#365) |
 | [Robustness Validation](tests/simulation/robustness_tests.md) | Multi-window + IS/OOS: roles, distribution, WFE, constancy guard, verdict (#367) |
 | [Trend Channel Reference](tests/simulation/trend_channel_reference_tests.md) | Didactic full-order-surface reference: LIMIT/STOP entries, SL/TP, trailing, partial, multi-position (#118) |
+| [Stale-Data Stress](tests/simulation/stale_stress_tests.md) | Planned stale windows drive both staleness contracts (#436) + per-tick signal resolution counters (#433) |
 | [Benchmark](tests/simulation/benchmark_tests.md) | Performance regression (environment-specific) |
 | [Import Pipeline](tests/data/import_pipeline_tests.md) | Tick/bar import pipeline |
 | [Signal Import](tests/data/signal_import_tests.md) | Signal JSONL→parquet import, index, projected reader, v0 parity (#429) |

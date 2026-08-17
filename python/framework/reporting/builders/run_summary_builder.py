@@ -10,15 +10,17 @@ API, live snapshot).
 
 from typing import Dict, Optional
 
+from python.framework.reporting.builders.report_aggregators import aggregate_signal_fresh_ratio
 from python.framework.types.api.report_types import (
     ExecutionStatsReport, PortfolioAggregateRow, PortfolioReport, RunSummary,
-    RunSummaryCurrency, TradeAnalytics, TradeHistoryReport)
+    RunSummaryCurrency, SignalReport, TradeAnalytics, TradeHistoryReport)
 
 
 def build_run_summary(
     portfolio_report: PortfolioReport,
     trade_report: TradeHistoryReport,
     execution_report: ExecutionStatsReport,
+    signal_report: Optional[SignalReport] = None,
 ) -> RunSummary:
     """
     Compose the run-wide KPI summary from the section reports.
@@ -27,6 +29,8 @@ def build_run_summary(
         portfolio_report: The portfolio report (per-currency aggregates)
         trade_report: The trade-history report (per-currency analytics)
         execution_report: The execution-stats report (global order totals)
+        signal_report: The signal report (#433) — supplies the run's weakest fresh ratio;
+            None / no SIGNAL worker leaves the ratio unset
 
     Returns:
         RunSummary with one KPI row per currency + the global order counts
@@ -45,6 +49,8 @@ def build_run_summary(
         orders_rejected=totals.orders_rejected,
         sl_tp_triggered=totals.sl_tp_triggered,
         unit_count=len(portfolio_report.units),
+        signal_fresh_ratio=(
+            aggregate_signal_fresh_ratio(signal_report) if signal_report else None),
     )
 
 

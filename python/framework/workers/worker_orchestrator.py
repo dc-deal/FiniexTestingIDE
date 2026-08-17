@@ -17,6 +17,7 @@ from python.framework.workers.worker_performance_tracker import WorkerPerformanc
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.market_types.market_data_types import Bar, BarRenderState, TickData
 from python.framework.types.performance_types.performance_stats_types import WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
+from python.framework.types.signal_data_types import SignalResolution, SignalResolutionStats
 from python.framework.types.worker_types import ComputeBasis, SUBSCRIBE_ALL, WorkerRequirement, WorkerResult, WorkerState
 from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
@@ -88,6 +89,18 @@ class WorkerOrchestrator:
             if isinstance(worker, AbstractSignalWorker)
         }
         self._signal_stale_state: Dict[str, bool] = {}
+
+        # Per-tick resolution counters (#433 Part C) — one row per SIGNAL worker.
+        # Counted HERE, not in the worker: this is the only loop that runs exactly
+        # once per tick per SIGNAL worker (the worker itself only computes on refresh).
+        self._signal_resolution_stats: Dict[str, SignalResolutionStats] = {
+            name: SignalResolutionStats(
+                worker_name=name,
+                signal_kind=worker.get_consumed_signal_kind(),
+                symbol=worker.get_symbol() or '',
+            )
+            for name, worker in self._signal_workers.items()
+        }
 
         # Parallelization configuration
         if parallel_workers is None:
@@ -396,10 +409,11 @@ class WorkerOrchestrator:
                 tick, bar_updated, bar_history, current_bars, closed_timeframes
             )
 
-        # Signal-outage contract (#434): fire on_signal_stale on fresh→stale
-        # transitions BEFORE the decision computes, so it reacts in this pass.
+        # Signal pass: count this tick's resolution (#433) and fire on_signal_stale
+        # on fresh→stale transitions (#434) BEFORE the decision computes, so it
+        # reacts in this pass.
         if self._signal_workers:
-            self._dispatch_signal_stale_transitions()
+            self._process_signal_pass()
 
         # ============================================
         # Delegate to DecisionLogic
@@ -432,23 +446,43 @@ class WorkerOrchestrator:
 
         return decision
 
-    def _dispatch_signal_stale_transitions(self) -> None:
+    def _process_signal_pass(self) -> None:
         """
-        Fire on_signal_stale for every SIGNAL worker whose result flipped
-        fresh→stale (#434 edge trigger).
+        The per-tick SIGNAL pass: count the resolution + fire the stale edge.
 
-        Edge-triggered: once per flip (a session that STARTS stale fires on the
-        first result). Recovery (stale→fresh) only resets the edge state — the
-        decision sees freshness via is_stale in worker_results.
+        Both in ONE loop over the SIGNAL workers — it runs exactly once per tick
+        (after the sequential AND the parallel worker path), which is what makes
+        the counters tick-exact.
+
+        Counting (#433 Part C): every tick adds exactly one count per SIGNAL
+        worker, taken from the worker's resolution class. Between two refreshes
+        the cached class stays correct by construction — should_refresh forces a
+        refresh on both a snapshot change and a staleness flip, and a blind↔data
+        transition always changes collected_msc.
+
+        Stale edge (#434): on_signal_stale fires once per fresh→stale flip (a
+        session that STARTS stale fires on the first result). Recovery
+        (stale→fresh) only resets the edge state — the decision sees freshness
+        via is_stale in worker_results.
         """
         for name, worker in self._signal_workers.items():
             result = self._worker_results.get(name)
             if result is None:
                 continue
+
+            stats = self._signal_resolution_stats[name]
+            resolution = worker.get_last_resolution()
+            if resolution == SignalResolution.FRESH:
+                stats.fresh_ticks += 1
+            elif resolution == SignalResolution.STALE:
+                stats.stale_ticks += 1
+            else:
+                stats.blind_ticks += 1
+
             is_stale = result.is_stale
             if is_stale and not self._signal_stale_state.get(name, False):
                 self.decision_logic.on_signal_stale(
-                    worker_name=name, source=worker.get_signal_source())
+                    worker_name=name, signal_kind=worker.get_consumed_signal_kind())
             self._signal_stale_state[name] = is_stale
 
     def process_heartbeat(self) -> Optional[Decision]:
@@ -761,6 +795,18 @@ class WorkerOrchestrator:
             if worker.performance_logger:
                 worker_stats.append(worker.performance_logger.get_stats())
         return worker_stats
+
+    def get_signal_statistics(self) -> List[SignalResolutionStats]:
+        """
+        Collect the per-tick signal resolution counters (#433 Part C).
+
+        One capture, two transports: the sim tick loop and the live session both
+        read it here, so neither pipeline builds its own counter.
+
+        Returns:
+            List of SignalResolutionStats (one per SIGNAL worker; empty when none)
+        """
+        return list(self._signal_resolution_stats.values())
 
     def get_coordination_statistics(self) -> WorkerCoordinatorPerformanceStats:
         """

@@ -62,8 +62,8 @@ def test_data_level_abort_records_nothing(monkeypatch):
     """A base mount with no loadable data aborts the whole sweep before any combination runs."""
     empty_mount = MountPackage(
         scenario_packages={}, clipping_stats_map={}, broker_configs={},
-        broker_scenario_map={}, requirements_map=None, warmup_phases=[],
-        batch_warmup_time=0.0, data_identity={})
+        broker_scenario_map={}, signal_scenario_map={}, requirements_map=None,
+        warmup_phases=[], batch_warmup_time=0.0, data_identity={})
     monkeypatch.setattr(BatchOrchestrator, 'build_mount', lambda self: empty_mount)
 
     ledger = RunResultsLedger(AppConfigManager().get_run_results_path())
@@ -76,8 +76,8 @@ def test_oom_villain_aborts_sweep(monkeypatch):
     """An OOM crash in the first executed combination aborts the rest of the sweep (§35)."""
     nonempty_mount = MountPackage(
         scenario_packages={0: object()}, clipping_stats_map={}, broker_configs={},
-        broker_scenario_map={}, requirements_map=None, warmup_phases=[],
-        batch_warmup_time=0.0, data_identity={})
+        broker_scenario_map={}, signal_scenario_map={}, requirements_map=None,
+        warmup_phases=[], batch_warmup_time=0.0, data_identity={})
     monkeypatch.setattr(BatchOrchestrator, 'build_mount', lambda self: nonempty_mount)
 
     class _OomSummary:

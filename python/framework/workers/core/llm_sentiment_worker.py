@@ -23,7 +23,7 @@ class LlmSentimentWorker(AbstractSignalWorker):
     snapshot is flagged is_stale (older than max_staleness_minutes).
     """
 
-    SIGNAL_SOURCE = 'llm_sentiment'
+    CONSUMED_SIGNAL_KIND = 'llm_sentiment'
 
     @classmethod
     def get_metadata(cls) -> ComponentMetadata:

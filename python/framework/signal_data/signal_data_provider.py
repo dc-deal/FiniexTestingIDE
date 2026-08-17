@@ -29,7 +29,7 @@ class SignalDataProvider:
         Args:
             series: Time-ordered snapshot collection for one source
         """
-        self._source = series.source
+        self._signal_kind = series.signal_kind
         snapshots = sorted(series.snapshots, key=lambda s: s.collected_msc)
         self._snapshots: List[SignalSnapshot] = snapshots
         self._msc_keys: List[datetime] = [s.collected_msc for s in snapshots]

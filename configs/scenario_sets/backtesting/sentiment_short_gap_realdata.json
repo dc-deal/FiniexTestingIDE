@@ -1,0 +1,75 @@
+{
+    "version": "1.0",
+    "scenario_set_name": "sentiment_short_gap_realdata",
+    "created": "2026-08-16T00:00:00.000000",
+    "description": "The archive-gap-versus-stale-run demonstration on REAL data: live kraken_spot BTCUSD ticks plus the live crypto_sentiment archive, over the 22-minute producer gap on 2026-07-23 (09:30 → 09:52, a SHORT GAP in the coverage report). Both scenarios read the identical archive and the identical window — only max_staleness_minutes differs. At 30 minutes the snapshot is 21 minutes old when the next arrives, so the run never notices the gap; at 15 minutes the same gap turns roughly seven minutes of ticks stale. The 📡 SIGNAL CONFIGURATION section shows the archive plane once and the two decision bases side by side. Didactic — not a profit claim.",
+    "global": {
+        "data_mode": "realistic",
+        "strategy_config": {
+            "decision_logic_type": "CORE/hybrid_sentiment_reference",
+            "worker_instances": {
+                "rsi_fast": "CORE/rsi",
+                "sentiment": "CORE/llm_sentiment"
+            },
+            "workers": {
+                "rsi_fast": {
+                    "periods": {
+                        "M5": 14
+                    }
+                },
+                "sentiment": {
+                    "max_staleness_minutes": 30
+                }
+            },
+            "decision_logic_config": {
+                "rsi_buy_threshold": 35,
+                "rsi_sell_threshold": 65,
+                "lot_size": 0.001,
+                "min_free_margin": 100
+            }
+        },
+        "execution_config": {
+            "parallel_workers": false
+        },
+        "trade_simulator_config": {
+            "balances": { "USD": 10000 },
+            "seeds": {
+                "inbound_latency_seed": 42424
+            }
+        }
+    },
+    "scenarios": [
+        {
+            "name": "BTCUSD_staleness_30min",
+            "symbol": "BTCUSD",
+            "data_broker_type": "kraken_spot",
+            "data_sentiment_type": "crypto_sentiment",
+            "start_date": "2026-07-23T08:00:00+00:00",
+            "end_date": "2026-07-23T12:00:00+00:00",
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {},
+            "execution_config": {},
+            "trade_simulator_config": {}
+        },
+        {
+            "name": "BTCUSD_staleness_15min",
+            "symbol": "BTCUSD",
+            "data_broker_type": "kraken_spot",
+            "data_sentiment_type": "crypto_sentiment",
+            "start_date": "2026-07-23T08:00:00+00:00",
+            "end_date": "2026-07-23T12:00:00+00:00",
+            "data_mode": "realistic",
+            "enabled": true,
+            "strategy_config": {
+                "workers": {
+                    "sentiment": {
+                        "max_staleness_minutes": 15
+                    }
+                }
+            },
+            "execution_config": {},
+            "trade_simulator_config": {}
+        }
+    ]
+}

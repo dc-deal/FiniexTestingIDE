@@ -174,6 +174,22 @@ class ImportConfigManager:
             )
         return path
 
+    def get_signal_data_finished_path(self) -> str:
+        """
+        Get archive directory for signal JSONL that has been imported.
+
+        Returns:
+            Path string for the finished signal directory
+        """
+        paths = self._config.get("signal_paths", {})
+        path = paths.get("data_finished")
+        if not path:
+            raise ValueError(
+                "Missing required path 'data_finished' in import_config.json. "
+                "Add to 'signal_paths' section: \"data_finished\": \"data/finished/signals\""
+            )
+        return path
+
     # ============================================
     # Paths — Test Environment
     # ============================================

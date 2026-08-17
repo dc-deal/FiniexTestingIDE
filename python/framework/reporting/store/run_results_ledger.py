@@ -34,6 +34,7 @@ LEDGER_COLUMNS: List[str] = [
     'total_fees', 'total_trades', 'winning_trades', 'losing_trades',
     'avg_win_r', 'avg_loss_r', 'r_trade_count',
     'orders_sent', 'orders_executed', 'orders_rejected', 'sl_tp_triggered',
+    'signal_fresh_ratio',
 ]
 
 
@@ -184,6 +185,9 @@ class RunResultsLedger:
             'orders_executed': run_summary.orders_executed,
             'orders_rejected': run_summary.orders_rejected,
             'sl_tp_triggered': run_summary.sl_tp_triggered,
+            # Data quality the row was produced under (#433): a ranking over rows with
+            # different fresh ratios compares runs that saw different signal.
+            'signal_fresh_ratio': run_summary.signal_fresh_ratio,
         }
 
     def _error_row(self, p: RunProvenance, error: str) -> Dict[str, Any]:

@@ -61,8 +61,8 @@ class _CompliantDecision(_NoHookDecision):
         super().__init__(*args, **kwargs)
         self.stale_calls: List[tuple] = []
 
-    def on_signal_stale(self, worker_name: str, source: str) -> None:
-        self.stale_calls.append((worker_name, source))
+    def on_signal_stale(self, worker_name: str, signal_kind: str) -> None:
+        self.stale_calls.append((worker_name, signal_kind))
 
 
 class _SubscribeAllDecision(_CompliantDecision):
@@ -146,7 +146,7 @@ class TestStaleDataSlicer:
     """#436 stress data-plane cut: windows are carved out of the refined series."""
 
     def _series(self) -> SignalSeries:
-        return SignalSeries(source='llm_sentiment', snapshots=[
+        return SignalSeries(signal_kind='llm_sentiment', snapshots=[
             snapshot(utc(2026, 1, 15, 8, 0), 0.5, 0.8),
             snapshot(utc(2026, 1, 15, 8, 10), 0.6, 0.8),
             snapshot(utc(2026, 1, 15, 8, 20), 0.7, 0.8),
@@ -186,7 +186,7 @@ class TestStaleDataSlicer:
         itself is under test).
         """
         worker = _worker(mock_logger, max_staleness=30)
-        series = SignalSeries(source='llm_sentiment', snapshots=[
+        series = SignalSeries(signal_kind='llm_sentiment', snapshots=[
             snapshot(utc(2026, 1, 15, 8, 0), 0.5, 0.8),
             snapshot(utc(2026, 1, 15, 8, 10), 0.6, 0.8),
         ])
@@ -240,18 +240,18 @@ class TestHookDispatch:
 
         # Session starts stale → fires on the first result
         orchestrator._worker_results['sentiment'] = self._stale_result(True)
-        orchestrator._dispatch_signal_stale_transitions()
+        orchestrator._process_signal_pass()
         assert decision.stale_calls == [('sentiment', 'llm_sentiment')]
 
         # Still stale → no re-fire
-        orchestrator._dispatch_signal_stale_transitions()
+        orchestrator._process_signal_pass()
         assert len(decision.stale_calls) == 1
 
         # Recovery resets the edge; next flip fires again
         orchestrator._worker_results['sentiment'] = self._stale_result(False)
-        orchestrator._dispatch_signal_stale_transitions()
+        orchestrator._process_signal_pass()
         orchestrator._worker_results['sentiment'] = self._stale_result(True)
-        orchestrator._dispatch_signal_stale_transitions()
+        orchestrator._process_signal_pass()
         assert len(decision.stale_calls) == 2
 
 
@@ -268,7 +268,7 @@ class TestReferenceReaction:
         logic.trading_api = MagicMock()
         logic.trading_api.get_current_time.return_value = utc(2026, 1, 15, 8, 31)
 
-        logic.on_signal_stale(worker_name='sentiment', source='llm_sentiment')
+        logic.on_signal_stale(worker_name='sentiment', signal_kind='llm_sentiment')
 
         assert logger.warning.called
         events = logic.get_event_history()

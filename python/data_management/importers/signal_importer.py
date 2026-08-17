@@ -8,10 +8,15 @@ per (collected_msc, symbol) for present result symbols, plus one envelope-level 
 (symbol = SIGNAL_ENVELOPE_SYMBOL) so every collected_msc stays resolvable for every covered
 symbol — preserving the v0 provider's partial/error → defensive-HOLD behavior. Output:
 <target_dir>/<pipeline_id>/<stem>.parquet, keyed by pipeline_id (= data_sentiment_type).
+
+An imported JSONL is archived into finished_dir with its directory structure intact, so the
+raw directory holds only what still needs importing. The archive is not a by-product: the
+parquet is a lean projection, and the envelope's sources / metadata / errors survive nowhere
+else — it stays the audit source and must remain readable.
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -32,30 +37,34 @@ class SignalDataImporter:
     Args:
         source_dir: Raw signal JSONL directory (e.g. data/raw/signals)
         target_dir: Parquet output root (e.g. data/processed/signals)
-        override: Overwrite an existing parquet
+        override: Overwrite an existing parquet — and re-read the finished archive
+        finished_dir: Archive for imported JSONL; None disables the move
     """
 
     VERSION = "1.0"
 
-    def __init__(self, source_dir: str, target_dir: str, override: bool = False):
+    def __init__(self, source_dir: str, target_dir: str, override: bool = False,
+                 finished_dir: Optional[str] = None):
         self.source_dir = Path(source_dir)
         self.target_dir = Path(target_dir)
         self.target_dir.mkdir(parents=True, exist_ok=True)
 
         self.override = override
+        self.finished_dir = Path(finished_dir) if finished_dir else None
 
         # Import statistics
         self.processed_files = 0
         self.total_rows = 0
+        self.moved_files = 0
         self.errors: List[str] = []
         self.warnings: List[str] = []
 
     def process_all_signals(self) -> None:
         """
-        Find every *.jsonl under source_dir, convert each, then rebuild the index.
+        Convert every *.jsonl of the inbox, then rebuild the index.
         Errors do not stop processing of remaining files.
         """
-        jsonl_files = sorted(self.source_dir.rglob("*.jsonl"))
+        jsonl_files = self._collect_files()
 
         if not jsonl_files:
             vLog.warning(
@@ -70,11 +79,13 @@ class SignalDataImporter:
         vLog.info(f"Override Mode: {'ENABLED' if self.override else 'DISABLED'}")
         vLog.info("=" * 80 + "\n")
 
-        for jsonl_file in jsonl_files:
+        for root, jsonl_file in jsonl_files:
             vLog.info(f"\n📄 Processing: {jsonl_file.name}")
             try:
-                self.convert_jsonl_to_parquet(jsonl_file)
+                written = self.convert_jsonl_to_parquet(jsonl_file)
                 self.processed_files += 1
+                if written is not None:
+                    self._move_to_finished(root, jsonl_file)
             except Exception as e:
                 error_msg = f"ERROR in {jsonl_file.name}: {str(e)}"
                 vLog.error(error_msg)
@@ -82,6 +93,55 @@ class SignalDataImporter:
 
         self._rebuild_index()
         self._print_summary()
+
+    def _collect_files(self) -> List[Tuple[Path, Path]]:
+        """
+        The files to import, each paired with the root it was found under.
+
+        The inbox is source_dir. In override mode the finished archive is read as
+        well: "override" means rebuilding what is already imported, and once a file
+        has been imported that is exactly where it lives. A relative path present in
+        both roots is taken from source_dir — a re-exported day supersedes its
+        archived copy, and the subsequent move overwrites it.
+
+        Returns:
+            (root, file) pairs, sorted by relative path
+        """
+        roots = [self.source_dir]
+        if self.override and self.finished_dir and self.finished_dir.exists():
+            roots.append(self.finished_dir)
+
+        found: Dict[Path, Tuple[Path, Path]] = {}
+        for root in roots:
+            for path in root.rglob("*.jsonl"):
+                found.setdefault(path.relative_to(root), (root, path))
+
+        return [found[key] for key in sorted(found)]
+
+    def _move_to_finished(self, root: Path, jsonl_file: Path) -> None:
+        """
+        Archive an imported JSONL, preserving its directory structure.
+
+        The path is kept relative to the root it came from, NOT rebuilt from the
+        resolved pipeline_id: a file sitting in a folder that does not match its own
+        pipeline_id is an anomaly, and normalizing it here would silently repair it
+        instead of leaving it visible.
+
+        Args:
+            root: The directory the file was found under
+            jsonl_file: The imported JSONL
+        """
+        if self.finished_dir is None:
+            return
+
+        target = self.finished_dir / jsonl_file.relative_to(root)
+        if target == jsonl_file:
+            return
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        jsonl_file.replace(target)
+        self.moved_files += 1
+        vLog.info(f"   → archived to {target}")
 
     def convert_jsonl_to_parquet(self, jsonl_file: Path) -> Optional[Path]:
         """
@@ -94,7 +154,7 @@ class SignalDataImporter:
             The written parquet path, or None if the file held no snapshots
         """
         # Reuse the validated parse (schema_version gate + time order)
-        snapshots = load_signal_series(jsonl_file, source='').snapshots
+        snapshots = load_signal_series(jsonl_file, signal_kind='').snapshots
         if not snapshots:
             vLog.warning(f"No snapshots in {jsonl_file.name}")
             return None
@@ -195,6 +255,8 @@ class SignalDataImporter:
         vLog.info("\n" + "=" * 80)
         vLog.info(
             f"Signal Import Summary: {self.processed_files} file(s), {self.total_rows} rows")
+        if self.moved_files:
+            vLog.info(f"Archived to {self.finished_dir}: {self.moved_files} file(s)")
         if self.warnings:
             vLog.info(f"Warnings: {len(self.warnings)}")
         if self.errors:

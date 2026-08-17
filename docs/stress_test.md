@@ -124,6 +124,12 @@ can never fire).
 `process_tick_loop`). Demo scenario: `EURGBP_stale_market_13` in the EURGBP
 stress set; probe logic: `CORE/backtesting/backtesting_outage_probe`.
 
+**This is also how signal-quality test cases are produced.** The per-tick
+fresh / stale / blind counters (#433) are validated by carving the anomalies into
+the gap-free synthetic archive rather than hand-building data, so every deviation
+in a case is provably the injected one — see the `signal_resolution_cases` fixture
+set and [Signal Data Source](data_pipeline/signal_data_source.md).
+
 ## Architecture
 
 ```

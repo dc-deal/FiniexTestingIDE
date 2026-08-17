@@ -161,7 +161,9 @@ Alongside it the report reads `config_fingerprint` (the producer's input-config 
 flags a config change *inside* the archive) and `trigger_reason` (why each pass ran, counted per
 envelope). The trigger composition replaces a timing heuristic: telling a grid pass from an
 off-grid one used to mean "distance to predecessor < 300s", which misclassifies whenever a
-scheduled pass runs long. Field-level detail:
+scheduled pass runs long. Where a producer gained the field mid-archive, the unattributed
+envelopes are stated rather than dropped, so the composition always sums to the snapshot count:
+`54 scheduled · 2 boot · 2 breaking · 2,454 unknown (pre-contract)`. Field-level detail:
 [Signal Data Source](data_pipeline/signal_data_source.md).
 
 The purpose is a guard, not decoration. Without it, a generated archive and a real one
@@ -203,8 +205,9 @@ Example — a scenario left on an old window after its source was re-imported:
 
 ```
 ⚠️  BTCUSD_run: Signal 'crypto_sentiment': no snapshot at or before start_date
-   2026-07-22 07:00:00 UTC — the first 2h 37m resolve to a gap (empty signal,
-   is_stale). First snapshot: 2026-07-22 09:37:33 UTC
+   2026-07-22 07:00:00 UTC — the first 2h 37m resolve BLIND (empty signal,
+   is_stale) — counted as blind ticks in the run's signal report.
+   First snapshot: 2026-07-22 09:37:33 UTC
 ```
 
 There is **no warmup concept for signals** — a SIGNAL worker resolves the nearest snapshot

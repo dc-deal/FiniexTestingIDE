@@ -1,10 +1,11 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.process_data_types import ClippingStats, ProcessResult
-from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import (
+    BrokerScenarioInfo, SignalScenarioInfo, SingleScenario)
 from python.framework.types.validation_types import ValidationResult
 
 
@@ -31,6 +32,7 @@ class BatchExecutionSummary:
         process_result_list: List[ProcessResult] | None = None,
         single_scenario_list: List[SingleScenario] | None = None,
         broker_scenario_map: Dict[BrokerType, BrokerScenarioInfo] | None = None,
+        signal_scenario_map: Dict[Tuple[str, str], SignalScenarioInfo] | None = None,
         clipping_stats_map: Dict[int, ClippingStats] | None = None,
         warmup_phases: Optional[List[WarmupPhaseEntry]] = None,
         batch_pickle_time: float = 0.0,
@@ -45,6 +47,7 @@ class BatchExecutionSummary:
         self._process_result_list = process_result_list or []
         self._single_scenario_list = single_scenario_list or []
         self._broker_scenario_map = broker_scenario_map or {}
+        self._signal_scenario_map = signal_scenario_map or {}
         self._clipping_stats_map = clipping_stats_map or {}
         self._warmup_phases: List[WarmupPhaseEntry] = warmup_phases or []
         self._batch_pickle_time = batch_pickle_time
@@ -81,6 +84,10 @@ class BatchExecutionSummary:
     @property
     def broker_scenario_map(self) -> Dict[BrokerType, BrokerScenarioInfo]:
         return self._broker_scenario_map
+
+    @property
+    def signal_scenario_map(self) -> Dict[Tuple[str, str], SignalScenarioInfo]:
+        return self._signal_scenario_map
 
     @property
     def clipping_stats_map(self) -> Dict[int, ClippingStats]:

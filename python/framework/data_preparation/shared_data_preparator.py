@@ -300,7 +300,7 @@ class SharedDataPreparator:
         Returns:
             Dict[source, SignalSeries] (empty when the scenario has no SIGNAL worker)
         """
-        series_by_source: Dict[str, SignalSeries] = {}
+        series_by_kind: Dict[str, SignalSeries] = {}
         for req in requirements_map.signal_requirements:
             if req.scenario_name != scenario.name:
                 continue
@@ -328,7 +328,7 @@ class SharedDataPreparator:
                         f"or check the scenario's 'data_sentiment_type'."
                     )
                 series = load_signal_series_from_parquet(
-                    files, source=req.source, symbol=req.symbol,
+                    files, signal_kind=req.signal_kind, symbol=req.symbol,
                     start=req.start_time, end=req.end_time)
             elif req.data_path:
                 # Explicit dev override — read the raw JSONL directly (v0).
@@ -336,11 +336,11 @@ class SharedDataPreparator:
                 if not path.is_absolute():
                     path = Path.cwd() / path
                 series = load_signal_series(
-                    path, source=req.source,
+                    path, signal_kind=req.signal_kind,
                     start=req.start_time, end=req.end_time)
             else:
                 raise SignalDataUnavailableError(
-                    f"SIGNAL source '{req.source}' for scenario '{scenario.name}' has "
+                    f"SIGNAL kind '{req.signal_kind}' for scenario '{scenario.name}' has "
                     f"neither a 'data_sentiment_type' nor a 'data_path' override configured."
                 )
 
@@ -359,12 +359,12 @@ class SharedDataPreparator:
                         f"{scenario.name} "
                         f"({before} → {len(series.snapshots)} snapshots)")
 
-            series_by_source[req.source] = series
+            series_by_kind[req.signal_kind] = series
             self._logger.debug(
-                f"📡 Loaded signal '{req.source}' for {scenario.name}: "
+                f"📡 Loaded signal '{req.signal_kind}' for {scenario.name}: "
                 f"{len(series.snapshots)} snapshots"
             )
-        return series_by_source
+        return series_by_kind
 
     def _collect_parquet_versions(
         self,

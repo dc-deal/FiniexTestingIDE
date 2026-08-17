@@ -18,6 +18,7 @@ from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats)
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
@@ -41,6 +42,8 @@ class RunUnit:
     worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)
     decision_statistics: Optional[DecisionLogicStats] = None
     coordination_statistics: Optional[WorkerCoordinatorPerformanceStats] = None
+    # Per-tick SIGNAL resolution counters (unified — both pipelines; #433 Part C).
+    signal_statistics: List[SignalResolutionStats] = field(default_factory=list)
 
 
 def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
@@ -74,6 +77,7 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
             worker_statistics=tick_loop.worker_statistics or [],
             decision_statistics=tick_loop.decision_statistics,
             coordination_statistics=tick_loop.coordination_statistics,
+            signal_statistics=tick_loop.signal_statistics or [],
         ))
     return units
 
@@ -104,4 +108,5 @@ def run_units_from_session(
         execution_stats=session.execution_stats,
         worker_statistics=session.worker_statistics or [],
         decision_statistics=session.decision_statistics,
+        signal_statistics=session.signal_statistics or [],
     )]

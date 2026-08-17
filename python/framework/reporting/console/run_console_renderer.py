@@ -16,6 +16,7 @@ from typing import Optional, Protocol
 
 from python.framework.reporting.console.block_splitting_disposition import BlockSplittingDisposition
 from python.framework.reporting.console.broker_summary import BrokerSummary
+from python.framework.reporting.console.signal_summary import SignalSummary
 from python.framework.reporting.console.execution_header_summary import ExecutionHeaderSummary
 from python.framework.reporting.console.performance_summary import PerformanceSummary
 from python.framework.reporting.console.portfolio_summary import PortfolioSummary
@@ -47,6 +48,7 @@ class RunConsoleRenderer:
         portfolio_summary: Optional[PortfolioSummary] = None,
         trade_history_summary: Optional[TradeHistorySummary] = None,
         broker_summary: Optional[BrokerSummary] = None,
+        signal_summary: Optional[SignalSummary] = None,
         performance_summary: Optional[PerformanceSummary] = None,
         profiling_summary: Optional[ProfilingSummary] = None,
         worker_decision_breakdown: Optional[WorkerDecisionBreakdownSummary] = None,
@@ -69,6 +71,7 @@ class RunConsoleRenderer:
         self._portfolio_summary = portfolio_summary
         self._trade_history_summary = trade_history_summary
         self._broker_summary = broker_summary
+        self._signal_summary = signal_summary
         self._performance_summary = performance_summary
         self._profiling_summary = profiling_summary
         self._worker_decision_breakdown = worker_decision_breakdown
@@ -117,6 +120,10 @@ class RunConsoleRenderer:
         # Broker configuration
         if self._broker_summary:
             self._broker_summary.render(renderer, compact=compact, threshold=self._threshold)
+
+        # Signal configuration — archive provenance + the run's decision basis (#433)
+        if self._signal_summary:
+            self._signal_summary.render(renderer, compact=compact, threshold=self._threshold)
 
         # Performance summaries (aggregate + bottleneck are cross-unit → multi-unit only)
         if self._performance_summary:

@@ -9,6 +9,7 @@ from typing import List, Optional
 from python.framework.types.autotrader_types.clipping_monitor_types import ClippingSessionSummary
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats, WorkerPerformanceStats
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
@@ -32,6 +33,7 @@ class AutoTraderResult:
         clipping_summary: Clipping monitor session summary
         decision_statistics: Decision logic execution stats
         worker_statistics: Per-worker performance stats
+        signal_statistics: Per-SIGNAL-worker resolution counters (#433)
         shutdown_mode: How the session ended ('normal' or 'emergency')
         warning_messages: Warning messages from session logger buffer
         error_messages: Error messages from session logger buffer
@@ -47,6 +49,7 @@ class AutoTraderResult:
     clipping_summary: ClippingSessionSummary = field(default_factory=ClippingSessionSummary)
     decision_statistics: Optional[DecisionLogicStats] = None
     worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)
+    signal_statistics: List[SignalResolutionStats] = field(default_factory=list)
     shutdown_mode: str = 'normal'
     emergency_reason: Optional[str] = None
     warning_messages: List[str] = field(default_factory=list)

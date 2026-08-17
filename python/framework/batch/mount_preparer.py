@@ -298,6 +298,7 @@ class MountPreparer:
             broker_scenario_map=_broker_preparator.get_valid_broker_scenario_map(
                 self._valid(scenarios)
             ),
+            signal_scenario_map=signal_coverage_manager.get_signal_scenario_map(),
             requirements_map=requirements_map,
             warmup_phases=warmup_phases,
             batch_warmup_time=batch_warmup_time,

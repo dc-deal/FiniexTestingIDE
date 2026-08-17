@@ -15,6 +15,16 @@ fields.
 | Reader projection | one snapshot per envelope for the projected symbol; audit-only `sources` dropped from the runtime series |
 | v0 parity | `SignalDataProvider` over the raw JSONL vs. over the parquet resolve identically across the range, for a symbol present in every envelope AND one absent in `partial`/`error` envelopes (defensive HOLD) |
 | Import guards | mixed `pipeline_id` in one file → `SignalSchemaError` |
+| Finished archive | imported JSONL moves to `data/finished/signals/` with its structure intact; no `finished_dir` → the file stays; a re-run without `--override` finds nothing and reports no error; `--override` reads the archive back; a re-exported day supersedes its archived copy; a failed import is not moved |
+
+### Why the archive tests matter
+
+Two of them guard decisions that are easy to undo by accident. `--override` reading the
+finished archive is what keeps the flag meaningful once the inbox is empty — without it,
+"rebuild everything" would silently rebuild nothing. And the move is deliberately **not**
+rebuilt from the resolved `pipeline_id` but kept relative to the root the file came from:
+a file in a folder that disagrees with its own `pipeline_id` is an anomaly (it has
+happened), and normalizing it on the way out would hide it.
 
 ## Fixture
 

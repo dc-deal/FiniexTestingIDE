@@ -51,11 +51,19 @@ and counts as synthetic.
 marker, plus the case that matters later: two fingerprints inside one archive
 read as `mixed` — the stretches on either side are then not one series.
 
-`TestTriggerReason` pins the pass-cause counts. Two guarantees beyond the usual
+`TestTriggerReason` pins the pass-cause counts. Three guarantees beyond the usual
 absence handling: counts are per **envelope**, not per parquet row (a naive
-`value_counts` would weight each snapshot by its symbol count), and an
-unrecognized value is kept rather than rejected — the vocabulary is closed on the
-producer side, but a future engine version must not break our reader.
+`value_counts` would weight each snapshot by its symbol count); an unrecognized
+value is kept rather than rejected — the vocabulary is closed on the producer
+side, but a future engine version must not break our reader; and a **partially
+stamped** archive states its unattributed share
+(`test_partially_stamped_archive_states_the_unknown_share`).
+
+That last case is the one real archives actually hit: a producer gains the field
+during a restart, so one archive holds both. Counting only the stamped envelopes
+would render `54 scheduled · 2 boot · 2 breaking` next to `2,512 snapshots` — a
+line that reads like a complete composition. `trigger_unknown` is kept separate
+from `trigger_reasons` so no renderer can lose it.
 
 ### Window queries
 
@@ -85,6 +93,14 @@ call the batch makes in Phase 5 — rather than reaching into a private method.
 `ValidationResult`, that an error excludes the scenario and a warning does not.
 The tick coverage report is stubbed at the `DataCoverageReportCache.get_report`
 seam so only the signal checks can produce findings.
+
+## Related: the finished archive
+
+`tests/data/signal_import/` carries `TestFinishedArchive`, which pins the import-side
+counterpart: an imported JSONL moves to `data/finished/signals/` with its structure
+intact, a re-run without `--override` finds nothing and reports no error, and
+`--override` reads the archive back. Relevant here because a coverage report is only
+as complete as the parquet tree the import produced.
 
 ## Related: the preceding-bucket guarantee
 

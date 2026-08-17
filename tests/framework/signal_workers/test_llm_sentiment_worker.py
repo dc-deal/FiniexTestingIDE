@@ -9,6 +9,7 @@ from conftest import SYMBOL, make_provider, make_tick, snapshot, utc
 from python.framework.exceptions.signal_data_errors import SignalProviderNotInjectedError
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.worker_types import WorkerType
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
@@ -30,8 +31,8 @@ class TestContract:
         assert LlmSentimentWorker.get_worker_type() == WorkerType.SIGNAL
         assert issubclass(LlmSentimentWorker, AbstractSignalWorker)
 
-    def test_signal_source(self):
-        assert LlmSentimentWorker.get_signal_source() == 'llm_sentiment'
+    def test_consumed_signal_kind(self):
+        assert LlmSentimentWorker.get_consumed_signal_kind() == 'llm_sentiment'
 
     def test_output_schema_keys(self):
         keys = set(LlmSentimentWorker.get_output_schema().keys())
@@ -119,6 +120,13 @@ def _orchestrator(worker) -> WorkerOrchestrator:
     orch._worker_results = {}
     orch._signal_workers = {worker.name: worker}
     orch._signal_stale_state = {}
+    orch._signal_resolution_stats = {
+        worker.name: SignalResolutionStats(
+            worker_name=worker.name,
+            signal_kind=worker.get_consumed_signal_kind(),
+            symbol=worker.get_symbol() or '',
+        )
+    }
     orch.logger = MagicMock()
     orch.parallel_workers = False
     orch._coordination_stats = SimpleNamespace(ticks_processed=0)

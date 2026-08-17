@@ -4,7 +4,7 @@ Shared Report Coordinator Tests (#403).
 `SharedReportCoordinator.derive_and_persist` is the units-derived DERIVE+PERSIST core both
 pipelines delegate to. Tested against a real BatchExecutionSummary / ProcessResult /
 SingleScenario (sim) and a real AutoTraderResult (live) — not stand-ins — so it exercises the
-actual write-path: all 7 sections' artifacts land in the io/ dir and the returned
+actual write-path: all 8 sections' artifacts land in the io/ dir and the returned
 UnifiedReports carries the same models the caller reuses for console + ledger.
 """
 
@@ -32,6 +32,7 @@ _EXPECTED_FILES = [
     'execution_stats.json', 'execution_stats.csv',
     'run_summary.json',
     'worker_decision.json',
+    'signal.json',
 ]
 
 
@@ -59,7 +60,7 @@ def _batch() -> BatchExecutionSummary:
 
 
 class TestDeriveAndPersist:
-    """The shared core: writes the 7 sections + returns the populated DTO."""
+    """The shared core: writes the 8 sections + returns the populated DTO."""
 
     def test_writes_all_artifacts_batch(self, tmp_path):
         io_dir = tmp_path / 'io'

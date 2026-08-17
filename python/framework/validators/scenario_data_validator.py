@@ -243,7 +243,8 @@ class ScenarioDataValidator:
             warnings.append(
                 f"Signal '{scenario.data_sentiment_type}': no snapshot at or before "
                 f"start_date {start_date.strftime('%Y-%m-%d %H:%M:%S')} UTC — the first "
-                f"{format_duration(blind_s)} resolve to a gap (empty signal, is_stale). "
+                f"{format_duration(blind_s)} resolve BLIND (empty signal, is_stale) — "
+                f"counted as blind ticks in the run's signal report. "
                 f"First snapshot: {report.start_time.strftime('%Y-%m-%d %H:%M:%S')} UTC"
             )
             return errors, warnings

@@ -30,6 +30,11 @@ run matters for two reasons: a value may only be valid from a known date on (a
 producer config change), and an upper bound keeps a later re-run from stamping
 days that were collected after the value was established.
 
+Works on the raw inbox (`data/raw/signals/`) only. A day already imported has been
+moved to the finished archive and usually packed into a zip, so stamping it means
+unpacking it back into the inbox and re-importing with `--override`. Stamp a day
+BEFORE it is packed where you can — that is the cheap moment.
+
 Usage:
     python python/experiments/restore_signal_envelope_field.py \\
         --field data_origin --value live \\

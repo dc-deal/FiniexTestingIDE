@@ -75,6 +75,10 @@ class SignalCoverageReport:
         self.config_fingerprints: Set[str] = set()
         # Envelope counts per trigger_reason (scheduled / boot / breaking / manual / external)
         self.trigger_reasons: Dict[str, int] = {}
+        # Envelopes carrying NO reason — kept separate so a partially stamped archive
+        # (the producer gained the field mid-run) does not render as if the composition
+        # covered everything.
+        self.trigger_unknown: int = 0
 
         # Analysis results
         self.gaps: List[Gap] = []
@@ -184,8 +188,10 @@ class SignalCoverageReport:
 
         self.data_origins = self._distinct(df, origin_column)
         self.config_fingerprints = self._distinct(df, fingerprint_column)
-        self.trigger_reasons = self._count_per_envelope(
+        trigger_counts = self._count_per_envelope(
             df, trigger_column, msc_column, symbol_column)
+        self.trigger_unknown = trigger_counts.pop('', 0)
+        self.trigger_reasons = trigger_counts
 
         msc_values = sorted(set(int(v) for v in df[msc_column]))
         return [
@@ -223,7 +229,8 @@ class SignalCoverageReport:
             symbol_column: The symbol column (used to pick one row per snapshot)
 
         Returns:
-            {value: envelope count}; empty when the column is absent or never stamped
+            {value: envelope count} INCLUDING the '' bucket for envelopes carrying no
+            value; empty dict when the column is absent
         """
         if column not in df.columns or symbol_column not in df.columns:
             return {}
@@ -233,7 +240,7 @@ class SignalCoverageReport:
         source = sentinels if not sentinels.empty else df.drop_duplicates(msc_column)
 
         counts = source[column].fillna('').astype(str).value_counts().to_dict()
-        return {k: int(v) for k, v in counts.items() if k}
+        return {k: int(v) for k, v in counts.items()}
 
     def _one_or_mixed(self, values: Set[str]) -> str:
         """
@@ -260,23 +267,6 @@ class SignalCoverageReport:
             producer predates the field (unknown, not an assertion of realness)
         """
         return self._one_or_mixed(self.data_origins)
-
-    def get_scheduled_share(self) -> Optional[float]:
-        """
-        Share of envelopes produced by the regular bar-close grid.
-
-        The rest are boot, breaking, manual or external passes — real analyses,
-        but not points of the scheduled cadence. Replaces the timing heuristic
-        ("distance to predecessor < 300s") that misclassifies a slow scheduled
-        pass as an off-grid one.
-
-        Returns:
-            Ratio 0.0–1.0, or None when the producer predates trigger_reason
-        """
-        total = sum(self.trigger_reasons.values())
-        if not total:
-            return None
-        return self.trigger_reasons.get('scheduled', 0) / total
 
     def get_config_fingerprint(self) -> str:
         """
@@ -482,6 +472,10 @@ class SignalCoverageReport:
                 f"{count:,} {reason}"
                 for reason, count in sorted(
                     self.trigger_reasons.items(), key=lambda kv: -kv[1]))
+            # A partially stamped archive must say so — otherwise the composition
+            # reads as if it covered every snapshot.
+            if self.trigger_unknown:
+                parts += f" · {self.trigger_unknown:,} unknown (pre-contract)"
             report.append(f"Triggers:     {parts}")
         else:
             report.append("Triggers:     unknown (producer predates the trigger_reason field)")

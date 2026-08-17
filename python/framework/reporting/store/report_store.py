@@ -15,6 +15,8 @@ from python.framework.reporting.io.aggregated_portfolio_report_io import (
     AGGREGATED_PORTFOLIO_ARTIFACT, read_aggregated_portfolio_report)
 from python.framework.reporting.io.broker_report_io import (
     BROKER_ARTIFACT, read_broker_report)
+from python.framework.reporting.io.signal_report_io import (
+    SIGNAL_ARTIFACT, read_signal_report)
 from python.framework.reporting.io.execution_stats_report_io import (
     EXECUTION_STATS_ARTIFACT, read_execution_stats_report)
 from python.framework.reporting.io.order_history_report_io import (
@@ -38,7 +40,7 @@ from python.framework.reporting.io.worker_decision_report_io import (
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, OrderHistoryReport,
     PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary, ScenarioDetailsReport,
-    TradeHistoryReport, WarningsErrorsReport, WorkerDecisionReport)
+    SignalReport, TradeHistoryReport, WarningsErrorsReport, WorkerDecisionReport)
 
 # Report artifacts (JSON + CSV) live in this subfolder of a run directory.
 IO_SUBDIR = 'io'
@@ -256,6 +258,21 @@ class ReportStore:
         if path is None:
             return None
         return read_broker_report(path)
+
+    def get_signal(self, run_id: str) -> Optional[SignalReport]:
+        """
+        Read a run's signal-configuration report (#433).
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The signal report, or None if the run has no signal artifact
+        """
+        path = self._resolve(run_id, SIGNAL_ARTIFACT)
+        if path is None:
+            return None
+        return read_signal_report(path)
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
         """Find a named report artifact (in the run's io/ subfolder) across the log groups."""

@@ -14,9 +14,9 @@ fixtures via direct provider injection — no batch, no tick loop.
 - `SignalDataProvider` + `signal_jsonl_loader`
 - `CORE/llm_sentiment` worker (`AbstractSignalWorker`)
 - `CORE/hybrid_sentiment_reference` decision logic
-- `WorkerOrchestrator` SIGNAL dispatch
+- `WorkerOrchestrator` SIGNAL dispatch + the per-tick resolution counters (#433)
 
-**Total Tests:** 31
+**Total Tests:** 53
 
 ---
 
@@ -55,6 +55,16 @@ fixtures via direct provider injection — no batch, no tick loop.
   inside a planned stale window from the refined series ([start, end) semantics, input series
   unchanged); lookups then resolve as-of the last pre-window snapshot and drive the REAL
   staleness chain: the aged resolution flips the worker's own `_evaluate_stale` (no flag forcing).
+
+### test_signal_resolution_counters.py (#433 Part C)
+- Classification — the worker splits what `_evaluate_stale` collapses into one boolean:
+  `FRESH` / `STALE` / `BLIND` (nothing resolvable at all, distinct from an archive gap).
+- Cached class — `should_refresh` keeps the class current on a tick without a recompute, which
+  is what makes counting the cached state correct between refreshes.
+- Tick-exact counting — one count per tick per worker in BOTH worker paths (sequential and
+  parallel); a run whose worker computed twice over eight ticks counts eight, not two.
+- Stale accumulation + row identity (worker name / signal source / symbol).
+- Heartbeat — a heartbeat pass re-evaluates nothing and therefore counts nothing.
 
 ---
 

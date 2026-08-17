@@ -9,7 +9,7 @@ framework/reporting/*; this only orchestrates the persist + render.
 """
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional, Tuple
 import io
 import re
 import sys
@@ -22,6 +22,7 @@ from python.framework.reporting.console.live_session_summary import LiveSessionS
 from python.framework.reporting.console.performance_summary import PerformanceSummary
 from python.framework.reporting.console.portfolio_summary import PortfolioSummary
 from python.framework.reporting.console.run_console_renderer import RunConsoleRenderer
+from python.framework.reporting.console.signal_summary import SignalSummary
 from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
 from python.framework.reporting.console.warnings_summary import WarningsSummary
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
@@ -39,6 +40,7 @@ from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 
 
 class AutotraderReportCoordinator:
@@ -64,6 +66,7 @@ class AutotraderReportCoordinator:
         summary_logger: ScenarioLogger,
         global_logger: ScenarioLogger,
         broker_config: Optional[BrokerConfig] = None,
+        signal_scenario_map: Optional[Dict[Tuple[str, str], SignalScenarioInfo]] = None,
     ):
         """
         Initialize the report coordinator.
@@ -78,6 +81,8 @@ class AutotraderReportCoordinator:
             global_logger: Logger for the global file
             broker_config: The resolved live BrokerConfig (the executor's broker) for the
                 broker report; None when the session has no executor (startup failure)
+            signal_scenario_map: The session's prepared signal sources (#433) — from the same
+                shared MountPreparer run the sim batch uses; empty for a session without one
         """
         self._result = result
         self._run_dir = run_dir
@@ -91,6 +96,7 @@ class AutotraderReportCoordinator:
         # → `create_broker_config`); here we only ever see the resolved object (its
         # `broker_type` is a `BrokerType` enum), so reporting needs no key translation.
         self._broker_config = broker_config
+        self._signal_scenario_map = signal_scenario_map or {}
 
     def generate_and_log(self) -> None:
         """Write all session artifacts + print the post-session summary."""
@@ -123,7 +129,8 @@ class AutotraderReportCoordinator:
         # DERIVE + PERSIST the 7 units-derived sections shared with sim (#403): trade / order /
         # portfolio (single session = its own currency aggregate) / pending (empty for live) /
         # execution-stats / run-summary / worker-decision. The models feed the unified console.
-        unified = SharedReportCoordinator.derive_and_persist(units, io_dir)
+        unified = SharedReportCoordinator.derive_and_persist(
+            units, io_dir, self._signal_scenario_map)
 
         # Warnings & errors — tiered model (#395). Persisted for API parity with the sim runs;
         # the closing block keeps reading the session buffers directly (same structured source,
@@ -167,6 +174,7 @@ class AutotraderReportCoordinator:
                 unified.portfolio, unified.pending_orders, unified.execution_stats, None),
             trade_history_summary=TradeHistorySummary(unified.trade_history, unified.order_history),
             broker_summary=BrokerSummary(broker_report) if broker_report is not None else None,
+            signal_summary=SignalSummary(unified.signal) if unified.signal.units else None,
             performance_summary=PerformanceSummary(unified.worker_decision),
             warnings_summary=WarningsSummary(warnings_errors_report),
             closing_block=LiveSessionSummary(result, unified.trade_history, self._run_dir),

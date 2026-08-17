@@ -371,6 +371,7 @@ def execute_tick_loop(
         # Collect statistics from Algorithm section
         decision_statistics = decision_logic.get_statistics()
         worker_statistics = worker_coordinator.get_worker_statistics()
+        signal_statistics = worker_coordinator.get_signal_statistics()
         coordination_statistics = worker_coordinator.get_coordination_statistics()
 
         # collect statistics from Trader section
@@ -398,6 +399,7 @@ def execute_tick_loop(
         return ProcessTickLoopResult(
             decision_statistics=decision_statistics,
             worker_statistics=worker_statistics,
+            signal_statistics=signal_statistics,
             coordination_statistics=coordination_statistics,
             portfolio_stats=portfolio_stats,
             execution_stats=execution_stats,

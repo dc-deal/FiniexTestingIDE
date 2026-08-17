@@ -428,6 +428,8 @@ class BatchOrchestrator:
             batch_tickrun_time=batch_tickrun_time,
             # broker maps are a set of symbols used in scenario_set
             broker_scenario_map=mount.broker_scenario_map,
+            # signal sources + their coverage / scenario windows (#433 report)
+            signal_scenario_map=mount.signal_scenario_map,
             # clipping stats from tick processing budget (main process, not subprocess)
             clipping_stats_map=mount.clipping_stats_map,
             # per-phase warmup timing breakdown

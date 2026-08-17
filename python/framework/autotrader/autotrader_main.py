@@ -12,7 +12,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.autotrader_data_preparer import prepare_mock_session_data
@@ -46,6 +46,7 @@ from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.process_data_types import ProcessDataPackage
+from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
@@ -87,6 +88,9 @@ class AutotraderMain:
         self._tick_queue: queue.Queue = queue.Queue()
         self._tick_source: Optional[AbstractTickSource] = None
         self._data_package: Optional[ProcessDataPackage] = None
+        # (signal source, symbol) → coverage + window, from the same shared preparation
+        # the sim batch uses — the 📡 report section reads it (#433).
+        self._signal_scenario_map: Dict[Tuple[str, str], SignalScenarioInfo] = {}
         self._tick_thread = None
         self._tick_loop: Optional[AutotraderTickLoop] = None
 
@@ -175,8 +179,10 @@ class AutotraderMain:
             # scenario_settings → no package (data streams from the broker).
             if self._config.scenario_settings is not None:
                 self._print_startup_phase('Preparing scenario data...')
-                self._data_package = prepare_mock_session_data(
+                prepared = prepare_mock_session_data(
                     self._config, self._session_logger)
+                self._data_package = prepared.package
+                self._signal_scenario_map = prepared.signal_scenario_map
 
             # === PIPELINE ===
             # Pipeline objects get session_logger — they produce per-tick output.
@@ -572,6 +578,7 @@ class AutotraderMain:
         if self._worker_orchestrator:
             try:
                 result.worker_statistics = self._worker_orchestrator.get_worker_statistics()
+                result.signal_statistics = self._worker_orchestrator.get_signal_statistics()
             except Exception as e:
                 self._global_logger.error(f"Error collecting worker stats: {e}")
 
@@ -590,6 +597,7 @@ class AutotraderMain:
             summary_logger=self._summary_logger,
             global_logger=self._global_logger,
             broker_config=self._executor.broker if self._executor else None,
+            signal_scenario_map=self._signal_scenario_map,
         ).generate_and_log()
 
         # Close all loggers

@@ -169,7 +169,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
     # Signal-Outage Contract (#434)
     # ============================================
 
-    def on_signal_stale(self, worker_name: str, source: str) -> None:
+    def on_signal_stale(self, worker_name: str, signal_kind: str) -> None:
         """
         Programmed staleness reaction (didactic): degrade to pure-indicator mode.
 
@@ -179,14 +179,14 @@ class HybridSentimentReference(AbstractDecisionLogic):
 
         Args:
             worker_name: The SIGNAL worker instance that turned stale
-            source: Its signal source key (e.g. 'llm_sentiment')
+            signal_kind: The payload kind it consumes (e.g. 'llm_sentiment')
         """
         self.logger.warning(
-            f"📡 Signal feed stale: '{worker_name}' ({source}) — "
+            f"📡 Signal feed stale: '{worker_name}' ({signal_kind}) — "
             f"degrading to pure-indicator mode until fresh data arrives."
         )
         self.emit_event(
-            f"📡 sentiment stale ({source}) — indicator-only mode",
+            f"📡 sentiment stale ({signal_kind}) — indicator-only mode",
             AwarenessLevel.NOTICE, 'signal_stale')
 
     # ============================================
