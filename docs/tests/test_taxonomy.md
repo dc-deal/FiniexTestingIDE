@@ -84,6 +84,7 @@ tests/
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141)
 │   ├── signal_coverage/   unit — SignalCoverageReport gap detection + scenario signal-window validation
+│   ├── data_coverage/     unit — data format version spans (which collector schema produced which archive window, #453)
 │   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)
 │   ├── market_compatibility/ unit — market activity metric, validator
 │   ├── tick_parquet_reader/  unit — parquet reader normalization

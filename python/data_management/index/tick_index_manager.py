@@ -418,6 +418,19 @@ class TickIndexManager:
     # FILE COVERAGE
     # =========================================================================
 
+    def get_symbol_entries(self, broker_type: str, symbol: str) -> List[Dict]:
+        """
+        Get all index entries for a symbol, chronologically sorted.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+
+        Returns:
+            List of index entries, empty when the pair is not indexed
+        """
+        return self.index.get(broker_type, {}).get(symbol, [])
+
     def get_symbol_file_coverage(self, broker_type: str, symbol: str) -> Dict:
         """Get basic coverage statistics for a symbol."""
         if broker_type not in self.index:

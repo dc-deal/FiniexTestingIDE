@@ -122,6 +122,30 @@ Detects gaps via timestamp jumps between consecutive bars at the configured gran
 
 Provides `has_issues()` check and actionable `get_recommendations()`.
 
+### Data format version spans
+
+The report shows **which collector schema produced which window** of the archive. The tick index
+records a `data_format_version` per file; consecutive files sharing a version collapse into one span:
+
+```
+DATA FORMAT VERSION:
+   1.0.5   2026-01-24 14:22 → 2026-01-25 14:13     1 file,          2,560 ticks
+   1.2.0   2026-01-25 14:15 → 2026-03-07 08:15     8 files,       330,679 ticks
+   1.3.0   2026-03-07 08:18 → 2026-08-15 15:16    31 files,     1,387,190 ticks
+```
+
+**The version is a declaration, not a measurement.** It comes from an operator-set collector input
+(`DataFormatVersion` in the MQL5 collector), so it states which schema the collector was configured
+to announce — never how a field was obtained. A collector upgrade that starts recording a field
+without a version bump is invisible here, and that has happened: the MT5 archive kept declaring
+`1.1.0` across the point where its `collected_msc` became a real collector timestamp. Do not derive
+data quality from these spans; they describe archive structure.
+
+Spans are built **at render time, from the tick index — never cached**. The coverage cache keys its
+validity on the bar file's mtime, while the tick index changes independently of that, so a cached
+span list could go stale unnoticed. The batch validation path never renders the report and therefore
+never pays for the index load.
+
 ## Signal Coverage Details
 
 The signal-source sibling of Data Coverage, keyed by `(data_sentiment_type, symbol)`.
@@ -135,6 +159,7 @@ Three deliberate differences to the tick report:
 | Key | `(broker_type, symbol)` | `(data_sentiment_type, symbol)` |
 | Interval | configured granularity (M1) | **measured** median snapshot distance |
 | Weekend | expected closure (per market rules) | **always a real gap** — the producing engine runs 24/7 |
+| Provenance | version spans only — a *declared* schema, no origin claim | `data_origin` per source (live / synthetic / mixed), **measured** from the archive |
 
 - **Thresholds** (`signal_coverage.thresholds`): short < 30min, moderate < 1h, large above.
   Tighter than the tick ladder — no producer restart takes longer than an hour.

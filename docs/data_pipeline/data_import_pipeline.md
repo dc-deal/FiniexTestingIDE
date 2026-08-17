@@ -348,7 +348,12 @@ When no version is recorded for a file (`'unknown'`), the advisory says so inste
 ⚠️  Data format version unknown for 186/186 file(s) — the tick index carries no version for them
 ```
 
-Versions are compared component-wise, never as strings (`'1.10.0' < '1.3.0'` is `True` lexicographically) — see `python/framework/utils/version_utils.py`.
+Versions are compared component-wise, never as strings (`'1.10.0' < '1.3.0'` is `True` lexicographically) — see `python/framework/utils/version_utils.py`. The baseline itself (`1.3.0` = first version with authentic `collected_msc`) and the authentic / restored / unknown classification live in `python/framework/types/data_format_types.py`, shared by every consumer.
+
+**Coverage report**: `discoveries_cli.py data-coverage show <broker> <symbol>` lists the version as
+time **spans**, so the run-report's file count becomes a window — which collector schema produced
+which period. The version is a declaration (an operator-set collector input), not a measurement of
+how a field was obtained. See [discovery_system.md](../discovery_system.md).
 
 **Data flow**: Uses Channel C (main-process only, no subprocess serialization) — see [architecture_execution_layer.md](../architecture/architecture_execution_layer.md#batch-data-flow-main-process--subprocesses--reports).
 
