@@ -1,5 +1,9 @@
-"""Signal-outage contract (#434): staleness-flip refresh, startup validation, hook dispatch."""
+"""
+Signal-outage contract (#434): staleness-flip refresh, startup validation, hook dispatch.
+Plus the episode spans the same flips produce (#451).
+"""
 
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List
 from unittest.mock import MagicMock
@@ -9,6 +13,7 @@ import pytest
 from conftest import SYMBOL, make_provider, make_tick, snapshot, utc
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.stress_test.stale_data_slicer import StaleDataSlicer
+from python.framework.types.disturbance_episode_types import DisturbanceDomain
 from python.framework.types.signal_data_types import SignalSeries
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference
@@ -17,6 +22,11 @@ from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
+
+
+def _at(minutes: int):
+    """Tick time on the episode axis: 08:00 UTC plus N minutes."""
+    return utc(2026, 1, 15, 8, 0) + timedelta(minutes=minutes)
 
 
 def _worker(mock_logger, max_staleness=30) -> LlmSentimentWorker:
@@ -240,19 +250,63 @@ class TestHookDispatch:
 
         # Session starts stale → fires on the first result
         orchestrator._worker_results['sentiment'] = self._stale_result(True)
-        orchestrator._process_signal_pass()
+        orchestrator._process_signal_pass(_at(0))
         assert decision.stale_calls == [('sentiment', 'llm_sentiment')]
 
         # Still stale → no re-fire
-        orchestrator._process_signal_pass()
+        orchestrator._process_signal_pass(_at(1))
         assert len(decision.stale_calls) == 1
 
         # Recovery resets the edge; next flip fires again
         orchestrator._worker_results['sentiment'] = self._stale_result(False)
-        orchestrator._process_signal_pass()
+        orchestrator._process_signal_pass(_at(2))
         orchestrator._worker_results['sentiment'] = self._stale_result(True)
-        orchestrator._process_signal_pass()
+        orchestrator._process_signal_pass(_at(3))
         assert len(decision.stale_calls) == 2
+
+
+class TestEpisodeCapture:
+    """The episode spans behind the counters (#451) — observed flips only."""
+
+    def _stale_result(self, is_stale: bool) -> WorkerResult:
+        return WorkerResult(outputs={'sentiment_score': 0.1}, is_stale=is_stale)
+
+    def test_recovered_episode_carries_the_observed_span(self, mock_logger):
+        orchestrator = _orchestrator(_CompliantDecision, mock_logger)
+
+        orchestrator._worker_results['sentiment'] = self._stale_result(True)
+        orchestrator._process_signal_pass(_at(0))
+        orchestrator._process_signal_pass(_at(1))
+        orchestrator._worker_results['sentiment'] = self._stale_result(False)
+        orchestrator._process_signal_pass(_at(5))
+
+        episodes = orchestrator.get_signal_episodes()
+        assert len(episodes) == 1
+        assert episodes[0].stale_from == _at(0)
+        assert episodes[0].stale_to == _at(5)
+        assert episodes[0].duration_seconds == 300.0
+        assert episodes[0].domain == DisturbanceDomain.SIGNAL
+
+    def test_episode_open_at_run_end_never_recovers(self, mock_logger):
+        orchestrator = _orchestrator(_CompliantDecision, mock_logger)
+
+        orchestrator._worker_results['sentiment'] = self._stale_result(True)
+        orchestrator._process_signal_pass(_at(2))
+        orchestrator._process_signal_pass(_at(4))
+
+        episodes = orchestrator.get_signal_episodes(_at(4))
+        assert len(episodes) == 1
+        assert episodes[0].stale_to is None      # never recovered — a dead tail
+        assert episodes[0].duration_seconds == 120.0
+
+    def test_no_episode_without_a_flip(self, mock_logger):
+        orchestrator = _orchestrator(_CompliantDecision, mock_logger)
+
+        orchestrator._worker_results['sentiment'] = self._stale_result(False)
+        orchestrator._process_signal_pass(_at(0))
+        orchestrator._process_signal_pass(_at(1))
+
+        assert orchestrator.get_signal_episodes() == []
 
 
 class TestReferenceReaction:

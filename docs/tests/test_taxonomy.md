@@ -67,7 +67,7 @@ tests/
 ├── autotrader/
 │   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
 │   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query/polling_cadence/drift_audit/decision_event_dispatcher (#319, #321, #318, #326, #320, #327, #348)
-│   ├── loop_cadence/      unit — clock injection + heartbeat re-poll + decision ghost-pass cadence (#360) + market-data staleness contract (#436)
+│   ├── loop_cadence/      unit — clock injection + heartbeat re-poll + decision ghost-pass cadence (#360) + market-data staleness contract (#436) + disturbance episodes (#451)
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   ├── safety/            unit — circuit breaker (margin + spot)
 │   ├── reconciliation/    unit — broker truth-pull + Reconciler ALERT_ONLY (#151)
@@ -82,7 +82,8 @@ tests/
 │   ├── batch_validations/ unit — ScenarioValidator, BrokerDataPreparator (Phase 0 batch pipeline)
 │   ├── config/            unit — execution_config 3-level cascade (#137)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
-│   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141)
+│   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141), outage contract + episode capture (#434/#451)
+│   ├── reporting/         unit — report builders, aggregators, IO/store, console renderers (#391/#433/#451)
 │   ├── signal_coverage/   unit — SignalCoverageReport gap detection + scenario signal-window validation
 │   ├── data_coverage/     unit — data format version spans (which collector schema produced which archive window, #453)
 │   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)

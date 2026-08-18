@@ -7,6 +7,7 @@ import re
 import traceback
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
@@ -15,6 +16,8 @@ from python.framework.logging.coordinator_tick_logger import CoordinatorTickLogg
 from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
 from python.framework.types.decision_logic_types import Decision
+from python.framework.types.disturbance_episode_types import (
+    DisturbanceDomain, DisturbanceEpisode, DisturbanceOrigin)
 from python.framework.types.market_types.market_data_types import Bar, BarRenderState, TickData
 from python.framework.types.performance_types.performance_stats_types import WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
 from python.framework.types.signal_data_types import SignalResolution, SignalResolutionStats
@@ -101,6 +104,13 @@ class WorkerOrchestrator:
             )
             for name, worker in self._signal_workers.items()
         }
+
+        # Signal outage episodes (#451): the SPAN behind the counters above — opened on
+        # the flip out of fresh, closed on the flip back. Same classification, no second
+        # evaluation. _signal_episode_open holds the start of a running episode per worker.
+        self._signal_episodes: List[DisturbanceEpisode] = []
+        self._signal_episode_open: Dict[str, datetime] = {}
+        self._last_signal_pass_time: Optional[datetime] = None
 
         # Parallelization configuration
         if parallel_workers is None:
@@ -413,7 +423,7 @@ class WorkerOrchestrator:
         # on fresh→stale transitions (#434) BEFORE the decision computes, so it
         # reacts in this pass.
         if self._signal_workers:
-            self._process_signal_pass()
+            self._process_signal_pass(tick.timestamp)
 
         # ============================================
         # Delegate to DecisionLogic
@@ -446,11 +456,12 @@ class WorkerOrchestrator:
 
         return decision
 
-    def _process_signal_pass(self) -> None:
+    def _process_signal_pass(self, tick_time: datetime) -> None:
         """
-        The per-tick SIGNAL pass: count the resolution + fire the stale edge.
+        The per-tick SIGNAL pass: count the resolution, track the outage episode,
+        and fire the stale edge.
 
-        Both in ONE loop over the SIGNAL workers — it runs exactly once per tick
+        All in ONE loop over the SIGNAL workers — it runs exactly once per tick
         (after the sequential AND the parallel worker path), which is what makes
         the counters tick-exact.
 
@@ -460,11 +471,20 @@ class WorkerOrchestrator:
         refresh on both a snapshot change and a staleness flip, and a blind↔data
         transition always changes collected_msc.
 
+        Episodes (#451): the same flip that fires the edge opens the episode, the
+        flip back closes it — the span comes from the observed transition, never
+        from a planned stress window.
+
         Stale edge (#434): on_signal_stale fires once per fresh→stale flip (a
         session that STARTS stale fires on the first result). Recovery
         (stale→fresh) only resets the edge state — the decision sees freshness
         via is_stale in worker_results.
+
+        Args:
+            tick_time: Current tick timestamp (canonical clock) — the episode axis
         """
+        self._last_signal_pass_time = tick_time
+
         for name, worker in self._signal_workers.items():
             result = self._worker_results.get(name)
             if result is None:
@@ -481,9 +501,64 @@ class WorkerOrchestrator:
 
             is_stale = result.is_stale
             if is_stale and not self._signal_stale_state.get(name, False):
+                self._signal_episode_open[name] = tick_time
                 self.decision_logic.on_signal_stale(
                     worker_name=name, signal_kind=worker.get_consumed_signal_kind())
+            elif not is_stale and self._signal_episode_open.get(name) is not None:
+                self._close_signal_episode(name, worker, tick_time)
             self._signal_stale_state[name] = is_stale
+
+    def _close_signal_episode(
+        self,
+        name: str,
+        worker: AbstractSignalWorker,
+        recovered_at: datetime,
+    ) -> None:
+        """
+        Record one recovered signal outage episode (#451).
+
+        Args:
+            name: Worker instance name
+            worker: The SIGNAL worker that recovered
+            recovered_at: Recovery time (canonical clock)
+        """
+        started = self._signal_episode_open.pop(name)
+        self._signal_episodes.append(
+            self._build_signal_episode(worker, started, recovered_at, recovered_at))
+
+    def _build_signal_episode(
+        self,
+        worker: AbstractSignalWorker,
+        started: datetime,
+        stale_to: Optional[datetime],
+        measured_end: datetime,
+    ) -> DisturbanceEpisode:
+        """
+        Build one signal episode record.
+
+        `source` stays empty here on purpose: the worker knows its signal KIND
+        ('llm_sentiment'), not the archive source the scenario bound
+        ('crypto_sentiment'). That identity is stamped per run unit in the report
+        builder, exactly like the #433 counters are joined by (unit, symbol).
+
+        Args:
+            worker: The SIGNAL worker the episode belongs to
+            started: Observed start of the outage
+            stale_to: Recovery time, or None when it never recovered
+            measured_end: End used to measure the duration (recovery / run end)
+
+        Returns:
+            The DisturbanceEpisode record
+        """
+        return DisturbanceEpisode(
+            source='',
+            domain=DisturbanceDomain.SIGNAL,
+            stale_from=started,
+            stale_to=stale_to,
+            duration_seconds=max(0.0, (measured_end - started).total_seconds()),
+            origin=DisturbanceOrigin.LIVE_REAL,
+            symbol=worker.get_symbol() or '',
+        )
 
     def process_heartbeat(self) -> Optional[Decision]:
         """
@@ -807,6 +882,27 @@ class WorkerOrchestrator:
             List of SignalResolutionStats (one per SIGNAL worker; empty when none)
         """
         return list(self._signal_resolution_stats.values())
+
+    def get_signal_episodes(
+            self, run_end: Optional[datetime] = None) -> List[DisturbanceEpisode]:
+        """
+        Collect the signal outage episodes (#451) — the spans behind the counters.
+
+        An episode still open at run end is returned as never recovered
+        (stale_to = None), measured up to the run end.
+
+        Args:
+            run_end: Run end time; falls back to the last signal pass
+
+        Returns:
+            List of DisturbanceEpisode (empty when no SIGNAL worker went stale)
+        """
+        end = run_end or self._last_signal_pass_time
+        episodes = list(self._signal_episodes)
+        for name, started in self._signal_episode_open.items():
+            episodes.append(self._build_signal_episode(
+                self._signal_workers[name], started, None, end or started))
+        return episodes
 
     def get_coordination_statistics(self) -> WorkerCoordinatorPerformanceStats:
         """

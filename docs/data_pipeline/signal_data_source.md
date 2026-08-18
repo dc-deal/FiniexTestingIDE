@@ -226,6 +226,23 @@ scenario usages, unset when no SIGNAL worker ran) and writes it into the run-res
 parameter sweep or a multi-window robustness pass can tell whether two rows were produced on
 comparable data.
 
+### When and how often — the third question (#451)
+
+The counters say *how much*, not *when*: 52% fresh can be one long outage or forty short hiccups,
+and the two demand different reactions. The **📉 FEED STABILITY** section answers that, for the
+signal sources and the tick stream alike — one row per source with the stale time, the episode
+count and each episode's observed span:
+
+```
+   crypto_sentiment (signal)   3,613 fresh · 1,387 stale · 0 blind   (72.3% fresh)
+     stale 2026-04-27 06:30 → 2026-04-27 07:10   (40m 1s)   🧪 [STRESS] "sentiment feed dies 60min"
+```
+
+The span is always what the run experienced, not what a stress window planned — a carved
+60-minute hole shows here as the ~40 minutes of staleness it actually caused, because
+`max_staleness_minutes` has to elapse first. An episode still open when the run ends renders as
+`→ run end`.
+
 Deterministic test cases for all of this are carved with the stress module rather than hand-built —
 see [Stress Test](../stress_test.md) and the `signal_resolution_cases` fixture set.
 

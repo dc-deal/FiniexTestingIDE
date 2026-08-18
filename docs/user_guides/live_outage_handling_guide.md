@@ -112,6 +112,32 @@ There is no correct default — every answer is wrong for SOME strategy:
   `CORE/backtesting/backtesting_outage_probe` (the test probe asserting the
   whole chain).
 
+## Reading What Happened Afterwards
+
+Every run — drill or real — closes with a **📉 FEED STABILITY** section (both pipelines,
+rendered only when an episode occurred): one row per source across both domains, with the
+stale time, the episode count, the fresh/stale tick counters, and each episode's span.
+
+```
+📉 FEED STABILITY
+   Source                      Domain      Stale time   Episodes   Origin
+   crypto_sentiment_mock       signal          40m 1s          1   🧪 stress-injected
+   kraken_spot                 tick                1s          1   🧪 stress-injected
+```
+
+Two things to know when reading it:
+
+- **The spans are what the run experienced, not what a drill planned.** A configured
+  60-minute signal window shows as ~40 minutes of staleness because the worker's
+  `max_staleness_minutes` has to elapse first; a window reaching past the run end shows
+  as never recovered (`→ run end`). That difference is the point of the record.
+- **The counters and the spans answer different questions.** `72.3% fresh` says how much
+  of the run was decided on good data; the spans say whether that was one long outage or
+  many short ones — the same ratio, two very different situations to react to.
+
+The same figures are persisted as `io/feed_stability.json` and served by
+`GET /api/v1/reports/runs/{run_id}/feed-stability`.
+
 ## Footnote: What Is Deliberately NOT Covered
 
 **There is no "worker delivered nothing" outage type.** The worker contract

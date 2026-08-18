@@ -22,6 +22,7 @@ from python.framework.autotrader.tick_sources.abstract_tick_source import Abstra
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.process.tick_pipeline_core import execute_algo_path, render_bars_for_tick, run_ghost_pass
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -39,6 +40,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
 )
 from python.framework.types.decision_event_types import SessionEndEvent, SessionEndSeverity
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
@@ -125,12 +127,21 @@ class AutotraderTickLoop:
 
         # #436: market-data staleness contract — no real tick for this many wall
         # seconds → session-level stale (pot warning + on_market_data_stale +
-        # OrderGuard entry block). 0 disables. Edge state + episode start below.
+        # OrderGuard entry block). 0 disables. Edge state below; the episode
+        # record itself belongs to the observer (#451).
         self._market_data_stale_after_s = config.execution.market_data_stale_after_s
         self._market_stale = False
         self._market_stale_since: Optional[datetime] = None
-        self._market_stale_since_wall: float = 0.0
         self._last_reconnect_count: int = 0
+
+        # #451: the observer that turns the status flips above into episode records.
+        # It sees both event sources (tick + heartbeat) and measures on the wall axis
+        # (§9 duration rule — the canonical clock is bimodal in a mock replay session).
+        self._market_data_tracker = MarketDataEpisodeTracker(
+            source=config.broker_type,
+            logger=logger,
+            measure_wall_duration=True,
+        )
 
         # Resolve symbol currencies from broker config (avoids string splitting heuristic)
         symbol_spec = executor.broker.adapter.get_symbol_specification(config.symbol)
@@ -298,6 +309,14 @@ class AutotraderTickLoop:
             # #436: a real tick ends a stale episode (recovery, edge reset).
             if self._market_stale:
                 self._end_market_stale_episode()
+
+            # #451: observe the resulting status — counts this tick and closes the
+            # episode record from what the session actually experienced.
+            self._market_data_tracker.on_tick(
+                self._executor.get_current_time(),
+                self._executor.get_market_data_status(),
+                self._injected_outage_label(),
+            )
 
             # Capture spot equity baseline on first tick (first live price available)
             if ticks_processed == 1 and self._trading_model == TradingModel.SPOT:
@@ -583,8 +602,6 @@ class AutotraderTickLoop:
         if flipped:
             self._market_stale = True
             self._market_stale_since = self._executor.get_current_time()
-            # Wall anchor: the outage physically began when ticks stopped.
-            self._market_stale_since_wall = self._last_real_tick_wall_time
         status = MarketDataStatus(
             is_stale=True,
             stale_since=self._market_stale_since,
@@ -592,6 +609,10 @@ class AutotraderTickLoop:
             reconnect_count=self._last_reconnect_count,
         )
         self._executor.set_market_data_status(status)
+        # #451: the episode opens here — the observer stamps it back to the last tick
+        # the session still saw as fresh, not to the pass that revealed the silence.
+        self._market_data_tracker.on_heartbeat(
+            self._executor.get_current_time(), status, self._injected_outage_label())
         if flipped:
             self._logger.warning(
                 f"⚠️ Market data stale since "
@@ -603,27 +624,45 @@ class AutotraderTickLoop:
 
     def _end_market_stale_episode(self) -> None:
         """
-        Close a stale episode on tick resumption (#436): fresh status, edge
-        reset, and the from–to episode span into the warnings pot (the v0
-        stale protocol — the #433 stability table aggregates these later).
-        The duration is measured on the WALL axis (§9 duration rule) — in a
-        mock session the canonical from–to can span two time axes (replay
-        tick timestamps vs wall heartbeat), while live they coincide.
+        Close a stale episode on tick resumption (#436): fresh status + edge reset.
+
+        The episode RECORD and its pot line come from the MarketDataEpisodeTracker
+        (#451), which derives both from the observed status change — so a real and an
+        injected outage travel the exact same path into the report.
         """
-        recovered_at = self._executor.get_current_time()
-        span = ''
-        if self._market_stale_since is not None:
-            duration_s = max(0.0, time.time() - self._market_stale_since_wall)
-            span = (
-                f": stale {self._market_stale_since.strftime('%H:%M:%S')} → "
-                f"{recovered_at.strftime('%H:%M:%S')} "
-                f"({int(duration_s // 60)}m {int(duration_s % 60)}s)"
-            )
-        self._logger.warning(f'✅ Market data recovered{span}')
         self._market_stale = False
         self._market_stale_since = None
         self._executor.set_market_data_status(MarketDataStatus(
             reconnect_count=self._last_reconnect_count))
+
+    def _injected_outage_label(self) -> str:
+        """
+        Outage label the tick source declares for a deliberately injected silence.
+
+        Returns:
+            The source's injection label, '' when the silence is real
+        """
+        if self._tick_source is None:
+            return ''
+        return self._tick_source.get_injected_outage_label()
+
+    def get_disturbance_episodes(self) -> List[DisturbanceEpisode]:
+        """
+        The session's observed market-data outage episodes (#451).
+
+        Returns:
+            List of DisturbanceEpisode (an episode still open is never-recovered)
+        """
+        return self._market_data_tracker.get_episodes(self._executor.get_current_time())
+
+    def get_market_data_tick_stats(self) -> MarketDataTickStats:
+        """
+        The session's market-data tick counters (#451 Part 4).
+
+        Returns:
+            MarketDataTickStats for the session's tick source
+        """
+        return self._market_data_tracker.get_tick_stats()
 
     def _safety_state(self) -> SafetyState:
         """Bundle the current circuit-breaker state for the display exporter."""

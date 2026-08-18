@@ -107,11 +107,24 @@ source the scenario binds — its `data_sentiment_type` or its `data_broker_type
 - **Tick source** (`data_source` == the scenario's `data_broker_type`) —
   **status-plane injection**: entering the window sets `MarketDataStatus`
   stale, warns to the scenario pot, and edge-dispatches `on_market_data_stale`;
-  leaving restores fresh with a from–to episode line. **Ticks keep flowing** by
+  leaving restores fresh. **Ticks keep flowing** by
   design: a dead FEED does not freeze the MARKET — carving ticks would also
   freeze simulated broker-side SL/TP fills, and a replay tick gap is
   indistinguishable from data. The OrderGuard entry block (`STALE_MARKET_DATA`)
   is ACTIVE inside the window, deterministically.
+
+**The episode record always comes from the RUN, never from this config (#451).** An
+event plans a window; what the report states is what the run experienced. The two
+differ regularly — a window reaching past the scenario end is experienced only up to
+that end and never recovers, a window the tick stream jumps over is not experienced
+at all, and a signal window is experienced only from the moment `max_staleness_minutes`
+elapses inside it. The configuration therefore contributes **the label alone**: the
+`MarketDataEpisodeTracker` derives the tick-domain span from the observed
+`MarketDataStatus` change, the orchestrator derives the signal-domain span from the
+observed resolution flip, and the [feed-stability section](architecture/reporting_pipeline.md)
+renders both with a `live-real` / `stress-injected` origin column. Reading the plan
+instead of the run would turn a report into a claim — and a bug in the injection could
+fake a clean episode, which is the opposite of what a fault engine is for.
 
 **Validation:** a `data_source` the scenario does not bind → config error
 (scenario excluded at preparation, batch continues, §33). Missing
@@ -151,6 +164,7 @@ Scenario JSON
 | `StressTestRejection` | `framework/stress_test/stress_test_rejection.py` | Rejection logic |
 | `StaleDataSlicer` | `framework/stress_test/stale_data_slicer.py` | Signal-source window carve (data plane, at preparation) |
 | `StaleDataStressDriver` | `framework/stress_test/stale_data_stress_driver.py` | Tick-source window state machine (status plane) |
+| `MarketDataEpisodeTracker` | `framework/process/market_data_episode_tracker.py` | Observes the status → episode spans + fresh/stale tick counters (#451) |
 | `SeededProbabilityFilter` | `framework/utils/seeded_generators/seeded_probability_filter.py` | Reusable probability filter |
 | `SeededDelayGenerator` | `framework/utils/seeded_generators/seeded_delay_generator.py` | Reusable delay generator |
 | `ScenarioCascade` | `scenario/scenario_cascade.py` | Config merge (2-level) |

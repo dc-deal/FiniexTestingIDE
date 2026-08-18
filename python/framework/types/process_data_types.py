@@ -17,6 +17,7 @@ from dateutil import parser
 from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.config_types.market_config_types import MarketType, TradingModel
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
@@ -526,6 +527,12 @@ class ProcessTickLoopResult:
 
     # Signal resolution counters (per SIGNAL worker; #433 Part C)
     signal_statistics: List[SignalResolutionStats] = None
+
+    # Observed outage episodes of both staleness domains (#451)
+    disturbance_episodes: List[DisturbanceEpisode] = None
+
+    # Market-data resolution counters — the tick-domain twin (#451 Part 4)
+    market_data_tick_stats: Optional[MarketDataTickStats] = None
 
     # Coordination statistics (parallel execution, ticks processed)
     coordination_statistics: WorkerCoordinatorPerformanceStats = None

@@ -14,9 +14,10 @@ from fastapi import APIRouter, Query
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.types.api.report_types import (
-    AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, OrderHistoryReport,
-    PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary, ScenarioDetailsReport,
-    SignalReport, TradeHistoryReport, WarningsErrorsReport, WorkerDecisionReport)
+    AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, FeedStabilityReport,
+    OrderHistoryReport, PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary,
+    ScenarioDetailsReport, SignalReport, TradeHistoryReport, WarningsErrorsReport,
+    WorkerDecisionReport)
 
 router = APIRouter()
 
@@ -286,6 +287,26 @@ def get_signal(run_id: str) -> SignalReport:
         raise ApiException(
             404, 'run_not_found',
             f"No signal artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/feed-stability', response_model=FeedStabilityReport)
+def get_feed_stability(run_id: str) -> FeedStabilityReport:
+    """
+    Feed-stability report for a run (#451): the observed disturbance episodes per source
+    across both staleness domains (tick stream + signal sources).
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The FeedStabilityReport (404 if the run has no feed-stability artifact)
+    """
+    report = ReportStore().get_feed_stability(run_id)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No feed-stability artifact for run '{run_id}'")
     return report
 
 

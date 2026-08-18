@@ -45,7 +45,9 @@ class StaleDataStressDriver:
     The third dispatch driver of the #436 contract surface (live heartbeat ·
     THIS · later #375 TimeEvent): entering a window sets the executor's
     MarketDataStatus stale, logs the pot warning, and edge-dispatches
-    on_market_data_stale once; leaving restores fresh + logs the episode span.
+    on_market_data_stale once; leaving restores fresh. The episode record and
+    its span come from the observed status change (MarketDataEpisodeTracker,
+    #451), never from the planned window.
     Ticks keep flowing by design — a dead FEED does not freeze the MARKET
     (cutting ticks would also freeze simulated broker-side SL/TP fills).
     While a window is active the OrderGuard rejects new entries
@@ -131,25 +133,29 @@ class StaleDataStressDriver:
             self._decision_logic.on_market_data_stale(status)
 
     def finish(self) -> None:
-        """Close a window still active at scenario end (episode span to pot)."""
+        """Close a window still active at scenario end (status reset only)."""
         if self._active is not None:
             self._end_episode(self._active)
             self._active = None
 
+    def get_active_label(self) -> str:
+        """
+        Label of the window currently being injected (#451 episode origin).
+
+        Returns:
+            The active event's label, '' when no window is active
+        """
+        return self._active.label if self._active is not None else ''
+
     def _end_episode(self, event: StaleDataEvent) -> None:
         """
-        Recovery edge: fresh status + from–to episode span into the pot.
+        Recovery edge: restore the fresh status.
+
+        The episode RECORD (span + pot line) belongs to the MarketDataEpisodeTracker,
+        which derives it from the observed status change (#451) — this driver plans the
+        window, it does not get to claim what the run experienced.
 
         Args:
             event: The window being left
         """
-        duration_s = (
-            event.stale_end_date - event.stale_start_date).total_seconds()
-        self._logger.warning(
-            f"✅ [STRESS] Market data recovered: stale "
-            f"{event.stale_start_date.strftime('%H:%M:%S')} → "
-            f"{event.stale_end_date.strftime('%H:%M:%S')} "
-            f"({int(duration_s // 60)}m {int(duration_s % 60)}s) — "
-            f"'{event.label}'"
-        )
         self._executor.set_market_data_status(MarketDataStatus())

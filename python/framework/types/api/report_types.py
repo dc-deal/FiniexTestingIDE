@@ -335,6 +335,12 @@ class RunSummary(BaseModel):
     # Rides into the run-results ledger so a sweep/robustness ranking carries the data
     # quality its rows were produced under.
     signal_fresh_ratio: float | None = None
+    # Feed disturbance totals (#451) — the executive line reads these, it does not re-scan
+    # the episodes. Zero everywhere = the run saw no outage in either staleness domain.
+    disturbance_episode_count: int = 0
+    disturbance_stale_seconds: float = 0.0
+    disturbance_source_count: int = 0
+    disturbance_stress_injected: int = 0
 
 
 class RunResultRow(BaseModel):
@@ -677,6 +683,57 @@ class SignalReport(BaseModel):
     same shared data preparation, so sim batch and AutoTrader-mock session render identically.
     """
     units: list[SignalSourceRow]
+
+
+class FeedStabilityEpisodeRow(BaseModel):
+    """
+    One observed outage span of a data source (#451).
+
+    The span is what the run experienced, never what a stress window planned. An empty
+    `stale_to` means the source never recovered — the run ended inside the outage.
+    """
+    unit: str = ''
+    symbol: str = ''
+    stale_from: str = ''            # ISO-8601 UTC
+    stale_to: str = ''              # ISO-8601 UTC ('' = never recovered)
+    duration_seconds: float = 0.0   # measured (live: wall axis, sim: canonical axis)
+    origin: str = 'live-real'       # 'live-real' | 'stress-injected'
+    label: str = ''                 # the stress event's label ('' for a real outage)
+
+
+class FeedStabilitySourceRow(BaseModel):
+    """
+    One data source's stability over the run: its episodes plus the per-tick counters
+    of its domain (#451).
+
+    The counters answer "how much of the run was decided on degraded data", the episodes
+    answer "when and how often" — a ratio alone cannot separate one long outage from
+    forty short ones.
+    """
+    source: str
+    domain: str = 'tick'            # 'tick' (market data) | 'signal' (a SIGNAL source)
+    stale_seconds: float = 0.0      # summed episode duration
+    episode_count: int = 0
+    origins: list[str] = []         # distinct origins across the episodes
+    fresh_ticks: int = 0
+    stale_ticks: int = 0
+    blind_ticks: int = 0            # signal domain only (nothing resolvable)
+    episodes: list[FeedStabilityEpisodeRow] = []
+
+
+class FeedStabilityReport(BaseModel):
+    """
+    Feed stability view (#451): one row per source across BOTH staleness domains —
+    the tick stream (#436) and every SIGNAL source (#434) — in both pipelines.
+
+    Live-real and stress-injected disturbances travel the same path and differ only by
+    the origin column; the report states the facts, any verdict stays in a validator.
+    """
+    units: list[FeedStabilitySourceRow]
+    episode_count: int = 0
+    stale_seconds: float = 0.0
+    stress_injected_count: int = 0
+    source_count: int = 0
 
 
 class WarningRow(BaseModel):

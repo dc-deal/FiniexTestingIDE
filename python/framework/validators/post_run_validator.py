@@ -85,8 +85,15 @@ class PostRunValidator:
                     f"reject_open_order: probability={ro.probability:.0%}, seed={ro.seed}")
             if config.stale_data_stress and config.stale_data_stress.enabled:
                 sd = config.stale_data_stress
+                # Name the windows, not just their count: this is the INTENT half of the
+                # record ("what was planned"). What the run actually experienced is the
+                # feed-stability section (#451) — deliberately a different source.
+                windows = ' | '.join(
+                    f"'{e.label}' on {e.data_source} "
+                    f"{e.stale_start_date.isoformat()} → {e.stale_end_date.isoformat()}"
+                    for e in sd.events)
                 parts.append(
-                    f"stale_data_stress: {len(sd.events)} planned window(s)")
+                    f"stale_data_stress: {len(sd.events)} planned window(s) — {windows}")
             signature = ' | '.join(parts)
             config_groups.setdefault(signature, []).append(scenario.name)
 

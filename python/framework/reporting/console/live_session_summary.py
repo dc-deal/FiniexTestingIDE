@@ -11,7 +11,8 @@ prominently (§35); the warnings/errors list itself is the shared `WarningsSumma
 from pathlib import Path
 from typing import Optional
 
-from python.framework.types.api.report_types import TradeHistoryReport
+from python.framework.reporting.console.feed_stability_summary import format_disturbance_line
+from python.framework.types.api.report_types import RunSummary, TradeHistoryReport
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.utils.console_renderer import ConsoleRenderer
 
@@ -24,16 +25,19 @@ class LiveSessionSummary:
         result: AutoTraderResult,
         trade_report: Optional[TradeHistoryReport],
         run_dir: Optional[Path],
+        run_summary: Optional[RunSummary] = None,
     ):
         """
         Args:
             result: The completed session result (stats + warning/error buffers)
             trade_report: Unified trade-history report — its #389 analytics line is appended
             run_dir: The session's run directory (output-locations section)
+            run_summary: Cross-section KPI summary — supplies the #451 disturbance line
         """
         self._result = result
         self._trade_report = trade_report
         self._run_dir = run_dir
+        self._run_summary = run_summary
 
     def render(self, renderer: ConsoleRenderer) -> None:
         """Render the closing block (session stats + output locations)."""
@@ -74,6 +78,12 @@ class LiveSessionSummary:
             print(f"  Clipping ratio: {clipping.clipping_ratio:.1%} "
                   f"(max stale: {clipping.max_stale_ms:.1f}ms, "
                   f"avg proc: {clipping.avg_processing_ms:.2f}ms)")
+
+        # Feed disturbance (#451) — a session that ran through an outage must say so here.
+        disturbance = (
+            format_disturbance_line(self._run_summary) if self._run_summary else '')
+        if disturbance:
+            print(renderer.yellow(f"  {disturbance}"))
 
     def _render_output_locations(self, renderer: ConsoleRenderer) -> None:
         """Output-file locations (log dir + event log)."""
