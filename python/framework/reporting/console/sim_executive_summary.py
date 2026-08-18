@@ -16,6 +16,7 @@ import psutil
 from typing import Dict, List, Optional
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.feed_stability_summary import format_disturbance_line
 from python.framework.types.api.report_types import (
     AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
     ProfilingReport, RunMetaReport, RunSummary, ScenarioDetailsReport, WarningsErrorsOutcome,
@@ -111,6 +112,11 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         if summary.sl_tp_triggered > 0:
             orders_line += f" | {summary.sl_tp_triggered} SL/TP"
         print(orders_line)
+
+        # Feed disturbance (#451) — a disturbed run must not read as a clean one.
+        disturbance = format_disturbance_line(summary)
+        if disturbance:
+            print(renderer.yellow(disturbance))
 
         if not summary.currencies:
             return

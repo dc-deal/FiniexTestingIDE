@@ -120,6 +120,9 @@ def _orchestrator(worker) -> WorkerOrchestrator:
     orch._worker_results = {}
     orch._signal_workers = {worker.name: worker}
     orch._signal_stale_state = {}
+    orch._signal_episodes = []
+    orch._signal_episode_open = {}
+    orch._last_signal_pass_time = None
     orch._signal_resolution_stats = {
         worker.name: SignalResolutionStats(
             worker_name=worker.name,

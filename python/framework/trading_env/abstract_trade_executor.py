@@ -1242,8 +1242,9 @@ class AbstractTradeExecutor(ABC):
         """
         Inject the session-level tick-stream health status (#436).
 
-        Called by the LIVE tick loop only (heartbeat evaluation + tick-path
-        recovery). The sim never calls this — default fresh is by design.
+        Called by the LIVE tick loop (heartbeat evaluation + tick-path recovery)
+        and, in simulation, by the stale-data stress driver. An unstressed sim run
+        never calls it — default fresh is by design.
 
         Args:
             status: Current market-data health snapshot

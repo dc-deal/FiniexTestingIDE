@@ -10,10 +10,11 @@ never re-iterates the run.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats)
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
@@ -21,6 +22,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
+from python.framework.types.trading_env_types.stress_test_types import StaleDataEvent, StressTestConfig
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
@@ -44,6 +46,12 @@ class RunUnit:
     coordination_statistics: Optional[WorkerCoordinatorPerformanceStats] = None
     # Per-tick SIGNAL resolution counters (unified — both pipelines; #433 Part C).
     signal_statistics: List[SignalResolutionStats] = field(default_factory=list)
+    # Observed outage episodes of both staleness domains + the tick-domain counters
+    # (unified — both pipelines; #451). planned_outages carries the stress windows the
+    # unit was configured with — used ONLY to label an episode's origin, never its times.
+    disturbance_episodes: List[DisturbanceEpisode] = field(default_factory=list)
+    market_data_tick_stats: Optional[MarketDataTickStats] = None
+    planned_outages: List[StaleDataEvent] = field(default_factory=list)
 
 
 def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
@@ -78,13 +86,58 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
             decision_statistics=tick_loop.decision_statistics,
             coordination_statistics=tick_loop.coordination_statistics,
             signal_statistics=tick_loop.signal_statistics or [],
+            disturbance_episodes=_stamp_unit(
+                tick_loop.disturbance_episodes or [], result.scenario_name, scenario.symbol),
+            market_data_tick_stats=tick_loop.market_data_tick_stats,
+            planned_outages=_planned_outages(scenario.stress_test_config),
         ))
     return units
 
 
+def _stamp_unit(
+    episodes: List[DisturbanceEpisode], name: str, symbol: str) -> List[DisturbanceEpisode]:
+    """
+    Stamp the unit identity onto the episodes captured inside that unit.
+
+    Args:
+        episodes: The unit's captured episodes
+        name: Unit name (scenario / session)
+        symbol: The unit's symbol
+
+    Returns:
+        The same episodes, unit-identified
+    """
+    for episode in episodes:
+        episode.unit_name = name
+        if not episode.symbol:
+            episode.symbol = symbol
+    return episodes
+
+
+def _planned_outages(
+        stress_test_config: Optional[Dict[str, Any]]) -> List[StaleDataEvent]:
+    """
+    The unit's planned stale windows — the ORIGIN label source (#451).
+
+    Only the label and the source binding are read from here; an episode's timestamps
+    always come from the observed state change.
+
+    Args:
+        stress_test_config: The scenario's raw stress-test config section
+
+    Returns:
+        The configured stale-data events (empty when no stress is configured)
+    """
+    config = StressTestConfig.from_dict(stress_test_config)
+    if config.stale_data_stress is None or not config.stale_data_stress.enabled:
+        return []
+    return config.stale_data_stress.events
+
+
 def run_units_from_session(
     session: AutoTraderResult, name: str, symbol: str,
-    sentiment_source: str = '') -> List[RunUnit]:
+    sentiment_source: str = '',
+    stress_test_config: Optional[Dict[str, Any]] = None) -> List[RunUnit]:
     """
     The single run unit of a live session.
 
@@ -93,6 +146,8 @@ def run_units_from_session(
         name: Unit label (profile name / symbol)
         symbol: Traded symbol
         sentiment_source: The session's sentiment feed label (#431; '' if none)
+        stress_test_config: The mock session's stress config (#438) — the origin label
+            source for #451; a real live session has none
 
     Returns:
         A one-element list with the session's RunUnit
@@ -109,4 +164,8 @@ def run_units_from_session(
         worker_statistics=session.worker_statistics or [],
         decision_statistics=session.decision_statistics,
         signal_statistics=session.signal_statistics or [],
+        disturbance_episodes=_stamp_unit(
+            session.disturbance_episodes or [], name, symbol),
+        market_data_tick_stats=session.market_data_tick_stats,
+        planned_outages=_planned_outages(stress_test_config),
     )]

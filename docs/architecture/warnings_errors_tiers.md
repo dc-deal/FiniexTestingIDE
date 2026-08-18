@@ -20,6 +20,22 @@ The reporting pipeline is **CAPTURE → DERIVE → PRESENT**:
 it changes *whether* a warning or verdict fires, it is a decision → it must be a validator. A report
 unit that computes `avg_ms > p5?` or `overhead > 50%?` and emits a notice is misplaced decision logic.
 
+### Worked example — the warning and the facts are two different records (#451)
+
+A stress-tested run produces both, from two different sources, and neither replaces the other:
+
+- **The warning** `STRESS TEST ACTIVE` (`PostRunValidator._check_stress_test`) is the **judgment**
+  — *"this run contains intentional errors, do not read its results as clean"*. It is derived from
+  the **configuration**, so it states the operator's *intent*: which windows were planned, on which
+  source, for which span.
+- **The facts** are the [feed-stability section](reporting_pipeline.md) — the episodes the run
+  actually **experienced**, derived from the observed status/resolution changes. It never judges;
+  it states from–to, duration, counts, and whether an episode was `live-real` or `stress-injected`.
+
+The two legitimately disagree: a planned 45-minute window that reaches past the scenario end is
+experienced as 15 minutes without recovery. Keeping intent and experience in separate records is
+what makes that visible instead of averaging it away.
+
 ## The two channels (sim)
 
 Errors split into two channels at run time (this mirrors the error model in the architecture rules):

@@ -112,6 +112,72 @@ There is no correct default — every answer is wrong for SOME strategy:
   `CORE/backtesting/backtesting_outage_probe` (the test probe asserting the
   whole chain).
 
+## How an Episode Is Recorded (live)
+
+One observer records the disturbance episodes of the tick stream, and it is the SAME unit in
+both pipelines (`MarketDataEpisodeTracker`) — live it simply gets fed from the two event sources
+the loop already has:
+
+```
+Tick arrives (real feed)                    Heartbeat (no tick, every ~500 ms)
+────────────────────────                    ──────────────────────────────────
+executor.on_tick(tick)                      _evaluate_market_data_staleness()
+_end_market_stale_episode()                   │  age = now − last real tick
+  → status fresh, edge reset                  │  > execution.market_data_stale_after_s ?
+       │                                      ▼
+tracker.on_tick(...)                        tracker.on_heartbeat(...)
+  · counts this tick fresh/stale              · OPENS the episode
+  · CLOSES the open episode                   · stale_from = the last tick still seen fresh
+  · writes the recovery span                  · wall anchor = that tick's wall time
+    into the §35 pot                          · counts nothing (no tick happened)
+```
+
+The outage is therefore **detected on the heartbeat but dated back to the last healthy tick** —
+otherwise every episode would start `market_data_stale_after_s` (default 300 s) too late.
+
+What differs from a simulation or mock run:
+
+| | Live | Mock / Simulation |
+|---|---|---|
+| Trigger | a real feed outage | a planned window / the freeze drill |
+| Origin column | always `live-real` — a real source declares no injection and a live session has no planned windows | `stress-injected` (label from the driver or the join) |
+| Time axes | canonical clock **=** wall clock, so span and duration agree | the canonical clock is bimodal in a mock replay (replay tick time vs wall heartbeat) |
+| Counting basis | every processed tick (live has no clipping gate — clipping is only measured) | non-clipped algo ticks only |
+| Signal domain | not yet present — a live session has no signal series (that is #375); only tick episodes are recorded | both domains |
+
+**During the session** the only live indicators are the `[STALE]` tag on the CONNECTION panel and
+the pot warnings in `autotrader_session.log`; the table itself is written at session end. For a
+long-running session the in-run snapshot (#392) is what makes it visible earlier.
+
+## Reading What Happened Afterwards
+
+Every run — drill or real — closes with a **📉 FEED STABILITY** section (both pipelines,
+rendered only when an episode occurred): one row per source across both domains, with the
+stale time, the episode count, the fresh/stale tick counters, and each episode's span.
+
+```
+📉 FEED STABILITY
+   Source                      Domain      Stale time   Episodes   Origin
+   crypto_sentiment_mock       signal          40m 1s          1   🧪 stress-injected
+   kraken_spot                 tick                1s          1   🧪 stress-injected
+```
+
+Two things to know when reading it:
+
+- **The spans are what the run experienced, not what a drill planned.** A configured
+  60-minute signal window shows as ~40 minutes of staleness because the worker's
+  `max_staleness_minutes` has to elapse first; a window reaching past the run end shows
+  as never recovered (`→ run end`). That difference is the point of the record.
+- **The counters and the spans answer different questions.** `72.3% fresh` says how much
+  of the run was decided on good data; the spans say whether that was one long outage or
+  many short ones — the same ratio, two very different situations to react to.
+
+Above ten episodes per source the console collapses the list to
+`N episodes — full list in feed_stability.json`: a session running for weeks accumulates many
+short outages, and an unbounded list would bury the per-source summary. Nothing is lost — the
+same figures are persisted in full as `io/feed_stability.json` and served by
+`GET /api/v1/reports/runs/{run_id}/feed-stability`.
+
 ## Footnote: What Is Deliberately NOT Covered
 
 **There is no "worker delivered nothing" outage type.** The worker contract

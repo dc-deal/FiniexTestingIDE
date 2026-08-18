@@ -50,6 +50,7 @@ class MockTickSource(AbstractTickSource):
         self._running = False
         self._exhausted = False
         self._ticks_emitted: int = 0
+        self._freezing = False  # outage drill in progress (#451 episode origin)
 
     def start(self) -> None:
         """
@@ -71,7 +72,11 @@ class MockTickSource(AbstractTickSource):
                 self._freeze_after_ticks > 0
                 and self._ticks_emitted == self._freeze_after_ticks
             ):
+                # Declared while silent (#451) so the episode is recorded as injected
+                # rather than as a real feed outage.
+                self._freezing = True
                 time.sleep(self._freeze_duration_s)
+                self._freezing = False
 
             # Throttle for visual debugging
             if self._tick_delay_s > 0:
@@ -91,6 +96,15 @@ class MockTickSource(AbstractTickSource):
     def get_symbol(self) -> str:
         """Return the symbol this tick source produces."""
         return self._symbol
+
+    def get_injected_outage_label(self) -> str:
+        """
+        Declare the outage drill while it is running (#451).
+
+        Returns:
+            'freeze drill' during the deliberate silence, '' otherwise
+        """
+        return 'freeze drill' if self._freezing else ''
 
     def is_exhausted(self) -> bool:
         """Check if all ticks have been emitted."""

@@ -19,6 +19,8 @@ from python.framework.reporting.io.signal_report_io import (
     SIGNAL_ARTIFACT, read_signal_report)
 from python.framework.reporting.io.execution_stats_report_io import (
     EXECUTION_STATS_ARTIFACT, read_execution_stats_report)
+from python.framework.reporting.io.feed_stability_report_io import (
+    FEED_STABILITY_ARTIFACT, read_feed_stability_report)
 from python.framework.reporting.io.order_history_report_io import (
     ORDER_HISTORY_ARTIFACT, filter_order_history_report, read_order_history_report)
 from python.framework.reporting.io.pending_orders_report_io import (
@@ -38,9 +40,10 @@ from python.framework.reporting.io.warnings_errors_report_io import (
 from python.framework.reporting.io.worker_decision_report_io import (
     WORKER_DECISION_ARTIFACT, read_worker_decision_report)
 from python.framework.types.api.report_types import (
-    AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, OrderHistoryReport,
-    PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary, ScenarioDetailsReport,
-    SignalReport, TradeHistoryReport, WarningsErrorsReport, WorkerDecisionReport)
+    AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, FeedStabilityReport,
+    OrderHistoryReport, PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary,
+    ScenarioDetailsReport, SignalReport, TradeHistoryReport, WarningsErrorsReport,
+    WorkerDecisionReport)
 
 # Report artifacts (JSON + CSV) live in this subfolder of a run directory.
 IO_SUBDIR = 'io'
@@ -273,6 +276,21 @@ class ReportStore:
         if path is None:
             return None
         return read_signal_report(path)
+
+    def get_feed_stability(self, run_id: str) -> Optional[FeedStabilityReport]:
+        """
+        Read a run's feed-stability report (#451).
+
+        Args:
+            run_id: The run-timestamp directory name
+
+        Returns:
+            The feed-stability report, or None if the run has no artifact
+        """
+        path = self._resolve(run_id, FEED_STABILITY_ARTIFACT)
+        if path is None:
+            return None
+        return read_feed_stability_report(path)
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
         """Find a named report artifact (in the run's io/ subfolder) across the log groups."""

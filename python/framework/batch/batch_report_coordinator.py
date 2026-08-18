@@ -9,6 +9,7 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.reporting.console.block_splitting_disposition import BlockSplittingDisposition
 from python.framework.reporting.console.broker_summary import BrokerSummary
+from python.framework.reporting.console.feed_stability_summary import FeedStabilitySummary
 from python.framework.reporting.console.signal_summary import SignalSummary
 from python.framework.reporting.console.execution_header_summary import ExecutionHeaderSummary
 from python.framework.reporting.console.sim_executive_summary import SimExecutiveSummary
@@ -114,6 +115,7 @@ class BatchReportCoordinator:
         run_summary = unified.run_summary
         worker_decision_report = unified.worker_decision
         signal_report = unified.signal
+        feed_stability_report = unified.feed_stability
 
         # === DERIVE the sim-only / pipeline-specific sections ===
         # Scenario details — per-scenario execution/signal metadata incl. failed (sim-only).
@@ -155,6 +157,9 @@ class BatchReportCoordinator:
             trade_history_summary=TradeHistorySummary(trade_report, order_report),
             broker_summary=BrokerSummary(broker_report),
             signal_summary=SignalSummary(signal_report) if signal_report.units else None,
+            feed_stability_summary=(
+                FeedStabilitySummary(feed_stability_report)
+                if feed_stability_report.units else None),
             performance_summary=PerformanceSummary(worker_decision_report),
             profiling_summary=ProfilingSummary(profiling_report),
             worker_decision_breakdown=WorkerDecisionBreakdownSummary(

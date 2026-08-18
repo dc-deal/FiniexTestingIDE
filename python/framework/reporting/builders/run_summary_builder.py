@@ -12,8 +12,8 @@ from typing import Dict, Optional
 
 from python.framework.reporting.builders.report_aggregators import aggregate_signal_fresh_ratio
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, PortfolioAggregateRow, PortfolioReport, RunSummary,
-    RunSummaryCurrency, SignalReport, TradeAnalytics, TradeHistoryReport)
+    ExecutionStatsReport, FeedStabilityReport, PortfolioAggregateRow, PortfolioReport,
+    RunSummary, RunSummaryCurrency, SignalReport, TradeAnalytics, TradeHistoryReport)
 
 
 def build_run_summary(
@@ -21,6 +21,7 @@ def build_run_summary(
     trade_report: TradeHistoryReport,
     execution_report: ExecutionStatsReport,
     signal_report: Optional[SignalReport] = None,
+    feed_stability_report: Optional[FeedStabilityReport] = None,
 ) -> RunSummary:
     """
     Compose the run-wide KPI summary from the section reports.
@@ -31,6 +32,8 @@ def build_run_summary(
         execution_report: The execution-stats report (global order totals)
         signal_report: The signal report (#433) — supplies the run's weakest fresh ratio;
             None / no SIGNAL worker leaves the ratio unset
+        feed_stability_report: The feed-stability report (#451) — supplies the run's
+            disturbance totals for the executive line
 
     Returns:
         RunSummary with one KPI row per currency + the global order counts
@@ -51,6 +54,14 @@ def build_run_summary(
         unit_count=len(portfolio_report.units),
         signal_fresh_ratio=(
             aggregate_signal_fresh_ratio(signal_report) if signal_report else None),
+        disturbance_episode_count=(
+            feed_stability_report.episode_count if feed_stability_report else 0),
+        disturbance_stale_seconds=(
+            feed_stability_report.stale_seconds if feed_stability_report else 0.0),
+        disturbance_source_count=(
+            feed_stability_report.source_count if feed_stability_report else 0),
+        disturbance_stress_injected=(
+            feed_stability_report.stress_injected_count if feed_stability_report else 0),
     )
 
 

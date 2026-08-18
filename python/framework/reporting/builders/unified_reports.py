@@ -9,13 +9,13 @@ these for its own console + ledger instead of re-building them.
 from dataclasses import dataclass
 
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, OrderHistoryReport, PendingOrdersReport, PortfolioReport,
-    RunSummary, SignalReport, TradeHistoryReport, WorkerDecisionReport)
+    ExecutionStatsReport, FeedStabilityReport, OrderHistoryReport, PendingOrdersReport,
+    PortfolioReport, RunSummary, SignalReport, TradeHistoryReport, WorkerDecisionReport)
 
 
 @dataclass
 class UnifiedReports:
-    """The units-derived report models shared by both pipelines (#403/#433)."""
+    """The units-derived report models shared by both pipelines (#403/#433/#451)."""
     trade_history: TradeHistoryReport
     order_history: OrderHistoryReport
     portfolio: PortfolioReport
@@ -24,3 +24,4 @@ class UnifiedReports:
     run_summary: RunSummary
     worker_decision: WorkerDecisionReport
     signal: SignalReport
+    feed_stability: FeedStabilityReport

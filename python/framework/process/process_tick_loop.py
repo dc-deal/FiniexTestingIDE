@@ -27,6 +27,7 @@ from typing import Any, List, Optional, Tuple
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.process.process_live_export import process_live_export, process_live_setup
 from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.stress_test.stale_data_stress_driver import (
@@ -137,6 +138,13 @@ def execute_tick_loop(
     Returns:
         ProcessTickLoopResult with loop results
     """
+    # #451: the tick-domain observer — episode spans + fresh/stale tick counters.
+    # Always active: without stress the status stays fresh, so it simply counts.
+    # Built before the loop so the result collection can read it after any error.
+    market_data_tracker = MarketDataEpisodeTracker(
+        source=config.broker_type.value if config.broker_type else '',
+        logger=scenario_logger)
+
     try:
         portfolio = trade_simulator.portfolio
 
@@ -260,6 +268,14 @@ def execute_tick_loop(
             if stale_stress_driver is not None:
                 stale_stress_driver.on_tick(tick.timestamp)
 
+            # #451: observe the resulting market-data status — counts this tick and
+            # records the episode edges from what the run actually experienced.
+            market_data_tracker.on_tick(
+                tick.timestamp,
+                trade_simulator.get_market_data_status(),
+                stale_stress_driver.get_active_label() if stale_stress_driver else '',
+            )
+
             # === 3+4. Bar History + Worker Processing + Decision (shared core, #303) ===
             # 'worker_decision' now also covers the (tiny) bar-history
             # retrieval — the former 'bar_history' timer had no report consumer.
@@ -374,6 +390,14 @@ def execute_tick_loop(
         signal_statistics = worker_coordinator.get_signal_statistics()
         coordination_statistics = worker_coordinator.get_coordination_statistics()
 
+        # #451: both staleness domains travel as ONE episode list — the tick domain
+        # from the status observer, the signal domain from the orchestrator's pass.
+        run_end = current_tick.timestamp if current_tick else None
+        disturbance_episodes = (
+            market_data_tracker.get_episodes(run_end)
+            + worker_coordinator.get_signal_episodes(run_end)
+        )
+
         # collect statistics from Trader section
         portfolio_stats = trade_simulator.portfolio.get_portfolio_statistics()
         portfolio_stats.symbol = config.symbol
@@ -400,6 +424,8 @@ def execute_tick_loop(
             decision_statistics=decision_statistics,
             worker_statistics=worker_statistics,
             signal_statistics=signal_statistics,
+            disturbance_episodes=disturbance_episodes,
+            market_data_tick_stats=market_data_tracker.get_tick_stats(),
             coordination_statistics=coordination_statistics,
             portfolio_stats=portfolio_stats,
             execution_stats=execution_stats,

@@ -585,6 +585,14 @@ class AutotraderMain:
         if self._clipping_monitor:
             result.clipping_summary = self._clipping_monitor.get_session_summary()
 
+        # #451: the tick-domain episodes + counters; the signal domain is collected
+        # from the orchestrator, so both staleness domains travel as ONE list.
+        if self._tick_loop:
+            result.disturbance_episodes = self._tick_loop.get_disturbance_episodes()
+            result.market_data_tick_stats = self._tick_loop.get_market_data_tick_stats()
+        if self._worker_orchestrator:
+            result.disturbance_episodes += self._worker_orchestrator.get_signal_episodes()
+
         # === REPORTS === all run artifacts + post-session summary, delegated to
         # the live report coordinator (mirrors the sim BatchReportCoordinator —
         # consumes the finished result).

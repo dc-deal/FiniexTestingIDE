@@ -3,7 +3,7 @@ Shared report coordinator (#403) — the units-derived DERIVE+PERSIST core both 
 
 BatchReportCoordinator (sim) and AutotraderReportCoordinator (live) used to repeat the same
 build+write sequence for the units-derived report sections (trade / order / portfolio /
-pending / execution-stats / run-summary / worker-decision / signal). This unit owns that sequence once;
+pending / execution-stats / run-summary / worker-decision / signal / feed-stability). This unit owns that sequence once;
 each pipeline delegates to it and keeps only its pipeline-specific sections + console + ledger.
 Stateless by design (composition, not a base class) — see the pipeline coordinators for the flow.
 """
@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from python.framework.reporting.builders.execution_stats_report_builder import build_execution_stats_report
+from python.framework.reporting.builders.feed_stability_report_builder import build_feed_stability_report
 from python.framework.reporting.builders.order_history_report_builder import build_order_history_report
 from python.framework.reporting.builders.pending_orders_report_builder import build_pending_orders_report
 from python.framework.reporting.builders.portfolio_report_builder import build_portfolio_report
@@ -23,6 +24,7 @@ from python.framework.reporting.builders.unified_reports import UnifiedReports
 from python.framework.reporting.builders.worker_decision_report_builder import build_worker_decision_report
 from python.framework.reporting.io.execution_stats_report_io import (
     write_execution_stats_csv, write_execution_stats_report)
+from python.framework.reporting.io.feed_stability_report_io import write_feed_stability_report
 from python.framework.reporting.io.order_history_report_io import (
     write_order_history_csv, write_order_history_report)
 from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
@@ -84,8 +86,14 @@ class SharedReportCoordinator:
         signal = build_signal_report(signal_scenario_map or {}, units)
         write_signal_report(signal, io_dir)
 
+        # Feed stability — the observed outage episodes of both staleness domains (#451).
+        # Also before the run summary: it supplies the run's disturbance totals.
+        feed_stability = build_feed_stability_report(units)
+        write_feed_stability_report(feed_stability, io_dir)
+
         # Run summary — cross-section KPIs composed from the section aggregates (#390 prework).
-        run_summary = build_run_summary(portfolio, trade_history, execution_stats, signal)
+        run_summary = build_run_summary(
+            portfolio, trade_history, execution_stats, signal, feed_stability)
         write_run_summary(run_summary, io_dir)
 
         # Worker/decision — per-unit worker + decision performance (#398).
@@ -101,4 +109,5 @@ class SharedReportCoordinator:
             run_summary=run_summary,
             worker_decision=worker_decision,
             signal=signal,
+            feed_stability=feed_stability,
         )

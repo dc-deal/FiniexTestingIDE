@@ -18,7 +18,7 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 |-----|---------|----------|
 | `data_index_cli.py` | Import & Inspection | import, tick-data-report, inspect |
 | `tick_index_cli.py` | Tick Index Management | rebuild, status, file-coverage, files |
-| `bar_index_cli.py` | Bar Index Management | rebuild, status, report, render |
+| `bar_index_cli.py` | Bar Index Management | rebuild, status, render |
 | `discoveries_cli.py` | Volatility Profiling, Discoveries & Data Coverage | profile, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
 | `generator_cli.py` | Block & Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
 | `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, list |

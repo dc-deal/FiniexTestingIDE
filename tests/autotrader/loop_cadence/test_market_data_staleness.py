@@ -17,9 +17,11 @@ import pytest
 
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.stress_test.stale_data_stress_driver import (
     StaleDataStressDriver, warn_events_outside_range)
 from python.framework.trading_env.order_guard import OrderGuard
+from python.framework.types.disturbance_episode_types import DisturbanceOrigin
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
@@ -66,16 +68,20 @@ class _HookRecorder:
 
 
 class _StubTickSource:
-    def __init__(self, reconnects: int = 0):
+    def __init__(self, reconnects: int = 0, injected_label: str = ''):
         self.reconnects = reconnects
+        self.injected_label = injected_label
 
     def get_reconnect_count(self) -> int:
         return self.reconnects
 
+    def get_injected_outage_label(self) -> str:
+        return self.injected_label
+
 
 def _make_loop(stale_after_s: float, last_tick_wall: float,
                now: datetime, tick_source=None):
-    """Bare loop carrying only the #436 state (ctor bypassed)."""
+    """Bare loop carrying only the #436/#451 state (ctor bypassed)."""
     loop = object.__new__(AutotraderTickLoop)
     loop._market_data_stale_after_s = stale_after_s
     loop._market_stale = False
@@ -86,7 +92,18 @@ def _make_loop(stale_after_s: float, last_tick_wall: float,
     loop._executor = _StubExecutor(now)
     loop._decision_logic = _HookRecorder()
     loop._logger = MagicMock()
+    loop._market_data_tracker = MarketDataEpisodeTracker(
+        source='kraken_spot', logger=loop._logger, measure_wall_duration=True)
     return loop
+
+
+def _observe_tick(loop, now: datetime) -> None:
+    """The loop's tick-path observation, in the order run() performs it."""
+    loop._executor._now = now
+    if loop._market_stale:
+        loop._end_market_stale_episode()
+    loop._market_data_tracker.on_tick(
+        now, loop._executor.get_market_data_status(), loop._injected_outage_label())
 
 
 class TestLoopEvaluation:
@@ -131,23 +148,74 @@ class TestLoopEvaluation:
         assert loop._market_stale is False
 
     def test_recovery_resets_edge_and_logs_span(self, monkeypatch):
-        loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 8, 0))
+        loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 7, 55))
+        # A tick at 07:55 is the last one seen as fresh — the episode anchors there.
+        monkeypatch.setattr(time_module, 'time', lambda: 1000.0)
+        _observe_tick(loop, _utc(2026, 1, 15, 7, 55))
+
         monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
         loop._evaluate_market_data_staleness()
 
-        loop._executor._now = _utc(2026, 1, 15, 8, 5)
-        loop._end_market_stale_episode()
+        monkeypatch.setattr(time_module, 'time', lambda: 1400.0)
+        _observe_tick(loop, _utc(2026, 1, 15, 8, 5))
         assert loop._market_stale is False
         assert loop._executor.get_market_data_status().is_stale is False
         span_line = loop._logger.warning.call_args_list[-1].args[0]
         assert 'Market data recovered' in span_line
-        assert '08:00:00 → 08:05:00' in span_line
+        assert '07:55:00 → 08:05:00' in span_line
+
+        # The span is MEASURED on the wall axis, and never negative (#436 regression)
+        episodes = loop._market_data_tracker.get_episodes()
+        assert len(episodes) == 1
+        assert episodes[0].duration_seconds == 400.0
+        assert episodes[0].origin == DisturbanceOrigin.LIVE_REAL
 
         # Next silence flips (and notifies) again — edge was reset
         loop._last_real_tick_wall_time = 2000.0
         monkeypatch.setattr(time_module, 'time', lambda: 2301.0)
         loop._evaluate_market_data_staleness()
         assert len(loop._decision_logic.calls) == 2
+
+    def test_episode_opens_on_the_heartbeat_and_closes_on_the_tick(self, monkeypatch):
+        """The outage began when ticks stopped — not when the threshold revealed it."""
+        loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 8, 0))
+        monkeypatch.setattr(time_module, 'time', lambda: 1000.0)
+        _observe_tick(loop, _utc(2026, 1, 15, 8, 0))
+
+        # Threshold trips two heartbeats later; no tick is counted meanwhile
+        monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
+        loop._evaluate_market_data_staleness()
+        monkeypatch.setattr(time_module, 'time', lambda: 1400.0)
+        loop._evaluate_market_data_staleness()
+
+        monkeypatch.setattr(time_module, 'time', lambda: 1500.0)
+        _observe_tick(loop, _utc(2026, 1, 15, 8, 8))
+
+        episodes = loop._market_data_tracker.get_episodes()
+        assert len(episodes) == 1
+        assert episodes[0].stale_from == _utc(2026, 1, 15, 8, 0)   # the last fresh tick
+        assert episodes[0].stale_to == _utc(2026, 1, 15, 8, 8)
+        assert loop._market_data_tracker.get_tick_stats().fresh_ticks == 2
+        assert loop._market_data_tracker.get_tick_stats().stale_ticks == 0
+
+    def test_freeze_drill_is_recorded_as_injected(self, monkeypatch):
+        """The mock source declares its drill, so the episode is not read as real."""
+        source = _StubTickSource(injected_label='freeze drill')
+        loop = _make_loop(300.0, last_tick_wall=1000.0,
+                          now=_utc(2026, 1, 15, 8, 0), tick_source=source)
+        monkeypatch.setattr(time_module, 'time', lambda: 1000.0)
+        _observe_tick(loop, _utc(2026, 1, 15, 8, 0))
+
+        monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
+        loop._evaluate_market_data_staleness()
+
+        source.injected_label = ''            # drill over, ticks resume
+        monkeypatch.setattr(time_module, 'time', lambda: 1350.0)
+        _observe_tick(loop, _utc(2026, 1, 15, 8, 6))
+
+        episode = loop._market_data_tracker.get_episodes()[0]
+        assert episode.origin == DisturbanceOrigin.STRESS_INJECTED
+        assert episode.label == 'freeze drill'
 
     def test_reconnect_delta_reaches_the_pot(self, monkeypatch):
         source = _StubTickSource(reconnects=2)
@@ -302,25 +370,70 @@ class TestStaleDataStressDriver:
         return StaleDataStressDriver(events, executor, decision, logger), \
             executor, decision, logger
 
+    def _observed(self, driver, executor, logger):
+        """Driver + observer wired as the sim tick loop wires them (#451)."""
+        tracker = MarketDataEpisodeTracker(source='kraken_spot', logger=logger)
+
+        def advance(now: datetime) -> None:
+            driver.on_tick(now)
+            tracker.on_tick(now, executor.get_market_data_status(),
+                            driver.get_active_label())
+        return tracker, advance
+
     def test_window_lifecycle(self):
         driver, executor, decision, logger = self._driver([
             _event('w1', _utc(2026, 4, 27, 6, 15), _utc(2026, 4, 27, 6, 25))])
+        tracker, advance = self._observed(driver, executor, logger)
 
-        driver.on_tick(_utc(2026, 4, 27, 6, 10))
+        advance(_utc(2026, 4, 27, 6, 10))
         assert executor.get_market_data_status().is_stale is False
 
-        driver.on_tick(_utc(2026, 4, 27, 6, 16))
+        advance(_utc(2026, 4, 27, 6, 16))
         assert executor.get_market_data_status().is_stale is True
         assert len(decision.calls) == 1
 
-        driver.on_tick(_utc(2026, 4, 27, 6, 20))
+        advance(_utc(2026, 4, 27, 6, 20))
         assert len(decision.calls) == 1  # no re-fire inside the window
         assert executor.get_market_data_status().seconds_since_last_tick == 300.0
 
-        driver.on_tick(_utc(2026, 4, 27, 6, 26))
+        advance(_utc(2026, 4, 27, 6, 26))
         assert executor.get_market_data_status().is_stale is False
         recovery_line = logger.warning.call_args_list[-1].args[0]
-        assert 'recovered' in recovery_line and '06:15:00 → 06:25:00' in recovery_line
+        assert 'recovered' in recovery_line
+
+        # The EXPERIENCED span: first stale tick 06:16 → recovery tick 06:26. The planned
+        # window (06:15 → 06:25) is deliberately NOT what gets recorded.
+        episode = tracker.get_episodes()[0]
+        assert episode.stale_from == _utc(2026, 4, 27, 6, 16)
+        assert episode.stale_to == _utc(2026, 4, 27, 6, 26)
+        assert episode.origin == DisturbanceOrigin.STRESS_INJECTED
+        assert episode.label == 'w1'
+        assert tracker.get_tick_stats().fresh_ticks == 2
+        assert tracker.get_tick_stats().stale_ticks == 2
+
+    def test_window_outliving_the_scenario_records_what_was_experienced(self):
+        """
+        The case #451 was extracted for: a window reaching past the scenario end.
+
+        Scenario 06:00 → 06:30, window 06:15 → 07:00. The run experiences 15 minutes and
+        never recovers — reading the configuration instead would claim 45 minutes and a
+        clean recovery that never happened.
+        """
+        driver, executor, decision, logger = self._driver([
+            _event('w1', _utc(2026, 4, 27, 6, 15), _utc(2026, 4, 27, 7, 0))])
+        tracker, advance = self._observed(driver, executor, logger)
+
+        advance(_utc(2026, 4, 27, 6, 15))
+        advance(_utc(2026, 4, 27, 6, 30))
+        driver.finish()
+
+        episodes = tracker.get_episodes(_utc(2026, 4, 27, 6, 30))
+        assert len(episodes) == 1
+        assert episodes[0].stale_from == _utc(2026, 4, 27, 6, 15)
+        assert episodes[0].stale_to is None                  # never recovered
+        assert episodes[0].duration_seconds == 900.0         # 15 min, not 45
+        assert not any('recovered' in c.args[0]
+                       for c in logger.warning.call_args_list)
 
     def test_second_window_fires_again(self):
         driver, executor, decision, _ = self._driver([
@@ -341,13 +454,12 @@ class TestStaleDataStressDriver:
         assert executor.get_market_data_status().is_stale is False
         assert any('skipped' in c.args[0] for c in logger.info.call_args_list)
 
-    def test_finish_closes_active_window(self):
+    def test_finish_restores_the_fresh_status(self):
         driver, executor, decision, logger = self._driver([
             _event('w1', _utc(2026, 4, 27, 6, 15), _utc(2026, 4, 27, 6, 25))])
         driver.on_tick(_utc(2026, 4, 27, 6, 16))
         driver.finish()
         assert executor.get_market_data_status().is_stale is False
-        assert 'recovered' in logger.warning.call_args_list[-1].args[0]
 
     def test_overlap_guard_warns_on_disjoint_window(self):
         logger = MagicMock()

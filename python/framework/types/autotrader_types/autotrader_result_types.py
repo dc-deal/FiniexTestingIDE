@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from python.framework.types.autotrader_types.clipping_monitor_types import ClippingSessionSummary
+from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats, WorkerPerformanceStats
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.signal_data_types import SignalResolutionStats
@@ -34,6 +35,8 @@ class AutoTraderResult:
         decision_statistics: Decision logic execution stats
         worker_statistics: Per-worker performance stats
         signal_statistics: Per-SIGNAL-worker resolution counters (#433)
+        disturbance_episodes: Observed outage spans of both staleness domains (#451)
+        market_data_tick_stats: Market-data resolution counters (#451 Part 4)
         shutdown_mode: How the session ended ('normal' or 'emergency')
         warning_messages: Warning messages from session logger buffer
         error_messages: Error messages from session logger buffer
@@ -50,6 +53,8 @@ class AutoTraderResult:
     decision_statistics: Optional[DecisionLogicStats] = None
     worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)
     signal_statistics: List[SignalResolutionStats] = field(default_factory=list)
+    disturbance_episodes: List[DisturbanceEpisode] = field(default_factory=list)
+    market_data_tick_stats: Optional[MarketDataTickStats] = None
     shutdown_mode: str = 'normal'
     emergency_reason: Optional[str] = None
     warning_messages: List[str] = field(default_factory=list)

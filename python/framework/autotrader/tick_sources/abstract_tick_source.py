@@ -105,3 +105,16 @@ class AbstractTickSource(ABC):
             Total ticks emitted (0 if not tracked)
         """
         return 0
+
+    def get_injected_outage_label(self) -> str:
+        """
+        Label of an outage this source is deliberately injecting right now (#451).
+
+        The source DECLARES its own injection so the episode protocol can separate a
+        drill from a real outage without inferring it from configuration. Override in
+        sources with a fault lever; a real feed never injects.
+
+        Returns:
+            Label while an injected outage is active, '' otherwise
+        """
+        return ''

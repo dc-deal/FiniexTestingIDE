@@ -4,7 +4,7 @@ Shared Report Coordinator Tests (#403).
 `SharedReportCoordinator.derive_and_persist` is the units-derived DERIVE+PERSIST core both
 pipelines delegate to. Tested against a real BatchExecutionSummary / ProcessResult /
 SingleScenario (sim) and a real AutoTraderResult (live) — not stand-ins — so it exercises the
-actual write-path: all 8 sections' artifacts land in the io/ dir and the returned
+actual write-path: all 9 sections' artifacts land in the io/ dir and the returned
 UnifiedReports carries the same models the caller reuses for console + ledger.
 """
 
@@ -23,7 +23,7 @@ from python.framework.types.trading_env_types.trading_env_stats_types import Exe
 
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 
-# Every section writes these artifacts into the io/ dir (json for all 7, csv for three).
+# Every section writes these artifacts into the io/ dir (json for all 9, csv for three).
 _EXPECTED_FILES = [
     'trade_history.json', 'trade_history.csv',
     'order_history.json', 'order_history.csv',
@@ -33,6 +33,7 @@ _EXPECTED_FILES = [
     'run_summary.json',
     'worker_decision.json',
     'signal.json',
+    'feed_stability.json',
 ]
 
 

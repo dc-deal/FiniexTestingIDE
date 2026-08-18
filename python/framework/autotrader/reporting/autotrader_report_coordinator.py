@@ -18,6 +18,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.console.broker_summary import BrokerSummary
+from python.framework.reporting.console.feed_stability_summary import FeedStabilitySummary
 from python.framework.reporting.console.live_session_summary import LiveSessionSummary
 from python.framework.reporting.console.performance_summary import PerformanceSummary
 from python.framework.reporting.console.portfolio_summary import PortfolioSummary
@@ -121,7 +122,12 @@ class AutotraderReportCoordinator:
             result, name, self._config.symbol,
             sentiment_source=(
                 self._config.scenario_settings.data_sentiment_type
-                if self._config.scenario_settings else ''))
+                if self._config.scenario_settings else ''),
+            # #451: the mock session's planned windows label an episode's origin — the
+            # timestamps always come from the run (a real live session has none).
+            stress_test_config=(
+                self._config.scenario_settings.stress_test_config
+                if self._config.scenario_settings else None))
 
         # Report artifacts (JSON + CSV) go into the session's io/ subfolder (#396 housekeeping).
         io_dir = self._run_dir / IO_SUBDIR
@@ -175,9 +181,13 @@ class AutotraderReportCoordinator:
             trade_history_summary=TradeHistorySummary(unified.trade_history, unified.order_history),
             broker_summary=BrokerSummary(broker_report) if broker_report is not None else None,
             signal_summary=SignalSummary(unified.signal) if unified.signal.units else None,
+            feed_stability_summary=(
+                FeedStabilitySummary(unified.feed_stability)
+                if unified.feed_stability.units else None),
             performance_summary=PerformanceSummary(unified.worker_decision),
             warnings_summary=WarningsSummary(warnings_errors_report),
-            closing_block=LiveSessionSummary(result, unified.trade_history, self._run_dir),
+            closing_block=LiveSessionSummary(
+                result, unified.trade_history, self._run_dir, unified.run_summary),
         )
 
         # Render once (live always full detail); capture, print to console (with colors), and

@@ -18,6 +18,7 @@ from python.framework.reporting.io.aggregated_portfolio_report_io import write_a
 from python.framework.reporting.io.broker_report_io import write_broker_report
 from python.framework.reporting.io.signal_report_io import write_signal_report
 from python.framework.reporting.io.execution_stats_report_io import write_execution_stats_report
+from python.framework.reporting.io.feed_stability_report_io import write_feed_stability_report
 from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.io.order_history_report_io import write_order_history_report
 from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
@@ -30,6 +31,7 @@ from python.framework.types.api.report_types import (
     ActiveOrderRow, AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
     BrokerInfoRow, BrokerReport, BrokerSymbolRow,
     ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
+    FeedStabilityEpisodeRow, FeedStabilityReport, FeedStabilitySourceRow,
     OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
     PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow, RunSummary, RunSummaryCurrency,
     ScenarioDetailsReport, ScenarioDetailsRow,
@@ -51,6 +53,7 @@ _SCENARIO_URL = f'/api/v1/reports/runs/{_RUN}/scenario-details'
 _RUNSUMMARY_URL = f'/api/v1/reports/runs/{_RUN}/run-summary'
 _BROKER_URL = f'/api/v1/reports/runs/{_RUN}/broker'
 _SIGNAL_URL = f'/api/v1/reports/runs/{_RUN}/signal'
+_FEED_STABILITY_URL = f'/api/v1/reports/runs/{_RUN}/feed-stability'
 _WARNINGS_URL = f'/api/v1/reports/runs/{_RUN}/warnings-errors'
 _AGG_URL = f'/api/v1/reports/runs/{_RUN}/aggregated-portfolio'
 
@@ -157,6 +160,18 @@ def _signal_report() -> SignalReport:
             fresh_ticks=900, stale_ticks=100, blind_ticks=0, fresh_ratio=0.9)])])
 
 
+def _feed_stability_report() -> FeedStabilityReport:
+    return FeedStabilityReport(
+        units=[FeedStabilitySourceRow(
+            source='kraken_spot', domain='tick', stale_seconds=900.0, episode_count=1,
+            origins=['stress-injected'], fresh_ticks=900, stale_ticks=100,
+            episodes=[FeedStabilityEpisodeRow(
+                unit='btc_run', symbol='BTCUSD',
+                stale_from='2026-04-30T06:15:00+00:00', stale_to='',
+                duration_seconds=900.0, origin='stress-injected', label='w1')])],
+        episode_count=1, stale_seconds=900.0, stress_injected_count=1, source_count=1)
+
+
 def _warnings_errors_report() -> WarningsErrorsReport:
     return WarningsErrorsReport(
         warnings=[WarningRow(tier='major', scope='run', message='DEBUG MODE')],
@@ -188,6 +203,7 @@ def client(tmp_path: Path):
     write_run_summary(_run_summary(), io_dir)
     write_broker_report(_broker_report(), io_dir)
     write_signal_report(_signal_report(), io_dir)
+    write_feed_stability_report(_feed_stability_report(), io_dir)
     write_warnings_errors_report(_warnings_errors_report(), io_dir)
     write_aggregated_portfolio_report(_aggregated_portfolio_report(), io_dir)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
@@ -330,6 +346,20 @@ def test_signal_returns(client):
 
 def test_signal_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/signal')
+    assert response.status_code == 404
+
+
+def test_feed_stability_returns(client):
+    response = client.get(_FEED_STABILITY_URL)
+    assert response.status_code == 200
+    body = response.json()
+    assert body['units'][0]['source'] == 'kraken_spot'
+    assert body['units'][0]['episodes'][0]['origin'] == 'stress-injected'
+    assert body['episode_count'] == 1
+
+
+def test_feed_stability_run_not_found(client):
+    response = client.get('/api/v1/reports/runs/nope/feed-stability')
     assert response.status_code == 404
 
 

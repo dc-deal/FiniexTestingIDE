@@ -1,11 +1,10 @@
 """
 FiniexTestingIDE - Bar Index CLI
-Command-line tools for pre-rendered bar index management and reporting
+Command-line tools for pre-rendered bar index management
 
 Usage:
     python python/cli/bar_index_cli.py rebuild
     python python/cli/bar_index_cli.py status
-    python python/cli/bar_index_cli.py report
     python python/cli/bar_index_cli.py render BROKER_TYPE [--clean]
     python python/cli/bar_index_cli.py render --all [--clean]
 """
@@ -17,7 +16,6 @@ from datetime import datetime
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.data_management.index.bar_index_report import BarIndexReport
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
@@ -29,7 +27,7 @@ vLog = get_global_logger()
 
 class BarIndexCli:
     """
-    Command-line interface for bar index management and reporting.
+    Command-line interface for bar index management.
     """
 
     def __init__(self):
@@ -172,21 +170,6 @@ class BarIndexCli:
 
         print()
 
-    def cmd_report(self):
-        """Generate detailed bar index report and save to framework/reports"""
-        self.index_manager.build_index()
-
-        print("\n" + "="*80)
-        print("📋 Generating Bar Index Report")
-        print("="*80 + "\n")
-
-        # Generate report
-        report_gen = BarIndexReport(self.index_manager)
-        report_path = report_gen.generate_report()
-
-        print(f"\n✅ Report saved to: {report_path}")
-        print("="*80 + "\n")
-
     def cmd_render(self, broker_type: str = None, clean: bool = False, render_all: bool = False):
         """
         Render bars from tick data.
@@ -237,7 +220,7 @@ class BarIndexCli:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description='Bar index management and reporting CLI',
+        description='Bar index management CLI',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
@@ -254,12 +237,6 @@ def main():
     # ─────────────────────────────────────────────────────────────────────────
     subparsers.add_parser(
         'status', help='Show bar index status and overview')
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # REPORT command
-    # ─────────────────────────────────────────────────────────────────────────
-    subparsers.add_parser(
-        'report', help='Generate detailed report (saved to framework/reports)')
 
     # ─────────────────────────────────────────────────────────────────────────
     # RENDER command
@@ -295,8 +272,6 @@ def main():
         elif args.command == 'status':
             cli.cmd_status()
 
-        elif args.command == 'report':
-            cli.cmd_report()
 
         elif args.command == 'render':
             if not args.render_all and not args.broker_type:
