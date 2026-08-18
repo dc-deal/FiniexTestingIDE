@@ -234,21 +234,6 @@
             }
         },
         {
-            "name": "📈 Bar Index: Report",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
-            "args": [
-                "report"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03_index_management",
-                "order": 3
-            }
-        },
-        {
             "name": "📈 Bar Index: Status",
             "type": "debugpy",
             "request": "launch",
@@ -260,7 +245,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "03_index_management",
-                "order": 4
+                "order": 3
             }
         },
         {
@@ -277,7 +262,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "03_index_management",
-                "order": 5
+                "order": 4
             }
         },
         {
@@ -292,7 +277,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "03_index_management",
-                "order": 6
+                "order": 5
             }
         },
         {
@@ -307,7 +292,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "03_index_management",
-                "order": 7
+                "order": 6
             }
         },
         // ====================================================

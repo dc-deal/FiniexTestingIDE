@@ -126,6 +126,37 @@ renders both with a `live-real` / `stress-injected` origin column. Reading the p
 instead of the run would turn a report into a claim — and a bug in the injection could
 fake a clean episode, which is the opposite of what a fault engine is for.
 
+### How the label finds its episode — two paths, one rule
+
+The label reaches the episode differently per domain, because the two injections happen at
+different times:
+
+```
+TICK domain — labelled at CAPTURE            SIGNAL domain — labelled at DERIVE
+──────────────────────────────────           ─────────────────────────────────────
+StaleDataStressDriver runs ALONGSIDE         StaleDataSlicer carved the snapshots
+the tick loop and knows, at that very        out at DATA PREPARATION. At runtime a
+moment, that it is injecting:                worker only sees "nothing newer" — it
+  get_active_label()                         cannot tell intent from a real outage.
+       │ per tick                                        │
+  process_tick_loop  ──►  tracker stamps      RunUnit.planned_outages (parsed once
+  the label when it OPENS the episode         from the scenario's stress_test_config)
+       │                                                 │
+       └──────────────►  feed_stability_report_builder._resolve_origin()  ◄─────────┘
+                          · a capture-side label is never overruled
+                          · otherwise: episode OVERLAPS a planned window
+                            of the same data_source → stress-injected
+```
+
+The AutoTrader mock side works the same way: its tick source declares an injected silence via
+`get_injected_outage_label()` (the `freeze_after_ticks` drill), and its
+`scenario_settings.stress_test_config` supplies the planned windows for the join.
+
+**Why overlap and not containment:** a signal episode always starts LATER than its window —
+`max_staleness_minutes` has to elapse inside the carve first — so it never sits neatly within the
+configured span. Testing for overlap is what makes the join work at all. A consequence worth
+knowing: if a genuine outage happens to overlap a planned window, it is reported as injected.
+
 **Validation:** a `data_source` the scenario does not bind → config error
 (scenario excluded at preparation, batch continues, §33). Missing
 `data_source` / inverted window → config error. A window without (partial)
