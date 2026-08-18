@@ -132,8 +132,7 @@ class RunConsoleRenderer:
         # Reads as the pair to the section above: what the source could offer, then how
         # stable it actually was.
         if self._feed_stability_summary:
-            self._feed_stability_summary.render(
-                renderer, compact=compact, threshold=self._threshold)
+            self._feed_stability_summary.render(renderer, threshold=self._threshold)
 
         # Performance summaries (aggregate + bottleneck are cross-unit → multi-unit only)
         if self._performance_summary:

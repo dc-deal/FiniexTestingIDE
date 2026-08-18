@@ -253,6 +253,18 @@ class TestRender:
         assert 'feed dies 12h' in output           # the injected label
         assert '600 stale' in output               # the signal counters
 
+    def test_long_episode_list_collapses(self):
+        """A live session with many short outages must not bury the source summary."""
+        episodes = [_tick_episode(i * 10, i * 10 + 5) for i in range(12)]
+        report = build_feed_stability_report([_unit(episodes)])
+        output = self._render(report)
+
+        assert '12 episodes — full list in feed_stability.json' in output
+        assert 'stale 2026-04-30 06:10' not in output   # no single span listed
+        assert '12' in output                            # the count row still reads
+        # The model keeps every episode — only the console collapses
+        assert len(report.units[0].episodes) == 12
+
     def test_disturbance_line_wording(self):
         report = build_feed_stability_report([_unit(
             [_tick_episode(10, 25, 'w1'), _tick_episode(40, 50)])])

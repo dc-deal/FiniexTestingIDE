@@ -50,14 +50,13 @@ class FeedStabilitySummary(AbstractBatchSummarySection):
         """
         self._units = feed_stability_report.units
 
-    def render(self, renderer: ConsoleRenderer, compact: bool = False, threshold: int = 9):
+    def render(self, renderer: ConsoleRenderer, threshold: int = 9):
         """
         Render feed stability section.
 
         Args:
             renderer: Console renderer for formatting
-            compact: If True, collapse episode lists above threshold to a count
-            threshold: Max episodes to list before collapsing
+            threshold: Max episodes listed per source before the list collapses
         """
         self._render_section_header(renderer)
 
@@ -71,23 +70,29 @@ class FeedStabilitySummary(AbstractBatchSummarySection):
 
         for unit in self._units:
             print("")
-            self._render_source_detail(unit, compact=compact, threshold=threshold)
+            self._render_source_detail(unit, threshold=threshold)
 
     def _render_source_detail(
-        self, unit: FeedStabilitySourceRow, compact: bool, threshold: int) -> None:
+        self, unit: FeedStabilitySourceRow, threshold: int) -> None:
         """
         Render one source's counter line + its episode spans.
 
         The counters state how much of the run was decided on degraded data, the spans
         state when and how often — a ratio alone cannot tell one long outage from forty
         short ones, which is the reading this section exists to enable.
+
+        The list collapses above `threshold` regardless of the run's detail setting: a
+        long live session accumulates hundreds of short outages, and an unbounded list
+        would bury the per-source summary above it. The complete record always stays in
+        `feed_stability.json` (and the run log), so nothing is lost by collapsing.
         """
         indent = '   '
         print(f"{indent}📉 {unit.source} ({unit.domain})")
         print(f"{indent}   {self._counter_line(unit)}")
 
-        if compact and len(unit.episodes) > threshold:
-            print(f"{indent}     {len(unit.episodes)} episodes — see log for full list")
+        if len(unit.episodes) > threshold:
+            print(f"{indent}     {len(unit.episodes)} episodes — "
+                  f"full list in feed_stability.json")
             return
 
         for episode in unit.episodes:
