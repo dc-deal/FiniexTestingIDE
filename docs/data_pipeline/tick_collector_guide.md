@@ -144,7 +144,6 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
     "symbol": "EURUSD",
     "broker": "Vantage International Group Limited",
     "server": "VantageInternational-Demo",
-    "broker_utc_offset_hours": 0,
     "local_device_time": "2025.11.23 20:23:45",
     "broker_server_time": "2025.11.23 21:23:45",
     "start_time": "2025.11.23 21:23:45",
@@ -153,6 +152,9 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
     "volume_timeframe": "PERIOD_M1",
     "volume_timeframe_minutes": 1,
     "data_format_version": "...",
+    "collected_msc_timebase": "utc",
+    "anchor_resyncs": 0,
+    "anchor_max_correction_ms": 0,
     "broker_type": "mt5",
     "market_type": "forex_cfd",
     "collection_purpose": "backtesting",
@@ -184,7 +186,10 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
 ```
 
 **Key Fields:**
-- `data_format_version`: Schema version of the data collector output
+- `data_format_version`: Schema version of the data collector output. A compile-time constant of the collector, not a chart input — it identifies the code that wrote the file.
+- `collected_msc_timebase`: Time base of `collected_msc`. `"utc"` from data format 1.5.0 onwards. Files without the field predate the change and carry device-local time until the restoration migration converts them.
+- `anchor_resyncs` / `anchor_max_correction_ms`: How often the collector had to discard a reading of its time source, and the largest correction it absorbed. Both are cumulative for the collector session and appear again in `summary.anchor` with the state at file close — a file whose closing count exceeds its opening count contains a correction.
+- `local_device_time` / `broker_server_time`: Wall clock of the collecting machine and of the broker at file creation. Informational — the import pipeline never derives an offset from them.
 - `broker_type`: Broker identifier (e.g. "mt5", "kraken_spot")
 - `market_type`: Market classification (e.g. "forex_cfd")
 - `collection_purpose`: Use case identifier (e.g. "backtesting")
@@ -216,9 +221,9 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
 ```
 
 **Tick Fields:**
-- `timestamp`: Human-readable time (broker server time, seconds precision). Redundant — derivable from `time_msc` with the broker UTC offset. Kept for backward compatibility.
-- `time_msc`: Broker matching engine timestamp (Unix epoch ms). UTC-converted by importer (offset applied). **Not monotonic** in arrival order — within the same second, bid/ask interleaving can cause `time_msc` regressions (~19% on forex pairs).
-- `collected_msc`: Local device clock at tick receipt (Unix epoch ms). **Monotonic** — uses `GetMicrosecondCount()` for precise deltas. Added in data format V1.3.0 (TickCollector V1.0.7). This is the correct source for inter-tick interval measurement.
+- `timestamp`: Human-readable time (broker server time, truncated to the second). Redundant — derivable from `time_msc` with the broker UTC offset. Kept for backward compatibility.
+- `time_msc`: Broker matching engine timestamp (Unix epoch ms) — the **event** time. UTC-converted by importer (offset applied). Non-decreasing: measured across the full archive, 0 regressions in 251 M consecutive deltas. Ties are normal and carry meaning — a market order sweeping the book produces several fills in one millisecond (measured: 43 % of consecutive Kraken ticks share a `time_msc`, 0.06 % on MT5).
+- `collected_msc`: Local clock at tick receipt (Unix epoch ms) — the **arrival** time, and therefore the correct source for inter-tick interval measurement. Read from the OS clock via `GetSystemTimePreciseAsFileTime`, so it is **already UTC** and needs no offset conversion. Non-decreasing; a backwards step of the system clock is clamped and counted in `anchor_resyncs`.
 - `bid` / `ask`: Bid and ask price
 - `last`: Last trade price (0 for forex/CFD)
 - `real_volume`: Real trade volume (crypto > 0, forex/CFD = 0)
@@ -228,6 +233,8 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
 - `spread_pct`: Spread as percentage of bid
 - `tick_flags`: Tick type flags (e.g. "BID ASK", "BUY", "SELL")
 - `session`: Trading session label (broker-side, recalculated to UTC by importer)
+
+> **Why a second timestamp at all?** `time_msc` says when the tick *happened* at the broker, `collected_msc` says when it *reached us* — two different questions, and only the second one describes our observation. The `timestamp` string cannot substitute for either: it is truncated to the second, and 53 % of MT5 ticks share a second with at least one neighbour (60 % on Kraken), so at that resolution the arrival cadence collapses.
 
 ### Error Report Section
 

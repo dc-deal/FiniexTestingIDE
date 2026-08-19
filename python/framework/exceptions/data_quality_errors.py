@@ -7,6 +7,7 @@ from typing import List
 
 from python.framework.exceptions.finiex_error import FiniexError
 from python.framework.reporting.duplicate_report import DuplicateReport
+from python.framework.types.validation_types import TickFileValidationResult
 
 
 class DataQualityException(FiniexError):
@@ -33,6 +34,22 @@ class ArtificialDuplicateException(DataQualityException):
     def __init__(self, report: DuplicateReport):
         self.report = report
         super().__init__(f"\n\n{report.get_detailed_report()}")
+
+
+class TickFileValidationException(DataQualityException):
+    """
+    Raised when a tick JSON file violates a structural import invariant
+
+    The importer validates and refuses — it never repairs. A file that fails
+    here is rejected as a single-file failure; the batch continues.
+
+    Attributes:
+        result: TickFileValidationResult with all findings for this file
+    """
+
+    def __init__(self, result: TickFileValidationResult):
+        self.result = result
+        super().__init__(f"\n\n{result.get_full_report()}")
 
 
 class InvalidDataModeException(DataQualityException):

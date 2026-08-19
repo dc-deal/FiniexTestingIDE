@@ -201,12 +201,22 @@ class TickIndexManager:
                 b'data_collector', b'mt5').decode('utf-8')
 
         # === BUILD INDEX ENTRY ===
+        # Arrival bounds in file order — the event time above says when a tick
+        # happened, this says when it reached us. Both are needed to verify that
+        # the concatenated archive stream is continuous.
+        collected_start = int(df['collected_msc'].iloc[0]
+                              ) if 'collected_msc' in df else 0
+        collected_end = int(df['collected_msc'].iloc[-1]
+                            ) if 'collected_msc' in df else 0
+
         return {
             'file': parquet_file.name,
             'path': str(parquet_file.absolute()),
             'symbol': symbol,
             'start_time': start_time.isoformat(),
             'end_time': end_time.isoformat(),
+            'collected_start': collected_start,
+            'collected_end': collected_end,
             'tick_count': tick_count,
             'file_size_mb': file_size_mb,
             'source_file': source_file,
@@ -300,6 +310,8 @@ class TickIndexManager:
                         'file_size_mb': entry['file_size_mb'],
                         'source_file': entry['source_file'],
                         'num_row_groups': entry['num_row_groups'],
+                        'collected_start': entry.get('collected_start', 0),
+                        'collected_end': entry.get('collected_end', 0),
                         # Nested dicts as JSON strings
                         'statistics': json.dumps(entry.get('statistics', {})),
                         'sessions': json.dumps(entry.get('sessions', {})),
@@ -322,7 +334,7 @@ class TickIndexManager:
         metadata = {
             b'created_at': datetime.now(timezone.utc).isoformat().encode(),
             b'data_dir': str(self.data_dir).encode(),
-            b'index_version': b'2.0'  # Parquet format version
+            b'index_version': b'2.1'  # Parquet format version
         }
 
         table = pa.Table.from_pandas(df)
@@ -365,6 +377,10 @@ class TickIndexManager:
                 'file_size_mb': float(row['file_size_mb']),
                 'source_file': row['source_file'],
                 'num_row_groups': int(row['num_row_groups']),
+                # Tolerant: index files written before the arrival bounds were
+                # persisted have no such column - they read as 0 until rebuilt.
+                'collected_start': int(row['collected_start']) if 'collected_start' in row and pd.notna(row['collected_start']) else 0,
+                'collected_end': int(row['collected_end']) if 'collected_end' in row and pd.notna(row['collected_end']) else 0,
                 'statistics': json.loads(row['statistics']) if row['statistics'] else {},
                 'sessions': json.loads(row['sessions']) if row['sessions'] else {},
                 'broker_type': broker_type,

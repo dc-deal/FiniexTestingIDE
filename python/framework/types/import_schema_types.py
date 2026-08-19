@@ -36,6 +36,31 @@ class ErrorTrackingSchema(TypedDict, total=False):
     max_data_gap_seconds: int
 
 
+class CollectedMscRestorationSchema(TypedDict, total=False):
+    """
+    Record of what the collected_msc restoration migration did to a file.
+
+    Written by python/experiments/restore_collected_msc_v3.py. Its presence
+    makes the migration idempotent and the archive auditable — V1 and V2 left
+    no marker, which is why their output had to be identified by fingerprint.
+
+    Args:
+        version: Restoration generation that wrote this record
+        applied: UTC timestamp of the run
+        method: Branch taken — 'noop', 'hour_snap' or 'min_filter'
+        segments: Number of anchor segments the file was split into
+        shift_ms: Milliseconds added to collected_msc, one entry per segment
+
+    Returns:
+        N/A (TypedDict - used for type checking only)
+    """
+    version: int
+    applied: str
+    method: str
+    segments: int
+    shift_ms: List[int]
+
+
 class ImportMetadataSchema(TypedDict, total=False):
     """
     Metadata section of MQL5 JSON tick export.
@@ -76,6 +101,12 @@ class ImportMetadataSchema(TypedDict, total=False):
     # Optional (v1.4.0+) — collection clock discipline, cumulative per EA session
     anchor_resyncs: int
     anchor_max_correction_ms: int
+
+    # Optional (v1.5.0+) — time base of collected_msc; 'utc' when the collector
+    # reads the OS clock directly. Absent means device-local, until the
+    # restoration migration converts the file and stamps both fields.
+    collected_msc_timebase: str
+    collected_msc_restoration: CollectedMscRestorationSchema
 
     # Nested optional
     symbol_info: SymbolInfoSchema

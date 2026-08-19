@@ -28,10 +28,12 @@ from python.data_management.index.tick_index_manager import TickIndexManager
 
 # Import duplicate detection
 from python.framework.exceptions.data_quality_errors import ArtificialDuplicateException
+from python.framework.exceptions.data_quality_errors import TickFileValidationException
 from python.framework.reporting.duplicate_report import DuplicateReport
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
+from python.framework.validators.tick_import_validator import TickImportValidator
 vLog = get_global_logger()
 
 
@@ -44,7 +46,7 @@ class TickDataImporter:
     - Datatype optimization for performance
     - UTC timezone conversion with manual offset
     - Session recalculation based on UTC
-    - Quality checks and cleanup
+    - Structural validation (refuses defective files, never repairs)
     - Batch processing with error handling
     - Duplicate prevention with override option
     - Hierarchical directory structure
@@ -95,6 +97,8 @@ class TickDataImporter:
 
         # Track processed broker_types for bar rendering
         self._processed_broker_types: Set[str] = set()
+
+        self._validator = TickImportValidator()
 
     def _normalize_broker_type(self, broker_type: str) -> str:
         """
@@ -153,6 +157,13 @@ class TickDataImporter:
                 vLog.warning(str(e))
                 self.warnings.append(warning_msg)
                 vLog.info("→ Skipping import (duplicate already exists)")
+            except TickFileValidationException as e:
+                # Structural defect in the source file — refuse it, keep the batch running
+                error_msg = f"VALIDATION FAILED in {json_file.name}"
+                vLog.error(error_msg)
+                vLog.error(str(e))
+                self.errors.append(error_msg)
+                vLog.info("→ Skipping import (file not written)")
             except Exception as e:
                 error_msg = f"ERROR in {json_file.name}: {str(e)}"
                 vLog.error(error_msg)
@@ -178,9 +189,39 @@ class TickDataImporter:
             symbols = index_manager.list_symbols()
             vLog.info(f"✅ Index rebuilt: {len(symbols)} symbols indexed")
 
+            self._validate_archive_ordering(index_manager)
+
         except Exception as e:
             vLog.error(f"❌ Failed to rebuild index: {e}")
             vLog.error("   Index may be outdated - run manual rebuild!")
+
+    def _validate_archive_ordering(self, index_manager: TickIndexManager) -> None:
+        """
+        Check that files of one symbol never cover overlapping time ranges.
+
+        Runs off the index, so no data file is opened. Which files follow each
+        other is decided by their tick bounds, not by name or header.
+
+        Args:
+            index_manager: The freshly built tick index
+        """
+        entries = {
+            broker_type: {
+                symbol: index_manager.get_symbol_entries(broker_type, symbol)
+                for symbol in index_manager.list_symbols(broker_type)
+            }
+            for broker_type in index_manager.list_broker_types()
+        }
+
+        findings = self._validator.validate_archive_ordering(entries)
+        if not findings:
+            vLog.info("✅ Archive ordering verified: no overlapping coverage")
+            return
+
+        vLog.warning(f"⚠️  {len(findings)} overlapping file ranges in the archive:")
+        for finding in findings:
+            vLog.warning(f"   {finding}")
+            self.warnings.append(finding)
 
     def convert_json_to_parquet(self, json_file: Path):
         """
@@ -191,7 +232,7 @@ class TickDataImporter:
         2. Create DataFrame and optimize datatypes
         3. Apply time offset (if set)
         4. Recalculate sessions (if offset applied)
-        5. Quality checks
+        5. Validate structural invariants (refuses the file on violation)
         6. Check for existing duplicates (with override support)
         7. Save as Parquet with metadata
         """
@@ -283,14 +324,27 @@ class TickDataImporter:
                 f"   ℹ️  No offset for broker_type={broker_type_normalized} (0h in registry)")
 
         # ===========================================
-        # 6. QUALITY CHECKS
+        # 6. VALIDATION
         # ===========================================
 
         self._processed_broker_types.add(broker_type_normalized)
-        df = self._quality_checks(df)
         # Preserve JSON array order (= authentic arrival order)
         # No sort — collected_msc monotonicity depends on this
         df = df.reset_index(drop=True)
+
+        validation = self._validator.validate_file(
+            df=df,
+            file_name=json_file.name,
+            declared_tick_count=data.get('summary', {}).get('total_ticks'),
+            collected_msc_is_utc=metadata.get(
+                'collected_msc_timebase') == 'utc'
+        )
+        for warning in validation.warnings:
+            vLog.warning(f"   ⚠️  {warning}")
+            self.warnings.append(f"{json_file.name}: {warning}")
+        if not validation.is_valid:
+            raise TickFileValidationException(validation)
+        vLog.info("   ✅ Validation passed")
 
         # ===========================================
         # 7. PREPARE PARQUET OUTPUT
@@ -564,32 +618,6 @@ class TickDataImporter:
             if col in df.columns:
                 df[col] = df[col].astype("int64")
 
-        return df
-
-    def _quality_checks(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Performs quality checks on tick data."""
-
-        # Check 1: Invalid Prices
-        invalid_prices = df[(df["bid"] <= 0) | (df["ask"] <= 0)]
-        if len(invalid_prices) > 0:
-            vLog.warning(
-                f"⚠️  {len(invalid_prices)} ticks with invalid prices")
-
-        # Check 2: Extreme Spreads
-        if "spread_pct" in df.columns:
-            extreme_spreads = df[df["spread_pct"] > 5.0]
-            if len(extreme_spreads) > 0:
-                vLog.warning(
-                    f"⚠️  {len(extreme_spreads)} ticks with extreme spreads")
-
-        # Check 3: Price Jumps
-        df["bid_pct_change"] = df["bid"].pct_change().abs() * 100
-        large_jumps = df[df["bid_pct_change"] > 10.0]
-        if len(large_jumps) > 0:
-            vLog.warning(
-                f"⚠️  {len(large_jumps)} ticks with large price jumps")
-
-        df = df.drop(columns=["bid_pct_change"], errors="ignore")
         return df
 
     def _print_summary(self):

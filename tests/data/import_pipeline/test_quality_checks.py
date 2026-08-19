@@ -1,8 +1,9 @@
 """
-Test Quality Checks.
+Test Import Validation Behaviour.
 
-Tests that the importer performs quality validation and
-removes temporary columns from the output.
+Tests how the importer reacts to defective source data: it validates and
+refuses, it never repairs. A rejected file is a single-file failure — the
+batch keeps running.
 """
 
 import pandas as pd
@@ -16,11 +17,11 @@ from tests.data.import_pipeline.conftest import (
 )
 
 
-class TestQualityChecks:
-    """Verify quality check logic and cleanup."""
+class TestImportRejection:
+    """Verify defective files are refused, not silently written."""
 
-    def test_invalid_prices_do_not_crash_import(self, tmp_path):
-        """Ticks with bid <= 0 should trigger warning but not crash import."""
+    def test_invalid_prices_reject_file(self, tmp_path):
+        """Ticks with bid <= 0 must reject the file without killing the batch."""
         source = tmp_path / "source"
         target = tmp_path / "target"
         data = build_minimal_tick_json(
@@ -49,13 +50,13 @@ class TestQualityChecks:
         )
         importer.process_all_exports()
 
-        # Import should succeed (warnings logged, not errors)
-        assert importer.processed_files == 1
-        parquet_files = find_tick_parquets(target)
-        assert len(parquet_files) == 1
+        # File refused, nothing written, batch survived
+        assert importer.processed_files == 0
+        assert len(find_tick_parquets(target)) == 0
+        assert any('BADPRICE' in error for error in importer.errors)
 
-    def test_extreme_spreads_do_not_crash_import(self, tmp_path):
-        """Ticks with spread_pct > 5.0 should trigger warning but not crash."""
+    def test_extreme_spreads_do_not_reject(self, tmp_path):
+        """A wide spread is a market condition, not a defect — file still imports."""
         source = tmp_path / "source"
         target = tmp_path / "target"
         data = build_minimal_tick_json(
