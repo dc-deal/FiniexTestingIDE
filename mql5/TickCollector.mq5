@@ -1,22 +1,30 @@
 //+------------------------------------------------------------------+
-//| FiniexTestingIDE Tick Data Collector - Enhanced Error Version    |
+//| FiniexTestingIDE Tick Data Collector                             |
 //| Sammelt Live-Tick-Daten mit gestuftem Error-Tracking            |
-//| Version 1.0.7 - Per-Tick Collection Timestamp                    |
 //|                                                                  |
-//| NEW in V1.0.7:                                                   |
-//| - collected_msc: monotonic local timestamp per tick (ms)        |
-//| - Uses GetMicrosecondCount() for precise inter-tick deltas      |
-//| - data_format_version bumped to 1.3.0                           |
-//|                                                                  |
-//| V1.0.6: broker_type in json                                      |
-//| V1.0.5: UTC offset auto-detection, local_device_time            |
-//|                                                                  |
-//| Docs:                                                             |
-//| - docs/TickCollector_README.md  (collector usage & JSON schema) |
-//| - docs/data_import_pipeline.md  (import pipeline & parquet)     |
+//| Docs:                                                            |
+//| - docs/data_pipeline/tick_collector_guide.md  (usage & schema)   |
+//| - docs/data_pipeline/data_import_pipeline.md  (import & parquet) |
 //+------------------------------------------------------------------+
 #property copyright "FiniexTestingIDE"
 #property strict
+
+#define EA_VERSION           "V1.0.9"
+// Schema version of the exported JSON. A constant, not an input: the version
+// identifies the code that wrote the file and must not be set per chart.
+// collected_msc is UTC - it comes from the OS clock, not from device local time.
+#define DATA_FORMAT_VERSION  "1.5.0"
+// 100-ns intervals between the FILETIME epoch (1601-01-01) and the Unix epoch.
+#define FILETIME_UNIX_OFFSET 116444736000000000
+
+// The OS clock read directly. GetSystemTimePreciseAsFileTime is NTP-disciplined
+// and interpolated by the performance counter, so it carries sub-microsecond
+// resolution - which no built-in MQL5 time function provides. Declared here
+// rather than via <WinAPI\sysinfoapi.mqh> so the build does not depend on which
+// functions that header happens to export. Requires "Allow DLL imports".
+#import "kernel32.dll"
+   void GetSystemTimePreciseAsFileTime(ulong &lpSystemTimeAsFileTime);
+#import
 
 // Error-Severity-Enum
 enum ENUM_ERROR_SEVERITY
@@ -46,7 +54,6 @@ input int MaxTicksPerFile = 50000;
 input bool IncludeRealVolume = true;
 input bool IncludeTickFlags = true;
 input ENUM_TIMEFRAMES VolumeTimeframe = PERIOD_M1;
-input string DataFormatVersion = "1.3.0";
 // Identifies the data collection platform (mt5, ib, etc.)
 // Only change when importing from a different broker platform!
 input string DataCollectorName = "mt5"; 
@@ -67,9 +74,6 @@ string currentFileName = "";
 int tickCounter = 0;
 datetime fileStartTime;
 
-// NEW V1.0.5: Automatisch erkannter Broker UTC Offset
-int g_brokerUtcOffsetHours = 0;
-
 // Enhanced Error-Tracking
 ErrorInfo errorBuffer[];
 int errorCounts[3]; // [negligible, serious, fatal]
@@ -79,10 +83,11 @@ long lastTickMsc = 0;
 int consecutiveErrorTicks = 0;
 bool dataStreamCorrupted = false;
 
-// V1.0.7: Epoch offset for collected_msc computation
-// collected_msc = g_epochOffsetMs + (GetMicrosecondCount() / 1000)
-// Monotonic, epoch-based, millisecond precision
-long g_epochOffsetMs = 0;
+// collected_msc is read from the OS clock per tick. Only a backwards step of
+// that clock (NTP correction) needs handling - it is clamped and counted.
+long  g_collectedMs     = 0;   // last emitted collection timestamp (epoch ms, UTC)
+int   g_anchorResyncs   = 0;   // how often the OS clock jumped backwards
+long  g_maxCorrectionMs = 0;   // largest backwards jump absorbed
 
 // Erweiterte Validierungsparameter
 double maxSpreadPercent = 5.0;        // Max 5% Spread
@@ -96,41 +101,10 @@ int warningDataGapSeconds = 60;       // Warning bei 1 Min Lücke
 int OnInit()
 {
     Print("═══════════════════════════════════════════════════════════");
-    Print("  FiniexTestingIDE TickCollector V1.0.7                    ");
+    Print("  FiniexTestingIDE TickCollector ", EA_VERSION, "                    ");
     Print("  Per-Tick Collection Timestamp (collected_msc)             ");
     Print("═══════════════════════════════════════════════════════════");
     
-    // NEW: 100% ZUVERLÄSSIGE UTC-Offset-Erkennung via time_msc
-    // time_msc ist IMMER in UTC (Unix timestamp in milliseconds)
-    // tick.time ist in Broker Server Zeit
-    
-    MqlTick tick;
-    if (!SymbolInfoTick(Symbol(), tick))
-    {
-        Print("❌ FEHLER: Konnte keinen Tick abrufen für UTC-Offset-Berechnung");
-        Print("   Verwende Fallback: TimeGMT() Methode");
-        
-        datetime serverTime = TimeCurrent();
-        datetime utcTime = TimeGMT();
-        g_brokerUtcOffsetHours = (int)((serverTime - utcTime) / 3600);
-    }
-    else
-    {
-        // Broker Server Zeit aus tick.time
-        datetime brokerTime = tick.time;
-        
-        // Echte UTC Zeit aus time_msc (Unix timestamp)
-        datetime utcTime = (datetime)(tick.time_msc / 1000);
-        
-        // Berechne Offset in Stunden
-        g_brokerUtcOffsetHours = (int)((brokerTime - utcTime) / 3600);
-        
-        Print("🌍 Broker Timezone Detection (via time_msc - 100% reliable):");
-        Print("   Broker Time:  ", TimeToString(brokerTime, TIME_DATE | TIME_SECONDS));
-        Print("   UTC Time:     ", TimeToString(utcTime, TIME_DATE | TIME_SECONDS));
-        Print("   time_msc:     ", tick.time_msc);
-        Print("   Calculated Offset: GMT", (g_brokerUtcOffsetHours >= 0 ? "+" : ""), g_brokerUtcOffsetHours);
-    }
     Print("───────────────────────────────────────────────────────────");
     Print("Symbol:           ", Symbol());
     Print("Broker:           ", AccountInfoString(ACCOUNT_COMPANY));
@@ -140,15 +114,30 @@ int OnInit()
     Print("Tick Flags:       ", (IncludeTickFlags ? "Yes" : "No"));
     Print("═══════════════════════════════════════════════════════════");
     Print("⚠️  IMPORTANT: Tick times stored in BROKER SERVER TIME");
-    Print("   UTC Offset: GMT", (g_brokerUtcOffsetHours >= 0 ? "+" : ""), g_brokerUtcOffsetHours, " (auto-detected via time_msc)");
     Print("   UTC conversion will be handled by tick_importer.py");
+    Print("   collected_msc is already UTC - it comes from the OS clock");
     Print("═══════════════════════════════════════════════════════════\n");
     
-    // V1.0.7: Compute epoch offset for collected_msc
-    // TimeLocal() is seconds-only, GetMicrosecondCount() is monotonic microseconds since EA start
-    // Combined: epoch-based ms timestamp with monotonic deltas
-    g_epochOffsetMs = (long)TimeLocal() * 1000 - (long)(GetMicrosecondCount() / 1000);
-    Print("   collected_msc epoch offset: ", g_epochOffsetMs);
+    // collected_msc is read from the OS clock on every tick, so there is no
+    // anchor to maintain and nothing that can drift or overflow.
+    g_collectedMs = UtcMscPrecise();
+
+    // Verify the imported clock against TimeGMT() before the first tick. A missing
+    // or wrongly declared import returns a nonsense value rather than failing, so
+    // the value itself has to be checked - never collect on an unverified clock.
+    long gmtMs     = (long)TimeGMT() * 1000;
+    long deviation = g_collectedMs - gmtMs;
+    if (deviation < 0) deviation = -deviation;
+    if (deviation > 60000)
+    {
+        Print("❌ FATAL: WinAPI-Zeitquelle unplausibel - Sammlung wird nicht gestartet.");
+        Print("   GetSystemTimePreciseAsFileTime: ", g_collectedMs, " ms");
+        Print("   TimeGMT() zum Vergleich:        ", gmtMs, " ms");
+        Print("   Abweichung: ", deviation, " ms (erlaubt: 60000 ms)");
+        return INIT_FAILED;
+    }
+    Print("   collected_msc source: GetSystemTimePreciseAsFileTime (UTC), start ", g_collectedMs);
+    Print("   Abgleich mit TimeGMT(): ", deviation, " ms Abweichung");
 
     // Error-System initialisieren
     ArrayResize(errorBuffer, 0);
@@ -170,7 +159,7 @@ int OnInit()
         return INIT_FAILED;
     }
     
-    Print("✅ TickCollector V1.0.7 erfolgreich gestartet für ", Symbol());
+    Print("✅ TickCollector ", EA_VERSION, " erfolgreich gestartet für ", Symbol());
     Print("✅ Export-Pfad: ", ExportPath);
     Print("✅ Gestuftes Error-Tracking aktiviert (Negligible:", LogNegligibleErrors, 
           " Serious:", LogSeriousErrors, " Fatal:", LogFatalErrors, ")");
@@ -492,7 +481,6 @@ bool CreateNewExportFile()
         "    \"broker_type\": \"%s\",\n"           // NEW V1.0.6
         "    \"broker\": \"%s\",\n"
         "    \"server\": \"%s\",\n"
-        "    \"broker_utc_offset_hours\": %d,\n"
         "    \"local_device_time\": \"%s\",\n"           // NEW V1.0.5
         "    \"broker_server_time\": \"%s\",\n"          // NEW V1.0.5
         "    \"start_time\": \"%s\",\n"
@@ -502,6 +490,9 @@ bool CreateNewExportFile()
         "    \"volume_timeframe_minutes\": %d,\n"
         "    \"data_format_version\": \"%s\",\n"
         "    \"data_collector\": \"%s\",\n"
+        "    \"collected_msc_timebase\": \"utc\",\n"
+        "    \"anchor_resyncs\": %d,\n"
+        "    \"anchor_max_correction_ms\": %I64d,\n"
         "    \"market_type\": \"forex_cfd\",\n"
         "    \"collection_purpose\": \"%s\",\n"
         "    \"operator\": \"%s\",\n"
@@ -533,15 +524,16 @@ bool CreateNewExportFile()
         "mt5",
         AccountInfoString(ACCOUNT_COMPANY),
         serverName,
-        g_brokerUtcOffsetHours,
         TimeToString(localTime, TIME_DATE | TIME_SECONDS),    // Lokale PC-Zeit
         TimeToString(brokerTime, TIME_DATE | TIME_SECONDS),   // Broker-Serverzeit
         TimeToString(fileStartTime, TIME_DATE | TIME_SECONDS),
         (int)fileStartTime,
         EnumToString(VolumeTimeframe),
         PeriodSeconds(VolumeTimeframe) / 60,
-        DataFormatVersion,
+        DATA_FORMAT_VERSION,
         DataCollectorName,
+        g_anchorResyncs,
+        g_maxCorrectionMs,
         CollectionPurpose,
         (StringLen(CollectorOperator) > 0) ? CollectorOperator : "automated",
         pointValue,
@@ -568,9 +560,51 @@ bool CreateNewExportFile()
     Print("✅ Neue Export-Datei erstellt: ", currentFileName);
     Print("   → Local Device Time: ", TimeToString(localTime, TIME_DATE | TIME_SECONDS));
     Print("   → Broker Server Time: ", TimeToString(brokerTime, TIME_DATE | TIME_SECONDS));
-    Print("   → Broker UTC Offset: GMT", (g_brokerUtcOffsetHours >= 0 ? "+" : ""), g_brokerUtcOffsetHours);
+    Print("   → collected_msc Resyncs bisher: ", g_anchorResyncs);
     Print("   → Enhanced Error-Tracking aktiviert");
     return true;
+}
+
+//+------------------------------------------------------------------+
+//| Liest die Systemuhr in Unix-Millisekunden (UTC)                 |
+//|                                                                 |
+//| Returns:                                                        |
+//|   Epoch-Millisekunden UTC, Sub-Mikrosekunden-Aufloesung          |
+//+------------------------------------------------------------------+
+long UtcMscPrecise()
+{
+    ulong ft = 0;
+    GetSystemTimePreciseAsFileTime(ft);
+    return((long)((ft - FILETIME_UNIX_OFFSET) / 10000));
+}
+
+//+------------------------------------------------------------------+
+//| Liefert den naechsten collected_msc Zeitstempel                 |
+//|                                                                 |
+//| Die Systemuhr wird pro Tick gelesen - sie kann weder driften     |
+//| noch ueberlaufen. Einziger Sonderfall ist ein Ruecksprung durch  |
+//| eine NTP-Korrektur; der wird geklemmt und gezaehlt, damit        |
+//| collected_msc nie rueckwaerts laeuft.                            |
+//|                                                                 |
+//| Returns:                                                        |
+//|   Epoch-Millisekunden UTC, monoton nicht fallend                 |
+//+------------------------------------------------------------------+
+long NextCollectedMsc()
+{
+    long nowMs = UtcMscPrecise();
+
+    if (nowMs < g_collectedMs)
+    {
+        long backMs = g_collectedMs - nowMs;
+        g_anchorResyncs++;
+        if (backMs > g_maxCorrectionMs) g_maxCorrectionMs = backMs;
+        PrintFormat("⚠ collected_msc: Systemuhr um %I64d ms zurueckgesprungen, "
+                    "auf letzten Stand geklemmt (#%d)", backMs, g_anchorResyncs);
+        nowMs = g_collectedMs;
+    }
+
+    g_collectedMs = nowMs;
+    return nowMs;
 }
 
 //+------------------------------------------------------------------+
@@ -616,8 +650,8 @@ bool ExportTick(MqlTick &tick)
     
     string session = GetTradingSession(tick.time);
     
-    // V1.0.7: Local collection timestamp (monotonic, epoch-based, ms precision)
-    long collectedMsc = g_epochOffsetMs + (long)(GetMicrosecondCount() / 1000);
+    // Collection timestamp, read straight from the OS clock (UTC)
+    long collectedMsc = NextCollectedMsc();
 
     // JSON-Objekt erstellen
     // NOTE: tick.time bleibt in BROKER SERVER ZEIT (unverändert!)
@@ -713,7 +747,7 @@ void CloseCurrentFile()
         double dataReliabilityScore = (tickCounter > 0) ? 1.0 - ((double)(errorCounts[ERROR_SERIOUS] + errorCounts[ERROR_FATAL]) / tickCounter) : 1.0;
         
         string footer = StringFormat(
-            "\n  \"summary\": {\n    \"total_ticks\": %d,\n    \"total_errors\": %d,\n    \"data_stream_status\": \"%s\",\n    \"quality_metrics\": {\n      \"overall_quality_score\": %.6f,\n      \"data_integrity_score\": %.6f,\n      \"data_reliability_score\": %.6f,\n      \"negligible_error_rate\": %.6f,\n      \"serious_error_rate\": %.6f,\n      \"fatal_error_rate\": %.6f\n    },\n    \"timing\": {\n      \"end_time\": \"%s\",\n      \"duration_minutes\": %.1f,\n      \"avg_ticks_per_minute\": %.1f\n    },\n    \"recommendations\": \"%s\"\n  }\n}",
+            "\n  \"summary\": {\n    \"total_ticks\": %d,\n    \"total_errors\": %d,\n    \"data_stream_status\": \"%s\",\n    \"quality_metrics\": {\n      \"overall_quality_score\": %.6f,\n      \"data_integrity_score\": %.6f,\n      \"data_reliability_score\": %.6f,\n      \"negligible_error_rate\": %.6f,\n      \"serious_error_rate\": %.6f,\n      \"fatal_error_rate\": %.6f\n    },\n    \"timing\": {\n      \"end_time\": \"%s\",\n      \"duration_minutes\": %.1f,\n      \"avg_ticks_per_minute\": %.1f\n    },\n    \"anchor\": {\n      \"resyncs\": %d,\n      \"max_correction_ms\": %I64d\n    },\n    \"recommendations\": \"%s\"\n  }\n}",
             tickCounter,
             totalErrors,
             dataStreamCorrupted ? "CORRUPTED" : (errorCounts[ERROR_FATAL] > 0 ? "COMPROMISED" : "HEALTHY"),
@@ -726,6 +760,8 @@ void CloseCurrentFile()
             TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS),
             (TimeCurrent() - fileStartTime) / 60.0,
             tickCounter / MathMax(1.0, (TimeCurrent() - fileStartTime) / 60.0),
+            g_anchorResyncs,
+            g_maxCorrectionMs,
             GenerateDataQualityRecommendations()
         );
         
@@ -805,7 +841,7 @@ void OnDeinit(const int reason)
     // Finale Statistiken
     int totalErrors = errorCounts[ERROR_NEGLIGIBLE] + errorCounts[ERROR_SERIOUS] + errorCounts[ERROR_FATAL];
     Print("========================================");
-    Print("TickCollector V1.0.7 gestoppt");
+    Print("TickCollector ", EA_VERSION, " gestoppt");
     Print("Grund: ", reasonText);
     Print(StringFormat("Finale Statistiken: %d Ticks, %d Errors", tickCounter, totalErrors));
     if (totalErrors > 0)

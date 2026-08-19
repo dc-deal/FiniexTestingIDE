@@ -62,7 +62,7 @@ class ImportMetadataSchema(TypedDict, total=False):
 
     # Optional (v1.0.5+)
     server: str
-    broker_utc_offset_hours: int
+    broker_utc_offset_hours: int  # v1.0.5–1.3.0 only; always 0, dropped in 1.4.0
     local_device_time: str
     broker_server_time: str
     start_time_unix: int
@@ -72,6 +72,10 @@ class ImportMetadataSchema(TypedDict, total=False):
     data_format_version: str
     collection_purpose: str
     operator: str
+
+    # Optional (v1.4.0+) — collection clock discipline, cumulative per EA session
+    anchor_resyncs: int
+    anchor_max_correction_ms: int
 
     # Nested optional
     symbol_info: SymbolInfoSchema
