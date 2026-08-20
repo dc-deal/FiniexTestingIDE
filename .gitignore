@@ -132,7 +132,8 @@ data/runtime/
 data/raw/*.json
 data/raw/*.jsonl
 # Signal source raw JSONL (nested per pipeline_id) — #429
-data/raw/signals/
+data/raw/signals/*
+!data/raw/signals/.gitkeep
 data/finished/*
 !data/finished/.gitkeep
 data/cache/

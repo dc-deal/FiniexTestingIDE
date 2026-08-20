@@ -102,3 +102,46 @@ class TestLegacyIndexTolerance:
         entries = manager.index["kraken_spot"]["SOLUSD"]
         assert len(entries) == 1
         assert entries[0]["data_format_version"] == "unknown"
+
+
+class TestArrivalBoundsRoundTrip:
+    """
+    Verify the collected_msc bounds survive the write/read cycle of the index file.
+
+    They are the only input to the cross-file arrival-continuity check. When they are
+    dropped on persist, that check skips every transition and the import still logs a
+    pass — the same failure mode data_format_version had, one field later.
+    """
+
+    def test_arrival_bounds_in_persisted_index_parquet(self, tmp_path):
+        """The index file on disk should carry both arrival-bound columns."""
+        target = _import_ticks(tmp_path, symbol="ADAUSD")
+
+        df = pd.read_parquet(target / TickIndexManager.INDEX_FILE_PARQUET)
+        assert "collected_start" in df.columns
+        assert "collected_end" in df.columns
+        assert df["collected_start"].iloc[0] > 0
+        assert df["collected_end"].iloc[0] >= df["collected_start"].iloc[0]
+
+    def test_arrival_bounds_survive_reload(self, tmp_path):
+        """A manager loading the persisted index should see the bounds, not zero."""
+        target = _import_ticks(tmp_path, symbol="DOTUSD")
+
+        manager = TickIndexManager(data_dir=str(target))
+        manager.build_index()
+
+        entry = manager.index["kraken_spot"]["DOTUSD"][0]
+        assert entry["collected_start"] > 0
+        assert entry["collected_end"] >= entry["collected_start"]
+
+    def test_empty_index_carries_arrival_bound_columns(self, tmp_path):
+        """The empty-schema branch should declare the same columns as a populated index."""
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+
+        manager = TickIndexManager(data_dir=str(empty_dir))
+        manager.save_index()
+
+        df = pd.read_parquet(empty_dir / TickIndexManager.INDEX_FILE_PARQUET)
+        assert "collected_start" in df.columns
+        assert "collected_end" in df.columns

@@ -197,7 +197,8 @@ class TickDataImporter:
 
     def _validate_archive_ordering(self, index_manager: TickIndexManager) -> None:
         """
-        Check that files of one symbol never cover overlapping time ranges.
+        Check the archive across file boundaries: no overlapping event ranges
+        per symbol, and collected_msc continuous from one file to the next.
 
         Runs off the index, so no data file is opened. Which files follow each
         other is decided by their tick bounds, not by name or header.
@@ -215,10 +216,13 @@ class TickDataImporter:
 
         findings = self._validator.validate_archive_ordering(entries)
         if not findings:
-            vLog.info("✅ Archive ordering verified: no overlapping coverage")
+            vLog.info(
+                "✅ Archive ordering verified: no overlapping coverage, "
+                "collected_msc continuous across file boundaries"
+            )
             return
 
-        vLog.warning(f"⚠️  {len(findings)} overlapping file ranges in the archive:")
+        vLog.warning(f"⚠️  {len(findings)} archive ordering findings:")
         for finding in findings:
             vLog.warning(f"   {finding}")
             self.warnings.append(finding)

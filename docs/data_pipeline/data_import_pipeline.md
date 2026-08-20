@@ -237,10 +237,25 @@ a verdict and belongs to the coverage layer
 against `MarketCalendar`. Gaps are not an import problem — only ordering is.
 
 A second plane runs across files, off the tick index rather than the data:
-`validate_archive_ordering()` verifies that files of one symbol never cover overlapping time
-ranges. Which files follow each other is decided by the tick bounds in the index, not by the file
-name and not by the header — a file opened at the Friday close carries its first tick 48 h later, so
-both would mislead.
+`validate_archive_ordering()` checks two invariants per symbol.
+
+| Invariant | Reads | Catches |
+|---|---|---|
+| Files never cover overlapping **event** ranges | `start_time` / `end_time` | two collectors on one symbol, a double import |
+| `collected_msc` never steps back from one file to the next (**arrival**) | `collected_start` / `collected_end` | a system-clock correction between two collector sessions |
+
+Which files follow each other is decided by the tick bounds in the index, not by the file name and
+not by the header — a file opened at the Friday close carries its first tick 48 h later, so both
+would mislead.
+
+The arrival plane covers what a collector cannot see itself: a collector clamps its own clock
+within a session, but a correction that happens while it is *not* running leaves no trace in either
+file. Only the boundary between them shows it.
+
+An index without `collected_start` / `collected_end` (written before those bounds existed) makes the
+arrival plane unverifiable. It then reports one aggregate line naming the number of unchecked
+transitions rather than passing silently — a skipped plane that logs like a passed one is how the
+check once did nothing while reporting success. Rebuilding the index restores it.
 
 ---
 

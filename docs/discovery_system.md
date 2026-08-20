@@ -122,6 +122,57 @@ Detects gaps via timestamp jumps between consecutive bars at the configured gran
 
 Provides `has_issues()` check and actionable `get_recommendations()`.
 
+Categories are gated on the market type. `MarketCalendar` is forex-shaped — its weekend and
+trading-hour methods hard-code Mon–Fri — so a 24/7 market never receives the weekend/holiday
+categories, and its moderate gaps are not split into "during" / "outside" trading hours. On a
+market that never closes, every hour is a trading hour and a Saturday gap is a real gap.
+
+### How long a gap was
+
+Hours always; calendar days from a full day up, where hours stop being readable. On a market
+that closes, a second line states the **trading time actually lost** — the figure that matters
+for an archive, because a weekend costs no trading day while a fortnight costs ten:
+
+```
+Gap:    118h (118.00h · 4.9d)
+Lost:   5 trading days (1 full trading week)
+```
+
+The `Lost:` line appears only for markets with a weekend closure. A 24/7 market has no trading
+week, so calendar days are already the whole truth there — the §37 gate lives in the caller,
+because `MarketCalendar.get_trading_days()` counts Mon–Fri without knowing the market type. It
+also appears only from a full day up: the count is calendar-day based and would read a two-hour
+Wednesday gap as "1 trading day".
+
+### Which file(s) a gap falls in
+
+Each moderate or large gap states where it sits relative to the collector's files. This answers the
+operator question behind every outage: **was the collector running through it, or not collecting at
+all?**
+
+```
+Type:   Intra-file — ADAUSD_20260728_233104.parquet (collector was running)
+Type:   File boundary — A.parquet → B.parquet (rollover, collection continued)
+Type:   File boundary — A.parquet → B.parquet (collection resumed 336h later)
+```
+
+**A file boundary on its own proves nothing.** Files roll at `max_ticks_per_file`, not on a clock,
+so a boundary can fall inside a running session purely by coincidence — measured across the archive,
+97 of 178 boundary gaps were such rollovers. The implication only runs one way: a collector that was
+down always produces a boundary, but a boundary does not imply a collector that was down.
+
+What separates them is the **file's open time**, taken from the file name and converted with the
+same offset registry the importer uses (MT5 names carry broker server time, Kraken names carry UTC).
+A file that opened at the previous file's last tick rolled over; one that opened inside the gap marks
+the moment collection resumed. The metadata's `start_time_unix` is not an alternative — it is the
+server wall-clock converted as if it were UTC, so for MT5 it is off by the broker offset.
+
+The report states the observation and stops there. Whether a pause was the venue or the operator is
+a judgment, and it stays with the reader.
+
+Resolved **at render time, from the tick index** — like the version spans below, and for the same
+reason: the batch validation path never renders the report and must not pay for the index load.
+
 ### Data format version spans
 
 The report shows **which collector schema produced which window** of the archive. The tick index

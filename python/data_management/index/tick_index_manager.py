@@ -325,6 +325,7 @@ class TickIndexManager:
         columns = [
             'broker_type', 'symbol', 'file', 'path', 'start_time', 'end_time',
             'tick_count', 'file_size_mb', 'source_file', 'num_row_groups',
+            'collected_start', 'collected_end',
             'statistics', 'sessions', 'data_format_version'
         ]
         df = pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(

@@ -333,6 +333,8 @@ class TickImportValidator:
             List of overlap findings, empty when the archive is ordered
         """
         findings: List[str] = []
+        unchecked = 0
+        transitions = 0
 
         for broker_type, symbols in index_entries.items():
             for symbol, entries in symbols.items():
@@ -348,6 +350,7 @@ class TickImportValidator:
                     for e in entries
                 ]
                 bounds.sort(key=lambda b: b[0])
+                transitions += max(len(bounds) - 1, 0)
 
                 for previous, current in zip(bounds, bounds[1:]):
                     _, prev_end, _, prev_arrival_end, prev_file = previous
@@ -361,8 +364,11 @@ class TickImportValidator:
 
                     # Arrival is a physical sequence: a tick cannot be observed
                     # before one that arrived earlier. Zero means the index
-                    # predates the arrival bounds — nothing to compare.
+                    # carries no arrival bounds — nothing to compare, and the
+                    # skip is reported rather than silent: an unverified plane
+                    # that logs like a passed one is worse than no plane.
                     if not prev_arrival_end or not cur_arrival_start:
+                        unchecked += 1
                         continue
 
                     if cur_arrival_start < prev_arrival_end:
@@ -371,5 +377,12 @@ class TickImportValidator:
                             f"{prev_arrival_end - cur_arrival_start} ms from "
                             f"{prev_file} to {cur_file} (arrival time)"
                         )
+
+        if unchecked:
+            findings.append(
+                f"Arrival bounds missing on {unchecked} of {transitions} file "
+                f"transitions — collected_msc continuity NOT verified there. "
+                f"Rebuild the tick index."
+            )
 
         return findings

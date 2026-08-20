@@ -365,6 +365,56 @@ class TestFinishedArchive:
         assert (raw / 'sentiment_a' / 'day.jsonl').exists()
         assert not (finished / 'sentiment_a' / 'day.jsonl').exists()
 
+    def test_emptied_pipeline_folder_is_removed(self, tmp_path):
+        """An inbox whose files all moved must look empty, not occupied."""
+        raw, proc, finished = self._tree(tmp_path)
+        importer = self._importer(raw, proc, finished)
+        importer.process_all_signals()
+
+        assert not (raw / 'sentiment_a').exists()
+        assert raw.exists()
+        assert importer.pruned_dirs == 1
+
+    def test_folder_with_unimported_content_survives(self, tmp_path):
+        """rmdir refuses a non-empty folder — anything left behind keeps its home."""
+        raw, proc, finished = self._tree(tmp_path)
+        (raw / 'sentiment_a' / 'notes.txt').write_text('not a jsonl')
+
+        importer = self._importer(raw, proc, finished)
+        importer.process_all_signals()
+
+        assert (raw / 'sentiment_a' / 'notes.txt').exists()
+        assert importer.pruned_dirs == 0
+
+    def test_failed_import_keeps_its_folder(self, tmp_path):
+        """The file stays on failure (previous test), so its folder must stay too."""
+        raw, proc, finished = self._tree(tmp_path)
+        lines = [
+            {'collected_msc': BASE_MSC, 'schema_version': '1.0',
+             'pipeline_id': 'a', 'status': 'success', 'result': []},
+            {'collected_msc': BASE_MSC + STEP_MSC, 'schema_version': '1.0',
+             'pipeline_id': 'b', 'status': 'success', 'result': []},
+        ]
+        (raw / 'sentiment_a' / 'day.jsonl').write_text(
+            '\n'.join(json.dumps(line) for line in lines))
+
+        importer = self._importer(raw, proc, finished)
+        importer.process_all_signals()
+
+        assert importer.errors
+        assert (raw / 'sentiment_a').exists()
+
+    def test_stale_empty_folder_is_removed_on_an_idle_run(self, tmp_path):
+        """Nothing to import is not a reason to leave scaffolding behind."""
+        raw, proc, finished = self._tree(tmp_path)
+        self._importer(raw, proc, finished).process_all_signals()
+        (raw / 'left_over').mkdir()
+
+        importer = self._importer(raw, proc, finished)
+        importer.process_all_signals()
+
+        assert not (raw / 'left_over').exists()
+
 
 # ---------------------------------------------------------------- §33 availability
 

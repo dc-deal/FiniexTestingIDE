@@ -227,12 +227,14 @@ class TestArchiveOrdering:
     """Cross-file plane — runs off the index, opens no data file."""
 
     def test_ordered_archive_has_no_findings(self, validator):
-        """Measured: zero overlaps across all 5132 archive file pairs."""
+        """Measured: zero overlaps across all 5222 archive file pairs."""
         entries = {'mt5': {'EURUSD': [
             {'file': 'a.parquet', 'start_time': '2026-01-15T10:00:00+00:00',
-             'end_time': '2026-01-15T11:00:00+00:00'},
+             'end_time': '2026-01-15T11:00:00+00:00',
+             'collected_start': 1768471200000, 'collected_end': 1768474800000},
             {'file': 'b.parquet', 'start_time': '2026-01-15T11:00:00+00:00',
-             'end_time': '2026-01-15T12:00:00+00:00'},
+             'end_time': '2026-01-15T12:00:00+00:00',
+             'collected_start': 1768474800000, 'collected_end': 1768478400000},
         ]}}
 
         assert validator.validate_archive_ordering(entries) == []
@@ -241,9 +243,11 @@ class TestArchiveOrdering:
         """Two collectors on one symbol would produce exactly this."""
         entries = {'mt5': {'EURUSD': [
             {'file': 'a.parquet', 'start_time': '2026-01-15T10:00:00+00:00',
-             'end_time': '2026-01-15T11:30:00+00:00'},
+             'end_time': '2026-01-15T11:30:00+00:00',
+             'collected_start': 1768471200000, 'collected_end': 1768476600000},
             {'file': 'b.parquet', 'start_time': '2026-01-15T11:00:00+00:00',
-             'end_time': '2026-01-15T12:00:00+00:00'},
+             'end_time': '2026-01-15T12:00:00+00:00',
+             'collected_start': 1768476600000, 'collected_end': 1768478400000},
         ]}}
 
         findings = validator.validate_archive_ordering(entries)
@@ -280,8 +284,9 @@ class TestArchiveOrdering:
 
         assert validator.validate_archive_ordering(entries) == []
 
-    def test_missing_arrival_bounds_are_skipped(self, validator):
-        """An index written before the arrival bounds existed must not false-alarm."""
+    def test_missing_arrival_bounds_are_reported_as_unverified(self, validator):
+        """An index without arrival bounds must say so — a skipped plane that
+        logs like a passed one is how the check silently did nothing."""
         entries = {'mt5': {'EURUSD': [
             {'file': 'a.parquet', 'start_time': '2026-01-15T10:00:00+00:00',
              'end_time': '2026-01-15T11:00:00+00:00'},
@@ -289,15 +294,42 @@ class TestArchiveOrdering:
              'end_time': '2026-01-15T12:00:00+00:00'},
         ]}}
 
-        assert validator.validate_archive_ordering(entries) == []
+        findings = validator.validate_archive_ordering(entries)
+
+        assert len(findings) == 1
+        assert 'NOT verified' in findings[0]
+
+    def test_unverified_transitions_are_reported_once(self, validator):
+        """One aggregate line for the whole run, not one per symbol."""
+        entries = {'mt5': {
+            'EURUSD': [
+                {'file': 'a.parquet', 'start_time': '2026-01-15T10:00:00+00:00',
+                 'end_time': '2026-01-15T11:00:00+00:00'},
+                {'file': 'b.parquet', 'start_time': '2026-01-15T11:00:00+00:00',
+                 'end_time': '2026-01-15T12:00:00+00:00'},
+            ],
+            'GBPUSD': [
+                {'file': 'c.parquet', 'start_time': '2026-01-15T10:00:00+00:00',
+                 'end_time': '2026-01-15T11:00:00+00:00'},
+                {'file': 'd.parquet', 'start_time': '2026-01-15T11:00:00+00:00',
+                 'end_time': '2026-01-15T12:00:00+00:00'},
+            ],
+        }}
+
+        findings = validator.validate_archive_ordering(entries)
+
+        assert len(findings) == 1
+        assert '2 of 2 file transitions' in findings[0]
 
     def test_touching_files_are_not_an_overlap(self, validator):
         """Measured: 227 archive pairs touch at exactly 0 ms distance."""
         entries = {'mt5': {'EURUSD': [
             {'file': 'a.parquet', 'start_time': '2026-01-15T10:00:00+00:00',
-             'end_time': '2026-01-15T11:00:00+00:00'},
+             'end_time': '2026-01-15T11:00:00+00:00',
+             'collected_start': 1768471200000, 'collected_end': 1768474800000},
             {'file': 'b.parquet', 'start_time': '2026-01-15T11:00:00+00:00',
-             'end_time': '2026-01-15T12:00:00+00:00'},
+             'end_time': '2026-01-15T12:00:00+00:00',
+             'collected_start': 1768474800000, 'collected_end': 1768478400000},
         ]}}
 
         assert validator.validate_archive_ordering(entries) == []
