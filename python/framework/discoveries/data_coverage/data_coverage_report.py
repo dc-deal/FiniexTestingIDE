@@ -9,11 +9,14 @@ from typing import List, Dict
 import pandas as pd
 
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
+from python.configuration.import_config_manager import ImportConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.discoveries.data_coverage.data_format_version_spans import (
     build_version_spans)
+from python.framework.discoveries.data_coverage.gap_file_attribution import (
+    ROLLOVER_TOLERANCE_S, attribute_gaps_to_files)
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.coverage_report_types import Gap, IndexEntry
 from python.framework.utils.market_calendar import MarketCalendar, GapCategory
@@ -23,6 +26,12 @@ from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 # Maximum version spans listed before the rest is summarized
 MAX_VERSION_SPANS_DISPLAYED = 20
+
+# From a full day up, hours stop being readable and the calendar-day figure is added
+DAY_SCALE_THRESHOLD_H = 24
+
+# Mon-Fri — the unit a gap is measured in on a market that closes
+TRADING_DAYS_PER_WEEK = 5
 
 
 class DataCoverageReport:
@@ -71,7 +80,9 @@ class DataCoverageReport:
         """
         Analyze all files for continuity and gaps.
 
-        Detects both file-to-file gaps and intra-file gaps (via bars).
+        Gaps are detected from the bar sequence. Which file(s) a gap falls in is
+        NOT resolved here — that needs the tick index, and the batch validation
+        path must not pay for the load. It happens on the render path instead.
 
         Args:
             config: Optional data coverage config with:
@@ -268,6 +279,107 @@ class DataCoverageReport:
 
         return lines
 
+    def _attribute_gaps(self) -> None:
+        """
+        Resolve which file(s) each gap falls in, from the tick index.
+
+        Render path only, for the same reason as the version spans: the batch
+        validation path never reads the attribution and must not pay for the
+        index load. No data file is opened.
+        """
+        tick_index = TickIndexManager()
+        tick_index.build_index()
+        entries = tick_index.get_symbol_entries(self.broker_type, self.symbol)
+
+        offset_hours = ImportConfigManager().get_default_offset(self.broker_type)
+        attribute_gaps_to_files(self.gaps, entries, offset_hours)
+
+    def _gap_extent(self, gap: Gap) -> str:
+        """
+        Render a gap's length, adding calendar days once hours stop being readable.
+
+        Args:
+            gap: The gap to describe
+
+        Returns:
+            Length string for the report
+        """
+        extent = f"{gap.duration_human} ({gap.gap_hours:.2f}h"
+        if gap.gap_hours >= DAY_SCALE_THRESHOLD_H:
+            extent += f" · {gap.gap_hours / 24:.1f}d"
+        return extent + ")"
+
+    def _trading_time_lost(self, gap: Gap) -> str:
+        """
+        Express a gap as trading time lost — the figure that matters for a market
+        that closes.
+
+        Only for markets with a weekend closure: a 24/7 market has no trading
+        week, so calendar days already are the whole truth there (§37 — the gate
+        belongs in the caller, not in MarketCalendar). Only from a full day up,
+        because the trading-day count is calendar-day based and would read a
+        two-hour Wednesday gap as "1 trading day".
+
+        Args:
+            gap: The gap to measure
+
+        Returns:
+            Description of the lost trading time, or an empty string when the
+            figure would not be meaningful
+        """
+        if not self._weekend_closure:
+            return ''
+        if gap.gap_hours < DAY_SCALE_THRESHOLD_H:
+            return ''
+        if gap.gap_start is None or gap.gap_end is None:
+            return ''
+
+        days = MarketCalendar.get_trading_days(gap.gap_start, gap.gap_end)
+        if days < 1:
+            return ''
+
+        label = f"{days} trading day{'s' if days != 1 else ''}"
+
+        weeks, remainder = divmod(days, TRADING_DAYS_PER_WEEK)
+        if remainder == 0 and weeks >= 1:
+            plural = 's' if weeks > 1 else ''
+            return f"{label} ({weeks} full trading week{plural})"
+        if days > TRADING_DAYS_PER_WEEK:
+            return f"{label} ({days / TRADING_DAYS_PER_WEEK:.1f} trading weeks)"
+        return label
+
+    def _gap_location(self, gap: Gap) -> str:
+        """
+        Describe where a gap sits relative to the collector's files.
+
+        States the observation, never the conclusion: a boundary reports how long
+        after the gap started collection resumed, and whether that was the file
+        rolling over. Whether a pause was the venue or the operator is a judgment
+        and stays with the reader.
+
+        Args:
+            gap: The gap to describe
+
+        Returns:
+            One-line description for the report
+        """
+        if gap.file_before is None or gap.file_after is None:
+            return "unattributed (no tick index entry)"
+
+        if gap.file_before == gap.file_after:
+            return f"Intra-file — {gap.file_before} (collector was running)"
+
+        transition = f"File boundary — {gap.file_before} → {gap.file_after}"
+
+        resumed = gap.next_file_opened_after_s
+        if resumed is None:
+            return transition
+
+        if abs(resumed) < ROLLOVER_TOLERANCE_S:
+            return f"{transition} (rollover, collection continued)"
+
+        return f"{transition} (collection resumed {format_duration(resumed)} later)"
+
     def generate_report(self) -> str:
         """
         Generate human-readable coverage report.
@@ -359,19 +471,24 @@ class DataCoverageReport:
             report.append("⚠️  GAP DETAILS:")
             report.append(f"{'─'*60}")
 
+            self._attribute_gaps()
+
             for gap in problematic_gaps:
                 report.append(
                     f"\n{gap.severity_icon} {gap.category.value.upper()} GAP:")
 
-                # Intra-file gap
-                report.append(f"   Type:   Intra-file gap")
+                report.append(f"   Type:   {self._gap_location(gap)}")
                 report.append(
                     f"   Start:  {gap.gap_start.strftime('%Y-%m-%d %H:%M:%S')} UTC")
                 report.append(
                     f"   End:    {gap.gap_end.strftime('%Y-%m-%d %H:%M:%S')} UTC")
 
-                report.append(
-                    f"   Gap:    {gap.duration_human} ({gap.gap_hours:.2f}h)")
+                report.append(f"   Gap:    {self._gap_extent(gap)}")
+
+                trading_loss = self._trading_time_lost(gap)
+                if trading_loss:
+                    report.append(f"   Lost:   {trading_loss}")
+
                 report.append(f"   Reason: {gap.reason}")
 
         # Show short gaps if present (compact format, capped display)
@@ -385,7 +502,7 @@ class DataCoverageReport:
             for gap in short_gaps[:max_display]:
                 report.append(
                     f"   {gap.gap_start.strftime('%Y-%m-%d %H:%M')} → "
-                    f"{gap.gap_end.strftime('%H:%M')} ({gap.duration_human}) [intra-file]"
+                    f"{gap.gap_end.strftime('%H:%M')} ({gap.duration_human})"
                 )
             if len(short_gaps) > max_display:
                 report.append(

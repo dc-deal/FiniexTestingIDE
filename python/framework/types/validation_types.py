@@ -4,7 +4,7 @@ Type definitions for scenario data validation
 """
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import Dict, List
 
 
 @dataclass
@@ -44,6 +44,60 @@ class ValidationResult:
             f"Scenario '{self.scenario_name}' failed validation:",
             ""
         ]
+
+        for idx, error in enumerate(self.errors, 1):
+            report_lines.append(f"{idx}. {error}")
+
+        if self.warnings:
+            report_lines.append("")
+            report_lines.append("Warnings:")
+            for idx, warning in enumerate(self.warnings, 1):
+                report_lines.append(f"  • {warning}")
+
+        return "\n".join(report_lines)
+
+
+@dataclass
+class TickFileValidationResult:
+    """
+    Result of validating one tick file at import time.
+
+    Errors reject the file, warnings let it pass. Metrics carry values the
+    validator measured but does not judge (burst structure, lag position).
+    """
+    is_valid: bool
+    file_name: str
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    metrics: Dict[str, float] = field(default_factory=dict)
+
+    def add_error(self, message: str) -> None:
+        """
+        Record a rejection reason and mark the file invalid.
+
+        Args:
+            message: What the file violated, in operator-readable form
+        """
+        self.errors.append(message)
+        self.is_valid = False
+
+    def add_warning(self, message: str) -> None:
+        """
+        Record a finding that does not reject the file.
+
+        Args:
+            message: What was noticed
+        """
+        self.warnings.append(message)
+
+    def get_full_report(self) -> str:
+        """
+        Generate the rejection report for an invalid tick file.
+
+        Returns:
+            Multi-line formatted report
+        """
+        report_lines = [f"Tick file '{self.file_name}' failed import validation:", ""]
 
         for idx, error in enumerate(self.errors, 1):
             report_lines.append(f"{idx}. {error}")

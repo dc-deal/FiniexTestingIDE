@@ -56,6 +56,7 @@ class SignalDataImporter:
         self.processed_files = 0
         self.total_rows = 0
         self.moved_files = 0
+        self.pruned_dirs = 0
         self.errors: List[str] = []
         self.warnings: List[str] = []
 
@@ -69,6 +70,7 @@ class SignalDataImporter:
         if not jsonl_files:
             vLog.warning(
                 f"No signal JSONL found in {self.source_dir}. Rebuilding index only.")
+            self._prune_empty_source_dirs()
             self._rebuild_index()
             return
 
@@ -91,6 +93,7 @@ class SignalDataImporter:
                 vLog.error(error_msg)
                 self.errors.append(error_msg)
 
+        self._prune_empty_source_dirs()
         self._rebuild_index()
         self._print_summary()
 
@@ -142,6 +145,32 @@ class SignalDataImporter:
         jsonl_file.replace(target)
         self.moved_files += 1
         vLog.info(f"   → archived to {target}")
+
+    def _prune_empty_source_dirs(self) -> None:
+        """
+        Remove inbox folders left empty after their files were archived.
+
+        The inbox mirrors the pipeline structure (source_dir/<pipeline_id>/), and a
+        folder whose files have all moved to the archive is leftover scaffolding —
+        it makes an emptied inbox look occupied. Removal is by rmdir, which refuses
+        a non-empty directory, so a folder still holding anything survives by
+        construction. The inbox root itself is kept.
+        """
+        if not self.source_dir.exists():
+            return
+
+        # Reverse-sorted paths put children before their parents, so a nested
+        # empty tree collapses in one pass.
+        for path in sorted(self.source_dir.rglob('*'), reverse=True):
+            if not path.is_dir():
+                continue
+            try:
+                path.rmdir()
+            except OSError:
+                continue
+            self.pruned_dirs += 1
+            vLog.info(
+                f"   🧹 Removed empty inbox folder: {path.relative_to(self.source_dir)}")
 
     def convert_jsonl_to_parquet(self, jsonl_file: Path) -> Optional[Path]:
         """
@@ -257,6 +286,8 @@ class SignalDataImporter:
             f"Signal Import Summary: {self.processed_files} file(s), {self.total_rows} rows")
         if self.moved_files:
             vLog.info(f"Archived to {self.finished_dir}: {self.moved_files} file(s)")
+        if self.pruned_dirs:
+            vLog.info(f"Emptied inbox folders removed: {self.pruned_dirs}")
         if self.warnings:
             vLog.info(f"Warnings: {len(self.warnings)}")
         if self.errors:

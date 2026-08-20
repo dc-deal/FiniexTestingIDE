@@ -120,12 +120,12 @@ local_device_time:   "2026.03.08 18:41:34"
 | `spread_pct` | float | Spread as percentage |
 | `tick_flags` | string | Tick type flags (e.g. "BUY") |
 | `session` | string | Trading session label |
-| `time_msc` | int64 | Broker matching engine timestamp (Unix epoch ms), UTC-converted by importer. Not monotonic in arrival order |
-| `collected_msc` | int64 | Local device clock at tick receipt (Unix epoch ms). Monotonic. Added in V1.3.0. Default `0` for older data |
+| `time_msc` | int64 | Broker matching engine timestamp (Unix epoch ms) — the event time. UTC-converted by importer. Non-decreasing; ties are normal on burst-heavy feeds |
+| `collected_msc` | int64 | Local clock at tick receipt (Unix epoch ms) — the arrival time. Already UTC from data format 1.5.0, so the importer does not convert it. Non-decreasing. Default `0` for pre-V1.3.0 data |
 
 > **Note — `timestamp` redundancy**: The mandatory `timestamp` field (human-readable, seconds precision) is derivable from `time_msc` with the broker UTC offset. It remains mandatory for backward compatibility but may be deprecated in a future data format revision.
 
-> **Note — `collected_msc`**: Per-tick collection timestamp (`collected_msc`, Unix epoch ms, monotonic) added in V1.3.0. 
+> **Note — `collected_msc` time base**: The field is UTC from data format 1.5.0 onwards, declared by `collected_msc_timebase` in the metadata. Older files carry device-local time and are converted once by the restoration migration (`python/experiments/restore_collected_msc_v3.py`) — **not** by the importer, which never rewrites source content. 
 
 > **Note — `server_time` removed**: The per-tick `server_time` field (string, same precision as `timestamp`) was removed from the import schema. It was redundant with `time_msc`. Old data files may still contain it — the importer drops it during Parquet export (column filter). New collectors no longer produce it.
 
@@ -199,11 +199,63 @@ The absolute minimum the importer accepts:
 | Missing `broker_type` and `data_collector` | Error collected, file skipped |
 | Unknown `broker_type` (not in market_config) | Error collected, file skipped |
 | Empty ticks array | File skipped silently (no error, no output) |
-| Invalid prices (bid ≤ 0) | Warning logged, import continues |
-| Extreme spreads (spread_pct > 5%) | Warning logged, import continues |
 | Duplicate file (same SHA-256 hash) | `ArtificialDuplicateException`, skipped (use `--override`) |
 
 Full TypedDict definitions: `python/framework/types/import_schema_types.py`
+
+### Structural Validation — the importer refuses, it never repairs
+
+`TickImportValidator` (`python/framework/validators/tick_import_validator.py`) checks the
+invariants the archive is required to hold. A violation rejects that one file with a
+`TickFileValidationException`; the batch keeps running and the file is simply not written. The
+importer never rewrites source content to make a file pass — repairing tick data is a one-time
+migration in `python/experiments/`.
+
+| Condition | Result |
+|-----------|--------|
+| `time_msc` or `collected_msc` steps backwards | File rejected |
+| Row count disagrees with `summary.total_ticks` | File rejected |
+| `bid ≤ 0`, `ask ≤ 0`, or `ask < bid` | File rejected |
+| `timestamp` and `time_msc` disagree by more than 1 s | File rejected |
+| `collected_msc` further than ±5 min from the tick's UTC event time | File rejected; the message names the migration for legacy files, or reports a collector defect for files declaring `collected_msc_timebase: "utc"` |
+| Wide spread within the file's declared `max_spread_percent` | Warning, import continues |
+| `collected_msc` absent or zero throughout | Warning, import continues (pre-V1.3.0 data has no arrival clock) |
+| Ticks sharing an arrival millisecond | Metric only, never a verdict — bursts are legitimate |
+
+The window and threshold constants are measured, not chosen. The ±5 min plausibility window has to
+cover more than the receive lag (Kraken median 7 ms): a restored file's residual also carries the
+collector's accumulated session drift — measured at ~1 s/day across sessions of 8–11 days — plus the
+lift the restoration applies at an anchor change to keep arrival continuous. The worst case measured
+over the repaired archive is 30.1 s, from a 21.8 s lift plus 8.4 s of drift. Five minutes leaves an
+order of magnitude of headroom and still sits an order of magnitude below the smallest defect class
+(a 1 h timezone offset). The 7-day segment-split threshold sits between the largest legitimate
+intra-file gap in the archive (48.17 h) and the smallest anchor jump (21.35 d).
+
+**Gap severity is deliberately not judged here.** Whether a gap is a market closure or an outage is
+a verdict and belongs to the coverage layer
+(`python/framework/discoveries/data_coverage/data_coverage_report.py`), which classifies gaps
+against `MarketCalendar`. Gaps are not an import problem — only ordering is.
+
+A second plane runs across files, off the tick index rather than the data:
+`validate_archive_ordering()` checks two invariants per symbol.
+
+| Invariant | Reads | Catches |
+|---|---|---|
+| Files never cover overlapping **event** ranges | `start_time` / `end_time` | two collectors on one symbol, a double import |
+| `collected_msc` never steps back from one file to the next (**arrival**) | `collected_start` / `collected_end` | a system-clock correction between two collector sessions |
+
+Which files follow each other is decided by the tick bounds in the index, not by the file name and
+not by the header — a file opened at the Friday close carries its first tick 48 h later, so both
+would mislead.
+
+The arrival plane covers what a collector cannot see itself: a collector clamps its own clock
+within a session, but a correction that happens while it is *not* running leaves no trace in either
+file. Only the boundary between them shows it.
+
+An index without `collected_start` / `collected_end` (written before those bounds existed) makes the
+arrival plane unverifiable. It then reports one aggregate line naming the number of unchecked
+transitions rather than passing silently — a skipped plane that logs like a passed one is how the
+check once did nothing while reporting success. Rebuilding the index restores it.
 
 ---
 
@@ -424,7 +476,7 @@ Parquet (data/processed/{broker_type}/ticks/{SYMBOL}/)
        ↓
   ProcessTickLoop
   ├─ Iterates TickData objects in order
-  ├─ Inter-tick interval: collected_msc (monotonic, preferred)
+  ├─ Inter-tick interval: collected_msc (arrival clock, preferred)
   │   Fallback: time_msc when collected_msc == 0 (pre-V1.3.0 data)
   └─ Feeds TradingEnvironment per tick
 ```
@@ -453,7 +505,7 @@ These fields exist in Parquet but are **not** transported to subprocesses:
 | `spread_points`, `spread_pct` | Quality checks only (pre-transport) |
 | `tick_flags`, `session` | Import metadata only |
 
-> **Note**: `collected_msc` and `time_msc` are preserved as int64 throughout. The importer applies UTC offset to `time_msc` (not `collected_msc`). The simulation reads both from TickData and decides which to use for inter-tick intervals.
+> **Note**: `collected_msc` and `time_msc` are preserved as int64 throughout. The importer applies the UTC offset to `time_msc` only — `collected_msc` arrives in UTC already (data format 1.5.0) or is converted beforehand by the restoration migration. The simulation reads both from TickData and decides which to use for inter-tick intervals.
 
 ---
 

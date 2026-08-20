@@ -1,0 +1,2 @@
+# This file ensures the directory is tracked by Git
+# Signal source JSONL (nested per pipeline_id) will be stored here

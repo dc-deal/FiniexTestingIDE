@@ -14,6 +14,7 @@ start to avoid duplicate detection conflicts.
 
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -67,6 +68,7 @@ def build_minimal_tick_json(
         "data_format_version": data_format_version,
         "broker_utc_offset_hours": broker_utc_offset_hours,
         "data_collector": broker_type,
+        "collected_msc_timebase": "utc",
         "server": "test_server",
         "collection_purpose": "testing",
         "operator": "automated",
@@ -100,16 +102,27 @@ def build_minimal_tick_json(
     if custom_ticks is not None:
         ticks = custom_ticks
     else:
+        # timestamp and time_msc must describe the same moment — the collector
+        # derives both from one MqlTick, and the import validator checks it.
+        base_msc = int(datetime.strptime(
+            start_time, "%Y.%m.%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+        # time_msc is broker-local; collected_msc is UTC (post-restoration and
+        # from collector 1.5.0 onwards). The registry offset is what separates
+        # them, so a fixture models a healthy file for any broker_type.
+        collected_offset_ms = ImportConfigManager().get_default_offset(
+            broker_type) * 3_600_000
+
         ticks = []
         for i in range(tick_count):
             bid = bid_start + (i * 0.00001)
             ask = ask_start + (i * 0.00001)
-            minute = i // 60
-            second = i % 60
-            ts = f"2026.01.15 10:{minute:02d}:{second:02d}"
+            tick_msc = base_msc + (i * 1000)
+            ts = datetime.fromtimestamp(
+                tick_msc / 1000, timezone.utc).strftime("%Y.%m.%d %H:%M:%S")
             ticks.append({
                 "timestamp": ts,
-                "time_msc": 1769000000000 + (i * 1000),
+                "time_msc": tick_msc,
                 "bid": round(bid, 5),
                 "ask": round(ask, 5),
                 "last": round(bid, 5),
@@ -120,7 +133,7 @@ def build_minimal_tick_json(
                 "spread_pct": 0.01,
                 "tick_flags": "BUY",
                 "session": "24h",
-                "collected_msc": 1769000000000 + (i * 1000)
+                "collected_msc": tick_msc + collected_offset_ms
             })
 
     return {"metadata": metadata, "ticks": ticks}

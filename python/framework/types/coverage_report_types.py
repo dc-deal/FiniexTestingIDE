@@ -51,16 +51,28 @@ class DataFormatVersionSpan:
 @dataclass
 class Gap:
     """
-    Gap between two files or within a file.
+    A stretch of time without data, detected from the bar sequence.
 
-    For file-to-file gaps: file1 and file2 are populated
-    For intra-file gaps: file1 and file2 are None
+    The file fields are stamped afterwards on the render path only (the batch
+    validation path must not pay for the tick-index load), so they stay None
+    when the gap was never attributed:
+
+    - Both file names equal → the gap sits inside one file, so the collector
+      was demonstrably running through it.
+    - Different names → the gap sits at a file boundary. That alone says
+      nothing: files roll at max_ticks_per_file, so a boundary can fall inside
+      a running session by coincidence (measured: 97 of 178 archive cases).
+      `next_file_opened_after_s` separates the two — near zero is a rollover,
+      a longer value is the moment collection actually resumed.
     """
     gap_seconds: float
     category: GapCategory
     reason: str
     gap_start: Optional[datetime] = None
     gap_end: Optional[datetime] = None
+    file_before: Optional[str] = None
+    file_after: Optional[str] = None
+    next_file_opened_after_s: Optional[float] = None
 
     @property
     def gap_hours(self) -> float:

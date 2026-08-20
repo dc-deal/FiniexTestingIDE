@@ -485,6 +485,12 @@ class MarketCalendar:
 
         # 4. MODERATE GAP
         if gap_hours < thresholds['moderate']:
+            # is_market_open() is forex-shaped and does not know the market type,
+            # so it may only be consulted for markets that actually close. On a
+            # 24/7 market there are no closed hours to soften a gap with — every
+            # hour is a trading hour, and a weekend gap is a real gap.
+            if not weekend_closure:
+                return GapCategory.MODERATE, f'⚠️  Moderate gap ({gap_hours:.2f}h)'
             if MarketCalendar.is_market_open(start):
                 return GapCategory.MODERATE, f'⚠️  Moderate gap during trading hours ({gap_hours:.2f}h)'
             else:

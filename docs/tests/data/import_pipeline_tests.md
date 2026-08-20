@@ -2,11 +2,11 @@
 
 ## Overview
 
-The import pipeline test suite validates the full tick data import lifecycle: JSON schema validation, Parquet conversion, UTC offset application, metadata preservation, duplicate detection, quality checks, and file management.
+The import pipeline test suite validates the full tick data import lifecycle: JSON schema validation, Parquet conversion, UTC offset application, metadata preservation, duplicate detection, structural validation, and file management.
 
 **Test Location:** `tests/data/import_pipeline/`
 **Config Source:** `configs/import_config.json` (offset registry, paths, processing)
-**Total Tests:** 61
+**Total Tests:** 80
 
 ---
 
@@ -153,8 +153,8 @@ Tests for the `collected_msc` field (V1.3.0), `time_msc` offset consistency, tic
 - `timestamp` and `time_msc` consistent (same UTC moment) after offset
 
 **TestTickOrderPreservation:**
-- Parquet row order matches JSON array order (not `time_msc` order) — uses non-chronological `time_msc` with bid values as position markers
-- `collected_msc` monotonicity survives import — 5 ticks with monotonic `collected_msc` but chaotic `time_msc`, all consecutive diffs must be positive
+- Parquet row order matches JSON array order — a burst of three ticks sharing one `time_msc`, distinguishable only by their arrival stamp, with bid values as position markers. Their JSON order *is* the arrival order, so any re-sort would lose it
+- `collected_msc` stays non-decreasing through the import
 
 **TestServerTimeRemoved:**
 - New imports do not contain `server_time` column
@@ -163,16 +163,50 @@ Tests for the `collected_msc` field (V1.3.0), `time_msc` offset consistency, tic
 
 ### test_quality_checks.py (~6 tests)
 
-Validates quality validation and file management.
+Validates rejection behaviour and file management.
 
-**TestQualityChecks:**
-- Ticks with bid <= 0 trigger warning but don't crash import
-- Ticks with spread_pct > 5.0 trigger warning but don't crash
-- Temporary column `bid_pct_change` removed from final Parquet
+**TestImportRejection:**
+- Ticks with bid <= 0 reject the file — nothing written, error recorded, batch survives
+- A wide spread is a market condition, not a defect — the file still imports
+- No temporary helper columns leak into the final Parquet
 
 **TestMoveProcessedFiles:**
 - With `move_processed_files=True`, JSON moved to finished directory
 - With `move_processed_files=False`, JSON remains in source directory
+
+---
+
+### test_import_validation.py (~19 tests)
+
+Unit tests for `TickImportValidator` — one case per rejection reason plus the cross-file plane. The
+constants it enforces are measured values; each test names the measurement it rests on.
+
+**TestHealthyFile:**
+- A file satisfying every invariant passes untouched
+- Ticks sharing an arrival millisecond are allowed (Kraken bursts several per ms)
+
+**TestRejectionReasons:**
+- Backwards `collected_msc` step
+- Timezone-offset `collected_msc` (class A) — message names the migration
+- Same defect in a file declaring `collected_msc_timebase: "utc"` — message names a collector defect instead
+- `2^64`-scale anchor overflow (class C) — split into two segments
+- Row count disagreeing with `summary.total_ticks`
+- Inverted spread (`ask < bid`)
+- `timestamp` and `time_msc` describing different moments
+- Empty tick array
+
+**TestTolerances:**
+- Lag exactly at the ±30 s window edge is accepted, one millisecond past it is not
+- A weekend-sized gap (48 h) is not a segment break
+- A gap past the 7-day threshold is
+
+**TestMissingColumns:**
+- Missing or all-zero `collected_msc` warns, never rejects (pre-V1.3.0 data has no arrival clock)
+
+**TestArchiveOrdering:**
+- An ordered archive produces no findings
+- Overlapping coverage of one symbol is reported
+- Files touching at exactly 0 ms distance are not an overlap (227 such pairs exist in the archive)
 
 ---
 

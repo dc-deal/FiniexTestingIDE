@@ -63,6 +63,11 @@ rebuilding it from the resolved `pipeline_id`. A file sitting in a folder that d
 own `pipeline_id` is an anomaly worth seeing; normalizing it during the move would repair it
 silently. A file whose import failed is not moved.
 
+A pipeline folder left empty by the move is removed, so an emptied inbox looks empty instead of
+occupied. Removal is by `rmdir`, which refuses a non-empty directory — a folder still holding
+anything (an unimported file, a failed import, a stray note) survives by construction. The inbox
+root itself is kept.
+
 `--override` reads the finished archive **in addition to** the raw inbox. Overriding means
 rebuilding what is already imported, and that is where those files live — without this, the flag
 would quietly do nothing once the inbox is empty. When the same relative path exists in both, the
