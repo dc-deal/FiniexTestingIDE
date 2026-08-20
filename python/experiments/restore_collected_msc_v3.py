@@ -15,10 +15,14 @@ One estimator, three branches, applied per anchor segment:
 
     lag = min(collected_msc - utc_event_time)   over the segment
 
-    |lag| <= 30 s   -> no-op            already correct
-    |lag| <  24 h   -> whole-hour shift timezone class; residual must land in
-                                        the window afterwards (self-check)
+    |lag| <= window -> no-op            already correct
+    near a whole hour -> hour shift     timezone class; the residual must land
+                                        inside the window, which is the check
     otherwise       -> shift by lag     anchor garbage, NTP-style minimum filter
+
+The window is 5 minutes, not seconds: a repaired file's residual carries the
+collector's session drift (~1 s/day over 8-11 days) plus the lift applied at an
+anchor change to keep arrival continuous. Both are legitimate.
 
 Runs line-oriented in two passes rather than through json.load: the archive is
 93 GB, and only the collected_msc digits plus a few metadata lines change. Files
@@ -181,8 +185,14 @@ def _plan_segment(lag_ms: int) -> Tuple[int, str]:
     if abs(lag_ms) <= PLAUSIBLE_LAG_WINDOW_MS:
         return 0, 'noop'
 
+    # A timezone error is a whole number of hours and never exceeds a day. Take
+    # that branch only when snapping to the nearest hour actually lands inside
+    # the window — otherwise the offset is something else and the minimum filter
+    # is the honest treatment.
     if abs(lag_ms) < TIMEZONE_BRANCH_LIMIT_MS:
-        return -int(round(lag_ms / HOUR_MS)) * HOUR_MS, 'hour_snap'
+        hours = int(round(lag_ms / HOUR_MS))
+        if hours and abs(lag_ms - hours * HOUR_MS) <= PLAUSIBLE_LAG_WINDOW_MS:
+            return -hours * HOUR_MS, 'hour_snap'
 
     return -lag_ms, 'min_filter'
 
@@ -552,19 +562,27 @@ def main() -> None:
         if index % 250 == 0:
             print(f"  … {index}/{len(files)}")
 
-    repaired = [p for p in plans if p.repaired_by_v3]
-    pending = [p for p in plans if not p.skip_reason]
-    if repaired and pending:
-        print(f"\n  ❌ ABORT — the archive is half repaired: {len(repaired)} files carry a V3")
-        print(f"     marker, {len(pending)} still need one. A previous run was interrupted.")
-        print("     Anchor groups are derived from ALL files of a symbol; planning the")
-        print("     remainder without their already-repaired neighbours would place a step")
-        print("     at the boundary between the two halves — exactly the defect this")
-        print("     migration removes. Restore the archive from backup and start over.")
-        sys.exit(1)
-
     # Deciding needs every file: an anchor group spans many of them.
     plan_shifts(plans)
+
+    # A directory holding both V3-marked and unmarked files is ambiguous: either
+    # a previous run was interrupted, or new data arrived after a completed one.
+    # It only matters when the unmarked files actually need a value change —
+    # their anchor groups would then be computed without their already-repaired
+    # neighbours, placing a step exactly where this migration removes one.
+    # Files that only need the marker carry no such risk.
+    repaired = [p for p in plans if p.repaired_by_v3]
+    shifting = [p for p in plans if not p.skip_reason and p.touches_data()]
+    if repaired and shifting:
+        print(f"\n  ❌ ABORT — {len(repaired)} files already carry a V3 marker while")
+        print(f"     {len(shifting)} unmarked files need a tick-value change.")
+        print("     Anchor groups are derived from ALL files of a symbol, so planning")
+        print("     these without their repaired neighbours would place a step at the")
+        print("     boundary between the two halves.")
+        print("     If a previous run was interrupted: restore from backup and start over.")
+        print("     If this is new data: import the repaired files first, so they leave")
+        print("     the source directory, then run again.")
+        sys.exit(1)
 
     if args.apply:
         print("\nwriting …")

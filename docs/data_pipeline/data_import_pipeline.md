@@ -217,15 +217,19 @@ migration in `python/experiments/`.
 | Row count disagrees with `summary.total_ticks` | File rejected |
 | `bid ≤ 0`, `ask ≤ 0`, or `ask < bid` | File rejected |
 | `timestamp` and `time_msc` disagree by more than 1 s | File rejected |
-| `collected_msc` further than ±30 s from the tick's UTC event time | File rejected; the message names the migration for legacy files, or reports a collector defect for files declaring `collected_msc_timebase: "utc"` |
+| `collected_msc` further than ±5 min from the tick's UTC event time | File rejected; the message names the migration for legacy files, or reports a collector defect for files declaring `collected_msc_timebase: "utc"` |
 | Wide spread within the file's declared `max_spread_percent` | Warning, import continues |
 | `collected_msc` absent or zero throughout | Warning, import continues (pre-V1.3.0 data has no arrival clock) |
 | Ticks sharing an arrival millisecond | Metric only, never a verdict — bursts are legitimate |
 
-The window and threshold constants are measured, not chosen: the ±30 s plausibility window sits far
-above any real receive lag (Kraken median 7 ms) and far below the smallest defect class (a 1 h
-timezone offset); the 7-day segment-split threshold sits between the largest legitimate intra-file
-gap in the archive (48.17 h) and the smallest anchor jump (21.35 d).
+The window and threshold constants are measured, not chosen. The ±5 min plausibility window has to
+cover more than the receive lag (Kraken median 7 ms): a restored file's residual also carries the
+collector's accumulated session drift — measured at ~1 s/day across sessions of 8–11 days — plus the
+lift the restoration applies at an anchor change to keep arrival continuous. The worst case measured
+over the repaired archive is 30.1 s, from a 21.8 s lift plus 8.4 s of drift. Five minutes leaves an
+order of magnitude of headroom and still sits an order of magnitude below the smallest defect class
+(a 1 h timezone offset). The 7-day segment-split threshold sits between the largest legitimate
+intra-file gap in the archive (48.17 h) and the smallest anchor jump (21.35 d).
 
 **Gap severity is deliberately not judged here.** Whether a gap is a market closure or an outage is
 a verdict and belongs to the coverage layer

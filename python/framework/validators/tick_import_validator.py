@@ -23,9 +23,14 @@ import pandas as pd
 from python.framework.types.validation_types import TickFileValidationResult
 
 # Largest tolerated distance between collected_msc and the tick's UTC event time.
-# Far above any real receive lag (Kraken measured 7 ms median, worst case a few
-# seconds) and far below the smallest defect class (1 h timezone offset).
-PLAUSIBLE_LAG_WINDOW_MS = 30_000
+# This is not the receive lag alone. For repaired files it also carries the
+# collector's accumulated session drift (measured ~1 s/day over sessions of 8-11
+# days) plus the lift the restoration applies to keep arrival continuous across
+# an anchor change. Worst case measured over the repaired archive: 30.1 s, from
+# a 21.8 s lift plus 8.4 s of drift across an 8-day session. Five minutes leaves
+# an order of magnitude of headroom while staying an order of magnitude below
+# the smallest defect class (a 1 h timezone offset).
+PLAUSIBLE_LAG_WINDOW_MS = 300_000
 
 # A forward step in collected_msc beyond this is an anchor break, not a market
 # gap. The largest legitimate intra-file gap measured across the archive is
