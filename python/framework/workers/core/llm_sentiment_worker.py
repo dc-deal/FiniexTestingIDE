@@ -3,10 +3,10 @@ FiniexTestingIDE - LLM Sentiment Worker
 First SIGNAL worker: reads pre-collected LLM sentiment by timestamp (#141).
 """
 
+from datetime import datetime
 from typing import Dict, Optional
 
 from python.framework.types.component_metadata_types import ComponentMetadata
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.parameter_types import OutputParamDef
 from python.framework.types.signal_data_types import ResolvedSignal
 from python.framework.types.worker_types import WorkerResult
@@ -73,14 +73,14 @@ class LlmSentimentWorker(AbstractSignalWorker):
     def _build_result(
         self,
         resolved: Optional[ResolvedSignal],
-        tick: TickData
+        now: datetime
     ) -> WorkerResult:
         """
         Map a resolved sentiment snapshot (or a gap) to a WorkerResult.
 
         Args:
-            resolved: The point-in-time signal, or None on a gap (no snapshot <= tick)
-            tick: Current tick (for staleness against collected_msc)
+            resolved: The point-in-time signal, or None on a gap (nothing resolvable)
+            now: Moment being resolved at (canonical clock)
 
         Returns:
             WorkerResult with the sentiment outputs

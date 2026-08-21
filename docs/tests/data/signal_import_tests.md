@@ -26,6 +26,30 @@ rebuilt from the resolved `pipeline_id` but kept relative to the root the file c
 a file in a folder that disagrees with its own `pipeline_id` is an anomaly (it has
 happened), and normalizing it on the way out would hide it.
 
+### test_signal_stream_validation.py (#141 Part 2a)
+
+The importer's guard on the producer's stream identity. The split is deliberate:
+
+| Condition | Action | Why |
+|---|---|---|
+| contiguous `seq` per epoch | import | nothing to say |
+| clean epoch bump (`seq` restarts) | import | a reset legitimately renumbers — not a hole |
+| no identity at all (pre-stream archive) | import | *unverifiable*, a distinct state from verified-contiguous, and not a defect |
+| missing `seq` | import **and report** | the file is incomplete, not wrong; refusing would discard the envelopes we do have |
+| `stream_epoch` steps backwards | **refuse** | the series was rewound |
+| `seq` steps backwards inside one epoch | **refuse** | the epoch was reissued for a second series — two series would merge under one key |
+
+The last row is the one worth remembering: a reissued epoch does not show up as a backwards
+*epoch*, it shows up as a backwards *`seq`* within the same epoch. Only the second check catches it.
+
+The same file also pins **`trigger_reason` across the promotion boundary**: the producer moved it out
+of `metadata` to the top level, so both locations must land in one column — and an absent value must
+stay `''` (unknown) rather than being guessed as `'scheduled'`, which would render a boot pass as a
+grid point. This one fails silently if it regresses: an unread trigger looks like the pre-contract
+era rather than like a bug.
+
+---
+
 ## Fixture
 
 `tests/fixtures/signals/signal_import_sample.jsonl` — 6 envelopes (`pipeline_id = test_sentiment`,

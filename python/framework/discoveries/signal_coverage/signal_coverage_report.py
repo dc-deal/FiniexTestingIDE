@@ -23,7 +23,7 @@ concern (basis / status / is_stale), not the timeline's.
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 import pyarrow.parquet as pq
@@ -79,6 +79,13 @@ class SignalCoverageReport:
         # (the producer gained the field mid-run) does not render as if the composition
         # covered everything.
         self.trigger_unknown: int = 0
+
+        # Stream identity (#141 Part 2a). A pre-stream archive carries none of it, which is
+        # "unverifiable" — a distinct state from "verified contiguous" and not a defect.
+        self.envelopes_with_stream_identity: int = 0
+        self.seq_holes: int = 0
+        self.seq_span: Optional[Tuple[int, int]] = None
+        self.stream_epochs: Set[int] = set()
 
         # Analysis results
         self.gaps: List[Gap] = []
@@ -169,8 +176,11 @@ class SignalCoverageReport:
         fingerprint_column = SignalParquetColumn.CONFIG_FINGERPRINT.value
         trigger_column = SignalParquetColumn.TRIGGER_REASON.value
         symbol_column = SignalParquetColumn.SYMBOL.value
-        wanted = (msc_column, symbol_column, origin_column,
-                  fingerprint_column, trigger_column)
+        seq_column = SignalParquetColumn.SEQ.value
+        epoch_column = SignalParquetColumn.STREAM_EPOCH.value
+        available_column = SignalParquetColumn.AVAILABLE_MSC.value
+        wanted = (msc_column, symbol_column, origin_column, fingerprint_column,
+                  trigger_column, seq_column, epoch_column, available_column)
 
         frames = []
         for path in paths:
@@ -193,11 +203,44 @@ class SignalCoverageReport:
         self.trigger_unknown = trigger_counts.pop('', 0)
         self.trigger_reasons = trigger_counts
 
+        self._measure_stream_identity(df, seq_column, epoch_column, msc_column)
+
         msc_values = sorted(set(int(v) for v in df[msc_column]))
         return [
             datetime.fromtimestamp(msc / 1000.0, tz=timezone.utc)
             for msc in msc_values
         ]
+
+    def _measure_stream_identity(self, df: pd.DataFrame, seq_column: str,
+                                 epoch_column: str, msc_column: str) -> None:
+        """
+        Measure seq contiguity per epoch over the archive.
+
+        seq is unique only WITHIN an epoch, so contiguity is counted per epoch; a clean
+        epoch bump restarts the numbering and is not a hole. Counts envelopes, not rows.
+
+        Args:
+            df: The loaded frame
+            seq_column: Sequence column name
+            epoch_column: Epoch column name
+            msc_column: Timeline column name (one envelope per distinct value)
+        """
+        if seq_column not in df.columns or epoch_column not in df.columns:
+            return
+        identified = df[[msc_column, seq_column, epoch_column]].dropna()
+        if identified.empty:
+            return
+        identified = identified.drop_duplicates(msc_column).sort_values(msc_column)
+
+        self.envelopes_with_stream_identity = len(identified)
+        self.stream_epochs = {int(e) for e in identified[epoch_column]}
+        seqs = [int(v) for v in identified[seq_column]]
+        self.seq_span = (min(seqs), max(seqs))
+        for epoch in self.stream_epochs:
+            per_epoch = sorted(
+                int(v) for v in identified[identified[epoch_column] == epoch][seq_column])
+            self.seq_holes += sum(
+                b - a - 1 for a, b in zip(per_epoch, per_epoch[1:]) if b - a > 1)
 
     def _distinct(self, df: pd.DataFrame, column: str) -> Set[str]:
         """
@@ -405,6 +448,38 @@ class SignalCoverageReport:
         gap_s = sum(gap.gap_seconds for gap in self.gaps_in_window(start, end))
         return max(0.0, 1.0 - gap_s / span_s)
 
+    def get_merge_key_description(self) -> str:
+        """
+        Which stamp gated resolution over this archive, and where the eras divide.
+
+        Returns:
+            Human-readable merge-key description
+        """
+        total = self.snapshot_count
+        stream = self.envelopes_with_stream_identity
+        if stream == 0:
+            return 'collected_msc (available_msc absent — pre-stream era)'
+        if stream == total:
+            return 'available_msc'
+        return (f"mixed — available_msc on {stream:,} of {total:,} envelopes, "
+                f"collected_msc on the rest (pre-stream era)")
+
+    def get_sequence_description(self) -> str:
+        """
+        Contiguity verdict for the archive's stream sequence.
+
+        Returns:
+            Human-readable sequence verdict — "not verifiable" where the identity is absent
+        """
+        if not self.envelopes_with_stream_identity:
+            return 'not verifiable (no seq in this era)'
+        span = f"{self.seq_span[0]:,}→{self.seq_span[1]:,}"
+        epochs = (f", {len(self.stream_epochs)} epochs"
+                  if len(self.stream_epochs) > 1 else '')
+        if self.seq_holes:
+            return f"⚠️  {self.seq_holes:,} missing  {span}{epochs}"
+        return f"contiguous  {span}{epochs}  (0 holes)"
+
     def has_issues(self) -> bool:
         """
         Check if there are any problematic gaps.
@@ -466,6 +541,9 @@ class SignalCoverageReport:
             report.append(f"Config:       #{fingerprint}")
         else:
             report.append("Config:       unknown (producer predates the config_fingerprint field)")
+
+        report.append(f"Merge key:    {self.get_merge_key_description()}")
+        report.append(f"Sequence:     {self.get_sequence_description()}")
 
         if self.trigger_reasons:
             parts = ' · '.join(

@@ -4,6 +4,7 @@ Base class for SIGNAL workers — pre-collected external data lookup (#141)
 """
 
 from abc import abstractmethod
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from python.framework.exceptions.signal_data_errors import SignalProviderNotInjectedError
@@ -76,6 +77,15 @@ class AbstractSignalWorker(AbstractWorker):
             provider: SignalDataProvider built from the prepared signal series
         """
         self._signal_provider = provider
+
+    def get_signal_provider(self) -> Optional[SignalDataProvider]:
+        """
+        The injected provider, or None before injection.
+
+        Returns:
+            The SignalDataProvider this worker resolves against
+        """
+        return self._signal_provider
 
     def _require_provider(self) -> SignalDataProvider:
         """
@@ -164,24 +174,39 @@ class AbstractSignalWorker(AbstractWorker):
         """
         Whether the worker should recompute its result this tick.
 
-        Two triggers (#434): the tick crossed into a NEW snapshot window (cold
-        start included), OR the staleness of the served result FLIPPED (the feed
-        died mid-session — the snapshot stops changing, but its age crosses the
-        staleness boundary; without this trigger the cached result would stay
-        fresh-flagged forever).
-
         Args:
             tick: Current tick
 
         Returns:
             True if the worker should recompute its result this tick
         """
-        resolved = self._require_provider().nearest(tick.timestamp, self._symbol)
+        return self.should_refresh_at(tick.timestamp)
+
+    def should_refresh_at(self, now: datetime) -> bool:
+        """
+        Whether the worker should recompute its result at a moment.
+
+        Two triggers (#434): the moment crossed into a NEW snapshot window (cold
+        start included), OR the staleness of the served result FLIPPED (the feed
+        died mid-session — the snapshot stops changing, but its age crosses the
+        staleness boundary; without this trigger the cached result would stay
+        fresh-flagged forever).
+
+        Time-based rather than tick-based so an off-tick arrival can drive a refresh
+        on the heartbeat without a synthetic tick being fabricated (#141 Part 2a).
+
+        Args:
+            now: Moment to evaluate at (canonical clock, UTC)
+
+        Returns:
+            True if the worker should recompute its result
+        """
+        resolved = self._require_provider().nearest(now, self._symbol)
         current_msc = resolved.collected_msc if resolved else None
         if current_msc != self._last_snapshot_msc:
             return True
-        stale = self._evaluate_stale(resolved, tick)
-        # No refresh ahead → the cached result is what this tick serves, so its
+        stale = self._evaluate_stale(resolved, now)
+        # No refresh ahead → the cached result is what this pass serves, so its
         # resolution class is recorded here for the per-tick counter (#433 Part C).
         self._last_resolution = self._classify(resolved, stale)
         return stale != self._last_served_stale
@@ -190,33 +215,45 @@ class AbstractSignalWorker(AbstractWorker):
         """
         Resolve the point-in-time signal for this tick and map it to a WorkerResult.
 
-        Looks up the most recent snapshot (collected_msc <= tick), records its
-        receive stamp + staleness for refresh tracking, and delegates field
-        mapping to the concrete worker (_build_result). A gap (no snapshot)
-        yields an empty result via _build_result(None, tick).
-
         Args:
             tick: Current tick
 
         Returns:
             WorkerResult with outputs matching get_output_schema()
         """
-        resolved = self._require_provider().nearest(tick.timestamp, self._symbol)
-        stale = self._evaluate_stale(resolved, tick)
+        return self.compute_signal_at(tick.timestamp)
+
+    def compute_signal_at(self, now: datetime) -> WorkerResult:
+        """
+        Resolve the point-in-time signal at a moment and map it to a WorkerResult.
+
+        Looks up the most recent snapshot available at or before the moment, records
+        its stamp + staleness for refresh tracking, and delegates field mapping to
+        the concrete worker (_build_result). A gap (nothing resolvable) yields an
+        empty result via _build_result(None, now).
+
+        Args:
+            now: Moment to resolve at (canonical clock, UTC)
+
+        Returns:
+            WorkerResult with outputs matching get_output_schema()
+        """
+        resolved = self._require_provider().nearest(now, self._symbol)
+        stale = self._evaluate_stale(resolved, now)
         self._last_snapshot_msc = resolved.collected_msc if resolved else None
         self._last_served_stale = stale
         self._last_resolution = self._classify(resolved, stale)
         # Envelope stamp (#434): the framework owns the feed-status channel —
         # the payload mapping (_build_result) never sets it.
-        result = self._build_result(resolved, tick)
+        result = self._build_result(resolved, now)
         result.is_stale = stale
         return result
 
-    def _evaluate_stale(self, resolved: Optional[ResolvedSignal], tick: TickData) -> bool:
+    def _evaluate_stale(self, resolved: Optional[ResolvedSignal], now: datetime) -> bool:
         """
-        Whether the resolved signal counts as stale at this tick (#434).
+        Whether the resolved signal counts as stale at this moment (#434).
 
-        The ONE staleness definition per worker — should_refresh (flip trigger)
+        The ONE staleness definition per worker — should_refresh_at (flip trigger)
         and the result envelope both read it. Default: a gap, or a snapshot
         older than max_staleness_minutes (the type-level contract param) —
         every SIGNAL worker gets age-based staleness out of the box. Override
@@ -224,14 +261,14 @@ class AbstractSignalWorker(AbstractWorker):
 
         Args:
             resolved: The point-in-time signal, or None on a gap
-            tick: Current tick (age reference)
+            now: Moment to evaluate at (age reference, canonical clock)
 
         Returns:
-            True if the signal is stale at this tick
+            True if the signal is stale at this moment
         """
         if resolved is None:
             return True
-        age_minutes = (tick.timestamp - resolved.collected_msc).total_seconds() / 60.0
+        age_minutes = (now - resolved.collected_msc).total_seconds() / 60.0
         return age_minutes > self.params.get('max_staleness_minutes')
 
     def _classify(
@@ -278,14 +315,14 @@ class AbstractSignalWorker(AbstractWorker):
     def _build_result(
         self,
         resolved: Optional[ResolvedSignal],
-        tick: TickData
+        now: datetime
     ) -> WorkerResult:
         """
         Map a resolved signal (or a gap) to this worker's WorkerResult.
 
         Args:
-            resolved: The point-in-time signal, or None on a gap (no snapshot <= tick)
-            tick: Current tick (for staleness against collected_msc)
+            resolved: The point-in-time signal, or None on a gap (nothing resolvable)
+            now: Moment being resolved at (canonical clock)
 
         Returns:
             WorkerResult with outputs matching get_output_schema()

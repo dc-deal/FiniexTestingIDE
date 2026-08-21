@@ -66,6 +66,50 @@ fixtures via direct provider injection — no batch, no tick loop.
 - Stale accumulation + row identity (worker name / signal source / symbol).
 - Heartbeat — a heartbeat pass re-evaluates nothing and therefore counts nothing.
 
+### test_signal_stream_identity.py (#141 Part 2a)
+
+The rules that take over once a snapshot carries the producer's stream identity
+(`seq` / `stream_epoch` / `available_msc`), and the fallbacks that keep the pre-stream archive
+resolving exactly as before.
+
+- **Pre-stream fallback** — no identity → the gate is `collected_msc` and the order key sorts by
+  time ahead of any numbered epoch. Lookup behaviour is unchanged.
+- **Resolution gate** — `available_msc` (the producer's publish instant) gates visibility where it
+  exists, so a snapshot is invisible before it could really have been had.
+- **Clock-correction clamp** — a producer-side stamp that steps backwards never makes a snapshot
+  visible *earlier* than the one preceding it in the series. That is the only direction that would
+  be look-ahead.
+- **Ordering** — `seq` orders within an epoch; the epoch outranks `seq`, because a reset restarts
+  the numbering. No clock takes part in the order.
+- **Deduplication** — the producer is at-least-once, so a redelivered envelope is a no-op;
+  identity is the `(stream_epoch, seq)` pair, since `seq` is unique only *within* an epoch.
+- **Extension** — `extend()` keeps the series resolvable and reports how many were new.
+
+### test_signal_off_tick_arrivals.py (#141 Part 2a)
+
+An envelope that lands **between two ticks**. `process_heartbeat` forwards cached worker results
+by design, so without this seam a pushed envelope would wait for the next tick — minutes on a
+quiet instrument, which is what a push channel exists to avoid.
+
+Two entry points, because the two loop paths need different things:
+
+| Path | Call | Why |
+|---|---|---|
+| tick | `merge_signal_arrivals()` | merge only — the worker pass that follows picks the snapshot up through `should_refresh` exactly as it picks up a mounted one |
+| heartbeat | `process_signal_arrivals()` | merge **and** refresh + run the shared signal pass, since nothing else would |
+
+What the tests pin, and the second half matters as much as the first:
+
+- an arrival reaches the decision without a tick, and an arrival that **ends an outage** recovers
+  at the arrival moment rather than at the next tick;
+- a redelivery is a no-op (the producer is at-least-once);
+- an unknown source is ignored;
+- **the three resolution counters stay tick-weighted** — an off-tick refresh increments
+  `off_tick_arrivals` only, because the ledger's `signal_fresh_ratio` is defined on the tick base.
+  Changing that base is #463's job;
+- an empty drain does nothing at all — which is the simulation's and a mock session's case on
+  every single pass, and is what keeps both bit-identical.
+
 ---
 
 ## Fixtures
