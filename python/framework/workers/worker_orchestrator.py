@@ -569,6 +569,15 @@ class WorkerOrchestrator:
             symbol=worker.get_symbol() or '',
         )
 
+    def get_signal_workers(self) -> Dict[str, AbstractSignalWorker]:
+        """
+        The SIGNAL workers this orchestrator drives, by instance name.
+
+        Returns:
+            Instance name → worker; empty when the strategy reads no signal source
+        """
+        return dict(self._signal_workers)
+
     def merge_signal_arrivals(
         self, arrivals: Dict[str, List[SignalSnapshot]]
     ) -> int:

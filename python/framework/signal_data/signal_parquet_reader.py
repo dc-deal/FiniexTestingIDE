@@ -116,6 +116,8 @@ def load_signal_series_from_parquet(
             stream_epoch=_optional_int(row, SignalParquetColumn.STREAM_EPOCH.value),
             available_msc=_optional_int(
                 row, SignalParquetColumn.AVAILABLE_MSC.value),
+            envelope_evidence_as_of=_optional_int(
+                row, SignalParquetColumn.ENVELOPE_EVIDENCE_AS_OF.value),
             result=result,
         ))
 

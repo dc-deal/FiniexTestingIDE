@@ -318,6 +318,11 @@ class SignalDataImporter:
                 SignalParquetColumn.SEQ.value: snap.seq,
                 SignalParquetColumn.STREAM_EPOCH.value: snap.stream_epoch,
                 SignalParquetColumn.AVAILABLE_MSC.value: _epoch_ms(snap.available_msc),
+                # Envelope-level, repeated per row: the runtime series is projected to one
+                # symbol, so a max over a projected snapshot's rows would be that row's
+                # stamp. RC-4 compares envelopes, never rows.
+                SignalParquetColumn.ENVELOPE_EVIDENCE_AS_OF.value: _epoch_ms(
+                    snap.get_evidence_as_of()),
             }
             # Envelope sentinel row (symbol = '*') — keeps this collected_msc resolvable
             # for every covered symbol even when the envelope omits it (partial/error).

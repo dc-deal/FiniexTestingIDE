@@ -44,6 +44,7 @@ from python.framework.types.disturbance_episode_types import DisturbanceEpisode,
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.signal_data.signal_inbox import SignalInbox
+from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -94,6 +95,7 @@ class AutotraderTickLoop:
         api_monitor: Optional[ApiPerfMonitor] = None,
         state_store: Optional[AlgoStateStore] = None,
         signal_inbox: Optional[SignalInbox] = None,
+        signal_transport: Optional[SignalPollSource] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -105,6 +107,10 @@ class AutotraderTickLoop:
         # once per pass. None in a mock session — then every drain below is a no-op and the
         # loop behaves exactly as before.
         self._signal_inbox = signal_inbox
+        # Display only — the loop never calls it. It is handed to the exporter so the
+        # operator panel can show whether anything is still arriving; draining goes
+        # through the inbox above.
+        self._signal_transport = signal_transport
         self._decision_logic = decision_logic
         self._clipping_monitor = clipping_monitor
         self._logger = logger
@@ -205,6 +211,7 @@ class AutotraderTickLoop:
             drift_auditor=self._drift_auditor,
             reconciler=self._reconciler,
             api_monitor=self._api_monitor,
+            signal_transport=self._signal_transport,
         )
 
     def stop(self) -> None:

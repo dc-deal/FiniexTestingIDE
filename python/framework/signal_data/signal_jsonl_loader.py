@@ -11,9 +11,17 @@ from python.framework.exceptions.signal_data_errors import SignalSchemaError
 from python.framework.types.signal_data_types import SignalSeries, SignalSnapshot
 
 
-# Major schema version this reader understands. A line with a different major
-# version may carry a changed result structure → SignalSchemaError.
-SUPPORTED_SCHEMA_MAJOR = '1'
+# Major schema versions this reader understands. A line with an unlisted major may
+# carry a changed result structure → SignalSchemaError.
+#
+# '1' — the original contract.
+# '2' — the stream contract (#141 Part 2a): adds seq / stream_epoch / available_msc /
+#       evidence_as_of, and RELOCATES trigger_reason out of metadata to the top level.
+#       That relocation is why the producer spent a major on an otherwise additive group:
+#       a minor would not have fired this gate, and the fallback that reads the old
+#       location lives behind it. Both majors are read by one model — see
+#       AnalysisEnvelope._lift_trigger_reason.
+SUPPORTED_SCHEMA_MAJORS = frozenset({'1', '2'})
 
 
 def _schema_major(version: str) -> str:
@@ -53,10 +61,11 @@ def load_signal_series(
             if not line:
                 continue
             snapshot = SignalSnapshot.model_validate_json(line)
-            if _schema_major(snapshot.schema_version) != SUPPORTED_SCHEMA_MAJOR:
+            if _schema_major(snapshot.schema_version) not in SUPPORTED_SCHEMA_MAJORS:
+                supported = ', '.join(f'{m}.x' for m in sorted(SUPPORTED_SCHEMA_MAJORS))
                 raise SignalSchemaError(
                     f"Signal line schema_version '{snapshot.schema_version}' is not "
-                    f"compatible (reader supports major {SUPPORTED_SCHEMA_MAJOR}.x)."
+                    f"compatible (reader supports {supported})."
                 )
             snapshots.append(snapshot)
 

@@ -48,6 +48,14 @@ stay `''` (unknown) rather than being guessed as `'scheduled'`, which would rend
 grid point. This one fails silently if it regresses: an unread trigger looks like the pre-contract
 era rather than like a bug.
 
+### Schema major gate
+
+Both contract eras load through one reader: `1.x` (the original) and `2.x` (the stream contract).
+The producer spent a **major** version on an otherwise additive field group for one reason —
+`trigger_reason` left `metadata` — precisely because this reader gates on the major, so a minor
+would not have fired the branch the fallback lives behind. An unknown major is refused rather than
+guessed at: it may carry a changed `result` structure.
+
 ---
 
 ## Fixture

@@ -166,8 +166,11 @@ class SignalSnapshot(AnalysisEnvelope):
     string / datetime is also accepted.
     """
     collected_msc: datetime
+    # Set by the importer so a PROJECTED series keeps the envelope-level value; absent on
+    # the wire, where the envelope is complete and the row maximum IS the envelope's.
+    envelope_evidence_as_of: Optional[datetime] = None
 
-    @field_validator('collected_msc', mode='before')
+    @field_validator('collected_msc', 'envelope_evidence_as_of', mode='before')
     @classmethod
     def _coerce_collected_msc(cls, value):
         """Normalize epoch-ms (int) → UTC datetime; pass ISO/datetime through."""
@@ -186,6 +189,25 @@ class SignalSnapshot(AnalysisEnvelope):
             The instant a decision may first see this snapshot
         """
         return self.available_msc or self.collected_msc
+
+    def get_evidence_as_of(self) -> Optional[datetime]:
+        """
+        Newest evidence this ENVELOPE rests on — the max across its rows.
+
+        The unit matters and is the whole point of the accessor. A ROW's stamp may
+        legitimately fall between two passes, because its retrieved set changes (a young
+        article slides out of the recency window, the similarity floor cuts differently).
+        Comparing rows therefore reports a "regression" constantly. The producer's passes
+        are what can overtake each other, so the comparison belongs on the envelope.
+
+        Returns:
+            Newest evidence stamp across all rows, or None when no row rests on evidence
+        """
+        if self.envelope_evidence_as_of is not None:
+            return self.envelope_evidence_as_of
+        stamps = [row.evidence_as_of for row in self.result
+                  if row.evidence_as_of is not None]
+        return max(stamps) if stamps else None
 
     def get_order_key(self) -> Tuple[int, int, float]:
         """
@@ -227,9 +249,12 @@ class ResolvedSignal:
     Args:
         collected_msc: Receive stamp of the chosen snapshot
         result: Per-symbol sentiment from that snapshot
+        evidence_as_of: Newest evidence the whole ENVELOPE rests on (None when it rests
+            on none). Envelope-level on purpose — see SignalSnapshot.get_evidence_as_of.
     """
     collected_msc: datetime
     result: SentimentResult
+    evidence_as_of: Optional[datetime] = None
 
 
 class SignalResolution(str, Enum):
@@ -310,6 +335,12 @@ class SignalParquetColumn(str, Enum):
     STREAM_EPOCH = 'stream_epoch'        # bumped only when the producer's series was reset
     AVAILABLE_MSC = 'available_msc'      # int64 epoch-ms, the producer's publish instant
     EVIDENCE_AS_OF = 'evidence_as_of'    # int64 epoch-ms per row; null = the row rests on no evidence
+    # Envelope-level evidence, repeated on every row of the envelope like status and
+    # schema_version. It exists because the runtime series is PROJECTED to one symbol: a
+    # projected snapshot holds one row, so a max over its rows is the row's own stamp, not
+    # the envelope's. Without this column the RC-4 comparison would mean something
+    # different in simulation than on the wire (measured: 237 vs 17 on one mock week).
+    ENVELOPE_EVIDENCE_AS_OF = 'envelope_evidence_as_of'
     PROMPT_VERSION = 'prompt_version'
     PROMPT_ID = 'prompt_id'
     PROMPT_HASH = 'prompt_hash'
@@ -346,4 +377,5 @@ SIGNAL_RUNTIME_COLUMNS = frozenset({
     SignalParquetColumn.STREAM_EPOCH.value,
     SignalParquetColumn.AVAILABLE_MSC.value,
     SignalParquetColumn.EVIDENCE_AS_OF.value,
+    SignalParquetColumn.ENVELOPE_EVIDENCE_AS_OF.value,
 })

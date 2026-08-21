@@ -68,6 +68,13 @@ class AbstractSignalWorker(AbstractWorker):
         self._last_served_stale: Optional[bool] = None
         # Resolution class of the last evaluated result (#433 Part C counters).
         self._last_resolution: SignalResolution = SignalResolution.BLIND
+        # RC-4 (#141 Part 2a): the producer runs passes concurrently, so a pass that runs
+        # long commits AFTER a later one and carries the higher seq while resting on older
+        # evidence. Tracking the evidence of the previously served envelope is what lets a
+        # decision tell a genuine change from an overtaking pass. Envelope-level: a row's
+        # stamp may fall legitimately between passes, an envelope's may not.
+        self._last_served_evidence: Optional[datetime] = None
+        self._evidence_regressed: bool = False
 
     def set_signal_provider(self, provider: SignalDataProvider) -> None:
         """
@@ -240,6 +247,7 @@ class AbstractSignalWorker(AbstractWorker):
         """
         resolved = self._require_provider().nearest(now, self._symbol)
         stale = self._evaluate_stale(resolved, now)
+        self._evidence_regressed = self._evaluate_evidence_regression(resolved)
         self._last_snapshot_msc = resolved.collected_msc if resolved else None
         self._last_served_stale = stale
         self._last_resolution = self._classify(resolved, stale)
@@ -248,6 +256,45 @@ class AbstractSignalWorker(AbstractWorker):
         result = self._build_result(resolved, now)
         result.is_stale = stale
         return result
+
+    def _evaluate_evidence_regression(
+        self, resolved: Optional[ResolvedSignal]
+    ) -> bool:
+        """
+        Whether this envelope rests on OLDER evidence than the one served before it (RC-4).
+
+        True means the producer's passes overtook each other: a longer-running pass
+        committed after a later one, so it carries the newer position in the series and the
+        older view of the world. The information is still valid — it is not discarded — but
+        a decision must not read it as a CHANGE, or it reacts to a reversal that only ever
+        happened in the ordering.
+
+        Deliberately not a key: resolution stays anchored to when a snapshot became
+        available. Resolving by evidence time would be look-ahead — evidence gathered at
+        10:09 that only became available at 10:12 was not ours to use at 10:09.
+
+        Args:
+            resolved: The point-in-time signal, or None on a gap
+
+        Returns:
+            True when the envelope's evidence predates the previously served envelope's
+        """
+        if resolved is None or resolved.evidence_as_of is None:
+            return False
+        previous = self._last_served_evidence
+        self._last_served_evidence = resolved.evidence_as_of
+        if previous is None:
+            return False
+        return resolved.evidence_as_of < previous
+
+    def get_evidence_regressed(self) -> bool:
+        """
+        Whether the last served envelope rested on older evidence than its predecessor.
+
+        Returns:
+            True on an overtaking producer pass (RC-4)
+        """
+        return self._evidence_regressed
 
     def _evaluate_stale(self, resolved: Optional[ResolvedSignal], now: datetime) -> bool:
         """

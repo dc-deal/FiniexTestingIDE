@@ -32,6 +32,9 @@ from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.parameter_types import OutputValue
+from python.framework.signal_data.signal_poll_source import SignalPollSource
+from python.framework.types.autotrader_types.autotrader_display_types import (
+    SignalTransportStats)
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -79,6 +82,7 @@ class AutotraderDisplayExporter:
         drift_auditor: Optional[DriftAuditor] = None,
         reconciler: Optional[Reconciler] = None,
         api_monitor: Optional[ApiPerfMonitor] = None,
+        signal_transport: Optional[SignalPollSource] = None,
     ):
         self._config = config
         self._executor = executor
@@ -92,6 +96,9 @@ class AutotraderDisplayExporter:
         self._session_start = session_start
         self._dry_run = dry_run
         self._display_label_cache = display_label_cache
+        # #141 Part 2a Phase 3b: None in a mounted session, and then the panel says
+        # "mounted (no transport)" rather than rendering an idle connection.
+        self._signal_transport = signal_transport
         self._drift_auditor = drift_auditor
         self._reconciler = reconciler
         self._api_monitor = api_monitor
@@ -323,6 +330,10 @@ class AutotraderDisplayExporter:
             worker_rolling_avg_times_ms=worker_rolling_avgs,
             worker_outputs=worker_outputs,
             feed_stale=feed_stale,
+            signal_transport=(
+                self._signal_transport.get_transport_stats()
+                if self._signal_transport is not None
+                else SignalTransportStats()),
             market_stale=market_stale,
             last_decision_action=decision.action,
             decision_outputs=decision_outputs,

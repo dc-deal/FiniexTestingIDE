@@ -110,6 +110,46 @@ What the tests pin, and the second half matters as much as the first:
 - an empty drain does nothing at all — which is the simulation's and a mock session's case on
   every single pass, and is what keeps both bit-identical.
 
+### test_signal_poll_source.py (#141 Part 2a)
+
+The interim pull transport, used until the producer's stream exists. Runs against a **local stub
+started inside the test** — never against a real producer: a suite that needs someone else's
+container running is a suite that fails for reasons unrelated to the code.
+
+Only the *responses* are scripted. The real transport makes a real HTTP request over a real socket,
+builds its own headers (the bearer assertion reads them **server-side**), decodes real JSON and
+validates through the production model. Patching the fetch would skip exactly what breaks against a
+real server.
+
+- **Arrival** — a new envelope is enqueued; receipt is stamped by us (`collected_msc` is absent on
+  the wire) while the gate stays the producer's `available_msc`.
+- **Restraint** — the producer republishes the same stored envelope until its next pass, so the
+  same `(epoch, seq)` is enqueued once, not on every poll.
+- **The degraded producer** — `status: error` + `VECTOR_STORE_ERROR` means "no envelope" and must
+  never be enqueued: it would place a degraded HOLD into the series that the provider would later
+  resolve as if it were sentiment. A *normal* `status: error` (an LLM timeout) **is** data and is
+  kept.
+- **Auth** — the header is sent only when a token is configured.
+- **Lifecycle** — an unreachable producer never raises into the loop; stop is idempotent.
+
+### test_signal_evidence_regression.py (RC-4, #141 Part 2a)
+
+The producer runs passes concurrently, so a long-running pass commits *after* a later one: it
+carries the newer position and the older view of the world. A decision reading that as a CHANGE
+reacts to a reversal that happened only in the ordering.
+
+Two properties decide whether the detection works, and both are counter-intuitive:
+
+1. **Per envelope, never per row.** A row's evidence stamp may legitimately fall between passes
+   (its retrieved set changes) — measured on one mock week: **2073 per row against 17 per envelope**.
+2. **The runtime series is projected to one symbol**, so a max over a projected snapshot's rows is
+   that row's stamp. The importer therefore carries the envelope-level value alongside; without it
+   simulation and live disagree — measured: **237 against 17**.
+
+The tests pin the accessor's precedence, the flag on an overtaking pass, and — as importantly — the
+cases that must **not** flag: the first envelope, a gap, an envelope resting on no evidence, and the
+envelope after a regression (the flag marks an envelope, not a session).
+
 ---
 
 ## Fixtures

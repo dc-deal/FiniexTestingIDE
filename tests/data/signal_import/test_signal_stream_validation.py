@@ -145,3 +145,33 @@ class TestTriggerReasonAcrossTheBoundary:
     def test_absent_stays_unknown(self, tmp_path):
         """Never 'scheduled' — that would mislabel a boot pass as a grid point."""
         assert self._import_one(tmp_path, envelope(1)) == ''
+
+
+class TestSchemaMajorGate:
+    """
+    Both contract eras must load through one reader.
+
+    The producer spent a MAJOR version on the stream group for one reason: `trigger_reason`
+    left `metadata`. Everything else in it is additive. A minor would not have fired this
+    gate — and the fallback that reads the old location lives behind it.
+    """
+
+    def _line(self, schema_version: str) -> dict:
+        """An envelope in the shape the current producer build emits."""
+        line = envelope(1, seq=1041, stream_epoch=1)
+        line['schema_version'] = schema_version
+        line['trigger_reason'] = 'manual'
+        return line
+
+    def test_original_era_loads(self, tmp_path):
+        importer = run_import(tmp_path, [self._line('1.0')])
+        assert importer.errors == []
+
+    def test_stream_era_loads(self, tmp_path):
+        importer = run_import(tmp_path, [self._line('2.0')])
+        assert importer.errors == []
+
+    def test_unknown_major_is_refused(self, tmp_path):
+        """An unread major may carry a changed result structure — refusing beats guessing."""
+        with pytest.raises(SignalSchemaError, match='not compatible'):
+            run_import(tmp_path, [self._line('3.0')])

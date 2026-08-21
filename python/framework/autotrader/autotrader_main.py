@@ -27,6 +27,8 @@ from python.framework.autotrader.reporting.autotrader_report_coordinator import 
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.signal_data.signal_inbox import SignalInbox
+from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
@@ -48,6 +50,7 @@ from python.framework.types.autotrader_types.display_label_cache import DisplayL
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.configuration.market_config_manager import MarketConfigManager
+from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
@@ -91,6 +94,11 @@ class AutotraderMain:
         # (signal source, symbol) → coverage + window, from the same shared preparation
         # the sim batch uses — the 📡 report section reads it (#433).
         self._signal_scenario_map: Dict[Tuple[str, str], SignalScenarioInfo] = {}
+        # #141 Part 2a: the live signal transport and its hand-off buffer. Both stay None
+        # in a mock session, which mounts its series from the archive instead — then every
+        # inbox drain in the loop is a no-op and the session behaves exactly as before.
+        self._signal_inbox: Optional[SignalInbox] = None
+        self._signal_transport: Optional[SignalPollSource] = None
         self._tick_thread = None
         self._tick_loop: Optional[AutotraderTickLoop] = None
 
@@ -324,6 +332,9 @@ class AutotraderMain:
                     # Resting orders present — abort before trading (loud banner already printed).
                     return self._shutdown(0, 0)
 
+            # === SIGNAL TRANSPORT (#141 Part 2a) ===
+            self._setup_signal_transport()
+
             # === TICK SOURCE ===
             self._print_startup_phase('Starting tick source...')
             _symbol_spec = self._executor.broker.adapter.get_symbol_specification(
@@ -373,6 +384,8 @@ class AutotraderMain:
                 display_queue=self._display_queue,
                 session_start=run_timestamp,
                 dry_run=dry_run,
+                signal_inbox=self._signal_inbox,
+                signal_transport=self._signal_transport,
                 display_label_cache=self._display_label_cache,
                 drift_auditor=self._drift_auditor,
                 decision_event_dispatcher=self._decision_event_dispatcher,
@@ -456,6 +469,11 @@ class AutotraderMain:
         self._global_logger.info(
             f"🛑 Shutdown initiated: mode={self._shutdown_mode}"
         )
+
+        # Stop the signal transport before the tick source: it is the only other thread
+        # that can still deposit work for a loop that is no longer draining.
+        if self._signal_transport:
+            self._signal_transport.stop()
 
         # Stop tick source
         if self._tick_source:
@@ -619,6 +637,56 @@ class AutotraderMain:
     # =========================================================================
     # SIGNAL HANDLING
     # =========================================================================
+
+    def _setup_signal_transport(self) -> None:
+        """
+        Build and start the live signal transport, when one is configured (#141 Part 2a).
+
+        Opt-in and silent by default: a session whose SIGNAL workers read the mounted
+        archive (simulation parity, mock replay) configures no transport, so nothing is
+        started and the loop's drains stay empty.
+
+        The transport feeds the SignalDataProvider through the inbox — it never touches a
+        worker. That is what lets the same worker read a mounted series and a live one
+        without knowing which it got.
+
+        A configuration error here ABORTS the session (§35): a bot told to trade on live
+        sentiment must not silently fall back to whatever the archive happened to hold.
+        """
+        poll_config = SentimentConfigManager().get_config().poll
+        if not poll_config.enabled:
+            return
+
+        signal_kinds = {
+            worker.get_consumed_signal_kind()
+            for worker in self._worker_orchestrator.get_signal_workers().values()
+        }
+        if not signal_kinds:
+            raise ValueError(
+                'Signal transport is enabled but no SIGNAL worker consumes a source — '
+                'either add one to worker_instances or disable poll in sentiment_config.json.'
+            )
+        if len(signal_kinds) > 1:
+            raise ValueError(
+                f"Signal transport serves one source, but the workers consume "
+                f"{sorted(signal_kinds)}. Multi-source binding is #258."
+            )
+        if not poll_config.pipeline_id:
+            raise ValueError(
+                'Signal transport is enabled but poll.pipeline_id is empty — '
+                'name the producer pipeline in sentiment_config.json.')
+
+        self._signal_inbox = SignalInbox()
+        self._signal_transport = SignalPollSource(
+            config=poll_config,
+            signal_kind=signal_kinds.pop(),
+            inbox=self._signal_inbox,
+            logger=self._session_logger,
+            api_token=SentimentConfigManager().resolve_api_token(
+                poll_config.credentials_file),
+        )
+        self._signal_transport.start()
+        self._print_startup_phase('Signal transport running')
 
     def _setup_signal_handlers(self) -> None:
         """

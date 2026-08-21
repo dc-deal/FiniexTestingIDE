@@ -123,6 +123,7 @@ class SignalDataProvider:
         return ResolvedSignal(
             collected_msc=snapshot.collected_msc,
             result=self._extract_symbol(snapshot, symbol),
+            evidence_as_of=snapshot.get_evidence_as_of(),
         )
 
     def _extract_symbol(self, snapshot: SignalSnapshot, symbol: str) -> SentimentResult:

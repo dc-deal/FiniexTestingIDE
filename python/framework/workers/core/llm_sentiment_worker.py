@@ -68,6 +68,15 @@ class LlmSentimentWorker(AbstractSignalWorker):
                 description='Model reasoning for the sentiment (transparency)',
                 category='INFO',
             ),
+            'evidence_regressed': OutputParamDef(
+                param_type=bool,
+                description=(
+                    'Whether this envelope rests on older evidence than the one before it '
+                    '(RC-4: the producer\'s passes overtook each other). Valid information, '
+                    'but not a CHANGE — a decision reading it as one reacts to a reversal '
+                    'that happened only in the ordering.'),
+                category='INFO',
+            ),
         }
 
     def _build_result(
@@ -93,6 +102,7 @@ class LlmSentimentWorker(AbstractSignalWorker):
                 'urgency': 0.0,
                 'is_breaking': False,
                 'reasoning': 'No signal data',
+                'evidence_regressed': False,
             })
 
         result = resolved.result
@@ -104,4 +114,5 @@ class LlmSentimentWorker(AbstractSignalWorker):
             'urgency': float(result.urgency),
             'is_breaking': bool(result.is_breaking),
             'reasoning': result.reasoning,
+            'evidence_regressed': self.get_evidence_regressed(),
         })

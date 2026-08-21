@@ -820,7 +820,81 @@ class AutoTraderLiveDisplay:
             f'Reconnects:     {reconnect_str}',
             f'Emitted Ticks:  {emit_rate_str}',
         ]
+        lines.extend(self._build_signal_transport_lines(stats))
         return Panel('\n'.join(lines), title='[bold]CONNECTION[/bold]', box=box.ROUNDED)
+
+    def _build_signal_transport_lines(self, stats) -> list:
+        """
+        Signal-transport block for the CONNECTION panel (#141 Part 2a).
+
+        Belongs beside the tick transport rather than in its own panel: both answer the
+        same operator question, and splitting them across two places is how one of them
+        stops being checked. Transport facts only — the signal VALUES have their own panel.
+
+        Args:
+            stats: Current display stats
+
+        Returns:
+            Lines to append (empty when no session data exists yet)
+        """
+        if stats is None:
+            return []
+        transport = stats.signal_transport
+        if not transport.configured:
+            # A mounted session replays its series from the archive; saying so is more
+            # useful than rendering an idle connection that was never meant to run.
+            return ['', '[dim]Signal Feed:    mounted (no transport)[/dim]']
+
+        colors = {'live': 'green', 'degraded': 'yellow', 'error': 'red'}
+        color = colors.get(transport.state, 'dim')
+        marker = '●' if transport.state == 'live' else '◌'
+        position = (f'epoch {transport.stream_epoch}  seq {transport.last_seq}'
+                    if transport.last_seq is not None else 'awaiting first envelope')
+
+        if transport.last_envelope_at is not None:
+            age_s = (datetime.now(timezone.utc) - transport.last_envelope_at).total_seconds()
+            age_str = self._format_age(age_s)
+        else:
+            age_str = '[dim]—[/dim]'
+
+        lines = [
+            '',
+            f'[{color}]Signal Feed:    {marker} {transport.state}   {position}[/{color}]',
+            f'Last Envelope:  {age_str}',
+        ]
+        if transport.degraded_responses or transport.transport_errors:
+            lines.append(
+                f'[yellow]Feed Issues:    {transport.degraded_responses} degraded · '
+                f'{transport.transport_errors} errors[/yellow]')
+
+        if transport.tape:
+            lines.append('Feed Tape:')
+            for event in reversed(transport.tape):
+                e_color = {AwarenessLevel.ALERT: 'bold red',
+                           AwarenessLevel.NOTICE: 'yellow'}.get(event.level, 'dim')
+                stamp = event.at.strftime('%H:%M:%S')
+                lines.append(f'[{e_color}]  · {stamp} {event.message}[/{e_color}]')
+            hidden = transport.total_events - len(transport.tape)
+            if hidden > 0:
+                lines.append(f'[dim]  … (+{hidden} older feed events)[/dim]')
+        return lines
+
+    @staticmethod
+    def _format_age(age_s: float) -> str:
+        """
+        Render an age compactly.
+
+        Args:
+            age_s: Age in seconds
+
+        Returns:
+            Human-readable age
+        """
+        if age_s < 60:
+            return f'{age_s:.0f}s ago'
+        if age_s < 3600:
+            return f'{age_s / 60:.0f}m {age_s % 60:.0f}s ago'
+        return f'{age_s / 3600:.1f}h ago'
 
     def _build_tick_processing_panel(self, stats: AutoTraderDisplayStats) -> Panel:
         """Tick processing and clipping stats."""
