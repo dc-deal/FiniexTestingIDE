@@ -902,10 +902,18 @@ class AutoTraderLiveDisplay:
             # cannot read its own identifier. Either way nothing certifies this session.
             return ['[red]Journal:        ⚠ unidentified[/red]']
         if health.journal_changed:
-            return [f'[bold red]Journal:        {health.journal_id} '
-                    f'({health.journal_name})  ⚠ CHANGED[/bold red]']
-        return [f'Journal:        {health.journal_id}  '
-                f'[dim]({health.journal_name})[/dim]']
+            lines = [f'[bold red]Journal:        {health.journal_id} '
+                     f'({health.journal_name})  ⚠ CHANGED[/bold red]']
+        else:
+            lines = [f'Journal:        {health.journal_id}  '
+                     f'[dim]({health.journal_name})[/dim]']
+        if health.budget_suspended:
+            # Rendered only while it holds: a suspended producer stops sending while the
+            # transport stays healthy, so this is the line that explains a silence the
+            # rest of the panel would report as everything being fine.
+            reason = f" — {health.budget_reason}" if health.budget_reason else ''
+            lines.append(f'[yellow]Producer:       ⚠ budget suspended{reason}[/yellow]')
+        return lines
 
     @staticmethod
     def _format_age(age_s: float) -> str:

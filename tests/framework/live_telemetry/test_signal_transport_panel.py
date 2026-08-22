@@ -163,6 +163,28 @@ class TestJournalIdentity:
         assert 'CHANGED' in out
         assert 'bold red' in out
 
+    def test_a_suspended_producer_budget_is_named(self, now):
+        """
+        A producer that stopped evaluating to save money reaches the panel as silence: the
+        transport stays green and envelopes stop. Without this line the operator reads a
+        healthy feed going stale and looks for a fault on our side.
+        """
+        out = render(SignalTransportStats(
+            configured=True, state='live', last_seq=4914,
+            health=SignalHealthStatus(journal_id='9c3fa4c80d95', journal_name='dev',
+                                      probed_at=now, budget_suspended=True,
+                                      budget_reason='daily cap reached')))
+        assert 'budget suspended' in out
+        assert 'daily cap reached' in out
+
+    def test_a_healthy_producer_adds_no_line(self):
+        """Noise in the quiet case is how a panel stops being read."""
+        out = render(SignalTransportStats(
+            configured=True, state='live',
+            health=SignalHealthStatus(journal_id='9c3fa4c80d95', journal_name='dev',
+                                      probed_at=datetime.now(timezone.utc))))
+        assert 'Producer:' not in out
+
     def test_the_journal_line_sits_above_the_arrival_age(self, now):
         """Identity qualifies the position; both belong to the same reading."""
         out = render(SignalTransportStats(

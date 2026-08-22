@@ -690,6 +690,9 @@ class AutotraderMain:
                 base_url=poll_config.base_url,
                 logger=self._session_logger,
                 api_token=api_token,
+                pipeline_id=poll_config.pipeline_id,
+                source=SentimentConfigManager().get_config().get_source(
+                    poll_config.pipeline_id),
             )
             if health_config.enabled else None
         )

@@ -20,13 +20,15 @@ from unittest.mock import MagicMock
 import pytest
 
 from python.framework.signal_data.signal_health_probe import SignalHealthProbe
-from python.framework.types.config_types.sentiment_config_types import SentimentHealthConfig
+from python.framework.types.config_types.sentiment_config_types import (
+    SentimentHealthConfig, SentimentSourceConfig)
 
 DEV_JOURNAL = '9c3fa4c80d95'
 PROD_JOURNAL = '138c68e48b15'
 
 
-def health(journal_id=DEV_JOURNAL, environment='dev') -> dict:
+def health(journal_id=DEV_JOURNAL, environment='dev', cadence_s=600,
+           suspended=False, reason=None) -> dict:
     """A health document in the shape the producer serves."""
     return {
         'status': 'ok',
@@ -35,6 +37,14 @@ def health(journal_id=DEV_JOURNAL, environment='dev') -> dict:
         'pass_timeout_seconds': 300,
         'journal_id': journal_id,
         'environment': environment,
+        'workers': [
+            {'name': 'ingest:crypto_news', 'kind': 'ingest', 'interval_seconds': 15},
+            {'name': 'eval:crypto_sentiment', 'kind': 'eval',
+             'interval_seconds': cadence_s},
+            {'name': 'eval:forex_macro_sentiment', 'kind': 'eval',
+             'interval_seconds': 900},
+        ],
+        'budget': {'enabled': True, 'suspended': suspended, 'reason': reason},
     }
 
 
@@ -78,13 +88,15 @@ class _Stub:
         return f'http://127.0.0.1:{self.server.server_port}'
 
 
-def build(stub, logger=None, token: str = ''):
+def build(stub, logger=None, token: str = '', pipeline_id='', source=None):
     """A probe pointed at the stub, with its tape captured."""
     probe = SignalHealthProbe(
         config=SentimentHealthConfig(enabled=True, interval_s=0.05, request_timeout_s=3.0),
         base_url=stub.base_url,
         logger=logger or MagicMock(),
         api_token=token,
+        pipeline_id=pipeline_id,
+        source=source,
     )
     tape = []
     probe.set_event_sink(lambda message, level: tape.append((level.name, message)))
@@ -255,6 +267,115 @@ class TestChange:
         assert logger.info.call_count == 1
         assert logger.error.call_count == 0
         assert len(tape) == 1
+
+
+class TestProducerCadence:
+    """
+    How often the producer says it evaluates OUR source.
+
+    Worth reading because the configured value drives our staleness threshold: a producer
+    that slowed down turns a healthy feed into one that keeps tripping the contract, and a
+    producer that sped up hides a real outage inside the tolerance. The truth is on the
+    health document, so believing our own configuration blindly is a choice, not a limit.
+    """
+
+    def test_the_cadence_of_our_source_is_read(self):
+        """Named per source: another pipeline's worker must not answer for ours."""
+        with _Stub([health(cadence_s=600)]) as stub:
+            probe, _ = build(stub, pipeline_id='crypto_sentiment')
+            probe.probe_once()
+        assert probe.get_status().producer_cadence_s == 600.0
+
+    def test_without_a_pipeline_there_is_no_cadence(self):
+        with _Stub([health()]) as stub:
+            probe, _ = build(stub)
+            probe.probe_once()
+        assert probe.get_status().producer_cadence_s is None
+
+    def test_an_unknown_pipeline_reads_nothing_rather_than_something_else(self):
+        with _Stub([health()]) as stub:
+            probe, _ = build(stub, pipeline_id='not_a_pipeline')
+            probe.probe_once()
+        assert probe.get_status().producer_cadence_s is None
+
+    def test_a_matching_cadence_stays_quiet(self):
+        logger = MagicMock()
+        with _Stub([health(cadence_s=600)]) as stub:
+            probe, tape = build(stub, logger=logger, pipeline_id='crypto_sentiment',
+                                source=SentimentSourceConfig(cadence_minutes=10.0))
+            probe.probe_once()
+        assert logger.warning.call_count == 0
+        assert not any(level == 'NOTICE' for level, _ in tape)
+
+    def test_a_drifted_cadence_is_reported_once(self):
+        logger = MagicMock()
+        with _Stub([health(cadence_s=1800)]) as stub:
+            probe, tape = build(stub, logger=logger, pipeline_id='crypto_sentiment',
+                                source=SentimentSourceConfig(cadence_minutes=10.0))
+            probe.probe_once()
+            probe.probe_once()
+            probe.probe_once()
+        assert logger.warning.call_count == 1
+        assert '1800' in logger.warning.call_args.args[0]
+        assert len([1 for level, _ in tape if level == 'NOTICE']) == 1
+
+    def test_nothing_is_claimed_without_a_configured_source(self):
+        """No expectation means no disagreement — the reading is still recorded."""
+        logger = MagicMock()
+        with _Stub([health(cadence_s=1800)]) as stub:
+            probe, _ = build(stub, logger=logger, pipeline_id='crypto_sentiment')
+            probe.probe_once()
+        assert probe.get_status().producer_cadence_s == 1800.0
+        assert logger.warning.call_count == 0
+
+
+class TestProducerBudget:
+    """
+    A producer that stops evaluating to save money reaches us as silence and nothing else.
+
+    The transport stays healthy, envelopes simply stop. Without this the operator sees a
+    green transport and a signal going stale, which reads as a producer that died.
+    """
+
+    def test_suspension_is_reported(self):
+        logger = MagicMock()
+        with _Stub([health(suspended=True, reason='daily cap reached')]) as stub:
+            probe, tape = build(stub, logger=logger)
+            probe.probe_once()
+        status = probe.get_status()
+        assert status.budget_suspended
+        assert status.budget_reason == 'daily cap reached'
+        assert ('ALERT', 'producer budget suspended') in tape
+        assert 'daily cap reached' in logger.warning.call_args.args[0]
+
+    def test_a_healthy_budget_says_nothing(self):
+        logger = MagicMock()
+        with _Stub([health()]) as stub:
+            probe, tape = build(stub, logger=logger)
+            probe.probe_once()
+        assert not probe.get_status().budget_suspended
+        assert logger.warning.call_count == 0
+        assert not any('budget' in message for _, message in tape)
+
+    def test_only_the_transition_is_reported(self):
+        """Half-hourly probes through a long suspension must not repeat themselves."""
+        logger = MagicMock()
+        with _Stub([health(suspended=True)]) as stub:
+            probe, tape = build(stub, logger=logger)
+            probe.probe_once()
+            probe.probe_once()
+            probe.probe_once()
+        assert logger.warning.call_count == 1
+        assert len([1 for _, message in tape if 'budget' in message]) == 1
+
+    def test_recovery_is_reported_too(self):
+        logger = MagicMock()
+        with _Stub([health(suspended=True), health(suspended=False)]) as stub:
+            probe, tape = build(stub, logger=logger)
+            probe.probe_once()
+            probe.probe_once()
+        assert not probe.get_status().budget_suspended
+        assert ('INFO', 'producer budget resumed') in tape
 
 
 class TestAuth:

@@ -322,6 +322,12 @@ class SignalHealthStatus:
         journal_changed: Set once the identity changed mid-session. Sticky, because the
             cursor built against the previous journal is meaningless in the new one
         probe_errors: Times the probe could not reach the producer
+        producer_cadence_s: How often the producer evaluates OUR source, as it reports it.
+            The authoritative value for what we otherwise only configure
+        budget_suspended: The producer has stopped evaluating because a spending limit
+            was reached. Downstream this looks exactly like a silent producer, so the
+            reason is worth carrying rather than rediscovering from the silence
+        budget_reason: What the producer says about the suspension
     """
     journal_id: Optional[str] = None
     journal_name: str = ''
@@ -330,6 +336,9 @@ class SignalHealthStatus:
     probed_at: Optional[datetime] = None
     journal_changed: bool = False
     probe_errors: int = 0
+    producer_cadence_s: Optional[float] = None
+    budget_suspended: bool = False
+    budget_reason: Optional[str] = None
 
     def is_identified(self) -> bool:
         """

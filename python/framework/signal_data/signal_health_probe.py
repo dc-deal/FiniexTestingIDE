@@ -20,13 +20,18 @@ from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.config_types.sentiment_config_types import SentimentHealthConfig
+from python.framework.types.config_types.sentiment_config_types import (
+    SentimentHealthConfig, SentimentSourceConfig)
 from python.framework.types.decision_logic_types import AwarenessLevel
 from python.framework.types.signal_data_types import SignalHealthStatus
 
 # What the producer calls a journal whose name its own mapping could not resolve. The
 # id still binds — only the label is missing, which is not a fault worth alarming on.
 UNRESOLVED_JOURNAL_NAME = 'unknown'
+
+# How far the producer's reported cadence may differ from the configured one before it is
+# worth saying so. Both sides are operator-set integers, so this only absorbs float noise.
+CADENCE_TOLERANCE = 0.01
 
 
 class SignalHealthProbe:
@@ -43,6 +48,8 @@ class SignalHealthProbe:
         base_url: str,
         logger: ScenarioLogger,
         api_token: str = '',
+        pipeline_id: str = '',
+        source: Optional[SentimentSourceConfig] = None,
     ):
         """
         Initialize the health probe.
@@ -53,10 +60,16 @@ class SignalHealthProbe:
             logger: Session logger — the identity belongs in the run's artifacts, not
                 only on screen, so a finished run can still say where its data came from
             api_token: Bearer token; empty means send no Authorization header
+            pipeline_id: Source being consumed — names the producer worker whose cadence
+                describes our feed; empty skips the cadence reading
+            source: What we have configured about that source, so a producer that changed
+                its cadence is reported rather than silently believed to still match
         """
         self._config = config
         self._logger = logger
         self._api_token = api_token
+        self._pipeline_id = pipeline_id
+        self._source = source
         self._on_event: Optional[Callable[[str, AwarenessLevel], None]] = None
         self._url = f"{base_url.rstrip('/')}/v1/health"
 
@@ -65,6 +78,7 @@ class SignalHealthProbe:
         self._lock = threading.Lock()
         self._status = SignalHealthStatus()
         self._warned_unidentified = False
+        self._warned_cadence = False
 
     def set_event_sink(
         self, on_event: Callable[[str, AwarenessLevel], None]
@@ -111,6 +125,9 @@ class SignalHealthProbe:
                 probed_at=self._status.probed_at,
                 journal_changed=self._status.journal_changed,
                 probe_errors=self._status.probe_errors,
+                producer_cadence_s=self._status.producer_cadence_s,
+                budget_suspended=self._status.budget_suspended,
+                budget_reason=self._status.budget_reason,
             )
 
     def probe_once(self) -> None:
@@ -119,14 +136,22 @@ class SignalHealthProbe:
         journal_id = payload.get('journal_id') or None
         journal_name = payload.get('environment') or UNRESOLVED_JOURNAL_NAME
 
+        budget = payload.get('budget') or {}
+        suspended = bool(budget.get('suspended'))
+        cadence = self._read_cadence(payload)
+
         with self._lock:
             previous = self._status.journal_id
             changed = previous is not None and journal_id != previous
+            was_suspended = self._status.budget_suspended
             self._status.journal_id = journal_id
             self._status.journal_name = journal_name if journal_id else ''
             self._status.engine_version = payload.get('version') or ''
             self._status.pass_timeout_s = payload.get('pass_timeout_seconds')
             self._status.probed_at = datetime.now(timezone.utc)
+            self._status.producer_cadence_s = cadence
+            self._status.budget_suspended = suspended
+            self._status.budget_reason = budget.get('reason')
             if changed:
                 self._status.journal_changed = True
             first_answer = previous is None and not changed
@@ -135,6 +160,74 @@ class SignalHealthProbe:
             self._report_change(previous, journal_id, journal_name)
         elif first_answer:
             self._report_first(journal_id, journal_name)
+        if suspended != was_suspended:
+            self._report_budget(suspended, budget.get('reason'))
+        self._check_cadence(cadence)
+
+    def _read_cadence(self, payload: dict) -> Optional[float]:
+        """
+        How often the producer evaluates the source we consume.
+
+        Args:
+            payload: The decoded health document
+
+        Returns:
+            The producer's interval in seconds, or None when it names no worker for us
+        """
+        if not self._pipeline_id:
+            return None
+        wanted = f'eval:{self._pipeline_id}'
+        for worker in payload.get('workers') or []:
+            if worker.get('name') == wanted:
+                interval = worker.get('interval_seconds')
+                return float(interval) if interval is not None else None
+        return None
+
+    def _check_cadence(self, cadence: Optional[float]) -> None:
+        """
+        Report a producer cadence that no longer matches what we configured.
+
+        The configured value drives our staleness threshold, so a producer that slowed
+        down turns a healthy feed into one that keeps tripping the contract — and a
+        producer that sped up hides a genuine outage inside the tolerance.
+
+        Args:
+            cadence: The producer's reported interval in seconds
+        """
+        if cadence is None or self._source is None or self._warned_cadence:
+            return
+        configured = self._source.cadence_minutes * 60.0
+        if configured <= 0 or abs(cadence - configured) <= configured * CADENCE_TOLERANCE:
+            return
+        self._warned_cadence = True
+        self._emit(f"cadence {cadence:.0f}s vs configured {configured:.0f}s",
+                   AwarenessLevel.NOTICE)
+        self._logger.warning(
+            f"📡 Producer evaluates {self._pipeline_id} every {cadence:.0f}s, but "
+            f"sentiment_config.json has {configured:.0f}s. The configured value drives "
+            f"the staleness threshold — reconcile the two.")
+
+    def _report_budget(self, suspended: bool, reason: Optional[str]) -> None:
+        """
+        Report that the producer started or stopped evaluating for budget reasons.
+
+        A suspended budget reaches us as silence and nothing else: the transport stays
+        healthy, envelopes simply stop. Naming the cause here is what separates "the
+        producer ran out of money" from "the producer died".
+
+        Args:
+            suspended: Whether the producer is currently withholding evaluations
+            reason: What the producer says about it
+        """
+        if suspended:
+            detail = f": {reason}" if reason else ''
+            self._emit('producer budget suspended', AwarenessLevel.ALERT)
+            self._logger.warning(
+                f"📡 Producer budget suspended{detail} — it has stopped evaluating, so "
+                f"the feed will fall silent while the transport stays healthy.")
+            return
+        self._emit('producer budget resumed', AwarenessLevel.INFO)
+        self._logger.info('📡 Producer budget resumed — evaluations continue.')
 
     def _run(self) -> None:
         """Probe until stopped, treating an unreachable producer as non-fatal."""

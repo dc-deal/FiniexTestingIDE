@@ -35,7 +35,7 @@ merged into the existing feed line:
 A healthy transport with a stale signal is a quiet producer. A dead transport with a fresh signal is
 a session about to go blind without noticing.
 
-**Total Tests:** 19
+**Total Tests:** 21
 
 | Group | What it pins |
 |---|---|
@@ -44,6 +44,7 @@ a session about to go blind without noticing.
 | the tape | newest first; hidden events are **counted**, not silently dropped |
 | trouble | degraded producer and transport errors are visible and counted; **a healthy transport shows no issue line** — noise in the quiet case is how a panel stops being read |
 | journal identity | the producer's `journal_id` is shown with its name beside it, never the name alone; an unresolved name is **not** an alarm while an unidentified journal is; a mid-session change is marked; no probe renders no line at all |
+| producer budget | a suspended producer is named with its reason; a healthy one adds no line at all |
 | age rendering | the unit scales with the magnitude (`42s` / `2m` / `2.0h`) |
 
 **Why it is tested rather than eyeballed:** the panel is read exactly when something is wrong, and a

@@ -122,6 +122,24 @@ The probe runs every 30 minutes by default (`health.interval_s`) and borrows the
 transport's address — the question is which journal is *delivering*, so a second
 address could answer about an engine that is not the one supplying envelopes.
 
+The same probe reads two more things off the health document, both of which explain a
+silence you would otherwise have to guess at:
+
+- **The producer's own cadence for your source.** It is the authoritative version of
+  `sources.<id>.cadence_minutes`, which drives your staleness threshold. A drift is
+  reported once — a producer that slowed down makes a healthy feed trip the contract
+  repeatedly, one that sped up hides a real outage inside the tolerance.
+- **A suspended producer budget.** When the producer stops evaluating to stay inside a
+  spending limit, that reaches you as silence and nothing else: the transport stays
+  green, envelopes stop. The panel names it, so you are not looking for a fault on your
+  own side.
+
+```
+Signal Feed:    ● live   epoch 1  seq 4914
+Journal:        9c3fa4c80d95  (dev)
+Producer:       ⚠ budget suspended — daily cap reached
+```
+
 **A degraded producer is not an outage.** When the producer cannot serve from its
 store it says so explicitly, and the transport backs off rather than hammering it.
 That shows as `degraded` with a count — distinct from `error`, which is the

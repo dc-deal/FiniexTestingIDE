@@ -164,6 +164,14 @@ resolved from a mapping on the producer's machine and may be renamed at any time
   the flag is **sticky**: it describes the session, not the current answer. Losing an identity
   counts as a change too. An unchanged journal stays silent — half-hourly probes over a multi-week
   run must not narrate themselves.
+- **Producer cadence** — the health document names how often the producer evaluates *our* source,
+  which is the authoritative version of a value we otherwise only configure. A drift is reported
+  once, because the configured value drives the staleness threshold: a producer that slowed down
+  turns a healthy feed into one that keeps tripping the contract, and one that sped up hides a real
+  outage inside the tolerance. Another pipeline's worker must never answer for ours.
+- **Producer budget** — a producer that stops evaluating to save money reaches us as **silence and
+  nothing else**: the transport stays healthy, envelopes simply stop. Only the transition is
+  reported (in both directions), so a long suspension does not repeat itself across a multi-week run.
 - **Lifecycle** — an unreachable producer never raises; a failed probe never erases what is known.
 
 ### test_signal_evidence_regression.py (RC-4, #141 Part 2a)
