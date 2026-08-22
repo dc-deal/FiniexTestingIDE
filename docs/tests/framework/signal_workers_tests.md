@@ -131,6 +131,40 @@ real server.
   kept.
 - **Auth** — the header is sent only when a token is configured.
 - **Lifecycle** — an unreachable producer never raises into the loop; stop is idempotent.
+- **Transport state** — the state must describe the transport *now*, not at the last arrival.
+  The producer's beat is far longer than the poll interval, so most polls legitimately return an
+  already-seen envelope and leave through the early return. A state that recovered only on arrival
+  left a transient fault on the panel until the producer happened to publish again — **a healthy
+  feed reading as a broken one**, the exact misreading the panel exists to prevent.
+- **Health probe** — starts and stops with the transport it accompanies; its identity reaches both
+  the panel and the shared tape. Without a probe the identity is reported as unknown, never
+  fabricated.
+
+### test_signal_health_probe.py (#141 Part 2a)
+
+Which producer journal a live session consumed from. Same local-stub discipline as the poll source.
+
+The probe exists because **nothing on an envelope says which store it came from**. Two producer
+instances share a schema, a `pipeline_id` and a `seq` range, so a measurement taken against a
+development instance is indistinguishable from one taken against the series a release is certified
+on. The producer answers on its health endpoint and nowhere else.
+
+The asymmetry the tests pin, because it is the whole point: **the id binds and the name does not.**
+The id fingerprints the producer's database cluster and is fixed at its creation; the name is
+resolved from a mapping on the producer's machine and may be renamed at any time.
+
+- **Identity** — id, name, engine version and pass timeout are recorded from `/v1/health`; a name
+  the producer could not resolve degrades to `unknown` **without** the id losing its meaning; the
+  identity is written to the session logger, because a screen cannot be read after the run.
+- **Unidentified** — a `null` journal is a real answer (no store attached, or an identifier the
+  producer's role may not read), distinct from "the probe has not run". Warned once, not on every
+  cycle; an identity that arrives later is not treated as a change.
+- **Change** — the case the cyclic cadence exists for. The cursor built so far belongs to the
+  previous journal, so a change is reported as an **error** (reaching the session summary, §35) and
+  the flag is **sticky**: it describes the session, not the current answer. Losing an identity
+  counts as a change too. An unchanged journal stays silent — half-hourly probes over a multi-week
+  run must not narrate themselves.
+- **Lifecycle** — an unreachable producer never raises; a failed probe never erases what is known.
 
 ### test_signal_evidence_regression.py (RC-4, #141 Part 2a)
 

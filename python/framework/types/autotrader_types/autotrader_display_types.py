@@ -19,6 +19,7 @@ from python.framework.types.trading_env_types.order_types import CloseType, Orde
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
+from python.framework.types.signal_data_types import SignalHealthStatus
 
 
 @dataclass
@@ -165,6 +166,9 @@ class SignalTransportStats:
         transport_errors: Times the transport itself failed
         tape: Bounded, newest-last transport events
         total_events: Events emitted over the session (the tape shows the tail)
+        health: Which producer journal the envelopes come from — the one fact no
+            envelope carries, and the one a later reader needs to know which series
+            a session's measurements belong to
     """
     configured: bool = False
     state: str = 'mounted'
@@ -177,6 +181,7 @@ class SignalTransportStats:
     transport_errors: int = 0
     tape: List[SignalTransportEvent] = field(default_factory=list)
     total_events: int = 0
+    health: SignalHealthStatus = field(default_factory=SignalHealthStatus)
 
 
 @dataclass

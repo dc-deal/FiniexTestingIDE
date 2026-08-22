@@ -28,6 +28,7 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.signal_data.signal_inbox import SignalInbox
+from python.framework.signal_data.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -676,14 +677,31 @@ class AutotraderMain:
                 'Signal transport is enabled but poll.pipeline_id is empty — '
                 'name the producer pipeline in sentiment_config.json.')
 
+        api_token = SentimentConfigManager().resolve_api_token(
+            poll_config.credentials_file)
+
+        # The probe borrows the transport's address on purpose: the question it answers
+        # is which journal these envelopes come from, so asking a second address could
+        # answer about an engine that is not the one delivering.
+        health_config = SentimentConfigManager().get_config().health
+        health_probe = (
+            SignalHealthProbe(
+                config=health_config,
+                base_url=poll_config.base_url,
+                logger=self._session_logger,
+                api_token=api_token,
+            )
+            if health_config.enabled else None
+        )
+
         self._signal_inbox = SignalInbox()
         self._signal_transport = SignalPollSource(
             config=poll_config,
             signal_kind=signal_kinds.pop(),
             inbox=self._signal_inbox,
             logger=self._session_logger,
-            api_token=SentimentConfigManager().resolve_api_token(
-                poll_config.credentials_file),
+            api_token=api_token,
+            health_probe=health_probe,
         )
         self._signal_transport.start()
         self._print_startup_phase('Signal transport running')

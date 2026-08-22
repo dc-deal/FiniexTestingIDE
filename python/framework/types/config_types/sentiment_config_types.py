@@ -68,10 +68,30 @@ class SentimentPollConfig(BaseModel):
     degraded_backoff_s: float = 300.0
 
 
+class SentimentHealthConfig(BaseModel):
+    """
+    How often the producer engine is asked who it is.
+
+    Deliberately has no address of its own: the probe borrows the active transport's
+    base_url, because the question it answers is "which journal am I consuming from",
+    not "is some engine up". A third address to keep in sync could drift away from the
+    one actually delivering envelopes, which is exactly the confusion this prevents.
+
+    Cyclic rather than once at startup: the transport is a series of independent GETs
+    against a static address, so nothing would notice if the producer were redeployed
+    behind it. A journal change mid-session invalidates the cursor built against the
+    previous one, so it must be seen rather than assumed away.
+    """
+    enabled: bool = True
+    interval_s: float = 1800.0
+    request_timeout_s: float = 10.0
+
+
 class SentimentConfig(BaseModel):
     """Root of sentiment_config.json."""
     stream: SentimentStreamConfig = Field(default_factory=SentimentStreamConfig)
     poll: SentimentPollConfig = Field(default_factory=SentimentPollConfig)
+    health: SentimentHealthConfig = Field(default_factory=SentimentHealthConfig)
     sources: Dict[str, SentimentSourceConfig] = Field(default_factory=dict)
 
     def get_source(self, pipeline_id: str) -> Optional[SentimentSourceConfig]:

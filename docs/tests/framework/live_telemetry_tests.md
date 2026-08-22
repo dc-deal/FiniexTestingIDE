@@ -35,7 +35,7 @@ merged into the existing feed line:
 A healthy transport with a stale signal is a quiet producer. A dead transport with a fresh signal is
 a session about to go blind without noticing.
 
-**Total Tests:** 13
+**Total Tests:** 19
 
 | Group | What it pins |
 |---|---|
@@ -43,6 +43,7 @@ a session about to go blind without noticing.
 | live transport | position (`epoch`/`seq`) and envelope age; `awaiting first envelope` before the first arrival, never a bare `None` |
 | the tape | newest first; hidden events are **counted**, not silently dropped |
 | trouble | degraded producer and transport errors are visible and counted; **a healthy transport shows no issue line** — noise in the quiet case is how a panel stops being read |
+| journal identity | the producer's `journal_id` is shown with its name beside it, never the name alone; an unresolved name is **not** an alarm while an unidentified journal is; a mid-session change is marked; no probe renders no line at all |
 | age rendering | the unit scales with the magnitude (`42s` / `2m` / `2.0h`) |
 
 **Why it is tested rather than eyeballed:** the panel is read exactly when something is wrong, and a
@@ -50,4 +51,11 @@ panel that answers a question it was not asked is worse than none. The tape's ow
 point — it originally rendered a pass's `trigger_reason` as a bare `breaking`, next to a worker
 reporting `is_breaking: False` for the traded symbol. Both values were correct; the rendering
 conflated a **pass property** with a **row verdict**. It now reads `seq N · breaking pass`.
+
+The journal line is the same kind of distinction one level up. `Journal: 9c3fa4c80d95 (dev)` shows
+the fingerprint of the producer's store *and* the label its own machine maps that fingerprint to.
+Only the first binds: the label lives in a per-machine config on the producer side and can be
+renamed, so a panel showing the name alone would show a claim. The tests pin that the id survives an
+unresolved name, and that `⚠ unidentified` — the producer naming no journal at all — is rendered as
+the different thing it is: not a probe that has not run, but a session nothing can certify.
 

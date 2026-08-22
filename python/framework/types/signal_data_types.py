@@ -294,6 +294,53 @@ class SignalResolutionStats:
     off_tick_arrivals: int = 0
 
 
+@dataclass
+class SignalHealthStatus:
+    """
+    Identity of the producer engine a live session is consuming from (#141 Part 2a).
+
+    Exists because nothing on an envelope says which store it came from. Two producer
+    instances can share a schema, a pipeline_id and a seq range, so a measurement taken
+    against a development instance is indistinguishable from one taken against the
+    series a release is certified on — unless the journal is asked and recorded.
+
+    The id binds and the name does not: the id is a fingerprint of the producer's
+    database cluster, fixed at its creation, while the name is looked up from a
+    per-machine mapping on the producer side and may be renamed at any time. Certify
+    against the id, read the name.
+
+    Args:
+        journal_id: Cluster fingerprint, None when the producer has no store attached
+            or cannot read its own identifier — either way the session is not certifiable
+        journal_name: The producer's label for that journal, 'unknown' when its lookup
+            missed, empty before the first answer
+        engine_version: Producer version string
+        pass_timeout_s: How long a producer pass may run — bounds how late an envelope
+            can legitimately be
+        probed_at: When the last answer arrived (wall clock: this measures our
+            observation, not market time)
+        journal_changed: Set once the identity changed mid-session. Sticky, because the
+            cursor built against the previous journal is meaningless in the new one
+        probe_errors: Times the probe could not reach the producer
+    """
+    journal_id: Optional[str] = None
+    journal_name: str = ''
+    engine_version: str = ''
+    pass_timeout_s: Optional[float] = None
+    probed_at: Optional[datetime] = None
+    journal_changed: bool = False
+    probe_errors: int = 0
+
+    def is_identified(self) -> bool:
+        """
+        Whether the producer named a journal.
+
+        Returns:
+            True when an identity is known
+        """
+        return bool(self.journal_id)
+
+
 # Sentinel `symbol` value for an envelope-level parquet row (#429). One is emitted per
 # envelope so every envelope's collected_msc stays resolvable for EVERY covered symbol —
 # preserving the v0 behavior where a partial/error snapshot (symbol absent) still resolves

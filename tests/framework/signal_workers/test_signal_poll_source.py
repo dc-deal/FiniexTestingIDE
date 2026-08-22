@@ -15,9 +15,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from python.framework.signal_data.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.signal_inbox import SignalInbox
 from python.framework.signal_data.signal_poll_source import SignalPollSource
-from python.framework.types.config_types.sentiment_config_types import SentimentPollConfig
+from python.framework.types.config_types.sentiment_config_types import (
+    SentimentHealthConfig, SentimentPollConfig)
+from python.framework.types.decision_logic_types import AwarenessLevel
+from python.framework.types.signal_data_types import SignalHealthStatus
 
 SIGNAL_KIND = 'llm_sentiment'
 
@@ -91,13 +95,14 @@ class _Stub:
         return f'http://127.0.0.1:{self.server.server_port}'
 
 
-def build(stub, inbox, token: str = '') -> SignalPollSource:
+def build(stub, inbox, token: str = '', health_probe=None) -> SignalPollSource:
     """A poll source pointed at the stub."""
     return SignalPollSource(
         config=SentimentPollConfig(
             enabled=True, base_url=stub.base_url, pipeline_id='crypto_sentiment',
             interval_s=0.05, request_timeout_s=3.0, degraded_backoff_s=0.05),
-        signal_kind=SIGNAL_KIND, inbox=inbox, logger=MagicMock(), api_token=token)
+        signal_kind=SIGNAL_KIND, inbox=inbox, logger=MagicMock(), api_token=token,
+        health_probe=health_probe)
 
 
 class TestArrival:
@@ -178,6 +183,85 @@ class TestDegradedProducer:
             source = build(stub, inbox)
             assert source._poll_once() is False
         assert len(inbox.drain()[SIGNAL_KIND]) == 1
+
+
+class TestTransportState:
+    """
+    What the operator panel says the transport is doing.
+
+    The state is the one thing that distinguishes a dead feed from a quiet market, so it
+    has to describe the transport NOW rather than at the last arrival. The producer's beat
+    is far longer than the poll interval, so most polls legitimately return an already-seen
+    envelope — a state that only recovered on arrival left a healthy feed reading as a
+    broken one for as long as the producer took to publish again.
+    """
+
+    def test_recovery_is_not_gated_on_a_new_envelope(self):
+        """The precondition a transport fault leaves behind, then a poll that changes nothing."""
+        inbox = SignalInbox()
+        with _Stub([envelope(23)]) as stub:
+            source = build(stub, inbox)
+            source._poll_once()
+            source._state = 'error'
+            source._poll_once()
+            assert source.get_transport_stats().state == 'live'
+
+    def test_recovery_after_a_degraded_answer(self):
+        inbox = SignalInbox()
+        with _Stub([store_unavailable(), envelope(23), envelope(23)]) as stub:
+            source = build(stub, inbox)
+            source._poll_once()
+            assert source.get_transport_stats().state == 'degraded'
+            source._poll_once()
+            source._poll_once()
+            assert source.get_transport_stats().state == 'live'
+
+    def test_a_degraded_answer_does_not_read_as_live(self):
+        inbox = SignalInbox()
+        with _Stub([envelope(23), store_unavailable()]) as stub:
+            source = build(stub, inbox)
+            source._poll_once()
+            source._poll_once()
+            assert source.get_transport_stats().state == 'degraded'
+
+
+class TestHealthProbe:
+    """The identity probe rides along with the transport that borrows its address."""
+
+    def test_the_probe_starts_and_stops_with_the_transport(self):
+        probe = MagicMock()
+        with _Stub([envelope(23)]) as stub:
+            source = build(stub, SignalInbox(), health_probe=probe)
+            source.start()
+            source.stop()
+        probe.set_event_sink.assert_called_once()
+        probe.start.assert_called_once()
+        probe.stop.assert_called_once()
+
+    def test_the_identity_reaches_the_panel(self):
+        probe = MagicMock()
+        probe.get_status.return_value = SignalHealthStatus(
+            journal_id='9c3fa4c80d95', journal_name='dev')
+        with _Stub([envelope(23)]) as stub:
+            source = build(stub, SignalInbox(), health_probe=probe)
+            assert source.get_transport_stats().health.journal_id == '9c3fa4c80d95'
+
+    def test_without_a_probe_the_identity_is_simply_unknown(self):
+        """A transport with no probe reports an unidentified journal, never a fabricated one."""
+        with _Stub([envelope(23)]) as stub:
+            source = build(stub, SignalInbox())
+            assert not source.get_transport_stats().health.is_identified()
+
+    def test_identity_moments_land_on_the_transport_tape(self):
+        """One tape, so the operator reads arrivals and identity in the same place."""
+        with _Stub([envelope(23)]) as stub:
+            probe = SignalHealthProbe(
+                config=SentimentHealthConfig(interval_s=0.05),
+                base_url=stub.base_url, logger=MagicMock())
+            source = build(stub, SignalInbox(), health_probe=probe)
+            probe._emit('journal 9c3fa4c80d95 (dev)', AwarenessLevel.INFO)
+            tape = source.get_transport_stats().tape
+        assert any('9c3fa4c80d95' in event.message for event in tape)
 
 
 class TestAuth:

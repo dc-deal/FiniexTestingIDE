@@ -90,6 +90,38 @@ knowing about because it reads like a signal and is not:
 > suspicion raised at ingest; `is_breaking` is the verdict after evaluation. React
 > to the verdict.
 
+**Which producer answered.** Nothing on an envelope says which store it came from.
+Two producer instances share a schema, a `pipeline_id` and a `seq` range, so a session
+against a development instance and one against the certified series look identical —
+on screen and in the archive. The producer answers the question on its health endpoint
+and nowhere else, so the transport asks it and the panel shows the answer:
+
+```
+Signal Feed:    ● live   epoch 1  seq 4914
+Journal:        9c3fa4c80d95  (dev)
+```
+
+The **id binds and the name does not**. The id is a fingerprint of the producer's
+database cluster, fixed when that cluster was created; the name is looked up from a
+mapping on the producer's machine and can be renamed at any time. Read the name, judge
+by the id.
+
+| Panel | Means |
+|---|---|
+| `9c3fa4c80d95  (dev)` | identified, named |
+| `138c68e48b15  (unknown)` | identified; the producer's own name lookup missed. Not a fault |
+| `⚠ unidentified` | the producer named no journal — no store attached, or it cannot read its identifier. **Nothing certifies this session** |
+| `… ⚠ CHANGED` | the identity changed mid-session |
+
+A **change mid-session** is the case the cyclic probe exists for: the `seq` position on
+the line above was built against the previous journal and does not carry over, so a
+session that spans two journals spans two series. It is logged as an error, which means
+it also reaches the session summary rather than only the screen.
+
+The probe runs every 30 minutes by default (`health.interval_s`) and borrows the
+transport's address — the question is which journal is *delivering*, so a second
+address could answer about an engine that is not the one supplying envelopes.
+
 **A degraded producer is not an outage.** When the producer cannot serve from its
 store it says so explicitly, and the transport backs off rather than hammering it.
 That shows as `degraded` with a count — distinct from `error`, which is the

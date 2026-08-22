@@ -20,12 +20,13 @@ from collections import deque
 from typing import Deque, Optional, Tuple
 
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.signal_data.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.signal_inbox import SignalInbox
 from python.framework.types.autotrader_types.autotrader_display_types import (
     SignalTransportEvent, SignalTransportStats)
 from python.framework.types.config_types.sentiment_config_types import SentimentPollConfig
 from python.framework.types.decision_logic_types import AwarenessLevel
-from python.framework.types.signal_data_types import SignalSnapshot
+from python.framework.types.signal_data_types import SignalHealthStatus, SignalSnapshot
 
 # The producer serves /latest from its store and never runs a pass for it. When the store
 # cannot answer, it says so in the contract's error envelope instead of degrading to a
@@ -54,6 +55,7 @@ class SignalPollSource:
         inbox: SignalInbox,
         logger: ScenarioLogger,
         api_token: str = '',
+        health_probe: Optional[SignalHealthProbe] = None,
     ):
         """
         Initialize the poll source.
@@ -64,12 +66,15 @@ class SignalPollSource:
             inbox: Hand-off buffer drained by the loop
             logger: Session logger — operator-relevant failures belong here (§35)
             api_token: Bearer token; empty means send no Authorization header
+            health_probe: Optional producer-identity probe, started and stopped with
+                this transport because it borrows this transport's address
         """
         self._config = config
         self._signal_kind = signal_kind
         self._inbox = inbox
         self._logger = logger
         self._api_token = api_token
+        self._health_probe = health_probe
         self._url = (f"{config.base_url.rstrip('/')}"
                      f"/v1/pipelines/{config.pipeline_id}/latest")
 
@@ -91,6 +96,8 @@ class SignalPollSource:
         self._tape: Deque[SignalTransportEvent] = deque(maxlen=TAPE_LENGTH)
         self._total_events = 0
         self._stats_lock = threading.Lock()
+        if health_probe is not None:
+            health_probe.set_event_sink(self._record)
 
     def start(self) -> None:
         """Start polling on a background thread."""
@@ -99,6 +106,8 @@ class SignalPollSource:
         self._thread = threading.Thread(
             target=self._run, name='signal-poll', daemon=True)
         self._thread.start()
+        if self._health_probe is not None:
+            self._health_probe.start()
         self._record(f"connected — {self._config.interval_s:.0f}s cadence")
         self._logger.info(
             f"📡 Signal poll started: {self._url} every {self._config.interval_s:.0f}s")
@@ -106,6 +115,8 @@ class SignalPollSource:
     def stop(self) -> None:
         """Stop polling and wait for the thread to finish."""
         self._stop.set()
+        if self._health_probe is not None:
+            self._health_probe.stop()
         if self._thread is not None:
             self._thread.join(timeout=self._config.request_timeout_s + 2.0)
             self._thread = None
@@ -120,7 +131,8 @@ class SignalPollSource:
         Returns:
             (polls made, envelopes enqueued, degraded responses)
         """
-        return self._polls, self._enqueued, self._degraded
+        with self._stats_lock:
+            return self._polls, self._enqueued, self._degraded
 
     def get_transport_stats(self) -> SignalTransportStats:
         """
@@ -132,6 +144,8 @@ class SignalPollSource:
         Returns:
             The current transport view
         """
+        health = (self._health_probe.get_status()
+                  if self._health_probe is not None else SignalHealthStatus())
         with self._stats_lock:
             return SignalTransportStats(
                 configured=True,
@@ -145,6 +159,7 @@ class SignalPollSource:
                 transport_errors=self._transport_errors,
                 tape=list(self._tape),
                 total_events=self._total_events,
+                health=health,
             )
 
     def _record(self, message: str, level: AwarenessLevel = AwarenessLevel.INFO) -> None:
@@ -168,8 +183,9 @@ class SignalPollSource:
                 if self._poll_once():
                     wait_s = self._config.degraded_backoff_s
             except Exception as error:   # noqa: BLE001 — a transport fault never stops the loop
-                self._transport_errors += 1
-                self._state = 'error'
+                with self._stats_lock:
+                    self._transport_errors += 1
+                    self._state = 'error'
                 self._record(f"transport failed: {type(error).__name__}",
                              AwarenessLevel.ALERT)
                 self._logger.warning(f"📡 Signal poll failed: {error}")
@@ -182,12 +198,14 @@ class SignalPollSource:
         Returns:
             True when the producer reported it could not serve from its store (back off)
         """
-        self._polls += 1
+        with self._stats_lock:
+            self._polls += 1
         payload = self._fetch()
 
         if self._is_store_unavailable(payload):
-            self._degraded += 1
-            self._state = 'degraded'
+            with self._stats_lock:
+                self._degraded += 1
+                self._state = 'degraded'
             detail = (payload.get('errors') or [{}])[0].get('message', '')
             self._record(f"producer store unavailable — backing off "
                          f"{self._config.degraded_backoff_s:.0f}s", AwarenessLevel.NOTICE)
@@ -195,6 +213,16 @@ class SignalPollSource:
                 f"📡 Producer store unavailable, backing off "
                 f"{self._config.degraded_backoff_s:.0f}s: {detail}")
             return True
+
+        # The producer served an envelope, so whatever fault the state carries is over.
+        # Recovery belongs HERE and not where a new envelope lands: the producer's beat is
+        # far longer than the poll interval, so most polls legitimately return an
+        # already-seen envelope and leave through the early return below. Recovering only
+        # on arrival left a transient fault on the operator panel until the producer
+        # happened to publish again — a healthy feed reading as a dead one, which is the
+        # exact misreading this panel exists to prevent.
+        with self._stats_lock:
+            self._state = 'live'
 
         received = datetime.now(timezone.utc)
         snapshot = SignalSnapshot.model_validate(
@@ -206,9 +234,8 @@ class SignalPollSource:
         self._last_identity = identity
 
         self._inbox.put(self._signal_kind, [snapshot])
-        self._enqueued += 1
         with self._stats_lock:
-            self._state = 'live'
+            self._enqueued += 1
             self._last_seq = snapshot.seq
             self._last_epoch = snapshot.stream_epoch
             self._last_envelope_at = snapshot.get_resolution_key()

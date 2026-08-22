@@ -860,8 +860,9 @@ class AutoTraderLiveDisplay:
         lines = [
             '',
             f'[{color}]Signal Feed:    {marker} {transport.state}   {position}[/{color}]',
-            f'Last Envelope:  {age_str}',
         ]
+        lines.extend(self._build_journal_lines(transport.health))
+        lines.append(f'Last Envelope:  {age_str}')
         if transport.degraded_responses or transport.transport_errors:
             lines.append(
                 f'[yellow]Feed Issues:    {transport.degraded_responses} degraded · '
@@ -878,6 +879,33 @@ class AutoTraderLiveDisplay:
             if hidden > 0:
                 lines.append(f'[dim]  … (+{hidden} older feed events)[/dim]')
         return lines
+
+    def _build_journal_lines(self, health) -> list:
+        """
+        Producer-identity line for the CONNECTION panel (#141 Part 2a).
+
+        The id is shown and the name is shown beside it, never the name alone: the id is
+        a fingerprint of the producer's store and binds, while the name is resolved from
+        a mapping on the producer's machine and can be renamed at any time. A run judged
+        by the label alone is a run judged by a claim.
+
+        Args:
+            health: Producer identity as last probed
+
+        Returns:
+            Lines to append (empty when no probe is attached)
+        """
+        if health.probed_at is None and not health.probe_errors:
+            return []
+        if not health.is_identified():
+            # A real answer, not a missing one: the producer has no store attached or
+            # cannot read its own identifier. Either way nothing certifies this session.
+            return ['[red]Journal:        ⚠ unidentified[/red]']
+        if health.journal_changed:
+            return [f'[bold red]Journal:        {health.journal_id} '
+                    f'({health.journal_name})  ⚠ CHANGED[/bold red]']
+        return [f'Journal:        {health.journal_id}  '
+                f'[dim]({health.journal_name})[/dim]']
 
     @staticmethod
     def _format_age(age_s: float) -> str:

@@ -18,6 +18,7 @@ import pytest
 from python.framework.types.autotrader_types.autotrader_display_types import (
     SignalTransportEvent, SignalTransportStats)
 from python.framework.types.decision_logic_types import AwarenessLevel
+from python.framework.types.signal_data_types import SignalHealthStatus
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
 
 
@@ -112,6 +113,64 @@ class TestTrouble:
                                        AwarenessLevel.ALERT)],
             total_events=1))
         assert 'bold red' in out
+
+
+class TestJournalIdentity:
+    """
+    Which producer journal the envelopes came from — the one fact no envelope carries.
+
+    Shown because two producer instances share a schema, a pipeline_id and a seq range, so
+    a session against a development instance and one against the certified series are
+    indistinguishable on screen without it.
+    """
+
+    def test_the_id_is_shown_with_its_name(self, now):
+        out = render(SignalTransportStats(
+            configured=True, state='live', last_seq=4914,
+            health=SignalHealthStatus(journal_id='9c3fa4c80d95', journal_name='dev',
+                                      probed_at=now)))
+        assert '9c3fa4c80d95' in out
+        assert 'dev' in out
+
+    def test_no_probe_renders_no_journal_line(self):
+        """A transport without a probe must not render an empty identity."""
+        out = render(SignalTransportStats(configured=True, state='live', last_seq=4914))
+        assert 'Journal' not in out
+
+    def test_an_unnamed_journal_still_shows_its_id(self, now):
+        """The id binds; a missed name lookup on the producer side is not an alarm."""
+        out = render(SignalTransportStats(
+            configured=True, state='live',
+            health=SignalHealthStatus(journal_id='138c68e48b15', journal_name='unknown',
+                                      probed_at=now)))
+        assert '138c68e48b15' in out
+        assert 'red' not in out
+
+    def test_unidentified_is_marked(self, now):
+        """No store attached or an unreadable identifier — the session is not certifiable."""
+        out = render(SignalTransportStats(
+            configured=True, state='live',
+            health=SignalHealthStatus(journal_id=None, probed_at=now)))
+        assert 'unidentified' in out
+        assert 'red' in out
+
+    def test_a_changed_journal_is_marked(self, now):
+        """The seq position on the line above belongs to the previous journal."""
+        out = render(SignalTransportStats(
+            configured=True, state='live', last_seq=4914,
+            health=SignalHealthStatus(journal_id='138c68e48b15', journal_name='production',
+                                      probed_at=now, journal_changed=True)))
+        assert 'CHANGED' in out
+        assert 'bold red' in out
+
+    def test_the_journal_line_sits_above_the_arrival_age(self, now):
+        """Identity qualifies the position; both belong to the same reading."""
+        out = render(SignalTransportStats(
+            configured=True, state='live', last_seq=4914, last_envelope_at=now,
+            health=SignalHealthStatus(journal_id='9c3fa4c80d95', journal_name='dev',
+                                      probed_at=now)))
+        assert out.index('Journal:') < out.index('Last Envelope:')
+        assert out.index('Signal Feed:') < out.index('Journal:')
 
 
 class TestAgeRendering:

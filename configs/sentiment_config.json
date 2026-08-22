@@ -20,6 +20,12 @@
     "degraded_backoff_s": 300.0
   },
 
+  "health": {
+    "enabled": true,
+    "interval_s": 1800.0,
+    "request_timeout_s": 10.0
+  },
+
   "sources": {
     "crypto_sentiment": {
       "continuous": true,
