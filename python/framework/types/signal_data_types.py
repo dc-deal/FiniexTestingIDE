@@ -12,9 +12,25 @@ fields are the strict contract).
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (BaseModel, ConfigDict, Field, field_validator,
+                      model_validator)
+
+
+def _epoch_ms_to_utc(value):
+    """
+    Normalize an epoch-millisecond number to a UTC datetime.
+
+    Args:
+        value: Epoch-ms int/float, an ISO string, a datetime, or None
+
+    Returns:
+        A tz-aware UTC datetime for a number; the value unchanged otherwise
+    """
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return datetime.fromtimestamp(value / 1000.0, tz=timezone.utc)
+    return value
 
 
 class ArticleRef(BaseModel):
@@ -48,7 +64,23 @@ class SentimentResult(BaseModel):
     urgency: float = 0.0              # 0.0 .. 1.0 (breaking gate input)
     is_breaking: bool = False
     basis: str = ''                   # signal quality: llm / no_data / degraded
+    # Newest evidence the row rests on (max fetched_at across its sources). None when the
+    # row rests on no evidence at all — which coincides with basis 'no_data'. Per row and
+    # not per envelope on purpose: within one envelope some symbols have evidence and
+    # others do not, so an envelope-level maximum would report freshness to a row that has
+    # none. Lets a decision discount an envelope resting on older evidence than one it
+    # already acted on (the producer runs passes concurrently, so a higher seq can carry
+    # older evidence).
+    evidence_as_of: Optional[datetime] = None
+    breaking_episode_id: str = ''          # story identity — distinguishes a new story from a continuing one
+    breaking_episode_start: Optional[datetime] = None
     sources: List[ArticleRef] = Field(default_factory=list)
+
+    @field_validator('evidence_as_of', 'breaking_episode_start', mode='before')
+    @classmethod
+    def _coerce_epoch_ms(cls, value):
+        """Normalize epoch-ms (int) → UTC datetime; pass ISO/datetime/None through."""
+        return _epoch_ms_to_utc(value)
 
 
 class AnalysisEnvelope(BaseModel):
@@ -62,16 +94,65 @@ class AnalysisEnvelope(BaseModel):
     schema_version: str
     pipeline_id: str = ''
     outcome_type: str = ''
+    # Stream identity (#141 Part 2a). seq is a per-pipeline, gapless counter minted in the
+    # producer's insert transaction; stream_epoch changes only when the producer's series
+    # was reset. Together they are the ordering primitive AND the dedupe key —
+    # (stream_epoch, seq) lexicographic is a total chronological order with no clock in it,
+    # because an epoch changes only at boot. seq is unique WITHIN an epoch, not globally.
+    # Absent on archive lines predating the stream contract.
+    seq: Optional[int] = None
+    stream_epoch: Optional[int] = None
+    # Why this pass ran: scheduled / boot / breaking / manual / external. Top-level since the
+    # producer promoted it out of metadata; older archive lines carry it at metadata.trigger_reason
+    # and are normalized on read. It is the ONLY way to tell a scheduled pass from an
+    # out-of-band one — timing cannot, because the envelope is stamped at the end of a
+    # variable-length run, so scheduled passes land off-grid too.
+    trigger_reason: str = ''
     prompt_version: str = ''
     prompt_id: str = ''                    # prompt identity — traceability, must not be lost
     prompt_hash: str = ''                  # prompt content hash — traceability
     data_origin: str = ''                  # 'synthetic' / 'live'; empty = producer predates the field
     config_fingerprint: str = ''           # hash of the producer's effective input config; empty = pre-contract
     timestamp: Optional[datetime] = None   # analysis wall-clock — NOT the merge key
+    # When the envelope became fetchable at the producer — the honest availability instant,
+    # identical in every copy of the envelope. The no-look-ahead gate resolves against this
+    # where it exists; collected_msc (the archiving process's own receive time) is the
+    # documented fallback for lines predating the field. Absent NEVER means "equals
+    # collected_msc" — it means the pre-field era.
+    available_msc: Optional[datetime] = None
     status: str = 'success'                # success / partial / error
     result: List[SentimentResult] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     errors: List[RunError] = Field(default_factory=list)
+
+
+    @field_validator('available_msc', mode='before')
+    @classmethod
+    def _coerce_available_msc(cls, value):
+        """Normalize epoch-ms (int) → UTC datetime; pass ISO/datetime/None through."""
+        return _epoch_ms_to_utc(value)
+
+    @model_validator(mode='before')
+    @classmethod
+    def _lift_trigger_reason(cls, data):
+        """
+        Read trigger_reason from metadata when the top-level field is absent.
+
+        The producer promoted it out of metadata; archive lines written before that carry it
+        at metadata.trigger_reason. Reading both keeps one reader across the boundary.
+
+        Args:
+            data: Raw envelope mapping (before field validation)
+
+        Returns:
+            The mapping, with trigger_reason lifted when it was only in metadata
+        """
+        if not isinstance(data, dict) or data.get('trigger_reason'):
+            return data
+        legacy = (data.get('metadata') or {}).get('trigger_reason')
+        if legacy:
+            data = {**data, 'trigger_reason': legacy}
+        return data
 
 
 class SignalSnapshot(AnalysisEnvelope):
@@ -85,14 +166,65 @@ class SignalSnapshot(AnalysisEnvelope):
     string / datetime is also accepted.
     """
     collected_msc: datetime
+    # Set by the importer so a PROJECTED series keeps the envelope-level value; absent on
+    # the wire, where the envelope is complete and the row maximum IS the envelope's.
+    envelope_evidence_as_of: Optional[datetime] = None
 
-    @field_validator('collected_msc', mode='before')
+    @field_validator('collected_msc', 'envelope_evidence_as_of', mode='before')
     @classmethod
     def _coerce_collected_msc(cls, value):
         """Normalize epoch-ms (int) → UTC datetime; pass ISO/datetime through."""
         if isinstance(value, (int, float)):
             return datetime.fromtimestamp(value / 1000.0, tz=timezone.utc)
         return value
+
+    def get_resolution_key(self) -> datetime:
+        """
+        The no-look-ahead gate: the instant this snapshot became usable.
+
+        available_msc (the producer's publish instant, identical in every copy) where it
+        exists, collected_msc (the archiving process's receive time) for the pre-field era.
+
+        Returns:
+            The instant a decision may first see this snapshot
+        """
+        return self.available_msc or self.collected_msc
+
+    def get_evidence_as_of(self) -> Optional[datetime]:
+        """
+        Newest evidence this ENVELOPE rests on — the max across its rows.
+
+        The unit matters and is the whole point of the accessor. A ROW's stamp may
+        legitimately fall between two passes, because its retrieved set changes (a young
+        article slides out of the recency window, the similarity floor cuts differently).
+        Comparing rows therefore reports a "regression" constantly. The producer's passes
+        are what can overtake each other, so the comparison belongs on the envelope.
+
+        Returns:
+            Newest evidence stamp across all rows, or None when no row rests on evidence
+        """
+        if self.envelope_evidence_as_of is not None:
+            return self.envelope_evidence_as_of
+        stamps = [row.evidence_as_of for row in self.result
+                  if row.evidence_as_of is not None]
+        return max(stamps) if stamps else None
+
+    def get_order_key(self) -> Tuple[int, int, float]:
+        """
+        Total chronological order key.
+
+        (stream_epoch, seq) lexicographic is chronological with no clock involved, because an
+        epoch changes only at a producer boot — everything in epoch N committed before that
+        instant, everything in N+1 after it, and seq is chronological within an epoch. Lines
+        with no stream identity (the pre-field era) sort by their resolution key ahead of any
+        numbered epoch, which is where they belong: the fields only exist from the stream on.
+
+        Returns:
+            Sort key; the third element breaks ties for unnumbered lines
+        """
+        if self.seq is None or self.stream_epoch is None:
+            return (-1, -1, self.get_resolution_key().timestamp())
+        return (self.stream_epoch, self.seq, 0.0)
 
 
 class SignalSeries(BaseModel):
@@ -117,9 +249,12 @@ class ResolvedSignal:
     Args:
         collected_msc: Receive stamp of the chosen snapshot
         result: Per-symbol sentiment from that snapshot
+        evidence_as_of: Newest evidence the whole ENVELOPE rests on (None when it rests
+            on none). Envelope-level on purpose — see SignalSnapshot.get_evidence_as_of.
     """
     collected_msc: datetime
     result: SentimentResult
+    evidence_as_of: Optional[datetime] = None
 
 
 class SignalResolution(str, Enum):
@@ -150,6 +285,69 @@ class SignalResolutionStats:
     fresh_ticks: int = 0
     stale_ticks: int = 0
     blind_ticks: int = 0
+    # Off-tick arrivals (#141 Part 2a): refreshes driven by a live envelope landing
+    # BETWEEN two ticks. Deliberately a fourth counter rather than a change of base —
+    # the three above are documented to sum to the run's tick count and the ledger's
+    # signal_fresh_ratio is defined on that base. Moving to a per-event base is #463's
+    # job; doing it early would make this run's ledger rows incomparable with every
+    # earlier one.
+    off_tick_arrivals: int = 0
+
+
+@dataclass
+class SignalHealthStatus:
+    """
+    Identity of the producer engine a live session is consuming from (#141 Part 2a).
+
+    Exists because nothing on an envelope says which store it came from. Two producer
+    instances can share a schema, a pipeline_id and a seq range, so a measurement taken
+    against a development instance is indistinguishable from one taken against the
+    series a release is certified on — unless the journal is asked and recorded.
+
+    The id binds and the name does not: the id is a fingerprint of the producer's
+    database cluster, fixed at its creation, while the name is looked up from a
+    per-machine mapping on the producer side and may be renamed at any time. Certify
+    against the id, read the name.
+
+    Args:
+        journal_id: Cluster fingerprint, None when the producer has no store attached
+            or cannot read its own identifier — either way the session is not certifiable
+        journal_name: The producer's label for that journal, 'unknown' when its lookup
+            missed, empty before the first answer
+        engine_version: Producer version string
+        pass_timeout_s: How long a producer pass may run — bounds how late an envelope
+            can legitimately be
+        probed_at: When the last answer arrived (wall clock: this measures our
+            observation, not market time)
+        journal_changed: Set once the identity changed mid-session. Sticky, because the
+            cursor built against the previous journal is meaningless in the new one
+        probe_errors: Times the probe could not reach the producer
+        producer_cadence_s: How often the producer evaluates OUR source, as it reports it.
+            The authoritative value for what we otherwise only configure
+        budget_suspended: The producer has stopped evaluating because a spending limit
+            was reached. Downstream this looks exactly like a silent producer, so the
+            reason is worth carrying rather than rediscovering from the silence
+        budget_reason: What the producer says about the suspension
+    """
+    journal_id: Optional[str] = None
+    journal_name: str = ''
+    engine_version: str = ''
+    pass_timeout_s: Optional[float] = None
+    probed_at: Optional[datetime] = None
+    journal_changed: bool = False
+    probe_errors: int = 0
+    producer_cadence_s: Optional[float] = None
+    budget_suspended: bool = False
+    budget_reason: Optional[str] = None
+
+    def is_identified(self) -> bool:
+        """
+        Whether the producer named a journal.
+
+        Returns:
+            True when an identity is known
+        """
+        return bool(self.journal_id)
 
 
 # Sentinel `symbol` value for an envelope-level parquet row (#429). One is emitted per
@@ -188,6 +386,17 @@ class SignalParquetColumn(str, Enum):
     # --- prompt provenance (traceability — cheap, envelope-scalar) ---
     SCHEMA_VERSION = 'schema_version'
     PIPELINE_ID = 'pipeline_id'
+    # --- stream identity + availability (#141 Part 2a; absent in the pre-stream era) ---
+    SEQ = 'seq'                          # per-pipeline gapless counter, unique WITHIN an epoch
+    STREAM_EPOCH = 'stream_epoch'        # bumped only when the producer's series was reset
+    AVAILABLE_MSC = 'available_msc'      # int64 epoch-ms, the producer's publish instant
+    EVIDENCE_AS_OF = 'evidence_as_of'    # int64 epoch-ms per row; null = the row rests on no evidence
+    # Envelope-level evidence, repeated on every row of the envelope like status and
+    # schema_version. It exists because the runtime series is PROJECTED to one symbol: a
+    # projected snapshot holds one row, so a max over its rows is the row's own stamp, not
+    # the envelope's. Without this column the RC-4 comparison would mean something
+    # different in simulation than on the wire (measured: 237 vs 17 on one mock week).
+    ENVELOPE_EVIDENCE_AS_OF = 'envelope_evidence_as_of'
     PROMPT_VERSION = 'prompt_version'
     PROMPT_ID = 'prompt_id'
     PROMPT_HASH = 'prompt_hash'
@@ -218,4 +427,11 @@ SIGNAL_RUNTIME_COLUMNS = frozenset({
     SignalParquetColumn.BASIS.value,
     SignalParquetColumn.STATUS.value,
     SignalParquetColumn.SCHEMA_VERSION.value,
+    # Stream identity is runtime, not provenance: it orders the series and deduplicates a
+    # redelivered envelope, and the availability stamp is the resolution gate itself.
+    SignalParquetColumn.SEQ.value,
+    SignalParquetColumn.STREAM_EPOCH.value,
+    SignalParquetColumn.AVAILABLE_MSC.value,
+    SignalParquetColumn.EVIDENCE_AS_OF.value,
+    SignalParquetColumn.ENVELOPE_EVIDENCE_AS_OF.value,
 })

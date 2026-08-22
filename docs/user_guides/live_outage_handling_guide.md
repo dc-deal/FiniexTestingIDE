@@ -45,6 +45,105 @@ and mandatory for everyone.
    unaffected (risk-reducing actions stay available).
 5. **`request_session_end(reason, severity)`** — the ordered retreat when your
    escalation ladder runs out.
+6. **The CONNECTION panel's signal block — the one instrument that is NOT for the
+   algo.** Everything above tells your *strategy* what happened; this tells *you*.
+   It answers a question the staleness contract cannot: `is_stale` says the signal
+   is **old**, the transport block says whether anything is still **arriving**.
+   Those come apart in both directions — a healthy transport with a stale signal is
+   a quiet producer, while a dead transport with a fresh signal is a session about
+   to go blind without noticing. On a multi-week run that distinction is the
+   difference between "the market is quiet" and "my feed died an hour ago".
+
+## The Live Signal Transport (#141 Part 2a)
+
+A session gets its signal series in one of two ways, and the panel says which:
+
+| Mode | Where snapshots come from | Panel |
+|---|---|---|
+| **mounted** | the archive, loaded once at session start | `Signal Feed: mounted (no transport)` |
+| **live** | a transport filling the series while the session runs | `Signal Feed: ● live epoch 1 seq 4914` |
+
+A mounted session is a replay: it decides on whatever the archive held at boot and
+never learns anything new. That is correct for a backtest or a mock run and wrong
+for a bot meant to trade on current sentiment — which is why the panel names the
+mode rather than leaving it to be inferred.
+
+**Configuration** lives in `configs/sentiment_config.json`, with your endpoint and
+token in `user_configs/`. The tracked file is the source registry (cadence,
+staleness default, whether the producer runs continuously); it is the signal side's
+mirror of `market_config.json`, and a scenario points at a source with
+`data_sentiment_type` exactly as it points at a broker with `broker_type`.
+
+**Arrivals do not wait for a tick.** The inbox is drained on both loop paths, so an
+envelope that lands between two ticks reaches the decision in the next pass — on a
+quiet instrument the difference is minutes. An arrival that ends an outage also
+closes the outage record at the arrival moment, not at the next tick.
+
+**What the tape shows, and what it deliberately does not.** Transport facts only:
+connect, an arrival with its position and trigger, a degraded producer, a transport
+failure. Never signal values — those have their own panel. One label is worth
+knowing about because it reads like a signal and is not:
+
+> `seq 37 · breaking pass` means the **pass** ran out of band, not that a breaking
+> signal arrived. Measured on the real archive: roughly two thirds of
+> breaking-triggered passes carry no `is_breaking` row at all. The trigger is a
+> suspicion raised at ingest; `is_breaking` is the verdict after evaluation. React
+> to the verdict.
+
+**Which producer answered.** Nothing on an envelope says which store it came from.
+Two producer instances share a schema, a `pipeline_id` and a `seq` range, so a session
+against a development instance and one against the certified series look identical —
+on screen and in the archive. The producer answers the question on its health endpoint
+and nowhere else, so the transport asks it and the panel shows the answer:
+
+```
+Signal Feed:    ● live   epoch 1  seq 4914
+Journal:        9c3fa4c80d95  (dev)
+```
+
+The **id binds and the name does not**. The id is a fingerprint of the producer's
+database cluster, fixed when that cluster was created; the name is looked up from a
+mapping on the producer's machine and can be renamed at any time. Read the name, judge
+by the id.
+
+| Panel | Means |
+|---|---|
+| `9c3fa4c80d95  (dev)` | identified, named |
+| `138c68e48b15  (unknown)` | identified; the producer's own name lookup missed. Not a fault |
+| `⚠ unidentified` | the producer named no journal — no store attached, or it cannot read its identifier. **Nothing certifies this session** |
+| `… ⚠ CHANGED` | the identity changed mid-session |
+
+A **change mid-session** is the case the cyclic probe exists for: the `seq` position on
+the line above was built against the previous journal and does not carry over, so a
+session that spans two journals spans two series. It is logged as an error, which means
+it also reaches the session summary rather than only the screen.
+
+The probe runs every 30 minutes by default (`health.interval_s`) and borrows the
+transport's address — the question is which journal is *delivering*, so a second
+address could answer about an engine that is not the one supplying envelopes.
+
+The same probe reads two more things off the health document, both of which explain a
+silence you would otherwise have to guess at:
+
+- **The producer's own cadence for your source.** It is the authoritative version of
+  `sources.<id>.cadence_minutes`, which drives your staleness threshold. A drift is
+  reported once — a producer that slowed down makes a healthy feed trip the contract
+  repeatedly, one that sped up hides a real outage inside the tolerance.
+- **A suspended producer budget.** When the producer stops evaluating to stay inside a
+  spending limit, that reaches you as silence and nothing else: the transport stays
+  green, envelopes stop. The panel names it, so you are not looking for a fault on your
+  own side.
+
+```
+Signal Feed:    ● live   epoch 1  seq 4914
+Journal:        9c3fa4c80d95  (dev)
+Producer:       ⚠ budget suspended — daily cap reached
+```
+
+**A degraded producer is not an outage.** When the producer cannot serve from its
+store it says so explicitly, and the transport backs off rather than hammering it.
+That shows as `degraded` with a count — distinct from `error`, which is the
+transport itself failing.
 
 ## The Escalation Ladder (example)
 

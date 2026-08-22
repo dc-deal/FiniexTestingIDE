@@ -3,10 +3,10 @@ FiniexTestingIDE - LLM Sentiment Worker
 First SIGNAL worker: reads pre-collected LLM sentiment by timestamp (#141).
 """
 
+from datetime import datetime
 from typing import Dict, Optional
 
 from python.framework.types.component_metadata_types import ComponentMetadata
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.parameter_types import OutputParamDef
 from python.framework.types.signal_data_types import ResolvedSignal
 from python.framework.types.worker_types import WorkerResult
@@ -68,19 +68,28 @@ class LlmSentimentWorker(AbstractSignalWorker):
                 description='Model reasoning for the sentiment (transparency)',
                 category='INFO',
             ),
+            'evidence_regressed': OutputParamDef(
+                param_type=bool,
+                description=(
+                    'Whether this envelope rests on older evidence than the one before it '
+                    '(RC-4: the producer\'s passes overtook each other). Valid information, '
+                    'but not a CHANGE — a decision reading it as one reacts to a reversal '
+                    'that happened only in the ordering.'),
+                category='INFO',
+            ),
         }
 
     def _build_result(
         self,
         resolved: Optional[ResolvedSignal],
-        tick: TickData
+        now: datetime
     ) -> WorkerResult:
         """
         Map a resolved sentiment snapshot (or a gap) to a WorkerResult.
 
         Args:
-            resolved: The point-in-time signal, or None on a gap (no snapshot <= tick)
-            tick: Current tick (for staleness against collected_msc)
+            resolved: The point-in-time signal, or None on a gap (nothing resolvable)
+            now: Moment being resolved at (canonical clock)
 
         Returns:
             WorkerResult with the sentiment outputs
@@ -93,6 +102,7 @@ class LlmSentimentWorker(AbstractSignalWorker):
                 'urgency': 0.0,
                 'is_breaking': False,
                 'reasoning': 'No signal data',
+                'evidence_regressed': False,
             })
 
         result = resolved.result
@@ -104,4 +114,5 @@ class LlmSentimentWorker(AbstractSignalWorker):
             'urgency': float(result.urgency),
             'is_breaking': bool(result.is_breaking),
             'reasoning': result.reasoning,
+            'evidence_regressed': self.get_evidence_regressed(),
         })

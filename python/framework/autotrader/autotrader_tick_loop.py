@@ -43,6 +43,8 @@ from python.framework.types.decision_logic_types import Decision, DecisionLogicA
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult
+from python.framework.signal_data.signal_inbox import SignalInbox
+from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -92,6 +94,8 @@ class AutotraderTickLoop:
         reconciler: Optional[Reconciler] = None,
         api_monitor: Optional[ApiPerfMonitor] = None,
         state_store: Optional[AlgoStateStore] = None,
+        signal_inbox: Optional[SignalInbox] = None,
+        signal_transport: Optional[SignalPollSource] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -99,6 +103,14 @@ class AutotraderTickLoop:
         self._executor = executor
         self._bar_controller = bar_controller
         self._worker_orchestrator = worker_orchestrator
+        # #141 Part 2a: filled by a live signal transport on its own thread, drained here
+        # once per pass. None in a mock session — then every drain below is a no-op and the
+        # loop behaves exactly as before.
+        self._signal_inbox = signal_inbox
+        # Display only — the loop never calls it. It is handed to the exporter so the
+        # operator panel can show whether anything is still arriving; draining goes
+        # through the inbox above.
+        self._signal_transport = signal_transport
         self._decision_logic = decision_logic
         self._clipping_monitor = clipping_monitor
         self._logger = logger
@@ -199,6 +211,7 @@ class AutotraderTickLoop:
             drift_auditor=self._drift_auditor,
             reconciler=self._reconciler,
             api_monitor=self._api_monitor,
+            signal_transport=self._signal_transport,
         )
 
     def stop(self) -> None:
@@ -262,6 +275,11 @@ class AutotraderTickLoop:
                 # by min_interval_seconds → self-throttled, no API storm during idle.
                 if self._reconciler is not None and self._reconciler.is_due(ticks_processed):
                     self._reconciler.reconcile(ticks_processed)
+                # #141 Part 2a: an envelope that landed between two ticks reaches the
+                # decision HERE. process_heartbeat forwards cached worker results by design,
+                # so without this the arrival would wait for the next tick — minutes on a
+                # quiet instrument, which is exactly what the push channel exists to avoid.
+                self._drain_signal_inbox(off_tick=True)
                 # #348: deliver events surfaced by the heartbeat drain
                 # (idle-time fills/cancels) to the algo hooks — before the ghost-pass
                 # so the decision observes them this pass.
@@ -302,6 +320,12 @@ class AutotraderTickLoop:
             # Set logger tick context
             ticks_processed += 1
             self._logger.set_current_tick(ticks_processed, tick)
+
+            # #141 Part 2a: fold in whatever the signal transport received since the last
+            # pass, BEFORE the workers run — the existing should_refresh picks a new snapshot
+            # up exactly as it picks up a mounted one, so tick behaviour and its counters are
+            # untouched.
+            self._drain_signal_inbox(off_tick=False)
 
             # === 1. Trade Executor — BROKER PATH (all ticks) ===
             self._executor.on_tick(tick)
@@ -465,6 +489,36 @@ class AutotraderTickLoop:
 
         self._running = False
         return ticks_processed, ticks_clipped
+
+    def _drain_signal_inbox(self, off_tick: bool) -> None:
+        """
+        Fold newly received signal envelopes into the series (#141 Part 2a).
+
+        Two shapes, because the two loop paths need different things. On a TICK the merge is
+        enough — the worker pass that follows picks the new snapshot up itself. On the
+        HEARTBEAT nothing else would run, so the workers are refreshed and the shared signal
+        pass fires the stale edge and the outage episode at the arrival moment.
+
+        A mock session has no inbox, so this returns immediately and the loop is unchanged.
+
+        Args:
+            off_tick: True on the heartbeat path (refresh + signal pass), False on a tick
+        """
+        if self._signal_inbox is None:
+            return
+        arrivals = self._signal_inbox.drain()
+        if not arrivals:
+            return
+
+        if not off_tick:
+            self._worker_orchestrator.merge_signal_arrivals(arrivals)
+            return
+
+        merged = self._worker_orchestrator.process_signal_arrivals(
+            arrivals, self._executor.get_current_time())
+        if merged:
+            self._logger.debug(
+                f"📡 {merged} signal envelope(s) arrived between ticks")
 
     def _drain_decision_events(self) -> None:
         """Drain buffered decision events to the algo hooks, if a dispatcher is active (#348)."""

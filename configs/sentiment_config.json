@@ -1,0 +1,41 @@
+{
+  "stream": {
+    "enabled": false,
+    "base_url": "http://host.docker.internal:8100",
+    "pipeline_id": "",
+    "credentials_file": "rag_credentials.json",
+    "replay_window_hours": 24.0,
+    "heartbeat_timeout_s": 60.0,
+    "reconnect_backoff_initial_s": 5.0,
+    "reconnect_backoff_max_s": 60.0
+  },
+
+  "poll": {
+    "enabled": false,
+    "base_url": "http://host.docker.internal:8100",
+    "pipeline_id": "",
+    "credentials_file": "rag_credentials.json",
+    "interval_s": 60.0,
+    "request_timeout_s": 20.0,
+    "degraded_backoff_s": 300.0
+  },
+
+  "health": {
+    "enabled": true,
+    "interval_s": 1800.0,
+    "request_timeout_s": 10.0
+  },
+
+  "sources": {
+    "crypto_sentiment": {
+      "continuous": true,
+      "cadence_minutes": 10.0,
+      "max_staleness_minutes": 30.0
+    },
+    "forex_macro_sentiment": {
+      "continuous": true,
+      "cadence_minutes": 10.0,
+      "max_staleness_minutes": 30.0
+    }
+  }
+}

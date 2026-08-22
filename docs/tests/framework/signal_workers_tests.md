@@ -66,6 +66,132 @@ fixtures via direct provider injection — no batch, no tick loop.
 - Stale accumulation + row identity (worker name / signal source / symbol).
 - Heartbeat — a heartbeat pass re-evaluates nothing and therefore counts nothing.
 
+### test_signal_stream_identity.py (#141 Part 2a)
+
+The rules that take over once a snapshot carries the producer's stream identity
+(`seq` / `stream_epoch` / `available_msc`), and the fallbacks that keep the pre-stream archive
+resolving exactly as before.
+
+- **Pre-stream fallback** — no identity → the gate is `collected_msc` and the order key sorts by
+  time ahead of any numbered epoch. Lookup behaviour is unchanged.
+- **Resolution gate** — `available_msc` (the producer's publish instant) gates visibility where it
+  exists, so a snapshot is invisible before it could really have been had.
+- **Clock-correction clamp** — a producer-side stamp that steps backwards never makes a snapshot
+  visible *earlier* than the one preceding it in the series. That is the only direction that would
+  be look-ahead.
+- **Ordering** — `seq` orders within an epoch; the epoch outranks `seq`, because a reset restarts
+  the numbering. No clock takes part in the order.
+- **Deduplication** — the producer is at-least-once, so a redelivered envelope is a no-op;
+  identity is the `(stream_epoch, seq)` pair, since `seq` is unique only *within* an epoch.
+- **Extension** — `extend()` keeps the series resolvable and reports how many were new.
+
+### test_signal_off_tick_arrivals.py (#141 Part 2a)
+
+An envelope that lands **between two ticks**. `process_heartbeat` forwards cached worker results
+by design, so without this seam a pushed envelope would wait for the next tick — minutes on a
+quiet instrument, which is what a push channel exists to avoid.
+
+Two entry points, because the two loop paths need different things:
+
+| Path | Call | Why |
+|---|---|---|
+| tick | `merge_signal_arrivals()` | merge only — the worker pass that follows picks the snapshot up through `should_refresh` exactly as it picks up a mounted one |
+| heartbeat | `process_signal_arrivals()` | merge **and** refresh + run the shared signal pass, since nothing else would |
+
+What the tests pin, and the second half matters as much as the first:
+
+- an arrival reaches the decision without a tick, and an arrival that **ends an outage** recovers
+  at the arrival moment rather than at the next tick;
+- a redelivery is a no-op (the producer is at-least-once);
+- an unknown source is ignored;
+- **the three resolution counters stay tick-weighted** — an off-tick refresh increments
+  `off_tick_arrivals` only, because the ledger's `signal_fresh_ratio` is defined on the tick base.
+  Changing that base is #463's job;
+- an empty drain does nothing at all — which is the simulation's and a mock session's case on
+  every single pass, and is what keeps both bit-identical.
+
+### test_signal_poll_source.py (#141 Part 2a)
+
+The interim pull transport, used until the producer's stream exists. Runs against a **local stub
+started inside the test** — never against a real producer: a suite that needs someone else's
+container running is a suite that fails for reasons unrelated to the code.
+
+Only the *responses* are scripted. The real transport makes a real HTTP request over a real socket,
+builds its own headers (the bearer assertion reads them **server-side**), decodes real JSON and
+validates through the production model. Patching the fetch would skip exactly what breaks against a
+real server.
+
+- **Arrival** — a new envelope is enqueued; receipt is stamped by us (`collected_msc` is absent on
+  the wire) while the gate stays the producer's `available_msc`.
+- **Restraint** — the producer republishes the same stored envelope until its next pass, so the
+  same `(epoch, seq)` is enqueued once, not on every poll.
+- **The degraded producer** — `status: error` + `VECTOR_STORE_ERROR` means "no envelope" and must
+  never be enqueued: it would place a degraded HOLD into the series that the provider would later
+  resolve as if it were sentiment. A *normal* `status: error` (an LLM timeout) **is** data and is
+  kept.
+- **Auth** — the header is sent only when a token is configured.
+- **Lifecycle** — an unreachable producer never raises into the loop; stop is idempotent.
+- **Transport state** — the state must describe the transport *now*, not at the last arrival.
+  The producer's beat is far longer than the poll interval, so most polls legitimately return an
+  already-seen envelope and leave through the early return. A state that recovered only on arrival
+  left a transient fault on the panel until the producer happened to publish again — **a healthy
+  feed reading as a broken one**, the exact misreading the panel exists to prevent.
+- **Health probe** — starts and stops with the transport it accompanies; its identity reaches both
+  the panel and the shared tape. Without a probe the identity is reported as unknown, never
+  fabricated.
+
+### test_signal_health_probe.py (#141 Part 2a)
+
+Which producer journal a live session consumed from. Same local-stub discipline as the poll source.
+
+The probe exists because **nothing on an envelope says which store it came from**. Two producer
+instances share a schema, a `pipeline_id` and a `seq` range, so a measurement taken against a
+development instance is indistinguishable from one taken against the series a release is certified
+on. The producer answers on its health endpoint and nowhere else.
+
+The asymmetry the tests pin, because it is the whole point: **the id binds and the name does not.**
+The id fingerprints the producer's database cluster and is fixed at its creation; the name is
+resolved from a mapping on the producer's machine and may be renamed at any time.
+
+- **Identity** — id, name, engine version and pass timeout are recorded from `/v1/health`; a name
+  the producer could not resolve degrades to `unknown` **without** the id losing its meaning; the
+  identity is written to the session logger, because a screen cannot be read after the run.
+- **Unidentified** — a `null` journal is a real answer (no store attached, or an identifier the
+  producer's role may not read), distinct from "the probe has not run". Warned once, not on every
+  cycle; an identity that arrives later is not treated as a change.
+- **Change** — the case the cyclic cadence exists for. The cursor built so far belongs to the
+  previous journal, so a change is reported as an **error** (reaching the session summary, §35) and
+  the flag is **sticky**: it describes the session, not the current answer. Losing an identity
+  counts as a change too. An unchanged journal stays silent — half-hourly probes over a multi-week
+  run must not narrate themselves.
+- **Producer cadence** — the health document names how often the producer evaluates *our* source,
+  which is the authoritative version of a value we otherwise only configure. A drift is reported
+  once, because the configured value drives the staleness threshold: a producer that slowed down
+  turns a healthy feed into one that keeps tripping the contract, and one that sped up hides a real
+  outage inside the tolerance. Another pipeline's worker must never answer for ours.
+- **Producer budget** — a producer that stops evaluating to save money reaches us as **silence and
+  nothing else**: the transport stays healthy, envelopes simply stop. Only the transition is
+  reported (in both directions), so a long suspension does not repeat itself across a multi-week run.
+- **Lifecycle** — an unreachable producer never raises; a failed probe never erases what is known.
+
+### test_signal_evidence_regression.py (RC-4, #141 Part 2a)
+
+The producer runs passes concurrently, so a long-running pass commits *after* a later one: it
+carries the newer position and the older view of the world. A decision reading that as a CHANGE
+reacts to a reversal that happened only in the ordering.
+
+Two properties decide whether the detection works, and both are counter-intuitive:
+
+1. **Per envelope, never per row.** A row's evidence stamp may legitimately fall between passes
+   (its retrieved set changes) — measured on one mock week: **2073 per row against 17 per envelope**.
+2. **The runtime series is projected to one symbol**, so a max over a projected snapshot's rows is
+   that row's stamp. The importer therefore carries the envelope-level value alongside; without it
+   simulation and live disagree — measured: **237 against 17**.
+
+The tests pin the accessor's precedence, the flag on an overtaking pass, and — as importantly — the
+cases that must **not** flag: the first envelope, a gap, an envelope resting on no evidence, and the
+envelope after a regression (the flag marks an envelope, not a session).
+
 ---
 
 ## Fixtures

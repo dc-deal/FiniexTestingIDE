@@ -20,7 +20,9 @@ from python.framework.types.disturbance_episode_types import (
     DisturbanceDomain, DisturbanceEpisode, DisturbanceOrigin)
 from python.framework.types.market_types.market_data_types import Bar, BarRenderState, TickData
 from python.framework.types.performance_types.performance_stats_types import WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
-from python.framework.types.signal_data_types import SignalResolution, SignalResolutionStats
+from python.framework.signal_data.signal_data_provider import SignalDataProvider
+from python.framework.types.signal_data_types import (
+    SignalResolution, SignalResolutionStats, SignalSnapshot)
 from python.framework.types.worker_types import ComputeBasis, SUBSCRIBE_ALL, WorkerRequirement, WorkerResult, WorkerState
 from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
@@ -456,7 +458,9 @@ class WorkerOrchestrator:
 
         return decision
 
-    def _process_signal_pass(self, tick_time: datetime) -> None:
+    def _process_signal_pass(
+        self, tick_time: datetime, count_tick: bool = True
+    ) -> None:
         """
         The per-tick SIGNAL pass: count the resolution, track the outage episode,
         and fire the stale edge.
@@ -481,7 +485,11 @@ class WorkerOrchestrator:
         via is_stale in worker_results.
 
         Args:
-            tick_time: Current tick timestamp (canonical clock) — the episode axis
+            tick_time: Current moment (canonical clock) — the episode axis
+            count_tick: Whether this pass is a TICK. False for an off-tick arrival
+                (#141 Part 2a): the episode and the stale edge are evaluated exactly the
+                same way, but the three resolution counters are not touched, because they
+                are contracted to sum to the run's tick count.
         """
         self._last_signal_pass_time = tick_time
 
@@ -491,13 +499,14 @@ class WorkerOrchestrator:
                 continue
 
             stats = self._signal_resolution_stats[name]
-            resolution = worker.get_last_resolution()
-            if resolution == SignalResolution.FRESH:
-                stats.fresh_ticks += 1
-            elif resolution == SignalResolution.STALE:
-                stats.stale_ticks += 1
-            else:
-                stats.blind_ticks += 1
+            if count_tick:
+                resolution = worker.get_last_resolution()
+                if resolution == SignalResolution.FRESH:
+                    stats.fresh_ticks += 1
+                elif resolution == SignalResolution.STALE:
+                    stats.stale_ticks += 1
+                else:
+                    stats.blind_ticks += 1
 
             is_stale = result.is_stale
             if is_stale and not self._signal_stale_state.get(name, False):
@@ -559,6 +568,90 @@ class WorkerOrchestrator:
             origin=DisturbanceOrigin.LIVE_REAL,
             symbol=worker.get_symbol() or '',
         )
+
+    def get_signal_workers(self) -> Dict[str, AbstractSignalWorker]:
+        """
+        The SIGNAL workers this orchestrator drives, by instance name.
+
+        Returns:
+            Instance name → worker; empty when the strategy reads no signal source
+        """
+        return dict(self._signal_workers)
+
+    def merge_signal_arrivals(
+        self, arrivals: Dict[str, List[SignalSnapshot]]
+    ) -> int:
+        """
+        Merge live signal arrivals into the series, without refreshing anything (#141 Part 2a).
+
+        This is what the TICK path needs: extend the series before the workers run, and the
+        existing pass picks the new snapshot up through should_refresh exactly as it picks up
+        a mounted one. Nothing about tick behaviour or its counters changes.
+
+        Args:
+            arrivals: Newly received snapshots per signal source
+
+        Returns:
+            How many snapshots were genuinely new (a redelivery counts as zero)
+        """
+        if not arrivals or not self._signal_workers:
+            return 0
+
+        # One provider serves every worker reading a source, so extend each exactly once.
+        providers: Dict[str, SignalDataProvider] = {}
+        for worker in self._signal_workers.values():
+            provider = worker.get_signal_provider()
+            if provider is not None:
+                providers.setdefault(worker.get_consumed_signal_kind(), provider)
+
+        merged = 0
+        for signal_kind, snapshots in arrivals.items():
+            provider = providers.get(signal_kind)
+            if provider is not None:
+                merged += provider.extend(snapshots)
+        return merged
+
+    def process_signal_arrivals(
+        self,
+        arrivals: Dict[str, List[SignalSnapshot]],
+        now: datetime,
+    ) -> int:
+        """
+        Merge live signal arrivals and refresh the SIGNAL workers off-tick (#141 Part 2a).
+
+        This is what the HEARTBEAT path needs. `process_heartbeat` forwards cached worker
+        results by design, so without this an envelope landing between two ticks would not
+        reach a decision until the next tick — which on a quiet instrument can be minutes.
+
+        The stale edge (#434) and the outage episode (#451) are evaluated by the shared
+        signal pass, so an arrival that ends an outage closes its episode at the arrival
+        moment. The three resolution counters are NOT touched: they are contracted to sum to
+        the run's tick count, and an off-tick refresh is counted separately.
+
+        In simulation and in an AutoTrader mock session nothing ever fills the inbox, so this
+        is never called with content and both pipelines stay bit-identical.
+
+        Args:
+            arrivals: Newly received snapshots per signal source
+            now: Arrival moment (canonical clock) — the axis for the episode and the edge
+
+        Returns:
+            How many snapshots were genuinely new (a redelivery counts as zero)
+        """
+        merged = self.merge_signal_arrivals(arrivals)
+        if merged == 0:
+            return 0
+
+        for name, worker in self._signal_workers.items():
+            if worker.get_consumed_signal_kind() not in arrivals:
+                continue
+            if not worker.should_refresh_at(now):
+                continue
+            self._worker_results[name] = worker.compute_signal_at(now)
+            self._signal_resolution_stats[name].off_tick_arrivals += 1
+
+        self._process_signal_pass(now, count_tick=False)
+        return merged
 
     def process_heartbeat(self) -> Optional[Decision]:
         """

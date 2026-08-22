@@ -20,7 +20,9 @@ from python.framework.factory.live_trade_executor_factory import build_live_exec
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.process.process_startup_preparation import inject_signal_providers
+from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
@@ -239,19 +241,29 @@ def setup_pipeline(
     workers = list(workers_dict.values())
     logger.debug(f"✅ Created {len(workers)} workers")
 
-    # === Phase 6b: Signal Providers from the prepared package (#431/#438) ===
-    # The mock's signal series is loaded in the shared data package; inject it into SIGNAL workers
-    # exactly as the sim subprocess does. A SIGNAL worker with no package (live) aborts at startup —
-    # live sentiment feeds are the #375 event path, not available yet.
+    # === Phase 6b: Signal Providers (#431/#438, live transport #141 Part 2a) ===
+    # A SIGNAL worker resolves against exactly one collaborator and never learns where its
+    # snapshots came from. Two ways to give it one:
+    #   mounted  — the mock's prepared series, injected exactly as the sim subprocess does;
+    #   live     — an EMPTY provider that the signal transport fills as envelopes arrive.
+    # The empty case is not a degenerate mount: a live session legitimately starts knowing
+    # nothing, and its first decision waits for the first arrival (the worker reports BLIND
+    # until then, which the staleness contract already handles).
     signal_workers = [w for w in workers if isinstance(w, AbstractSignalWorker)]
     if package is not None:
         inject_signal_providers(workers, package, logger)
+    elif signal_workers and SentimentConfigManager().get_config().poll.enabled:
+        for worker in signal_workers:
+            worker.set_signal_provider(SignalDataProvider(
+                SignalSeries(signal_kind=worker.get_consumed_signal_kind(), snapshots=[])))
+        logger.info(
+            f"📡 {len(signal_workers)} SIGNAL worker(s) start empty — the live transport fills them")
     elif signal_workers:
         names = ', '.join(f"'{w.name}'" for w in signal_workers)
         raise ValueError(
-            f"Configuration error: SIGNAL worker(s) {names} require a mock 'scenario_settings' "
-            f"with a 'data_sentiment_type' in profile '{config.name}'. Live sentiment feeds are "
-            f"not available yet (#375)."
+            f"Configuration error: SIGNAL worker(s) {names} have no source. Either give the "
+            f"profile '{config.name}' a mock 'scenario_settings' with a 'data_sentiment_type', "
+            f"or enable a live transport in sentiment_config.json."
         )
 
     # === Phase 7: DecisionLogic ===

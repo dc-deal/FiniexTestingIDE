@@ -52,10 +52,26 @@ class TestLoader:
         assert errors[0].result == []
         assert errors[0].errors[0].type == 'LLM_TIMEOUT'
 
-    def test_schema_mismatch_raises(self, tmp_path):
+    def test_stream_era_major_loads(self, tmp_path):
+        """
+        2.x is the stream contract (#141 Part 2a) and must load.
+
+        The producer spent a major on an otherwise additive field group because
+        `trigger_reason` left `metadata` — a relocation is a loss for a reader still
+        looking at the old place, and this gate is what makes the fallback fire.
+        """
+        line = tmp_path / 'stream_era.jsonl'
+        line.write_text(
+            '{"collected_msc":"2026-01-15T08:00:00Z","schema_version":"2.0",'
+            '"status":"success","result":[]}\n'
+        )
+        assert len(load_signal_series(line, signal_kind='llm_sentiment').snapshots) == 1
+
+    def test_unknown_major_raises(self, tmp_path):
+        """An unread major may carry a changed result structure — refusing beats guessing."""
         bad = tmp_path / 'bad.jsonl'
         bad.write_text(
-            '{"collected_msc":"2026-01-15T08:00:00Z","schema_version":"2.0",'
+            '{"collected_msc":"2026-01-15T08:00:00Z","schema_version":"3.0",'
             '"status":"success","result":[]}\n'
         )
         with pytest.raises(SignalSchemaError, match='schema_version'):

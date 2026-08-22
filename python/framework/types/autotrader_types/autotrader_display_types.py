@@ -10,7 +10,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from python.framework.types.decision_logic_types import DecisionLogicAction, StrategyEvent
+from python.framework.types.decision_logic_types import (
+    AwarenessLevel, DecisionLogicAction, StrategyEvent)
 from python.framework.types.parameter_types import OutputValue
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
@@ -18,6 +19,7 @@ from python.framework.types.trading_env_types.order_types import CloseType, Orde
 from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
+from python.framework.types.signal_data_types import SignalHealthStatus
 
 
 @dataclass
@@ -125,6 +127,64 @@ class RejectionEntry:
 
 
 @dataclass
+class SignalTransportEvent:
+    """
+    One transport moment for the stream tape.
+
+    Transport facts only — a connect, a gap, a reconnect, an arrival's position. Never a
+    signal VALUE: those have their own panel, and mixing them makes both harder to read.
+
+    Args:
+        message: Human-readable transport event
+        at: When it happened (wall clock — this measures our observation, not market time)
+        level: Display severity
+    """
+    message: str
+    at: datetime
+    level: AwarenessLevel = AwarenessLevel.INFO
+
+
+@dataclass
+class SignalTransportStats:
+    """
+    Live view of the signal transport for the CONNECTION panel (#141 Part 2a).
+
+    Exists because on an unattended multi-week run a dead feed and a quiet market look
+    identical on screen. The signal VALUES already display; what was missing is whether
+    anything is still arriving.
+
+    Args:
+        configured: False in a mounted session — then the panel says so instead of
+            rendering an idle transport that was never meant to run
+        state: Transport condition — 'mounted' / 'live' / 'degraded' / 'error'
+        source: The signal source being consumed
+        last_seq: Position of the newest envelope received ('' era: None)
+        stream_epoch: Series generation of that envelope
+        last_envelope_at: Availability stamp of the newest envelope
+        envelopes_received: New envelopes accepted this session
+        degraded_responses: Times the producer could not serve from its store
+        transport_errors: Times the transport itself failed
+        tape: Bounded, newest-last transport events
+        total_events: Events emitted over the session (the tape shows the tail)
+        health: Which producer journal the envelopes come from — the one fact no
+            envelope carries, and the one a later reader needs to know which series
+            a session's measurements belong to
+    """
+    configured: bool = False
+    state: str = 'mounted'
+    source: str = ''
+    last_seq: Optional[int] = None
+    stream_epoch: Optional[int] = None
+    last_envelope_at: Optional[datetime] = None
+    envelopes_received: int = 0
+    degraded_responses: int = 0
+    transport_errors: int = 0
+    tape: List[SignalTransportEvent] = field(default_factory=list)
+    total_events: int = 0
+    health: SignalHealthStatus = field(default_factory=SignalHealthStatus)
+
+
+@dataclass
 class AutoTraderDisplayStats:
     """
     Stats snapshot pushed to display queue after each tick.
@@ -229,6 +289,12 @@ class AutoTraderDisplayStats:
 
     # Feed-status envelope (#434): any SIGNAL worker result currently stale
     feed_stale: bool = False
+
+    # Signal TRANSPORT (#141 Part 2a) — distinct from feed_stale above: that says whether
+    # the signal is old, this says whether anything is still arriving. A healthy transport
+    # with a stale signal is a quiet producer; a dead transport with a fresh signal is a
+    # session about to go blind without noticing.
+    signal_transport: SignalTransportStats = field(default_factory=SignalTransportStats)
 
     # Market-data staleness contract (#436): session-level tick-stream stale
     market_stale: bool = False

@@ -15,6 +15,7 @@ parquet is a lean projection, and the envelope's sources / metadata / errors sur
 else — it stays the audit source and must remain readable.
 """
 
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -28,6 +29,20 @@ from python.framework.types.signal_data_types import (
 from python.data_management.index.signal_index_manager import SignalIndexManager
 
 vLog = get_global_logger()
+
+
+def _epoch_ms(moment: Optional[datetime]) -> Optional[int]:
+    """
+    Render a datetime as epoch milliseconds for a parquet column.
+
+    Args:
+        moment: A tz-aware datetime, or None
+
+    Returns:
+        Epoch-ms int, or None when the moment is absent — never a placeholder, so
+        "absent" stays distinguishable from zero
+    """
+    return None if moment is None else int(moment.timestamp() * 1000)
 
 
 class SignalDataImporter:
@@ -189,6 +204,7 @@ class SignalDataImporter:
             return None
 
         pipeline_id = self._resolve_pipeline_id(snapshots, jsonl_file)
+        self._validate_stream_identity(snapshots, jsonl_file)
         rows = self._explode(snapshots)
         df = pd.DataFrame(rows, columns=[c.value for c in SignalParquetColumn])
 
@@ -218,6 +234,63 @@ class SignalDataImporter:
                 f"{jsonl_file.name}: mixed 'pipeline_id' values {sorted(ids)} in one file.")
         return ids.pop()
 
+    def _validate_stream_identity(
+        self, snapshots: List[SignalSnapshot], jsonl_file: Path
+    ) -> None:
+        """
+        Check the stream identity of a file: epoch monotonicity (hard) and seq contiguity (soft).
+
+        A REPEATED epoch is refused. seq is unique only WITHIN an epoch, so two series
+        carrying the same epoch would silently merge under the (pipeline_id, stream_epoch,
+        seq) key — the exact failure the identity exists to prevent. A seq HOLE is reported
+        and imported: the file is incomplete, not wrong, and refusing it would discard the
+        envelopes we do have. Lines without a stream identity (the pre-stream era) are
+        unverifiable, which is a distinct state from verified-contiguous and is not an error.
+
+        Args:
+            snapshots: Parsed snapshots of one file
+            jsonl_file: The file, for messages
+
+        Raises:
+            SignalSchemaError: If an epoch reappears after a later one was seen
+        """
+        identified = [s for s in snapshots if s.seq is not None
+                      and s.stream_epoch is not None]
+        if not identified:
+            return
+
+        # Snapshots arrive in time order (the loader sorts them), so both violations below
+        # are "went backwards in time" — which is exactly what a rewound series looks like
+        # from the outside.
+        highest_epoch = identified[0].stream_epoch
+        last_seq: Dict[int, int] = {}
+        seqs_per_epoch: Dict[int, List[int]] = {}
+        for snapshot in identified:
+            epoch, seq = snapshot.stream_epoch, snapshot.seq
+            if epoch < highest_epoch:
+                raise SignalSchemaError(
+                    f"{jsonl_file.name}: stream_epoch went backwards ({highest_epoch} → "
+                    f"{epoch}) — the producer's series was rewound and two series would "
+                    f"merge under one key. Refusing the file."
+                )
+            if epoch in last_seq and seq < last_seq[epoch]:
+                raise SignalSchemaError(
+                    f"{jsonl_file.name}: seq went backwards within epoch {epoch} "
+                    f"({last_seq[epoch]} → {seq}) — the epoch was reissued for a second "
+                    f"series. seq is unique only within an epoch, so refusing the file."
+                )
+            highest_epoch = epoch
+            last_seq[epoch] = seq
+            seqs_per_epoch.setdefault(epoch, []).append(seq)
+
+        for epoch, seqs in seqs_per_epoch.items():
+            holes = sum(b - a - 1 for a, b in zip(seqs, seqs[1:]) if b - a > 1)
+            if holes:
+                message = (f"{jsonl_file.name}: {holes} missing seq in epoch {epoch} "
+                           f"({seqs[0]}→{seqs[-1]}) — envelopes were never received")
+                vLog.warning(f"   ⚠️ {message}")
+                self.errors.append(message)
+
     def _explode(self, snapshots: List[SignalSnapshot]) -> List[Dict]:
         """One row per (collected_msc, symbol) + one envelope-level sentinel row each."""
         rows: List[Dict] = []
@@ -235,8 +308,21 @@ class SignalDataImporter:
                 # Lives in metadata, not top-level. Missing key and null collapse to the
                 # same '' = unknown state — never to 'scheduled' (a boot pass would be
                 # mislabelled as a grid point).
-                SignalParquetColumn.TRIGGER_REASON.value: str(
-                    snap.metadata.get('trigger_reason') or ''),
+                # Top-level since the producer promoted it out of metadata; the model lifts
+                # the legacy metadata location on read, so both eras land here. Missing and
+                # null collapse to '' = unknown — never to 'scheduled', which would mislabel
+                # a boot pass as a grid point.
+                SignalParquetColumn.TRIGGER_REASON.value: snap.trigger_reason,
+                # Stream identity (#141 Part 2a) — absent for every line written before the
+                # stream contract, a state the reader distinguishes from zero.
+                SignalParquetColumn.SEQ.value: snap.seq,
+                SignalParquetColumn.STREAM_EPOCH.value: snap.stream_epoch,
+                SignalParquetColumn.AVAILABLE_MSC.value: _epoch_ms(snap.available_msc),
+                # Envelope-level, repeated per row: the runtime series is projected to one
+                # symbol, so a max over a projected snapshot's rows would be that row's
+                # stamp. RC-4 compares envelopes, never rows.
+                SignalParquetColumn.ENVELOPE_EVIDENCE_AS_OF.value: _epoch_ms(
+                    snap.get_evidence_as_of()),
             }
             # Envelope sentinel row (symbol = '*') — keeps this collected_msc resolvable
             # for every covered symbol even when the envelope omits it (partial/error).
@@ -260,6 +346,7 @@ class SignalDataImporter:
             row[SignalParquetColumn.URGENCY.value] = 0.0
             row[SignalParquetColumn.IS_BREAKING.value] = False
             row[SignalParquetColumn.BASIS.value] = ''
+            row[SignalParquetColumn.EVIDENCE_AS_OF.value] = None
         else:
             row[SignalParquetColumn.SIGNAL.value] = result.signal
             row[SignalParquetColumn.SENTIMENT_SCORE.value] = result.sentiment_score
@@ -268,6 +355,8 @@ class SignalDataImporter:
             row[SignalParquetColumn.URGENCY.value] = result.urgency
             row[SignalParquetColumn.IS_BREAKING.value] = result.is_breaking
             row[SignalParquetColumn.BASIS.value] = result.basis
+            row[SignalParquetColumn.EVIDENCE_AS_OF.value] = _epoch_ms(
+                result.evidence_as_of)
         return row
 
     def _rebuild_index(self) -> None:
