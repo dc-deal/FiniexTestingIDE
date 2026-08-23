@@ -91,8 +91,10 @@ class AutoTraderConfig:
         execution: Execution parameters
         clipping_monitor: Clipping monitor configuration
         dry_run: Optional per-profile dry-run override. None = use the broker's
-            market_config default. Setting it (especially False = live) overrides the
-            global default for THIS profile only; the startup logs a loud warning.
+            market_config default. A profile may only TIGHTEN the posture: True wins
+            over a live broker default, while False against a dry-run broker default
+            is refused at startup (DryRunConflictError). Enabling real orders stays a
+            deliberate change to market_config.json, not something a copied profile does.
     """
     name: str = ''
     symbol: str = ''

@@ -39,6 +39,7 @@ from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
+from python.framework.exceptions.live_execution_errors import DryRunConflictError
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
@@ -803,14 +804,35 @@ class AutotraderMain:
 
     def _is_dry_run(self) -> bool:
         """
-        Determine if the session is a dry-run based on market config.
+        Whether this session simulates order execution instead of placing real orders.
 
-        Mock adapter is always dry-run. Live adapter reads the dry_run flag
-        from market_config.json for the broker type.
+        Mock adapter is always dry-run. Otherwise the broker's market_config setting
+        applies, which a profile may TIGHTEN but never loosen: `dry_run: true` in the
+        profile wins over a live broker default, while `dry_run: false` against a
+        dry-run broker default is refused rather than honoured or ignored.
+
+        The asymmetry is deliberate. A profile is a per-run file that gets copied and
+        edited; the broker setting is the operator's standing posture. Letting a profile
+        switch real money ON would put that decision in the most easily-shared place,
+        and silently ignoring the attempt would leave a file claiming a safety it does
+        not have — which is exactly how a profile marked `dry_run: true` was read as an
+        observation run while the broker default said otherwise.
 
         Returns:
             True if dry-run mode
         """
         if self._config.adapter_type == 'mock':
             return True
-        return MarketConfigManager().get_dry_run(self._config.broker_type)
+        broker_default = MarketConfigManager().get_dry_run(self._config.broker_type)
+        profile_override = self._config.dry_run
+        if profile_override is None:
+            return broker_default
+        if broker_default and not profile_override:
+            raise DryRunConflictError(
+                f"Profile '{self._config.name}' sets dry_run=false, but "
+                f"market_config.json has dry_run=true for broker "
+                f"'{self._config.broker_type}'. A profile may only tighten the dry-run "
+                f"posture, never loosen it — enabling real orders is a deliberate change "
+                f"to market_config.json (or its user_configs override)."
+            )
+        return profile_override
