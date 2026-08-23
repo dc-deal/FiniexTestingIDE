@@ -33,7 +33,8 @@ def _worker(mock_logger, max_staleness=30) -> LlmSentimentWorker:
     trading_context = SimpleNamespace(symbol=SYMBOL)
     return LlmSentimentWorker(
         name='sentiment',
-        parameters={'max_staleness_minutes': max_staleness},
+        parameters={'max_staleness_minutes': max_staleness,
+                    'signal_delay_minutes': 0},
         logger=mock_logger,
         trading_context=trading_context,
     )

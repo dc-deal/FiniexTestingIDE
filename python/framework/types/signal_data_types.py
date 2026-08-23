@@ -294,6 +294,22 @@ class SignalResolutionStats:
     off_tick_arrivals: int = 0
 
 
+class SignalEdge(str, Enum):
+    """
+    Transition of a boolean signal property between two consecutively served envelopes.
+
+    Derived on our side in BOTH pipelines rather than consumed from the producer's own
+    filtered view (#141 Part 2a). If the producer derived it live while we derived it in
+    simulation, the two derivations could drift and the disagreement would be invisible —
+    each side internally consistent, the pair silently wrong. Same rule as the disturbance
+    episodes (#451): a boundary is always derived from observed state; an upstream
+    declaration may contribute a label, never a boundary.
+    """
+    ENTERED = 'entered'
+    EXITED = 'exited'
+    NONE = 'none'
+
+
 @dataclass
 class SignalHealthStatus:
     """

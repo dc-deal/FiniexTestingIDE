@@ -83,7 +83,7 @@ class TestRegressionDetection:
         from types import SimpleNamespace
         from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
         worker = LlmSentimentWorker(
-            name='sentiment', parameters={'max_staleness_minutes': 600},
+            name='sentiment', parameters={'max_staleness_minutes': 600, 'signal_delay_minutes': 0},
             logger=mock_logger, trading_context=SimpleNamespace(symbol=SYMBOL))
         worker.set_signal_provider(make_provider(*snapshots))
         return worker

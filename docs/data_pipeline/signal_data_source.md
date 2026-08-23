@@ -326,6 +326,40 @@ These two are the most misread fields in the archive.
 | `is_breaking` | an urgent story drove this symbol's signal. **A content flag, not a scheduling marker** — a normal grid pass carries it too. Real rate: ~6 % of result rows (crypto), ~3 % (forex) |
 | `reasoning` | the producer's one-line justification. Human-readable only; nothing keys on it |
 
+### The breaking EDGE — derived here, never imported
+
+`is_breaking` is the **state** of one envelope. A decision usually wants the **transition**: the
+first envelope of a story, or the one where it ends. The `CORE/llm_sentiment` worker therefore
+derives `breaking_edge` — `entered` / `exited` / `none` — by comparing against the envelope it
+served before.
+
+The producer also offers a filtered breaking-only view, and we deliberately do not consume it. If
+the producer derived the boundary for the live path while we derived it in simulation, the two could
+drift and **the disagreement would be invisible** — each side internally consistent, the pair
+silently wrong. The same rule as the disturbance episodes: a boundary is always derived from
+observed state; an upstream declaration may contribute a label, never a boundary.
+
+Three situations report `none` although the state differs from the one before, each for its own
+reason:
+
+| Situation | Why not an edge |
+|---|---|
+| the first envelope of a session | a session that boots into an active story has witnessed no entry; reporting one makes every restart look like a fresh event |
+| a gap | nothing resolved means the state is **unknown**, not `false`. Reading it as `false` would emit an exit going in and an entry coming out |
+| an overtaking pass (`evidence_regressed`) | an envelope resting on older evidence did not witness what came after it, so letting it flip the edge turns the producer's commit order into a transition that never happened |
+
+### Sweeping the delay — `signal_delay_minutes`
+
+A worker parameter (default `0`, so nothing changes until it is set) that resolves as-of
+`now − delay` while measuring staleness against the **real** moment. A delayed resolution genuinely
+serves an older snapshot; measuring its age against the shifted moment would make every delay look
+free and hide the exact cost the sweep exists to measure.
+
+It answers one open question — **is the strategy's edge latency?** Sweeping 0 / 1 / 5 / 15 minutes
+against P&L decides whether heartbeat-paced delivery is enough or whether the event loop has to move
+ahead of live hardening. The zero column really is zero: the archive carries no unrecorded delay,
+measured against the producer's journal envelope for envelope.
+
 ### Provenance
 
 | Field | Answers | Empty means |

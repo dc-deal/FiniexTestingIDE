@@ -56,7 +56,7 @@ def _orchestrator(mock_logger, provider):
     """An orchestrator around one SIGNAL worker with the provider already injected."""
     worker = LlmSentimentWorker(
         name='sentiment',
-        parameters={'max_staleness_minutes': 30},
+        parameters={'max_staleness_minutes': 30, 'signal_delay_minutes': 0},
         logger=mock_logger,
         trading_context=SimpleNamespace(symbol=SYMBOL),
     )

@@ -4,7 +4,7 @@ Base class for SIGNAL workers — pre-collected external data lookup (#141)
 """
 
 from abc import abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from python.framework.exceptions.signal_data_errors import SignalProviderNotInjectedError
@@ -12,7 +12,8 @@ from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef
-from python.framework.types.signal_data_types import ResolvedSignal, SignalResolution
+from python.framework.types.signal_data_types import (
+    ResolvedSignal, SignalEdge, SignalResolution)
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
 
@@ -75,6 +76,10 @@ class AbstractSignalWorker(AbstractWorker):
         # stamp may fall legitimately between passes, an envelope's may not.
         self._last_served_evidence: Optional[datetime] = None
         self._evidence_regressed: bool = False
+        # Last OBSERVED value of the property a concrete worker derives an edge from.
+        # None until the first observation, and left untouched by a gap or an overtaking
+        # pass — see _derive_edge.
+        self._last_edge_value: Optional[bool] = None
 
     def set_signal_provider(self, provider: SignalDataProvider) -> None:
         """
@@ -136,6 +141,14 @@ class AbstractSignalWorker(AbstractWorker):
                 description='Snapshot age (tick − collected_msc) above which the '
                             'result envelope is flagged is_stale',
             ),
+            'signal_delay_minutes': InputParamDef(
+                param_type=int,
+                default=0,
+                min_val=0,
+                description='Artificial resolution delay: resolve as-of (now − delay). '
+                            'A robustness lever for sweeps, NOT a model of the archive — '
+                            'the archive carries no unrecorded delay',
+            ),
             'data_path': InputParamDef(
                 param_type=str,
                 default='',
@@ -177,6 +190,57 @@ class AbstractSignalWorker(AbstractWorker):
         """SIGNAL workers consume no bar timeframes."""
         return []
 
+    def _resolve_at(self, now: datetime) -> datetime:
+        """
+        The moment the provider is queried at, which is not always the current moment.
+
+        signal_delay_minutes shifts it backwards so a run can be swept against a slower
+        feed than the archive actually delivered. Staleness stays measured against the
+        REAL moment: a delayed resolution genuinely serves an older snapshot, and saying
+        otherwise would hide the very cost the sweep exists to measure.
+
+        Args:
+            now: Current moment (canonical clock, UTC)
+
+        Returns:
+            The as-of moment to resolve at — `now` itself when no delay is configured
+        """
+        delay_minutes = self.params.get('signal_delay_minutes')
+        if not delay_minutes:
+            return now
+        return now - timedelta(minutes=delay_minutes)
+
+    def _derive_edge(self, observed: Optional[bool]) -> SignalEdge:
+        """
+        Transition of a boolean property against the previously observed envelope.
+
+        Three cases yield NONE and leave the remembered state untouched, each for its
+        own reason:
+
+        - **No previous observation.** A session that boots into an active state has not
+          witnessed an entry; reporting one would make a boot look like an event.
+        - **A gap.** Nothing resolvable means the state is UNKNOWN, not False. Reading a
+          gap as False would emit an exit on the way in and an entry on the way out —
+          two transitions that never happened.
+        - **An overtaking pass (RC-4).** An envelope resting on older evidence did not
+          witness what came after it. Letting it flip the edge would turn the producer's
+          commit order into a phantom transition, which is exactly what the
+          evidence-regression flag exists to prevent one level up.
+
+        Args:
+            observed: The property's value in this envelope, None on a gap
+
+        Returns:
+            The transition, or NONE when there is none to report
+        """
+        if observed is None or self._evidence_regressed:
+            return SignalEdge.NONE
+        previous = self._last_edge_value
+        self._last_edge_value = observed
+        if previous is None or previous == observed:
+            return SignalEdge.NONE
+        return SignalEdge.ENTERED if observed else SignalEdge.EXITED
+
     def should_refresh(self, tick: TickData) -> bool:
         """
         Whether the worker should recompute its result this tick.
@@ -208,7 +272,7 @@ class AbstractSignalWorker(AbstractWorker):
         Returns:
             True if the worker should recompute its result
         """
-        resolved = self._require_provider().nearest(now, self._symbol)
+        resolved = self._require_provider().nearest(self._resolve_at(now), self._symbol)
         current_msc = resolved.collected_msc if resolved else None
         if current_msc != self._last_snapshot_msc:
             return True
@@ -245,7 +309,7 @@ class AbstractSignalWorker(AbstractWorker):
         Returns:
             WorkerResult with outputs matching get_output_schema()
         """
-        resolved = self._require_provider().nearest(now, self._symbol)
+        resolved = self._require_provider().nearest(self._resolve_at(now), self._symbol)
         stale = self._evaluate_stale(resolved, now)
         self._evidence_regressed = self._evaluate_evidence_regression(resolved)
         self._last_snapshot_msc = resolved.collected_msc if resolved else None

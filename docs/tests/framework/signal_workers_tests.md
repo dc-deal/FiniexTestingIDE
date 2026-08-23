@@ -192,6 +192,31 @@ The tests pin the accessor's precedence, the flag on an overtaking pass, and —
 cases that must **not** flag: the first envelope, a gap, an envelope resting on no evidence, and the
 envelope after a regression (the flag marks an envelope, not a session).
 
+### test_signal_breaking_edge.py (#141 Part 2a, Phase 4)
+
+`is_breaking` is the **state** of one envelope; the edge is the transition between two consecutively
+served ones. Derived on our side in both pipelines rather than taken from the producer's filtered
+view — if the producer derived the boundary live while we derived it in simulation, the two could
+drift and the disagreement would be invisible.
+
+Most of the file pins the three ways an edge must **not** fire, each with a different reason: the
+first envelope of a session (a boot is not an entry), a gap (unknown is not `false` — reading it as
+`false` emits an exit going in and an entry coming out), and an overtaking pass (an envelope on
+older evidence did not witness what came after it, so it must not flip the edge). The last one also
+pins that the suppressed envelope is **not remembered**, or the next correctly ordered one would
+compare against a view already discarded.
+
+### test_signal_delay_lever.py (#141 Part 2a)
+
+`signal_delay_minutes` resolves as-of `now − delay` while measuring staleness against the **real**
+moment — a delayed resolution genuinely serves an older snapshot, and measuring against the shifted
+moment would make every delay look free.
+
+Pinned: the default is `0` and changes nothing; the delay shifts the series rather than skipping
+through it; a delay past the whole archive goes blind rather than failing; and the refresh trigger
+reads the **same** as-of moment as the resolution — a disagreement there produces results that are
+correct individually and wrong in sequence.
+
 ---
 
 ## Fixtures
