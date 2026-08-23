@@ -207,6 +207,29 @@ rendered in the run's **📡 SIGNAL CONFIGURATION** section (#433):
 | Archive | what *can* happen | `SignalCoverageReport`, read once in preparation Phase 1 |
 | Decision basis | what the strategy *actually decided on* | per-tick counters on every SIGNAL worker |
 
+### A live session has only one of them
+
+A simulation and an AutoTrader **mock** run read their signal facts out of a finished archive. A
+**live** session has no archive: envelopes arrive while it runs. So the run report is built from
+whichever plane exists, and says which one it is:
+
+| | Archive | Feed |
+|---|---|---|
+| Provenance, composition, cadence, extent, stream position | read from parquet | accumulated from arrivals |
+| Gap classification, window coverage | measured against the market calendar | **not applicable** |
+
+`Archive:` and `Feed:` are different lines in the report on purpose. An absent gap analysis is
+**not** the same as a clean one: rendering an empty gap map as `no gaps` would assert continuity for
+a series that was never analysable, and a `coverage_ratio` default of `1.0` would claim 100 % of a
+window that never existed. Both are stated as absent instead.
+
+Live cadence is the **producer's own reported interval**, labelled `(producer)` rather than
+`(measured)` — a session that received three envelopes has no sample to take a median from.
+
+**Live is not missing an outage view.** When the feed actually breaks, that is the
+disturbance-episode protocol (📉 FEED STABILITY), which derives its spans from observed state across
+both staleness domains. The signal section does not duplicate it.
+
 The counters are three mutually exclusive classes that sum to the run's tick count:
 
 - **fresh** — a snapshot resolved and is younger than `max_staleness_minutes`

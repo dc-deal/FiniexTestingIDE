@@ -29,6 +29,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.signal_data.signal_inbox import SignalInbox
 from python.framework.signal_data.signal_health_probe import SignalHealthProbe
+from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -96,6 +97,9 @@ class AutotraderMain:
         # (signal source, symbol) → coverage + window, from the same shared preparation
         # the sim batch uses — the 📡 report section reads it (#433).
         self._signal_scenario_map: Dict[Tuple[str, str], SignalScenarioInfo] = {}
+        # Live counterpart of the prepared map: a live session has no archive to read its
+        # signal facts out of, so the transport accumulates them as envelopes pass through.
+        self._signal_observed: Optional[SignalObservedAccumulator] = None
         # #141 Part 2a: the live signal transport and its hand-off buffer. Both stay None
         # in a mock session, which mounts its series from the archive instead — then every
         # inbox drain in the loop is a no-op and the session behaves exactly as before.
@@ -626,6 +630,8 @@ class AutotraderMain:
             global_logger=self._global_logger,
             broker_config=self._executor.broker if self._executor else None,
             signal_scenario_map=self._signal_scenario_map,
+            observed_feed=(self._signal_observed.get_observed_series()
+                           if self._signal_observed else None),
         ).generate_and_log()
 
         # Close all loggers
@@ -698,6 +704,9 @@ class AutotraderMain:
             if health_config.enabled else None
         )
 
+        self._signal_observed = SignalObservedAccumulator(
+            source=poll_config.pipeline_id, symbol=self._config.symbol)
+
         self._signal_inbox = SignalInbox()
         self._signal_transport = SignalPollSource(
             config=poll_config,
@@ -706,6 +715,7 @@ class AutotraderMain:
             logger=self._session_logger,
             api_token=api_token,
             health_probe=health_probe,
+            observed=self._signal_observed,
         )
         self._signal_transport.start()
         self._print_startup_phase('Signal transport running')

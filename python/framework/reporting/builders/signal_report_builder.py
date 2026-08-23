@@ -23,26 +23,37 @@ from python.framework.types.api.report_types import (
     SignalReport, SignalSourceRow, SignalUsageRow)
 from python.framework.types.scenario_types.scenario_set_types import (
     SignalScenarioInfo, SignalScenarioUsage)
-from python.framework.types.signal_data_types import SignalResolutionStats
+from python.framework.types.signal_data_types import (
+    SignalObservedSeries, SignalResolutionStats, SignalSeriesKind)
 
 
 def build_signal_report(
     signal_scenario_map: Dict[Tuple[str, str], SignalScenarioInfo],
     units: List[RunUnit],
+    observed_feed: Optional[SignalObservedSeries] = None,
 ) -> SignalReport:
     """
     Build the signal report from the prepared signal map + the run's units.
 
+    Two entry paths, because a signal source reaches a run two ways. A scenario map means
+    an archive was prepared and analysed — the sim batch and the AutoTrader-mock session.
+    An observed feed means the envelopes arrived while the session ran, which is the live
+    case: there is no archive to analyse, only what the feed stated about itself.
+
     Args:
         signal_scenario_map: (source, symbol) → coverage + the scenario windows bound to it
         units: The run's units (sim: N scenarios; live: 1 session) — carry the counters
+        observed_feed: What a live transport accumulated, when this run consumed one
 
     Returns:
         SignalReport with one unit per signal source (empty when no source is bound)
     """
-    # Early exit: no scenario binds a signal source
-    if not signal_scenario_map:
+    # Early exit: this run bound no signal source at all — neither archive nor feed
+    if not signal_scenario_map and observed_feed is None:
         return SignalReport(units=[])
+
+    if not signal_scenario_map:
+        return SignalReport(units=[_to_feed_row(observed_feed, units)])
 
     stats_index = _index_resolution_stats(units)
 
@@ -129,6 +140,8 @@ def _to_source_row(
 
     return SignalSourceRow(
         source=source,
+        series_kind=SignalSeriesKind.ARCHIVE.value,
+        sequence=infos[0].coverage.get_sequence_description() if infos else '',
         data_origin=_first_non_empty(c.get_data_origin() for c in coverages),
         config_fingerprint=_first_non_empty(
             c.get_config_fingerprint() for c in coverages),
@@ -142,6 +155,101 @@ def _to_source_row(
         trigger_unknown=trigger_unknown,
         usages=sorted(usages, key=lambda u: u.scenario),
     )
+
+
+def _to_feed_row(
+    observed: SignalObservedSeries,
+    units: List[RunUnit],
+) -> SignalSourceRow:
+    """
+    Map a live feed to a renderable row: what it stated about itself + what was decided on.
+
+    The archive fields stay empty on purpose. `gap_counts` in particular is NOT filled with
+    zeros: an empty map means "not measured", and a renderer that printed it as "no gaps"
+    would assert continuity for a series that was never analysable. The live outage plane
+    is the disturbance-episode protocol, which has its own section.
+
+    Args:
+        observed: What the transport accumulated while the session ran
+        units: The run's units — a live session has exactly one
+
+    Returns:
+        SignalSourceRow marked as feed-backed
+    """
+    stats_index = _index_resolution_stats(units)
+    usages = [
+        _to_feed_usage_row(observed, unit, stats_index)
+        for unit in units
+    ]
+    return SignalSourceRow(
+        source=observed.source,
+        series_kind=SignalSeriesKind.FEED.value,
+        sequence=observed.get_sequence_description(),
+        data_origin=_merge_values(observed.data_origins),
+        config_fingerprint=_merge_values(observed.config_fingerprints),
+        cadence_seconds=observed.cadence_seconds,
+        snapshot_count=observed.snapshot_count,
+        archive_start=_iso(observed.start_time),
+        archive_end=_iso(observed.end_time),
+        gap_counts={},
+        trigger_reasons=dict(observed.trigger_reasons),
+        trigger_unknown=observed.trigger_unknown,
+        usages=usages,
+    )
+
+
+def _to_feed_usage_row(
+    observed: SignalObservedSeries,
+    unit: RunUnit,
+    stats_index: Dict[Tuple[str, str], SignalResolutionStats],
+) -> SignalUsageRow:
+    """
+    Map a live session's consumption of a feed: its span + the decision-basis counters.
+
+    `coverage_ratio` stays None — there is no archive window to have covered.
+
+    Args:
+        observed: The accumulated feed facts
+        unit: The session's run unit
+        stats_index: The run's counters, keyed by (unit name, symbol)
+
+    Returns:
+        SignalUsageRow without a coverage claim
+    """
+    symbol = observed.symbol or unit.symbol
+    stats = stats_index.get((unit.name, symbol))
+    fresh = stats.fresh_ticks if stats else 0
+    stale = stats.stale_ticks if stats else 0
+    blind = stats.blind_ticks if stats else 0
+    total = fresh + stale + blind
+
+    return SignalUsageRow(
+        scenario=unit.name,
+        symbol=symbol,
+        window_start=_iso(observed.start_time),
+        window_end=_iso(observed.end_time),
+        coverage_ratio=None,
+        fresh_ticks=fresh,
+        stale_ticks=stale,
+        blind_ticks=blind,
+        fresh_ratio=(fresh / total) if total else 0.0,
+    )
+
+
+def _merge_values(values) -> str:
+    """
+    One value, 'mixed' when a series carried several, '' when it carried none.
+
+    Args:
+        values: Distinct values observed across the series
+
+    Returns:
+        The single value, 'mixed', or '' for unknown
+    """
+    ordered = sorted(v for v in values if v)
+    if not ordered:
+        return ''
+    return ordered[0] if len(ordered) == 1 else 'mixed'
 
 
 def _to_usage_row(

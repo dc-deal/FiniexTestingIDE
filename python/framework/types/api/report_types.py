@@ -7,7 +7,7 @@ surface. Pydantic (not @dataclass) because the API serializes it directly — sa
 exception as api_types.py.
 """
 
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
@@ -648,9 +648,13 @@ class SignalUsageRow(BaseModel):
     """
     scenario: str
     symbol: str = ''
-    window_start: str = ''          # ISO-8601 UTC
+    window_start: str = ''          # ISO-8601 UTC — the scenario window, or the session span
     window_end: str = ''            # ISO-8601 UTC ('' when the scenario ends on max_ticks)
-    coverage_ratio: float = 1.0     # share of the window not swallowed by an archive gap
+    coverage_ratio: Optional[float] = None   # share of the window not swallowed by an
+    #                                          archive gap; None = no archive to measure
+    #                                          against (a live feed). NOT 1.0 — a default
+    #                                          of "fully covered" would assert coverage for
+    #                                          something that was never measurable.
     fresh_ticks: int = 0
     stale_ticks: int = 0
     blind_ticks: int = 0            # nothing resolvable — NOT an archive gap (that is stale)
@@ -664,13 +668,21 @@ class SignalSourceRow(BaseModel):
     source carrying several values renders as 'mixed'.
     """
     source: str
+    series_kind: str = 'archive'            # 'archive' (analysable for continuity) or
+    #                                         'feed' (received live — no archive plane at
+    #                                         all). Deliberately not named *_origin: the
+    #                                         row already carries data_origin, which means
+    #                                         the producer's provenance, not the reader's.
     data_origin: str = ''                   # 'live' / 'synthetic' / 'mixed' / '' = unknown
     config_fingerprint: str = ''            # producer input-config hash; '' = pre-contract
     cadence_seconds: float = 0.0            # measured median snapshot distance
     snapshot_count: int = 0
     archive_start: str = ''                 # ISO-8601 UTC
     archive_end: str = ''                   # ISO-8601 UTC
-    gap_counts: dict[str, int] = {}         # category → count (short / moderate / large / …)
+    gap_counts: dict[str, int] = {}         # category → count; EMPTY means not measured,
+    #                                         which for a feed means not measurable. A
+    #                                         renderer must not print it as 'no gaps'.
+    sequence: str = ''                      # stream position verdict, '' when unstated
     trigger_reasons: dict[str, int] = {}    # scheduled / boot / breaking / manual / external
     trigger_unknown: int = 0                # envelopes with no reason (producer pre-contract)
     usages: list[SignalUsageRow] = []

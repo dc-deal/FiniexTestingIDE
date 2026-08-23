@@ -19,6 +19,7 @@ from python.framework.reporting.builders.portfolio_report_builder import build_p
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.builders.signal_report_builder import build_signal_report
+from python.framework.types.signal_data_types import SignalObservedSeries
 from python.framework.reporting.builders.trade_history_report_builder import build_trade_history_report
 from python.framework.reporting.builders.unified_reports import UnifiedReports
 from python.framework.reporting.builders.worker_decision_report_builder import build_worker_decision_report
@@ -45,6 +46,7 @@ class SharedReportCoordinator:
         units: List[RunUnit],
         io_dir: Path,
         signal_scenario_map: Optional[Dict[Tuple[str, str], SignalScenarioInfo]] = None,
+        observed_feed: Optional[SignalObservedSeries] = None,
     ) -> UnifiedReports:
         """
         Build + persist the units-derived report sections shared by both pipelines.
@@ -52,6 +54,8 @@ class SharedReportCoordinator:
         Args:
             units: The run's units (sim: N scenarios; live: 1 session)
             io_dir: The run's io/ subfolder (created if missing)
+            observed_feed: What a live transport accumulated while the session ran — the
+                live counterpart of the prepared map, since a live session has no archive
             signal_scenario_map: The prepared signal sources (#433); both pipelines get it
                 from the same MountPreparer run. Empty / None = no SIGNAL source bound
 
@@ -83,7 +87,7 @@ class SharedReportCoordinator:
 
         # Signal configuration — archive provenance + what the strategy decided on (#433).
         # Built BEFORE the run summary: it supplies the run's weakest fresh ratio.
-        signal = build_signal_report(signal_scenario_map or {}, units)
+        signal = build_signal_report(signal_scenario_map or {}, units, observed_feed)
         write_signal_report(signal, io_dir)
 
         # Feed stability — the observed outage episodes of both staleness domains (#451).

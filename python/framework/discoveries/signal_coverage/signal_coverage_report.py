@@ -31,7 +31,7 @@ import pyarrow.parquet as pq
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.framework.types.coverage_report_types import Gap, GapCategory
 from python.framework.types.signal_data_types import (
-    SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn)
+    SIGNAL_ENVELOPE_SYMBOL, SignalObservedSeries, SignalParquetColumn, SignalSeriesKind)
 from python.framework.utils.market_calendar import MarketCalendar
 from python.framework.utils.time_utils import format_duration
 
@@ -447,6 +447,40 @@ class SignalCoverageReport:
 
         gap_s = sum(gap.gap_seconds for gap in self.gaps_in_window(start, end))
         return max(0.0, 1.0 - gap_s / span_s)
+
+    def get_observed_series(self) -> SignalObservedSeries:
+        """
+        Project this archive's observed plane into the shape a live feed also produces.
+
+        The report carries two planes: what the envelopes say about themselves, and how
+        continuous the archive is against a market calendar. Only the first has a live
+        equivalent, so it is handed out separately — a live transport accumulates the very
+        same dataclass, and the run report consumes one shape from either source.
+
+        A projection rather than internal delegation on purpose: this class reads its own
+        attributes in a dozen places, and rewiring them would risk the simulation path for
+        no gain the report can see.
+
+        Returns:
+            The observed plane, marked as archive-backed
+        """
+        return SignalObservedSeries(
+            source=self.data_sentiment_type,
+            symbol=self.symbol,
+            kind=SignalSeriesKind.ARCHIVE,
+            snapshot_count=self.snapshot_count,
+            start_time=self.start_time,
+            end_time=self.end_time,
+            cadence_seconds=self.cadence_seconds,
+            data_origins=set(self.data_origins),
+            config_fingerprints=set(self.config_fingerprints),
+            trigger_reasons=dict(self.trigger_reasons),
+            trigger_unknown=self.trigger_unknown,
+            envelopes_with_stream_identity=self.envelopes_with_stream_identity,
+            seq_span=self.seq_span,
+            seq_holes=self.seq_holes,
+            stream_epochs=set(self.stream_epochs),
+        )
 
     def get_merge_key_description(self) -> str:
         """

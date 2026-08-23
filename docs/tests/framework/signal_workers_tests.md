@@ -174,6 +174,18 @@ resolved from a mapping on the producer's machine and may be renamed at any time
   reported (in both directions), so a long suspension does not repeat itself across a multi-week run.
 - **Lifecycle** — an unreachable producer never raises; a failed probe never erases what is known.
 
+### test_signal_off_tick_arrivals.py — the compute that nobody counted
+
+Beyond the merge/refresh split, this suite pins that an off-tick compute is **recorded as a
+compute**. The tick path times every recompute and hands it to the performance logger; the arrival
+path did not, so a worker whose first envelope lands *before the first tick* — which is the normal
+case, the transport starts before the market does — never seeded on the tick path either and stayed
+invisible for the rest of the session.
+
+Measured on the first live observation run: the SIGNAL worker refreshed three times and the run
+report said **`0 computes`** while the log beside it showed all three arrivals. A number an operator
+reads must not contradict the log next to it.
+
 ### test_signal_evidence_regression.py (RC-4, #141 Part 2a)
 
 The producer runs passes concurrently, so a long-running pass commits *after* a later one: it

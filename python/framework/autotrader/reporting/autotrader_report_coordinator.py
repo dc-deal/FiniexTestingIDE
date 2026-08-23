@@ -24,6 +24,7 @@ from python.framework.reporting.console.performance_summary import PerformanceSu
 from python.framework.reporting.console.portfolio_summary import PortfolioSummary
 from python.framework.reporting.console.run_console_renderer import RunConsoleRenderer
 from python.framework.reporting.console.signal_summary import SignalSummary
+from python.framework.types.signal_data_types import SignalObservedSeries
 from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
 from python.framework.reporting.console.warnings_summary import WarningsSummary
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
@@ -68,6 +69,7 @@ class AutotraderReportCoordinator:
         global_logger: ScenarioLogger,
         broker_config: Optional[BrokerConfig] = None,
         signal_scenario_map: Optional[Dict[Tuple[str, str], SignalScenarioInfo]] = None,
+        observed_feed: Optional[SignalObservedSeries] = None,
     ):
         """
         Initialize the report coordinator.
@@ -98,6 +100,7 @@ class AutotraderReportCoordinator:
         # `broker_type` is a `BrokerType` enum), so reporting needs no key translation.
         self._broker_config = broker_config
         self._signal_scenario_map = signal_scenario_map or {}
+        self._observed_feed = observed_feed
 
     def generate_and_log(self) -> None:
         """Write all session artifacts + print the post-session summary."""
@@ -136,7 +139,7 @@ class AutotraderReportCoordinator:
         # portfolio (single session = its own currency aggregate) / pending (empty for live) /
         # execution-stats / run-summary / worker-decision. The models feed the unified console.
         unified = SharedReportCoordinator.derive_and_persist(
-            units, io_dir, self._signal_scenario_map)
+            units, io_dir, self._signal_scenario_map, self._observed_feed)
 
         # Warnings & errors — tiered model (#395). Persisted for API parity with the sim runs;
         # the closing block keeps reading the session buffers directly (same structured source,
