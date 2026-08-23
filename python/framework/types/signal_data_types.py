@@ -335,6 +335,11 @@ class SignalObservedSeries:
             producer's own reported interval for a feed (three arrivals is not a sample)
         data_origins: Distinct data_origin values seen; empty = the producer predates it
         config_fingerprints: Distinct producer input-config hashes seen
+        prompt_versions: Distinct prompt generations seen. A bump marks a SERIES BREAK —
+            different prompts yield different scores for the same news — so a run holding
+            more than one value spans two series and must say so. Filled on the feed side,
+            where the envelope carries it; empty for an archive, whose runtime projection
+            deliberately does not load the prompt provenance
         trigger_reasons: Envelope counts per trigger_reason
         trigger_unknown: Envelopes carrying no reason — kept apart so a partially stamped
             series does not render as if the composition covered everything
@@ -353,6 +358,7 @@ class SignalObservedSeries:
     cadence_seconds: float = 0.0
     data_origins: Set[str] = field(default_factory=set)
     config_fingerprints: Set[str] = field(default_factory=set)
+    prompt_versions: Set[str] = field(default_factory=set)
     trigger_reasons: Dict[str, int] = field(default_factory=dict)
     trigger_unknown: int = 0
     envelopes_with_stream_identity: int = 0

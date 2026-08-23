@@ -45,8 +45,12 @@ class SignalSummary(AbstractBatchSummarySection):
         indent = "   "
         origin = self._format_origin(unit.data_origin)
         fingerprint = f"#{unit.config_fingerprint}" if unit.config_fingerprint else 'unknown'
+        # A prompt bump is a SERIES BREAK: different prompts score the same news differently.
+        # 'mixed' therefore means this run spans two series, which a reader must see before
+        # comparing its numbers against another run's.
+        prompt = f" · Prompt: v{unit.prompt_version}" if unit.prompt_version else ''
         print(f"{indent}📡 Source: {unit.source}")
-        print(f"{indent}   Origin:   {origin} · Config: {fingerprint}")
+        print(f"{indent}   Origin:   {origin} · Config: {fingerprint}{prompt}")
 
         # A feed's cadence is the producer's own reported interval, not a median: a
         # session that received three envelopes has no sample to measure.

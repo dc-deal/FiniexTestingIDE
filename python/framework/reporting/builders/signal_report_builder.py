@@ -187,6 +187,7 @@ def _to_feed_row(
         sequence=observed.get_sequence_description(),
         data_origin=_merge_values(observed.data_origins),
         config_fingerprint=_merge_values(observed.config_fingerprints),
+        prompt_version=_merge_values(observed.prompt_versions),
         cadence_seconds=observed.cadence_seconds,
         snapshot_count=observed.snapshot_count,
         archive_start=_iso(observed.start_time),
@@ -274,10 +275,15 @@ def _to_usage_row(
     blind = stats.blind_ticks if stats else 0
     total = fresh + stale + blind
 
+    # No window end and no archive end means there is nothing to measure a ratio against.
+    # Left as None rather than defaulted to 1.0: a default of "fully covered" would assert
+    # coverage for a window that could not be examined — the same class of false positive
+    # that made an unanalysed feed render as "no gaps".
     window_end = usage.window_end or coverage.end_time
-    coverage_ratio = 1.0
-    if window_end is not None:
-        coverage_ratio = coverage.coverage_ratio_in_window(usage.window_start, window_end)
+    coverage_ratio = (
+        coverage.coverage_ratio_in_window(usage.window_start, window_end)
+        if window_end is not None else None
+    )
 
     return SignalUsageRow(
         scenario=usage.scenario_name,

@@ -46,6 +46,7 @@ class SignalObservedAccumulator:
         self._last = None
         self._origins = set()
         self._fingerprints = set()
+        self._prompt_versions = set()
         self._triggers = {}
         self._trigger_unknown = 0
         self._with_identity = 0
@@ -80,6 +81,8 @@ class SignalObservedAccumulator:
                 self._origins.add(snapshot.data_origin)
             if snapshot.config_fingerprint:
                 self._fingerprints.add(snapshot.config_fingerprint)
+            if snapshot.prompt_version:
+                self._prompt_versions.add(snapshot.prompt_version)
 
             trigger = snapshot.trigger_reason
             if trigger:
@@ -122,6 +125,7 @@ class SignalObservedAccumulator:
                 cadence_seconds=self._cadence_seconds,
                 data_origins=set(self._origins),
                 config_fingerprints=set(self._fingerprints),
+                prompt_versions=set(self._prompt_versions),
                 trigger_reasons=dict(self._triggers),
                 trigger_unknown=self._trigger_unknown,
                 envelopes_with_stream_identity=self._with_identity,

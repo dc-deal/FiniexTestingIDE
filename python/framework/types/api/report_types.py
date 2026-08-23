@@ -675,6 +675,10 @@ class SignalSourceRow(BaseModel):
     #                                         the producer's provenance, not the reader's.
     data_origin: str = ''                   # 'live' / 'synthetic' / 'mixed' / '' = unknown
     config_fingerprint: str = ''            # producer input-config hash; '' = pre-contract
+    prompt_version: str = ''                # producer prompt generation; 'mixed' means the
+    #                                         run spans a prompt change, i.e. TWO series —
+    #                                         scores are not comparable across that boundary.
+    #                                         '' = not recorded (archive projection omits it)
     cadence_seconds: float = 0.0            # measured median snapshot distance
     snapshot_count: int = 0
     archive_start: str = ''                 # ISO-8601 UTC
