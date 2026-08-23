@@ -647,8 +647,19 @@ class WorkerOrchestrator:
                 continue
             if not worker.should_refresh_at(now):
                 continue
+            # Timed and recorded exactly as the tick path does. Without this a worker that
+            # only ever refreshes off-tick reports ZERO computes while its log shows the
+            # arrivals — measured on the first live observation run: 3 computes, reported 0.
+            # The tick index is the last processed tick: the compute happened after it.
+            start_time = time.perf_counter()
             self._worker_results[name] = worker.compute_signal_at(now)
+            computation_time_ms = (time.perf_counter() - start_time) * 1000
             self._signal_resolution_stats[name].off_tick_arrivals += 1
+            if worker.performance_logger:
+                worker.performance_logger.record(
+                    computation_time_ms,
+                    tick_index=self._coordination_stats.ticks_processed,
+                )
 
         self._process_signal_pass(now, count_tick=False)
         return merged

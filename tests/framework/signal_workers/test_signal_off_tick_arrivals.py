@@ -127,6 +127,37 @@ class TestOffTickRefresh:
             utc(2026, 1, 15, 8, 5))
         assert orchestrator.get_worker_result('sentiment').outputs['signal'] == 'BUY'
 
+    def test_an_off_tick_compute_is_recorded_as_a_compute(self, mock_logger, provider):
+        """
+        Found on the first live observation run: a worker refreshed three times, all of them
+        off-tick, and the run report said `0 computes` while the log showed the arrivals.
+
+        The tick path times and records every compute; this path did not, so a worker whose
+        first arrival lands BEFORE the first tick — which is the normal case, the transport
+        starts before the market does — is invisible in the performance section for the rest
+        of the session. A number an operator reads must not contradict the log beside it.
+        """
+        orchestrator = _orchestrator(mock_logger, provider)
+        worker = orchestrator.workers['sentiment']
+        before = worker.performance_logger.get_stats().worker_call_count
+
+        orchestrator.process_signal_arrivals(
+            {SIGNAL_KIND: [snapshot(utc(2026, 1, 15, 8, 5), 0.9, 0.9, signal='BUY')]},
+            utc(2026, 1, 15, 8, 5))
+
+        assert worker.performance_logger.get_stats().worker_call_count == before + 1
+
+    def test_a_skipped_refresh_records_nothing(self, mock_logger, provider):
+        """An arrival that does not move the window is not a compute."""
+        orchestrator = _orchestrator(mock_logger, provider)
+        snap = snapshot(utc(2026, 1, 15, 8, 5), 0.9, 0.9, signal='BUY')
+        orchestrator.process_signal_arrivals({SIGNAL_KIND: [snap]}, utc(2026, 1, 15, 8, 5))
+        worker = orchestrator.workers['sentiment']
+        after_first = worker.performance_logger.get_stats().worker_call_count
+
+        orchestrator.process_signal_arrivals({SIGNAL_KIND: [snap]}, utc(2026, 1, 15, 8, 6))
+        assert worker.performance_logger.get_stats().worker_call_count == after_first
+
     def test_off_tick_arrivals_are_counted_separately(self, mock_logger, provider):
         orchestrator = _orchestrator(mock_logger, provider)
         orchestrator.process_tick(make_tick(utc(2026, 1, 15, 8, 1)), current_bars={})

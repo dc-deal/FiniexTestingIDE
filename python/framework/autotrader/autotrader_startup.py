@@ -30,6 +30,7 @@ from python.framework.types.autotrader_types.display_label_cache import DisplayL
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
+from python.framework.types.signal_data_types import SignalSeries
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
