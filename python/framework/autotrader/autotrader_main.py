@@ -30,6 +30,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.signal_data.signal_inbox import SignalInbox
 from python.framework.signal_data.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
+from python.framework.types.signal_data_types import SignalObservedSeries
 from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -445,14 +446,14 @@ class AutotraderMain:
     def _print_startup_error(self, message: str) -> None:
         """Print startup error to console. Startup errors abort the session."""
         print(f"\n{'=' * 60}")
-        print(f"  ❌ STARTUP FAILED")
+        print('  ❌ STARTUP FAILED')
         print(f"  {message}")
         print(f"{'=' * 60}\n")
 
     def _print_runtime_error(self, message: str) -> None:
         """Print a tick-loop runtime error to console. Aborts via emergency shutdown."""
         print(f"\n{'=' * 60}")
-        print(f"  ❌ RUNTIME ERROR — SESSION ABORTED (emergency shutdown)")
+        print('  ❌ RUNTIME ERROR — SESSION ABORTED (emergency shutdown)')
         print(f"  {message}")
         print(f"{'=' * 60}\n")
 
@@ -630,8 +631,7 @@ class AutotraderMain:
             global_logger=self._global_logger,
             broker_config=self._executor.broker if self._executor else None,
             signal_scenario_map=self._signal_scenario_map,
-            observed_feed=(self._signal_observed.get_observed_series()
-                           if self._signal_observed else None),
+            observed_feed=self._collect_observed_feed(),
         ).generate_and_log()
 
         # Close all loggers
@@ -811,6 +811,26 @@ class AutotraderMain:
         )
         print('  ▸ Field Study preflight: no resting orders (starting balances recorded)')
         return True
+
+    def _collect_observed_feed(self) -> Optional[SignalObservedSeries]:
+        """
+        The live feed's observed plane for the run report, cadence included.
+
+        The cadence is the producer's OWN reported interval, which only the health probe
+        knows — a session that received four envelopes has no sample to measure a median
+        from. Read here rather than pushed on arrival: the probe answers on its own
+        schedule, and the report needs the last answer, not the first.
+
+        Returns:
+            The accumulated series, or None when this session consumed no live feed
+        """
+        if self._signal_observed is None:
+            return None
+        if self._signal_transport is not None:
+            cadence = self._signal_transport.get_transport_stats().health.producer_cadence_s
+            if cadence:
+                self._signal_observed.set_cadence_seconds(cadence)
+        return self._signal_observed.get_observed_series()
 
     def _is_dry_run(self) -> bool:
         """

@@ -1,0 +1,46 @@
+# Ruff configuration — the project's own conventions, not ruff's defaults.
+#
+# ⚠️ Never run ruff bare against this codebase. Its default quote style is DOUBLE, which is
+# the exact opposite of §5 (single quotes for string literals, double only for f-strings and
+# docstrings). Unconfigured it reports ~6900 findings pointing the wrong way.
+#
+# Two tiers on purpose:
+#   - the `select` list below is what a run is expected to be clean of, and matches rules
+#     the project already states in prose;
+#   - the release sweep additionally applies I001 (import order) and Q000 (quote style),
+#     which carry a large pre-existing backlog and are fixed in one deliberate pass rather
+#     than gated daily. A gate that fails on day one gets skipped, and a skipped gate stops
+#     protecting whatever sits beside it.
+
+line-length = 100
+target-version = "py312"
+
+exclude = [
+    "python/experiments",     # single-use migration tools (§27), not permanent code paths
+    "**/__pycache__",
+]
+
+[format]
+# §5 — string literals use single quotes.
+quote-style = "single"
+
+[lint]
+# Rules the project already states in prose, made mechanical:
+#   F401  unused import                    §7 "clear unused imports on the fly"
+#   F541  f-string without placeholders    §5 (it is a plain string, single-quoted)
+#   F811  redefinition of an unused name   a real defect, always
+#   F821  undefined name                   the hard gate (also covered by pyflakes)
+#   F841  assigned but never used          §19 dead code, module-local
+select = ["F401", "F541", "F811", "F821", "F841"]
+
+# Applied at release time only — see the Release Checklist:
+#   I001  unsorted imports                 §7 grouping (stdlib → third party → project)
+#   Q000  bad quotes                       §5, ~4200 pre-existing at 2026-08-23
+
+[lint.flake8-quotes]
+inline-quotes = "single"
+docstring-quotes = "double"
+
+[lint.per-file-ignores]
+# Test files legitimately import fixtures they do not reference by name.
+"tests/**/conftest.py" = ["F401"]

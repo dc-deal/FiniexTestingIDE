@@ -23,7 +23,7 @@ from python.framework.types.performance_types.performance_stats_types import Wor
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.types.signal_data_types import (
     SignalResolution, SignalResolutionStats, SignalSnapshot)
-from python.framework.types.worker_types import ComputeBasis, SUBSCRIBE_ALL, WorkerRequirement, WorkerResult, WorkerState
+from python.framework.types.worker_types import ComputeBasis, SUBSCRIBE_ALL, WorkerResult, WorkerState
 from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
@@ -341,9 +341,9 @@ class WorkerOrchestrator:
         )
         if consumes_signal and type(self.decision_logic).on_signal_stale is AbstractDecisionLogic.on_signal_stale:
             errors.append(
-                f"Decision logic consumes SIGNAL worker(s) but does not override "
-                f"on_signal_stale() — the staleness reaction (fallback / flat / HALT / "
-                f"deliberate ignore) must be programmed explicitly."
+                'Decision logic consumes SIGNAL worker(s) but does not override '
+                'on_signal_stale() — the staleness reaction (fallback / flat / HALT / '
+                'deliberate ignore) must be programmed explicitly.'
             )
 
         # Raise all errors together
@@ -874,7 +874,7 @@ class WorkerOrchestrator:
                         tick_index=self._coordination_stats.ticks_processed,
                     )
 
-            except Exception as e:
+            except Exception:
                 self.logger.error(
                     f"❌ Worker '{name}' failed: \n{traceback.format_exc()}")
                 worker.set_state(WorkerState.ERROR)

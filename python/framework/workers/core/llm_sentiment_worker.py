@@ -8,7 +8,7 @@ from typing import Dict, Optional
 
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.parameter_types import OutputParamDef
-from python.framework.types.signal_data_types import ResolvedSignal, SignalEdge
+from python.framework.types.signal_data_types import ResolvedSignal
 from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 

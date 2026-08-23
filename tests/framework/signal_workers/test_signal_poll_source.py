@@ -13,7 +13,6 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import MagicMock
 
-import pytest
 
 from python.framework.signal_data.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.signal_inbox import SignalInbox
