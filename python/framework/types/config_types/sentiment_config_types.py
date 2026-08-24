@@ -8,9 +8,44 @@ facts and a scenario points at them with data_sentiment_type. Both pipelines rea
 the per-source facts describe a SOURCE, not a run, so a simulation needs them as much as
 a live session does.
 """
+from dataclasses import dataclass
 from typing import Dict, Optional
 
 from pydantic import BaseModel, Field
+
+
+@dataclass
+class ResolvedCredential:
+    """
+    A producer token together with the file that answered for it.
+
+    Runtime result of a lookup, not a config schema — hence a dataclass beside the
+    Pydantic models (§6). The source is the load-bearing half: with a tracked empty
+    default and a gitignored override, "the token is configured" and "the token is
+    empty and no header is sent" are otherwise indistinguishable from the log.
+    """
+    token: str
+    source: Optional[str]
+
+    def is_configured(self) -> bool:
+        """
+        Whether a non-empty token was found.
+
+        Returns:
+            True when a token will be sent as an Authorization header
+        """
+        return bool(self.token)
+
+    def describe_source(self) -> str:
+        """
+        Operator-readable provenance, safe to log — never the token itself (§29).
+
+        Returns:
+            The answering file, or a statement that none did
+        """
+        if not self.source:
+            return 'no credentials file found'
+        return f'{self.source}' if self.token else f'{self.source} (empty)'
 
 
 class SentimentSourceConfig(BaseModel):

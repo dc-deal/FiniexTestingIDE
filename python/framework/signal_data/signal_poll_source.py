@@ -36,6 +36,11 @@ from python.framework.types.signal_data_types import SignalHealthStatus, SignalS
 # paid run. That is the one condition worth waiting out rather than hammering.
 STORE_UNAVAILABLE_ERROR = 'VECTOR_STORE_ERROR'
 
+# The producer's connect contract is explicit that these are NOT transport failures:
+# "stop retrying and report a credential problem". Retrying forever against a dead token
+# and calling it the producer's outage is exactly what the distinction prevents.
+CREDENTIAL_STATUS_CODES = (401, 403)
+
 # How many transport moments the operator panel keeps. The tail is what a human
 # reads; the total is what tells them the tail is a tail.
 TAPE_LENGTH = 8
@@ -190,14 +195,50 @@ class SignalPollSource:
             try:
                 if self._poll_once():
                     wait_s = self._config.degraded_backoff_s
+            except urllib.error.HTTPError as error:
+                if error.code in CREDENTIAL_STATUS_CODES:
+                    self._handle_unauthorized(error.code)
+                    return
+                self._record_transport_failure(error)
             except Exception as error:   # noqa: BLE001 — a transport fault never stops the loop
-                with self._stats_lock:
-                    self._transport_errors += 1
-                    self._state = 'error'
-                self._record(f'transport failed: {type(error).__name__}',
-                             AwarenessLevel.ALERT)
-                self._logger.warning(f'📡 Signal poll failed: {error}')
+                self._record_transport_failure(error)
             self._stop.wait(wait_s)
+
+    def _record_transport_failure(self, error: Exception) -> None:
+        """
+        Count and report a genuine transport fault, which never stops the loop.
+
+        Args:
+            error: The failure to report
+        """
+        with self._stats_lock:
+            self._transport_errors += 1
+            self._state = 'error'
+        self._record(f'transport failed: {type(error).__name__}',
+                     AwarenessLevel.ALERT)
+        self._logger.warning(f'📡 Signal poll failed: {error}')
+
+    def _handle_unauthorized(self, status_code: int) -> None:
+        """
+        Report a credential problem and stop polling — retrying cannot fix it.
+
+        Deliberately not counted as a transport error: the producer is answering
+        correctly, we are the ones without a valid token. Stopping is safe because the
+        staleness contract then declares the feed blind, which is a state the decision
+        logic is required to handle — a silence the strategy is TOLD about rather than
+        one it has to infer.
+
+        Args:
+            status_code: The status the producer answered with
+        """
+        with self._stats_lock:
+            self._state = 'unauthorized'
+        self._record(f'credential rejected ({status_code})', AwarenessLevel.ALERT)
+        self._logger.error(
+            f'📡 Producer rejected our credential ({status_code}) — this is NOT a producer '
+            f'outage. Polling stopped; retrying cannot fix a token. Check '
+            f'user_configs/credentials/{self._config.credentials_file}, then restart the '
+            f'session. The feed is now blind and the staleness contract will say so.')
 
     def _poll_once(self) -> bool:
         """

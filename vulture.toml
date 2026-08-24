@@ -20,6 +20,12 @@
 #    `python/framework/types/` are fields, not dead code — but not all of them, and §19
 #    wants dead config found. That bucket is a judgement pass, not a delete list.
 #
+# ⚠️ CONFIGURATION SELECTS BY STRING. A decision logic is a path in a profile, a worker is a
+#    `USER/name` type, an adapter is a `broker_type`. None of that is an import, so no
+#    config-selected class is visible here. Before deleting a class, grep the JSON under
+#    `configs/` and `tests/fixtures/` for its file name. Measured case: the diagnostics probe
+#    decision is reachable only through `"decision_logic_type"` in an AutoTrader profile.
+#
 # What is ignored below is only what a framework calls along a path vulture cannot follow.
 # Nothing is ignored for being inconvenient.
 

@@ -66,10 +66,13 @@ the tests were gone rather than failing. `ruff.toml` ignores F401 across `tests/
 exactly this reason, and any cleanup of test imports must protect anything from
 `tests.shared`, from a `conftest`, or named `Test*`.
 
-Two blind spots are stated in `vulture.toml` and repeated here because deleting on a false
+Three blind spots are stated in `vulture.toml` and repeated here because deleting on a false
 positive is the expensive mistake: **`user_algos/` is not scanned** (separate gitignored
-workspace — a framework method only a private algo calls reads as dead), and
-**serialization hides reads**.
+workspace — a framework method only a private algo calls reads as dead), **serialization hides
+reads**, and — the one that bites hardest — **configuration selects by string**. A decision
+logic is a path in a profile, a worker is a `USER/name` type, an adapter is a `broker_type`:
+none of that is an import, so no config-selected class is visible to the tool. Grep the JSON
+under `configs/` and `tests/fixtures/` before deleting a class.
 
 ## Related
 

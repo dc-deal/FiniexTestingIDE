@@ -686,8 +686,20 @@ class AutotraderMain:
                 'Signal transport is enabled but poll.pipeline_id is empty — '
                 'name the producer pipeline in sentiment_config.json.')
 
-        api_token = SentimentConfigManager().resolve_api_token(
+        credential = SentimentConfigManager().resolve_api_credential(
             poll_config.credentials_file)
+        # Announce which file answered. With a tracked empty default and a gitignored
+        # override, a configured token and an empty one are otherwise indistinguishable
+        # in the log — and an empty one now means 401 on every authenticated route.
+        self._session_logger.info(
+            f'📡 Producer credential ← {credential.describe_source()}')
+        if not credential.is_configured():
+            self._session_logger.warning(
+                '📡 No producer token configured — requests go out without an '
+                'Authorization header. Every route except /v1/health will answer 401. '
+                'Place the token in user_configs/credentials/'
+                f'{poll_config.credentials_file}.')
+        api_token = credential.token
 
         # The probe borrows the transport's address on purpose: the question it answers
         # is which journal these envelopes come from, so asking a second address could

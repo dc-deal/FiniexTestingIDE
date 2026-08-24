@@ -15,6 +15,7 @@ stop being asked who it is.
 
 import json
 import threading
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from typing import Callable, Optional
@@ -241,6 +242,21 @@ class SignalHealthProbe:
         while not self._stop.is_set():
             try:
                 self.probe_once()
+            except urllib.error.HTTPError as error:
+                # /v1/health is the producer's one documented no-token route, so a
+                # credential status here is a misconfigured address rather than a missing
+                # token — worth saying out loud instead of counting as a probe error.
+                if error.code in (401, 403):
+                    self._emit(f'health route rejected credential ({error.code})',
+                               AwarenessLevel.ALERT)
+                    self._logger.warning(
+                        f'📡 The producer health route answered {error.code}. That route is '
+                        f'documented as reachable without a token, so this points at the '
+                        f'configured address rather than at the credential.')
+                else:
+                    with self._lock:
+                        self._status.probe_errors += 1
+                    self._logger.debug(f'📡 Producer health probe failed: {error}')
             except Exception as error:   # noqa: BLE001 — identity is never worth a crash
                 with self._lock:
                     self._status.probe_errors += 1

@@ -32,6 +32,7 @@ python python/cli/signal_index_cli.py import [--override]   # JSONL → parquet 
 python python/cli/signal_index_cli.py status                # coverage per source / symbol
 python python/cli/signal_index_cli.py rebuild               # force index rebuild
 python python/cli/signal_index_cli.py inspect crypto_sentiment BTCUSD
+python python/cli/signal_index_cli.py connect-check              # is the producer reachable, and which one
 ```
 
 The importer (`SignalDataImporter`) explodes each envelope into **one parquet row per
@@ -85,6 +86,37 @@ Tooling that rewrites raw envelopes — `python/experiments/restore_signal_envel
 on plain files, so an archived day must be unpacked first, stamped, and re-imported with
 `--override`. Read this as a cost, not an obstacle: it is the reason to stamp a day **before** it
 is packed, while it still sits in the inbox.
+
+
+### Connect check — reachability and credential, before a session needs them
+
+`connect-check` probes the configured producer and answers three questions a live session
+answers only expensively: is the address reachable, **which** producer answered, and was our
+credential accepted.
+
+It probes **only the two free routes** — `/v1/health` and `/v1/pipelines/{id}/latest` — and never
+the paid run route, so the check itself can never cost money. `/v1/health` is probed **without** a
+token (the producer documents it as the one no-token route), which is what separates the two
+failure modes: health failing is the *address*, `/latest` failing alone is the *credential*.
+
+```
+📡 PRODUCER CONNECT CHECK
+   Address:    https://finiex-rag.duckdns.org
+   Credential: user_configs/credentials/rag_credentials.json
+   ✅ GET /v1/health                              journal 138c68e48b15 (production) · engine 0.3.3
+   ✅ GET /v1/pipelines/crypto_sentiment/latest   seq 331 · epoch 1 · schema 2.0 · origin live
+   ✅ Reachable and authenticated.
+```
+
+It prints the credential's **source file**, never the token, and says so explicitly when the file
+is empty — with a tracked empty default and a gitignored override, "configured" and "empty" are
+otherwise indistinguishable. Exit code is non-zero on failure, so it works as a pre-flight.
+
+**A rejected credential is not an outage.** `401` / `403` are reported as a credential problem and
+never as unreachability — the same distinction the running poll source now makes, where it also
+**stops polling**: retrying cannot fix a token, and the staleness contract then declares the feed
+blind, which is a state the decision logic is required to handle.
+
 
 ## Scenario usage
 

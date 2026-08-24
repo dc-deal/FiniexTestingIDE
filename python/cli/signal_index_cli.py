@@ -7,6 +7,7 @@ Usage:
     python python/cli/signal_index_cli.py status
     python python/cli/signal_index_cli.py rebuild
     python python/cli/signal_index_cli.py inspect DATA_SENTIMENT_TYPE SYMBOL
+    python python/cli/signal_index_cli.py connect-check
 
 Paths are driven by configs/import_config.json → 'signal_paths' (with user_configs override):
 raw JSONL under data/raw/signals/<pipeline_id>/, processed parquet + index under
@@ -24,8 +25,13 @@ import traceback
 import pandas as pd
 
 from python.configuration.import_config_manager import ImportConfigManager
+from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.data_management.importers.signal_data_importer import SignalDataImporter
 from python.data_management.index.signal_index_manager import SignalIndexManager
+from python.framework.signal_data.signal_connect_check import (
+    print_connect_check,
+    run_connect_check,
+)
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.signal_data_types import (
     SIGNAL_ENVELOPE_SYMBOL,
@@ -88,6 +94,20 @@ class SignalIndexCli:
             data_dir=self._import_config.get_signal_import_output_path())
         manager.build_index(force_rebuild=True)
         manager.print_summary()
+
+    def cmd_connect_check(self):
+        """Probe the configured producer: reachable, and which credential answered."""
+        config = SentimentConfigManager().get_config()
+        credential = SentimentConfigManager().resolve_api_credential(
+            config.poll.credentials_file)
+        result = run_connect_check(
+            base_url=config.poll.base_url,
+            pipeline_id=config.poll.pipeline_id,
+            token=credential.token,
+            credential_source=credential.describe_source(),
+            timeout_s=config.poll.request_timeout_s)
+        print_connect_check(result)
+        return result
 
     def cmd_inspect(self, data_sentiment_type: str, symbol: str):
         """
@@ -183,6 +203,13 @@ def main():
     subparsers.add_parser('rebuild', help='Force a full signal index rebuild')
 
     # ─────────────────────────────────────────────────────────────────────────
+    # CONNECT-CHECK command
+    # ─────────────────────────────────────────────────────────────────────────
+    subparsers.add_parser(
+        'connect-check',
+        help='Probe the configured producer (free routes only, never POST /run)')
+
+    # ─────────────────────────────────────────────────────────────────────────
     # INSPECT command
     # ─────────────────────────────────────────────────────────────────────────
     inspect_parser = subparsers.add_parser(
@@ -206,6 +233,9 @@ def main():
             cli.cmd_status()
         elif args.command == 'rebuild':
             cli.cmd_rebuild()
+        elif args.command == 'connect-check':
+            if not cli.cmd_connect_check().is_ok():
+                sys.exit(1)
         elif args.command == 'inspect':
             cli.cmd_inspect(
                 data_sentiment_type=args.data_sentiment_type,

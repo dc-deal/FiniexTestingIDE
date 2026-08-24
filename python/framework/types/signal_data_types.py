@@ -536,3 +536,48 @@ SIGNAL_RUNTIME_COLUMNS = frozenset({
     SignalParquetColumn.EVIDENCE_AS_OF.value,
     SignalParquetColumn.ENVELOPE_EVIDENCE_AS_OF.value,
 })
+
+
+@dataclass
+class ConnectCheckStep:
+    """
+    Outcome of one probed route.
+
+    Args:
+        name: Route as the operator recognizes it
+        ok: Whether the route answered as expected
+        detail: One line describing what came back, or why nothing did
+        payload: Decoded response when there was one
+    """
+    name: str
+    ok: bool
+    detail: str
+    payload: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class ConnectCheckResult:
+    """
+    Everything one connect check established.
+
+    Args:
+        base_url: Address probed, as configured
+        credential_source: File the token came from — never the token itself (§29)
+        credential_configured: Whether a non-empty token was sent
+        steps: Per-route outcomes in probe order
+        credential_rejected: True when the producer refused the token
+    """
+    base_url: str
+    credential_source: str
+    credential_configured: bool
+    steps: List[ConnectCheckStep] = field(default_factory=list)
+    credential_rejected: bool = False
+
+    def is_ok(self) -> bool:
+        """
+        Whether every probed route answered as expected.
+
+        Returns:
+            True when no step failed
+        """
+        return all(step.ok for step in self.steps)

@@ -14,7 +14,10 @@ from pathlib import Path
 from typing import Any, Dict
 
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.config_types.sentiment_config_types import SentimentConfig
+from python.framework.types.config_types.sentiment_config_types import (
+    ResolvedCredential,
+    SentimentConfig,
+)
 from python.framework.utils.config_merge_utils import deep_merge, is_config_isolation_active
 
 vLog = get_global_logger()
@@ -59,20 +62,24 @@ class SentimentConfigManager:
         """
         return self._config.get_source(pipeline_id)
 
-    def resolve_api_token(self, credentials_filename: str) -> str:
+    def resolve_api_credential(self, credentials_filename: str) -> ResolvedCredential:
         """
-        Read the producer's API token via the credential cascade.
+        Read the producer's API token via the credential cascade, and say where from.
 
         Cascade: user_configs/credentials/ → configs/credentials/, matching every other
-        credential in the project. An EMPTY token is a valid answer and means "send no
-        Authorization header" — which is correct while the producer has no authentication.
-        A missing file is not an error for the same reason: no auth, nothing to read.
+        credential in the project. The tracked default is an empty file by design, so an
+        empty result is a REAL outcome and not an error — it means no Authorization header
+        is sent, which the producer answers with 401 on every route except /v1/health.
+
+        The answering file is returned alongside, because with a tracked empty default and
+        a gitignored override the two failure modes look identical in a log: a token that
+        is configured and one that is empty.
 
         Args:
             credentials_filename: File name inside the credentials directory
 
         Returns:
-            The token, or '' when none is configured
+            The token and the file that answered for it
         """
         for directory in ('user_configs/credentials', 'configs/credentials'):
             path = Path(directory) / credentials_filename
@@ -80,14 +87,16 @@ class SentimentConfigManager:
                 continue
             try:
                 with open(path, 'r') as handle:
-                    return json.load(handle).get('api_token', '')
+                    return ResolvedCredential(
+                        token=json.load(handle).get('api_token', ''),
+                        source=str(path))
             except json.JSONDecodeError as error:
                 raise RuntimeError(
                     f'Invalid JSON in credentials file: {path}\n'
                     f'Error: {error}\n'
                     f'Fix the syntax or remove the file.'
                 )
-        return ''
+        return ResolvedCredential(token='', source=None)
 
     def _load(self) -> Dict[str, Any]:
         """
