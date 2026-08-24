@@ -22,29 +22,33 @@ from python.framework.autotrader.tick_sources.abstract_tick_source import Abstra
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
-from python.framework.process.tick_pipeline_core import execute_algo_path, render_bars_for_tick, run_ghost_pass
+from python.framework.process.tick_pipeline_core import (
+    execute_algo_path,
+    render_bars_for_tick,
+    run_ghost_pass,
+)
+from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
+from python.framework.signal_data.signal_inbox import SignalInbox
+from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.reconciler import Reconciler
-from python.framework.persistence.algo_state_store import AlgoStateStore
-from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
-from python.framework.types.config_types.market_config_types import TradingModel
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.autotrader_types.autotrader_display_types import (
     RejectionEntry,
     SafetyState,
 )
+from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndEvent, SessionEndSeverity
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult
-from python.framework.signal_data.signal_inbox import SignalInbox
-from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -292,7 +296,7 @@ class AutotraderTickLoop:
                 self._persist_state_if_due(ticks_processed)
                 if self._executor.is_session_end_requested():
                     self._logger.info(
-                        f"🛑 Session end requested: {self._executor.get_session_end_reason()}")
+                        f'🛑 Session end requested: {self._executor.get_session_end_reason()}')
                     break
                 self._push_pulse_frame(ticks_processed)
                 continue
@@ -389,7 +393,7 @@ class AutotraderTickLoop:
             self._drain_decision_events()
             if self._executor.is_session_end_requested():
                 self._logger.info(
-                    f"🛑 Session end requested: {self._executor.get_session_end_reason()}")
+                    f'🛑 Session end requested: {self._executor.get_session_end_reason()}')
                 break
 
             # === 6c. Reconciliation (#151, hybrid cadence, ALERT_ONLY) ===
@@ -413,11 +417,11 @@ class AutotraderTickLoop:
             report = self._clipping_monitor.get_periodic_report()
             if report is not None:
                 self._logger.info(
-                    f"📊 Clipping report: {report.interval_ticks} ticks, "
-                    f"{report.interval_clipped} clipped, "
-                    f"avg {report.interval_avg_processing_ms:.2f}ms, "
-                    f"max {report.interval_max_processing_ms:.2f}ms, "
-                    f"queue_depth_max={report.interval_max_queue_depth}"
+                    f'📊 Clipping report: {report.interval_ticks} ticks, '
+                    f'{report.interval_clipped} clipped, '
+                    f'avg {report.interval_avg_processing_ms:.2f}ms, '
+                    f'max {report.interval_max_processing_ms:.2f}ms, '
+                    f'queue_depth_max={report.interval_max_queue_depth}'
                 )
                 ticks_clipped += report.interval_clipped
 
@@ -484,8 +488,8 @@ class AutotraderTickLoop:
         # #360 ghost-pass observability — proves the idle decision pass fired
         # (and acted) over the session. Machine-parseable.
         self._logger.info(
-            f"[GHOST] ghost_passes={self._ghost_pass_count} "
-            f"ghost_actions={self._ghost_action_count} ticks={ticks_processed}")
+            f'[GHOST] ghost_passes={self._ghost_pass_count} '
+            f'ghost_actions={self._ghost_action_count} ticks={ticks_processed}')
 
         self._running = False
         return ticks_processed, ticks_clipped
@@ -518,7 +522,7 @@ class AutotraderTickLoop:
             arrivals, self._executor.get_current_time())
         if merged:
             self._logger.debug(
-                f"📡 {merged} signal envelope(s) arrived between ticks")
+                f'📡 {merged} signal envelope(s) arrived between ticks')
 
     def _drain_decision_events(self) -> None:
         """Drain buffered decision events to the algo hooks, if a dispatcher is active (#348)."""
@@ -562,7 +566,7 @@ class AutotraderTickLoop:
             self._state_store.save(
                 self._decision_logic.get_state_snapshot(), ticks_processed)
         except Exception as e:
-            self._logger.error(f"Algo state save failed (continuing): {e}")
+            self._logger.error(f'Algo state save failed (continuing): {e}')
 
     def _run_decision_heartbeat(self, ticks_processed: int) -> None:
         """
@@ -837,7 +841,7 @@ class AutotraderTickLoop:
 
         if tick_date != self._current_log_date:
             self._logger.info(
-                f"📅 Date change detected: {self._current_log_date} → {tick_date} — rotating session log"
+                f'📅 Date change detected: {self._current_log_date} → {tick_date} — rotating session log'
             )
             log_level = self._logger.file_logger.log_level if self._logger.file_logger else 'INFO'
             new_file_logger = create_session_file_logger(
@@ -846,5 +850,5 @@ class AutotraderTickLoop:
             self._logger.swap_file_logger(new_file_logger)
             self._current_log_date = tick_date
             self._logger.info(
-                f"📅 Session log rotated to autotrader_session_{tick_date}.log"
+                f'📅 Session log rotated to autotrader_session_{tick_date}.log'
             )

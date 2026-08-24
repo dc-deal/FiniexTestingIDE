@@ -4,29 +4,45 @@ Coordinates multiple workers and delegates decision-making to DecisionLogic
 """
 
 import re
-import traceback
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.decision_logic.decision_logic_performance_tracker import (
+    DecisionLogicPerformanceTracker,
+)
 from python.framework.logging.coordinator_tick_logger import CoordinatorTickLogger
-from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
-from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
+from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.disturbance_episode_types import (
-    DisturbanceDomain, DisturbanceEpisode, DisturbanceOrigin)
+    DisturbanceDomain,
+    DisturbanceEpisode,
+    DisturbanceOrigin,
+)
 from python.framework.types.market_types.market_data_types import Bar, BarRenderState, TickData
-from python.framework.types.performance_types.performance_stats_types import WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
-from python.framework.signal_data.signal_data_provider import SignalDataProvider
+from python.framework.types.performance_types.performance_stats_types import (
+    WorkerCoordinatorPerformanceStats,
+    WorkerPerformanceStats,
+)
 from python.framework.types.signal_data_types import (
-    SignalResolution, SignalResolutionStats, SignalSnapshot)
-from python.framework.types.worker_types import ComputeBasis, SUBSCRIBE_ALL, WorkerResult, WorkerState
-from python.framework.workers.abstract_worker import AbstractWorker
+    SignalResolution,
+    SignalResolutionStats,
+    SignalSnapshot,
+)
+from python.framework.types.worker_types import (
+    SUBSCRIBE_ALL,
+    ComputeBasis,
+    WorkerResult,
+    WorkerState,
+)
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
+from python.framework.workers.abstract_worker import AbstractWorker
+from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
 
 
 class WorkerOrchestrator:
@@ -125,7 +141,7 @@ class WorkerOrchestrator:
         # Thread pool - only create if parallel enabled
         self._thread_pool = (
             ThreadPoolExecutor(max_workers=len(workers),
-                               thread_name_prefix="Worker")
+                               thread_name_prefix='Worker')
             if self.parallel_workers
             else None
         )
@@ -167,10 +183,10 @@ class WorkerOrchestrator:
 
         # Log configuration
         decision_logic.logger.debug(
-            f"WorkerOrchestrator config: "
-            f"workers={len(self.workers)}, "
-            f"decision_logic={decision_logic.name}, "
-            f"parallel={self.parallel_workers}"
+            f'WorkerOrchestrator config: '
+            f'workers={len(self.workers)}, '
+            f'decision_logic={decision_logic.name}, '
+            f'parallel={self.parallel_workers}'
         )
 
     def _extract_worker_type(self, worker: AbstractWorker) -> str:
@@ -191,8 +207,8 @@ class WorkerOrchestrator:
                 return worker.parameters['worker_type']
 
         # Fallback: Use class name
-        class_name = worker.__class__.__name__.replace("Worker", "").lower()
-        return f"CORE/{class_name}"
+        class_name = worker.__class__.__name__.replace('Worker', '').lower()
+        return f'CORE/{class_name}'
 
     def _extract_decision_logic_type(self, decision_logic: AbstractDecisionLogic) -> str:
         """
@@ -215,7 +231,7 @@ class WorkerOrchestrator:
         class_name = decision_logic.__class__.__name__
         # Convert CamelCase to snake_case
         snake_case = re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
-        return f"CORE/{snake_case}"
+        return f'CORE/{snake_case}'
 
     def _normalize_worker_ref(self, type_str: str, base_path: Optional[Path] = None) -> str:
         """
@@ -350,13 +366,13 @@ class WorkerOrchestrator:
         if errors:
             error_msg = (
                 f"DecisionLogic '{self.decision_logic.__class__.__name__}' "
-                f"validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+                f"validation failed:\n" + '\n'.join(f'  - {e}' for e in errors)
             )
             raise ValueError(error_msg)
 
         self.logger.debug(
-            f"✅ DecisionLogic requirements validated: "
-            f"{len(required_workers)} worker instances"
+            f'✅ DecisionLogic requirements validated: '
+            f'{len(required_workers)} worker instances'
         )
 
     def _auto_detect_parallel_mode(self, workers):
@@ -366,8 +382,8 @@ class WorkerOrchestrator:
     def initialize(self):
         """Initialize coordinator and all workers"""
         self.logger.debug(
-            f"🔧 Initializing WorkerOrchestrator with {len(self.workers)} workers "
-            f"(parallel: {self.parallel_workers})"
+            f'🔧 Initializing WorkerOrchestrator with {len(self.workers)} workers '
+            f'(parallel: {self.parallel_workers})'
         )
 
         for name, worker in self.workers.items():
@@ -376,7 +392,7 @@ class WorkerOrchestrator:
 
         self.is_initialized = True
         self.logger.debug(
-            f"✅ WorkerOrchestrator initialized with DecisionLogic: {self.decision_logic.name}")
+            f'✅ WorkerOrchestrator initialized with DecisionLogic: {self.decision_logic.name}')
 
     def process_tick(
         self,
@@ -399,7 +415,7 @@ class WorkerOrchestrator:
             Decision object (from DecisionLogic)
         """
         if not self.is_initialized:
-            raise RuntimeError("Coordinator not initialized")
+            raise RuntimeError('Coordinator not initialized')
 
         # Track tick processing
         self._coordination_stats.ticks_processed += 1
@@ -684,7 +700,7 @@ class WorkerOrchestrator:
             The ghost-pass Decision, or None if the logic does not opt in
         """
         if not self.is_initialized:
-            raise RuntimeError("Coordinator not initialized")
+            raise RuntimeError('Coordinator not initialized')
         if not self.decision_logic.wants_heartbeat():
             return None
 
@@ -934,7 +950,7 @@ class WorkerOrchestrator:
 
         except Exception as e:
             raise RuntimeError(
-                f"Worker {worker.name} computation failed: {e}") from e
+                f'Worker {worker.name} computation failed: {e}') from e
 
     def cleanup(self):
         """Clean up resources."""

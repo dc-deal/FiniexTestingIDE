@@ -16,7 +16,6 @@ from python.configuration.autotrader.autotrader_config_loader import load_autotr
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 
-
 _PROFILE_SL = 'configs/autotrader_profiles/backtesting/sl_triggered_test.json'
 _PROFILE_TP = 'configs/autotrader_profiles/backtesting/tp_triggered_test.json'
 _PROFILE_DUPLICATE = 'configs/autotrader_profiles/backtesting/duplicate_signal_guard_test.json'

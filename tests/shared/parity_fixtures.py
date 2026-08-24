@@ -17,7 +17,6 @@ from typing import List, Tuple
 
 from python.framework.types.market_types.market_data_types import TickData
 
-
 # Fixture parameters — change only together with any committed parquet fixtures
 _FIXTURE_SEED = 42
 _BASE_TIME = datetime(2026, 1, 24, 10, 0, 0, tzinfo=timezone.utc)

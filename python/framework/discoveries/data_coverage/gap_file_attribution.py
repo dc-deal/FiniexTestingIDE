@@ -48,7 +48,7 @@ def parse_file_open_time(file_name: str, offset_hours: int) -> Optional[pd.Times
 
     day, clock = match.group(1), match.group(2)
     opened = pd.Timestamp(
-        f"{day} {clock[:2]}:{clock[2:4]}:{clock[4:]}", tz='UTC')
+        f'{day} {clock[:2]}:{clock[2:4]}:{clock[4:]}', tz='UTC')
     return opened + timedelta(hours=offset_hours)
 
 

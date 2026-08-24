@@ -9,15 +9,16 @@ Tests:
 - Trade history contains only successful trades
 """
 
-import pytest
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
-from tests.shared.shared_batch_health import TestBatchHealth
+import pytest
+
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.process_data_types import ProcessTickLoopResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
+from tests.shared.shared_batch_health import TestBatchHealth
 
 
 class TestMarginExhaustion:
@@ -26,7 +27,7 @@ class TestMarginExhaustion:
     def test_has_rejected_orders(self, execution_stats: ExecutionStats):
         """Some orders should be rejected due to margin exhaustion."""
         assert execution_stats.orders_rejected > 0, (
-            "Expected at least one rejected order from margin exhaustion"
+            'Expected at least one rejected order from margin exhaustion'
         )
 
     def test_rejection_count_matches_expected(
@@ -36,8 +37,8 @@ class TestMarginExhaustion:
     ):
         """Rejected order count should match expected rejections."""
         assert execution_stats.orders_rejected == expected_rejections, (
-            f"Expected {expected_rejections} rejections, "
-            f"got {execution_stats.orders_rejected}"
+            f'Expected {expected_rejections} rejections, '
+            f'got {execution_stats.orders_rejected}'
         )
 
     def test_no_position_created_after_rejection(
@@ -47,8 +48,8 @@ class TestMarginExhaustion:
     ):
         """Trade history should only contain successfully opened trades."""
         assert len(trade_history) == expected_successful_trades, (
-            f"Expected {expected_successful_trades} trades in history, "
-            f"got {len(trade_history)}"
+            f'Expected {expected_successful_trades} trades in history, '
+            f'got {len(trade_history)}'
         )
 
     def test_successful_trades_count(
@@ -58,8 +59,8 @@ class TestMarginExhaustion:
     ):
         """Portfolio total trades should match successful opens."""
         assert portfolio_stats.total_trades == expected_successful_trades, (
-            f"Expected {expected_successful_trades} total trades, "
-            f"got {portfolio_stats.total_trades}"
+            f'Expected {expected_successful_trades} total trades, '
+            f'got {portfolio_stats.total_trades}'
         )
 
 
@@ -77,8 +78,8 @@ class TestMarginRecovery:
             if t.get('event_type') == 'retry'
         ]
         assert len(retry_trades) == len(retry_events), (
-            f"Expected {len(retry_events)} retry trades, "
-            f"got {len(retry_trades)}"
+            f'Expected {len(retry_events)} retry trades, '
+            f'got {len(retry_trades)}'
         )
 
     def test_retry_has_order_id(self, backtesting_metadata: BacktestingMetadata):
@@ -105,9 +106,9 @@ class TestMarginRecovery:
         )
         expected_total = successful_initial + len(retry_events)
         assert len(trade_history) == expected_total, (
-            f"Expected {expected_total} total trades "
-            f"({successful_initial} initial + {len(retry_events)} retries), "
-            f"got {len(trade_history)}"
+            f'Expected {expected_total} total trades '
+            f'({successful_initial} initial + {len(retry_events)} retries), '
+            f'got {len(trade_history)}'
         )
 
 
@@ -121,8 +122,8 @@ class TestExecutionStatistics:
     ):
         """orders_sent should count all open order attempts."""
         assert execution_stats.orders_sent == expected_orders_sent, (
-            f"Expected {expected_orders_sent} orders sent, "
-            f"got {execution_stats.orders_sent}"
+            f'Expected {expected_orders_sent} orders sent, '
+            f'got {execution_stats.orders_sent}'
         )
 
     def test_orders_executed_count(
@@ -132,8 +133,8 @@ class TestExecutionStatistics:
     ):
         """orders_executed should count only successfully opened positions."""
         assert execution_stats.orders_executed == expected_successful_trades, (
-            f"Expected {expected_successful_trades} executed, "
-            f"got {execution_stats.orders_executed}"
+            f'Expected {expected_successful_trades} executed, '
+            f'got {execution_stats.orders_executed}'
         )
 
     def test_sent_equals_executed_plus_rejected(
@@ -143,9 +144,9 @@ class TestExecutionStatistics:
         """orders_sent should equal orders_executed + orders_rejected."""
         total = execution_stats.orders_executed + execution_stats.orders_rejected
         assert execution_stats.orders_sent == total, (
-            f"orders_sent ({execution_stats.orders_sent}) != "
-            f"orders_executed ({execution_stats.orders_executed}) + "
-            f"orders_rejected ({execution_stats.orders_rejected}) = {total}"
+            f'orders_sent ({execution_stats.orders_sent}) != '
+            f'orders_executed ({execution_stats.orders_executed}) + '
+            f'orders_rejected ({execution_stats.orders_rejected}) = {total}'
         )
 
     def test_trade_history_excludes_rejections(
@@ -155,6 +156,6 @@ class TestExecutionStatistics:
     ):
         """Trade history should not contain rejected orders."""
         assert len(trade_history) == execution_stats.orders_executed, (
-            f"Trade history has {len(trade_history)} entries, "
-            f"but {execution_stats.orders_executed} orders were executed"
+            f'Trade history has {len(trade_history)} entries, '
+            f'but {execution_stats.orders_executed} orders were executed'
         )

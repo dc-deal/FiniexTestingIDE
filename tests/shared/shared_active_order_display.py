@@ -10,8 +10,8 @@ Used by: active_order_display
 Import these classes into suite-specific test files.
 """
 
-from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
+from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 
 
 class TestActiveLimitOrdersReported:
@@ -25,50 +25,50 @@ class TestActiveLimitOrdersReported:
     def test_active_limit_orders_populated(self, pending_stats_limit: PendingOrderStats):
         """active_limit_orders must contain exactly 1 entry."""
         assert len(pending_stats_limit.active_limit_orders) == 1, (
-            f"Expected 1 active limit order, "
-            f"got {len(pending_stats_limit.active_limit_orders)}"
+            f'Expected 1 active limit order, '
+            f'got {len(pending_stats_limit.active_limit_orders)}'
         )
 
     def test_active_limit_order_direction(self, pending_stats_limit: PendingOrderStats):
         """Active limit order direction must be LONG."""
         order = pending_stats_limit.active_limit_orders[0]
         assert order.direction == OrderDirection.LONG, (
-            f"Expected LONG, got {order.direction}"
+            f'Expected LONG, got {order.direction}'
         )
 
     def test_active_limit_order_type(self, pending_stats_limit: PendingOrderStats):
         """Active limit order type must be LIMIT."""
         order = pending_stats_limit.active_limit_orders[0]
         assert order.order_type == OrderType.LIMIT, (
-            f"Expected LIMIT, got {order.order_type}"
+            f'Expected LIMIT, got {order.order_type}'
         )
 
     def test_active_limit_order_entry_price(self, pending_stats_limit: PendingOrderStats):
         """Active limit order entry_price must match configured price (0.5000)."""
         order = pending_stats_limit.active_limit_orders[0]
         assert order.entry_price == 0.5000, (
-            f"Expected entry_price=0.5000, got {order.entry_price}"
+            f'Expected entry_price=0.5000, got {order.entry_price}'
         )
 
     def test_active_limit_order_stop_loss(self, pending_stats_limit: PendingOrderStats):
         """Active limit order stop_loss must match configured value (0.4900)."""
         order = pending_stats_limit.active_limit_orders[0]
         assert order.stop_loss == 0.4900, (
-            f"Expected stop_loss=0.4900, got {order.stop_loss}"
+            f'Expected stop_loss=0.4900, got {order.stop_loss}'
         )
 
     def test_active_limit_order_take_profit(self, pending_stats_limit: PendingOrderStats):
         """Active limit order take_profit must match configured value (0.5200)."""
         order = pending_stats_limit.active_limit_orders[0]
         assert order.take_profit == 0.5200, (
-            f"Expected take_profit=0.5200, got {order.take_profit}"
+            f'Expected take_profit=0.5200, got {order.take_profit}'
         )
 
     def test_active_stop_orders_empty(self, pending_stats_limit: PendingOrderStats):
         """active_stop_orders must be empty in the limit scenario."""
         assert len(pending_stats_limit.active_stop_orders) == 0, (
-            f"Expected 0 active stop orders, "
-            f"got {len(pending_stats_limit.active_stop_orders)}"
+            f'Expected 0 active stop orders, '
+            f'got {len(pending_stats_limit.active_stop_orders)}'
         )
 
 
@@ -83,48 +83,48 @@ class TestActiveStopOrdersReported:
     def test_active_stop_orders_populated(self, pending_stats_stop: PendingOrderStats):
         """active_stop_orders must contain exactly 1 entry."""
         assert len(pending_stats_stop.active_stop_orders) == 1, (
-            f"Expected 1 active stop order, "
-            f"got {len(pending_stats_stop.active_stop_orders)}"
+            f'Expected 1 active stop order, '
+            f'got {len(pending_stats_stop.active_stop_orders)}'
         )
 
     def test_active_stop_order_direction(self, pending_stats_stop: PendingOrderStats):
         """Active stop order direction must be LONG."""
         order = pending_stats_stop.active_stop_orders[0]
         assert order.direction == OrderDirection.LONG, (
-            f"Expected LONG, got {order.direction}"
+            f'Expected LONG, got {order.direction}'
         )
 
     def test_active_stop_order_type(self, pending_stats_stop: PendingOrderStats):
         """Active stop order type must be STOP."""
         order = pending_stats_stop.active_stop_orders[0]
         assert order.order_type == OrderType.STOP, (
-            f"Expected STOP, got {order.order_type}"
+            f'Expected STOP, got {order.order_type}'
         )
 
     def test_active_stop_order_entry_price(self, pending_stats_stop: PendingOrderStats):
         """Active stop order entry_price must match configured stop_price (5.0000)."""
         order = pending_stats_stop.active_stop_orders[0]
         assert order.entry_price == 5.0000, (
-            f"Expected entry_price=5.0000, got {order.entry_price}"
+            f'Expected entry_price=5.0000, got {order.entry_price}'
         )
 
     def test_active_stop_order_stop_loss(self, pending_stats_stop: PendingOrderStats):
         """Active stop order stop_loss must match configured value (4.9500)."""
         order = pending_stats_stop.active_stop_orders[0]
         assert order.stop_loss == 4.9500, (
-            f"Expected stop_loss=4.9500, got {order.stop_loss}"
+            f'Expected stop_loss=4.9500, got {order.stop_loss}'
         )
 
     def test_active_stop_order_take_profit(self, pending_stats_stop: PendingOrderStats):
         """Active stop order take_profit must match configured value (5.1000)."""
         order = pending_stats_stop.active_stop_orders[0]
         assert order.take_profit == 5.1000, (
-            f"Expected take_profit=5.1000, got {order.take_profit}"
+            f'Expected take_profit=5.1000, got {order.take_profit}'
         )
 
     def test_active_limit_orders_empty(self, pending_stats_stop: PendingOrderStats):
         """active_limit_orders must be empty in the stop scenario."""
         assert len(pending_stats_stop.active_limit_orders) == 0, (
-            f"Expected 0 active limit orders, "
-            f"got {len(pending_stats_stop.active_limit_orders)}"
+            f'Expected 0 active limit orders, '
+            f'got {len(pending_stats_stop.active_limit_orders)}'
         )

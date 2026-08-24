@@ -15,7 +15,6 @@ from python.configuration.autotrader.autotrader_config_loader import load_autotr
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 
-
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/trade_lifecycle_test.json'
 
 
@@ -50,17 +49,17 @@ class TestNormalCycle:
 
     def test_no_errors(self, session_result):
         assert len(session_result.error_messages) == 0, (
-            f"Unexpected errors: {session_result.error_messages}"
+            f'Unexpected errors: {session_result.error_messages}'
         )
 
     def test_trade_has_valid_entry_exit(self, session_result):
         """Every completed trade must have a real entry and exit price."""
         for trade in session_result.trade_history:
             assert trade.entry_price > 0, (
-                f"Trade {trade.position_id}: entry_price is 0 — dry-run artifact"
+                f'Trade {trade.position_id}: entry_price is 0 — dry-run artifact'
             )
             assert trade.exit_price > 0, (
-                f"Trade {trade.position_id}: exit_price is 0"
+                f'Trade {trade.position_id}: exit_price is 0'
             )
 
     def test_trade_directions_valid(self, session_result):
@@ -68,7 +67,7 @@ class TestNormalCycle:
         from python.framework.types.trading_env_types.order_types import OrderDirection
         for trade in session_result.trade_history:
             assert trade.direction in (OrderDirection.LONG, OrderDirection.SHORT), (
-                f"Unexpected direction: {trade.direction}"
+                f'Unexpected direction: {trade.direction}'
             )
 
 
@@ -90,7 +89,7 @@ class TestClosePaths:
         """
         for trade in session_result.trade_history:
             assert trade.exit_price > 0, (
-                f"Trade {trade.position_id} has no exit price — may be orphaned"
+                f'Trade {trade.position_id} has no exit price — may be orphaned'
             )
 
     def test_pnl_is_finite(self, session_result):
@@ -98,7 +97,7 @@ class TestClosePaths:
         import math
         for trade in session_result.trade_history:
             assert math.isfinite(trade.net_pnl), (
-                f"Trade {trade.position_id}: net_pnl={trade.net_pnl} is not finite"
+                f'Trade {trade.position_id}: net_pnl={trade.net_pnl} is not finite'
             )
 
 
@@ -111,16 +110,16 @@ class TestPortfolioIntegrity:
     def test_trade_count_matches_history(self, session_result):
         """portfolio_stats.total_trades must match len(trade_history)."""
         assert session_result.portfolio_stats.total_trades == len(session_result.trade_history), (
-            f"Stats says {session_result.portfolio_stats.total_trades} trades, "
-            f"history has {len(session_result.trade_history)}"
+            f'Stats says {session_result.portfolio_stats.total_trades} trades, '
+            f'history has {len(session_result.trade_history)}'
         )
 
     def test_winning_losing_adds_up(self, session_result):
         """winning + losing trades must equal total trades."""
         stats = session_result.portfolio_stats
         assert stats.winning_trades + stats.losing_trades == stats.total_trades, (
-            f"W({stats.winning_trades}) + L({stats.losing_trades}) "
-            f"!= total({stats.total_trades})"
+            f'W({stats.winning_trades}) + L({stats.losing_trades}) '
+            f'!= total({stats.total_trades})'
         )
 
     def test_balance_changed_after_trades(self, session_result):
@@ -151,7 +150,7 @@ class TestSessionEndWithOpenPosition:
         # If they exist, they must have valid exit prices.
         for trade in scenario_end_trades:
             assert trade.exit_price > 0, (
-                f"SCENARIO_END trade {trade.position_id} has no exit price"
+                f'SCENARIO_END trade {trade.position_id} has no exit price'
             )
 
 

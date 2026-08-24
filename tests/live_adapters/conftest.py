@@ -14,10 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
-import pytest
 
 from python.framework.utils.git_info_utils import get_git_commit
-
 
 _REPORTS_DIR = Path('tests/live_adapters/reports')
 _BROKER_SETTINGS_PATH = Path('configs/broker_settings/kraken_spot.json')

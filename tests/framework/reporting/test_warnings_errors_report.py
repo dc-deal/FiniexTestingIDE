@@ -13,11 +13,17 @@ import re
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 
-from python.framework.reporting.console.warnings_summary import WarningsSummary
 from python.framework.reporting.builders.warnings_errors_report_builder import (
-    build_warnings_errors_report_from_batch, build_warnings_errors_report_from_session)
+    build_warnings_errors_report_from_batch,
+    build_warnings_errors_report_from_session,
+)
+from python.framework.reporting.console.warnings_summary import WarningsSummary
 from python.framework.types.api.report_types import (
-    UnitErrorRow, WarningRow, WarningsErrorsOutcome, WarningsErrorsReport)
+    UnitErrorRow,
+    WarningRow,
+    WarningsErrorsOutcome,
+    WarningsErrorsReport,
+)
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.log_level import LogLevel

@@ -97,10 +97,10 @@ def _create_live_broker_config_dynamic(
             f"⚠️ dry_run OVERRIDE by profile '{config.name}': dry_run={config.dry_run} "
             f"(market_config default={entry.dry_run}) → {note}"
         )
-        print(f"  ⚠️  dry_run OVERRIDE by profile → dry_run={config.dry_run} ({note})")
+        print(f'  ⚠️  dry_run OVERRIDE by profile → dry_run={config.dry_run} ({note})')
 
-    logger.info(f"🔧 Broker config: {config.broker_type} (dry_run={dry_run})")
-    print(f"  ▸ Broker: {config.broker_type} (dry_run={dry_run})")
+    logger.info(f'🔧 Broker config: {config.broker_type} (dry_run={dry_run})')
+    print(f'  ▸ Broker: {config.broker_type} (dry_run={dry_run})')
 
     fetcher = BrokerConfigFetcherFactory.create(
         broker_type=config.broker_type,
@@ -131,8 +131,8 @@ def _create_live_broker_config_dynamic(
                 f"Live trading requires a confirmed balance. "
                 f"Check API credentials and account permissions."
             )
-        logger.info(f"💰 Live balance: {balance} {currency}")
-        print(f"  ▸ Live balance: {balance} {currency}")
+        logger.info(f'💰 Live balance: {balance} {currency}')
+        print(f'  ▸ Live balance: {balance} {currency}')
         balances[currency] = balance
 
     # === Enable live execution on adapter ===
@@ -142,8 +142,8 @@ def _create_live_broker_config_dynamic(
         transport=entry.broker_transport,
     )
     mode_label = 'DRY RUN (validate only)' if dry_run else 'LIVE TRADING'
-    logger.info(f"🚀 Mode: {mode_label}")
-    print(f"  ▸ Mode: {mode_label}")
+    logger.info(f'🚀 Mode: {mode_label}')
+    print(f'  ▸ Mode: {mode_label}')
 
     # Pass the actual runtime cache file path so _log_broker_config_loaded can
     # surface cache age in the startup output (helps diagnose stale-fee issues).
@@ -170,13 +170,13 @@ def _create_live_broker_config_static(
     """
     broker_config_path = MarketConfigManager().get_broker_config_path(config.broker_type)
     logger.info(
-        f"ℹ️  Using static broker config for live session.\n"
-        f"    File:   {broker_config_path}\n"
-        f"    Note:   config_mode=static — symbol specs are not refreshed from the broker API.\n"
-        f"    Tip:    Set \"config_mode\": \"dynamic\" for {config.broker_type} in "
-        f"configs/market_config.json to enable auto-refresh."
+        f'ℹ️  Using static broker config for live session.\n'
+        f'    File:   {broker_config_path}\n'
+        f'    Note:   config_mode=static — symbol specs are not refreshed from the broker API.\n'
+        f'    Tip:    Set \"config_mode\": \"dynamic\" for {config.broker_type} in '
+        f'configs/market_config.json to enable auto-refresh.'
     )
-    print(f"  ▸ Static broker config: {broker_config_path}")
+    print(f'  ▸ Static broker config: {broker_config_path}')
 
     broker_config = BrokerConfigFactory.build_broker_config(broker_config_path)
     # Static live has no API fetch — seed the symbol's base/quote at 0 (#265); real amounts
@@ -228,10 +228,10 @@ def _log_broker_config_loaded(broker_config: BrokerConfig, source: str, logger: 
         age_part = f'  [cache age={age_days:.1f}d]'
 
     logger.info(
-        f"🗄  Broker config loaded: {broker_config.broker_type.value}{hash_tag}\n"
-        f"    Source:    {source}{age_part}\n"
-        f"    Symbols:   {active_count} active\n"
-        f"    Fee rates: {fee_line}"
+        f'🗄  Broker config loaded: {broker_config.broker_type.value}{hash_tag}\n'
+        f'    Source:    {source}{age_part}\n'
+        f'    Symbols:   {active_count} active\n'
+        f'    Fee rates: {fee_line}'
     )
-    print(f"  ▸ Broker config: {broker_config.broker_type.value}{hash_tag} — {active_count} active symbols")
-    print(f"  ▸ Fee rates:     {fee_line}{age_part}")
+    print(f'  ▸ Broker config: {broker_config.broker_type.value}{hash_tag} — {active_count} active symbols')
+    print(f'  ▸ Fee rates:     {fee_line}{age_part}')

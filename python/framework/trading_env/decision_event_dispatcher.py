@@ -36,7 +36,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
 )
 
-
 # Payload class → event type, for subscription filtering in submit().
 _EVENT_TYPE_BY_CLASS: Dict[Type[DecisionEvent], DecisionEventType] = {
     OrderFilledEvent: DecisionEventType.ORDER_FILLED,

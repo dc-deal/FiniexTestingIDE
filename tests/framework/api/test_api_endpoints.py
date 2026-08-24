@@ -19,7 +19,6 @@ from fastapi.testclient import TestClient
 from python.api.api_app import create_app
 from python.configuration.app_config_manager import AppConfigManager
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

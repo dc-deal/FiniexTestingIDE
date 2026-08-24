@@ -908,7 +908,7 @@ class AutoTraderLiveDisplay:
             # Rendered only while it holds: a suspended producer stops sending while the
             # transport stays healthy, so this is the line that explains a silence the
             # rest of the panel would report as everything being fine.
-            reason = f" — {health.budget_reason}" if health.budget_reason else ''
+            reason = f' — {health.budget_reason}' if health.budget_reason else ''
             lines.append(f'[yellow]Producer:       ⚠ budget suspended{reason}[/yellow]')
         return lines
 

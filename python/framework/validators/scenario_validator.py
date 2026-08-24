@@ -14,15 +14,19 @@ Usage:
 """
 
 from typing import Any, Dict, List, Tuple
+
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.worker_factory import WorkerFactory
+from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.broker_config import BrokerType
 from python.framework.types.config_types.market_config_types import TradingModel
-from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import (
+    BrokerScenarioInfo,
+    SingleScenario,
+)
 from python.framework.types.validation_types import ValidationResult
-from python.framework.logging.abstract_logger import AbstractLogger
 
 
 class ScenarioValidator:
@@ -276,7 +280,7 @@ class ScenarioValidator:
                 account_currency = quote
 
             logger.debug(
-                f"💱 Account Currency: {account_currency} (derived from balances)"
+                f'💱 Account Currency: {account_currency} (derived from balances)'
             )
 
             scenario.account_currency = account_currency
@@ -316,8 +320,8 @@ class ScenarioValidator:
                 )
                 scenario.validation_result.append(validation_result)
                 logger.error(
-                    f"❌ {scenario.name}: No end_date and no max_ticks — "
-                    f"at least one boundary is required"
+                    f'❌ {scenario.name}: No end_date and no max_ticks — '
+                    f'at least one boundary is required'
                 )
 
     @staticmethod
@@ -368,16 +372,16 @@ class ScenarioValidator:
         """
         # Check for missing names
         for idx, scenario in enumerate(scenarios):
-            if not scenario.name or scenario.name.strip() == "":
+            if not scenario.name or scenario.name.strip() == '':
                 validation_result = ValidationResult(
                     is_valid=False,
-                    scenario_name=f"<unnamed_{idx}>",
+                    scenario_name=f'<unnamed_{idx}>',
                     errors=[
-                        "Scenario has no name. Every scenario must have a unique name."],
+                        'Scenario has no name. Every scenario must have a unique name.'],
                     warnings=[]
                 )
                 scenario.validation_result.append(validation_result)
-                logger.error(f"❌ Scenario at index {idx}: Missing name")
+                logger.error(f'❌ Scenario at index {idx}: Missing name')
 
         # Check for duplicates
         name_counts: Dict[str, List[SingleScenario]] = {}
@@ -400,7 +404,7 @@ class ScenarioValidator:
                     )
                     scenario.validation_result.append(validation_result)
                     logger.error(
-                        f"❌ {scenario.name}: Duplicate name found ({len(single_scenario_list)} occurrences)")
+                        f'❌ {scenario.name}: Duplicate name found ({len(single_scenario_list)} occurrences)')
 
     @staticmethod
     def validate_account_currency(
@@ -458,9 +462,9 @@ class ScenarioValidator:
                 is_valid=False,
                 scenario_name=scenario.name,
                 errors=[
-                    f"No balance currency matches symbol {symbol}. "
-                    f"Symbol uses {base_currency} (base) and {quote_currency} (quote). "
-                    f"Balances contain: {list(balances.keys())}."
+                    f'No balance currency matches symbol {symbol}. '
+                    f'Symbol uses {base_currency} (base) and {quote_currency} (quote). '
+                    f'Balances contain: {list(balances.keys())}.'
                 ],
                 warnings=[]
             )
@@ -558,7 +562,7 @@ class ScenarioValidator:
                     warnings=[],
                 ))
                 for error in errors:
-                    logger.error(f"❌ {scenario.name}: {error}")
+                    logger.error(f'❌ {scenario.name}: {error}')
 
     @staticmethod
     def _collect_parameter_errors(

@@ -16,16 +16,27 @@ from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
 
 from python.framework.reporting.builders.feed_stability_report_builder import (
-    build_feed_stability_report)
+    build_feed_stability_report,
+)
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.console.feed_stability_summary import (
-    FeedStabilitySummary, format_disturbance_line)
+    FeedStabilitySummary,
+    format_disturbance_line,
+)
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, ExecutionStatsTotals, PortfolioReport, RunSummary,
-    TradeHistoryReport)
+    ExecutionStatsReport,
+    ExecutionStatsTotals,
+    PortfolioReport,
+    RunSummary,
+    TradeHistoryReport,
+)
 from python.framework.types.disturbance_episode_types import (
-    DisturbanceDomain, DisturbanceEpisode, DisturbanceOrigin, MarketDataTickStats)
+    DisturbanceDomain,
+    DisturbanceEpisode,
+    DisturbanceOrigin,
+    MarketDataTickStats,
+)
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.stress_test_types import StaleDataEvent
 from python.framework.utils.console_renderer import ConsoleRenderer

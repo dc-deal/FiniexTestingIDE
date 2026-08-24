@@ -5,9 +5,9 @@ Analyzes bar data for volatility regimes, tick density, and session patterns.
 Used by scenario generator and discovery system for market profiling.
 """
 
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
 import math
+from datetime import timedelta
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -16,20 +16,20 @@ from python.configuration.discoveries_config_loader import DiscoveriesConfigLoad
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.config_types.market_config_types import MarketType
-from python.framework.utils.timeframe_config_utils import TimeframeConfig
-from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.types.market_types.market_volatility_profile_types import (
-    VolatilityPeriod,
-    VolatilityProfileConfig,
     SessionSummary,
     SymbolVolatilityProfile,
     TradingSession,
+    VolatilityPeriod,
+    VolatilityProfileConfig,
     VolatilityRegime,
 )
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
-from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.framework.utils.trading_math.pip_math import derive_pip_size
 
 vLog = get_global_logger()
@@ -90,14 +90,14 @@ class VolatilityProfileAnalyzer:
                     spec = broker_config.get_symbol_specification(symbol)
                     self._market_symbol_specs[symbol] = spec
                 except Exception as e:
-                    vLog.debug(f"Could not load spec for {symbol}: {e}")
+                    vLog.debug(f'Could not load spec for {symbol}: {e}')
 
             self._loaded_broker_types.add(broker_type)
-            vLog.debug(f"Loaded {len(symbols)} symbols from {broker_type}")
+            vLog.debug(f'Loaded {len(symbols)} symbols from {broker_type}')
 
         except Exception as e:
             vLog.warning(
-                f"Failed to load broker config for {broker_type}: {e}")
+                f'Failed to load broker config for {broker_type}: {e}')
 
     def _calculate_pips_per_day(
         self,
@@ -168,7 +168,7 @@ class VolatilityProfileAnalyzer:
         bar_file = self._bar_index.get_bar_file(broker_type, symbol, tf)
         if not bar_file:
             raise ValueError(
-                f"No bar data found for {broker_type}/{symbol} {tf}")
+                f'No bar data found for {broker_type}/{symbol} {tf}')
 
         # Get index metadata
          # Get index metadata
@@ -180,7 +180,7 @@ class VolatilityProfileAnalyzer:
         market_type = market_config.get_market_type(broker_type)
 
         vLog.info(
-            f"Analyzing {broker_type}/{symbol} {tf} ({market_type.value})")
+            f'Analyzing {broker_type}/{symbol} {tf} ({market_type.value})')
 
         # Load and prepare bar data (using refactored helper)
         df = self._load_and_prepare_bars(broker_type, symbol, tf)
@@ -189,7 +189,7 @@ class VolatilityProfileAnalyzer:
         periods = self._analyze_periods(df, market_type)
 
         if not periods:
-            raise ValueError(f"No valid trading periods found for {symbol}")
+            raise ValueError(f'No valid trading periods found for {symbol}')
 
         # Calculate regime distribution
         regime_dist = self._calculate_regime_distribution(periods)
@@ -280,7 +280,7 @@ class VolatilityProfileAnalyzer:
         """
         tf = timeframe or self._config.timeframe
 
-        vLog.debug(f"Extracting periods for {broker_type}/{symbol} {tf}")
+        vLog.debug(f'Extracting periods for {broker_type}/{symbol} {tf}')
 
         df = self._load_and_prepare_bars(broker_type, symbol, tf)
         # Get market_type from MarketConfigManager (Single Source of Truth)
@@ -290,11 +290,11 @@ class VolatilityProfileAnalyzer:
 
         if not periods:
             raise ValueError(
-                f"No valid trading periods found for {broker_type}/{symbol} {tf}. "
-                f"All periods may be synthetic-only (weekends/gaps)."
+                f'No valid trading periods found for {broker_type}/{symbol} {tf}. '
+                f'All periods may be synthetic-only (weekends/gaps).'
             )
 
-        vLog.debug(f"Found {len(periods)} valid periods (real-bar filtered)")
+        vLog.debug(f'Found {len(periods)} valid periods (real-bar filtered)')
 
         return periods
 
@@ -335,8 +335,8 @@ class VolatilityProfileAnalyzer:
         )
 
         vLog.info(
-            f"Found {len(high_vol_periods)} high-volatility periods "
-            f"(HIGH/VERY_HIGH) from {len(all_periods)} total"
+            f'Found {len(high_vol_periods)} high-volatility periods '
+            f'(HIGH/VERY_HIGH) from {len(all_periods)} total'
         )
 
         return high_vol_periods
@@ -367,7 +367,7 @@ class VolatilityProfileAnalyzer:
         bar_file = self._bar_index.get_bar_file(broker_type, symbol, timeframe)
         if not bar_file:
             raise ValueError(
-                f"No bar data found for {broker_type}/{symbol} {timeframe}")
+                f'No bar data found for {broker_type}/{symbol} {timeframe}')
 
         df = pd.read_parquet(bar_file)
         df = self._prepare_dataframe(df)
@@ -513,7 +513,6 @@ class VolatilityProfileAnalyzer:
             avg_atr = period_data['avg_atr']
             tick_count = period_data['tick_count']
             activity = period_data['activity']
-            period_bar_count = period_data['bar_count_in_period']
 
             period_end = period_start + timedelta(hours=granularity)
 

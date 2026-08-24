@@ -16,7 +16,6 @@ import pandas as pd
 
 from python.framework.types.market_types.market_data_types import Bar, TickData, TickTransportColumn
 
-
 # ============================================================================
 # TICK SERIALIZATION (DataFrame -> transport dicts)
 # ============================================================================
@@ -67,7 +66,7 @@ def process_deserialize_ticks_batch(scenario_symbol: str, ticks_tuple_list: Dict
     ticks_tuple = ticks_tuple_list[scenario_symbol]
     if not ticks_tuple:
         raise KeyError(
-            f"Ticks for scenario {scenario_symbol} could not be found in sharded data for process (ticks)")
+            f'Ticks for scenario {scenario_symbol} could not be found in sharded data for process (ticks)')
     result = []
     for tick_data in ticks_tuple:
         if isinstance(tick_data, TickData):
@@ -194,12 +193,12 @@ def serialize_current_bars(current_bars: Dict[str, Any]) -> Dict[str, Dict]:
 
     for timeframe, bar in current_bars.items():
         serialized[timeframe] = {
-            "time": bar.timestamp if hasattr(bar, 'timestamp') else None,
-            "open": float(bar.open) if hasattr(bar, 'open') else None,
-            "high": float(bar.high) if hasattr(bar, 'high') else None,
-            "low": float(bar.low) if hasattr(bar, 'low') else None,
-            "close": float(bar.close) if hasattr(bar, 'close') else None,
-            "volume": float(bar.volume) if hasattr(bar, 'volume') else None,
+            'time': bar.timestamp if hasattr(bar, 'timestamp') else None,
+            'open': float(bar.open) if hasattr(bar, 'open') else None,
+            'high': float(bar.high) if hasattr(bar, 'high') else None,
+            'low': float(bar.low) if hasattr(bar, 'low') else None,
+            'close': float(bar.close) if hasattr(bar, 'close') else None,
+            'volume': float(bar.volume) if hasattr(bar, 'volume') else None,
         }
 
     return serialized

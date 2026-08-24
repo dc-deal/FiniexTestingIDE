@@ -7,11 +7,10 @@ trading sessions, volatility periods, and symbol-level profile summaries.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional
 from enum import StrEnum
+from typing import Dict, List, Optional
 
 from python.framework.types.config_types.market_config_types import MarketType
-
 
 # =============================================================================
 # ENUMS
@@ -19,11 +18,11 @@ from python.framework.types.config_types.market_config_types import MarketType
 
 class VolatilityRegime(StrEnum):
     """Volatility regime classification."""
-    VERY_LOW = "very_low"
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    VERY_HIGH = "very_high"
+    VERY_LOW = 'very_low'
+    LOW = 'low'
+    MEDIUM = 'medium'
+    HIGH = 'high'
+    VERY_HIGH = 'very_high'
 
     @property
     def short_label(self) -> str:
@@ -33,10 +32,10 @@ class VolatilityRegime(StrEnum):
 
 class TradingSession(StrEnum):
     """Trading session identifiers."""
-    SYDNEY_TOKYO = "sydney_tokyo"
-    LONDON = "london"
-    NEW_YORK = "new_york"
-    TRANSITION = "transition"
+    SYDNEY_TOKYO = 'sydney_tokyo'
+    LONDON = 'london'
+    NEW_YORK = 'new_york'
+    TRANSITION = 'transition'
 
     @property
     def display_name(self) -> str:
@@ -70,7 +69,7 @@ class VolatilityProfileConfig:
     Configuration for volatility profiling.
     """
     # Volatility profile parameters
-    timeframe: str = "M5"
+    timeframe: str = 'M5'
     atr_period: int = 14
     regime_granularity_hours: int = 1
 

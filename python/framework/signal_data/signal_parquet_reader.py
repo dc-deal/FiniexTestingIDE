@@ -15,8 +15,13 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from python.framework.types.signal_data_types import (
-    SIGNAL_ENVELOPE_SYMBOL, SIGNAL_RUNTIME_COLUMNS, SentimentResult,
-    SignalParquetColumn, SignalSeries, SignalSnapshot)
+    SIGNAL_ENVELOPE_SYMBOL,
+    SIGNAL_RUNTIME_COLUMNS,
+    SentimentResult,
+    SignalParquetColumn,
+    SignalSeries,
+    SignalSnapshot,
+)
 
 
 def _optional_int(row, column: str) -> Optional[int]:

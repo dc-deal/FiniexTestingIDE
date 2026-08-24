@@ -77,7 +77,7 @@ class DiagnosticsCsvSink:
             return None
 
         run_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"{self._name}_{scenario_suffix}.csv" if scenario_suffix else f"{self._name}.csv"
+        filename = f'{self._name}_{scenario_suffix}.csv' if scenario_suffix else f'{self._name}.csv'
         out_path = run_dir / filename
         try:
             with open(out_path, 'w', newline='') as f:
@@ -87,7 +87,7 @@ class DiagnosticsCsvSink:
                 for row in self._rows:
                     writer.writerow(row)
         except Exception as e:
-            print(f"Warning: Failed to write diagnostics CSV {out_path}: {e}")
+            print(f'Warning: Failed to write diagnostics CSV {out_path}: {e}')
             return None
 
         return out_path

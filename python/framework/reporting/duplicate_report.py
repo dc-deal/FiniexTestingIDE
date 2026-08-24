@@ -4,9 +4,9 @@ Detailed report payload for detected artificial duplicate Parquet files.
 """
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import List, Tuple, Dict
 from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 
@@ -47,15 +47,15 @@ class DuplicateReport:
 
         # Build report header
         lines = [
-            "=" * 80,
-            "⚠️  ARTIFICIAL DUPLICATE DETECTED - DATA INTEGRITY VIOLATION",
-            "=" * 80,
-            "",
-            f"📄 Original Source JSON:",
-            f"   {self.source_file}",
-            "",
-            f"📦 Duplicate Parquet Files Found: {len(self.duplicate_files)}",
-            ""
+            '=' * 80,
+            '⚠️  ARTIFICIAL DUPLICATE DETECTED - DATA INTEGRITY VIOLATION',
+            '=' * 80,
+            '',
+            '📄 Original Source JSON:',
+            f'   {self.source_file}',
+            '',
+            f'📦 Duplicate Parquet Files Found: {len(self.duplicate_files)}',
+            ''
         ]
 
         # File details with data_collector paths
@@ -68,53 +68,53 @@ class DuplicateReport:
 
             lines.extend([
                 # Show full path including data_collector
-                f"   [{i}] {relative_path}",
-                f"       Ticks:     {self.tick_counts[i-1]:>10,}",
-                f"       Range:     {self.time_ranges[i-1][0]} → {self.time_ranges[i-1][1]}",
-                f"       Size:      {self.file_sizes_mb[i-1]:>10.2f} MB",
-                ""
+                f'   [{i}] {relative_path}',
+                f'       Ticks:     {self.tick_counts[i-1]:>10,}',
+                f'       Range:     {self.time_ranges[i-1][0]} → {self.time_ranges[i-1][1]}',
+                f'       Size:      {self.file_sizes_mb[i-1]:>10.2f} MB',
+                ''
             ])
 
         # Metadata Comparison Section with data_collector
         lines.extend([
-            "📋 Parquet Metadata Comparison:",
-            ""
+            '📋 Parquet Metadata Comparison:',
+            ''
         ])
 
         # Compare each metadata field across all files
         metadata_fields = [
-            "source_file", "symbol", "broker_type", "broker", "data_format_version",
-            "tick_count", "processed_at"
+            'source_file', 'symbol', 'broker_type', 'broker', 'data_format_version',
+            'tick_count', 'processed_at'
         ]
 
         for field in metadata_fields:
-            values = [meta.get(field, "N/A") for meta in self.metadata]
+            values = [meta.get(field, 'N/A') for meta in self.metadata]
             is_identical = len(set(values)) == 1
 
             # Format the comparison
-            status = "✅ IDENTICAL" if is_identical else "⚠️  DIFFERENT"
+            status = '✅ IDENTICAL' if is_identical else '⚠️  DIFFERENT'
 
             # Special highlighting for data_collector field
-            if field == "broker_type":
+            if field == 'broker_type':
                 if not is_identical:
-                    status = "⚠️  CROSS-BROKER DUPLICATE!"
-                lines.append(f"   • {field:20s} {status}")
+                    status = '⚠️  CROSS-BROKER DUPLICATE!'
+                lines.append(f'   • {field:20s} {status}')
             else:
-                lines.append(f"   • {field:20s} {status}")
+                lines.append(f'   • {field:20s} {status}')
 
             # Show values if different
             if not is_identical:
                 for i, value in enumerate(values, 1):
-                    lines.append(f"       [{i}] {value}")
+                    lines.append(f'       [{i}] {value}')
 
-        lines.append("")
+        lines.append('')
 
         # Data Similarity analysis
         lines.extend([
-            "🔬 Data Similarity Analysis:",
+            '🔬 Data Similarity Analysis:',
             f"   • Tick Counts:  {'✅ IDENTICAL' if tick_counts_identical else '⚠️  DIFFERENT'}",
             f"   • Time Ranges:  {'✅ IDENTICAL' if time_ranges_identical else '⚠️  DIFFERENT'}",
-            ""
+            ''
         ])
 
         # Enhanced severity assessment considering data_collector
@@ -125,59 +125,59 @@ class DuplicateReport:
         cross_broker = len(set(broker_types)) > 1
 
         if cross_broker:
-            severity = "🔴 CRITICAL - Cross-Broker Duplication"
+            severity = '🔴 CRITICAL - Cross-Broker Duplication'
             impact = f"Impact: Same data imported under different broker_types: {', '.join(set(broker_types))}"
 
         elif tick_counts_identical and time_ranges_identical and metadata_identical:
-            severity = "🔴 CRITICAL - Complete data duplication detected"
-            impact = "Impact: Identical files, test results will be severely compromised (2x tick density)"
+            severity = '🔴 CRITICAL - Complete data duplication detected'
+            impact = 'Impact: Identical files, test results will be severely compromised (2x tick density)'
         elif tick_counts_identical and time_ranges_identical:
-            severity = "🟠 HIGH - Data appears identical despite different metadata"
-            impact = "Impact: Same tick data, possible re-import with different processing timestamp"
+            severity = '🟠 HIGH - Data appears identical despite different metadata'
+            impact = 'Impact: Same tick data, possible re-import with different processing timestamp'
         else:
-            severity = "🟡 WARNING - Partial overlap detected"
-            impact = "Impact: Test results may be compromised (partial tick duplication)"
+            severity = '🟡 WARNING - Partial overlap detected'
+            impact = 'Impact: Test results may be compromised (partial tick duplication)'
 
         lines.extend([
-            f"⚠️  {severity}",
-            f"   {impact}",
-            ""
+            f'⚠️  {severity}',
+            f'   {impact}',
+            ''
         ])
 
         # Enhanced recommendations considering data_collector
         lines.extend([
-            "💡 Recommended Actions:",
+            '💡 Recommended Actions:',
         ])
 
         if cross_broker:
             lines.extend([
-                "   1. INVESTIGATE why the same source was imported under different broker_types",
-                "   2. DELETE one of the duplicate files (choose the wrong collector)",
-                "   3. Check your import workflow to prevent cross-broker duplicates",
-                "   4. Rebuild index after cleanup",
+                '   1. INVESTIGATE why the same source was imported under different broker_types',
+                '   2. DELETE one of the duplicate files (choose the wrong collector)',
+                '   3. Check your import workflow to prevent cross-broker duplicates',
+                '   4. Rebuild index after cleanup',
             ])
         elif metadata_identical:
             lines.extend([
-                "   1. DELETE the duplicate file (both are completely identical)",
-                "   2. Keep either file, they contain the exact same data",
-                "   3. Re-run the test after cleanup",
+                '   1. DELETE the duplicate file (both are completely identical)',
+                '   2. Keep either file, they contain the exact same data',
+                '   3. Re-run the test after cleanup',
             ])
         else:
             lines.extend([
-                "   1. CHECK processed_at timestamps to identify the newer file",
-                "   2. DELETE the older file (usually the one with earlier processed_at)",
-                "   3. If unsure, keep the file with the most recent processed_at timestamp",
-                "   4. Re-run the test after cleanup",
+                '   1. CHECK processed_at timestamps to identify the newer file',
+                '   2. DELETE the older file (usually the one with earlier processed_at)',
+                '   3. If unsure, keep the file with the most recent processed_at timestamp',
+                '   4. Re-run the test after cleanup',
             ])
 
         lines.extend([
-            "   5. PREVENT: Never manually copy Parquet files in processed/ directory",
-            "   6. Rebuild index after cleanup: python python/cli/data_index_cli.py rebuild",
-            "",
-            "=" * 80
+            '   5. PREVENT: Never manually copy Parquet files in processed/ directory',
+            '   6. Rebuild index after cleanup: python python/cli/data_index_cli.py rebuild',
+            '',
+            '=' * 80
         ])
 
-        return "\n".join(lines)
+        return '\n'.join(lines)
 
     def _tick_counts_identical(self) -> bool:
         """Check if all tick counts are identical"""
@@ -195,11 +195,11 @@ class DuplicateReport:
         broker_type is excluded because cross-broker duplicates are still duplicates
         """
         # Exclude data_collector from comparison
-        critical_fields = ["source_file", "symbol",
-                           "broker", "data_format_version", "tick_count"]
+        critical_fields = ['source_file', 'symbol',
+                           'broker', 'data_format_version', 'tick_count']
 
         for field in critical_fields:
-            values = [meta.get(field, "N/A") for meta in self.metadata]
+            values = [meta.get(field, 'N/A') for meta in self.metadata]
             if len(set(values)) != 1:
                 return False
 

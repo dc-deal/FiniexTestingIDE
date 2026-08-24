@@ -8,7 +8,11 @@ from datetime import datetime
 from typing import List, Optional, Set, Tuple
 
 from python.framework.types.signal_data_types import (
-    ResolvedSignal, SentimentResult, SignalSeries, SignalSnapshot)
+    ResolvedSignal,
+    SentimentResult,
+    SignalSeries,
+    SignalSnapshot,
+)
 
 
 class SignalDataProvider:

@@ -14,48 +14,50 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.configuration.market_config_manager import MarketConfigManager
+from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.autotrader.autotrader_data_preparer import prepare_mock_session_data
-from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.autotrader.autotrader_startup import (
     create_autotrader_loggers,
     setup_pipeline,
 )
-from python.framework.autotrader.tick_sources.tick_source_setup import setup_tick_source
+from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
-from python.framework.autotrader.reporting.autotrader_report_coordinator import AutotraderReportCoordinator
+from python.framework.autotrader.reporting.autotrader_report_coordinator import (
+    AutotraderReportCoordinator,
+)
+from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
+from python.framework.autotrader.tick_sources.tick_source_setup import setup_tick_source
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
+from python.framework.exceptions.live_execution_errors import DryRunConflictError
+from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.signal_data.signal_inbox import SignalInbox
+from python.framework.persistence.algo_state_store import AlgoStateStore
+from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
+from python.framework.reporting.field_study_recorder import FieldStudyRecorder
 from python.framework.signal_data.signal_health_probe import SignalHealthProbe
+from python.framework.signal_data.signal_inbox import SignalInbox
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
-from python.framework.types.signal_data_types import SignalObservedSeries
 from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
-from python.framework.persistence.algo_state_store import AlgoStateStore
-from python.framework.validators.algo_clock_validator import validate_algo_clock
-from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
-from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
-from python.framework.exceptions.live_execution_errors import DryRunConflictError
-from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
-from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
-from python.framework.reporting.field_study_recorder import FieldStudyRecorder
-from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
-from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.framework.types.config_types.market_config_types import TradingModel
+from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
-from python.configuration.market_config_manager import MarketConfigManager
-from python.configuration.sentiment_config_manager import SentimentConfigManager
+from python.framework.types.signal_data_types import SignalObservedSeries
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
+from python.framework.validators.algo_clock_validator import validate_algo_clock
+from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
+from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
 
@@ -172,8 +174,8 @@ class AutotraderMain:
 
         self._print_startup_banner()
         self._global_logger.info(
-            f"🚀 AutotraderMain starting: {self._config.symbol} "
-            f"({self._config.broker_type}, adapter={self._config.adapter_type})"
+            f'🚀 AutotraderMain starting: {self._config.symbol} '
+            f'({self._config.broker_type}, adapter={self._config.adapter_type})'
         )
 
         # Copy profile config snapshot to log directory (mirrors scenario_set.copy_config_snapshot)
@@ -296,8 +298,8 @@ class AutotraderMain:
                     if self._decision_logic.accepts_restored_state(snapshot, restore_ctx):
                         self._decision_logic.restore_state(snapshot)
                         self._session_logger.info(
-                            f"💾 Algo state restored "
-                            f"({restore_ctx.trading_days} trading day(s) old)")
+                            f'💾 Algo state restored '
+                            f'({restore_ctx.trading_days} trading day(s) old)')
                     else:
                         self._session_logger.info(
                             '💾 Algo rejected restored state — starting fresh')
@@ -412,10 +414,10 @@ class AutotraderMain:
             self._emergency_reason = str(e)
             if self._tick_loop_started:
                 # Runtime error inside the tick loop — NOT a startup failure.
-                self._global_logger.error(f"❌ AutoTrader runtime error in tick loop: {e}")
+                self._global_logger.error(f'❌ AutoTrader runtime error in tick loop: {e}')
                 self._print_runtime_error(str(e))
             else:
-                self._global_logger.error(f"❌ AutoTrader startup error: {e}")
+                self._global_logger.error(f'❌ AutoTrader startup error: {e}')
                 self._print_startup_error(str(e))
             self._shutdown_mode = 'emergency'
             ticks_processed = 0
@@ -432,29 +434,29 @@ class AutotraderMain:
         """Print startup banner directly to console."""
         session_name = self._config.name or self._config.symbol
         print(f"\n{'=' * 60}")
-        print(f"  🚀 FiniexAutoTrader — {session_name}")
-        print(f"  Symbol: {self._config.symbol} | Broker: {self._config.broker_type}")
-        print(f"  Adapter: {self._config.adapter_type}")
+        print(f'  🚀 FiniexAutoTrader — {session_name}')
+        print(f'  Symbol: {self._config.symbol} | Broker: {self._config.broker_type}')
+        print(f'  Adapter: {self._config.adapter_type}')
         if self._run_dir:
-            print(f"  Log dir: {self._run_dir}")
+            print(f'  Log dir: {self._run_dir}')
         print(f"{'=' * 60}")
 
     def _print_startup_phase(self, message: str) -> None:
         """Print startup phase message directly to console and to global log."""
-        print(f"  ▸ {message}")
+        print(f'  ▸ {message}')
 
     def _print_startup_error(self, message: str) -> None:
         """Print startup error to console. Startup errors abort the session."""
         print(f"\n{'=' * 60}")
         print('  ❌ STARTUP FAILED')
-        print(f"  {message}")
+        print(f'  {message}')
         print(f"{'=' * 60}\n")
 
     def _print_runtime_error(self, message: str) -> None:
         """Print a tick-loop runtime error to console. Aborts via emergency shutdown."""
         print(f"\n{'=' * 60}")
         print('  ❌ RUNTIME ERROR — SESSION ABORTED (emergency shutdown)')
-        print(f"  {message}")
+        print(f'  {message}')
         print(f"{'=' * 60}\n")
 
     # =========================================================================
@@ -474,7 +476,7 @@ class AutotraderMain:
         """
         self._running = False
         self._global_logger.info(
-            f"🛑 Shutdown initiated: mode={self._shutdown_mode}"
+            f'🛑 Shutdown initiated: mode={self._shutdown_mode}'
         )
 
         # Stop the signal transport before the tick source: it is the only other thread
@@ -499,28 +501,28 @@ class AutotraderMain:
                 self._executor.close_all_remaining_orders()
                 self._executor.check_clean_shutdown()
             except Exception as e:
-                self._session_logger.error(f"Error during position cleanup: {e}")
+                self._session_logger.error(f'Error during position cleanup: {e}')
 
         # #327 — Drift auditor cleanup (surfaces unfinished audits + final summary)
         if self._drift_auditor:
             try:
                 self._drift_auditor.shutdown()
             except Exception as e:
-                self._session_logger.error(f"Error during drift auditor shutdown: {e}")
+                self._session_logger.error(f'Error during drift auditor shutdown: {e}')
 
         # #151 — Reconciler cleanup (final summary)
         if self._reconciler:
             try:
                 self._reconciler.shutdown()
             except Exception as e:
-                self._session_logger.error(f"Error during reconciler shutdown: {e}")
+                self._session_logger.error(f'Error during reconciler shutdown: {e}')
 
         # #351 — API monitor cleanup (final per-endpoint summary)
         if self._api_monitor:
             try:
                 self._api_monitor.shutdown()
             except Exception as e:
-                self._session_logger.error(f"Error during API monitor shutdown: {e}")
+                self._session_logger.error(f'Error during API monitor shutdown: {e}')
 
         # #354 — Algo state: final snapshot on clean exit, then summary. Algo memory
         # is position-independent, so saving after the order cleanup above is fine.
@@ -529,7 +531,7 @@ class AutotraderMain:
                 self._state_store.save(self._decision_logic.get_state_snapshot())
                 self._state_store.shutdown()
             except Exception as e:
-                self._session_logger.error(f"Error during algo state shutdown: {e}")
+                self._session_logger.error(f'Error during algo state shutdown: {e}')
 
         # #332 — Field Study recorder: final broker-truth snapshot + close
         if self._field_study_recorder:
@@ -553,7 +555,7 @@ class AutotraderMain:
                     )
                 self._field_study_recorder.close('session end')
             except Exception as e:
-                self._session_logger.error(f"Error during Field Study recorder shutdown: {e}")
+                self._session_logger.error(f'Error during Field Study recorder shutdown: {e}')
 
         # Collect statistics and produce reports
         return self._collect_results(ticks_processed, ticks_clipped)
@@ -592,20 +594,20 @@ class AutotraderMain:
                 result.trade_history = self._executor.get_trade_history()
                 result.order_history = self._executor.get_order_history()
             except Exception as e:
-                self._global_logger.error(f"Error collecting executor stats: {e}")
+                self._global_logger.error(f'Error collecting executor stats: {e}')
 
         if self._decision_logic:
             try:
                 result.decision_statistics = self._decision_logic.get_statistics()
             except Exception as e:
-                self._global_logger.error(f"Error collecting decision stats: {e}")
+                self._global_logger.error(f'Error collecting decision stats: {e}')
 
         if self._worker_orchestrator:
             try:
                 result.worker_statistics = self._worker_orchestrator.get_worker_statistics()
                 result.signal_statistics = self._worker_orchestrator.get_signal_statistics()
             except Exception as e:
-                self._global_logger.error(f"Error collecting worker stats: {e}")
+                self._global_logger.error(f'Error collecting worker stats: {e}')
 
         if self._clipping_monitor:
             result.clipping_summary = self._clipping_monitor.get_session_summary()
@@ -676,8 +678,8 @@ class AutotraderMain:
             )
         if len(signal_kinds) > 1:
             raise ValueError(
-                f"Signal transport serves one source, but the workers consume "
-                f"{sorted(signal_kinds)}. Multi-source binding is #258."
+                f'Signal transport serves one source, but the workers consume '
+                f'{sorted(signal_kinds)}. Multi-source binding is #258.'
             )
         if not poll_config.pipeline_id:
             raise ValueError(
@@ -798,8 +800,8 @@ class AutotraderMain:
 
         if flat.open_orders:
             banner = (
-                f"FIELD STUDY ABORTED — {len(flat.open_orders)} resting broker order(s) "
-                f"present; cancel them before the run"
+                f'FIELD STUDY ABORTED — {len(flat.open_orders)} resting broker order(s) '
+                f'present; cancel them before the run'
             )
             self._global_logger.error(banner)
             print(f"\n{'=' * 60}\n  ❌ {banner}\n{'=' * 60}\n")

@@ -11,7 +11,7 @@ from typing import Dict, List
 
 import pytest
 
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.core.backtesting.backtesting_sample_worker import (
@@ -23,7 +23,6 @@ from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.workers.core.rsi_worker import RsiWorker
-
 
 CORE_WORKERS_EXPECTED_METRIC = {
     RsiWorker: None,
@@ -41,8 +40,8 @@ def test_core_workers_declare_activity_metric(worker_class, expected):
     """Every CORE worker must return its declared metric without raising."""
     actual = worker_class.get_required_activity_metric()
     assert actual == expected, (
-        f"{worker_class.__name__}.get_required_activity_metric() "
-        f"returned {actual!r}, expected {expected!r}"
+        f'{worker_class.__name__}.get_required_activity_metric() '
+        f'returned {actual!r}, expected {expected!r}'
     )
 
 

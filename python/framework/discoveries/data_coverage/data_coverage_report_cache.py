@@ -15,7 +15,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional
 
 import pandas as pd
 import pyarrow as pa
@@ -24,12 +24,15 @@ import pyarrow.parquet as pq
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint, read_fingerprint_from_parquet
+from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
-from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.coverage_report_types import Gap, GapCategory
+from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.utils.config_fingerprint_utils import (
+    generate_config_fingerprint,
+    read_fingerprint_from_parquet,
+)
 
 vLog = get_global_logger()
 
@@ -52,8 +55,8 @@ class DataCoverageReportCache:
         - Metadata (start_time, end_time, gap_counts, source_bar_mtime)
     """
 
-    CACHE_PARENT_DIR = ".discovery_caches"
-    CACHE_SUB_DIR = "data_coverage_cache"
+    CACHE_PARENT_DIR = '.discovery_caches'
+    CACHE_SUB_DIR = 'data_coverage_cache'
 
     def __init__(self, logger: AbstractLogger = vLog):
         self.logger = logger
@@ -81,7 +84,7 @@ class DataCoverageReportCache:
 
     def _get_cache_path(self, broker_type: str, symbol: str) -> Path:
         """Get cache file path for broker_type/symbol."""
-        return self.cache_dir / f"{broker_type}_{symbol}.parquet"
+        return self.cache_dir / f'{broker_type}_{symbol}.parquet'
 
     def _get_source_bar_mtime(self, broker_type: str, symbol: str) -> Optional[float]:
         """Get modification time of source bar file at configured granularity."""
@@ -180,11 +183,11 @@ class DataCoverageReportCache:
             report = self._load_from_cache(
                 broker_type, symbol, broker_type_enum)
             if report:
-                self.logger.debug(f"📦 Cache hit: {broker_type}/{symbol}")
+                self.logger.debug(f'📦 Cache hit: {broker_type}/{symbol}')
                 return report
 
         # Generate fresh report
-        self.logger.debug(f"🔄 Generating report: {broker_type}/{symbol}")
+        self.logger.debug(f'🔄 Generating report: {broker_type}/{symbol}')
         report = DataCoverageReport(symbol=symbol, broker_type=broker_type)
         report.analyze()
 
@@ -243,7 +246,7 @@ class DataCoverageReportCache:
 
         except Exception as e:
             self.logger.warning(
-                f"Failed to load cache for {broker_type}/{symbol}: {e}")
+                f'Failed to load cache for {broker_type}/{symbol}: {e}')
             return None
 
     def _save_to_cache(
@@ -298,10 +301,10 @@ class DataCoverageReportCache:
             })
 
             pq.write_table(table, cache_path)
-            self.logger.debug(f"💾 Cached: {broker_type}/{symbol}")
+            self.logger.debug(f'💾 Cached: {broker_type}/{symbol}')
 
         except Exception as e:
-            self.logger.warning(f"Failed to cache {broker_type}/{symbol}: {e}")
+            self.logger.warning(f'Failed to cache {broker_type}/{symbol}: {e}')
 
     def build_all(self, force_rebuild: bool = False) -> Dict[str, int]:
         """
@@ -335,7 +338,7 @@ class DataCoverageReportCache:
 
                 except Exception as e:
                     self.logger.warning(
-                        f"Failed to build cache for {broker_type}/{symbol}: {e}")
+                        f'Failed to build cache for {broker_type}/{symbol}: {e}')
                     stats['failed'] += 1
 
         elapsed = time.time() - start_time
@@ -363,7 +366,7 @@ class DataCoverageReportCache:
         stale_symbols = 0
         missing_symbols = 0
 
-        cache_files = list(self.cache_dir.glob("*.parquet"))
+        cache_files = list(self.cache_dir.glob('*.parquet'))
         total_cache_size_mb = sum(
             f.stat().st_size for f in cache_files) / (1024 * 1024)
 
@@ -396,27 +399,27 @@ class DataCoverageReportCache:
         Returns:
             Number of files deleted
         """
-        cache_files = list(self.cache_dir.glob("*.parquet"))
+        cache_files = list(self.cache_dir.glob('*.parquet'))
 
         for cache_file in cache_files:
             cache_file.unlink()
 
-        self.logger.info(f"🗑️ Cleared {len(cache_files)} cache files")
+        self.logger.info(f'🗑️ Cleared {len(cache_files)} cache files')
         return len(cache_files)
 
     def print_status(self) -> None:
         """Print cache status to console."""
         status = self.get_cache_status()
 
-        print("\n" + "="*60)
-        print("📦 Coverage Report Cache Status")
-        print("="*60)
+        print('\n' + '='*60)
+        print('📦 Coverage Report Cache Status')
+        print('='*60)
         print(f"Cache Dir:     {status['cache_dir']}")
         print(f"Cache Files:   {status['cache_files']}")
         print(f"Cache Size:    {status['total_cache_size_mb']:.2f} MB")
-        print("-"*60)
+        print('-'*60)
         print(f"Total Symbols: {status['total_symbols']}")
         print(f"  ✅ Cached:   {status['cached_symbols']}")
         print(f"  ⚠️  Stale:    {status['stale_symbols']}")
         print(f"  ❌ Missing:  {status['missing_symbols']}")
-        print("="*60 + "\n")
+        print('='*60 + '\n')

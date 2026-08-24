@@ -17,9 +17,11 @@ import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.reporting.io.portfolio_report_io import PORTFOLIO_ARTIFACT, read_portfolio_report
+from python.framework.reporting.io.portfolio_report_io import (
+    PORTFOLIO_ARTIFACT,
+    read_portfolio_report,
+)
 from python.framework.reporting.store.report_store import IO_SUBDIR
-
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/sentiment_mock_test.json'
 OUTAGE_PROFILE = 'configs/autotrader_profiles/backtesting/sentiment_outage_test.json'
@@ -77,7 +79,7 @@ class TestSentimentMockSession:
             f"Expected normal shutdown, got '{result.shutdown_mode}'"
         )
         assert result.ticks_processed == 20000, (
-            f"Expected 20000 ticks, got {result.ticks_processed}"
+            f'Expected 20000 ticks, got {result.ticks_processed}'
         )
 
         # The profile replays a generated archive, so the synthetic-data advisory
@@ -94,10 +96,10 @@ class TestSentimentMockSession:
             if 'positions remain open' not in w and 'SYNTHETIC' not in w
         ]
         assert len(unexpected_warnings) == 0, (
-            f"Unexpected warnings: {unexpected_warnings[:5]}"
+            f'Unexpected warnings: {unexpected_warnings[:5]}'
         )
         assert len(result.error_messages) == 0, (
-            f"Unexpected errors: {result.error_messages[:5]}"
+            f'Unexpected errors: {result.error_messages[:5]}'
         )
 
     def test_sentiment_worker_refreshed(self, sentiment_session):
@@ -108,7 +110,7 @@ class TestSentimentMockSession:
         result, _ = sentiment_session
         stats = _worker_stats(result, 'sentiment')
         assert stats.worker_call_count > 1, (
-            f"Expected multiple snapshot-crossing computes, got {stats.worker_call_count}"
+            f'Expected multiple snapshot-crossing computes, got {stats.worker_call_count}'
         )
 
     def test_portfolio_report_carries_sentiment_source(self, sentiment_session):
@@ -136,10 +138,10 @@ class TestSentimentOutageSession:
             f"Expected normal shutdown, got '{result.shutdown_mode}'"
         )
         assert result.ticks_processed == 5000, (
-            f"Expected 5000 ticks, got {result.ticks_processed}"
+            f'Expected 5000 ticks, got {result.ticks_processed}'
         )
         assert len(result.error_messages) == 0, (
-            f"Unexpected errors: {result.error_messages[:5]}"
+            f'Unexpected errors: {result.error_messages[:5]}'
         )
 
     def test_sentiment_worker_computed_while_fresh(self, outage_session):
@@ -150,7 +152,7 @@ class TestSentimentOutageSession:
         result, _ = outage_session
         stats = _worker_stats(result, 'sentiment')
         assert stats.worker_call_count > 1, (
-            f"Expected fresh-phase computes before the carve, got {stats.worker_call_count}"
+            f'Expected fresh-phase computes before the carve, got {stats.worker_call_count}'
         )
 
     def test_outage_hook_fired(self, outage_session):
@@ -161,7 +163,7 @@ class TestSentimentOutageSession:
         result, _ = outage_session
         stale_warnings = [w for w in result.warning_messages if 'Signal feed stale' in w]
         assert len(stale_warnings) == 1, (
-            f"Expected exactly one stale-feed warning, got {stale_warnings}"
+            f'Expected exactly one stale-feed warning, got {stale_warnings}'
         )
 
 

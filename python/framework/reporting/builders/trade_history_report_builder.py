@@ -14,10 +14,15 @@ from datetime import datetime
 from typing import List, Optional
 
 from python.framework.reporting.builders.report_aggregators import (
-    aggregate_trade_analytics, aggregate_trade_scenario_totals)
+    aggregate_trade_analytics,
+    aggregate_trade_scenario_totals,
+)
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
-    ExecutionRow, TradeHistoryReport, TradeHistoryRow)
+    ExecutionRow,
+    TradeHistoryReport,
+    TradeHistoryRow,
+)
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderSide

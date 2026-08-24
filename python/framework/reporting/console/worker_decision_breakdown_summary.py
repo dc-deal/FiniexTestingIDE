@@ -11,12 +11,19 @@ FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
 """
 
 from typing import List, Optional
-from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
-from python.framework.utils.console_renderer import ConsoleRenderer
-from python.framework.types.api.report_types import ProfilingReport, ProfilingUnitRow, WorkerDecisionReport
+
+from python.framework.reporting.console.abstract_batch_summary_section import (
+    AbstractBatchSummarySection,
+)
+from python.framework.types.api.report_types import (
+    ProfilingReport,
+    ProfilingUnitRow,
+    WorkerDecisionReport,
+)
 from python.framework.types.performance_types.performance_metrics_types import (
     WorkerDecisionBreakdown,
 )
+from python.framework.utils.console_renderer import ConsoleRenderer
 
 
 class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
@@ -64,13 +71,13 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         self._render_section_header(renderer)
 
         if not self.breakdowns:
-            print("No data")
+            print('No data')
             return
 
         for idx, breakdown in enumerate(self.breakdowns, 1):
             if idx > 1:
                 print()
-                renderer.print_separator(width=120, char="·")
+                renderer.print_separator(width=120, char='·')
                 print()
             self._render_scenario_breakdown(breakdown, renderer)
 
@@ -80,7 +87,7 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
             return
 
         if not self.breakdowns:
-            print("No data")
+            print('No data')
             return
 
         print()
@@ -155,8 +162,8 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         print()
 
         # Component breakdown
-        print(renderer.bold("Components:"))
-        print("┌────────────────────────────────────────────────────┐")
+        print(renderer.bold('Components:'))
+        print('┌────────────────────────────────────────────────────┐')
 
         bar_workers = self._create_bar(breakdown.worker_execution_pct)
         color = renderer.green if breakdown.worker_execution_pct > 50 else renderer.yellow
@@ -164,8 +171,8 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
               f"{color(f'{breakdown.worker_execution_pct:>5.1f}%')}      │")
 
         bar_decision = self._create_bar(breakdown.decision_logic_pct)
-        print(f"│ Decision Logic        {breakdown.decision_logic_ms:>7.2f}ms  {bar_decision}  "
-              f"{breakdown.decision_logic_pct:>5.1f}%      │")
+        print(f'│ Decision Logic        {breakdown.decision_logic_ms:>7.2f}ms  {bar_decision}  '
+              f'{breakdown.decision_logic_pct:>5.1f}%      │')
 
         bar_overhead = self._create_bar(breakdown.coordination_overhead_pct)
         # Overhead % is a pure calculation; the "too high?" verdict lives in the post-run
@@ -173,7 +180,7 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         print(f"│ Coordination Overhead {breakdown.coordination_overhead_ms:>7.2f}ms  {bar_overhead}  "
               f"{renderer.yellow(f'{breakdown.coordination_overhead_pct:>5.1f}%')}     │")
 
-        print("└────────────────────────────────────────────────────┘")
+        print('└────────────────────────────────────────────────────┘')
         print()
         # Per-worker timing is rendered once, by the model-fed performance summary
         # (WORKER DETAILS) — not duplicated here (#399 3d). The Components box above

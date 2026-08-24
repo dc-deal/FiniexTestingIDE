@@ -17,7 +17,6 @@ import pytest
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 
-
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/event_channel_lifecycle.json'
 
 # Must match the simulation world (test_event_channel_sim.py).

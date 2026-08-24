@@ -94,7 +94,8 @@ tests/
 │   ├── live_telemetry/    unit — live-telemetry frame serializer (frame_to_json, #400)
 │   ├── field_study_recorder/ unit — Field Study JSONL recorder + certificate analyzer (#332)
 │   ├── algo_clock/        unit — §9 wall-clock ban lint (decision logic/workers, CI plane)
-│   └── algo_clock_validator/ unit — §9 runtime startup validator: AST scan of loaded algos (CORE + USER) + batch pre-flight (#359)
+│   ├── algo_clock_validator/ unit — §9 runtime startup validator: AST scan of loaded algos (CORE + USER) + batch pre-flight (#359)
+│   └── static_analysis/   unit — §40 undefined-name gate (pyflakes) over python/ + tests/; the ruff/vulture backlog tier is measured, not gated
 │
 ├── data/
 │   ├── import_pipeline/   unit + integration — tick import, duplicate detection

@@ -8,7 +8,10 @@ force-close impact for Profile Run disposition calculation (#214).
 
 from typing import List, Optional
 
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, TradeRecord
+from python.framework.types.portfolio_types.portfolio_trade_record_types import (
+    CloseReason,
+    TradeRecord,
+)
 from python.framework.types.process_data_types import BlockBoundaryReport
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 

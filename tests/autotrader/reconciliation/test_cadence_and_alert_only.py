@@ -4,8 +4,10 @@ Reconciler cadence (is_due hybrid) + ALERT_ONLY non-mutation + counters (#151).
 
 import pytest
 
-from python.framework.types.config_types.autotrader_defaults_config_types import ReconciliationDefaults
-from tests.autotrader.reconciliation.conftest import make_pending, make_broker_order
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    ReconciliationDefaults,
+)
+from tests.autotrader.reconciliation.conftest import make_broker_order, make_pending
 
 
 def test_is_due_by_ticks(mock_adapter, make_reconciler):

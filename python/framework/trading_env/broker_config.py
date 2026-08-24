@@ -6,31 +6,28 @@ Loads broker-specific JSON configs and delegates to appropriate adapter.
 Provides common interface for TradeSimulator regardless of broker type.
 """
 
-from dataclasses import dataclass
-import json
 from pathlib import Path
-from typing import Dict, Any, List, Optional
-from enum import Enum
+from typing import Any, Dict, List, Optional
 
 from python.framework.types.market_types.market_data_types import TickData
-
-from .adapters.abstract_adapter import AbstractAdapter
-from .adapters.mt5_adapter import Mt5Adapter
-from .adapters.kraken_adapter import KrakenAdapter
-from python.framework.types.trading_env_types.order_types import (
-    OrderCapabilities,
-    MarketOrder,
-    LimitOrder,
-    StopOrder,
-    StopLimitOrder,
-    IcebergOrder,
-    OrderDirection,
-)
 from python.framework.types.trading_env_types.broker_types import (
+    BrokerSpecification,
     BrokerType,
     SymbolSpecification,
-    BrokerSpecification
 )
+from python.framework.types.trading_env_types.order_types import (
+    IcebergOrder,
+    LimitOrder,
+    MarketOrder,
+    OrderCapabilities,
+    OrderDirection,
+    StopLimitOrder,
+    StopOrder,
+)
+
+from .adapters.abstract_adapter import AbstractAdapter
+from .adapters.kraken_adapter import KrakenAdapter
+from .adapters.mt5_adapter import Mt5Adapter
 
 
 class BrokerConfig:
@@ -97,7 +94,7 @@ class BrokerConfig:
             try:
                 return BrokerType(type_str)
             except ValueError:
-                raise ValueError(f"Unknown broker type in config: {type_str}")
+                raise ValueError(f'Unknown broker type in config: {type_str}')
 
         # Method 2: File path detection
         path_str = str(path).lower()
@@ -143,7 +140,7 @@ class BrokerConfig:
             return KrakenAdapter(config)
 
         else:
-            raise ValueError(f"Broker type not supported: {broker_type}")
+            raise ValueError(f'Broker type not supported: {broker_type}')
 
     # ============================================
     # Broker Information

@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.process.process_tick_loop import execute_tick_loop, _run_sim_heartbeats
+from python.framework.process.process_tick_loop import _run_sim_heartbeats, execute_tick_loop
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.simulation.order_latency_simulator import OrderLatencySimulator

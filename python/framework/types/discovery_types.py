@@ -12,8 +12,8 @@ from typing import List
 
 class MoveDirection(StrEnum):
     """Direction of an extreme price move."""
-    LONG = "long"
-    SHORT = "short"
+    LONG = 'long'
+    SHORT = 'short'
 
 
 @dataclass

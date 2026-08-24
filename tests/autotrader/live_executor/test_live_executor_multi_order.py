@@ -9,10 +9,10 @@ that the full pipeline handles realistic order sequences.
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.types.trading_env_types.order_types import (
-    OrderType,
+    OpenOrderRequest,
     OrderDirection,
     OrderStatus,
-    OpenOrderRequest,
+    OrderType,
 )
 
 
@@ -27,9 +27,9 @@ class TestMultipleOrdersTracked:
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
         # Drain worker fills via next tick
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
@@ -44,9 +44,9 @@ class TestMultipleOrdersTracked:
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
 
         assert executor.has_pending_orders()
 
@@ -65,11 +65,11 @@ class TestMultipleOrdersTracked:
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.002))
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.002))
 
         history = executor.get_order_history()
         assert len(history) >= 3
@@ -87,7 +87,7 @@ class TestOpenCloseCycle:
 
         # Open — async, returns PENDING; fill on next tick drain
         open_result = executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
         assert open_result.status == OrderStatus.PENDING
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
@@ -112,7 +112,7 @@ class TestOpenCloseCycle:
 
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
         # Drain open fill so the position exists
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
@@ -140,9 +140,9 @@ class TestCloseAllRemaining:
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.002))
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.002))
         # Drain submits so positions materialize
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
@@ -177,11 +177,11 @@ class TestStatsConsistency:
 
         # 2 successful + 1 rejected (STOP)
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001))
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.SHORT, lots=0.001))
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.STOP, direction=OrderDirection.LONG, lots=0.001))
+            symbol='BTCUSD', order_type=OrderType.STOP, direction=OrderDirection.LONG, lots=0.001))
         # Drain worker responses so orders_executed counter catches up
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 

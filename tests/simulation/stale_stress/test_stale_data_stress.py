@@ -21,7 +21,6 @@ from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
-
 FIXTURE_SET = (
     Path(__file__).resolve().parents[3]
     / 'tests' / 'fixtures' / 'scenario_sets' / 'stale_stress' / 'stale_stress_probe.json'
@@ -47,7 +46,7 @@ def summary():
 def _received_events(summary, index: int):
     result = summary.process_result_list[index]
     assert result.success, (
-        f"Scenario {index} failed: {result.error_message}")
+        f'Scenario {index} failed: {result.error_message}')
     return result.tick_loop_results.decision_statistics.backtesting_metadata.received_events
 
 
@@ -94,8 +93,8 @@ class TestOverlapGuard:
         assert result.success
         buffer_lines = [line for _, line in (result.scenario_logger_buffer or [])]
         assert any('data deviation' in line for line in buffer_lines), (
-            f"No overlap warning found in scenario buffer "
-            f"({len(buffer_lines)} lines)")
+            f'No overlap warning found in scenario buffer '
+            f'({len(buffer_lines)} lines)')
 
     def test_no_events_recorded(self, summary):
         assert _received_events(summary, OVERLAP_WARNING) == []

@@ -78,7 +78,7 @@ class FieldStudyRecorder:
             phases=list(phase_ids),
         )
         self._write_line(asdict(header))
-        self._logger.info(f"📝 Field Study recorder → {self._path}")
+        self._logger.info(f'📝 Field Study recorder → {self._path}')
 
     # ============================================
     # Phase context
@@ -227,10 +227,10 @@ class FieldStudyRecorder:
         # Surfacing the generate command here keeps a finished study from being left
         # un-certified — without a field-study special case in the core shutdown path.
         self._logger.info(
-            f"✅ Field Study capture complete → {self._path}\n"
-            f"   Next step (no live trade) — generate the acceptance certificate:\n"
-            f"   python python/cli/field_study_certificate_cli.py generate "
-            f"--latest --release-version <X.Y.Z>"
+            f'✅ Field Study capture complete → {self._path}\n'
+            f'   Next step (no live trade) — generate the acceptance certificate:\n'
+            f'   python python/cli/field_study_certificate_cli.py generate '
+            f'--latest --release-version <X.Y.Z>'
         )
 
     def get_path(self) -> Path:

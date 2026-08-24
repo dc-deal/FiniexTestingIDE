@@ -24,7 +24,7 @@ class UnsupportedTimeframeError(TimeframeError):
     """
 
     def __init__(self, timeframe: str, message: Optional[str] = None):
-        msg = message or f"Unsupported timeframe: {timeframe}"
+        msg = message or f'Unsupported timeframe: {timeframe}'
         super().__init__(msg)
         self.timeframe = timeframe
 

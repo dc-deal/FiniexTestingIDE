@@ -16,19 +16,33 @@ import sys
 from typing import List, Optional
 
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
-from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
-from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
-from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import VolatilityProfileAnalyzer
-from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import VolatilityProfileAnalyzerCache
-from python.framework.discoveries.discovery_cache import DiscoveryCache
-from python.framework.discoveries.extreme_move_scanner import ExtremeMoveScanner
-from python.framework.discoveries.signal_coverage.signal_coverage_report_manager import SignalCoverageReportManager
-from python.framework.types.market_types.market_volatility_profile_types import SymbolVolatilityProfile
-from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_report import print_volatility_profile
-from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_comparison_report import print_cross_instrument_ranking
-from python.framework.logging.bootstrap_logger import get_global_logger
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
+from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
+    DataCoverageReportCache,
+)
+from python.framework.discoveries.discovery_cache import DiscoveryCache
+from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
+from python.framework.discoveries.extreme_move_scanner import ExtremeMoveScanner
+from python.framework.discoveries.signal_coverage.signal_coverage_report_manager import (
+    SignalCoverageReportManager,
+)
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import (
+    VolatilityProfileAnalyzer,
+)
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import (
+    VolatilityProfileAnalyzerCache,
+)
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_comparison_report import (
+    print_cross_instrument_ranking,
+)
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_report import (
+    print_volatility_profile,
+)
+from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.market_types.market_volatility_profile_types import (
+    SymbolVolatilityProfile,
+)
 
 vLog = get_global_logger()
 
@@ -67,7 +81,7 @@ class DiscoveriesCli:
         profile = cache.get_profile(
             broker_type, symbol, timeframe, force_rebuild=force)
         if not profile:
-            print(f"Failed to build volatility profile for {symbol}")
+            print(f'Failed to build volatility profile for {symbol}')
             return
 
         print_volatility_profile(profile)
@@ -83,7 +97,7 @@ class DiscoveriesCli:
             if sym_profile:
                 all_profiles.append(sym_profile)
             else:
-                vLog.warning(f"Could not profile {sym} for comparison")
+                vLog.warning(f'Could not profile {sym} for comparison')
 
         if len(all_profiles) > 1:
             ranking_config = DiscoveriesConfigLoader().get_cross_instrument_ranking_config()
@@ -117,7 +131,7 @@ class DiscoveriesCli:
             broker_type, symbol, force_rebuild=force_rebuild)
 
         if not result:
-            print(f"No data available for {broker_type}/{symbol}")
+            print(f'No data available for {broker_type}/{symbol}')
             return
 
         scanner = ExtremeMoveScanner()
@@ -134,12 +148,12 @@ class DiscoveriesCli:
         Args:
             force: Force rebuild even if cache is valid
         """
-        print("\n" + "="*80)
-        print("🔧 Building Data Coverage Report Cache")
-        print("="*80)
+        print('\n' + '='*80)
+        print('🔧 Building Data Coverage Report Cache')
+        print('='*80)
         print(
             f"Force Rebuild: {'ENABLED' if force else 'DISABLED (skip valid caches)'}")
-        print("="*80 + "\n")
+        print('='*80 + '\n')
 
         bar_index = BarsIndexManager()
         bar_index.build_index()
@@ -147,12 +161,12 @@ class DiscoveriesCli:
         cache = DataCoverageReportCache()
         stats = cache.build_all(force_rebuild=force)
 
-        print("\n" + "-"*60)
-        print("📊 Build Summary:")
+        print('\n' + '-'*60)
+        print('📊 Build Summary:')
         print(f"   ✅ Generated: {stats['generated']}")
         print(f"   ⏭️  Skipped:   {stats['skipped']}")
         print(f"   ❌ Failed:    {stats['failed']}")
-        print("-"*60 + "\n")
+        print('-'*60 + '\n')
 
     def cmd_data_coverage_status(self) -> None:
         """Show coverage cache status overview."""
@@ -180,7 +194,7 @@ class DiscoveriesCli:
         report = cache.get_report(broker_type, symbol, force_rebuild=force)
 
         if report is None:
-            print(f"\n❌ No data available for {broker_type}/{symbol}\n")
+            print(f'\n❌ No data available for {broker_type}/{symbol}\n')
             return
 
         print(report.generate_report())
@@ -207,14 +221,14 @@ class DiscoveriesCli:
             logger=get_global_logger(), scenarios=[],
             signal_index_manager=signal_index)
 
-        print("\n" + "="*60)
-        print("🔍 Validating All Signal Sources")
-        print("="*60 + "\n")
+        print('\n' + '='*60)
+        print('🔍 Validating All Signal Sources')
+        print('='*60 + '\n')
 
         issues_found = False
 
         for sentiment_type in signal_index.list_sentiment_types():
-            print(f"\n📂 {sentiment_type}:")
+            print(f'\n📂 {sentiment_type}:')
             for symbol in signal_index.list_symbols(sentiment_type):
                 report = manager.build_report(sentiment_type, symbol)
                 icon = '🔴' if report.has_issues() else '✅'
@@ -227,12 +241,12 @@ class DiscoveriesCli:
                 if report.has_issues():
                     issues_found = True
 
-        print("\n" + "="*60)
+        print('\n' + '='*60)
         if issues_found:
             print("🔴 Gaps found - run 'signal-coverage show <source> <symbol>' for details")
         else:
-            print("✅ All signal sources continuous")
-        print("="*60 + "\n")
+            print('✅ All signal sources continuous')
+        print('='*60 + '\n')
 
     def _signal_coverage_manager(self) -> SignalCoverageReportManager:
         """
@@ -254,21 +268,21 @@ class DiscoveriesCli:
 
         cache = DataCoverageReportCache()
 
-        print("\n" + "="*60)
-        print("🔍 Validating All Symbols")
-        print("="*60 + "\n")
+        print('\n' + '='*60)
+        print('🔍 Validating All Symbols')
+        print('='*60 + '\n')
 
         issues_found = False
 
         for broker_type in bar_index.list_broker_types():
-            print(f"\n📂 {broker_type}:")
+            print(f'\n📂 {broker_type}:')
 
             for symbol in bar_index.list_symbols(broker_type):
                 try:
                     report = cache.get_report(broker_type, symbol)
 
                     if report is None:
-                        print(f"  ❌ {symbol}: No data available")
+                        print(f'  ❌ {symbol}: No data available')
                         issues_found = True
                         continue
 
@@ -276,32 +290,32 @@ class DiscoveriesCli:
                         moderate = report.gap_counts.get('moderate', 0)
                         large = report.gap_counts.get('large', 0)
                         print(
-                            f"  ⚠️  {symbol}: {moderate} moderate, {large} large gaps")
+                            f'  ⚠️  {symbol}: {moderate} moderate, {large} large gaps')
                         issues_found = True
                     else:
-                        print(f"  ✅ {symbol}: No issues")
+                        print(f'  ✅ {symbol}: No issues')
 
                 except Exception as e:
-                    print(f"  ❌ {symbol}: Error - {e}")
+                    print(f'  ❌ {symbol}: Error - {e}')
                     issues_found = True
 
-        print("\n" + "="*60)
+        print('\n' + '='*60)
         if issues_found:
             print("Use 'coverage show BROKER_TYPE SYMBOL' for detailed gap analysis")
         else:
-            print("✅ All symbols have clean coverage")
-        print("="*60 + "\n")
+            print('✅ All symbols have clean coverage')
+        print('='*60 + '\n')
 
     def cmd_data_coverage_clear(self) -> None:
         """Clear all cached coverage reports."""
-        print("\n" + "="*60)
-        print("🗑️  Clearing Data Coverage Report Cache")
-        print("="*60 + "\n")
+        print('\n' + '='*60)
+        print('🗑️  Clearing Data Coverage Report Cache')
+        print('='*60 + '\n')
 
         cache = DataCoverageReportCache()
         count = cache.clear_cache()
 
-        print(f"✅ Deleted {count} cache files\n")
+        print(f'✅ Deleted {count} cache files\n')
 
     # =========================================================================
     # CACHE COMMANDS (unified)
@@ -320,15 +334,15 @@ class DiscoveriesCli:
         manager = DiscoveryCacheManager()
         results = manager.rebuild_all(force=force)
 
-        print("\n" + "="*60)
-        print("📊 Cache Rebuild Summary")
-        print("="*60)
+        print('\n' + '='*60)
+        print('📊 Cache Rebuild Summary')
+        print('='*60)
         for name, stats in results.items():
-            print(f"\n  {name}:")
+            print(f'\n  {name}:')
             print(f"    ✅ Generated: {stats['generated']}")
             print(f"    ⏭️  Skipped:   {stats['skipped']}")
             print(f"    ❌ Failed:    {stats['failed']}")
-        print("\n" + "="*60 + "\n")
+        print('\n' + '='*60 + '\n')
 
     def cmd_cache_status(self) -> None:
         """Show status of all discovery caches."""
@@ -338,16 +352,16 @@ class DiscoveriesCli:
         manager = DiscoveryCacheManager()
         all_status = manager.status()
 
-        print("\n" + "="*60)
-        print("📊 Discovery Cache Status")
-        print("="*60)
+        print('\n' + '='*60)
+        print('📊 Discovery Cache Status')
+        print('='*60)
 
         for name, status in all_status.items():
-            print(f"\n  {name}:")
+            print(f'\n  {name}:')
             for key, value in status.items():
-                print(f"    {key}: {value}")
+                print(f'    {key}: {value}')
 
-        print("\n" + "="*60 + "\n")
+        print('\n' + '='*60 + '\n')
 
 
 # =============================================================================
@@ -357,7 +371,7 @@ class DiscoveriesCli:
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Market discoveries, volatility profiling, and cache management CLI",
+        description='Market discoveries, volatility profiling, and cache management CLI',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 

@@ -5,10 +5,9 @@ Commands:
     sync    Fetch all tick-index symbols for dynamic brokers and update the runtime cache.
 """
 import argparse
-from typing import List, Optional
 
-from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.autotrader.broker_config_fetcher_factory import BrokerConfigFetcherFactory
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.types.config_types.market_config_types import ConfigMode
 

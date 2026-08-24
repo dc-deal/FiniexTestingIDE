@@ -6,13 +6,12 @@ Shared fixtures and helpers for tick processing budget unit tests.
 No file I/O, no subprocesses — pure synthetic tick data.
 """
 
-import pytest
+from typing import Any, Dict, List
 from unittest.mock import MagicMock
-from typing import Dict, Any, List, Tuple
+
+import pytest
 
 from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
-from python.framework.types.process_data_types import ClippingStats
-
 
 # =============================================================================
 # TICK HELPERS

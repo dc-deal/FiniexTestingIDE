@@ -66,7 +66,7 @@ def _validate_symbol_currencies(symbol: str, base: str, quote: str, broker_type:
         raise SymbolCurrencyError(
             f"Symbol '{symbol}' in broker '{broker_type}' has no base_currency/quote_currency "
             f"(base='{base}', quote='{quote}'). Fix the symbol entry in the broker config.")
-    if f"{base}{quote}".upper() != symbol.upper():
+    if f'{base}{quote}'.upper() != symbol.upper():
         raise SymbolCurrencyError(
             f"Symbol '{symbol}' in broker '{broker_type}' does not match its currency split — "
             f"base '{base}' + quote '{quote}' = '{base}{quote}', expected '{symbol}'.")

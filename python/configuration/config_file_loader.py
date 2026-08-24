@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 from threading import Lock
-import traceback
 from typing import Any, Dict, Optional, Tuple
 
 from python.framework.utils.config_merge_utils import deep_merge, is_config_isolation_active
@@ -13,8 +12,8 @@ class ConfigFileLoader:
     """
 
     _config: Optional[Dict[str, Any]] = None
-    _config_path: Optional[str] = "configs/app_config.json"
-    _user_config_path: Optional[str] = "user_configs/app_config.json"
+    _config_path: Optional[str] = 'configs/app_config.json'
+    _user_config_path: Optional[str] = 'user_configs/app_config.json'
     _lock = Lock()
 
     @staticmethod
@@ -62,27 +61,27 @@ class ConfigFileLoader:
         """
         if ConfigFileLoader._config_path is None:
             raise RuntimeError(
-                "ConfigFileLoader not initialized. Call initialize(path).")
+                'ConfigFileLoader not initialized. Call initialize(path).')
 
         # Load base configuration
         try:
-            with open(ConfigFileLoader._config_path, "r") as f:
+            with open(ConfigFileLoader._config_path, 'r') as f:
                 base_config = json.load(f)
-            print(f"📋 Loaded config: {ConfigFileLoader._config_path}")
+            print(f'📋 Loaded config: {ConfigFileLoader._config_path}')
         except FileNotFoundError:
             raise FileNotFoundError(
-                f"❌ Config file not found: {ConfigFileLoader._config_path}\n"
-                f"   Please ensure configs/app_config.json exists."
+                f'❌ Config file not found: {ConfigFileLoader._config_path}\n'
+                f'   Please ensure configs/app_config.json exists.'
             )
         except json.JSONDecodeError as e:
             raise RuntimeError(
-                f"❌ Invalid JSON in config file: {ConfigFileLoader._config_path}\n"
-                f"   Error: {e}"
+                f'❌ Invalid JSON in config file: {ConfigFileLoader._config_path}\n'
+                f'   Error: {e}'
             )
         except Exception as e:
             raise RuntimeError(
-                f"❌ Failed to load config: {ConfigFileLoader._config_path}\n"
-                f"   Error: {e}"
+                f'❌ Failed to load config: {ConfigFileLoader._config_path}\n'
+                f'   Error: {e}'
             )
 
         # Try to load user override configuration.
@@ -91,25 +90,25 @@ class ConfigFileLoader:
         user_config_path = ConfigFileLoader._user_config_path
         if user_config_path and Path(user_config_path).exists() and not is_config_isolation_active():
             try:
-                with open(user_config_path, "r") as f:
+                with open(user_config_path, 'r') as f:
                     user_override = json.load(f)
 
                 # Merge user overrides into base config
                 merged_config = ConfigFileLoader._deep_merge(
                     base_config, user_override)
-                print(f"✅ Merged user_configs/app_config.json")
+                print('✅ Merged user_configs/app_config.json')
                 return merged_config
 
             except json.JSONDecodeError as e:
                 raise RuntimeError(
-                    f"Invalid JSON in user config: {user_config_path}\n"
-                    f"Error: {e}\n"
-                    f"Please fix the JSON syntax or remove the file."
+                    f'Invalid JSON in user config: {user_config_path}\n'
+                    f'Error: {e}\n'
+                    f'Please fix the JSON syntax or remove the file.'
                 )
             except Exception as e:
                 raise RuntimeError(
-                    f"Failed to load user config: {user_config_path}\n"
-                    f"Error: {e}"
+                    f'Failed to load user config: {user_config_path}\n'
+                    f'Error: {e}'
                 )
 
         # No user config - return base config

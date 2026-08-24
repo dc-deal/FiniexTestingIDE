@@ -12,13 +12,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from python.framework.reporting.builders.warnings_errors_report_builder import (
-    build_warnings_errors_report_from_session)
+    build_warnings_errors_report_from_session,
+)
 from python.framework.reporting.store.run_provenance_builder import (
-    build_run_provenance_from_session)
+    build_run_provenance_from_session,
+)
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
-
 
 _TS = datetime(2026, 1, 1, tzinfo=timezone.utc)
 _RUN_DIR = Path('logs/autotrader/my_profile/20260101_000000')

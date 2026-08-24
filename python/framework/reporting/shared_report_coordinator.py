@@ -11,31 +11,49 @@ Stateless by design (composition, not a base class) — see the pipeline coordin
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from python.framework.reporting.builders.execution_stats_report_builder import build_execution_stats_report
-from python.framework.reporting.builders.feed_stability_report_builder import build_feed_stability_report
-from python.framework.reporting.builders.order_history_report_builder import build_order_history_report
-from python.framework.reporting.builders.pending_orders_report_builder import build_pending_orders_report
+from python.framework.reporting.builders.execution_stats_report_builder import (
+    build_execution_stats_report,
+)
+from python.framework.reporting.builders.feed_stability_report_builder import (
+    build_feed_stability_report,
+)
+from python.framework.reporting.builders.order_history_report_builder import (
+    build_order_history_report,
+)
+from python.framework.reporting.builders.pending_orders_report_builder import (
+    build_pending_orders_report,
+)
 from python.framework.reporting.builders.portfolio_report_builder import build_portfolio_report
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.builders.signal_report_builder import build_signal_report
-from python.framework.types.signal_data_types import SignalObservedSeries
-from python.framework.reporting.builders.trade_history_report_builder import build_trade_history_report
+from python.framework.reporting.builders.trade_history_report_builder import (
+    build_trade_history_report,
+)
 from python.framework.reporting.builders.unified_reports import UnifiedReports
-from python.framework.reporting.builders.worker_decision_report_builder import build_worker_decision_report
+from python.framework.reporting.builders.worker_decision_report_builder import (
+    build_worker_decision_report,
+)
 from python.framework.reporting.io.execution_stats_report_io import (
-    write_execution_stats_csv, write_execution_stats_report)
+    write_execution_stats_csv,
+    write_execution_stats_report,
+)
 from python.framework.reporting.io.feed_stability_report_io import write_feed_stability_report
 from python.framework.reporting.io.order_history_report_io import (
-    write_order_history_csv, write_order_history_report)
+    write_order_history_csv,
+    write_order_history_report,
+)
 from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.io.run_summary_io import write_run_summary
 from python.framework.reporting.io.signal_report_io import write_signal_report
 from python.framework.reporting.io.trade_history_report_io import (
-    write_trade_history_csv, write_trade_history_report)
+    write_trade_history_csv,
+    write_trade_history_report,
+)
 from python.framework.reporting.io.worker_decision_report_io import write_worker_decision_report
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
+from python.framework.types.signal_data_types import SignalObservedSeries
 
 
 class SharedReportCoordinator:

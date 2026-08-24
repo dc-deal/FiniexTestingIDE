@@ -15,12 +15,11 @@ import traceback
 from datetime import datetime
 
 from python.configuration.market_config_manager import MarketConfigManager
-from python.data_management.index.bars_index_manager import BarsIndexManager
-
-from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
-from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.data_management.importers.bar_importer import BarImporter
+from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
+from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.utils.activity_volume_provider import get_activity_provider
 
 vLog = get_global_logger()
 
@@ -36,36 +35,36 @@ class BarIndexCli:
 
     def cmd_rebuild(self):
         """Rebuild bar index from scratch"""
-        print("\n" + "="*80)
-        print("🔄 Rebuilding Bar Index")
-        print("="*80 + "\n")
+        print('\n' + '='*80)
+        print('🔄 Rebuilding Bar Index')
+        print('='*80 + '\n')
 
         self.index_manager.build_index(force_rebuild=True)
         self.index_manager.print_summary()
 
         # Rebuild all discovery caches
-        print("\n🔄 Rebuilding discovery caches...")
+        print('\n🔄 Rebuilding discovery caches...')
         DiscoveryCacheManager().rebuild_all(force=True)
 
-        print("\n✅ Bar index rebuild complete\n")
+        print('\n✅ Bar index rebuild complete\n')
 
     def cmd_status(self):
         """Show bar index status and overview"""
         self.index_manager.build_index()
 
-        print("\n" + "="*80)
-        print("📊 Bar Index Status")
-        print("="*80)
+        print('\n' + '='*80)
+        print('📊 Bar Index Status')
+        print('='*80)
 
         # Index file info
         if self.index_manager.index_file.exists():
             mtime = datetime.fromtimestamp(
                 self.index_manager.index_file.stat().st_mtime
             )
-            print(f"Index file:  {self.index_manager.index_file}")
+            print(f'Index file:  {self.index_manager.index_file}')
             print(f"Last update: {mtime.strftime('%Y-%m-%d %H:%M:%S')}")
         else:
-            print("Index file:  (not found)")
+            print('Index file:  (not found)')
 
         # Get broker_types first
         broker_types = self.index_manager.list_broker_types()
@@ -75,11 +74,11 @@ class BarIndexCli:
         # Symbol overview (across all broker_types)
         all_symbols = self.index_manager.list_symbols()
         print(
-            f"Symbols:     {len(all_symbols)} (total across all broker_types)")
+            f'Symbols:     {len(all_symbols)} (total across all broker_types)')
 
         if not broker_types:
-            print("\n⚠️  No bar data found in index")
-            print("="*80 + "\n")
+            print('\n⚠️  No bar data found in index')
+            print('='*80 + '\n')
             return
 
         # Count total timeframes across all broker_types and symbols
@@ -88,18 +87,18 @@ class BarIndexCli:
             for symbol in self.index_manager.index[broker_type]:
                 total_timeframes += len(
                     self.index_manager.index[broker_type][symbol])
-        print(f"Timeframes:  {total_timeframes} (across all symbols)")
+        print(f'Timeframes:  {total_timeframes} (across all symbols)')
 
         # Iterate over broker_types → symbols → timeframes
         for broker_type in sorted(broker_types):
-            print("\n" + "─"*80)
-            print(f"📁 Broker Type: {broker_type}")
-            print("─"*80)
+            print('\n' + '─'*80)
+            print(f'📁 Broker Type: {broker_type}')
+            print('─'*80)
 
             symbols = self.index_manager.list_symbols(broker_type)
 
             if not symbols:
-                print("   (no symbols)")
+                print('   (no symbols)')
                 continue
 
             # List each symbol with available timeframes
@@ -114,9 +113,9 @@ class BarIndexCli:
                 total_bars = sum(tf_stats['bar_count']
                                  for tf_stats in stats.values())
 
-                print(f"\n   {symbol}:")
+                print(f'\n   {symbol}:')
                 print(f"      Timeframes: {', '.join(timeframes)}")
-                print(f"      Total bars: {total_bars:,}")
+                print(f'      Total bars: {total_bars:,}')
 
                 # Get first timeframe entry for metadata
                 first_tf = sorted(timeframes)[0]
@@ -138,10 +137,10 @@ class BarIndexCli:
                 if source_version_min == source_version_max:
                     version_str = source_version_min
                 else:
-                    version_str = f"{source_version_min} - {source_version_max}"
+                    version_str = f'{source_version_min} - {source_version_max}'
 
-                print(f"      Source:     {data_source} (v{version_str})")
-                print(f"      Market:     {market_type}")
+                print(f'      Source:     {data_source} (v{version_str})')
+                print(f'      Market:     {market_type}')
 
                 # Activity metrics using provider
                 provider = get_activity_provider()
@@ -163,7 +162,7 @@ class BarIndexCli:
                           f"[{activity_label}: {provider.format_activity_value(total_activity, market_type)}, "
                           f"Ø {provider.format_activity_value(avg_activity, market_type)}/bar]")
 
-        print("\n" + "="*80)
+        print('\n' + '='*80)
 
         if self.index_manager.needs_rebuild():
             print("⚠️  Index is outdated - run 'rebuild' to update")
@@ -184,19 +183,19 @@ class BarIndexCli:
             if not broker_types:
                 print('No broker types found in market_config.json')
                 return
-            print("\n" + "="*80)
+            print('\n' + '='*80)
             print(
                 f"🔄 Bar Rendering — ALL broker types ({', '.join(broker_types)})")
             print(f"Clean Mode: {'ENABLED' if clean else 'DISABLED'}")
-            print("="*80 + "\n")
+            print('='*80 + '\n')
         else:
             broker_types = [broker_type]
-            print("\n" + "="*80)
-            print(f"🔄 Bar Rendering (broker_type: {broker_type})")
-            print("="*80)
+            print('\n' + '='*80)
+            print(f'🔄 Bar Rendering (broker_type: {broker_type})')
+            print('='*80)
             print(
                 f"Clean Mode: {'ENABLED (delete all bars first)' if clean else 'DISABLED (skip symbols without ticks)'}")
-            print("="*80 + "\n")
+            print('='*80 + '\n')
 
         try:
             bar_importer = BarImporter()
@@ -209,11 +208,11 @@ class BarIndexCli:
             # Rebuild index and caches once after all rendering
             bar_importer.update_bar_index()
 
-            print("\n✅ Bar rendering completed!")
-            print("="*80 + "\n")
+            print('\n✅ Bar rendering completed!')
+            print('='*80 + '\n')
 
         except Exception as e:
-            vLog.error(f"❌ Bar rendering failed: {e}")
+            vLog.error(f'❌ Bar rendering failed: {e}')
             raise
 
 
@@ -284,10 +283,10 @@ def main():
             )
 
     except KeyboardInterrupt:
-        print("\n\n👋 Interrupted by user")
+        print('\n\n👋 Interrupted by user')
         sys.exit(0)
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f'\n❌ Error: {e}')
         traceback.print_exc()
         sys.exit(1)
 

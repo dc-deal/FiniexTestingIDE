@@ -37,7 +37,7 @@ class OptimizationConfigLoader:
         """
         path = self._resolve_path(spec_file)
         if not path.exists():
-            raise FileNotFoundError(f"Sweep spec not found: {path}")
+            raise FileNotFoundError(f'Sweep spec not found: {path}')
 
         with open(path, 'r') as f:
             data = json.load(f)

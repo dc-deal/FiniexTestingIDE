@@ -1,6 +1,7 @@
 
-from python.framework.logging.global_logger import GlobalLogger
 from typing import Optional
+
+from python.framework.logging.global_logger import GlobalLogger
 
 """
 FiniexTestingIDE - Bootstrap Logger (Factory)
@@ -20,7 +21,7 @@ Usage:
 _logger_instance: Optional[GlobalLogger] = None
 
 
-def get_global_logger(name: str = "FiniexTestingIDE") -> GlobalLogger:
+def get_global_logger(name: str = 'FiniexTestingIDE') -> GlobalLogger:
     """
     Get or create GlobalLogger singleton.
 

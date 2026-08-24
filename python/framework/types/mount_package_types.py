@@ -26,7 +26,10 @@ from python.framework.types.process_data_types import (
     RequirementsMap,
 )
 from python.framework.types.scenario_types.scenario_set_types import (
-    BrokerScenarioInfo, SignalScenarioInfo, SingleScenario)
+    BrokerScenarioInfo,
+    SignalScenarioInfo,
+    SingleScenario,
+)
 from python.framework.types.trading_env_types.broker_types import BrokerType
 
 

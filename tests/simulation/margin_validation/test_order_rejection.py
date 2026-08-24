@@ -9,13 +9,11 @@ Tests:
 - Rejected orders absent from trade history
 """
 
-import pytest
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
 
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
-from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
-from python.framework.types.process_data_types import ProcessTickLoopResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
@@ -34,8 +32,8 @@ class TestLotSizeValidation:
         )
         # orders_rejected includes both margin and lot rejections
         assert execution_stats.orders_rejected >= lot_edge_cases, (
-            f"Expected at least {lot_edge_cases} rejections from lot validation, "
-            f"orders_rejected={execution_stats.orders_rejected}"
+            f'Expected at least {lot_edge_cases} rejections from lot validation, '
+            f'orders_rejected={execution_stats.orders_rejected}'
         )
 
     def test_invalid_lots_not_in_trade_history(
@@ -50,8 +48,8 @@ class TestLotSizeValidation:
         }
         for trade in trade_history:
             assert trade.lots not in invalid_lots, (
-                f"Trade with lots={trade.lots} should not be in history "
-                f"(matches invalid lot size)"
+                f'Trade with lots={trade.lots} should not be in history '
+                f'(matches invalid lot size)'
             )
 
     def test_invalid_lots_not_in_expected_trades(
@@ -81,12 +79,12 @@ class TestLotSizeValidation:
             if e['type'] == 'invalid_lot_step'
         ]
         assert len(step_edge_cases) > 0, (
-            "Config must include at least one invalid_lot_step edge case"
+            'Config must include at least one invalid_lot_step edge case'
         )
         # Step misalignment rejections are included in orders_rejected
         assert execution_stats.orders_rejected >= len(step_edge_cases), (
-            f"Expected at least {len(step_edge_cases)} rejections from lot step "
-            f"misalignment, orders_rejected={execution_stats.orders_rejected}"
+            f'Expected at least {len(step_edge_cases)} rejections from lot step '
+            f'misalignment, orders_rejected={execution_stats.orders_rejected}'
         )
 
 
@@ -101,8 +99,8 @@ class TestPositionCloseErrors:
         """Scenario should complete all ticks despite close errors."""
         expected_ticks = scenario_config['scenarios'][0]['max_ticks']
         assert backtesting_metadata.tick_count == expected_ticks, (
-            f"Expected {expected_ticks} ticks, got {backtesting_metadata.tick_count}. "
-            f"Scenario may have crashed on close error."
+            f'Expected {expected_ticks} ticks, got {backtesting_metadata.tick_count}. '
+            f'Scenario may have crashed on close error.'
         )
 
     def test_successful_trades_unaffected_by_close_error(
@@ -112,8 +110,8 @@ class TestPositionCloseErrors:
     ):
         """Successful trades should be unaffected by close errors."""
         assert len(trade_history) == expected_successful_trades, (
-            f"Expected {expected_successful_trades} trades despite close errors, "
-            f"got {len(trade_history)}"
+            f'Expected {expected_successful_trades} trades despite close errors, '
+            f'got {len(trade_history)}'
         )
 
 
@@ -126,9 +124,9 @@ class TestRejectionTracking:
     ):
         """orders_sent should include rejected orders in the count."""
         assert execution_stats.orders_sent > execution_stats.orders_executed, (
-            f"orders_sent ({execution_stats.orders_sent}) should be > "
-            f"orders_executed ({execution_stats.orders_executed}) "
-            f"when rejections occur"
+            f'orders_sent ({execution_stats.orders_sent}) should be > '
+            f'orders_executed ({execution_stats.orders_executed}) '
+            f'when rejections occur'
         )
 
     def test_rejected_orders_not_in_trade_history(
@@ -138,9 +136,9 @@ class TestRejectionTracking:
     ):
         """Rejected orders should not appear in trade history."""
         assert len(trade_history) == execution_stats.orders_executed, (
-            f"Trade history ({len(trade_history)}) should match "
-            f"orders_executed ({execution_stats.orders_executed}), "
-            f"not orders_sent ({execution_stats.orders_sent})"
+            f'Trade history ({len(trade_history)}) should match '
+            f'orders_executed ({execution_stats.orders_executed}), '
+            f'not orders_sent ({execution_stats.orders_sent})'
         )
 
     def test_all_rejections_accounted_for(
@@ -150,6 +148,6 @@ class TestRejectionTracking:
     ):
         """Total rejections should match expected count."""
         assert execution_stats.orders_rejected == expected_rejections, (
-            f"Expected {expected_rejections} total rejections, "
-            f"got {execution_stats.orders_rejected}"
+            f'Expected {expected_rejections} total rejections, '
+            f'got {execution_stats.orders_rejected}'
         )

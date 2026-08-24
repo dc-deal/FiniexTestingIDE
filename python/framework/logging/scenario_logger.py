@@ -64,7 +64,7 @@ class ScenarioLogger(AbstractLogger):
 
         self.scenario_set_name = scenario_set_name
         self.run_timestamp = run_timestamp
-        run_timestamp_str = self.run_timestamp.strftime("%Y%m%d_%H%M%S")
+        run_timestamp_str = self.run_timestamp.strftime('%Y%m%d_%H%M%S')
         self._tick_loop_started = False
         self._current_tick = None
         self._tick_loop_count = 1
@@ -89,7 +89,7 @@ class ScenarioLogger(AbstractLogger):
                 log_dir.mkdir(exist_ok=True)
 
             self.file_logger = FileLogger(
-                log_filename=prefix+'_'+scenario_name+".log",
+                log_filename=prefix+'_'+scenario_name+'.log',
                 file_path=log_dir,
                 log_level=self._file_logging_config.scenario_log_level
             )
@@ -108,7 +108,7 @@ class ScenarioLogger(AbstractLogger):
         total_seconds = elapsed.total_seconds()
         seconds = int(total_seconds)
         milliseconds = int((total_seconds - seconds) * 1000)
-        return f"[{seconds:3d}s {milliseconds:3d}ms]"
+        return f'[{seconds:3d}s {milliseconds:3d}ms]'
 
     def _should_log_console(self, level: LogLevel) -> str:
         """
@@ -171,7 +171,7 @@ class ScenarioLogger(AbstractLogger):
         """
         if self._tick_loop_started:
             tick_time = format_timestamp(self._current_tick.timestamp)
-            message = f"{self._tick_loop_count:5}| {tick_time} | {message}"
+            message = f'{self._tick_loop_count:5}| {tick_time} | {message}'
         formatted_line = self._format_log_line(level, message, timestamp)
 
         # Console output (BUFFERED) - for scenario loggers.
@@ -213,8 +213,8 @@ class ScenarioLogger(AbstractLogger):
 
         # Print scenario header
         print(f"\n{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
-        header_text = f"📊 SCENARIO: {self.name}"
-        print(f"{ColorCodes.BOLD}{header_text.center(60)}{ColorCodes.RESET}")
+        header_text = f'📊 SCENARIO: {self.name}'
+        print(f'{ColorCodes.BOLD}{header_text.center(60)}{ColorCodes.RESET}')
         print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
 
         # Output all buffered logs

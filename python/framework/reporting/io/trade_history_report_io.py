@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import Optional
 
 from python.framework.reporting.builders.report_aggregators import (
-    aggregate_trade_analytics, aggregate_trade_scenario_totals)
+    aggregate_trade_analytics,
+    aggregate_trade_scenario_totals,
+)
 from python.framework.types.api.report_types import TradeHistoryReport, TradeHistoryRow
 
 # Canonical artifact names inside a run directory

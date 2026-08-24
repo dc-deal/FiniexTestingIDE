@@ -115,27 +115,31 @@ RECOMMENDATION:
 - Switch with one line: USE_PROCESSPOOL = True/False
 """
 import time
-from typing import Any, Dict, List, Optional, Tuple
-from python.framework.validators.scenario_validator import ScenarioValidator
-from python.framework.validators.post_run_validator import PostRunValidator
 from multiprocessing import Manager
-from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
+from typing import Any, Dict, List, Optional, Tuple
+
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet, SingleScenario
-from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
-from python.framework.types.batch_execution_types import BatchExecutionSummary, WarmupPhaseEntry
-from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-from python.system.ui.live_progress_display import LiveProgressDisplay
-from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
 from python.framework.batch.execution_coordinator import ExecutionCoordinator
-from python.framework.batch.requirements_collector import RequirementsCollector
+from python.framework.batch.live_stats_coordinator import LiveStatsCoordinator
 from python.framework.batch.mount_preparer import MountPreparer
-from python.framework.utils.runtime_env_utils import is_debug_execution
+from python.framework.batch.requirements_collector import RequirementsCollector
 from python.framework.data_preparation.broker_data_preparator import BrokerDataPreparator
-from python.framework.types.mount_package_types import DataIdentityKey, MountPackage
-from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.exceptions.mount_errors import MountIdentityMismatchError
+from python.framework.exceptions.scenario_execution_errors import BatchExecutionError
+from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.types.batch_execution_types import BatchExecutionSummary, WarmupPhaseEntry
+from python.framework.types.live_types.live_stats_config_types import (
+    LiveStatsExportConfig,
+    ScenarioStatus,
+)
+from python.framework.types.mount_package_types import DataIdentityKey, MountPackage
+from python.framework.types.scenario_types.scenario_set_types import ScenarioSet, SingleScenario
+from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.utils.runtime_env_utils import is_debug_execution
+from python.framework.validators.post_run_validator import PostRunValidator
+from python.framework.validators.scenario_validator import ScenarioValidator
+from python.system.ui.live_progress_display import LiveProgressDisplay
 
 
 class BatchOrchestrator:
@@ -171,9 +175,9 @@ class BatchOrchestrator:
         # Start global log
         self._logger.reset_start_time()
         self._logger.info(
-            "🚀 Starting Scenario " +
+            '🚀 Starting Scenario ' +
             self._scenario_set.scenario_set_name +
-            " Log Timer (Batch Init)."
+            ' Log Timer (Batch Init).'
         )
 
         # Initialize factories
@@ -242,15 +246,15 @@ class BatchOrchestrator:
 
         # Log live stats setup
         if self._live_stats_config.enabled:
-            mode = "DETAILED" if self._live_stats_config.detailed_mode else "BASIC"
+            mode = 'DETAILED' if self._live_stats_config.detailed_mode else 'BASIC'
             self._logger.info(
-                f"📊 Live stats: {mode} mode "
-                f"(update interval: {self._live_stats_config.update_interval_ms:.0f}ms)"
+                f'📊 Live stats: {mode} mode '
+                f'(update interval: {self._live_stats_config.update_interval_ms:.0f}ms)'
             )
             if self._live_stats_config.detailed_mode:
                 self._logger.debug(
-                    f"   Exports: Portfolio={self._live_stats_config.export_portfolio_stats}, "
-                    f"Bars={self._live_stats_config.export_current_bars}"
+                    f'   Exports: Portfolio={self._live_stats_config.export_portfolio_stats}, '
+                    f'Bars={self._live_stats_config.export_current_bars}'
                 )
 
         self._logger.debug(
@@ -278,9 +282,9 @@ class BatchOrchestrator:
             BatchExecutionSummary with aggregated results from all scenarios
         """
         self._logger.info(
-            f"🚀 Starting batch execution "
-            f"({len(self._scenarios)} scenarios, "
-            f"run_timestamp={self.logger_start_time_format})"
+            f'🚀 Starting batch execution '
+            f'({len(self._scenarios)} scenarios, '
+            f'run_timestamp={self.logger_start_time_format})'
         )
 
         self._live_stats_coordinator.broadcast_status(
@@ -304,8 +308,8 @@ class BatchOrchestrator:
             self.prepare_scenarios()
             if not self.matches_mount(mount):
                 self._logger.warning(
-                    "⚠️ Combination data identity differs from the mount "
-                    "(warmup-affecting parameter) — reloading data for this combination")
+                    '⚠️ Combination data identity differs from the mount '
+                    '(warmup-affecting parameter) — reloading data for this combination')
                 mount = self.prepare_mount()
         else:
             mount = self.prepare_mount()
@@ -383,13 +387,13 @@ class BatchOrchestrator:
         scenario_count = len(scenarios)
         if scenario_count == 1:
             self._logger.info(
-                "⚠️ Sequential execution forced - only one scenario in set."
+                '⚠️ Sequential execution forced - only one scenario in set.'
             )
 
         # ========================================================================
         # PHASE 6: EXECUTION
         # ========================================================================
-        self._logger.info("🚀 Phase 6: Executing scenarios...")
+        self._logger.info('🚀 Phase 6: Executing scenarios...')
 
         batch_tickrun_start = time.time()
 
@@ -415,7 +419,7 @@ class BatchOrchestrator:
         # ========================================================================
         # PHASE 7: SUMMARY & REPORTING
         # ========================================================================
-        self._logger.info("📊 Phase 7: Building summary...")
+        self._logger.info('📊 Phase 7: Building summary...')
 
         summary = BatchExecutionSummary(
             # results of scenario
@@ -458,7 +462,7 @@ class BatchOrchestrator:
             self._logger.error(BatchExecutionError(failed_results).get_failure_summary())
 
         self._logger.info(
-            f"✅ Batch execution completed in {batch_execution_time:.2f}s"
+            f'✅ Batch execution completed in {batch_execution_time:.2f}s'
         )
 
         return summary

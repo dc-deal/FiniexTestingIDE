@@ -16,36 +16,39 @@ Process-based scenario execution with live update support
 # ❌ from asyncio import BrokenBarrierError        # Wrong module
 # ✅ from threading import BrokenBarrierError       # Correct!
 # ============================================================================
-from threading import BrokenBarrierError
 import time
 import traceback
 from collections import defaultdict
 from datetime import datetime, timezone
 from multiprocessing import Queue
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
+from python.framework.process.process_block_boundary import build_block_boundary_report
 from python.framework.process.process_live_export import process_live_export, process_live_setup
-from python.framework.process.process_live_queue_helper import send_status_update_process
+from python.framework.process.tick_pipeline_core import (
+    execute_algo_path,
+    render_bars_for_tick,
+    run_ghost_pass,
+)
 from python.framework.stress_test.stale_data_stress_driver import (
-    StaleDataStressDriver, warn_events_outside_range)
+    StaleDataStressDriver,
+    warn_events_outside_range,
+)
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
-from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 from python.framework.types.decision_event_types import SessionEndEvent, SessionEndSeverity
-from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
-from python.framework.process.process_block_boundary import build_block_boundary_report
-from python.framework.process.tick_pipeline_core import execute_algo_path, render_bars_for_tick, run_ghost_pass
 from python.framework.types.process_data_types import (
     ProcessProfileData,
-    ProcessTickLoopResult,
     ProcessScenarioConfig,
+    ProcessTickLoopResult,
 )
+from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 from python.framework.utils.process_debug_info_utils import get_tick_range_stats
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -195,11 +198,11 @@ def execute_tick_loop(
 
         if has_clipping:
             scenario_logger.info(
-                f"🔄 Starting tick loop ({live_setup.tick_count:,} ticks, "
-                f"{algo_tick_count:,} algo)")
+                f'🔄 Starting tick loop ({live_setup.tick_count:,} ticks, '
+                f'{algo_tick_count:,} algo)')
         else:
             scenario_logger.info(
-                f"🔄 Starting tick loop ({live_setup.tick_count:,} ticks)")
+                f'🔄 Starting tick loop ({live_setup.tick_count:,} ticks)')
 
         # === TICK LOOP ===
         # from now on, log shows ticks.
@@ -230,7 +233,7 @@ def execute_tick_loop(
                         prev_interval_msc, current_msc, config, trade_simulator,
                         worker_coordinator, decision_logic, decision_event_dispatcher):
                     scenario_logger.info(
-                        f"🛑 Session end requested: {trade_simulator.get_session_end_reason()}")
+                        f'🛑 Session end requested: {trade_simulator.get_session_end_reason()}')
                     break
 
             prev_interval_msc = current_msc
@@ -297,7 +300,7 @@ def execute_tick_loop(
                 decision_logic.execute_decision(decision, tick)
             except Exception as e:
                 raise RuntimeError(
-                    f"Order execution failed: {e} \n{traceback.format_exc()}")
+                    f'Order execution failed: {e} \n{traceback.format_exc()}')
 
             if profiling_enabled:
                 profile_times['order_execution'] += (time.perf_counter() - t9) * 1000
@@ -314,7 +317,7 @@ def execute_tick_loop(
                     profile_counts['decision_events'] += 1
                 if trade_simulator.is_session_end_requested():
                     scenario_logger.info(
-                        f"🛑 Session end requested: {trade_simulator.get_session_end_reason()}")
+                        f'🛑 Session end requested: {trade_simulator.get_session_end_reason()}')
                     break
 
             # === 6. LIVE UPDATES (Time-based) ===
@@ -355,11 +358,11 @@ def execute_tick_loop(
         scenario_logger.set_tick_loop_started(False)
         if has_clipping:
             scenario_logger.info(
-                f"✅ Tick loop completed: {live_setup.tick_count:,} ticks "
-                f"({algo_tick_count:,} algo)")
+                f'✅ Tick loop completed: {live_setup.tick_count:,} ticks '
+                f'({algo_tick_count:,} algo)')
         else:
             scenario_logger.info(
-                f"✅ Tick loop completed: {live_setup.tick_count:,} ticks")
+                f'✅ Tick loop completed: {live_setup.tick_count:,} ticks')
 
         # === CLOSE OPEN TRADES ===
         # Use last tick's msc for latency calculation (same fallback as inter-tick interval)
@@ -375,13 +378,13 @@ def execute_tick_loop(
         # in case of an error, abort & try to collect the rest of data.
         # see below.
         scenario_logger.error(
-            f"Error in Tick Loop - Runtime - try to collect statistics now.: {e}")
+            f'Error in Tick Loop - Runtime - try to collect statistics now.: {e}')
         tick_loop_error = e
 
     try:
         # === CLEANUP COORDINATOR ===
         worker_coordinator.cleanup()
-        scenario_logger.debug("✅ Coordinator cleanup completed")
+        scenario_logger.debug('✅ Coordinator cleanup completed')
 
         # === GET RESULTS ===
         # Collect statistics from Algorithm section
@@ -446,7 +449,7 @@ def execute_tick_loop(
         )
     except Exception as e:
         # an error here is not possible to handle correctly.
-        scenario_logger.error(f"Error in Tick Loop - Statistics & Return: {e}")
+        scenario_logger.error(f'Error in Tick Loop - Statistics & Return: {e}')
         raise e
 
 
@@ -462,6 +465,6 @@ def _print_tick_loop_finishing_log(
     total_pnl = total_profit - total_loss
     currency = portfolio_stats.currency
     scenario_logger.debug(
-        f"Live update count: {live_update_count}")
+        f'Live update count: {live_update_count}')
     scenario_logger.info(
-        f"💰 Portfolio P&L: {format_currency_simple(total_pnl, currency)}")
+        f'💰 Portfolio P&L: {format_currency_simple(total_pnl, currency)}')

@@ -9,11 +9,17 @@ orders), the filter path (symbol / status), distinct symbols, and the empty case
 
 from datetime import datetime, timezone
 
-from python.framework.reporting.builders.order_history_report_builder import build_order_history_report
+from python.framework.reporting.builders.order_history_report_builder import (
+    build_order_history_report,
+)
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.trading_env_types.order_types import (
-    OrderAction, OrderDirection, OrderResult, OrderStatus, RejectionReason)
-
+    OrderAction,
+    OrderDirection,
+    OrderResult,
+    OrderStatus,
+    RejectionReason,
+)
 
 _T0 = datetime(2025, 10, 13, 8, 0, 0, tzinfo=timezone.utc)
 

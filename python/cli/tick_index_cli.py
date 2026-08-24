@@ -35,7 +35,7 @@ class TickIndexCli:
 
     def cmd_rebuild(self):
         """Rebuild tick index from scratch."""
-        print("\n🔄 Rebuilding Parquet tick index...")
+        print('\n🔄 Rebuilding Parquet tick index...')
         self.index_manager.build_index(force_rebuild=True)
         self.index_manager.print_summary()
 
@@ -43,15 +43,15 @@ class TickIndexCli:
         """Show tick index status."""
         self.index_manager.build_index()
 
-        print("\n" + "="*60)
-        print("📋 Tick Index Status")
-        print("="*60)
+        print('\n' + '='*60)
+        print('📋 Tick Index Status')
+        print('='*60)
 
         if self.index_manager.index_file.exists():
             mtime = datetime.fromtimestamp(
                 self.index_manager.index_file.stat().st_mtime
             )
-            print(f"Index file:   {self.index_manager.index_file}")
+            print(f'Index file:   {self.index_manager.index_file}')
             print(f"Last update:  {mtime.strftime('%Y-%m-%d %H:%M:%S')}")
             print(
                 f"Broker Types: {', '.join(self.index_manager.list_broker_types())}")
@@ -61,7 +61,7 @@ class TickIndexCli:
             for bt in self.index_manager.list_broker_types():
                 symbols = self.index_manager.list_symbols(bt)
                 total_symbols += len(symbols)
-            print(f"Symbols:      {total_symbols}")
+            print(f'Symbols:      {total_symbols}')
 
             # Count total files
             total_files = sum(
@@ -69,11 +69,11 @@ class TickIndexCli:
                 for bt in self.index_manager.index.values()
                 for files in bt.values()
             )
-            print(f"Total files:  {total_files}")
+            print(f'Total files:  {total_files}')
         else:
-            print("Index file:   (not found)")
+            print('Index file:   (not found)')
 
-        print("="*60 + "\n")
+        print('='*60 + '\n')
 
         if self.index_manager.needs_rebuild():
             print("⚠️  Index is outdated - run 'rebuild' to update\n")
@@ -93,12 +93,12 @@ class TickIndexCli:
                 broker_type, symbol)
 
             if not coverage:
-                print(f"\n❌ No data found for {broker_type}/{symbol}\n")
+                print(f'\n❌ No data found for {broker_type}/{symbol}\n')
                 return
 
-            print("\n" + "="*60)
-            print(f"📊 Coverage: {broker_type}/{symbol}")
-            print("="*60)
+            print('\n' + '='*60)
+            print(f'📊 Coverage: {broker_type}/{symbol}')
+            print('='*60)
             print(f"Files:       {coverage['num_files']}")
             print(f"Ticks:       {coverage['total_ticks']:,}")
             print(f"Size:        {coverage['total_size_mb']:.1f} MB")
@@ -106,11 +106,11 @@ class TickIndexCli:
             print(f"End:         {coverage['end_time']}")
             print('\nFiles:')
             for file in coverage['files']:
-                print(f"   • {file}")
-            print("="*60 + "\n")
+                print(f'   • {file}')
+            print('='*60 + '\n')
 
         except Exception as e:
-            print(f"\n❌ Error: {e}\n")
+            print(f'\n❌ Error: {e}\n')
 
     def cmd_files(self, broker_type: str, symbol: str, start: str, end: str):
         """
@@ -132,18 +132,18 @@ class TickIndexCli:
                 broker_type, symbol, start_dt, end_dt
             )
 
-            print("\n" + "="*60)
-            print(f"🔍 File Selection: {broker_type}/{symbol}")
-            print("="*60)
-            print(f"Time range:  {start} → {end}")
-            print(f"Selected:    {len(files)} files")
+            print('\n' + '='*60)
+            print(f'🔍 File Selection: {broker_type}/{symbol}')
+            print('='*60)
+            print(f'Time range:  {start} → {end}')
+            print(f'Selected:    {len(files)} files')
             print('\nFiles:')
             for file in files:
-                print(f"   • {file.name}")
-            print("="*60 + "\n")
+                print(f'   • {file.name}')
+            print('='*60 + '\n')
 
         except Exception as e:
-            print(f"\n❌ Error: {e}\n")
+            print(f'\n❌ Error: {e}\n')
 
 
 def main():
@@ -216,10 +216,10 @@ def main():
             cli.cmd_files(args.broker_type, args.symbol, args.start, args.end)
 
     except KeyboardInterrupt:
-        print("\n\n👋 Interrupted by user")
+        print('\n\n👋 Interrupted by user')
         sys.exit(0)
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f'\n❌ Error: {e}')
         traceback.print_exc()
         sys.exit(1)
 

@@ -28,6 +28,8 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
+from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
+from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import (
@@ -37,24 +39,22 @@ from python.framework.types.trading_env_types.broker_types import (
     SwapMode,
     SymbolSpecification,
 )
-from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
-from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
 from python.framework.types.trading_env_types.order_types import (
+    LimitOrder,
+    MarketOrder,
     OrderCapabilities,
     OrderDirection,
     OrderSide,
     OrderType,
-    MarketOrder,
-    LimitOrder,
 )
 
 
 class MockExecutionMode(Enum):
     """Configurable execution behavior for mock adapter."""
-    INSTANT_FILL = "instant_fill"
-    DELAYED_FILL = "delayed_fill"
-    REJECT_ALL = "reject_all"
-    TIMEOUT = "timeout"
+    INSTANT_FILL = 'instant_fill'
+    DELAYED_FILL = 'delayed_fill'
+    REJECT_ALL = 'reject_all'
+    TIMEOUT = 'timeout'
 
 
 class MockDivergenceMode(Enum):
@@ -64,59 +64,59 @@ class MockDivergenceMode(Enum):
     Perturbs the broker truth-pull return values so the Reconciler can be
     exercised against ghost / orphan / stale scenarios deterministically.
     """
-    NONE = "none"
-    DROP_ORDERS = "drop_orders"            # broker reports no open orders → local pendings become orphans
-    PHANTOM_POSITION = "phantom_position"  # broker reports an extra position → ghost (MARGIN)
-    STALE_PRICE = "stale_price"            # broker entry price differs → stale (MARGIN)
-    DROP_BALANCE = "drop_balance"          # broker reports no asset balances → spot orphan signal
+    NONE = 'none'
+    DROP_ORDERS = 'drop_orders'            # broker reports no open orders → local pendings become orphans
+    PHANTOM_POSITION = 'phantom_position'  # broker reports an extra position → ghost (MARGIN)
+    STALE_PRICE = 'stale_price'            # broker entry price differs → stale (MARGIN)
+    DROP_BALANCE = 'drop_balance'          # broker reports no asset balances → spot orphan signal
 
 
 # ============================================
 # Minimal broker config for mock (based on real Kraken BTCUSD)
 # ============================================
 _MOCK_BROKER_CONFIG: Dict[str, Any] = {
-    "broker_info": {
-        "company": "MockBroker",
-        "server": "mock_test",
-        "name": "mock_test",
-        "trade_mode": "demo",
-        "leverage": 1,
-        "hedging_allowed": False,
+    'broker_info': {
+        'company': 'MockBroker',
+        'server': 'mock_test',
+        'name': 'mock_test',
+        'trade_mode': 'demo',
+        'leverage': 1,
+        'hedging_allowed': False,
     },
-    "fee_structure": {
-        "model": "maker_taker",
-        "maker_fee": 0.16,
-        "taker_fee": 0.26,
-        "fee_currency": "quote",
+    'fee_structure': {
+        'model': 'maker_taker',
+        'maker_fee': 0.16,
+        'taker_fee': 0.26,
+        'fee_currency': 'quote',
     },
-    "symbols": {
-        "BTCUSD": {
-            "description": "BTC vs USD",
-            "base_currency": "BTC",
-            "quote_currency": "USD",
-            "trade_allowed": True,
-            "volume_min": 0.00005,
-            "volume_max": 10000,
-            "volume_step": 1e-8,
-            "contract_size": 1,
-            "tick_size": 0.1,
-            "digits": 1,
-            "stops_level": 0,
-            "freeze_level": 0,
+    'symbols': {
+        'BTCUSD': {
+            'description': 'BTC vs USD',
+            'base_currency': 'BTC',
+            'quote_currency': 'USD',
+            'trade_allowed': True,
+            'volume_min': 0.00005,
+            'volume_max': 10000,
+            'volume_step': 1e-8,
+            'contract_size': 1,
+            'tick_size': 0.1,
+            'digits': 1,
+            'stops_level': 0,
+            'freeze_level': 0,
         },
-        "ETHUSD": {
-            "description": "ETH vs USD",
-            "base_currency": "ETH",
-            "quote_currency": "USD",
-            "trade_allowed": True,
-            "volume_min": 0.002,
-            "volume_max": 10000,
-            "volume_step": 1e-8,
-            "contract_size": 1,
-            "tick_size": 0.01,
-            "digits": 2,
-            "stops_level": 0,
-            "freeze_level": 0,
+        'ETHUSD': {
+            'description': 'ETH vs USD',
+            'base_currency': 'ETH',
+            'quote_currency': 'USD',
+            'trade_allowed': True,
+            'volume_min': 0.002,
+            'volume_max': 10000,
+            'volume_step': 1e-8,
+            'contract_size': 1,
+            'tick_size': 0.01,
+            'digits': 2,
+            'stops_level': 0,
+            'freeze_level': 0,
         },
     },
 }
@@ -241,9 +241,9 @@ class MockBrokerAdapter(AbstractAdapter):
             symbol=symbol,
             direction=direction,
             lots=lots,
-            stop_loss=kwargs.get("stop_loss"),
-            take_profit=kwargs.get("take_profit"),
-            comment=kwargs.get("comment", ""),
+            stop_loss=kwargs.get('stop_loss'),
+            take_profit=kwargs.get('take_profit'),
+            comment=kwargs.get('comment', ''),
         )
 
     def create_limit_order(
@@ -268,7 +268,7 @@ class MockBrokerAdapter(AbstractAdapter):
             LimitOrder object
         """
         raise NotImplementedError(
-            "MockBrokerAdapter does not support limit orders")
+            'MockBrokerAdapter does not support limit orders')
 
     # ============================================
     # Order Validation (required by AbstractAdapter)
@@ -289,8 +289,8 @@ class MockBrokerAdapter(AbstractAdapter):
         Returns:
             (is_valid, error_message)
         """
-        if symbol not in self.broker_config["symbols"]:
-            return False, f"Symbol {symbol} not available in mock broker"
+        if symbol not in self.broker_config['symbols']:
+            return False, f'Symbol {symbol} not available in mock broker'
         return self._validate_lot_size(symbol, lots)
 
     # ============================================
@@ -299,7 +299,7 @@ class MockBrokerAdapter(AbstractAdapter):
 
     def get_all_aviable_symbols(self) -> List[str]:
         """Return list of mock symbols."""
-        return list(self.broker_config["symbols"].keys())
+        return list(self.broker_config['symbols'].keys())
 
     def get_symbol_specification(self, symbol: str) -> SymbolSpecification:
         """
@@ -311,51 +311,51 @@ class MockBrokerAdapter(AbstractAdapter):
         Returns:
             SymbolSpecification with static properties
         """
-        if symbol not in self.broker_config["symbols"]:
-            available = list(self.broker_config["symbols"].keys())
+        if symbol not in self.broker_config['symbols']:
+            available = list(self.broker_config['symbols'].keys())
             raise ValueError(
                 f"Symbol '{symbol}' not found in mock config. "
                 f"Available: {available}"
             )
 
-        raw = self.broker_config["symbols"][symbol]
-        base_currency = raw.get("base_currency", symbol[:3])
-        quote_currency = raw.get("quote_currency", symbol[3:])
+        raw = self.broker_config['symbols'][symbol]
+        base_currency = raw.get('base_currency', symbol[:3])
+        quote_currency = raw.get('quote_currency', symbol[3:])
 
         return SymbolSpecification(
             symbol=symbol,
-            description=raw.get("description", ""),
-            volume_min=raw.get("volume_min", 0.0001),
-            volume_max=raw.get("volume_max", 10000.0),
-            volume_step=raw.get("volume_step", 1e-8),
-            volume_limit=raw.get("volume_limit", 0.0),
-            tick_size=raw.get("tick_size", 0.1),
-            digits=raw.get("digits", 1),
-            contract_size=raw.get("contract_size", 1),
+            description=raw.get('description', ''),
+            volume_min=raw.get('volume_min', 0.0001),
+            volume_max=raw.get('volume_max', 10000.0),
+            volume_step=raw.get('volume_step', 1e-8),
+            volume_limit=raw.get('volume_limit', 0.0),
+            tick_size=raw.get('tick_size', 0.1),
+            digits=raw.get('digits', 1),
+            contract_size=raw.get('contract_size', 1),
             base_currency=base_currency,
             quote_currency=quote_currency,
             margin_currency=quote_currency,
-            trade_allowed=raw.get("trade_allowed", True),
+            trade_allowed=raw.get('trade_allowed', True),
             swap_mode=SwapMode.NONE,
             swap_long=0.0,
             swap_short=0.0,
             swap_rollover3days=0,
-            stops_level=raw.get("stops_level", 0),
-            freeze_level=raw.get("freeze_level", 0),
+            stops_level=raw.get('stops_level', 0),
+            freeze_level=raw.get('freeze_level', 0),
         )
 
     def get_broker_specification(self) -> BrokerSpecification:
         """Get mock broker specification."""
         return BrokerSpecification(
             company=self._broker_name,
-            server="mock_test",
+            server='mock_test',
             broker_type=BrokerType.KRAKEN_SPOT,
-            trade_mode="demo",
+            trade_mode='demo',
             leverage=1,
             margin_mode=MarginMode.NONE,
             margin_call_level=0.0,
             stopout_level=0.0,
-            stopout_mode="percent",
+            stopout_mode='percent',
             trade_allowed=True,
             expert_allowed=True,
             hedging_allowed=False,
@@ -467,7 +467,7 @@ class MockBrokerAdapter(AbstractAdapter):
         raw dict that _parse_submit_response converts to a BrokerResponse.
         """
         self._order_counter += 1
-        broker_ref = f"MOCK-{self._order_counter:06d}"
+        broker_ref = f'MOCK-{self._order_counter:06d}'
         symbol = payload['symbol']
         direction = payload['direction']
         lots = payload['lots']
@@ -716,7 +716,7 @@ class MockBrokerAdapter(AbstractAdapter):
                partial-fill regression tests).
         """
         if n < 1:
-            raise ValueError(f"trades_per_fill must be >= 1, got {n}")
+            raise ValueError(f'trades_per_fill must be >= 1, got {n}')
         self._trades_per_fill = n
 
     def _record_mock_trades(
@@ -792,11 +792,11 @@ class MockBrokerAdapter(AbstractAdapter):
 
     def get_maker_fee(self) -> float:
         """Get mock maker fee percentage."""
-        return self._get_config_value("fee_structure.maker_fee", 0.16)
+        return self._get_config_value('fee_structure.maker_fee', 0.16)
 
     def get_taker_fee(self) -> float:
         """Get mock taker fee percentage."""
-        return self._get_config_value("fee_structure.taker_fee", 0.26)
+        return self._get_config_value('fee_structure.taker_fee', 0.26)
 
     # ============================================
     # Broker Truth-Pull (#151) — settable test state + divergence injection

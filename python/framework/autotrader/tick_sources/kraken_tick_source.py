@@ -13,9 +13,8 @@ import asyncio
 import json
 import queue
 import ssl
-import time
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Optional
 
 import certifi
 import websockets
@@ -26,7 +25,9 @@ from websockets.exceptions import (
 )
 
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
-from python.framework.autotrader.tick_sources.kraken_tick_message_parser import KrakenTickMessageParser
+from python.framework.autotrader.tick_sources.kraken_tick_message_parser import (
+    KrakenTickMessageParser,
+)
 from python.framework.logging.scenario_logger import ScenarioLogger
 
 
@@ -100,14 +101,14 @@ class KrakenTickSource(AbstractTickSource):
         self._running = True
         if self._logger:
             self._logger.info(
-                f"📡 KrakenTickSource starting: {self._symbol} "
-                f"({self._ws_pair}) -> {self._ws_url}"
+                f'📡 KrakenTickSource starting: {self._symbol} '
+                f'({self._ws_pair}) -> {self._ws_url}'
             )
         try:
             asyncio.run(self._ws_loop())
         except Exception as e:
             if self._logger:
-                self._logger.error(f"📡 KrakenTickSource fatal error: {e}")
+                self._logger.error(f'📡 KrakenTickSource fatal error: {e}')
         finally:
             # Ensure sentinel is sent even on unexpected exit
             try:
@@ -218,7 +219,7 @@ class KrakenTickSource(AbstractTickSource):
 
             except (ConnectionClosed, ConnectionClosedError, ConnectionClosedOK) as e:
                 if self._logger:
-                    self._logger.warning(f"📡 WS connection closed: {e}")
+                    self._logger.warning(f'📡 WS connection closed: {e}')
 
             except asyncio.TimeoutError:
                 if self._logger:
@@ -226,7 +227,7 @@ class KrakenTickSource(AbstractTickSource):
 
             except Exception as e:
                 if self._logger:
-                    self._logger.error(f"📡 WS error: {e}")
+                    self._logger.error(f'📡 WS error: {e}')
 
             # Reconnect with backoff (if still running)
             if self._running:
@@ -234,9 +235,9 @@ class KrakenTickSource(AbstractTickSource):
                 self._reconnect_count += 1
                 if self._logger:
                     self._logger.info(
-                        f"📡 Reconnecting in {delay:.1f}s "
-                        f"(attempt {reconnect_attempt + 1}, "
-                        f"total reconnects: {self._reconnect_count})"
+                        f'📡 Reconnecting in {delay:.1f}s '
+                        f'(attempt {reconnect_attempt + 1}, '
+                        f'total reconnects: {self._reconnect_count})'
                     )
                 await asyncio.sleep(delay)
                 reconnect_attempt += 1
@@ -261,7 +262,7 @@ class KrakenTickSource(AbstractTickSource):
         self._last_message_time = datetime.now(timezone.utc)
 
         if self._logger:
-            self._logger.info(f"📡 WebSocket connected to {self._ws_url}")
+            self._logger.info(f'📡 WebSocket connected to {self._ws_url}')
 
         # Subscribe to trade channel
         subscribe_msg = json.dumps({
@@ -284,7 +285,7 @@ class KrakenTickSource(AbstractTickSource):
             if self._parser.is_subscription_confirmation(response):
                 if self._logger:
                     self._logger.info(
-                        f"📡 Subscribed to trade channel: {self._ws_pair}"
+                        f'📡 Subscribed to trade channel: {self._ws_pair}'
                     )
                 break
 
@@ -298,7 +299,7 @@ class KrakenTickSource(AbstractTickSource):
 
             # Status, heartbeat, or other non-subscription messages — skip
             if self._logger:
-                self._logger.debug(f"📡 Skipping pre-subscription message: {response[:120]}")
+                self._logger.debug(f'📡 Skipping pre-subscription message: {response[:120]}')
 
         return ws
 
@@ -354,9 +355,9 @@ class KrakenTickSource(AbstractTickSource):
             if silence > self._connection_dead_s:
                 if self._logger:
                     self._logger.warning(
-                        f"📡 No messages for {silence:.0f}s "
-                        f"(threshold: {self._connection_dead_s:.0f}s), "
-                        f"forcing reconnect"
+                        f'📡 No messages for {silence:.0f}s '
+                        f'(threshold: {self._connection_dead_s:.0f}s), '
+                        f'forcing reconnect'
                     )
                 await ws.close()
                 break
@@ -364,8 +365,8 @@ class KrakenTickSource(AbstractTickSource):
             elif silence > self._connection_check_interval_s * 2:
                 if self._logger:
                     self._logger.warning(
-                        f"📡 No messages for {silence:.0f}s, "
-                        f"connection may be stale"
+                        f'📡 No messages for {silence:.0f}s, '
+                        f'connection may be stale'
                     )
 
     def _get_reconnect_delay(self, attempt: int) -> float:

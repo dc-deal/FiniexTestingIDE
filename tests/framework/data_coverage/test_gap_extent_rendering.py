@@ -10,8 +10,7 @@ without knowing the market type, so a 24/7 market must never be asked for a trad
 import pandas as pd
 import pytest
 
-from python.framework.discoveries.data_coverage.data_coverage_report import (
-    DataCoverageReport)
+from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.types.coverage_report_types import Gap
 from python.framework.utils.market_calendar import GapCategory
 from python.framework.utils.time_utils import format_duration
@@ -57,7 +56,7 @@ class TestGapExtent:
     def test_short_gap_shows_hours_only(self, crypto_report):
         extent = crypto_report._gap_extent(_gap('2026-07-29T15:33:00+00:00', 5.17))
 
-        assert extent == f"{format_duration(5.17 * 3600)} (5.17h)"
+        assert extent == f'{format_duration(5.17 * 3600)} (5.17h)'
 
     def test_long_gap_adds_calendar_days(self, crypto_report):
         extent = crypto_report._gap_extent(_gap('2026-07-29T15:33:00+00:00', 118.0))

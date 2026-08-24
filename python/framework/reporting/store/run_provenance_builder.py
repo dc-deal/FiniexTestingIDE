@@ -19,9 +19,9 @@ from typing import Dict, Optional, Tuple
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.api.report_types import WarningsErrorsReport
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.api.report_types import WarningsErrorsReport
 from python.framework.types.run_results_types import RunProvenance, SweepContext
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
@@ -156,7 +156,7 @@ def _run_status(report: Optional[WarningsErrorsReport]) -> Tuple[str, Optional[s
     outcome = report.outcome
     if outcome.failed_count == 0 or outcome.failed_count < outcome.total_units:
         return 'ok', None
-    reasons = [f"{e.name}: {e.error_message or e.error_type}"
+    reasons = [f'{e.name}: {e.error_message or e.error_type}'
                for e in report.errors if e.error_message or e.error_type]
     return 'error', '; '.join(reasons) if reasons else (
         outcome.first_failure_error or 'run produced no usable data')

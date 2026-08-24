@@ -12,8 +12,8 @@ CORRECTIONS:
 """
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.bars.bar_renderer import BarRenderer
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, BarRenderState, TickData
 from python.framework.utils.process_serialization_utils import deserialize_bars_batch
 
@@ -72,7 +72,7 @@ class BarRenderingController:
             workers)
 
         self.logger.debug(
-            f"Registered {len(workers)} workers requiring timeframes: {self._required_timeframes}"
+            f'Registered {len(workers)} workers requiring timeframes: {self._required_timeframes}'
         )
 
     def process_tick(self, tick_data: TickData) -> Dict[str, Bar]:
@@ -96,7 +96,7 @@ class BarRenderingController:
         for timeframe, was_closed in closed_bars.items():
             if was_closed:
                 self.logger.verbose(
-                    f"🔍 [CACHE INVALIDATED] {timeframe} bar closed")
+                    f'🔍 [CACHE INVALIDATED] {timeframe} bar closed')
                 self._cache_valid_per_timeframe[timeframe] = False
                 self._pending_closed_timeframes.add(timeframe)
 

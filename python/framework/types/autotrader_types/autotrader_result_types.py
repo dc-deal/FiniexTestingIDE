@@ -8,10 +8,13 @@ from typing import List, Optional
 
 from python.framework.types.autotrader_types.clipping_monitor_types import ClippingSessionSummary
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
-from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats, WorkerPerformanceStats
+from python.framework.types.performance_types.performance_stats_types import (
+    DecisionLogicStats,
+    WorkerPerformanceStats,
+)
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
@@ -59,3 +62,16 @@ class AutoTraderResult:
     emergency_reason: Optional[str] = None
     warning_messages: List[str] = field(default_factory=list)
     error_messages: List[str] = field(default_factory=list)
+
+    def get_exit_code(self) -> int:
+        """
+        Process exit code for this session outcome.
+
+        An emergency shutdown is a failed run and must not report success to a
+        supervisor. A normal shutdown that logged errors still returns 0 today —
+        closing that gap is #372 (§35 'known asymmetry').
+
+        Returns:
+            0 on normal shutdown, 1 on emergency shutdown
+        """
+        return 1 if self.shutdown_mode == 'emergency' else 0

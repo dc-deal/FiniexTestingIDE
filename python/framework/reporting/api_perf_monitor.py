@@ -44,8 +44,8 @@ class ApiPerfMonitor:
         self._total_errors: int = 0
 
         self._logger.info(
-            f"📡 API Performance Monitor active — slow threshold "
-            f"{config.slow_call_threshold_ms:.0f}ms"
+            f'📡 API Performance Monitor active — slow threshold '
+            f'{config.slow_call_threshold_ms:.0f}ms'
         )
 
     def record(
@@ -90,12 +90,12 @@ class ApiPerfMonitor:
         # Log outside the lock — only the abnormal.
         if not success:
             self._logger.warning(
-                f"[API] {endpoint} failed after {duration_ms:.0f}ms: {error}"
+                f'[API] {endpoint} failed after {duration_ms:.0f}ms: {error}'
             )
         elif is_slow:
             self._logger.warning(
-                f"[API] {endpoint} slow: {duration_ms:.0f}ms "
-                f"(threshold {self._config.slow_call_threshold_ms:.0f}ms)"
+                f'[API] {endpoint} slow: {duration_ms:.0f}ms '
+                f'(threshold {self._config.slow_call_threshold_ms:.0f}ms)'
             )
 
     def get_snapshot(self) -> ApiPerfSnapshot:
@@ -116,15 +116,15 @@ class ApiPerfMonitor:
         """Emit a final per-endpoint summary to the session log."""
         snapshot = self.get_snapshot()
         if not snapshot.endpoints:
-            self._logger.info("📡 API Performance final: no calls recorded")
+            self._logger.info('📡 API Performance final: no calls recorded')
             return
         lines = [
-            f"   {s.endpoint}: {s.count} calls | avg {s.avg_ms:.0f}ms | "
-            f"min {s.min_ms:.0f}ms | max {s.max_ms:.0f}ms | errors {s.error_count}"
+            f'   {s.endpoint}: {s.count} calls | avg {s.avg_ms:.0f}ms | '
+            f'min {s.min_ms:.0f}ms | max {s.max_ms:.0f}ms | errors {s.error_count}'
             for s in snapshot.endpoints
         ]
         self._logger.info(
-            "📡 API Performance final:\n" + "\n".join(lines)
-            + f"\n   slow (>{self._config.slow_call_threshold_ms:.0f}ms): "
-            f"{snapshot.slow_count} | total errors: {snapshot.total_errors}"
+            '📡 API Performance final:\n' + '\n'.join(lines)
+            + f'\n   slow (>{self._config.slow_call_threshold_ms:.0f}ms): '
+            f'{snapshot.slow_count} | total errors: {snapshot.total_errors}'
         )

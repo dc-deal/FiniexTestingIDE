@@ -19,25 +19,25 @@ Until then, attempting live trading with this adapter fails fast with a
 clear NotImplementedError.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-from python.framework.types.market_types.market_data_types import TickData
-from .abstract_adapter import AbstractAdapter
-from python.framework.types.trading_env_types.order_types import (
-    OrderCapabilities,
-    MarketOrder,
-    LimitOrder,
-    StopOrder,
-    StopLimitOrder,
-    OrderDirection,
-)
 from python.framework.types.trading_env_types.broker_types import (
-    BrokerType,
-    SymbolSpecification,
     BrokerSpecification,
+    BrokerType,
+    MarginMode,
     SwapMode,
-    MarginMode
+    SymbolSpecification,
 )
+from python.framework.types.trading_env_types.order_types import (
+    LimitOrder,
+    MarketOrder,
+    OrderCapabilities,
+    OrderDirection,
+    StopLimitOrder,
+    StopOrder,
+)
+
+from .abstract_adapter import AbstractAdapter
 
 
 class Mt5Adapter(AbstractAdapter):
@@ -136,7 +136,7 @@ class Mt5Adapter(AbstractAdapter):
         # Validate order
         is_valid, error = self.validate_order(symbol, lots)
         if not is_valid:
-            raise ValueError(f"Invalid market order: {error}")
+            raise ValueError(f'Invalid market order: {error}')
 
         # Create order object
         return MarketOrder(
@@ -173,11 +173,11 @@ class Mt5Adapter(AbstractAdapter):
         # Validate order
         is_valid, error = self.validate_order(symbol, lots)
         if not is_valid:
-            raise ValueError(f"Invalid limit order: {error}")
+            raise ValueError(f'Invalid limit order: {error}')
 
         # Validate price
         if price <= 0:
-            raise ValueError(f"Invalid limit price: {price}")
+            raise ValueError(f'Invalid limit price: {price}')
 
         return LimitOrder(
             symbol=symbol,
@@ -210,11 +210,11 @@ class Mt5Adapter(AbstractAdapter):
         # Validate order
         is_valid, error = self.validate_order(symbol, lots)
         if not is_valid:
-            raise ValueError(f"Invalid stop order: {error}")
+            raise ValueError(f'Invalid stop order: {error}')
 
         # Validate stop price
         if stop_price <= 0:
-            raise ValueError(f"Invalid stop price: {stop_price}")
+            raise ValueError(f'Invalid stop price: {stop_price}')
 
         return StopOrder(
             symbol=symbol,
@@ -243,13 +243,13 @@ class Mt5Adapter(AbstractAdapter):
         # Validate order
         is_valid, error = self.validate_order(symbol, lots)
         if not is_valid:
-            raise ValueError(f"Invalid stop-limit order: {error}")
+            raise ValueError(f'Invalid stop-limit order: {error}')
 
         # Validate prices
         if stop_price <= 0:
-            raise ValueError(f"Invalid stop price: {stop_price}")
+            raise ValueError(f'Invalid stop price: {stop_price}')
         if limit_price <= 0:
-            raise ValueError(f"Invalid limit price: {limit_price}")
+            raise ValueError(f'Invalid limit price: {limit_price}')
 
         return StopLimitOrder(
             symbol=symbol,
@@ -285,13 +285,13 @@ class Mt5Adapter(AbstractAdapter):
         # Check symbol exists
         if symbol not in self.broker_config['symbols']:
             raise RuntimeError(
-                "Symbol {symbol} not found in broker configuration")
+                'Symbol {symbol} not found in broker configuration')
 
         symbol_info = self.broker_config['symbols'][symbol]
 
         # Check trading allowed
         if not symbol_info.get('trade_allowed', False):
-            raise RuntimeError(f"Trading not allowed for {symbol}")
+            raise RuntimeError(f'Trading not allowed for {symbol}')
 
         # Use common lot size validation
         return self._validate_lot_size(symbol, lots)
@@ -304,7 +304,7 @@ class Mt5Adapter(AbstractAdapter):
         """
         Return a list of all symbol strings (e.g. ["EURUSD", "GBPUSD"]).
         """
-        return list(self.broker_config["symbols"].keys())
+        return list(self.broker_config['symbols'].keys())
 
     def get_symbol_specification(self, symbol: str) -> SymbolSpecification:
         """
@@ -329,7 +329,7 @@ class Mt5Adapter(AbstractAdapter):
         """
         if symbol not in self.broker_config['symbols']:
             raise ValueError(
-                f"Symbol {symbol} not found in broker configuration")
+                f'Symbol {symbol} not found in broker configuration')
 
         raw = self.broker_config['symbols'][symbol]
 

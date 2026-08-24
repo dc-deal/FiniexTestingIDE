@@ -19,7 +19,6 @@ from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.types.autotrader_types.autotrader_config_types import SafetyConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 
-
 # Base profile: spot, 15K ticks, display off, INSTANT_FILL mock adapter
 BASE_PROFILE = 'configs/autotrader_profiles/backtesting/btcusd_mock_safety.json'
 
@@ -96,7 +95,7 @@ class TestSpotSafetyNoFalsePositive:
             if 'circuit breaker' in w.lower()
         ]
         assert len(safety_warnings) == 0, (
-            f"Safety falsely triggered: {safety_warnings}"
+            f'Safety falsely triggered: {safety_warnings}'
         )
 
     def test_trades_executed(self, safe_session):

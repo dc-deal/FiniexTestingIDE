@@ -10,12 +10,19 @@ Renders (purely from the unified report model, #393):
 
 from typing import Dict, List
 
-from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import (
+    AbstractBatchSummarySection,
+)
 from python.framework.types.api.report_types import (
-    ExecutionRow, OrderHistoryReport, OrderHistoryRow, TradeAnalytics, TradeHistoryReport,
-    TradeHistoryRow, TradeScenarioTotals)
+    ExecutionRow,
+    OrderHistoryReport,
+    OrderHistoryRow,
+    TradeAnalytics,
+    TradeHistoryReport,
+    TradeHistoryRow,
+    TradeScenarioTotals,
+)
 from python.framework.utils.console_renderer import ConsoleRenderer
-
 
 # EntryType.value → compact table glyph
 _ENTRY_TYPE_GLYPH = {'market': 'M', 'limit': 'L', 'stop': 'S', 'stop_limit': 'SL'}
@@ -63,13 +70,13 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         self._render_section_header(renderer)
 
         if not self._report.trades:
-            print("No trade history available")
+            print('No trade history available')
             return
 
         for idx, (scenario_name, rows) in enumerate(self._grouped().items(), 1):
             if idx > 1:
                 print()
-                renderer.print_separator(width=120, char="·")
+                renderer.print_separator(width=120, char='·')
                 print()
             self._render_scenario_trades(scenario_name, rows, renderer)
 
@@ -86,7 +93,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
 
         print()
         renderer.section_separator()
-        renderer.print_bold("📊 AGGREGATED TRADE STATISTICS")
+        renderer.print_bold('📊 AGGREGATED TRADE STATISTICS')
         renderer.section_separator()
 
         # Group by currency — no cross-currency P&L mixing (like the portfolio section).
@@ -103,7 +110,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             self._render_aggregated_stats(
                 group_rows, analytics_by_ccy.get(currency), renderer)
             if multi:
-                renderer.print_separator(width=120, char="·")
+                renderer.print_separator(width=120, char='·')
 
         # Rejections are currency-agnostic — render once.
         rejections = [o for o in self._order_report.orders if o.status == 'rejected']
@@ -125,8 +132,8 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         totals = self._scenario_totals_by_name[scenario_name]
         pnl_str = self._format_pnl(totals.net_pnl, totals.currency, renderer)
         print(
-            f"📋 {renderer.bold(scenario_name)}: {totals.trade_count} trades | "
-            f"Total P&L: {pnl_str}")
+            f'📋 {renderer.bold(scenario_name)}: {totals.trade_count} trades | '
+            f'Total P&L: {pnl_str}')
         print()
 
         # Pre-compute entry execution trade_id frequency for the shared(Nx) annotation
@@ -158,13 +165,13 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             return
 
         print()
-        print(renderer.yellow(f"   Rejected Orders: {len(rejections)}"))
+        print(renderer.yellow(f'   Rejected Orders: {len(rejections)}'))
         header = f"   {'#':>3} | {'Order ID':<20} | {'Reason':<25} | {'Message'}"
         print(renderer.gray(header))
-        print(renderer.gray("   " + "-" * 100))
+        print(renderer.gray('   ' + '-' * 100))
         for idx, rej in enumerate(rejections, 1):
-            reason_str = rej.rejection_reason or "unknown"
-            row = f"   {idx:>3} | {rej.order_id:<20} | {reason_str:<25} | {rej.rejection_message}"
+            reason_str = rej.rejection_reason or 'unknown'
+            row = f'   {idx:>3} | {rej.order_id:<20} | {reason_str:<25} | {rej.rejection_message}'
             print(renderer.yellow(row))
 
     def _print_table_header(self, renderer: ConsoleRenderer, unit: str) -> None:
@@ -178,7 +185,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             f"{f'MAE({unit})':>9} | {f'MFE({unit})':>9} | {'R':>6} | {'Close Reason':>14}"
         )
         print(renderer.gray(header))
-        print(renderer.gray("   " + "-" * 215))
+        print(renderer.gray('   ' + '-' * 215))
 
     def _print_trade_row(
         self,
@@ -192,24 +199,24 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         side_text = 'LONG ' if row.direction == 'long' else 'SHORT'
         dir_str = renderer.green(side_text) if row.direction == 'long' else renderer.red(side_text)
 
-        entry_type_str = _ENTRY_TYPE_GLYPH.get(row.entry_type, "?")
+        entry_type_str = _ENTRY_TYPE_GLYPH.get(row.entry_type, '?')
 
-        sl_str = f"{row.stop_loss:>12.5f}" if row.stop_loss is not None else f"{'—':>12}"
-        tp_str = f"{row.take_profit:>12.5f}" if row.take_profit is not None else f"{'—':>12}"
+        sl_str = f'{row.stop_loss:>12.5f}' if row.stop_loss is not None else f"{'—':>12}"
+        tp_str = f'{row.take_profit:>12.5f}' if row.take_profit is not None else f"{'—':>12}"
         duration = row.exit_tick_index - row.entry_tick_index
 
         gross_str = self._format_value(row.gross_pnl, renderer)
         net_str = self._format_value(row.net_pnl, renderer)
-        r_str = f"{row.r_multiple:>6.2f}" if row.r_multiple is not None else f"{'—':>6}"
+        r_str = f'{row.r_multiple:>6.2f}' if row.r_multiple is not None else f"{'—':>6}"
         reason_str = row.close_reason  # '' for manual
 
         print(
-            f"   {idx:>3} | {dir_str} | {entry_type_str:>2} | {row.lots:>5.2f} | "
-            f"{row.entry_price:>12.5f} | {row.exit_price:>12.5f} | "
-            f"{sl_str} | {tp_str} | "
-            f"{row.entry_tick_index:>10} | {row.exit_tick_index:>10} | {duration:>8} | "
-            f"{gross_str:>10} | {row.total_fees:>8.2f} | {row.swap_cost:>8.2f} | {net_str:>10} | "
-            f"{row.mae_distance:>9.1f} | {row.mfe_distance:>9.1f} | {r_str} | {reason_str:>14}"
+            f'   {idx:>3} | {dir_str} | {entry_type_str:>2} | {row.lots:>5.2f} | '
+            f'{row.entry_price:>12.5f} | {row.exit_price:>12.5f} | '
+            f'{sl_str} | {tp_str} | '
+            f'{row.entry_tick_index:>10} | {row.exit_tick_index:>10} | {duration:>8} | '
+            f'{gross_str:>10} | {row.total_fees:>8.2f} | {row.swap_cost:>8.2f} | {net_str:>10} | '
+            f'{row.mae_distance:>9.1f} | {row.mfe_distance:>9.1f} | {r_str} | {reason_str:>14}'
         )
 
         # Per-execution sub-lines (#330) — from the model's ExecutionRows.
@@ -228,26 +235,26 @@ class TradeHistorySummary(AbstractBatchSummarySection):
     ) -> None:
         """Render one per-execution sub-line under an aggregate trade row (#330)."""
         side_label = 'in ' if side == 'in' else 'out'
-        suffix = ""
+        suffix = ''
         if shared_count > 1:
-            suffix = f"  shared({shared_count}x)"
+            suffix = f'  shared({shared_count}x)'
             if trade_row_lots is not None and trade_row_lots != execution.volume:
-                suffix += f"  (this trade: {trade_row_lots:g} of {execution.volume:g})"
+                suffix += f'  (this trade: {trade_row_lots:g} of {execution.volume:g})'
 
         text = (
-            f"     └─ {side_label}  {execution.trade_id:<24}  "
-            f"vol {execution.volume:>7.5f}  "
-            f"price {execution.price:>12.5f}  "
-            f"fee {execution.fee:>7.4f}  "
-            f"{execution.liquidity}"
-            f"{suffix}"
+            f'     └─ {side_label}  {execution.trade_id:<24}  '
+            f'vol {execution.volume:>7.5f}  '
+            f'price {execution.price:>12.5f}  '
+            f'fee {execution.fee:>7.4f}  '
+            f'{execution.liquidity}'
+            f'{suffix}'
         )
         print(renderer.gray(text))
 
     def _print_table_footer(
         self, totals: TradeScenarioTotals, renderer: ConsoleRenderer) -> None:
         """Print trade table footer with the per-scenario totals (from the model aggregate)."""
-        print(renderer.gray("   " + "-" * 211))
+        print(renderer.gray('   ' + '-' * 211))
         gross_str = self._format_value(totals.gross_pnl, renderer)
         net_str = self._format_value(totals.net_pnl, renderer)
         total_row = (
@@ -287,7 +294,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         min_duration = min(durations) if durations else 0
         max_duration = max(durations) if durations else 0
 
-        currency = rows[0].currency if rows else "USD"
+        currency = rows[0].currency if rows else 'USD'
 
         sl_closes = sum(1 for r in rows if r.close_reason == 'sl_triggered')
         tp_closes = sum(1 for r in rows if r.close_reason == 'tp_triggered')
@@ -295,24 +302,24 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         manual_closes = total_trades - sl_closes - tp_closes - scenario_closes
 
         print(f"\n   {renderer.bold('📈 TRADE BREAKDOWN:')}")
-        print(f"      Total Trades: {total_trades} (Long: {long_trades} | Short: {short_trades})")
-        print(f"      Winners: {len(winning_trades)} | Losers: {len(losing_trades)}")
+        print(f'      Total Trades: {total_trades} (Long: {long_trades} | Short: {short_trades})')
+        print(f'      Winners: {len(winning_trades)} | Losers: {len(losing_trades)}')
         print(
-            f"      Close Reasons: SL={sl_closes} | TP={tp_closes} | Manual={manual_closes}"
-            + (f" | Scenario End={scenario_closes}" if scenario_closes else ""))
+            f'      Close Reasons: SL={sl_closes} | TP={tp_closes} | Manual={manual_closes}'
+            + (f' | Scenario End={scenario_closes}' if scenario_closes else ''))
 
         print(f"\n   {renderer.bold('💰 P&L BREAKDOWN:')}")
-        print(f"      Gross P&L: {self._format_value(total_gross, renderer)} {currency}")
-        print(f"      Total Fees: -{total_fees:.2f} {currency}")
-        print(f"      Net P&L: {self._format_value(total_net, renderer)} {currency}")
+        print(f'      Gross P&L: {self._format_value(total_gross, renderer)} {currency}')
+        print(f'      Total Fees: -{total_fees:.2f} {currency}')
+        print(f'      Net P&L: {self._format_value(total_net, renderer)} {currency}')
 
         print(f"\n   {renderer.bold('📊 AVERAGES (per trade):')}")
         print(
-            f"      Avg Gross: {self._format_value(avg_gross, renderer)} | "
-            f"Avg Fees: -{avg_fees:.2f} | Avg Net: {self._format_value(avg_net, renderer)}")
+            f'      Avg Gross: {self._format_value(avg_gross, renderer)} | '
+            f'Avg Fees: -{avg_fees:.2f} | Avg Net: {self._format_value(avg_net, renderer)}')
 
         print(f"\n   {renderer.bold('⏱️  DURATION (ticks):')}")
-        print(f"      Avg: {avg_duration:.0f} | Min: {min_duration} | Max: {max_duration}")
+        print(f'      Avg: {avg_duration:.0f} | Min: {min_duration} | Max: {max_duration}')
 
         self._render_analytics(analytics, renderer)
         self._render_slippage_stats(rows, renderer)
@@ -323,15 +330,15 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         currency = a.currency
         print(f"\n   {renderer.bold('📐 TRADE ANALYTICS (#389):')}")
         print(
-            f"      Expectancy: {a.expectancy:+.3f} R  |  "
-            f"R-trades: {a.r_trade_count}/{a.trade_count} (with a stop loss)")
-        print(f"      Avg Win-R: {a.avg_win_r:+.3f}  |  Avg Loss-R: {a.avg_loss_r:+.3f}")
+            f'      Expectancy: {a.expectancy:+.3f} R  |  '
+            f'R-trades: {a.r_trade_count}/{a.trade_count} (with a stop loss)')
+        print(f'      Avg Win-R: {a.avg_win_r:+.3f}  |  Avg Loss-R: {a.avg_loss_r:+.3f}')
         print(
-            f"      Avg MAE — winners: {self._format_value(a.avg_mae_winners, renderer)} "
-            f"| losers: {self._format_value(a.avg_mae_losers, renderer)} {currency}")
+            f'      Avg MAE — winners: {self._format_value(a.avg_mae_winners, renderer)} '
+            f'| losers: {self._format_value(a.avg_mae_losers, renderer)} {currency}')
         print(
-            f"      Avg MFE — losers:  {self._format_value(a.avg_mfe_losers, renderer)} {currency}  "
-            f"(left on the table)")
+            f'      Avg MFE — losers:  {self._format_value(a.avg_mfe_losers, renderer)} {currency}  '
+            f'(left on the table)')
 
     def _render_slippage_stats(
         self, rows: List[TradeHistoryRow], renderer: ConsoleRenderer) -> None:
@@ -342,16 +349,16 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             return  # no submission-tick data captured (legacy / cleanup-only)
 
         print(f"\n   {renderer.bold('📐 SLIPPAGE (submission tick vs fill):')}")
-        print(f"      Samples: {len(entry)} entry / {len(exit_)} exit (of {len(rows)} trades)")
+        print(f'      Samples: {len(entry)} entry / {len(exit_)} exit (of {len(rows)} trades)')
         if entry:
             avg, p50, p95, max_v, avg_pct, p95_pct = self._slippage_aggregates(entry)
-            print(f"      Entry:  avg={avg:+.5f} ({avg_pct:+.4f}%)  p50={p50:+.5f}  "
-                  f"p95={p95:+.5f} ({p95_pct:+.4f}%)  max={max_v:+.5f}")
+            print(f'      Entry:  avg={avg:+.5f} ({avg_pct:+.4f}%)  p50={p50:+.5f}  '
+                  f'p95={p95:+.5f} ({p95_pct:+.4f}%)  max={max_v:+.5f}')
         if exit_:
             avg, p50, p95, max_v, avg_pct, p95_pct = self._slippage_aggregates(exit_)
-            print(f"      Exit:   avg={avg:+.5f} ({avg_pct:+.4f}%)  p50={p50:+.5f}  "
-                  f"p95={p95:+.5f} ({p95_pct:+.4f}%)  max={max_v:+.5f}")
-        print(f"      Sign convention: positive = paid worse than submission mid (adverse).")
+            print(f'      Exit:   avg={avg:+.5f} ({avg_pct:+.4f}%)  p50={p50:+.5f}  '
+                  f'p95={p95:+.5f} ({p95_pct:+.4f}%)  max={max_v:+.5f}')
+        print('      Sign convention: positive = paid worse than submission mid (adverse).')
 
     @staticmethod
     def _slippage_aggregates(samples):
@@ -372,26 +379,26 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         """Render aggregated rejection breakdown by reason."""
         reason_counts: Dict[str, int] = {}
         for rej in rejections:
-            reason = rej.rejection_reason or "unknown"
+            reason = rej.rejection_reason or 'unknown'
             reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
         print(f"\n   {renderer.bold('Rejected Orders:')}")
-        print(f"      Total Rejections: {len(rejections)}")
+        print(f'      Total Rejections: {len(rejections)}')
         for reason, count in sorted(reason_counts.items(), key=lambda x: -x[1]):
-            print(renderer.yellow(f"      {reason}: {count}"))
+            print(renderer.yellow(f'      {reason}: {count}'))
 
     def _format_pnl(self, value: float, currency: str, renderer: ConsoleRenderer) -> str:
         """Format P&L value with color and currency."""
         if value > 0:
-            return renderer.green(f"+{value:.2f} {currency}")
+            return renderer.green(f'+{value:.2f} {currency}')
         elif value < 0:
-            return renderer.red(f"{value:.2f} {currency}")
-        return f"{value:.2f} {currency}"
+            return renderer.red(f'{value:.2f} {currency}')
+        return f'{value:.2f} {currency}'
 
     def _format_value(self, value: float, renderer: ConsoleRenderer) -> str:
         """Format numeric value with color."""
         if value > 0:
-            return renderer.green(f"+{value:.2f}")
+            return renderer.green(f'+{value:.2f}')
         elif value < 0:
-            return renderer.red(f"{value:.2f}")
-        return f"{value:.2f}"
+            return renderer.red(f'{value:.2f}')
+        return f'{value:.2f}'

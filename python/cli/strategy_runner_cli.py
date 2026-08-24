@@ -14,11 +14,11 @@ import traceback
 from pathlib import Path
 from typing import List
 
-from python.scenario.scenario_set_finder import ScenarioSetFinder
-from python.framework.utils.time_utils import format_duration
-
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.utils.time_utils import format_duration
+from python.scenario.scenario_set_finder import ScenarioSetFinder
 from python.scenario.scenario_strategy_runner import run_profile_batch, run_scenario_batch
+
 vLog = get_global_logger()
 
 
@@ -44,22 +44,22 @@ class StrategyRunnerCli:
         if generator_profiles:
             profile_paths = self._resolve_profile_paths(generator_profiles)
 
-            print("\n" + "="*80)
-            print("🔬 Strategy Runner — Profile Run")
-            print("="*80)
-            print(f"Scenario Set: {scenario_set_json}")
-            print(f"Profiles:     {len(profile_paths)} file(s)")
+            print('\n' + '='*80)
+            print('🔬 Strategy Runner — Profile Run')
+            print('='*80)
+            print(f'Scenario Set: {scenario_set_json}')
+            print(f'Profiles:     {len(profile_paths)} file(s)')
             for p in profile_paths:
-                print(f"  • {Path(p).name}")
-            print("="*80 + "\n")
+                print(f'  • {Path(p).name}')
+            print('='*80 + '\n')
 
             run_profile_batch(scenario_set_json, profile_paths)
         else:
-            print("\n" + "="*80)
-            print("🔬 Strategy Runner")
-            print("="*80)
-            print(f"Scenario Set: {scenario_set_json}")
-            print("="*80 + "\n")
+            print('\n' + '='*80)
+            print('🔬 Strategy Runner')
+            print('='*80)
+            print(f'Scenario Set: {scenario_set_json}')
+            print('='*80 + '\n')
 
             run_scenario_batch(scenario_set_json)
 
@@ -82,13 +82,13 @@ class StrategyRunnerCli:
                 json_files = sorted(path.rglob('*.json'))
                 if not json_files:
                     raise FileNotFoundError(
-                        f"No JSON profile files found in directory: {path}"
+                        f'No JSON profile files found in directory: {path}'
                     )
                 resolved.extend(str(f) for f in json_files)
             elif path.is_file():
                 resolved.append(str(path))
             else:
-                raise FileNotFoundError(f"Profile path not found: {path}")
+                raise FileNotFoundError(f'Profile path not found: {path}')
         return resolved
 
     def cmd_list(self, full_details: bool = False):
@@ -107,46 +107,46 @@ class StrategyRunnerCli:
         """Fast: List config filenames only"""
         files = self._finder.list_available_files()
 
-        print("\n" + "="*80)
-        print("📋 Available Scenario Sets")
-        print("="*80)
+        print('\n' + '='*80)
+        print('📋 Available Scenario Sets')
+        print('='*80)
 
         if not files:
-            print("⚠️  No scenario set config files found")
-            print(f"   Location: {self._finder._config_path}")
+            print('⚠️  No scenario set config files found')
+            print(f'   Location: {self._finder._config_path}')
         else:
             for file_path in files:
-                print(f"  • {file_path.name}")
+                print(f'  • {file_path.name}')
 
-        print("="*80)
-        print(f"Total: {len(files)} config file(s)")
+        print('='*80)
+        print(f'Total: {len(files)} config file(s)')
         print("\nUse 'list --full-details' for detailed information")
-        print("="*80 + "\n")
+        print('='*80 + '\n')
 
     def _list_with_full_details(self):
         """Slow: Load all configs and show full metadata"""
-        print("\n" + "="*80)
-        print("📋 Available Scenario Sets (Full Details)")
-        print("="*80)
-        print("⏳ Loading and validating all configs...")
-        print("="*80 + "\n")
+        print('\n' + '='*80)
+        print('📋 Available Scenario Sets (Full Details)')
+        print('='*80)
+        print('⏳ Loading and validating all configs...')
+        print('='*80 + '\n')
 
         metadata_list = self._finder.list_all_with_details()
 
         if not metadata_list:
-            print("⚠️  No valid scenario set config files found")
-            print(f"   Location: {self._finder._config_path}")
-            print("="*80 + "\n")
+            print('⚠️  No valid scenario set config files found')
+            print(f'   Location: {self._finder._config_path}')
+            print('='*80 + '\n')
             return
 
-        print("="*80)
-        print(f"Total: {len(metadata_list)} valid config file(s)")
-        print("="*80 + "\n")
+        print('='*80)
+        print(f'Total: {len(metadata_list)} valid config file(s)')
+        print('='*80 + '\n')
 
         for metadata in metadata_list:
-            print(f"📄 {metadata.filename}")
-            print(f"   Name:      {metadata.scenario_set_name}")
-            print(f"   Scenarios: {metadata.enabled_count} enabled")
+            print(f'📄 {metadata.filename}')
+            print(f'   Name:      {metadata.scenario_set_name}')
+            print(f'   Scenarios: {metadata.enabled_count} enabled')
             print(f"   Symbols:   {', '.join(metadata.symbols)}")
 
             # === TIME ANALYSIS ===
@@ -169,13 +169,13 @@ class StrategyRunnerCli:
 
             # Decision logic
             if metadata.is_mixed_decision_logic:
-                logic_parts.append("Mixed")
+                logic_parts.append('Mixed')
             elif metadata.decision_logic_type:
                 logic_parts.append(metadata.decision_logic_type)
 
             # Worker count
             if metadata.is_mixed_workers:
-                logic_parts.append("Mixed Workers")
+                logic_parts.append('Mixed Workers')
             elif metadata.worker_count is not None:
                 worker_str = f"{metadata.worker_count} Worker{'s' if metadata.worker_count != 1 else ''}"
                 logic_parts.append(worker_str)
@@ -239,10 +239,10 @@ def main():
             cli.cmd_list(full_details=args.full_details)
 
     except KeyboardInterrupt:
-        print("\n\n👋 Interrupted by user")
+        print('\n\n👋 Interrupted by user')
         sys.exit(0)
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f'\n❌ Error: {e}')
         traceback.print_exc()
         sys.exit(1)
 

@@ -83,9 +83,9 @@ class SentimentConfigManager:
                     return json.load(handle).get('api_token', '')
             except json.JSONDecodeError as error:
                 raise RuntimeError(
-                    f"Invalid JSON in credentials file: {path}\n"
-                    f"Error: {error}\n"
-                    f"Fix the syntax or remove the file."
+                    f'Invalid JSON in credentials file: {path}\n'
+                    f'Error: {error}\n'
+                    f'Fix the syntax or remove the file.'
                 )
         return ''
 
@@ -101,7 +101,7 @@ class SentimentConfigManager:
         """
         if not self._config_path.exists():
             vLog.warning(
-                f"No {self._config_path} — sentiment sources unregistered, transports off")
+                f'No {self._config_path} — sentiment sources unregistered, transports off')
             return {}
 
         with open(self._config_path, 'r') as handle:
@@ -115,10 +115,10 @@ class SentimentConfigManager:
                 override = json.load(handle)
         except json.JSONDecodeError as error:
             raise RuntimeError(
-                f"Invalid JSON in user sentiment config: {self._user_config_path}\n"
-                f"Error: {error}\n"
-                f"Fix the syntax or remove the file."
+                f'Invalid JSON in user sentiment config: {self._user_config_path}\n'
+                f'Error: {error}\n'
+                f'Fix the syntax or remove the file.'
             )
 
-        vLog.debug(f"Merged user sentiment config from {self._user_config_path}")
+        vLog.debug(f'Merged user sentiment config from {self._user_config_path}')
         return deep_merge(base, override)

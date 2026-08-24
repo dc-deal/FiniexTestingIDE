@@ -38,23 +38,23 @@ class ValidationResult:
             Multi-line formatted error report
         """
         if not self.errors:
-            return "No validation errors"
+            return 'No validation errors'
 
         report_lines = [
             f"Scenario '{self.scenario_name}' failed validation:",
-            ""
+            ''
         ]
 
         for idx, error in enumerate(self.errors, 1):
-            report_lines.append(f"{idx}. {error}")
+            report_lines.append(f'{idx}. {error}')
 
         if self.warnings:
-            report_lines.append("")
-            report_lines.append("Warnings:")
+            report_lines.append('')
+            report_lines.append('Warnings:')
             for idx, warning in enumerate(self.warnings, 1):
-                report_lines.append(f"  • {warning}")
+                report_lines.append(f'  • {warning}')
 
-        return "\n".join(report_lines)
+        return '\n'.join(report_lines)
 
 
 @dataclass
@@ -97,23 +97,23 @@ class TickFileValidationResult:
         Returns:
             Multi-line formatted report
         """
-        report_lines = [f"Tick file '{self.file_name}' failed import validation:", ""]
+        report_lines = [f"Tick file '{self.file_name}' failed import validation:", '']
 
         for idx, error in enumerate(self.errors, 1):
-            report_lines.append(f"{idx}. {error}")
+            report_lines.append(f'{idx}. {error}')
 
         if self.warnings:
-            report_lines.append("")
-            report_lines.append("Warnings:")
+            report_lines.append('')
+            report_lines.append('Warnings:')
             for idx, warning in enumerate(self.warnings, 1):
-                report_lines.append(f"  • {warning}")
+                report_lines.append(f'  • {warning}')
 
-        return "\n".join(report_lines)
+        return '\n'.join(report_lines)
 
 
 def get_validation_list_report(validation_list:  List[ValidationResult]) -> str:
     if not validation_list:
-        return "No validation results available"
+        return 'No validation results available'
 
     reports = []
     for validation in validation_list:
@@ -121,6 +121,6 @@ def get_validation_list_report(validation_list:  List[ValidationResult]) -> str:
             reports.append(validation.get_full_report())
 
     if not reports:
-        return "Scenario is valid - Errors may Remain in Scenario Log."
+        return 'Scenario is valid - Errors may Remain in Scenario Log.'
 
-    return "\n\n".join(reports)
+    return '\n\n'.join(reports)

@@ -8,11 +8,11 @@ import pytest
 from conftest import make_bars, make_tick
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
-from python.framework.workers.core.bollinger_worker import BollingerWorker
-from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.types.worker_types import SUBSCRIBE_ALL, WorkerRequirement
+from python.framework.workers.core.bollinger_worker import BollingerWorker
+from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 # 30 bars > period + 1 → the slope path (the gated 2nd moving average) is exercised
 CLOSES = [100.0 + (i % 5) - 2 + i * 0.1 for i in range(30)]
@@ -23,8 +23,8 @@ CORE_KEYS = {'upper', 'middle', 'lower', 'position', 'std_dev', 'bars_used'}
 
 def _bollinger(mock_logger, requested=None):
     worker = BollingerWorker(
-        name="bollinger_main",
-        parameters={"periods": {"M5": 20}, "deviation": 2.0},
+        name='bollinger_main',
+        parameters={'periods': {'M5': 20}, 'deviation': 2.0},
         logger=mock_logger,
     )
     if requested is not None:
@@ -35,7 +35,7 @@ def _bollinger(mock_logger, requested=None):
 def _compute(worker):
     return worker.compute(
         tick=make_tick(bid=CLOSES[-1]),
-        bar_history={"M5": make_bars(CLOSES)},
+        bar_history={'M5': make_bars(CLOSES)},
         current_bars={},
     )
 
@@ -80,15 +80,15 @@ class TestDecisionDeclaration:
     def test_aggressive_trend_declares_signals(self):
         logic = AggressiveTrend.__new__(AggressiveTrend)
         assert logic.get_required_workers() == {
-            "rsi_fast": WorkerRequirement.of('CORE/rsi', 'rsi_value'),
-            "bollinger_main": WorkerRequirement.of('CORE/bollinger', 'position'),
+            'rsi_fast': WorkerRequirement.of('CORE/rsi', 'rsi_value'),
+            'bollinger_main': WorkerRequirement.of('CORE/bollinger', 'position'),
         }
 
     def test_compute_all_logic_subscribes_all(self):
         # A logic that reads every output declares SUBSCRIBE_ALL explicitly (#425)
         workers = SimpleConsensus.__new__(SimpleConsensus).get_required_workers()
-        assert workers["bollinger_main"].worker_type == 'CORE/bollinger'
-        assert workers["bollinger_main"].signals is SUBSCRIBE_ALL
+        assert workers['bollinger_main'].worker_type == 'CORE/bollinger'
+        assert workers['bollinger_main'].signals is SUBSCRIBE_ALL
 
 
 class _StubLogic(AbstractDecisionLogic):

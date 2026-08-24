@@ -1,6 +1,5 @@
 
 
-from datetime import timezone
 from typing import Dict, Tuple
 
 from python.framework.bars.bar_rendering_controller import BarRenderingController
@@ -9,16 +8,19 @@ from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.trade_simulator_factory import prepare_trade_executor_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessScenarioConfig
-from python.framework.utils.process_debug_info_utils import debug_warmup_bars_check, log_trade_simulator_config
+from python.framework.utils.process_debug_info_utils import (
+    debug_warmup_bars_check,
+    log_trade_simulator_config,
+)
 from python.framework.utils.process_serialization_utils import process_deserialize_ticks_batch
-from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
-from python.framework.signal_data.signal_data_provider import SignalDataProvider
+from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
 def process_startup_preparation(
@@ -47,7 +49,7 @@ def process_startup_preparation(
         (worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks)
     """
 
-    scenario_logger.info(f"🚀 Starting scenario: {config.name}")
+    scenario_logger.info(f'🚀 Starting scenario: {config.name}')
 
     # === PHASE 1: Get Decision Logic Requirements (NO INSTANCE) ===
     decision_logic_factory = DecisionLogicFactory(logger=scenario_logger)
@@ -58,7 +60,7 @@ def process_startup_preparation(
         config.decision_logic_config
     )
     scenario_logger.debug(
-        f"📋 Decision logic requires: {[t.value for t in required_order_types]}"
+        f'📋 Decision logic requires: {[t.value for t in required_order_types]}'
     )
 
     # === PHASE 2: Create Trade Simulator (with requirements) ===
@@ -81,7 +83,7 @@ def process_startup_preparation(
         pip_size=adapter.get_pip_size(config.symbol),
     )
     scenario_logger.debug(
-        f"🌍 Trading context for decision & worker: {trading_context.market_type.value} market"
+        f'🌍 Trading context for decision & worker: {trading_context.market_type.value} market'
     )
 
     # === PHASE 4: Create Workers (with context) ===
@@ -93,7 +95,7 @@ def process_startup_preparation(
     )
     workers = list(workers_dict.values())
 
-    scenario_logger.debug(f"✅ Created {len(workers)} workers")
+    scenario_logger.debug(f'✅ Created {len(workers)} workers')
 
     # === PHASE 4.5: Inject Signal Data Providers (#141) ===
     # SIGNAL workers read an injected provider, built from the prepared signal
@@ -111,7 +113,7 @@ def process_startup_preparation(
     )
 
     scenario_logger.debug(
-        f"✅ Created decision logic: {config.decision_logic_type}")
+        f'✅ Created decision logic: {config.decision_logic_type}')
 
     # === CREATE WORKER COORDINATOR ===
     worker_coordinator = WorkerOrchestrator(
@@ -125,7 +127,7 @@ def process_startup_preparation(
     worker_coordinator.initialize()
 
     scenario_logger.debug(
-        f"✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}"
+        f'✅ Orchestrator initialized: {len(workers)} workers + {decision_logic.name}'
     )
 
     # === PHASE 6: Inject DecisionTradingApi (validated against required_order_types) ===
@@ -135,10 +137,10 @@ def process_startup_preparation(
         order_guard_config=config.order_guard_config,
     )
     decision_logic.set_trading_api(trading_api)
-    scenario_logger.debug("✅ DecisionTradingApi injected into Decision Logic")
+    scenario_logger.debug('✅ DecisionTradingApi injected into Decision Logic')
 
     scenario_logger.debug(
-        f"✅ Created trade simulator: balances={config.balances}"
+        f'✅ Created trade simulator: balances={config.balances}'
     )
 
     log_trade_simulator_config(scenario_logger, config, trade_simulator)
@@ -177,7 +179,7 @@ def process_startup_preparation(
     ticks = process_deserialize_ticks_batch(
         scenario_symbol=config.symbol, ticks_tuple_list=shared_data.ticks)
     scenario_logger.debug(
-        f"🔄 De-Serialization of {len(ticks):,} ticks finished")
+        f'🔄 De-Serialization of {len(ticks):,} ticks finished')
 
     return worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks
 
@@ -254,8 +256,8 @@ def _match_and_validate_warmup_bars(
 
         # Log what we received (for debugging)
         scenario_logger.debug(
-            f"📊 Received warmup bars: ({symbol}, {timeframe}, {start_time}) "
-            f"→ {len(bars_tuple)} bars"
+            f'📊 Received warmup bars: ({symbol}, {timeframe}, {start_time}) '
+            f'→ {len(bars_tuple)} bars'
         )
 
         # Store by timeframe (symbol + time already match)
@@ -273,7 +275,7 @@ def _match_and_validate_warmup_bars(
             if bars_tuple is None:
                 # No bars found for this timeframe at all
                 insufficient_bars.append(
-                    f"{timeframe}: 0 bars (missing completely)"
+                    f'{timeframe}: 0 bars (missing completely)'
                 )
             else:
                 # Get required count from worker
@@ -287,7 +289,7 @@ def _match_and_validate_warmup_bars(
 
                         if actual_count < required_count:
                             insufficient_bars.append(
-                                f"{timeframe}: {actual_count}/{required_count} bars"
+                                f'{timeframe}: {actual_count}/{required_count} bars'
                             )
                         break
 
@@ -304,7 +306,7 @@ def _match_and_validate_warmup_bars(
 
         # Log result summary
         scenario_logger.debug(
-            f"📊 Result: {len(warmup_bars)}/{len(required_timeframes)} timeframes collected"
+            f'📊 Result: {len(warmup_bars)}/{len(required_timeframes)} timeframes collected'
         )
 
     return warmup_bars

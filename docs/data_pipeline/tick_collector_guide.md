@@ -604,7 +604,7 @@ Data Collectors
 ├─ MQL5 TickCollector (MT5 broker ticks)
 └─ Kraken Data Collector (Kraken WebSocket ticks)
     ↓ JSON Files (data/raw/)
-tick_importer.py (config-driven UTC offsets from import_config.json)
+tick_data_importer.py (config-driven UTC offsets from import_config.json)
     ↓ Parquet Files (indexed, with source_meta_* preservation)
 bar_importer.py (auto-triggered)
     ↓ Pre-rendered Bars (M1 → D1)
@@ -633,7 +633,7 @@ All original MQL5 metadata from the JSON is preserved in the Parquet file header
 ```
 TickCollector → data_format_version: "X.Y.Z" (JSON metadata)
     ↓
-tick_importer.py → Parquet metadata (source_meta_data_format_version preserved)
+tick_data_importer.py → Parquet metadata (source_meta_data_format_version preserved)
     ↓
 bar_importer.py → source_version_min/max in bar files
 ```

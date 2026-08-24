@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
+from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.reconciler import Reconciler
@@ -23,6 +24,7 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     PositionSnapshot,
     RejectionEntry,
     SafetyState,
+    SignalTransportStats,
     TradeHistoryEntry,
 )
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
@@ -32,9 +34,6 @@ from python.framework.types.live_types.api_perf_types import ApiPerfSnapshot
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.parameter_types import OutputValue
-from python.framework.signal_data.signal_poll_source import SignalPollSource
-from python.framework.types.autotrader_types.autotrader_display_types import (
-    SignalTransportStats)
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 

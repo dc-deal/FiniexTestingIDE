@@ -14,10 +14,21 @@ from fastapi import APIRouter, Query
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.types.api.report_types import (
-    AggregatedPortfolioReport, BrokerReport, ExecutionStatsReport, FeedStabilityReport,
-    OrderHistoryReport, PendingOrdersReport, PortfolioReport, ProfilingReport, RunSummary,
-    ScenarioDetailsReport, SignalReport, TradeHistoryReport, WarningsErrorsReport,
-    WorkerDecisionReport)
+    AggregatedPortfolioReport,
+    BrokerReport,
+    ExecutionStatsReport,
+    FeedStabilityReport,
+    OrderHistoryReport,
+    PendingOrdersReport,
+    PortfolioReport,
+    ProfilingReport,
+    RunSummary,
+    ScenarioDetailsReport,
+    SignalReport,
+    TradeHistoryReport,
+    WarningsErrorsReport,
+    WorkerDecisionReport,
+)
 
 router = APIRouter()
 

@@ -11,29 +11,46 @@ from typing import Callable, Dict, List, Optional, Union
 from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
+from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.trading_fees import MakerTakerFee, SwapFee
-from python.framework.types.trading_env_types.broker_types import FeeType, SwapMode, SymbolSpecification
+from python.framework.types.config_types.market_config_types import SwapRolloverConfig
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType, TradeRecord
+from python.framework.types.portfolio_types.portfolio_trade_record_types import (
+    CloseReason,
+    EntryType,
+    TradeRecord,
+)
 from python.framework.types.portfolio_types.portfolio_types import Position, PositionStatus
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-
-from python.framework.types.trading_env_types.order_types import CloseType, ModificationRejectionReason, ModificationResult, OrderAction, OrderDirection, OrderSide, direction_to_side
+from python.framework.types.trading_env_types.broker_types import (
+    FeeType,
+    SwapMode,
+    SymbolSpecification,
+)
+from python.framework.types.trading_env_types.order_types import (
+    CloseType,
+    ModificationRejectionReason,
+    ModificationResult,
+    OrderAction,
+    OrderDirection,
+    direction_to_side,
+)
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
-from python.framework.types.trading_env_types.trading_env_stats_types import AccountInfo, CostBreakdown
-from python.framework.trading_env.broker_config import BrokerConfig
-from python.framework.types.market_types.market_data_types import TickData
-from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
-from python.framework.types.config_types.market_config_types import SwapRolloverConfig
+from python.framework.types.trading_env_types.trading_env_stats_types import (
+    AccountInfo,
+    CostBreakdown,
+)
 from python.framework.utils.market_calendar import MarketCalendar
 from python.framework.utils.time_utils import mt5_weekday_to_python
+from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
 
 
 class _UnsetType:
     """Sentinel to distinguish 'not provided' from 'set to None' (remove SL/TP)."""
 
     def __repr__(self) -> str:
-        return "UNSET"
+        return 'UNSET'
 
 
 UNSET = _UnsetType()
@@ -210,7 +227,7 @@ class PortfolioManager:
     # Generate position ID
     def get_next_position_id(self, symbol) -> str:
         self._position_counter += 1
-        return f"pos_{symbol.lower()}_{self._position_counter}"
+        return f'pos_{symbol.lower()}_{self._position_counter}'
 
     def _clock_now(self) -> datetime:
         """
@@ -270,7 +287,7 @@ class PortfolioManager:
         entry_fee: Optional[AbstractTradingFee] = None,
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
-        comment: str = "",
+        comment: str = '',
         entry_type: EntryType = EntryType.MARKET,
         broker_ref: Optional[str] = None,
         entry_trades: Optional[List[BrokerTrade]] = None,
@@ -377,7 +394,7 @@ class PortfolioManager:
             Realized P&L amount
         """
         if position_id not in self.open_positions:
-            raise ValueError(f"Position {position_id} not found")
+            raise ValueError(f'Position {position_id} not found')
 
         # Ensure position has latest P&L before closing
         self._ensure_positions_updated()
@@ -439,8 +456,8 @@ class PortfolioManager:
                 and len(self._trade_history) >= self._trade_history_max):
             self._trade_history_limit_warned = True
             self._logger.warning(
-                f"⚠️ Trade history limit reached ({self._trade_history_max}). "
-                f"Oldest entries will be discarded. Full history available in scenario log."
+                f'⚠️ Trade history limit reached ({self._trade_history_max}). '
+                f'Oldest entries will be discarded. Full history available in scenario log.'
             )
         self._trade_history.append(trade_record)
         self._log_trade_record(trade_record)
@@ -481,7 +498,7 @@ class PortfolioManager:
             Realized P&L for the closed portion
         """
         if position_id not in self.open_positions:
-            raise ValueError(f"Position {position_id} not found")
+            raise ValueError(f'Position {position_id} not found')
 
         # Ensure position has latest P&L before partial close
         self._ensure_positions_updated()
@@ -579,8 +596,8 @@ class PortfolioManager:
                 and len(self._trade_history) >= self._trade_history_max):
             self._trade_history_limit_warned = True
             self._logger.warning(
-                f"⚠️ Trade history limit reached ({self._trade_history_max}). "
-                f"Oldest entries will be discarded. Full history available in scenario log."
+                f'⚠️ Trade history limit reached ({self._trade_history_max}). '
+                f'Oldest entries will be discarded. Full history available in scenario log.'
             )
         self._trade_history.append(trade_record)
         self._log_trade_record(trade_record)
@@ -726,7 +743,7 @@ class PortfolioManager:
         # Validate against current prices
         if position.symbol not in self._current_prices:
             self._logger.warning(
-                f"No current price for {position.symbol} — cannot validate SL/TP")
+                f'No current price for {position.symbol} — cannot validate SL/TP')
             return ModificationResult(
                 success=False,
                 rejection_reason=ModificationRejectionReason.NO_CURRENT_PRICE)
@@ -770,32 +787,32 @@ class PortfolioManager:
         if stop_loss is not None:
             if direction == OrderDirection.LONG and stop_loss >= bid:
                 self._logger.warning(
-                    f"Invalid SL for LONG: sl={stop_loss} >= bid={bid}")
+                    f'Invalid SL for LONG: sl={stop_loss} >= bid={bid}')
                 return ModificationRejectionReason.INVALID_SL_LEVEL
             if direction == OrderDirection.SHORT and stop_loss <= ask:
                 self._logger.warning(
-                    f"Invalid SL for SHORT: sl={stop_loss} <= ask={ask}")
+                    f'Invalid SL for SHORT: sl={stop_loss} <= ask={ask}')
                 return ModificationRejectionReason.INVALID_SL_LEVEL
 
         if take_profit is not None:
             if direction == OrderDirection.LONG and take_profit <= bid:
                 self._logger.warning(
-                    f"Invalid TP for LONG: tp={take_profit} <= bid={bid}")
+                    f'Invalid TP for LONG: tp={take_profit} <= bid={bid}')
                 return ModificationRejectionReason.INVALID_TP_LEVEL
             if direction == OrderDirection.SHORT and take_profit >= ask:
                 self._logger.warning(
-                    f"Invalid TP for SHORT: tp={take_profit} >= ask={ask}")
+                    f'Invalid TP for SHORT: tp={take_profit} >= ask={ask}')
                 return ModificationRejectionReason.INVALID_TP_LEVEL
 
         # SL and TP must not cross each other
         if stop_loss is not None and take_profit is not None:
             if direction == OrderDirection.LONG and stop_loss >= take_profit:
                 self._logger.warning(
-                    f"SL/TP cross for LONG: sl={stop_loss} >= tp={take_profit}")
+                    f'SL/TP cross for LONG: sl={stop_loss} >= tp={take_profit}')
                 return ModificationRejectionReason.SL_TP_CROSS
             if direction == OrderDirection.SHORT and stop_loss <= take_profit:
                 self._logger.warning(
-                    f"SL/TP cross for SHORT: sl={stop_loss} <= tp={take_profit}")
+                    f'SL/TP cross for SHORT: sl={stop_loss} <= tp={take_profit}')
                 return ModificationRejectionReason.SL_TP_CROSS
 
         return None
@@ -843,7 +860,7 @@ class PortfolioManager:
         elif self.account_currency == symbol_spec.base_currency:
             if current_price <= 0:
                 raise ValueError(
-                    f"Invalid price for tick_value calculation: {current_price}"
+                    f'Invalid price for tick_value calculation: {current_price}'
                 )
             self._last_conversion_rate = current_price
             return base_factor / current_price
@@ -851,10 +868,10 @@ class PortfolioManager:
         # Cross Currency - Not supported
         else:
             raise NotImplementedError(
-                f"Cross-currency conversion not supported: "
-                f"Account: {self.account_currency}, "
-                f"Symbol: {symbol_spec.symbol} "
-                f"(Base: {symbol_spec.base_currency}, Quote: {symbol_spec.quote_currency})"
+                f'Cross-currency conversion not supported: '
+                f'Account: {self.account_currency}, '
+                f'Symbol: {symbol_spec.symbol} '
+                f'(Base: {symbol_spec.base_currency}, Quote: {symbol_spec.quote_currency})'
             )
 
     def _accrue_all_swaps(self) -> None:
@@ -1221,12 +1238,12 @@ class PortfolioManager:
         duration_ticks = record.exit_tick_index - record.entry_tick_index
 
         self._logger.debug(
-            f"📊 TRADE RECORD #{len(self._trade_history)} | {record.position_id}\n"
-            f"   {record.symbol} {record.direction} {record.lots} lots\n"
-            f"   Entry: {record.entry_price:.5f} @ tick {record.entry_tick_index} | "
-            f"Exit: {record.exit_price:.5f} @ tick {record.exit_tick_index} | "
-            f"Duration: {duration_ticks} ticks\n"
-            f"   Tick Value: entry={record.entry_tick_value:.5f}, exit={record.exit_tick_value:.5f}\n"
-            f"   Gross P&L: {record.gross_pnl:.2f} | Fees: {record.total_fees:.2f} "
-            f"(spread={record.spread_cost:.2f}) | Net P&L: {record.net_pnl:.2f} {record.account_currency}"
+            f'📊 TRADE RECORD #{len(self._trade_history)} | {record.position_id}\n'
+            f'   {record.symbol} {record.direction} {record.lots} lots\n'
+            f'   Entry: {record.entry_price:.5f} @ tick {record.entry_tick_index} | '
+            f'Exit: {record.exit_price:.5f} @ tick {record.exit_tick_index} | '
+            f'Duration: {duration_ticks} ticks\n'
+            f'   Tick Value: entry={record.entry_tick_value:.5f}, exit={record.exit_tick_value:.5f}\n'
+            f'   Gross P&L: {record.gross_pnl:.2f} | Fees: {record.total_fees:.2f} '
+            f'(spread={record.spread_cost:.2f}) | Net P&L: {record.net_pnl:.2f} {record.account_currency}'
         )

@@ -4,7 +4,7 @@ Type definitions for batch orchestration and scenario execution
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 
 @dataclass

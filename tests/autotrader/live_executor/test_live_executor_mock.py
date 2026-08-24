@@ -9,13 +9,12 @@ MockOrderExecution provides tick feeding for pending order processing.
 """
 
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
-from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.types.trading_env_types.order_types import (
-    OrderType,
+    OpenOrderRequest,
     OrderDirection,
     OrderStatus,
+    OrderType,
     RejectionReason,
-    OpenOrderRequest,
 )
 
 
@@ -34,7 +33,7 @@ class TestInstantFill:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         result = executor_instant.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
 
         # Initial return is PENDING — broker_ref is set later via drain_inbox
@@ -46,14 +45,14 @@ class TestInstantFill:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         executor_instant.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
         # Next tick: flush_outbox + drain_inbox applies the fill
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         positions = executor_instant.get_open_positions()
         assert len(positions) == 1
-        assert positions[0].symbol == "BTCUSD"
+        assert positions[0].symbol == 'BTCUSD'
         assert positions[0].direction == OrderDirection.LONG
 
     def test_order_history_recorded(self, mock_instant, executor_instant):
@@ -61,7 +60,7 @@ class TestInstantFill:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         executor_instant.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
@@ -74,7 +73,7 @@ class TestInstantFill:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         executor_instant.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
@@ -89,7 +88,7 @@ class TestInstantFillClose:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         executor_instant.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
         # Drain open fill so the position exists
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
@@ -109,7 +108,7 @@ class TestInstantFillClose:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         executor_instant.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
@@ -131,7 +130,7 @@ class TestDelayedFill:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
 
         # Async submit (#319 step 6): result is PENDING and broker_ref is
@@ -145,7 +144,7 @@ class TestDelayedFill:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
 
         assert executor_delayed.has_pending_orders()
@@ -155,7 +154,7 @@ class TestDelayedFill:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
 
         # Next tick triggers on_tick() → _process_pending_orders() → broker poll → fill
@@ -179,7 +178,7 @@ class TestRejection:
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
 
         executor_reject.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
         # Drain worker reject into order_history
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
@@ -193,7 +192,7 @@ class TestRejection:
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
 
         executor_reject.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
 
@@ -208,7 +207,7 @@ class TestFeatureGating:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         result = executor_instant.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.STOP, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.STOP, direction=OrderDirection.LONG, lots=0.001
         ))
 
         assert result.status == OrderStatus.REJECTED
@@ -219,7 +218,7 @@ class TestFeatureGating:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         result = executor_instant.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.STOP_LIMIT, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.STOP_LIMIT, direction=OrderDirection.LONG, lots=0.001
         ))
 
         assert result.status == OrderStatus.REJECTED
@@ -233,14 +232,14 @@ class TestValidation:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         result = executor_instant.open_order(OpenOrderRequest(
-            symbol="INVALID_SYMBOL", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='INVALID_SYMBOL', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
 
         assert result.status == OrderStatus.REJECTED
 
     def test_close_nonexistent_position_rejected(self, mock_instant, executor_instant):
         """Closing non-existent position returns REJECTED."""
-        result = executor_instant.close_position("NONEXISTENT-POS")
+        result = executor_instant.close_position('NONEXISTENT-POS')
 
         assert result.status == OrderStatus.REJECTED
 
@@ -253,7 +252,7 @@ class TestExecutionStats:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         executor_instant.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
         # Next tick: drain worker response → executor stats update
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
@@ -267,7 +266,7 @@ class TestExecutionStats:
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
 
         executor_reject.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.MARKET, direction=OrderDirection.LONG, lots=0.001
         ))
         # Drain async rejection into rejection counter
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
@@ -282,24 +281,24 @@ class TestNotLiveCapable:
 
     def test_non_live_adapter_raises(self):
         """LiveTradeExecutor raises ValueError for non-live adapter."""
-        from python.framework.trading_env.broker_config import BrokerConfig
-        from python.framework.testing.mock_broker_adapter import MockBrokerAdapter
-        from python.framework.types.trading_env_types.broker_types import BrokerType
         from python.framework.logging.global_logger import GlobalLogger
+        from python.framework.testing.mock_broker_adapter import MockBrokerAdapter
+        from python.framework.trading_env.broker_config import BrokerConfig
+        from python.framework.types.trading_env_types.broker_types import BrokerType
 
         adapter = MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)
         # Monkey-patch to simulate non-live adapter
         adapter.is_live_capable = lambda: False
 
         broker_config = BrokerConfig(BrokerType.KRAKEN_SPOT, adapter)
-        logger = GlobalLogger(name="TestNonLive")
+        logger = GlobalLogger(name='TestNonLive')
 
         import pytest
-        with pytest.raises(ValueError, match="not live-capable"):
+        with pytest.raises(ValueError, match='not live-capable'):
             from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
             LiveTradeExecutor(
                 broker_config=broker_config,
                 initial_balance=10000.0,
-                account_currency="USD",
+                account_currency='USD',
                 logger=logger,
             )

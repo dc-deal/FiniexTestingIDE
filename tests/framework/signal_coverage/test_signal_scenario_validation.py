@@ -17,16 +17,16 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
-    DataCoverageReportCache)
+    DataCoverageReportCache,
+)
 from python.framework.discoveries.data_coverage.data_coverage_report_manager import (
-    DataCoverageReportManager)
-from python.framework.discoveries.signal_coverage.signal_coverage_report import (
-    SignalCoverageReport)
+    DataCoverageReportManager,
+)
+from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
+from python.framework.types.market_types.market_data_types import TickTransportColumn
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.signal_data_types import (
-    SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn)
-from python.framework.types.market_types.market_data_types import TickTransportColumn
+from python.framework.types.signal_data_types import SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn
 from python.framework.validators.scenario_data_validator import ScenarioDataValidator
 
 CADENCE = timedelta(minutes=10)

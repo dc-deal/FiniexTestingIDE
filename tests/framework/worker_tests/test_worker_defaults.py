@@ -10,13 +10,15 @@ Validates:
 """
 
 import pytest
+from conftest import ALL_DECISION_LOGICS, ALL_WORKERS
 
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
-from python.framework.types.parameter_types import InputParamDef, REQUIRED
+from python.framework.types.parameter_types import REQUIRED, InputParamDef
 from python.framework.validators.parameter_validator import apply_defaults, validate_parameters
-from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
-from conftest import ALL_WORKERS, ALL_DECISION_LOGICS
+from python.framework.workers.core.backtesting.backtesting_sample_worker import (
+    BacktestingSampleWorker,
+)
 from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
@@ -34,7 +36,7 @@ def mixed_schema():
         'fast_period': InputParamDef(param_type=int, default=REQUIRED, min_val=1, max_val=200),
         'deviation': InputParamDef(param_type=float, default=2.0, min_val=0.5, max_val=5.0),
         'enabled': InputParamDef(param_type=bool, default=True),
-        'label': InputParamDef(param_type=str, default="default_label"),
+        'label': InputParamDef(param_type=str, default='default_label'),
     }
 
 
@@ -51,7 +53,7 @@ class TestApplyDefaultsCore:
         merged = apply_defaults(config, mixed_schema)
         assert merged['deviation'] == 2.0
         assert merged['enabled'] is True
-        assert merged['label'] == "default_label"
+        assert merged['label'] == 'default_label'
 
     def test_existing_values_preserved(self, mixed_schema):
         """User-provided values are not overwritten."""
@@ -88,7 +90,7 @@ class TestApplyDefaultsCore:
         merged = apply_defaults({}, mixed_schema)
         assert merged['deviation'] == 2.0
         assert merged['enabled'] is True
-        assert merged['label'] == "default_label"
+        assert merged['label'] == 'default_label'
         assert 'fast_period' not in merged
 
     def test_empty_schema_returns_copy(self):
@@ -148,7 +150,7 @@ class TestRealWorkerDefaults:
         merged = apply_defaults({}, schema)
         # All params are optional with defaults
         for param_name, param_def in schema.items():
-            assert param_name in merged, f"Missing default for {param_name}"
+            assert param_name in merged, f'Missing default for {param_name}'
             assert merged[param_name] == param_def.default
 
     def test_aggressive_trend_all_defaults(self):
@@ -156,7 +158,7 @@ class TestRealWorkerDefaults:
         schema = AggressiveTrend.get_parameter_schema()
         merged = apply_defaults({}, schema)
         for param_name, param_def in schema.items():
-            assert param_name in merged, f"Missing default for {param_name}"
+            assert param_name in merged, f'Missing default for {param_name}'
 
     def test_backtesting_sample_worker_default(self):
         """BacktestingSampleWorker: empty config → bar_snapshot_checks=[]."""
@@ -165,7 +167,7 @@ class TestRealWorkerDefaults:
         merged = apply_defaults({}, schema)
         assert merged['bar_snapshot_checks'] == []
 
-    @pytest.mark.parametrize("cls", ALL_WORKERS + ALL_DECISION_LOGICS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_WORKERS + ALL_DECISION_LOGICS, ids=lambda c: c.__name__)
     def test_defaults_produce_valid_config(self, cls):
         """Applying defaults to empty config must not violate own schema."""
         schema = cls.get_parameter_schema()
@@ -177,5 +179,5 @@ class TestRealWorkerDefaults:
         }
         warnings = validate_parameters(merged, optional_schema, strict=True)
         assert warnings == [], (
-            f"{cls.__name__}: defaults violate own schema: {warnings}"
+            f'{cls.__name__}: defaults violate own schema: {warnings}'
         )

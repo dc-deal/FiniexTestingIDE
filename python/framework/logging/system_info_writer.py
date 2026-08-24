@@ -16,7 +16,9 @@ Usage:
 
 import os
 import platform
+
 import psutil
+
 try:
     import numpy as _numpy
 except ImportError:
@@ -26,7 +28,7 @@ try:
 except ImportError:
     _pandas = None
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.git_info_types import GitInfo
@@ -60,8 +62,8 @@ def write_system_version_parameters(logger: ScenarioLogger) -> None:
     # Warn if working tree has uncommitted changes (snapshot not reproducible)
     if git_info and git_info.dirty:
         logger.warning(
-            f"Git working tree has {git_info.uncommitted_count} uncommitted change(s) - "
-            f"this performance snapshot may not be reproducible!"
+            f'Git working tree has {git_info.uncommitted_count} uncommitted change(s) - '
+            f'this performance snapshot may not be reproducible!'
         )
 
     # INFO: Essential summary
@@ -79,7 +81,7 @@ def write_system_version_parameters(logger: ScenarioLogger) -> None:
     python_detailed = _get_python_detailed()
     dependencies = _get_dependencies()
     paths = _get_paths()
-    docker_limits = _get_docker_limits() if env_info == "docker" else None
+    docker_limits = _get_docker_limits() if env_info == 'docker' else None
 
     debug_output = _format_debug_details(
         python_detailed=python_detailed,
@@ -95,7 +97,7 @@ def _get_platform_info() -> str:
     """Get platform information (OS and version)"""
     system = platform.system()
     release = platform.release()
-    return f"{system} {release}"
+    return f'{system} {release}'
 
 
 def _get_python_info() -> str:
@@ -124,34 +126,34 @@ def _get_cpu_info() -> Tuple[str, Dict[str, Any]]:
     cpu_count = os.cpu_count() or 0
 
     # Try to get CPU model
-    cpu_model = "Unknown"
+    cpu_model = 'Unknown'
     try:
-        if platform.system() == "Linux":
+        if platform.system() == 'Linux':
             with open('/proc/cpuinfo', 'r') as f:
                 for line in f:
                     if line.strip().startswith('model name'):
                         cpu_model = line.split(':', 1)[1].strip()
                         break
-        elif platform.system() == "Windows":
+        elif platform.system() == 'Windows':
             cpu_model = platform.processor()
     except Exception:
         pass
 
     # Simplify model name (remove redundant info)
     cpu_model_short = cpu_model
-    if "Intel" in cpu_model or "AMD" in cpu_model:
+    if 'Intel' in cpu_model or 'AMD' in cpu_model:
         # Extract just the meaningful part
         parts = cpu_model.split()
         if len(parts) >= 2:
-            cpu_model_short = f"{parts[0]} {parts[-2]}"  # "Intel i7-14700K"
+            cpu_model_short = f'{parts[0]} {parts[-2]}'  # "Intel i7-14700K"
 
     # Try to get CPU frequency
-    cpu_freq_str = ""
+    cpu_freq_str = ''
     cpu_freq_detailed = {}
     try:
         freq = psutil.cpu_freq()
         if freq:
-            cpu_freq_str = f" @ {freq.current / 1000:.1f} GHz"
+            cpu_freq_str = f' @ {freq.current / 1000:.1f} GHz'
             cpu_freq_detailed = {
                 'current': freq.current,
                 'min': freq.min,
@@ -161,7 +163,7 @@ def _get_cpu_info() -> Tuple[str, Dict[str, Any]]:
         pass
 
     # Basic info for INFO level
-    basic_info = f"{cpu_model_short} ({cpu_count} cores{cpu_freq_str})"
+    basic_info = f'{cpu_model_short} ({cpu_count} cores{cpu_freq_str})'
 
     # Detailed info for DEBUG level
     detailed_info = {
@@ -196,14 +198,14 @@ def _get_environment_info() -> str:
     """
     # Check for Docker
     if Path('/.dockerenv').exists():
-        return "docker"
+        return 'docker'
 
     # Check for VS Code devcontainer
     if os.environ.get('VSCODE_DEVCONTAINER'):
-        return "vscode_devcontainer"
+        return 'vscode_devcontainer'
 
     # Default to native
-    return "native"
+    return 'native'
 
 
 def _get_dependencies() -> Dict[str, str]:
@@ -249,8 +251,8 @@ def _get_docker_limits() -> Optional[Dict[str, str]]:
     """
     try:
         # Try to read cgroup limits
-        cpu_limit = "No limit"
-        mem_limit = "No limit"
+        cpu_limit = 'No limit'
+        mem_limit = 'No limit'
 
         # CPU limit
         cpu_quota_path = Path('/sys/fs/cgroup/cpu/cpu.cfs_quota_us')
@@ -259,7 +261,7 @@ def _get_docker_limits() -> Optional[Dict[str, str]]:
             if quota > 0:
                 period = int(
                     Path('/sys/fs/cgroup/cpu/cpu.cfs_period_us').read_text().strip())
-                cpu_limit = f"{quota / period:.1f} cores"
+                cpu_limit = f'{quota / period:.1f} cores'
 
         # Memory limit
         mem_limit_path = Path('/sys/fs/cgroup/memory/memory.limit_in_bytes')
@@ -267,7 +269,7 @@ def _get_docker_limits() -> Optional[Dict[str, str]]:
             limit = int(mem_limit_path.read_text().strip())
             # Very high number = no limit
             if limit < 9223372036854771712:  # Max value
-                mem_limit = f"{limit / (1024 ** 3):.1f} GB"
+                mem_limit = f'{limit / (1024 ** 3):.1f} GB'
 
         return {
             'cpu_limit': cpu_limit,
@@ -300,10 +302,10 @@ def _format_info_summary(
         Formatted multi-line string
     """
     lines = [
-        "=== SYSTEM & VERSION INFORMATION (Summary) ===",
-        f"Platform:    {platform_info} ({env_info})",
-        f"Python:      {python_info}",
-        f"CPU:         {cpu_basic}",
+        '=== SYSTEM & VERSION INFORMATION (Summary) ===',
+        f'Platform:    {platform_info} ({env_info})',
+        f'Python:      {python_info}',
+        f'CPU:         {cpu_basic}',
         f"RAM:         {ram_info['available_gb']:.1f} GB available / {ram_info['total_gb']:.1f} GB total",
     ]
 
@@ -311,21 +313,21 @@ def _format_info_summary(
         # Add -DIRTY marker if uncommitted changes
         commit_str = git_info.commit
         if git_info.dirty:
-            commit_str += "-DIRTY"
+            commit_str += '-DIRTY'
 
         # Truncate message if too long
         message = git_info.message
         if len(message) > 45:
-            message = message[:42] + "..."
+            message = message[:42] + '...'
 
         git_summary = f"{git_info.branch} @ {commit_str} ({git_info.date.strftime('%Y-%m-%d')}: \"{message}\")"
-        lines.append(f"Git:         {git_summary}")
+        lines.append(f'Git:         {git_summary}')
     else:
-        lines.append("Git:         (not available)")
+        lines.append('Git:         (not available)')
 
-    lines.append("=" * 80)
+    lines.append('=' * 80)
 
-    return "\n".join(lines)
+    return '\n'.join(lines)
 
 
 def _format_debug_details(
@@ -349,7 +351,7 @@ def _format_debug_details(
         Formatted multi-line string
     """
     lines = [
-        "=== DETAILED SYSTEM INFORMATION ===",
+        '=== DETAILED SYSTEM INFORMATION ===',
         f"Python Implementation: {python_detailed['implementation']}",
         f"Python Architecture:   {python_detailed['architecture']}",
         f"CPU Model:             {cpu_detailed['model']}",
@@ -361,24 +363,24 @@ def _format_debug_details(
         lines.append(
             f"CPU Min/Max Freq:      {freq['min']:.0f} MHz / {freq['max']:.0f} MHz")
 
-    lines.append("")
-    lines.append("Dependencies:")
+    lines.append('')
+    lines.append('Dependencies:')
     lines.append(f"  NumPy:    {dependencies['numpy']}")
     lines.append(f"  Pandas:   {dependencies['pandas']}")
 
-    lines.append("")
-    lines.append("Paths:")
+    lines.append('')
+    lines.append('Paths:')
     lines.append(f"  App Root:     {paths['app_root']}")
     lines.append(f"  Data Path:    {paths['data_path']}")
     lines.append(f"  Log Path:     {paths['log_path']}")
 
     # Docker limits (if applicable)
     if docker_limits:
-        lines.append("")
-        lines.append("Docker Resource Limits:")
+        lines.append('')
+        lines.append('Docker Resource Limits:')
         lines.append(f"  CPU Limit:    {docker_limits['cpu_limit']}")
         lines.append(f"  Memory Limit: {docker_limits['memory_limit']}")
 
-    lines.append("=" * 40)
+    lines.append('=' * 40)
 
-    return "\n".join(lines)
+    return '\n'.join(lines)

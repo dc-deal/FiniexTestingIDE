@@ -4,18 +4,16 @@ Test JSON Schema Validation.
 Tests that the importer correctly handles valid and invalid JSON structures.
 """
 
-import json
 
-import pytest
 
-from python.data_management.importers.tick_importer import TickDataImporter
+from python.data_management.importers.tick_data_importer import TickDataImporter
 from python.framework.types.import_schema_types import (
+    BROKER_IDENTIFICATION_FIELDS,
+    MANDATORY_METADATA_FIELDS,
+    MANDATORY_TICK_FIELDS,
     ImportJsonSchema,
     ImportMetadataSchema,
     ImportTickSchema,
-    MANDATORY_METADATA_FIELDS,
-    MANDATORY_TICK_FIELDS,
-    BROKER_IDENTIFICATION_FIELDS,
 )
 from tests.data.import_pipeline.conftest import (
     build_minimal_tick_json,
@@ -29,14 +27,14 @@ class TestValidJsonAccepted:
 
     def test_minimal_valid_json_imports_successfully(self, tmp_path):
         """A minimal valid JSON file should produce a Parquet file."""
-        source = tmp_path / "source"
-        target = tmp_path / "target"
+        source = tmp_path / 'source'
+        target = tmp_path / 'target'
         data = build_minimal_tick_json(
-            symbol="BTCUSD",
-            broker_type="kraken_spot",
+            symbol='BTCUSD',
+            broker_type='kraken_spot',
             tick_count=3,
         )
-        write_json_fixture(source, "BTCUSD_ticks.json", data)
+        write_json_fixture(source, 'BTCUSD_ticks.json', data)
 
         importer = TickDataImporter(
             source_dir=str(source),
@@ -51,13 +49,13 @@ class TestValidJsonAccepted:
 
     def test_legacy_data_collector_field_accepted(self, tmp_path):
         """JSON with data_collector instead of broker_type should be accepted."""
-        source = tmp_path / "source"
-        target = tmp_path / "target"
-        data = build_minimal_tick_json(broker_type="kraken_spot")
+        source = tmp_path / 'source'
+        target = tmp_path / 'target'
+        data = build_minimal_tick_json(broker_type='kraken_spot')
         # Remove broker_type, keep only legacy data_collector
-        del data["metadata"]["broker_type"]
-        data["metadata"]["data_collector"] = "kraken_spot"
-        write_json_fixture(source, "LEGACY_ticks.json", data)
+        del data['metadata']['broker_type']
+        data['metadata']['data_collector'] = 'kraken_spot'
+        write_json_fixture(source, 'LEGACY_ticks.json', data)
 
         importer = TickDataImporter(
             source_dir=str(source),
@@ -75,10 +73,10 @@ class TestInvalidJsonRejected:
 
     def test_missing_metadata_key_raises(self, tmp_path):
         """JSON without 'metadata' key should raise ValueError."""
-        source = tmp_path / "source"
-        target = tmp_path / "target"
-        data = {"ticks": [{"timestamp": "2026.01.15 10:00:00", "bid": 1.1, "ask": 1.2}]}
-        write_json_fixture(source, "BAD_ticks.json", data)
+        source = tmp_path / 'source'
+        target = tmp_path / 'target'
+        data = {'ticks': [{'timestamp': '2026.01.15 10:00:00', 'bid': 1.1, 'ask': 1.2}]}
+        write_json_fixture(source, 'BAD_ticks.json', data)
 
         importer = TickDataImporter(
             source_dir=str(source),
@@ -91,10 +89,10 @@ class TestInvalidJsonRejected:
 
     def test_missing_ticks_key_raises(self, tmp_path):
         """JSON without 'ticks' key should raise ValueError."""
-        source = tmp_path / "source"
-        target = tmp_path / "target"
-        data = {"metadata": {"symbol": "TEST", "broker_type": "kraken_spot", "start_time": "2026.01.15 10:00:00"}}
-        write_json_fixture(source, "NOTICKS_ticks.json", data)
+        source = tmp_path / 'source'
+        target = tmp_path / 'target'
+        data = {'metadata': {'symbol': 'TEST', 'broker_type': 'kraken_spot', 'start_time': '2026.01.15 10:00:00'}}
+        write_json_fixture(source, 'NOTICKS_ticks.json', data)
 
         importer = TickDataImporter(
             source_dir=str(source),
@@ -106,10 +104,10 @@ class TestInvalidJsonRejected:
 
     def test_empty_ticks_array_skips_without_crash(self, tmp_path):
         """Empty ticks array should skip without error."""
-        source = tmp_path / "source"
-        target = tmp_path / "target"
+        source = tmp_path / 'source'
+        target = tmp_path / 'target'
         data = build_minimal_tick_json(tick_count=0, custom_ticks=[])
-        write_json_fixture(source, "EMPTY_ticks.json", data)
+        write_json_fixture(source, 'EMPTY_ticks.json', data)
 
         importer = TickDataImporter(
             source_dir=str(source),
@@ -125,12 +123,12 @@ class TestInvalidJsonRejected:
 
     def test_missing_broker_type_and_data_collector_raises(self, tmp_path):
         """JSON with neither broker_type nor data_collector should error."""
-        source = tmp_path / "source"
-        target = tmp_path / "target"
-        data = build_minimal_tick_json(broker_type="kraken_spot")
-        del data["metadata"]["broker_type"]
-        del data["metadata"]["data_collector"]
-        write_json_fixture(source, "NOBROKER_ticks.json", data)
+        source = tmp_path / 'source'
+        target = tmp_path / 'target'
+        data = build_minimal_tick_json(broker_type='kraken_spot')
+        del data['metadata']['broker_type']
+        del data['metadata']['data_collector']
+        write_json_fixture(source, 'NOBROKER_ticks.json', data)
 
         importer = TickDataImporter(
             source_dir=str(source),
@@ -142,12 +140,12 @@ class TestInvalidJsonRejected:
 
     def test_unknown_broker_type_raises(self, tmp_path):
         """broker_type not in market_config should error."""
-        source = tmp_path / "source"
-        target = tmp_path / "target"
+        source = tmp_path / 'source'
+        target = tmp_path / 'target'
         data = build_minimal_tick_json()
-        data["metadata"]["broker_type"] = "nonexistent_broker"
-        data["metadata"]["data_collector"] = "nonexistent_broker"
-        write_json_fixture(source, "UNKNOWNBROKER_ticks.json", data)
+        data['metadata']['broker_type'] = 'nonexistent_broker'
+        data['metadata']['data_collector'] = 'nonexistent_broker'
+        write_json_fixture(source, 'UNKNOWNBROKER_ticks.json', data)
 
         importer = TickDataImporter(
             source_dir=str(source),
@@ -175,6 +173,6 @@ class TestSchemaTypeDefinitions:
 
     def test_mandatory_tick_fields_contain_essentials(self):
         """Tick mandatory fields must include timestamp, bid, ask."""
-        assert "timestamp" in MANDATORY_TICK_FIELDS
-        assert "bid" in MANDATORY_TICK_FIELDS
-        assert "ask" in MANDATORY_TICK_FIELDS
+        assert 'timestamp' in MANDATORY_TICK_FIELDS
+        assert 'bid' in MANDATORY_TICK_FIELDS
+        assert 'ask' in MANDATORY_TICK_FIELDS

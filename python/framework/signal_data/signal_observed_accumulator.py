@@ -17,7 +17,10 @@ import threading
 from typing import Optional
 
 from python.framework.types.signal_data_types import (
-    SignalObservedSeries, SignalSeriesKind, SignalSnapshot)
+    SignalObservedSeries,
+    SignalSeriesKind,
+    SignalSnapshot,
+)
 
 
 class SignalObservedAccumulator:

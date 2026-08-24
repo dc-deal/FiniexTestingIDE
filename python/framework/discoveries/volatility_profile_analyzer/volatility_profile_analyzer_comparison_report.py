@@ -4,9 +4,11 @@ Comparison Report
 Cross-instrument volatility and liquidity ranking report.
 """
 
-from typing import List, Optional
+from typing import List
 
-from python.framework.types.market_types.market_volatility_profile_types import SymbolVolatilityProfile
+from python.framework.types.market_types.market_volatility_profile_types import (
+    SymbolVolatilityProfile,
+)
 
 
 def print_cross_instrument_ranking(
@@ -26,13 +28,13 @@ def print_cross_instrument_ranking(
         top_count: Number of top instruments to display
     """
     if not profiles:
-        print("❌ No volatility profile data available for comparison.")
+        print('❌ No volatility profile data available for comparison.')
         return
 
     # Header
-    print("\n" + "═" * 60)
-    print("📊 CROSS-INSTRUMENT RANKING")
-    print("═" * 60)
+    print('\n' + '═' * 60)
+    print('📊 CROSS-INSTRUMENT RANKING')
+    print('═' * 60)
 
     # Volatility ranking
     _print_volatility_ranking(profiles, current_symbol, top_count)
@@ -43,7 +45,7 @@ def print_cross_instrument_ranking(
     # Combined score
     _print_combined_ranking(profiles, current_symbol, top_count)
 
-    print("═" * 60 + "\n")
+    print('═' * 60 + '\n')
 
 
 def _print_volatility_ranking(
@@ -71,7 +73,7 @@ def _print_volatility_ranking(
     min_val = sorted_profiles[-1].atr_percent if sorted_profiles else 0.0
     value_range = max_val - min_val if max_val != min_val else 1.0
 
-    print("\n📈 Volatility Ranking (ATR-based):")
+    print('\n📈 Volatility Ranking (ATR-based):')
 
     # Build display list
     items_to_show = []
@@ -81,14 +83,14 @@ def _print_volatility_ranking(
         pct = (analysis.atr_percent - min_val) / value_range * 100
 
         # Determine marker
-        marker = ""
+        marker = ''
         if rank == 1:
-            marker = " ← Highest"
+            marker = ' ← Highest'
         elif rank == len(sorted_profiles):
-            marker = " ← Lowest"
+            marker = ' ← Lowest'
         if analysis.symbol == current_symbol:
-            marker = " ← Current" if not marker else marker.replace(
-                "←", "← Current,")
+            marker = ' ← Current' if not marker else marker.replace(
+                '←', '← Current,')
 
         # Show if in top_count, is current, or is lowest
         show = (
@@ -104,14 +106,14 @@ def _print_volatility_ranking(
                     (None, None, None, None, None, None, None))
 
             bar_len = round(pct / 10)
-            bar = "█" * bar_len + "░" * (10 - bar_len)
+            bar = '█' * bar_len + '░' * (10 - bar_len)
 
             # Format ATR% and pips
-            atr_str = f"{analysis.atr_percent:.2f}%"
+            atr_str = f'{analysis.atr_percent:.2f}%'
             if analysis.avg_pips_per_day is not None:
-                pips_str = f"{analysis.avg_pips_per_day:.0f}p"
+                pips_str = f'{analysis.avg_pips_per_day:.0f}p'
             else:
-                pips_str = ""
+                pips_str = ''
 
             items_to_show.append(
                 (rank, analysis.symbol, pct, bar, marker, atr_str, pips_str))
@@ -119,15 +121,15 @@ def _print_volatility_ranking(
     # Print items
     for item in items_to_show:
         if item[0] is None:
-            print("   ...")
+            print('   ...')
         else:
             rank, symbol, pct, bar, marker, atr_str, pips_str = item
             if pips_str:
                 print(
-                    f"   {rank}. {symbol:<8} {pct:5.1f}%  ({atr_str}, {pips_str})  {bar}{marker}")
+                    f'   {rank}. {symbol:<8} {pct:5.1f}%  ({atr_str}, {pips_str})  {bar}{marker}')
             else:
                 print(
-                    f"   {rank}. {symbol:<8} {pct:5.1f}%  ({atr_str})  {bar}{marker}")
+                    f'   {rank}. {symbol:<8} {pct:5.1f}%  ({atr_str})  {bar}{marker}')
 
 
 def _print_liquidity_ranking(
@@ -156,7 +158,7 @@ def _print_liquidity_ranking(
     min_val = sorted_data[-1][1] if sorted_data else 0.0
     value_range = max_val - min_val if max_val != min_val else 1.0
 
-    print("\n💧 Liquidity Ranking (Ticks/Hour):")
+    print('\n💧 Liquidity Ranking (Ticks/Hour):')
 
     # Build display list
     items_to_show = []
@@ -166,14 +168,14 @@ def _print_liquidity_ranking(
         pct = (tph - min_val) / value_range * 100
 
         # Determine marker
-        marker = ""
+        marker = ''
         if rank == 1:
-            marker = " ← Highest"
+            marker = ' ← Highest'
         elif rank == len(sorted_data):
-            marker = " ← Lowest"
+            marker = ' ← Lowest'
         if analysis.symbol == current_symbol:
-            marker = " ← Current" if not marker else marker.replace(
-                "←", "← Current,")
+            marker = ' ← Current' if not marker else marker.replace(
+                '←', '← Current,')
 
         # Show if in top_count, is current, or is lowest
         show = (
@@ -189,16 +191,16 @@ def _print_liquidity_ranking(
                     (None, None, None, None, None))  # Ellipsis marker
 
             bar_len = round(pct / 10)
-            bar = "█" * bar_len + "░" * (10 - bar_len)
+            bar = '█' * bar_len + '░' * (10 - bar_len)
             items_to_show.append((rank, analysis.symbol, tph, bar, marker))
 
     # Print items
     for item in items_to_show:
         if item[0] is None:
-            print("   ...")
+            print('   ...')
         else:
             rank, symbol, tph, bar, marker = item
-            print(f"   {rank}. {symbol:<8} {tph:>7,.0f}  {bar}{marker}")
+            print(f'   {rank}. {symbol:<8} {tph:>7,.0f}  {bar}{marker}')
 
 
 def _print_combined_ranking(
@@ -243,7 +245,7 @@ def _print_combined_ranking(
     min_score = sorted_scored[-1][1] if sorted_scored else 0.0
     score_range = max_score - min_score if max_score != min_score else 1.0
 
-    print("\n⚡ Combined Score (Volatility × Liquidity):")
+    print('\n⚡ Combined Score (Volatility × Liquidity):')
 
     # Build display list
     items_to_show = []
@@ -253,14 +255,14 @@ def _print_combined_ranking(
         pct = (score - min_score) / score_range * 100
 
         # Determine marker
-        marker = ""
+        marker = ''
         if rank == 1:
-            marker = " ← Highest"
+            marker = ' ← Highest'
         elif rank == len(sorted_scored):
-            marker = " ← Lowest"
+            marker = ' ← Lowest'
         if analysis.symbol == current_symbol:
-            marker = " ← Current" if not marker else marker.replace(
-                "←", "← Current,")
+            marker = ' ← Current' if not marker else marker.replace(
+                '←', '← Current,')
 
         # Show if in top_count, is current, or is lowest
         show = (
@@ -275,80 +277,16 @@ def _print_combined_ranking(
                 items_to_show.append((None, None, None, None, None))
 
             bar_len = round(pct / 10)
-            bar = "█" * bar_len + "░" * (10 - bar_len)
+            bar = '█' * bar_len + '░' * (10 - bar_len)
             items_to_show.append((rank, analysis.symbol, score, bar, marker))
 
     # Print items
     for item in items_to_show:
         if item[0] is None:
-            print("   ...")
+            print('   ...')
         else:
             rank, symbol, score, bar, marker = item
-            print(f"   {rank}. {symbol:<8} {score:>6.1f}   {bar}{marker}")
-
-
-def _print_ranking_items(
-    sorted_profiles: List[SymbolVolatilityProfile],
-    current_symbol: str,
-    top_count: int,
-    value_fn,
-    pct_fn,
-    format_fn
-) -> None:
-    """
-    Print ranking items with smart display limiting.
-
-    Shows: top_count items + current symbol + lowest item.
-
-    Args:
-        sorted_profiles: Sorted list of profiles
-        current_symbol: Symbol to mark as current
-        top_count: Max top items to show
-        value_fn: Function to get raw value from profile
-        pct_fn: Function to get percentage from profile
-        format_fn: Function to format value for display
-    """
-    items_to_show = []
-
-    for i, analysis in enumerate(sorted_profiles):
-        rank = i + 1
-        pct = pct_fn(analysis)
-
-        # Determine marker
-        marker = ""
-        if rank == 1:
-            marker = " ← Highest"
-        elif rank == len(sorted_profiles):
-            marker = " ← Lowest"
-        if analysis.symbol == current_symbol:
-            marker = " ← Current" if not marker else marker.replace(
-                "←", "← Current,")
-
-        # Show if in top_count, is current, or is lowest
-        show = (
-            rank <= top_count or
-            analysis.symbol == current_symbol or
-            rank == len(sorted_profiles)
-        )
-
-        if show:
-            # Add ellipsis if gap
-            if items_to_show and rank > items_to_show[-1][0] + 1:
-                items_to_show.append((None, None, None, None, None))
-
-            bar_len = round(pct / 10)
-            bar = "█" * bar_len + "░" * (10 - bar_len)
-            formatted = format_fn(analysis, pct)
-            items_to_show.append(
-                (rank, analysis.symbol, formatted, bar, marker))
-
-    # Print items
-    for item in items_to_show:
-        if item[0] is None:
-            print("   ...")
-        else:
-            rank, symbol, formatted, bar, marker = item
-            print(f"   {rank}. {symbol:<8} {formatted}  {bar}{marker}")
+            print(f'   {rank}. {symbol:<8} {score:>6.1f}   {bar}{marker}')
 
 
 def _calculate_avg_ticks_per_hour(profile: SymbolVolatilityProfile) -> float:

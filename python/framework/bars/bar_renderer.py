@@ -78,8 +78,8 @@ class BarRenderer:
         """
         # Create cache key from minute precision (ignore seconds/microseconds)
         cache_key = (
-            f"{timestamp.year}-{timestamp.month:02d}-{timestamp.day:02d}"
-            f"T{timestamp.hour:02d}:{timestamp.minute:02d}",
+            f'{timestamp.year}-{timestamp.month:02d}-{timestamp.day:02d}'
+            f'T{timestamp.hour:02d}:{timestamp.minute:02d}',
             timeframe
         )
 
@@ -201,17 +201,17 @@ class BarRenderer:
         deque(maxlen) automatically discards oldest when full (O(1)).
         """
         self.logger.verbose(
-            f"🔍 [BAR ARCHIVED] {timeframe} bar closed: {bar.timestamp}")
+            f'🔍 [BAR ARCHIVED] {timeframe} bar closed: {bar.timestamp}')
 
         self.logger.verbose(
-            f"📊 {bar.symbol} {bar.timeframe} archived | "
-            f"{bar.timestamp[:16]} | Close: {bar.close:.5f} | Ticks: {bar.tick_count}"
+            f'📊 {bar.symbol} {bar.timeframe} archived | '
+            f'{bar.timestamp[:16]} | Close: {bar.close:.5f} | Ticks: {bar.tick_count}'
         )
 
         history = self.completed_bars[timeframe][symbol]
         history.append(bar)  # ✅ Auto-trims if len > maxlen
 
-        self.logger.verbose(f"   History size AFTER append: {len(history)}")
+        self.logger.verbose(f'   History size AFTER append: {len(history)}')
 
     def get_bar_history(
         self, symbol: str, timeframe: str
@@ -263,5 +263,5 @@ class BarRenderer:
             self.completed_bars[timeframe][symbol].append(bar)
 
         self.logger.debug(
-            f"Initialized {len(bars)} historical {timeframe} bars for {symbol}"
+            f'Initialized {len(bars)} historical {timeframe} bars for {symbol}'
         )

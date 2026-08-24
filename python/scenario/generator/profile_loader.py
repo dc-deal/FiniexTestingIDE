@@ -42,7 +42,7 @@ class ProfileLoader:
         """
         path = Path(profile_path)
         if not path.exists():
-            raise FileNotFoundError(f"Profile not found: {path}")
+            raise FileNotFoundError(f'Profile not found: {path}')
 
         with open(path, 'r') as f:
             data = json.load(f)
@@ -50,9 +50,9 @@ class ProfileLoader:
         window_set = WindowSetSerializer.from_profile_dict(data)
 
         self._logger.info(
-            f"Loaded profile: {window_set.symbol} "
-            f"({window_set.block_count} blocks, "
-            f"{window_set.mode} mode)"
+            f'Loaded profile: {window_set.symbol} '
+            f'({window_set.block_count} blocks, '
+            f'{window_set.mode} mode)'
         )
 
         return window_set
@@ -97,7 +97,7 @@ class ProfileLoader:
 
         if warnings:
             for w in warnings:
-                self._logger.warning(f"⚠️ {w}")
+                self._logger.warning(f'⚠️ {w}')
         else:
             self._logger.info('✅ All discovery fingerprints match')
 

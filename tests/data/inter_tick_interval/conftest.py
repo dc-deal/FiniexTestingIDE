@@ -6,13 +6,10 @@ Shared fixtures and helpers for inter-tick interval profiling tests.
 No file I/O, no external data — pure mock-based testing.
 """
 
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import List
 
-from python.framework.types.performance_types.performance_metrics_types import (
-    InterTickIntervalStats,
-)
+import pytest
 
 
 # =============================================================================

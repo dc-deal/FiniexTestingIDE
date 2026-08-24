@@ -30,11 +30,12 @@ from typing import Any, Dict, Optional, Tuple
 
 from python.framework.exceptions.persistence_errors import StatePersistenceError
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.types.config_types.autotrader_defaults_config_types import StatePersistenceDefaults
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    StatePersistenceDefaults,
+)
 from python.framework.types.persistence_types import RestoreContext
 from python.framework.utils.market_calendar import MarketCalendar
 from python.framework.utils.time_utils import parse_datetime
-
 
 # Envelope format version — guards the store's own file format (forward-compat).
 # The algo versions its own payload inside `snapshot` if it needs to.
@@ -80,10 +81,10 @@ class AlgoStateStore:
         self._save_count: int = 0
 
         self._logger.info(
-            f"💾 Algo state store active — file: {self._path} | "
-            f"cadence: every {config.save_interval_ticks} ticks or {config.save_interval_seconds}s | "
-            f"max_age: {config.max_age_trading_days} trading day(s) "
-            f"(weekend_aware={weekend_aware})"
+            f'💾 Algo state store active — file: {self._path} | '
+            f'cadence: every {config.save_interval_ticks} ticks or {config.save_interval_seconds}s | '
+            f'max_age: {config.max_age_trading_days} trading day(s) '
+            f'(weekend_aware={weekend_aware})'
         )
 
     # ============================================
@@ -141,9 +142,9 @@ class AlgoStateStore:
             payload = json.dumps(envelope, indent=2)
         except TypeError as e:
             raise StatePersistenceError(
-                f"Algo snapshot is not JSON-serializable: {e}. "
-                f"Use only JSON primitives (str/int/float/bool/list/dict/None); "
-                f"store timestamps as ISO strings."
+                f'Algo snapshot is not JSON-serializable: {e}. '
+                f'Use only JSON primitives (str/int/float/bool/list/dict/None); '
+                f'store timestamps as ISO strings.'
             )
 
         self._atomic_write(payload)
@@ -207,15 +208,15 @@ class AlgoStateStore:
             weekend_aware=self._weekend_aware,
         )
         self._logger.info(
-            f"💾 Loaded algo state — saved {saved_at.isoformat()} "
-            f"({trading_days} trading day(s) ago, {len(snapshot)} key(s))"
+            f'💾 Loaded algo state — saved {saved_at.isoformat()} '
+            f'({trading_days} trading day(s) ago, {len(snapshot)} key(s))'
         )
         return snapshot, ctx
 
     def shutdown(self) -> None:
         """Emit a final one-line summary to the session log."""
         self._logger.info(
-            f"💾 Algo state store final: {self._save_count} save(s) → {self._path}"
+            f'💾 Algo state store final: {self._save_count} save(s) → {self._path}'
         )
 
     def get_state_path(self) -> Path:
@@ -257,10 +258,10 @@ class AlgoStateStore:
         Args:
             reason: Human-readable corruption reason for the log/error
         """
-        message = f"Algo state file corrupt — {reason} (file: {self._path})"
+        message = f'Algo state file corrupt — {reason} (file: {self._path})'
         if self._config.on_corrupt == 'fail':
             raise StatePersistenceError(message)
-        self._logger.warning(f"⚠️ {message} — starting fresh (on_corrupt=warn_reset)")
+        self._logger.warning(f'⚠️ {message} — starting fresh (on_corrupt=warn_reset)')
         return None
 
     def _handle_stale(self, saved_at: datetime, trading_days: int) -> None:
@@ -277,20 +278,20 @@ class AlgoStateStore:
             trading_days: Measured trading-day age
         """
         message = (
-            f"Algo state is STALE — saved {saved_at.isoformat()} "
-            f"({trading_days} trading day(s) ago > max {self._config.max_age_trading_days})"
+            f'Algo state is STALE — saved {saved_at.isoformat()} '
+            f'({trading_days} trading day(s) ago > max {self._config.max_age_trading_days})'
         )
         if self._config.on_stale == 'halt':
             raise StatePersistenceError(
-                f"{message}. Boot halted (on_stale=halt). "
-                f"Delete {self._path} to start fresh, or raise max_age_trading_days."
+                f'{message}. Boot halted (on_stale=halt). '
+                f'Delete {self._path} to start fresh, or raise max_age_trading_days.'
             )
         self._logger.warning(
-            f"⚠️ {message}.\n"
-            f"   → Restored state DISCARDED. The bot starts with EMPTY algo memory: "
-            f"counters, entry flags and risk high-water-marks are reset.\n"
-            f"   → Open broker positions are NOT recognized yet (until #355) — "
-            f"check your account before letting the bot run."
+            f'⚠️ {message}.\n'
+            f'   → Restored state DISCARDED. The bot starts with EMPTY algo memory: '
+            f'counters, entry flags and risk high-water-marks are reset.\n'
+            f'   → Open broker positions are NOT recognized yet (until #355) — '
+            f'check your account before letting the bot run.'
         )
         return None
 

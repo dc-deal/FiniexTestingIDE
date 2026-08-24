@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 from python.configuration.generator_config_loader import GeneratorConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.scenario_types.scenario_generator_types import (
     BlocksStrategyConfig,
@@ -23,7 +24,6 @@ from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.utils.time_utils import ensure_utc_aware
 from python.scenario.generator.splitters.splitter_factory import SplitterFactory
 from python.scenario.generator.window_set_serializer import WindowSetSerializer
-from python.framework.logging.bootstrap_logger import get_global_logger
 
 vLog = get_global_logger()
 
@@ -94,7 +94,7 @@ class GenerationCoordinator:
         for symbol in symbols:
             window_set = splitter.split(broker_type, symbol, start_dt, end_dt, count)
             vLog.info(
-                f"Generated {window_set.block_count} blocks for {symbol} (max {hours}h each)")
+                f'Generated {window_set.block_count} blocks for {symbol} (max {hours}h each)')
             window_sets.append(window_set)
 
         # Robustness mode (#367): --oos-split turns the block set into an IS/OOS set.
@@ -151,12 +151,12 @@ class GenerationCoordinator:
         output_file = output or self._profile_output_name(broker_type, symbol, mode)
         profile_path = self._serializer.save_profile(window_set, output_file)
 
-        print(f"\n📂 Profile saved to: {profile_path}")
-        print("\nℹ️  Next steps:")
-        print(f"   • View profile: cat {profile_path}")
-        print("   • Run with profile:")
-        print(f"     python python/cli/strategy_runner_cli.py run <scenario_set>.json "
-              f"--generator-profile {profile_path}")
+        print(f'\n📂 Profile saved to: {profile_path}')
+        print('\nℹ️  Next steps:')
+        print(f'   • View profile: cat {profile_path}')
+        print('   • Run with profile:')
+        print(f'     python python/cli/strategy_runner_cli.py run <scenario_set>.json '
+              f'--generator-profile {profile_path}')
 
         return profile_path
 
@@ -191,7 +191,7 @@ class GenerationCoordinator:
             symbols = bar_index.list_symbols(broker_type)
 
             if not symbols:
-                print(f"\n⚠️  No symbols found for {broker_type}, skipping")
+                print(f'\n⚠️  No symbols found for {broker_type}, skipping')
                 continue
 
             profile_config = self._resolve_profile_config(broker_type)
@@ -212,20 +212,20 @@ class GenerationCoordinator:
                     generated_files.append(str(profile_path))
                     total_generated += 1
                 except Exception as e:
-                    print(f"  ❌ {symbol}: {e}")
-                    vLog.error(f"Profile generation failed for {broker_type}/{symbol}: {e}")
+                    print(f'  ❌ {symbol}: {e}')
+                    vLog.error(f'Profile generation failed for {broker_type}/{symbol}: {e}')
                     total_failed += 1
 
         # Summary
         print(f"\n{'=' * 60}")
         print('  Batch Profile Generation Complete')
         print(f"{'=' * 60}")
-        print(f"  Generated: {total_generated} profiles")
+        print(f'  Generated: {total_generated} profiles')
         if total_failed > 0:
-            print(f"  Failed:    {total_failed} profiles")
-        print(f"  Mode:      {mode}")
+            print(f'  Failed:    {total_failed} profiles')
+        print(f'  Mode:      {mode}')
         for path in generated_files:
-            print(f"  📂 {path}")
+            print(f'  📂 {path}')
         print(f"{'=' * 60}\n")
 
     # =========================================================================
@@ -278,11 +278,11 @@ class GenerationCoordinator:
         if len(symbols) == 1:
             symbol_part = symbols[0]
         else:
-            symbol_part = f"multi_{len(symbols)}"
+            symbol_part = f'multi_{len(symbols)}'
 
         suffix = 'blocks_robustness' if robustness else 'blocks'
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')
-        return f"{symbol_part}_{suffix}_{timestamp}.json"
+        return f'{symbol_part}_{suffix}_{timestamp}.json'
 
     def _profile_output_name(self, broker_type: str, symbol: str, mode: str) -> str:
         """
@@ -298,7 +298,7 @@ class GenerationCoordinator:
         """
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')
         mode_short = 'vol' if mode == 'volatility_split' else 'cont'
-        return f"{broker_type}_{symbol}_profile_{mode_short}_{timestamp}.json"
+        return f'{broker_type}_{symbol}_profile_{mode_short}_{timestamp}.json'
 
     def _print_blocks_summary(
         self, window_sets: List[WindowSet], config_path: Path) -> None:
@@ -311,12 +311,12 @@ class GenerationCoordinator:
         """
         total_blocks = sum(ws.block_count for ws in window_sets)
         print('\n' + '=' * 60)
-        print(f"✅ Generated {total_blocks} blocks ({len(window_sets)} symbol(s))")
+        print(f'✅ Generated {total_blocks} blocks ({len(window_sets)} symbol(s))')
         print('=' * 60)
 
         for window_set in window_sets:
-            print(f"\nSymbol:     {window_set.symbol}")
-            print(f"Strategy:   {window_set.strategy.value}")
+            print(f'\nSymbol:     {window_set.symbol}')
+            print(f'Strategy:   {window_set.strategy.value}')
 
             if window_set.windows:
                 first_start = min(w.start_time for w in window_set.windows)
@@ -327,10 +327,10 @@ class GenerationCoordinator:
                 print(
                     f"Time range: {first_start.strftime('%Y-%m-%d')} → {last_end.strftime('%Y-%m-%d')}")
                 print(
-                    f"Total:      {total_hours:.0f}h ({avg_hours:.1f}h avg/block)")
+                    f'Total:      {total_hours:.0f}h ({avg_hours:.1f}h avg/block)')
 
-        print(f"\n📂 Config saved to: {config_path}")
-        print("\nℹ️  Next steps:")
-        print(f"   • View config: cat {config_path}")
-        print("   • Run test:    python strategy_runner.py")
+        print(f'\n📂 Config saved to: {config_path}')
+        print('\nℹ️  Next steps:')
+        print(f'   • View config: cat {config_path}')
+        print('   • Run test:    python strategy_runner.py')
         print('=' * 60 + '\n')

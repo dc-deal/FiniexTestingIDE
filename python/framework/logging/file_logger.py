@@ -15,11 +15,10 @@ Features:
 - Thread-safe
 - Plain text format (no ANSI colors)
 """
-from datetime import timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from python.framework.types.log_level import LogLevel
-from datetime import datetime
 
+from python.framework.types.log_level import LogLevel
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.utils.file_utils import sanitize_filename
 from python.framework.utils.time_utils import format_timestamp
@@ -78,7 +77,7 @@ class FileLogger:
 
         except Exception as e:
             print(
-                f"Warning: Failed to create log file {self.log_file_path}: {e}")
+                f'Warning: Failed to create log file {self.log_file_path}: {e}')
             self.file_handle = None
 
     def _write_header(self):
@@ -86,10 +85,10 @@ class FileLogger:
         if not self.file_handle:
             return
 
-        header = "=" * 80 + "\n"
-        header += f"Log Name: {self._sanitized_filename}\n"
-        header += f"Log Level: {self.log_level}\n"
-        header += "=" * 80 + "\n\n"
+        header = '=' * 80 + '\n'
+        header += f'Log Name: {self._sanitized_filename}\n'
+        header += f'Log Level: {self.log_level}\n'
+        header += '=' * 80 + '\n\n'
 
         self.file_handle.write(header)
         self.file_handle.flush()
@@ -98,7 +97,7 @@ class FileLogger:
         """Write separator when appending to existing log"""
         if not self.file_handle:
             return
-        timestamp = datetime.now(timezone.utc) .strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(timezone.utc) .strftime('%Y-%m-%d %H:%M:%S')
 
         log_level_str = 'LOG LEVEL: ' + self.log_level
         separator = (
@@ -140,17 +139,17 @@ class FileLogger:
         # tick loop logs.
         if self._tick_loop_started:
             tick_time = format_timestamp(self._current_tick.timestamp)
-            message = f"{self._tick_loop_count:5}| {tick_time} | {message}"
+            message = f'{self._tick_loop_count:5}| {tick_time} | {message}'
 
         # Format: [timestamp] LEVEL | message
-        log_line = f"{timestamp} {level:8} | {message}\n"
+        log_line = f'{timestamp} {level:8} | {message}\n'
 
         try:
             self.file_handle.write(log_line)
             self.file_handle.flush()  # Immediate flush for reliability
         except Exception as e:
             # Fail silently - don't break execution on file write errors
-            print(f"Warning: Failed to write to log file: {e}")
+            print(f'Warning: Failed to write to log file: {e}')
 
     def close(self):
         """
@@ -165,4 +164,4 @@ class FileLogger:
                 self.file_handle.close()
                 self.file_handle = None
             except Exception as e:
-                print(f"Warning: Failed to close log file: {e}")
+                print(f'Warning: Failed to close log file: {e}')

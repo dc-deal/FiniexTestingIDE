@@ -31,61 +31,77 @@ Fill Processing:
 - They handle portfolio updates, fee calculations, statistics — identical for all modes
 - Subclasses call them when an order is confirmed (by latency sim or broker)
 """
+import json
 from abc import ABC, abstractmethod
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
-import json
-from typing import Callable, Optional, List, Dict, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
+from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.factory.trading_fee_factory import (
     create_maker_taker_fee,
-    create_spread_fee_from_tick
+    create_spread_fee_from_tick,
 )
-from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.market_clock import MarketClock
-from python.framework.trading_env.portfolio_manager import PortfolioManager, Position, UNSET, _UnsetType
-from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation, PendingOrder, PendingOrderAction
-from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, TradeRecord
-from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.trading_env_types.order_types import (
-    CloseType,
-    OrderAction,
-    OrderType,
-    OrderDirection,
-    OrderSide,
-    OrderStatus,
-    OrderResult,
-    OrderCapabilities,
-    RejectionReason,
-    FillType,
-    ModificationRejectionReason,
-    ModificationResult,
-    OpenOrderRequest,
-    direction_to_side,
-    create_rejection_result,
+from python.framework.trading_env.portfolio_manager import (
+    UNSET,
+    PortfolioManager,
+    Position,
+    _UnsetType,
 )
-from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
-from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot, PendingOrderStats
-from python.framework.types.trading_env_types.trading_env_stats_types import AccountInfo, ExecutionStats
 from python.framework.types.decision_event_types import (
     DecisionEvent,
     OrderCancelledEvent,
     PartialCloseEvent,
     SessionEndSeverity,
 )
+from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.portfolio_types.portfolio_trade_record_types import (
+    CloseReason,
+    EntryType,
+    TradeRecord,
+)
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
+from python.framework.types.trading_env_types.broker_types import FeeType, SymbolSpecification
+from python.framework.types.trading_env_types.latency_simulator_types import (
+    PendingOperation,
+    PendingOrder,
+    PendingOrderAction,
+)
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
+from python.framework.types.trading_env_types.order_types import (
+    CloseType,
+    FillType,
+    ModificationResult,
+    OpenOrderRequest,
+    OrderAction,
+    OrderCapabilities,
+    OrderDirection,
+    OrderResult,
+    OrderSide,
+    OrderStatus,
+    RejectionReason,
+    create_rejection_result,
+    direction_to_side,
+)
+from python.framework.types.trading_env_types.pending_order_stats_types import (
+    ActiveOrderSnapshot,
+    PendingOrderStats,
+)
+from python.framework.types.trading_env_types.trading_env_stats_types import (
+    AccountInfo,
+    ExecutionStats,
+)
 
 
 class ExecutorMode(Enum):
     """Execution mode for trade executors."""
-    SIMULATION = "simulation"
-    LIVE = "live"
+    SIMULATION = 'simulation'
+    LIVE = 'live'
 
 
 class AbstractTradeExecutor(ABC):
@@ -212,8 +228,8 @@ class AbstractTradeExecutor(ABC):
                 and len(self._order_history) >= self._order_history_max):
             self._order_history_limit_warned = True
             self.logger.warning(
-                f"⚠️ Order history limit reached ({self._order_history_max}). "
-                f"Oldest entries will be discarded. Full history available in scenario log."
+                f'⚠️ Order history limit reached ({self._order_history_max}). '
+                f'Oldest entries will be discarded. Full history available in scenario log.'
             )
 
     # ============================================
@@ -425,9 +441,9 @@ class AbstractTradeExecutor(ABC):
 
             if position.is_sl_triggered(tick.bid, tick.ask):
                 self.logger.info(
-                    f"🛑 SL triggered: {position.position_id} "
-                    f"{position.direction.value} @ SL={position.stop_loss:.5f} "
-                    f"(bid={tick.bid:.5f}, ask={tick.ask:.5f})"
+                    f'🛑 SL triggered: {position.position_id} '
+                    f'{position.direction.value} @ SL={position.stop_loss:.5f} '
+                    f'(bid={tick.bid:.5f}, ask={tick.ask:.5f})'
                 )
                 synthetic = PendingOrder(
                     pending_order_id=position.position_id,
@@ -442,9 +458,9 @@ class AbstractTradeExecutor(ABC):
 
             elif position.is_tp_triggered(tick.bid, tick.ask):
                 self.logger.info(
-                    f"🎯 TP triggered: {position.position_id} "
-                    f"{position.direction.value} @ TP={position.take_profit:.5f} "
-                    f"(bid={tick.bid:.5f}, ask={tick.ask:.5f})"
+                    f'🎯 TP triggered: {position.position_id} '
+                    f'{position.direction.value} @ TP={position.take_profit:.5f} '
+                    f'(bid={tick.bid:.5f}, ask={tick.ask:.5f})'
                 )
                 synthetic = PendingOrder(
                     pending_order_id=position.position_id,
@@ -600,12 +616,12 @@ class AbstractTradeExecutor(ABC):
             fill_type: How the order was filled (MARKET, LIMIT, LIMIT_IMMEDIATE)
         """
         self.logger.info(
-            f"📋 Fill open order: {pending_order.pending_order_id} "
-            f"at tick: {self._tick_counter}")
+            f'📋 Fill open order: {pending_order.pending_order_id} '
+            f'at tick: {self._tick_counter}')
         self.logger.verbose(
-            f"PENDING_ORDER_OPEN: {json.dumps(pending_order.to_dict(), indent=2)}")
+            f'PENDING_ORDER_OPEN: {json.dumps(pending_order.to_dict(), indent=2)}')
         self.logger.verbose(
-            f"CURRENT_TICK_AT_ORDER_OPEN: {json.dumps(self._current_tick.to_dict(), indent=2)}")
+            f'CURRENT_TICK_AT_ORDER_OPEN: {json.dumps(self._current_tick.to_dict(), indent=2)}')
 
         # Get current price
         bid, ask = self.get_current_price(pending_order.symbol)
@@ -637,12 +653,12 @@ class AbstractTradeExecutor(ABC):
         )
 
         self.logger.debug(
-            f"💱 tick_value calculation: "
-            f"Account={self.account_currency}, "
-            f"Symbol={symbol_spec.symbol} "
-            f"(Base={symbol_spec.base_currency}, Quote={symbol_spec.quote_currency}), "
-            f"Price={self._current_tick.mid:.5f}, "
-            f"tick_value={tick_value:.5f}"
+            f'💱 tick_value calculation: '
+            f'Account={self.account_currency}, '
+            f'Symbol={symbol_spec.symbol} '
+            f'(Base={symbol_spec.base_currency}, Quote={symbol_spec.quote_currency}), '
+            f'Price={self._current_tick.mid:.5f}, '
+            f'tick_value={tick_value:.5f}'
         )
 
         # Check margin / balance available
@@ -660,14 +676,14 @@ class AbstractTradeExecutor(ABC):
                 rejection = create_rejection_result(
                     order_id=pending_order.pending_order_id,
                     reason=RejectionReason.INSUFFICIENT_MARGIN,
-                    message=f"Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}"
+                    message=f'Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}'
                 )
                 self._check_order_history_limit()
                 self._order_history.append(rejection)
                 self._notify_outcome(pending_order.direction, rejection, pending_order)
                 self.logger.warning(
-                    f"Order {pending_order.pending_order_id} rejected: "
-                    f"margin {margin_required:.2f} > free {free_margin:.2f}"
+                    f'Order {pending_order.pending_order_id} rejected: '
+                    f'margin {margin_required:.2f} > free {free_margin:.2f}'
                 )
                 return
         elif self._spot_mode:
@@ -682,17 +698,17 @@ class AbstractTradeExecutor(ABC):
                         order_id=pending_order.pending_order_id,
                         reason=RejectionReason.INSUFFICIENT_FUNDS,
                         message=(
-                            f"BUY requires {required:.6f} {symbol_spec.quote_currency}, "
-                            f"available: {available:.6f} {symbol_spec.quote_currency}"
+                            f'BUY requires {required:.6f} {symbol_spec.quote_currency}, '
+                            f'available: {available:.6f} {symbol_spec.quote_currency}'
                         )
                     )
                     self._check_order_history_limit()
                     self._order_history.append(rejection)
                     self._notify_outcome(pending_order.direction, rejection, pending_order)
                     self.logger.warning(
-                        f"Order {pending_order.pending_order_id} rejected: "
-                        f"BUY requires {required:.6f} {symbol_spec.quote_currency}, "
-                        f"available: {available:.6f} {symbol_spec.quote_currency}"
+                        f'Order {pending_order.pending_order_id} rejected: '
+                        f'BUY requires {required:.6f} {symbol_spec.quote_currency}, '
+                        f'available: {available:.6f} {symbol_spec.quote_currency}'
                     )
                     return
             else:
@@ -703,17 +719,17 @@ class AbstractTradeExecutor(ABC):
                         order_id=pending_order.pending_order_id,
                         reason=RejectionReason.INSUFFICIENT_FUNDS,
                         message=(
-                            f"SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, "
-                            f"available: {available:.6f} {symbol_spec.base_currency}"
+                            f'SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, '
+                            f'available: {available:.6f} {symbol_spec.base_currency}'
                         )
                     )
                     self._check_order_history_limit()
                     self._order_history.append(rejection)
                     self._notify_outcome(pending_order.direction, rejection, pending_order)
                     self.logger.warning(
-                        f"Order {pending_order.pending_order_id} rejected: "
-                        f"SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, "
-                        f"available: {available:.6f} {symbol_spec.base_currency}"
+                        f'Order {pending_order.pending_order_id} rejected: '
+                        f'SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, '
+                        f'available: {available:.6f} {symbol_spec.base_currency}'
                     )
                     return
 
@@ -773,16 +789,16 @@ class AbstractTradeExecutor(ABC):
             requested_lots=pending_order.lots,
             submission=pending_order.submission,
             metadata={
-                "fee_cost": entry_fee.cost,
-                "fee_type": entry_fee.fee_type.value,
-                "fill_type": fill_type.value,
-                "filled_at_tick": self._tick_counter
+                'fee_cost': entry_fee.cost,
+                'fee_type': entry_fee.fee_type.value,
+                'fill_type': fill_type.value,
+                'filled_at_tick': self._tick_counter
             }
         )
 
-        self.logger.debug(f"Fill open order finished")
+        self.logger.debug('Fill open order finished')
         self.logger.verbose(
-            f"OPEN_ORDER_RESULT: {json.dumps(result.to_dict(), indent=2)}")
+            f'OPEN_ORDER_RESULT: {json.dumps(result.to_dict(), indent=2)}')
 
         # Update statistics
         self._orders_executed += 1
@@ -813,19 +829,19 @@ class AbstractTradeExecutor(ABC):
             close_reason: Why the position was closed
         """
         self.logger.info(
-            f"📋 Fill close order {pending_order.pending_order_id}, "
-            f"at tick: {self._tick_counter}")
+            f'📋 Fill close order {pending_order.pending_order_id}, '
+            f'at tick: {self._tick_counter}')
         self.logger.verbose(
-            f"PENDING_ORDER_CLOSE_FILL: {json.dumps(pending_order.to_dict(), indent=2)}")
+            f'PENDING_ORDER_CLOSE_FILL: {json.dumps(pending_order.to_dict(), indent=2)}')
         self.logger.verbose(
-            f"CURRENT_TICK_AT_ORDER_CLOSE_FILL: {json.dumps(self._current_tick.to_dict(), indent=2)}")
+            f'CURRENT_TICK_AT_ORDER_CLOSE_FILL: {json.dumps(self._current_tick.to_dict(), indent=2)}')
 
         # Get position
         position = self.portfolio.get_position(pending_order.pending_order_id)
         if not position:
             self.logger.warning(
-                f"⚠️ Close order {pending_order.pending_order_id} failed: "
-                f"Position {pending_order.pending_order_id} not found"
+                f'⚠️ Close order {pending_order.pending_order_id} failed: '
+                f'Position {pending_order.pending_order_id} not found'
             )
             return
 
@@ -851,15 +867,15 @@ class AbstractTradeExecutor(ABC):
         # Validate erroneous inputs (post-latency)
         if close_lots is not None and close_lots <= 0:
             self.logger.warning(
-                f"⚠️ Invalid close_lots {close_lots} for {pending_order.pending_order_id} "
-                f"— skipping fill"
+                f'⚠️ Invalid close_lots {close_lots} for {pending_order.pending_order_id} '
+                f'— skipping fill'
             )
             return
 
         if close_lots is not None and close_lots > position.lots:
             self.logger.warning(
-                f"⚠️ close_lots {close_lots} > position.lots {position.lots} "
-                f"for {pending_order.pending_order_id} — converting to full close"
+                f'⚠️ close_lots {close_lots} > position.lots {position.lots} '
+                f'for {pending_order.pending_order_id} — converting to full close'
             )
             close_lots = None  # Full close
 
@@ -869,8 +885,8 @@ class AbstractTradeExecutor(ABC):
             remaining = position.lots - close_lots
             if remaining < symbol_spec.volume_min - 1e-9:
                 self.logger.info(
-                    f"Partial close would leave {remaining:.5f} lots < volume_min "
-                    f"{symbol_spec.volume_min} — converting to full close"
+                    f'Partial close would leave {remaining:.5f} lots < volume_min '
+                    f'{symbol_spec.volume_min} — converting to full close'
                 )
                 is_partial = False
 
@@ -909,8 +925,8 @@ class AbstractTradeExecutor(ABC):
                 exit_submission=pending_order.submission,
             )
             self.logger.debug(
-                f"📊 Partial close: {pending_order.pending_order_id} "
-                f"{close_lots} lots at {close_price:.5f}, P&L: {realized_pnl:.2f}"
+                f'📊 Partial close: {pending_order.pending_order_id} '
+                f'{close_lots} lots at {close_price:.5f}, P&L: {realized_pnl:.2f}'
             )
         else:
             realized_pnl = self.portfolio.close_position_portfolio(
@@ -924,8 +940,8 @@ class AbstractTradeExecutor(ABC):
                 exit_submission=pending_order.submission,
             )
             self.logger.debug(
-                f"💰 Position closed: {pending_order.pending_order_id} "
-                f"at {close_price:.5f}, P&L: {realized_pnl:.2f}"
+                f'💰 Position closed: {pending_order.pending_order_id} '
+                f'at {close_price:.5f}, P&L: {realized_pnl:.2f}'
             )
 
         # Create order result for history
@@ -943,13 +959,13 @@ class AbstractTradeExecutor(ABC):
             close_type=CloseType.PARTIAL if is_partial else CloseType.FULL,
             submission=pending_order.submission,
             metadata={
-                "realized_pnl": realized_pnl,
+                'realized_pnl': realized_pnl,
             }
         )
 
-        self.logger.debug(f"Fill close order finished")
+        self.logger.debug('Fill close order finished')
         self.logger.verbose(
-            f"CLOSE_FILL_ORDER: {json.dumps(result.to_dict(), indent=2)}")
+            f'CLOSE_FILL_ORDER: {json.dumps(result.to_dict(), indent=2)}')
 
         self._check_order_history_limit()
         self._order_history.append(result)
@@ -1215,7 +1231,7 @@ class AbstractTradeExecutor(ABC):
     def get_current_price(self, symbol: str) -> Tuple[float, float]:
         """Get current bid/ask price for symbol."""
         if not self._current_tick or self._current_tick.symbol != symbol:
-            raise ValueError(f"No current price data for {symbol}")
+            raise ValueError(f'No current price data for {symbol}')
         return self._current_tick.bid, self._current_tick.ask
 
     def set_current_time(self, now: datetime) -> None:
@@ -1321,14 +1337,14 @@ class AbstractTradeExecutor(ABC):
             clean = False
             for pos in open_positions:
                 self.logger.error(
-                    f"Orphaned position after cleanup: {pos.position_id} "
-                    f"{pos.direction.value} {pos.lots} lots {pos.symbol}"
+                    f'Orphaned position after cleanup: {pos.position_id} '
+                    f'{pos.direction.value} {pos.lots} lots {pos.symbol}'
                 )
 
         if self._has_pipeline_orders():
             clean = False
             self.logger.error(
-                "Orphaned pending orders after cleanup — orders still in pipeline"
+                'Orphaned pending orders after cleanup — orders still in pipeline'
             )
 
         return clean
@@ -1530,7 +1546,7 @@ class AbstractTradeExecutor(ABC):
         elif self.account_currency == symbol_spec.base_currency:
             if current_price <= 0:
                 raise ValueError(
-                    f"Invalid price for tick_value calculation: {current_price}"
+                    f'Invalid price for tick_value calculation: {current_price}'
                 )
             return base_factor / current_price
 

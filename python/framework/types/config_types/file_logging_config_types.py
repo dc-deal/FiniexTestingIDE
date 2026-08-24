@@ -4,7 +4,9 @@ Pydantic models for the file_logging section of app_config.json.
 """
 from pathlib import Path
 from typing import Optional
+
 from pydantic import BaseModel
+
 from python.framework.types.log_level import LogLevel
 
 
@@ -94,7 +96,7 @@ class FileLoggingConfig(BaseModel):
     def __repr__(self) -> str:
         """Debug representation"""
         return (
-            f"FileLoggingConfig("
-            f"global={self.enabled}/{self.log_level} @ {self.log_path}, "
-            f"scenario={self.scenario_enabled}/{self.scenario_log_level} @ {self.scenario.log_root_path})"
+            f'FileLoggingConfig('
+            f'global={self.enabled}/{self.log_level} @ {self.log_path}, '
+            f'scenario={self.scenario_enabled}/{self.scenario_log_level} @ {self.scenario.log_root_path})'
         )

@@ -15,8 +15,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
-from python.framework.utils.market_calendar import GapCategory, MarketCalendar
-from python.framework.utils.market_session_utils import get_session_from_utc_hour
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,
     VolatilityRegime,
@@ -26,9 +25,12 @@ from python.framework.types.scenario_types.scenario_generator_types import (
     GenerationStrategy,
 )
 from python.framework.types.scenario_types.window_set_types import GeneratedWindow, WindowSet
+from python.framework.utils.market_calendar import GapCategory, MarketCalendar
+from python.framework.utils.market_session_utils import get_session_from_utc_hour
 from python.scenario.generator.splitters.abstract_splitter import AbstractSplitter
-from python.scenario.generator.splitters.continuous_region_extractor import ContinuousRegionExtractor
-from python.framework.logging.bootstrap_logger import get_global_logger
+from python.scenario.generator.splitters.continuous_region_extractor import (
+    ContinuousRegionExtractor,
+)
 
 vLog = get_global_logger()
 
@@ -88,7 +90,7 @@ class BlocksSplit(AbstractSplitter):
 
         if not continuous_regions:
             raise ValueError(
-                f"No continuous data regions found for {broker_type}/{symbol}")
+                f'No continuous data regions found for {broker_type}/{symbol}')
 
         # Log gap filtering info
         self._log_coverage_info(continuous_regions, data_coverage_report)
@@ -137,7 +139,7 @@ class BlocksSplit(AbstractSplitter):
                     f"Consider --start with a later date."
                 )
                 generation_warnings.append(msg)
-                vLog.warning(f"⚠️ {msg}")
+                vLog.warning(f'⚠️ {msg}')
 
             # Post-gap warning: block follows an interrupting gap
             if region['preceding_gap'] is not None and windows_from_region:
@@ -151,7 +153,7 @@ class BlocksSplit(AbstractSplitter):
                     f"warmup data originates from before the gap."
                 )
                 generation_warnings.append(msg)
-                vLog.warning(f"⚠️ {msg}")
+                vLog.warning(f'⚠️ {msg}')
 
             windows.extend(windows_from_region)
             block_counter += len(windows_from_region)
@@ -171,11 +173,11 @@ class BlocksSplit(AbstractSplitter):
         if count_max and total_generated > count_max:
             windows = windows[:count_max]
             vLog.info(
-                f"Limited to {count_max} blocks (from {total_generated})")
+                f'Limited to {count_max} blocks (from {total_generated})')
         elif count_max and total_generated < count_max:
             vLog.warning(
-                f"⚠️ Requested {count_max} blocks, generated {total_generated}. "
-                f"Insufficient data coverage for session filter / block size."
+                f'⚠️ Requested {count_max} blocks, generated {total_generated}. '
+                f'Insufficient data coverage for session filter / block size.'
             )
 
         # Log final error if data ends with short block
@@ -348,7 +350,7 @@ class BlocksSplit(AbstractSplitter):
             Formatted string with gap type, duration, and icon
         """
         if not region.get('following_gap'):
-            return ""
+            return ''
 
         gap = region['following_gap']
 
@@ -363,7 +365,7 @@ class BlocksSplit(AbstractSplitter):
         icon = icons.get(gap.category, '❓')
         gap_name = gap.category.value.replace('_', ' ').title()
 
-        return f" - {gap_name} gap follows ({gap.gap_hours:.1f}h) {icon}"
+        return f' - {gap_name} gap follows ({gap.gap_hours:.1f}h) {icon}'
 
     def _check_final_block(
         self,
@@ -416,16 +418,16 @@ class BlocksSplit(AbstractSplitter):
         print('\n' + '=' * 60)
         print('  Generation Summary')
         print('=' * 60)
-        print(f"  Symbol:      {symbol}")
-        print(f"  Broker:      {broker_type}")
-        print(f"  Block size:  {block_hours}h")
+        print(f'  Symbol:      {symbol}')
+        print(f'  Broker:      {broker_type}')
+        print(f'  Block size:  {block_hours}h')
         print(
-            f"  Regions:     {len(regions)} ({interrupting_count} interrupting gaps)")
+            f'  Regions:     {len(regions)} ({interrupting_count} interrupting gaps)')
         if total_generated > len(windows):
             print(
-                f"  Blocks:      {len(windows)} (of {total_generated} available)")
+                f'  Blocks:      {len(windows)} (of {total_generated} available)')
         else:
-            print(f"  Blocks:      {len(windows)}")
+            print(f'  Blocks:      {len(windows)}')
 
         if windows:
             first_start = min(w.start_time for w in windows)
@@ -435,12 +437,12 @@ class BlocksSplit(AbstractSplitter):
                 f"  Time range:  {first_start.strftime('%Y-%m-%d')} → "
                 f"{last_end.strftime('%Y-%m-%d')}"
             )
-            print(f"  Total:       {total_hours:.0f}h")
+            print(f'  Total:       {total_hours:.0f}h')
 
         if warnings:
-            print(f"\n  Warnings ({len(warnings)}):")
+            print(f'\n  Warnings ({len(warnings)}):')
             for w in warnings:
-                print(f"   ⚠️ {w}")
+                print(f'   ⚠️ {w}')
         else:
             print('\n  Warnings:    (none)')
 

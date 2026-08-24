@@ -18,7 +18,7 @@ def sanitize_filename(name: str) -> str:
 
     # If everything is stripped → fallback
     if not name:
-        name = "_"
+        name = '_'
 
     return name
 
@@ -32,4 +32,4 @@ def pad_int(value: int, width: int = 2) -> str:
 
 
 def file_name_for_scenario(scenario_index: int, name: str):
-    return f"{pad_int(scenario_index+1)}_{sanitize_filename(name)}"
+    return f'{pad_int(scenario_index+1)}_{sanitize_filename(name)}'

@@ -9,7 +9,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from python.framework.types.config_types.performance_tracking_config_types import AutoTraderPerformanceTrackingConfig
+from python.framework.types.config_types.performance_tracking_config_types import (
+    AutoTraderPerformanceTrackingConfig,
+)
 
 
 class AutotraderExecutionDefaults(BaseModel):

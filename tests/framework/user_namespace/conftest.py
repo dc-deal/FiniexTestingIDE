@@ -6,9 +6,10 @@ No data dependencies. No tick loop. No bars.
 Uses tmp_path for isolated test modules.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
 
 
 @pytest.fixture(scope='session')

@@ -7,8 +7,14 @@ trade analytics + execution totals) — no re-derivation. Per-currency join + gl
 
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, ExecutionStatsTotals, PortfolioAggregateRow, PortfolioReport,
-    PortfolioUnitRow, TradeAnalytics, TradeHistoryReport)
+    ExecutionStatsReport,
+    ExecutionStatsTotals,
+    PortfolioAggregateRow,
+    PortfolioReport,
+    PortfolioUnitRow,
+    TradeAnalytics,
+    TradeHistoryReport,
+)
 
 
 def _agg(currency='USD', net=60.0) -> PortfolioAggregateRow:

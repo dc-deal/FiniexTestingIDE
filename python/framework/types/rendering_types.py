@@ -13,9 +13,9 @@ class BatchStatus(Enum):
 
     Used for conditional rendering and color coding in summary.
     """
-    SUCCESS = "success"   # All scenarios successful
-    PARTIAL = "partial"   # Some scenarios failed
-    FAILED = "failed"     # All scenarios failed
+    SUCCESS = 'success'   # All scenarios successful
+    PARTIAL = 'partial'   # Some scenarios failed
+    FAILED = 'failed'     # All scenarios failed
 
 
 @dataclass

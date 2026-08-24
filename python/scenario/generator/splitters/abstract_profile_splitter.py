@@ -12,9 +12,13 @@ from abc import abstractmethod
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
+from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
+    DataCoverageReportCache,
+)
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
-from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import VolatilityProfileAnalyzerCache
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import (
+    VolatilityProfileAnalyzerCache,
+)
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.market_types.market_volatility_profile_types import (
@@ -32,7 +36,9 @@ from python.framework.types.scenario_types.window_set_types import (
     WindowSplitConfig,
 )
 from python.scenario.generator.splitters.abstract_splitter import AbstractSplitter
-from python.scenario.generator.splitters.continuous_region_extractor import ContinuousRegionExtractor
+from python.scenario.generator.splitters.continuous_region_extractor import (
+    ContinuousRegionExtractor,
+)
 
 vLog = get_global_logger()
 
@@ -135,16 +141,16 @@ class AbstractProfileSplitter(AbstractSplitter):
                     f"{report.end_time.strftime('%Y-%m-%d %H:%M')} UTC (no overlap with requested range)"
                 )
             raise ValueError(
-                f"No continuous data regions found for {broker_type}/{symbol} "
-                f"in [{start_time} → {end_time}]"
+                f'No continuous data regions found for {broker_type}/{symbol} '
+                f'in [{start_time} → {end_time}]'
             )
 
         # Get volatility periods for the time range
         vol_profile = self._volatility_cache.get_profile(broker_type, symbol)
         if vol_profile is None:
             raise ValueError(
-                f"No volatility profile available for {broker_type}/{symbol}. "
-                f"Run discovery cache rebuild first."
+                f'No volatility profile available for {broker_type}/{symbol}. '
+                f'Run discovery cache rebuild first.'
             )
 
         # Filter periods to requested time range
@@ -155,8 +161,8 @@ class AbstractProfileSplitter(AbstractSplitter):
 
         if not periods:
             raise ValueError(
-                f"No volatility periods found for {broker_type}/{symbol} "
-                f"in [{start_time} → {end_time}]"
+                f'No volatility periods found for {broker_type}/{symbol} '
+                f'in [{start_time} → {end_time}]'
             )
 
         # Strategy-specific window building
@@ -279,11 +285,11 @@ class AbstractProfileSplitter(AbstractSplitter):
         print('\n' + '=' * 60)
         print('  Profile Generation Summary')
         print('=' * 60)
-        print(f"  Symbol:       {window_set.symbol}")
-        print(f"  Broker:       {window_set.broker_type}")
-        print(f"  Mode:         {mode}")
-        print(f"  Blocks:       {window_set.block_count}")
-        print(f"  Coverage:     {window_set.total_coverage_hours:.1f}h")
+        print(f'  Symbol:       {window_set.symbol}')
+        print(f'  Broker:       {window_set.broker_type}')
+        print(f'  Mode:         {mode}')
+        print(f'  Blocks:       {window_set.block_count}')
+        print(f'  Coverage:     {window_set.total_coverage_hours:.1f}h')
 
         if windows:
             first_start = min(w.start_time for w in windows)
@@ -295,27 +301,27 @@ class AbstractProfileSplitter(AbstractSplitter):
 
             # Block size stats
             durations = [w.block_duration_hours for w in windows]
-            print(f"  Block sizes:  {min(durations):.1f}h — {max(durations):.1f}h "
-                  f"(avg {sum(durations)/len(durations):.1f}h)")
+            print(f'  Block sizes:  {min(durations):.1f}h — {max(durations):.1f}h '
+                  f'(avg {sum(durations)/len(durations):.1f}h)')
 
             # Split reason breakdown
             reasons: Dict[str, int] = {}
             for w in windows:
                 reasons[w.split_reason] = reasons.get(w.split_reason, 0) + 1
-            reason_str = ', '.join(f"{k}: {v}" for k, v in sorted(reasons.items()))
-            print(f"  Split reasons: {reason_str}")
+            reason_str = ', '.join(f'{k}: {v}' for k, v in sorted(reasons.items()))
+            print(f'  Split reasons: {reason_str}')
 
             # Regime distribution
             regimes: Dict[str, int] = {}
             for w in windows:
                 r_name = w.regime.value
                 regimes[r_name] = regimes.get(r_name, 0) + 1
-            regime_str = ', '.join(f"{k}: {v}" for k, v in sorted(regimes.items()))
-            print(f"  Regimes:      {regime_str}")
+            regime_str = ', '.join(f'{k}: {v}' for k, v in sorted(regimes.items()))
+            print(f'  Regimes:      {regime_str}')
 
         # Fingerprints
         if window_set.discovery_fingerprints:
-            print(f"  Fingerprints: {len(window_set.discovery_fingerprints)} discovery caches")
+            print(f'  Fingerprints: {len(window_set.discovery_fingerprints)} discovery caches')
         else:
             print('  Fingerprints: (none)')
 

@@ -11,20 +11,19 @@ channel behaves identically in both pipelines.
 import pytest
 
 from tests.shared.fixture_helpers import (
-    run_scenario,
+    extract_backtesting_metadata,
     extract_process_result,
     extract_tick_loop_results,
-    extract_backtesting_metadata,
+    run_scenario,
 )
 
-
-EVENT_CHANNEL_CONFIG = "backtesting/event_channel_test.json"
+EVENT_CHANNEL_CONFIG = 'backtesting/event_channel_test.json'
 
 # Must match the AutoTrader-mock world (test_event_channel_live_pipeline.py).
 EXPECTED_EVENT_SEQUENCE = ['order_filled', 'partial_close', 'session_end']
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope='module')
 def received_events():
     """Run the event-probe scenario once and return the recorded event log."""
     summary = run_scenario(EVENT_CHANNEL_CONFIG)

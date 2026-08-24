@@ -150,3 +150,4 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Market Compatibility](tests/framework/market_compatibility_tests.md) | Worker activity metric declaration, pre-flight scenario rejection |
 | [Algo Clock Convention](tests/framework/algo_clock_tests.md) | §9 wall-clock ban lint (decision logic/workers, CI plane) |
 | [Algo Clock Validator](tests/framework/algo_clock_validator_tests.md) | §9 runtime startup validator — AST scan of loaded algos (CORE + USER) + batch pre-flight |
+| [Static Analysis Tests](tests/framework/static_analysis_tests.md) | §40 undefined-name gate (pyflakes) + the measured ruff/vulture backlog tier |

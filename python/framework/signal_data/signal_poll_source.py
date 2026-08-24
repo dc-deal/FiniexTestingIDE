@@ -15,8 +15,8 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
 from collections import deque
+from datetime import datetime, timezone
 from typing import Deque, Optional, Tuple
 
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -24,7 +24,9 @@ from python.framework.signal_data.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.signal_inbox import SignalInbox
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.types.autotrader_types.autotrader_display_types import (
-    SignalTransportEvent, SignalTransportStats)
+    SignalTransportEvent,
+    SignalTransportStats,
+)
 from python.framework.types.config_types.sentiment_config_types import SentimentPollConfig
 from python.framework.types.decision_logic_types import AwarenessLevel
 from python.framework.types.signal_data_types import SignalHealthStatus, SignalSnapshot
@@ -114,9 +116,9 @@ class SignalPollSource:
         self._thread.start()
         if self._health_probe is not None:
             self._health_probe.start()
-        self._record(f"connected — {self._config.interval_s:.0f}s cadence")
+        self._record(f'connected — {self._config.interval_s:.0f}s cadence')
         self._logger.info(
-            f"📡 Signal poll started: {self._url} every {self._config.interval_s:.0f}s")
+            f'📡 Signal poll started: {self._url} every {self._config.interval_s:.0f}s')
 
     def stop(self) -> None:
         """Stop polling and wait for the thread to finish."""
@@ -127,8 +129,8 @@ class SignalPollSource:
             self._thread.join(timeout=self._config.request_timeout_s + 2.0)
             self._thread = None
         self._logger.info(
-            f"📡 Signal poll stopped: {self._polls} polls, {self._enqueued} new envelopes, "
-            f"{self._degraded} degraded responses")
+            f'📡 Signal poll stopped: {self._polls} polls, {self._enqueued} new envelopes, '
+            f'{self._degraded} degraded responses')
 
     def get_stats(self) -> Tuple[int, int, int]:
         """
@@ -192,9 +194,9 @@ class SignalPollSource:
                 with self._stats_lock:
                     self._transport_errors += 1
                     self._state = 'error'
-                self._record(f"transport failed: {type(error).__name__}",
+                self._record(f'transport failed: {type(error).__name__}',
                              AwarenessLevel.ALERT)
-                self._logger.warning(f"📡 Signal poll failed: {error}")
+                self._logger.warning(f'📡 Signal poll failed: {error}')
             self._stop.wait(wait_s)
 
     def _poll_once(self) -> bool:
@@ -213,11 +215,11 @@ class SignalPollSource:
                 self._degraded += 1
                 self._state = 'degraded'
             detail = (payload.get('errors') or [{}])[0].get('message', '')
-            self._record(f"producer store unavailable — backing off "
-                         f"{self._config.degraded_backoff_s:.0f}s", AwarenessLevel.NOTICE)
+            self._record(f'producer store unavailable — backing off '
+                         f'{self._config.degraded_backoff_s:.0f}s', AwarenessLevel.NOTICE)
             self._logger.warning(
-                f"📡 Producer store unavailable, backing off "
-                f"{self._config.degraded_backoff_s:.0f}s: {detail}")
+                f'📡 Producer store unavailable, backing off '
+                f'{self._config.degraded_backoff_s:.0f}s: {detail}')
             return True
 
         # The producer served an envelope, so whatever fault the state carries is over.

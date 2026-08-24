@@ -16,25 +16,24 @@ import pytest
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
-
 from tests.shared.fixture_helpers import (
-    run_scenario,
+    extract_pending_stats,
     extract_process_result,
     extract_tick_loop_results,
-    extract_pending_stats,
+    run_scenario,
 )
 
 # =============================================================================
 # CONFIG: Which scenario set does this suite run?
 # =============================================================================
-ACTIVE_ORDER_CONFIG = "backtesting/limit_stop_order_mock_scenario_test.json"
+ACTIVE_ORDER_CONFIG = 'backtesting/limit_stop_order_mock_scenario_test.json'
 
 
 # =============================================================================
 # SCENARIO EXECUTION (Session Scope — runs once per test session)
 # =============================================================================
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def batch_execution_summary() -> BatchExecutionSummary:
     """Execute active order display scenarios once per session."""
     return run_scenario(ACTIVE_ORDER_CONFIG)
@@ -44,19 +43,19 @@ def batch_execution_summary() -> BatchExecutionSummary:
 # SCENARIO 0: active_limit_display
 # =============================================================================
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def process_result_limit(batch_execution_summary: BatchExecutionSummary) -> ProcessResult:
     """Extract ProcessResult for scenario 0 (active_limit_display)."""
     return extract_process_result(batch_execution_summary, scenario_index=0)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def tick_loop_results_limit(process_result_limit: ProcessResult) -> ProcessTickLoopResult:
     """Extract tick loop results for the limit scenario."""
     return extract_tick_loop_results(process_result_limit)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def pending_stats_limit(tick_loop_results_limit: ProcessTickLoopResult) -> PendingOrderStats:
     """Extract pending stats for the limit scenario."""
     return extract_pending_stats(tick_loop_results_limit)
@@ -66,19 +65,19 @@ def pending_stats_limit(tick_loop_results_limit: ProcessTickLoopResult) -> Pendi
 # SCENARIO 1: active_stop_display
 # =============================================================================
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def process_result_stop(batch_execution_summary: BatchExecutionSummary) -> ProcessResult:
     """Extract ProcessResult for scenario 1 (active_stop_display)."""
     return extract_process_result(batch_execution_summary, scenario_index=1)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def tick_loop_results_stop(process_result_stop: ProcessResult) -> ProcessTickLoopResult:
     """Extract tick loop results for the stop scenario."""
     return extract_tick_loop_results(process_result_stop)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def pending_stats_stop(tick_loop_results_stop: ProcessTickLoopResult) -> PendingOrderStats:
     """Extract pending stats for the stop scenario."""
     return extract_pending_stats(tick_loop_results_stop)

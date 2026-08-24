@@ -23,20 +23,30 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Type
 
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
-from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference
-from python.framework.decision_logic.core.backtesting.backtesting_deterministic import BacktestingDeterministic
+from python.framework.decision_logic.core.backtesting.backtesting_deterministic import (
+    BacktestingDeterministic,
+)
+from python.framework.decision_logic.core.backtesting.backtesting_event_probe import (
+    BacktestingEventProbe,
+)
+from python.framework.decision_logic.core.backtesting.backtesting_margin_stress import (
+    BacktestingMarginStress,
+)
+from python.framework.decision_logic.core.backtesting.backtesting_multi_position import (
+    BacktestingMultiPosition,
+)
+from python.framework.decision_logic.core.backtesting.backtesting_outage_probe import (
+    BacktestingOutageProbe,
+)
 from python.framework.decision_logic.core.cautious_macd import CautiousMacd
+from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference
+from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.decision_logic.core.trend_channel_reference import TrendChannelReference
-from python.framework.decision_logic.core.backtesting.backtesting_event_probe import BacktestingEventProbe
-from python.framework.decision_logic.core.backtesting.backtesting_margin_stress import BacktestingMarginStress
-from python.framework.decision_logic.core.backtesting.backtesting_multi_position import BacktestingMultiPosition
-from python.framework.decision_logic.core.backtesting.backtesting_outage_probe import BacktestingOutageProbe
-from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, ValidatedParameters
 from python.framework.validators.parameter_validator import apply_defaults, validate_parameters
@@ -90,10 +100,10 @@ class DecisionLogicFactory:
             self._registry['CORE/live_field_study/live_field_study'] = (LiveFieldStudy, None)
 
             self.logger.debug(
-                f"Core decision logics registered: {list(self._registry.keys())}"
+                f'Core decision logics registered: {list(self._registry.keys())}'
             )
         except ImportError as e:
-            self.logger.warning(f"Failed to load core decision logics: {e}")
+            self.logger.warning(f'Failed to load core decision logics: {e}')
 
     def rescan(self):
         """
@@ -127,11 +137,11 @@ class DecisionLogicFactory:
         """
         if not issubclass(logic_class, AbstractDecisionLogic):
             raise ValueError(
-                f"Logic class {logic_class.__name__} must inherit from AbstractDecisionLogic"
+                f'Logic class {logic_class.__name__} must inherit from AbstractDecisionLogic'
             )
         self._registry[logic_type] = (logic_class, None)
         self.logger.debug(
-            f"Registered decision logic: {logic_type} → {logic_class.__name__}")
+            f'Registered decision logic: {logic_type} → {logic_class.__name__}')
 
     def create_logic(
         self,
@@ -178,7 +188,7 @@ class DecisionLogicFactory:
             context_name=logic_class.__name__, reserved_keys=set(),
         )
         for warning in warnings:
-            self.logger.warning(f"⚠️ {warning}")
+            self.logger.warning(f'⚠️ {warning}')
 
         logic_config = apply_defaults(logic_config, schema)
 
@@ -202,7 +212,7 @@ class DecisionLogicFactory:
             logic_instance._source_path = source_path
 
         logger.debug(
-            f"✅ Created decision logic: {logic_type} with {len(logic_config)} config values"
+            f'✅ Created decision logic: {logic_type} with {len(logic_config)} config values'
         )
 
         return logic_instance
@@ -319,7 +329,7 @@ class DecisionLogicFactory:
         logic_class = candidates[0]
         self._registry[cache_key] = (logic_class, p)
 
-        self.logger.debug(f"Loaded decision logic from path: {p} → {logic_class.__name__}")
+        self.logger.debug(f'Loaded decision logic from path: {p} → {logic_class.__name__}')
         return logic_class, p
 
     def _extract_logic_name(self, logic_type: str) -> str:

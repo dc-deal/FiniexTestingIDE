@@ -20,23 +20,23 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Type
 
-from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ValidatedParameters
 from python.framework.validators.parameter_validator import apply_defaults
-from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
-from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
-from python.framework.workers.core.macd_worker import MacdWorker
-from python.framework.workers.core.rsi_worker import RsiWorker
-from python.framework.workers.core.bollinger_worker import BollingerWorker
-from python.framework.workers.core.ma_trend_worker import MaTrendWorker
+from python.framework.workers.abstract_worker import AbstractWorker
+from python.framework.workers.core.backtesting.backtesting_sample_worker import (
+    BacktestingSampleWorker,
+)
 from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
-from python.framework.workers.core.obv_worker import ObvWorker
+from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
-
+from python.framework.workers.core.ma_trend_worker import MaTrendWorker
+from python.framework.workers.core.macd_worker import MacdWorker
+from python.framework.workers.core.obv_worker import ObvWorker
+from python.framework.workers.core.rsi_worker import RsiWorker
 
 # Abstract worker bases — excluded when introspecting a user file for its one
 # concrete worker subclass (a path worker subclasses one of these).
@@ -92,10 +92,10 @@ class WorkerFactory:
             self._registry['CORE/backtesting/backtesting_sample_worker'] = (BacktestingSampleWorker, None)
 
             self._logger.debug(
-                f"Core workers registered: {list(self._registry.keys())}"
+                f'Core workers registered: {list(self._registry.keys())}'
             )
         except ImportError as e:
-            self._logger.warning(f"Failed to load core workers: {e}")
+            self._logger.warning(f'Failed to load core workers: {e}')
 
     def rescan(self):
         """
@@ -129,11 +129,11 @@ class WorkerFactory:
         """
         if not issubclass(worker_class, AbstractWorker):
             raise ValueError(
-                f"Worker class {worker_class.__name__} must inherit from AbstractWorker"
+                f'Worker class {worker_class.__name__} must inherit from AbstractWorker'
             )
         self._registry[worker_type] = (worker_class, None)
         self._logger.debug(
-            f"Registered worker: {worker_type} → {worker_class.__name__}")
+            f'Registered worker: {worker_type} → {worker_class.__name__}')
 
     def create_worker(
         self,
@@ -169,7 +169,7 @@ class WorkerFactory:
             worker_config, strict=self._strict_validation
         )
         for warning in warnings:
-            self._logger.warning(f"⚠️ {warning}")
+            self._logger.warning(f'⚠️ {warning}')
 
         merged_params = apply_defaults(
             worker_config, worker_class.get_parameter_schema()
@@ -189,8 +189,8 @@ class WorkerFactory:
         )
 
         self._logger.debug(
-            f"✅ Created worker: {instance_name} ({worker_type}) "
-            f"with {len(merged_params)} parameters"
+            f'✅ Created worker: {instance_name} ({worker_type}) '
+            f'with {len(merged_params)} parameters'
         )
 
         return worker_instance
@@ -235,13 +235,13 @@ class WorkerFactory:
 
             except Exception as e:
                 self._logger.error(
-                    f"Failed to create worker {instance_name} ({worker_type}): {e}")
+                    f'Failed to create worker {instance_name} ({worker_type}): {e}')
                 raise ValueError(
-                    f"Worker creation failed for {instance_name} ({worker_type}): {e}")
+                    f'Worker creation failed for {instance_name} ({worker_type}): {e}')
 
         self._logger.debug(
-            f"✅ Created {len(created_workers)} workers: "
-            f"{list(created_workers.keys())}"
+            f'✅ Created {len(created_workers)} workers: '
+            f'{list(created_workers.keys())}'
         )
 
         return created_workers
@@ -362,5 +362,5 @@ class WorkerFactory:
         worker_class = candidates[0]
         self._registry[cache_key] = (worker_class, p)
 
-        self._logger.debug(f"Loaded worker from path: {p} → {worker_class.__name__}")
+        self._logger.debug(f'Loaded worker from path: {p} → {worker_class.__name__}')
         return worker_class, p

@@ -5,8 +5,7 @@ Handles optimized logging for WorkerOrchestrator with intelligent bar history ca
 
 import json
 from dataclasses import asdict
-from datetime import datetime
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.decision_logic_types import Decision
@@ -81,20 +80,20 @@ class CoordinatorTickLogger:
 
         if bar_history_changed:
             # Bar history changed - include full data
-            log_data["bar_history"] = {
+            log_data['bar_history'] = {
                 timeframe: [asdict(bar) for bar in bars]
                 for timeframe, bars in bar_history.items()
             }
-            log_data["bar_history_status"] = "UPDATED"
+            log_data['bar_history_status'] = 'UPDATED'
 
             # Update cache for next comparison
             self._update_cache(bar_history)
         else:
             # Bar history unchanged - skip logging (saves ~90% log size)
-            log_data["bar_history_status"] = "UNCHANGED (cached)"
+            log_data['bar_history_status'] = 'UNCHANGED (cached)'
 
         # Log as structured JSON for easy parsing
-        self.logger.verbose(f"TICK_DATA: {json.dumps(log_data, indent=2)}")
+        self.logger.verbose(f'TICK_DATA: {json.dumps(log_data, indent=2)}')
 
     def _build_log_structure(
         self,
@@ -116,16 +115,16 @@ class CoordinatorTickLogger:
             Dictionary with serialized data
         """
         return {
-            "tick": tick.to_dict(),
-            "worker_results": {
+            'tick': tick.to_dict(),
+            'worker_results': {
                 name: result.outputs
                 for name, result in worker_results.items()
             },
-            "current_bars": {
+            'current_bars': {
                 timeframe: asdict(bar)
                 for timeframe, bar in current_bars.items()
             },
-            "decision": {'action': decision.action.value, **decision.outputs}
+            'decision': {'action': decision.action.value, **decision.outputs}
         }
 
     def _has_bar_history_changed(

@@ -16,15 +16,18 @@ per-unit record (same pattern as the broker section).
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from python.framework.discoveries.signal_coverage.signal_coverage_report import (
-    SignalCoverageReport)
+from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
 from python.framework.reporting.builders.run_unit import RunUnit
-from python.framework.types.api.report_types import (
-    SignalReport, SignalSourceRow, SignalUsageRow)
+from python.framework.types.api.report_types import SignalReport, SignalSourceRow, SignalUsageRow
 from python.framework.types.scenario_types.scenario_set_types import (
-    SignalScenarioInfo, SignalScenarioUsage)
+    SignalScenarioInfo,
+    SignalScenarioUsage,
+)
 from python.framework.types.signal_data_types import (
-    SignalObservedSeries, SignalResolutionStats, SignalSeriesKind)
+    SignalObservedSeries,
+    SignalResolutionStats,
+    SignalSeriesKind,
+)
 
 
 def build_signal_report(

@@ -10,7 +10,7 @@ Both derive from AbstractParamDef which holds shared fields.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
 # Constrained union of all valid output value types for Workers and Decision Logics.
 # Replaces Any in output Dicts — narrows the contract without touching implementations.
@@ -28,7 +28,7 @@ class _RequiredSentinel:
         return cls._instance
 
     def __repr__(self) -> str:
-        return "REQUIRED"
+        return 'REQUIRED'
 
     def __bool__(self) -> bool:
         return False
@@ -177,4 +177,4 @@ class ValidatedParameters:
         return len(self._data)
 
     def __repr__(self) -> str:
-        return f"ValidatedParameters({list(self._data.keys())})"
+        return f'ValidatedParameters({list(self._data.keys())})'

@@ -9,13 +9,23 @@ unified report model (#393) — `PortfolioReport` (full projection) + `PendingOr
 
 from typing import Dict, List, Optional
 
-from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
-from python.framework.utils.console_renderer import ConsoleRenderer
+from python.framework.reporting.console.abstract_batch_summary_section import (
+    AbstractBatchSummarySection,
+)
 from python.framework.types.api.report_types import (
-    ActiveOrderRow, AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
-    ExecutionStatsReport, ExecutionStatsRow, PendingOrdersReport, PendingOrdersUnitRow,
-    PortfolioReport, PortfolioUnitRow)
+    ActiveOrderRow,
+    AggregatedPortfolioCurrency,
+    AggregatedPortfolioReport,
+    AggregatedPortfolioRow,
+    ExecutionStatsReport,
+    ExecutionStatsRow,
+    PendingOrdersReport,
+    PendingOrdersUnitRow,
+    PortfolioReport,
+    PortfolioUnitRow,
+)
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
+from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.utils.math_utils import force_negative, force_positive
 
 
@@ -63,7 +73,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
         self._render_section_header(renderer)
 
         if not self._report.units:
-            print("No portfolio data available")
+            print('No portfolio data available')
             return
 
         pending_by_name: Dict[str, PendingOrdersUnitRow] = {
@@ -75,7 +85,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
         for idx, unit in enumerate(self._report.units, 1):
             if idx > 1:
                 print()
-                renderer.print_separator(width=120, char="·")
+                renderer.print_separator(width=120, char='·')
             self._render_unit_block(
                 unit, pending_by_name.get(unit.name),
                 execution_by_name.get(unit.name), renderer)
@@ -91,58 +101,58 @@ class PortfolioSummary(AbstractBatchSummarySection):
         renderer: ConsoleRenderer
     ) -> None:
         """Render a single scenario's portfolio block (linear)."""
-        currency_disp = f"{unit.currency} [SPOT]" if unit.spot_mode else unit.currency
+        currency_disp = f'{unit.currency} [SPOT]' if unit.spot_mode else unit.currency
         broker = (unit.broker_name[:30] if unit.broker_name else '—')
-        data = f" | Data: {unit.data_source}" if unit.data_source else ''
+        data = f' | Data: {unit.data_source}' if unit.data_source else ''
         if unit.sentiment_source:
-            data += f" · 📡 Sentiment: {unit.sentiment_source}"
-        print(f"💰 {renderer.bold(unit.name)} — {broker} ({currency_disp}){data}")
+            data += f' · 📡 Sentiment: {unit.sentiment_source}'
+        print(f'💰 {renderer.bold(unit.name)} — {broker} ({currency_disp}){data}')
         if unit.has_error:
-            print(renderer.red("   ⚠️ CRITICAL: Errors detected"))
+            print(renderer.red('   ⚠️ CRITICAL: Errors detected'))
 
         # No-trades case
         if unit.total_trades == 0:
             orders = self._orders_line(execution, renderer)
-            print(f"   No trades executed" + (f" | {orders}" if orders else ""))
+            print('   No trades executed' + (f' | {orders}' if orders else ''))
             active = self._active_summary(pending, renderer)
             if active:
-                print(f"   {active}")
+                print(f'   {active}')
             return
 
         print(
-            f"   Trades: {unit.total_trades} ({unit.winning_trades}W/{unit.losing_trades}L) | "
-            f"Win {unit.win_rate:.1%} | "
-            f"Long/Short {unit.total_long_trades}/{unit.total_short_trades}")
+            f'   Trades: {unit.total_trades} ({unit.winning_trades}W/{unit.losing_trades}L) | '
+            f'Win {unit.win_rate:.1%} | '
+            f'Long/Short {unit.total_long_trades}/{unit.total_short_trades}')
 
-        rate = f" @ {unit.conversion_rate:.4f}" if unit.conversion_rate is not None else ''
-        print(f"   P&L: {renderer.pnl(unit.net_profit, unit.currency)}{rate}")
+        rate = f' @ {unit.conversion_rate:.4f}' if unit.conversion_rate is not None else ''
+        print(f'   P&L: {renderer.pnl(unit.net_profit, unit.currency)}{rate}')
 
         for line in self._balance_lines(unit, renderer):
             if line:
-                print(f"   {line}")
+                print(f'   {line}')
 
         max_dd_pct = (unit.max_drawdown / unit.max_equity * 100) if unit.max_equity > 0 else 0.0
         print(
-            f"   Max DD: {renderer.pnl(force_negative(unit.max_drawdown), unit.currency)} "
-            f"({max_dd_pct:.1f}%) | "
-            f"Max Equity: {renderer.pnl(force_positive(unit.max_equity), unit.currency)}")
+            f'   Max DD: {renderer.pnl(force_negative(unit.max_drawdown), unit.currency)} '
+            f'({max_dd_pct:.1f}%) | '
+            f'Max Equity: {renderer.pnl(force_positive(unit.max_equity), unit.currency)}')
 
         print(
-            f"   Cost: spread {renderer.pnl(force_negative(unit.total_spread_cost), unit.currency)} | "
-            f"comm {renderer.pnl(force_negative(unit.total_commission), unit.currency)} | "
-            f"swap {renderer.pnl(force_negative(unit.total_swap), unit.currency)} | "
-            f"maker {renderer.pnl(force_negative(unit.maker_fee), unit.currency)} | "
-            f"taker {renderer.pnl(force_negative(unit.taker_fee), unit.currency)}")
+            f'   Cost: spread {renderer.pnl(force_negative(unit.total_spread_cost), unit.currency)} | '
+            f'comm {renderer.pnl(force_negative(unit.total_commission), unit.currency)} | '
+            f'swap {renderer.pnl(force_negative(unit.total_swap), unit.currency)} | '
+            f'maker {renderer.pnl(force_negative(unit.maker_fee), unit.currency)} | '
+            f'taker {renderer.pnl(force_negative(unit.taker_fee), unit.currency)}')
 
         orders = self._orders_line(execution, renderer)
         if orders:
-            print(f"   {orders}")
+            print(f'   {orders}')
         pending_line = self._pending_line(pending, renderer)
         if pending_line:
-            print(f"   {pending_line}")
+            print(f'   {pending_line}')
         active = self._active_summary(pending, renderer)
         if active:
-            print(f"   {active}")
+            print(f'   {active}')
 
     def _balance_lines(
         self, unit: PortfolioUnitRow, renderer: ConsoleRenderer) -> List[str]:
@@ -155,7 +165,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
                 current_str = renderer.green(current_str)
             elif unit.current_balance < unit.initial_balance:
                 current_str = renderer.red(current_str)
-            return [f"Balance: {current_str} (init {initial_str})"]
+            return [f'Balance: {current_str} (init {initial_str})']
 
         # Spot mode — dual balance + estimated portfolio value
         symbol = unit.symbol
@@ -169,8 +179,8 @@ class PortfolioSummary(AbstractBatchSummarySection):
         base_init_fmt = f'{base_init:,.4f}' if base_init < 100 else f'{base_init:,.2f}'
 
         lines = [
-            f"Bal: {format_currency_simple(quote_bal, quote)} | {base} {base_fmt}",
-            f"Init: {format_currency_simple(quote_init, quote)} | {base} {base_init_fmt}",
+            f'Bal: {format_currency_simple(quote_bal, quote)} | {base} {base_fmt}',
+            f'Init: {format_currency_simple(quote_init, quote)} | {base} {base_init_fmt}',
         ]
         if unit.last_price > 0:
             est_current = quote_bal + (base_bal * unit.last_price)
@@ -180,8 +190,8 @@ class PortfolioSummary(AbstractBatchSummarySection):
             sign = '+' if est_pnl >= 0 else ''
             price_str = format_currency_simple(unit.last_price, quote)
             lines.append(
-                f"Est: {sign}{format_currency_simple(est_pnl, quote)} "
-                f"({sign}{est_pnl_pct:.2f}%) @ {base} {price_str}")
+                f'Est: {sign}{format_currency_simple(est_pnl, quote)} '
+                f'({sign}{est_pnl_pct:.2f}%) @ {base} {price_str}')
         return lines
 
     @staticmethod
@@ -190,7 +200,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
         """Order execution counts line (from the execution-stats model)."""
         if execution is None:
             return ''
-        line = f"Orders: {execution.orders_executed}/{execution.orders_sent} executed"
+        line = f'Orders: {execution.orders_executed}/{execution.orders_sent} executed'
         if execution.orders_rejected > 0:
             line += f" | {renderer.yellow(f'Rej: {execution.orders_rejected}')}"
         return line
@@ -202,15 +212,15 @@ class PortfolioSummary(AbstractBatchSummarySection):
         if pending is None or pending.min_latency_ms is None:
             return ''
         text = (
-            f"Pending: avg {pending.avg_latency_ms:.0f}ms "
-            f"({pending.min_latency_ms:.0f}-{pending.max_latency_ms:.0f})")
+            f'Pending: avg {pending.avg_latency_ms:.0f}ms '
+            f'({pending.min_latency_ms:.0f}-{pending.max_latency_ms:.0f})')
         anomalies = []
         if pending.total_force_closed > 0:
-            anomalies.append(f"{pending.total_force_closed} forced")
+            anomalies.append(f'{pending.total_force_closed} forced')
         if pending.total_timed_out > 0:
-            anomalies.append(f"{pending.total_timed_out} timeout")
+            anomalies.append(f'{pending.total_timed_out} timeout')
         if anomalies:
-            text += " | " + renderer.yellow(" | ".join(anomalies))
+            text += ' | ' + renderer.yellow(' | '.join(anomalies))
         return renderer.green(text)
 
     @staticmethod
@@ -221,9 +231,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
             return ''
         parts = []
         if pending.active_limit_orders:
-            parts.append(f"{len(pending.active_limit_orders)} limits")
+            parts.append(f'{len(pending.active_limit_orders)} limits')
         if pending.active_stop_orders:
-            parts.append(f"{len(pending.active_stop_orders)} stops")
+            parts.append(f'{len(pending.active_stop_orders)} stops')
         return renderer.cyan(f"Active: {' | '.join(parts)}") if parts else ''
 
     def _render_active_order_details(self, renderer: ConsoleRenderer) -> None:
@@ -249,14 +259,14 @@ class PortfolioSummary(AbstractBatchSummarySection):
         print(renderer.cyan(header))
         print(renderer.cyan(f"   {'─' * 80}"))
         for order in orders:
-            limit_str = f"{order.limit_price:.2f}" if order.limit_price else '—'
-            sl_str = f"{order.stop_loss:.2f}" if order.stop_loss else '—'
-            tp_str = f"{order.take_profit:.2f}" if order.take_profit else '—'
+            limit_str = f'{order.limit_price:.2f}' if order.limit_price else '—'
+            sl_str = f'{order.stop_loss:.2f}' if order.stop_loss else '—'
+            tp_str = f'{order.take_profit:.2f}' if order.take_profit else '—'
             line = (
-                f"   {order.order_id:<16} {order.order_type.upper():<12} "
-                f"{order.direction.upper():<6} "
-                f"{order.entry_price:>12.2f} {limit_str:>12} "
-                f"{order.lots:>10g} {sl_str}/{tp_str}"
+                f'   {order.order_id:<16} {order.order_type.upper():<12} '
+                f'{order.direction.upper():<6} '
+                f'{order.entry_price:>12.2f} {limit_str:>12} '
+                f'{order.lots:>10g} {sl_str}/{tp_str}'
             )
             print(renderer.cyan(line))
 
@@ -280,14 +290,14 @@ class PortfolioSummary(AbstractBatchSummarySection):
         print()
         renderer.section_separator()
         if has_multiple_currencies:
-            renderer.print_bold("📊 AGGREGATED PORTFOLIO (BY CURRENCY)")
+            renderer.print_bold('📊 AGGREGATED PORTFOLIO (BY CURRENCY)')
         else:
-            renderer.print_bold("📊 AGGREGATED PORTFOLIO (ALL SCENARIOS)")
+            renderer.print_bold('📊 AGGREGATED PORTFOLIO (ALL SCENARIOS)')
         renderer.section_separator()
 
         for cur in currencies:
             self._render_currency_group(renderer, cur, has_multiple_currencies)
-            renderer.print_separator(width=120, char="·")
+            renderer.print_separator(width=120, char='·')
 
         # The aggregation-limitation notices (multi-currency / time-divergence) moved to the
         # post-run validator → the WARNINGS & ERRORS section (no decisions in reports, #395/#397).
@@ -309,10 +319,10 @@ class PortfolioSummary(AbstractBatchSummarySection):
         """
         if show_currency_header:
             print()
-            scenario_names = ", ".join(cur.scenario_names)
+            scenario_names = ', '.join(cur.scenario_names)
             print(
                 f"\n{renderer.bold(f'   💰 {cur.currency} GROUP ({cur.scenario_count} scenarios)')}")
-            print(f"      Scenarios: {scenario_names}")
+            print(f'      Scenarios: {scenario_names}')
 
         self._render_aggregated_details(cur.combined, cur.currency, renderer)
 
@@ -327,28 +337,28 @@ class PortfolioSummary(AbstractBatchSummarySection):
         total_pnl = h.total_profit - h.total_loss
 
         print(f"\n{renderer.bold('   TRADING SUMMARY:')}")
-        print(f"      Total Trades: {h.total_trades} (L/S: {row.total_long_trades}/{row.total_short_trades}) |  "
-              f"Win/Loss: {h.winning_trades}W/{h.losing_trades}L  |  "
-              f"Win Rate: {h.win_rate:.1%}")
+        print(f'      Total Trades: {h.total_trades} (L/S: {row.total_long_trades}/{row.total_short_trades}) |  '
+              f'Win/Loss: {h.winning_trades}W/{h.losing_trades}L  |  '
+              f'Win Rate: {h.win_rate:.1%}')
 
-        print(f"      Total P&L: {renderer.pnl(total_pnl, currency)}  |  "
-              f"Profit: {renderer.pnl(force_positive(h.total_profit), currency)}  |  "
-              f"Loss: {renderer.pnl(force_negative(h.total_loss), currency)}")
+        print(f'      Total P&L: {renderer.pnl(total_pnl, currency)}  |  '
+              f'Profit: {renderer.pnl(force_positive(h.total_profit), currency)}  |  '
+              f'Loss: {renderer.pnl(force_negative(h.total_loss), currency)}')
 
         # Profit factor
         if h.profit_factor == float('inf'):
-            pf_str = "∞ (no losses)"
+            pf_str = '∞ (no losses)'
         else:
-            pf_str = f"{h.profit_factor:.2f}"
-        print(f"      Profit Factor: {pf_str}")
+            pf_str = f'{h.profit_factor:.2f}'
+        print(f'      Profit Factor: {pf_str}')
 
         print(f"\n{renderer.bold('   ORDER EXECUTION:')}")
-        print(f"      Orders Sent: {row.orders_sent}  |  "
-              f"Executed: {row.orders_executed}  |  "
-              f"Rejected: {row.orders_rejected}")
+        print(f'      Orders Sent: {row.orders_sent}  |  '
+              f'Executed: {row.orders_executed}  |  '
+              f'Rejected: {row.orders_rejected}')
 
         if row.orders_sent > 0:
-            print(f"      Execution Rate: {row.orders_executed / row.orders_sent:.1%}")
+            print(f'      Execution Rate: {row.orders_executed / row.orders_sent:.1%}')
 
         # Pending order statistics (green)
         self._render_pending_stats(renderer, row)
@@ -358,18 +368,18 @@ class PortfolioSummary(AbstractBatchSummarySection):
                        + row.maker_fee + row.taker_fee)
 
         print(f"\n{renderer.bold('   💸 COST BREAKDOWN:')}")
-        print(f"      Spread: {renderer.pnl(force_negative(row.total_spread_cost), currency)} |  "
-              f"Commission: {renderer.pnl(force_negative(row.total_commission), currency)} |  "
-              f"Swap: {renderer.pnl(force_negative(row.total_swap), currency)}")
-        print(f"      Maker: {renderer.pnl(force_negative(row.maker_fee), currency)} |  "
-              f"Taker: {renderer.pnl(force_negative(row.taker_fee), currency)} |  "
-              f"Total Fees: {renderer.pnl(force_negative(total_costs), currency)}")
+        print(f'      Spread: {renderer.pnl(force_negative(row.total_spread_cost), currency)} |  '
+              f'Commission: {renderer.pnl(force_negative(row.total_commission), currency)} |  '
+              f'Swap: {renderer.pnl(force_negative(row.total_swap), currency)}')
+        print(f'      Maker: {renderer.pnl(force_negative(row.maker_fee), currency)} |  '
+              f'Taker: {renderer.pnl(force_negative(row.taker_fee), currency)} |  '
+              f'Total Fees: {renderer.pnl(force_negative(total_costs), currency)}')
 
-        print(f"\n   📉 RISK METRICS:")
-        print(f"      Max Drawdown: {renderer.pnl(force_negative(h.max_drawdown), currency)} "
-              f"({row.max_dd_pct:.1f}%) - Scenario: {row.max_drawdown_scenario}")
-        print(f"      Max Equity: {renderer.pnl(force_positive(row.max_equity), currency)} "
-              f"- Scenario: {row.max_equity_scenario}")
+        print('\n   📉 RISK METRICS:')
+        print(f'      Max Drawdown: {renderer.pnl(force_negative(h.max_drawdown), currency)} '
+              f'({row.max_dd_pct:.1f}%) - Scenario: {row.max_drawdown_scenario}')
+        print(f'      Max Equity: {renderer.pnl(force_positive(row.max_equity), currency)} '
+              f'- Scenario: {row.max_equity_scenario}')
 
     @staticmethod
     def _render_pending_stats(
@@ -392,7 +402,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
         if has_resolved:
             resolved_line = f"      Pending Resolved: {renderer.green(f'{row.pending_total_filled} filled')}"
             if row.pending_total_rejected > 0:
-                resolved_line += f" | {row.pending_total_rejected} rejected"
+                resolved_line += f' | {row.pending_total_rejected} rejected'
             if row.pending_total_timed_out > 0:
                 resolved_line += f" | {renderer.yellow(f'{row.pending_total_timed_out} timed out')}"
             if row.pending_total_force_closed > 0:
@@ -402,15 +412,15 @@ class PortfolioSummary(AbstractBatchSummarySection):
         # Latency stats (ms-based)
         if row.pending_min_latency_ms is not None:
             print(renderer.green(
-                f"      Avg Latency: {row.pending_avg_latency_ms:.0f}ms "
-                f"(min: {row.pending_min_latency_ms:.0f}ms | max: {row.pending_max_latency_ms:.0f}ms)"))
+                f'      Avg Latency: {row.pending_avg_latency_ms:.0f}ms '
+                f'(min: {row.pending_min_latency_ms:.0f}ms | max: {row.pending_max_latency_ms:.0f}ms)'))
 
         # Active orders at scenario end (bot's pending plan)
         active_parts = []
         if row.pending_active_limit_count:
-            active_parts.append(f"{row.pending_active_limit_count} limits")
+            active_parts.append(f'{row.pending_active_limit_count} limits')
         if row.pending_active_stop_count:
-            active_parts.append(f"{row.pending_active_stop_count} stops")
+            active_parts.append(f'{row.pending_active_stop_count} stops')
         if active_parts:
             print(renderer.cyan(
                 f"      Active Orders: {' | '.join(active_parts)}"))

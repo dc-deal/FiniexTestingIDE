@@ -14,9 +14,13 @@ Used by:
 
 from typing import Dict, Optional
 
-from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
+from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
+    DataCoverageReportCache,
+)
 from python.framework.discoveries.discovery_cache import DiscoveryCache
-from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import VolatilityProfileAnalyzerCache
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import (
+    VolatilityProfileAnalyzerCache,
+)
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 
@@ -53,25 +57,25 @@ class DiscoveryCacheManager:
         """
         results: Dict[str, Dict[str, int]] = {}
 
-        self._logger.info("Rebuilding all discovery caches...")
+        self._logger.info('Rebuilding all discovery caches...')
 
-        results["coverage"] = self._data_coverage_cache.build_all(
+        results['coverage'] = self._data_coverage_cache.build_all(
             force_rebuild=force
         )
-        results["extreme_moves"] = self._discovery_cache.build_all(
+        results['extreme_moves'] = self._discovery_cache.build_all(
             force_rebuild=force
         )
-        results["volatility_profile"] = self._volatility_profile_cache.build_all(
+        results['volatility_profile'] = self._volatility_profile_cache.build_all(
             force_rebuild=force
         )
 
-        total_generated = sum(r["generated"] for r in results.values())
-        total_skipped = sum(r["skipped"] for r in results.values())
-        total_failed = sum(r["failed"] for r in results.values())
+        total_generated = sum(r['generated'] for r in results.values())
+        total_skipped = sum(r['skipped'] for r in results.values())
+        total_failed = sum(r['failed'] for r in results.values())
 
         self._logger.info(
-            f"All caches rebuilt: {total_generated} generated, "
-            f"{total_skipped} skipped, {total_failed} failed"
+            f'All caches rebuilt: {total_generated} generated, '
+            f'{total_skipped} skipped, {total_failed} failed'
         )
 
         return results
@@ -84,9 +88,9 @@ class DiscoveryCacheManager:
             Dict mapping cache name to status dict
         """
         return {
-            "coverage": self._data_coverage_cache.get_cache_status(),
-            "extreme_moves": self._discovery_cache.get_cache_status(),
-            "volatility_profile": self._volatility_profile_cache.get_cache_status(),
+            'coverage': self._data_coverage_cache.get_cache_status(),
+            'extreme_moves': self._discovery_cache.get_cache_status(),
+            'volatility_profile': self._volatility_profile_cache.get_cache_status(),
         }
 
     def clear_all(self) -> Dict[str, int]:
@@ -98,9 +102,9 @@ class DiscoveryCacheManager:
         """
         results: Dict[str, int] = {}
 
-        results["coverage"] = self._data_coverage_cache.clear_cache()
-        results["extreme_moves"] = self._discovery_cache.clear_cache()
-        results["volatility_profile"] = self._volatility_profile_cache.clear_cache()
+        results['coverage'] = self._data_coverage_cache.clear_cache()
+        results['extreme_moves'] = self._discovery_cache.clear_cache()
+        results['volatility_profile'] = self._volatility_profile_cache.clear_cache()
 
         total = sum(results.values())
         self._logger.info(

@@ -18,11 +18,13 @@ from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 
 from python.data_management.index.signal_index_manager import SignalIndexManager
-from python.framework.discoveries.signal_coverage.signal_coverage_report import (
-    SignalCoverageReport)
+from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.scenario_types.scenario_set_types import (
-    SignalScenarioInfo, SignalScenarioUsage, SingleScenario)
+    SignalScenarioInfo,
+    SignalScenarioUsage,
+    SingleScenario,
+)
 
 # Index lookup bounds — a coverage report always spans the source's full history.
 _RANGE_START = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -75,7 +77,7 @@ class SignalCoverageReportManager:
                 sentiment_type, symbol)
 
         self._logger.info(
-            f"✅ Generated {len(reports)} signal coverage report(s)")
+            f'✅ Generated {len(reports)} signal coverage report(s)')
         self._reports = reports
         self._signal_scenario_map = self._build_signal_scenario_map(reports)
 

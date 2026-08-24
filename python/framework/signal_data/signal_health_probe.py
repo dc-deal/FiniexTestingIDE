@@ -21,7 +21,9 @@ from typing import Callable, Optional
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.config_types.sentiment_config_types import (
-    SentimentHealthConfig, SentimentSourceConfig)
+    SentimentHealthConfig,
+    SentimentSourceConfig,
+)
 from python.framework.types.decision_logic_types import AwarenessLevel
 from python.framework.types.signal_data_types import SignalHealthStatus
 
@@ -200,12 +202,12 @@ class SignalHealthProbe:
         if configured <= 0 or abs(cadence - configured) <= configured * CADENCE_TOLERANCE:
             return
         self._warned_cadence = True
-        self._emit(f"cadence {cadence:.0f}s vs configured {configured:.0f}s",
+        self._emit(f'cadence {cadence:.0f}s vs configured {configured:.0f}s',
                    AwarenessLevel.NOTICE)
         self._logger.warning(
-            f"📡 Producer evaluates {self._pipeline_id} every {cadence:.0f}s, but "
-            f"sentiment_config.json has {configured:.0f}s. The configured value drives "
-            f"the staleness threshold — reconcile the two.")
+            f'📡 Producer evaluates {self._pipeline_id} every {cadence:.0f}s, but '
+            f'sentiment_config.json has {configured:.0f}s. The configured value drives '
+            f'the staleness threshold — reconcile the two.')
 
     def _report_budget(self, suspended: bool, reason: Optional[str]) -> None:
         """
@@ -220,11 +222,11 @@ class SignalHealthProbe:
             reason: What the producer says about it
         """
         if suspended:
-            detail = f": {reason}" if reason else ''
+            detail = f': {reason}' if reason else ''
             self._emit('producer budget suspended', AwarenessLevel.ALERT)
             self._logger.warning(
-                f"📡 Producer budget suspended{detail} — it has stopped evaluating, so "
-                f"the feed will fall silent while the transport stays healthy.")
+                f'📡 Producer budget suspended{detail} — it has stopped evaluating, so '
+                f'the feed will fall silent while the transport stays healthy.')
             return
         self._emit('producer budget resumed', AwarenessLevel.INFO)
         self._logger.info('📡 Producer budget resumed — evaluations continue.')
@@ -237,7 +239,7 @@ class SignalHealthProbe:
             except Exception as error:   # noqa: BLE001 — identity is never worth a crash
                 with self._lock:
                     self._status.probe_errors += 1
-                self._logger.debug(f"📡 Producer health probe failed: {error}")
+                self._logger.debug(f'📡 Producer health probe failed: {error}')
             self._stop.wait(self._config.interval_s)
 
     def _fetch(self) -> dict:
@@ -274,11 +276,11 @@ class SignalHealthProbe:
         with self._lock:
             version = self._status.engine_version or 'unknown'
             timeout = self._status.pass_timeout_s
-        timeout_str = f"{timeout:.0f}s" if timeout is not None else 'unknown'
-        self._emit(f"journal {journal_id} ({journal_name})", AwarenessLevel.INFO)
+        timeout_str = f'{timeout:.0f}s' if timeout is not None else 'unknown'
+        self._emit(f'journal {journal_id} ({journal_name})', AwarenessLevel.INFO)
         self._logger.info(
-            f"📡 Producer journal {journal_id} ({journal_name}) · engine {version} · "
-            f"pass timeout {timeout_str}")
+            f'📡 Producer journal {journal_id} ({journal_name}) · engine {version} · '
+            f'pass timeout {timeout_str}')
 
     def _report_change(
         self, previous: Optional[str], journal_id: Optional[str], journal_name: str
@@ -295,13 +297,13 @@ class SignalHealthProbe:
             journal_id: The identity reported now, None when the producer named none
             journal_name: The producer's label for it
         """
-        current = f"{journal_id} ({journal_name})" if journal_id else 'unidentified'
+        current = f'{journal_id} ({journal_name})' if journal_id else 'unidentified'
         self._emit(f"journal CHANGED {previous} → {journal_id or 'none'}",
                    AwarenessLevel.ALERT)
         self._logger.error(
-            f"📡 Producer journal changed mid-session: {previous} → {current}. The "
-            f"sequence position accepted so far belongs to the previous journal and "
-            f"does not carry over — measurements from this session span two series.")
+            f'📡 Producer journal changed mid-session: {previous} → {current}. The '
+            f'sequence position accepted so far belongs to the previous journal and '
+            f'does not carry over — measurements from this session span two series.')
 
     def _emit(self, message: str, level: AwarenessLevel) -> None:
         """

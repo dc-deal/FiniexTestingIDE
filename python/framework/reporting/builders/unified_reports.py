@@ -9,8 +9,16 @@ these for its own console + ledger instead of re-building them.
 from dataclasses import dataclass
 
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, FeedStabilityReport, OrderHistoryReport, PendingOrdersReport,
-    PortfolioReport, RunSummary, SignalReport, TradeHistoryReport, WorkerDecisionReport)
+    ExecutionStatsReport,
+    FeedStabilityReport,
+    OrderHistoryReport,
+    PendingOrdersReport,
+    PortfolioReport,
+    RunSummary,
+    SignalReport,
+    TradeHistoryReport,
+    WorkerDecisionReport,
+)
 
 
 @dataclass

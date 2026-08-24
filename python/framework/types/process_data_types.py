@@ -10,27 +10,33 @@ CORRECTIONS:
 - balances: Unified balance dict (replaces initial_balance + account_currency)
 """
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
-from dateutil import parser
-from python.configuration.market_config_manager import MarketConfigManager
+
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
+from python.framework.types.config_types.market_config_types import MarketType, TradingModel
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
-from python.framework.types.config_types.market_config_types import MarketType, TradingModel
-from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats
+from python.framework.types.performance_types.performance_stats_types import (
+    DecisionLogicStats,
+    WorkerCoordinatorPerformanceStats,
+    WorkerPerformanceStats,
+)
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
-from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalResolutionStats, SignalSeries
-from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
-from python.framework.types.trading_env_types.trading_env_stats_types import CostBreakdown, ExecutionStats
-
+from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
+from python.framework.types.trading_env_types.trading_env_stats_types import (
+    CostBreakdown,
+    ExecutionStats,
+)
 
 # ============================================================================
 # REQUIREMENTS COLLECTION (Phase 0)
@@ -208,7 +214,7 @@ class ProcessScenarioConfig:
     strategy_config: Dict[str, Any] = field(default_factory=dict)
 
     # Decision logic type (for compatibility)
-    decision_logic_type: str = ""
+    decision_logic_type: str = ''
     decision_logic_config: Dict[str, Any] = field(default_factory=dict)
 
     # === EXECUTION SETTINGS ===
@@ -224,8 +230,8 @@ class ProcessScenarioConfig:
 
     # === LOGGER METADATA ===
     # For ScenarioLogger initialization
-    scenario_set_name: str = ""
-    run_timestamp: str = ""
+    scenario_set_name: str = ''
+    run_timestamp: str = ''
     # Optional grouping dir nested under the log root (e.g. 'sweeps/<sweep_id>', #419)
     run_group: Optional[str] = None
 
@@ -315,10 +321,10 @@ class ProcessScenarioConfig:
         exec_config = scenario.execution_config or app_config_loader.get_execution_config()
         parallel_workers = exec_config.get('parallel_workers', False)
         parallel_threshold = exec_config.get(
-            "worker_parallel_threshold_ms", 1.0
+            'worker_parallel_threshold_ms', 1.0
         )
         strict_parameter_validation = exec_config.get(
-            "strict_parameter_validation", True
+            'strict_parameter_validation', True
         )
 
         # Performance tracking sub-group (#137) — both switches default to

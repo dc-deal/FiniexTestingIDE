@@ -1,13 +1,17 @@
 
 
-from multiprocessing import Queue
 import time
+from multiprocessing import Queue
 from typing import Dict, Optional, Tuple
+
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.portfolio_manager import PortfolioManager
 from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
 from python.framework.types.live_types.live_scenario_stats_types import LiveScenarioStats
-from python.framework.types.live_types.live_stats_config_types import ProcessLiveSetup, ScenarioStatus
+from python.framework.types.live_types.live_stats_config_types import (
+    ProcessLiveSetup,
+    ScenarioStatus,
+)
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.process_data_types import ProcessScenarioConfig
 from python.framework.utils.process_serialization_utils import serialize_current_bars
@@ -25,9 +29,9 @@ def process_live_setup(logger: ScenarioLogger,
     )
     if (live_queue is None and config.live_stats_config.enabled):
         logger.error(
-            f"Live Queue (live_queue) is missing, but live view is enabled "
-            f"(config.live_stats_config.enabled). This combination MUST not occur. "
-            f"Something in the process chain is not forwarding live_queue.")
+            'Live Queue (live_queue) is missing, but live view is enabled '
+            '(config.live_stats_config.enabled). This combination MUST not occur. '
+            'Something in the process chain is not forwarding live_queue.')
     tick_count = len(ticks)
     if live_enabled:
         return ProcessLiveSetup(

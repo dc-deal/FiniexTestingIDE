@@ -9,7 +9,6 @@ Locks down the shape of the async cancel lifecycle:
 - Cancel-during-fill race handled (logged, in_flight cleared)
 """
 
-from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
@@ -22,7 +21,7 @@ def _submit_limit_and_confirm(mock, executor, price=49000.0, lots=0.001):
     """Helper: submit a LIMIT order and confirm broker_ref via drain."""
     mock.feed_tick(executor, bid=49999.0, ask=50001.0)
     result = executor.open_order(OpenOrderRequest(
-        symbol="BTCUSD", order_type=OrderType.LIMIT,
+        symbol='BTCUSD', order_type=OrderType.LIMIT,
         direction=OrderDirection.LONG, lots=lots, price=price,
     ))
     mock.await_submit_confirmation(executor)
@@ -95,7 +94,7 @@ class TestCancelLimitOrderDeferred:
         """broker_ref=None → cancel returns True and parks the intent (no CancelJob yet)."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=49000.0,
         ))
         order_id = result.order_id
@@ -112,7 +111,7 @@ class TestCancelLimitOrderDeferred:
         """After the submit confirms, the parked cancel auto-fires and the order is removed."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=49000.0,
         ))
         order_id = result.order_id
@@ -133,7 +132,7 @@ class TestCancelLimitOrderNotFound:
         """cancel_limit_order on unknown order_id → False."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
-        scheduled = executor_delayed.cancel_limit_order(order_id="NONEXISTENT")
+        scheduled = executor_delayed.cancel_limit_order(order_id='NONEXISTENT')
         assert scheduled is False
 
 
@@ -142,7 +141,7 @@ class TestCancelStopOrderCapabilityGate:
 
     def test_cancel_stop_order_returns_false_for_kraken_profile(self, mock_delayed, executor_delayed):
         """Mock adapter declares stop_orders=False → cancel_stop_order returns False."""
-        scheduled = executor_delayed.cancel_stop_order(order_id="anything")
+        scheduled = executor_delayed.cancel_stop_order(order_id='anything')
         assert scheduled is False
 
 

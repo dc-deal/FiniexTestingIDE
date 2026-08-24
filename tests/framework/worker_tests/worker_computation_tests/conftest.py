@@ -5,12 +5,12 @@ Shared fixtures: Bar factory, Tick factory, mock logger.
 All test data is deterministic - no randomness.
 """
 
-import pytest
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from python.framework.types.market_types.market_data_types import Bar, TickData
+import pytest
 
+from python.framework.types.market_types.market_data_types import Bar, TickData
 
 # ============================================
 # Fixtures
@@ -33,8 +33,8 @@ def mock_logger():
 
 def make_bars(
     closes: list,
-    timeframe: str = "M5",
-    symbol: str = "EURUSD",
+    timeframe: str = 'M5',
+    symbol: str = 'EURUSD',
 ) -> list:
     """
     Create Bar list from close prices.
@@ -64,8 +64,8 @@ def make_bars(
 def make_bars_with_volume(
     closes: list,
     volumes: list,
-    timeframe: str = "M5",
-    symbol: str = "EURUSD",
+    timeframe: str = 'M5',
+    symbol: str = 'EURUSD',
 ) -> list:
     """
     Create Bar list from close prices and volumes.
@@ -82,7 +82,7 @@ def make_bars_with_volume(
         List of Bar instances
     """
     assert len(closes) == len(volumes), (
-        f"closes ({len(closes)}) and volumes ({len(volumes)}) must match"
+        f'closes ({len(closes)}) and volumes ({len(volumes)}) must match'
     )
 
     bars = []
@@ -90,7 +90,7 @@ def make_bars_with_volume(
         bars.append(Bar(
             symbol=symbol,
             timeframe=timeframe,
-            timestamp=f"2025-10-01T00:{i:02d}:00+00:00",
+            timestamp=f'2025-10-01T00:{i:02d}:00+00:00',
             open=close,
             high=close + 0.0005,
             low=close - 0.0005,
@@ -105,7 +105,7 @@ def make_bars_with_volume(
 def make_tick(
     bid: float,
     ask: float = None,
-    symbol: str = "EURUSD",
+    symbol: str = 'EURUSD',
 ) -> TickData:
     """
     Create a TickData instance.

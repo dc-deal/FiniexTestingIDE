@@ -42,18 +42,18 @@ class ScenarioStatus(Enum):
         FINISHED_WITH_ERROR: Error during init or run (Subprocess)
     """
     # BatchOrchestrator States (Main Process)
-    INITIALIZED = "initialized"
-    WARMUP_COVERAGE = "warmup_coverage"
-    WARMUP_DATA_TICKS = "warmup_data_ticks"
-    WARMUP_DATA_BARS = "warmup_data_bars"
-    WARMUP_TRADER = "warmup_trader"
+    INITIALIZED = 'initialized'
+    WARMUP_COVERAGE = 'warmup_coverage'
+    WARMUP_DATA_TICKS = 'warmup_data_ticks'
+    WARMUP_DATA_BARS = 'warmup_data_bars'
+    WARMUP_TRADER = 'warmup_trader'
 
     # Subprocess States (ProcessPool)
-    INIT_PROCESS = "init_process"
-    BARRIER = "barrier"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FINISHED_WITH_ERROR = "finished_with_error"
+    INIT_PROCESS = 'init_process'
+    BARRIER = 'barrier'
+    RUNNING = 'running'
+    COMPLETED = 'completed'
+    FINISHED_WITH_ERROR = 'finished_with_error'
 
 
 @dataclass

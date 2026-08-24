@@ -21,12 +21,16 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.framework.exceptions.signal_data_errors import SignalSchemaError
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.signal_data.signal_jsonl_loader import load_signal_series
 from python.framework.types.signal_data_types import (
-    SIGNAL_ENVELOPE_SYMBOL, SentimentResult, SignalParquetColumn, SignalSnapshot)
-from python.data_management.index.signal_index_manager import SignalIndexManager
+    SIGNAL_ENVELOPE_SYMBOL,
+    SentimentResult,
+    SignalParquetColumn,
+    SignalSnapshot,
+)
 
 vLog = get_global_logger()
 
@@ -56,7 +60,7 @@ class SignalDataImporter:
         finished_dir: Archive for imported JSONL; None disables the move
     """
 
-    VERSION = "1.0"
+    VERSION = '1.0'
 
     def __init__(self, source_dir: str, target_dir: str, override: bool = False,
                  finished_dir: Optional[str] = None):
@@ -84,27 +88,27 @@ class SignalDataImporter:
 
         if not jsonl_files:
             vLog.warning(
-                f"No signal JSONL found in {self.source_dir}. Rebuilding index only.")
+                f'No signal JSONL found in {self.source_dir}. Rebuilding index only.')
             self._prune_empty_source_dirs()
             self._rebuild_index()
             return
 
-        vLog.info("\n" + "=" * 80)
-        vLog.info(f"FiniexTestingIDE Signal Data Importer V{self.VERSION}")
-        vLog.info("=" * 80)
-        vLog.info(f"Found: {len(jsonl_files)} JSONL file(s)")
+        vLog.info('\n' + '=' * 80)
+        vLog.info(f'FiniexTestingIDE Signal Data Importer V{self.VERSION}')
+        vLog.info('=' * 80)
+        vLog.info(f'Found: {len(jsonl_files)} JSONL file(s)')
         vLog.info(f"Override Mode: {'ENABLED' if self.override else 'DISABLED'}")
-        vLog.info("=" * 80 + "\n")
+        vLog.info('=' * 80 + '\n')
 
         for root, jsonl_file in jsonl_files:
-            vLog.info(f"\n📄 Processing: {jsonl_file.name}")
+            vLog.info(f'\n📄 Processing: {jsonl_file.name}')
             try:
                 written = self.convert_jsonl_to_parquet(jsonl_file)
                 self.processed_files += 1
                 if written is not None:
                     self._move_to_finished(root, jsonl_file)
             except Exception as e:
-                error_msg = f"ERROR in {jsonl_file.name}: {str(e)}"
+                error_msg = f'ERROR in {jsonl_file.name}: {str(e)}'
                 vLog.error(error_msg)
                 self.errors.append(error_msg)
 
@@ -131,7 +135,7 @@ class SignalDataImporter:
 
         found: Dict[Path, Tuple[Path, Path]] = {}
         for root in roots:
-            for path in root.rglob("*.jsonl"):
+            for path in root.rglob('*.jsonl'):
                 found.setdefault(path.relative_to(root), (root, path))
 
         return [found[key] for key in sorted(found)]
@@ -159,7 +163,7 @@ class SignalDataImporter:
         target.parent.mkdir(parents=True, exist_ok=True)
         jsonl_file.replace(target)
         self.moved_files += 1
-        vLog.info(f"   → archived to {target}")
+        vLog.info(f'   → archived to {target}')
 
     def _prune_empty_source_dirs(self) -> None:
         """
@@ -185,7 +189,7 @@ class SignalDataImporter:
                 continue
             self.pruned_dirs += 1
             vLog.info(
-                f"   🧹 Removed empty inbox folder: {path.relative_to(self.source_dir)}")
+                f'   🧹 Removed empty inbox folder: {path.relative_to(self.source_dir)}')
 
     def convert_jsonl_to_parquet(self, jsonl_file: Path) -> Optional[Path]:
         """
@@ -200,7 +204,7 @@ class SignalDataImporter:
         # Reuse the validated parse (schema_version gate + time order)
         snapshots = load_signal_series(jsonl_file, signal_kind='').snapshots
         if not snapshots:
-            vLog.warning(f"No snapshots in {jsonl_file.name}")
+            vLog.warning(f'No snapshots in {jsonl_file.name}')
             return None
 
         pipeline_id = self._resolve_pipeline_id(snapshots, jsonl_file)
@@ -208,11 +212,11 @@ class SignalDataImporter:
         rows = self._explode(snapshots)
         df = pd.DataFrame(rows, columns=[c.value for c in SignalParquetColumn])
 
-        target_path = self.target_dir / pipeline_id / f"{jsonl_file.stem}.parquet"
+        target_path = self.target_dir / pipeline_id / f'{jsonl_file.stem}.parquet'
         target_path.parent.mkdir(parents=True, exist_ok=True)
         if target_path.exists() and not self.override:
             raise FileExistsError(
-                f"{target_path} exists (use override to replace)")
+                f'{target_path} exists (use override to replace)')
         df.to_parquet(target_path, index=False)
 
         self.total_rows += len(df)
@@ -275,9 +279,9 @@ class SignalDataImporter:
                 )
             if epoch in last_seq and seq < last_seq[epoch]:
                 raise SignalSchemaError(
-                    f"{jsonl_file.name}: seq went backwards within epoch {epoch} "
-                    f"({last_seq[epoch]} → {seq}) — the epoch was reissued for a second "
-                    f"series. seq is unique only within an epoch, so refusing the file."
+                    f'{jsonl_file.name}: seq went backwards within epoch {epoch} '
+                    f'({last_seq[epoch]} → {seq}) — the epoch was reissued for a second '
+                    f'series. seq is unique only within an epoch, so refusing the file.'
                 )
             highest_epoch = epoch
             last_seq[epoch] = seq
@@ -286,9 +290,9 @@ class SignalDataImporter:
         for epoch, seqs in seqs_per_epoch.items():
             holes = sum(b - a - 1 for a, b in zip(seqs, seqs[1:]) if b - a > 1)
             if holes:
-                message = (f"{jsonl_file.name}: {holes} missing seq in epoch {epoch} "
-                           f"({seqs[0]}→{seqs[-1]}) — envelopes were never received")
-                vLog.warning(f"   ⚠️ {message}")
+                message = (f'{jsonl_file.name}: {holes} missing seq in epoch {epoch} '
+                           f'({seqs[0]}→{seqs[-1]}) — envelopes were never received')
+                vLog.warning(f'   ⚠️ {message}')
                 self.errors.append(message)
 
     def _explode(self, snapshots: List[SignalSnapshot]) -> List[Dict]:
@@ -364,21 +368,21 @@ class SignalDataImporter:
         try:
             index_manager = SignalIndexManager(data_dir=str(self.target_dir))
             index_manager.build_index(force_rebuild=True)
-            vLog.info("✅ Signal index rebuilt")
+            vLog.info('✅ Signal index rebuilt')
         except Exception as e:
-            vLog.error(f"Signal index rebuild failed: {e}")
+            vLog.error(f'Signal index rebuild failed: {e}')
 
     def _print_summary(self) -> None:
         """Print the import summary."""
-        vLog.info("\n" + "=" * 80)
+        vLog.info('\n' + '=' * 80)
         vLog.info(
-            f"Signal Import Summary: {self.processed_files} file(s), {self.total_rows} rows")
+            f'Signal Import Summary: {self.processed_files} file(s), {self.total_rows} rows')
         if self.moved_files:
-            vLog.info(f"Archived to {self.finished_dir}: {self.moved_files} file(s)")
+            vLog.info(f'Archived to {self.finished_dir}: {self.moved_files} file(s)')
         if self.pruned_dirs:
-            vLog.info(f"Emptied inbox folders removed: {self.pruned_dirs}")
+            vLog.info(f'Emptied inbox folders removed: {self.pruned_dirs}')
         if self.warnings:
-            vLog.info(f"Warnings: {len(self.warnings)}")
+            vLog.info(f'Warnings: {len(self.warnings)}')
         if self.errors:
-            vLog.info(f"Errors: {len(self.errors)}")
-        vLog.info("=" * 80)
+            vLog.info(f'Errors: {len(self.errors)}')
+        vLog.info('=' * 80)

@@ -3,19 +3,17 @@ FiniexTestingIDE - Bollinger Worker
 Bar-based Bollinger band computation
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 
-from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
 from python.framework.utils.trading_math.moving_average import moving_average
 from python.framework.utils.trading_math.normalizer import Normalizer
-from python.framework.workers.abstract_indicator_worker import \
-    AbstractIndicatorWorker
+from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 
 
 class BollingerWorker(AbstractIndicatorWorker):
@@ -56,13 +54,13 @@ class BollingerWorker(AbstractIndicatorWorker):
                 default=2.0,
                 min_val=0.5,
                 max_val=5.0,
-                description="Standard deviation multiplier for Bollinger bands"
+                description='Standard deviation multiplier for Bollinger bands'
             ),
             'ma_type': InputParamDef(
                 param_type=str,
                 default='sma',
                 choices=('sma', 'ema'),
-                description="Moving-average type for the midline (sma or ema)"
+                description='Moving-average type for the midline (sma or ema)'
             ),
         }
 

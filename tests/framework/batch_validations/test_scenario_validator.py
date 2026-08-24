@@ -9,12 +9,15 @@ Covers:
 - set_scenario_account_currency() — derivation + spot quote-normalization
 """
 
-import pytest
 from unittest.mock import MagicMock
 
-from python.framework.validators.scenario_validator import ScenarioValidator
+
+from python.framework.types.scenario_types.scenario_set_types import (
+    BrokerScenarioInfo,
+    SingleScenario,
+)
 from python.framework.types.trading_env_types.broker_types import BrokerType, SwapMode
-from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
+from python.framework.validators.scenario_validator import ScenarioValidator
 
 
 class TestDetectQuoteCurrency:

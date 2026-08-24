@@ -22,7 +22,7 @@ from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.validators.scenario_validator import ScenarioValidator
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
-CORE_CONFIG = "backtesting/backtesting_validation_test.json"
+CORE_CONFIG = 'backtesting/backtesting_validation_test.json'
 
 
 def _build() -> Tuple[BatchOrchestrator, ScenarioSet]:

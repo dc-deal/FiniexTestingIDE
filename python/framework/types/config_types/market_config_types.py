@@ -4,13 +4,14 @@ Enums, dataclasses and Pydantic models for market_config.json.
 """
 from enum import Enum
 from typing import Dict, List, Optional
+
 from pydantic import BaseModel
 
 
 class MarketType(Enum):
     """Supported market types with distinct trading rules."""
-    FOREX = "forex"
-    CRYPTO = "crypto"
+    FOREX = 'forex'
+    CRYPTO = 'crypto'
 
 
 class TradingModel(Enum):

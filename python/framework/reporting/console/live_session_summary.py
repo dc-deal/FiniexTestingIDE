@@ -50,40 +50,40 @@ class LiveSessionSummary:
         print('=' * 60)
         print('📋 AutoTrader Session Summary')
         print('=' * 60)
-        print(f"  Duration:       {result.session_duration_s:.1f}s")
-        print(f"  Ticks:          {result.ticks_processed:,}")
-        print(f"  Clipped:        {result.ticks_clipped:,}")
-        print(f"  Shutdown:       {result.shutdown_mode}")
+        print(f'  Duration:       {result.session_duration_s:.1f}s')
+        print(f'  Ticks:          {result.ticks_processed:,}')
+        print(f'  Clipped:        {result.ticks_clipped:,}')
+        print(f'  Shutdown:       {result.shutdown_mode}')
         if result.shutdown_mode == 'emergency' and result.emergency_reason:
-            print(renderer.red(f"  ❌ EMERGENCY CAUSE: {result.emergency_reason}"))
+            print(renderer.red(f'  ❌ EMERGENCY CAUSE: {result.emergency_reason}'))
 
         if result.portfolio_stats:
             pnl = result.portfolio_stats.total_profit - result.portfolio_stats.total_loss
-            print(f"  Balance:        {result.portfolio_stats.current_balance:.2f} "
-                  f"(P&L: {pnl:+.2f})")
+            print(f'  Balance:        {result.portfolio_stats.current_balance:.2f} '
+                  f'(P&L: {pnl:+.2f})')
 
         if result.execution_stats:
-            print(f"  Orders:         {result.execution_stats.orders_sent} sent, "
-                  f"{result.execution_stats.orders_executed} executed, "
-                  f"{result.execution_stats.orders_rejected} rejected")
+            print(f'  Orders:         {result.execution_stats.orders_sent} sent, '
+                  f'{result.execution_stats.orders_executed} executed, '
+                  f'{result.execution_stats.orders_rejected} rejected')
 
         # Trade analytics (#389/#393) — model-sourced, one line per account currency.
         for a in (self._trade_report.analytics if self._trade_report else []):
-            print(f"  Analytics:      expectancy {a.expectancy:+.3f}R | "
-                  f"win-R {a.avg_win_r:+.2f} / loss-R {a.avg_loss_r:+.2f} | "
-                  f"R-trades {a.r_trade_count}/{a.trade_count} ({a.currency})")
+            print(f'  Analytics:      expectancy {a.expectancy:+.3f}R | '
+                  f'win-R {a.avg_win_r:+.2f} / loss-R {a.avg_loss_r:+.2f} | '
+                  f'R-trades {a.r_trade_count}/{a.trade_count} ({a.currency})')
 
         clipping = result.clipping_summary
         if clipping.total_ticks > 0:
-            print(f"  Clipping ratio: {clipping.clipping_ratio:.1%} "
-                  f"(max stale: {clipping.max_stale_ms:.1f}ms, "
-                  f"avg proc: {clipping.avg_processing_ms:.2f}ms)")
+            print(f'  Clipping ratio: {clipping.clipping_ratio:.1%} '
+                  f'(max stale: {clipping.max_stale_ms:.1f}ms, '
+                  f'avg proc: {clipping.avg_processing_ms:.2f}ms)')
 
         # Feed disturbance (#451) — a session that ran through an outage must say so here.
         disturbance = (
             format_disturbance_line(self._run_summary) if self._run_summary else '')
         if disturbance:
-            print(renderer.yellow(f"  {disturbance}"))
+            print(renderer.yellow(f'  {disturbance}'))
 
     def _render_output_locations(self, renderer: ConsoleRenderer) -> None:
         """Output-file locations (log dir + event log)."""
@@ -91,9 +91,9 @@ class LiveSessionSummary:
             return
         result = self._result
         print('-' * 60)
-        print(f"  Log directory:  {self._run_dir}")
+        print(f'  Log directory:  {self._run_dir}')
         if result.trade_history or result.order_history:
             trades_n = len(result.trade_history) if result.trade_history else 0
             orders_n = len(result.order_history) if result.order_history else 0
-            print(f"  Event log:      events.csv ({trades_n} trades, {orders_n} orders)")
+            print(f'  Event log:      events.csv ({trades_n} trades, {orders_n} orders)')
         print('=' * 60)

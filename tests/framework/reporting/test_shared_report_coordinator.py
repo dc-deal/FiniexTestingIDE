@@ -11,7 +11,9 @@ UnifiedReports carries the same models the caller reuses for console + ledger.
 from datetime import datetime, timezone
 
 from python.framework.reporting.builders.run_unit import (
-    run_units_from_batch, run_units_from_session)
+    run_units_from_batch,
+    run_units_from_session,
+)
 from python.framework.reporting.builders.unified_reports import UnifiedReports
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
@@ -19,7 +21,6 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
-
 
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 

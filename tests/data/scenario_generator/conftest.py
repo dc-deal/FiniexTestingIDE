@@ -6,22 +6,22 @@ Shared fixtures and helpers for scenario generator tests.
 No file I/O, no external data — pure mock-based testing.
 """
 
-import pytest
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import List, Optional
 from unittest.mock import MagicMock
+
+import pytest
 
 from python.framework.types.coverage_report_types import Gap, GapCategory
 from python.framework.types.market_types.market_volatility_profile_types import (
-    VolatilityPeriod,
     TradingSession,
+    VolatilityPeriod,
     VolatilityRegime,
 )
 from python.framework.types.scenario_types.scenario_generator_types import (
     BlocksStrategyConfig,
     GeneratorConfig,
 )
-
 
 # =============================================================================
 # TIME HELPERS

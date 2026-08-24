@@ -118,7 +118,7 @@ class TestCloseSubmitDistinctFromOrderSubmit:
         (close) — the dedup key is (order_id, action), not order_id alone."""
         order_id_to_events = {}
         for r in events_csv_rows[1:]:
-            ts, event_type, order_id = r[0], r[1], r[2]
+            event_type, order_id = r[1], r[2]
             if event_type in ('ORDER_SUBMIT', 'CLOSE_SUBMIT'):
                 order_id_to_events.setdefault(order_id, set()).add(event_type)
         # At least one order_id has both event types
@@ -145,16 +145,16 @@ class TestSideAndDirectionColumns:
         fill_rows = [r for r in events_csv_rows[1:] if r[type_idx] == 'FILL']
         assert len(fill_rows) > 0
         for row in fill_rows:
-            assert row[dir_idx] == '', f"FILL row has direction={row[dir_idx]!r}"
-            assert row[side_idx] in ('buy', 'sell'), f"FILL row side={row[side_idx]!r}"
+            assert row[dir_idx] == '', f'FILL row has direction={row[dir_idx]!r}'
+            assert row[side_idx] in ('buy', 'sell'), f'FILL row side={row[side_idx]!r}'
 
     def test_position_rows_carry_direction_not_side(self, events_csv_rows):
         dir_idx, side_idx, type_idx = self._col_indices()
         pos_rows = [r for r in events_csv_rows[1:] if r[type_idx] in ('POSITION_OPEN', 'POSITION_CLOSE')]
         assert len(pos_rows) > 0
         for row in pos_rows:
-            assert row[dir_idx] in ('long', 'short'), f"position row direction={row[dir_idx]!r}"
-            assert row[side_idx] == '', f"position row has side={row[side_idx]!r}"
+            assert row[dir_idx] in ('long', 'short'), f'position row direction={row[dir_idx]!r}'
+            assert row[side_idx] == '', f'position row has side={row[side_idx]!r}'
 
     def test_fill_side_matches_position_direction_semantically(self, events_csv_rows):
         """A FILL row's side must be consistent with the position direction
@@ -191,6 +191,6 @@ class TestSideAndDirectionColumns:
                 expected = 'sell' if direction == 'long' else 'buy'
 
             assert side == expected, (
-                f"FILL pos={pid} direction={direction} is_entry={is_entry} "
-                f"expected side={expected!r}, got {side!r}"
+                f'FILL pos={pid} direction={direction} is_entry={is_entry} '
+                f'expected side={expected!r}, got {side!r}'
             )

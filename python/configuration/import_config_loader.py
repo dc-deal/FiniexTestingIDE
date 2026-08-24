@@ -21,8 +21,8 @@ class ImportConfigFileLoader:
     """
 
     _config: Optional[Dict[str, Any]] = None
-    _config_path: str = "configs/import_config.json"
-    _user_config_path: str = "user_configs/import_config.json"
+    _config_path: str = 'configs/import_config.json'
+    _user_config_path: str = 'user_configs/import_config.json'
     _lock = Lock()
 
     @staticmethod
@@ -80,14 +80,14 @@ class ImportConfigFileLoader:
         # Load base configuration
         if not config_path.exists():
             raise FileNotFoundError(
-                f"❌ Import config not found: {config_path}\n"
-                f"   Please create {config_path} with import pipeline settings."
+                f'❌ Import config not found: {config_path}\n'
+                f'   Please create {config_path} with import pipeline settings.'
             )
 
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             base_config = json.load(f)
 
-        print(f"📋 Loaded import config: {config_path}")
+        print(f'📋 Loaded import config: {config_path}')
 
         # Try to load user override configuration.
         # Tests run with FINIEX_CONFIG_ISOLATION=1 (see tests/conftest.py) — the
@@ -95,25 +95,25 @@ class ImportConfigFileLoader:
         user_config_path = Path(ImportConfigFileLoader._user_config_path)
         if user_config_path.exists() and not is_config_isolation_active():
             try:
-                with open(user_config_path, "r", encoding="utf-8") as f:
+                with open(user_config_path, 'r', encoding='utf-8') as f:
                     user_override = json.load(f)
 
                 # Merge user overrides into base config
                 merged_config = ImportConfigFileLoader._deep_merge(
                     base_config, user_override)
-                print(f"✅ Merged user_configs/import_config.json")
+                print('✅ Merged user_configs/import_config.json')
                 return merged_config
 
             except json.JSONDecodeError as e:
                 raise RuntimeError(
-                    f"Invalid JSON in user import config: {user_config_path}\n"
-                    f"Error: {e}\n"
-                    f"Please fix the JSON syntax or remove the file."
+                    f'Invalid JSON in user import config: {user_config_path}\n'
+                    f'Error: {e}\n'
+                    f'Please fix the JSON syntax or remove the file.'
                 )
             except Exception as e:
                 raise RuntimeError(
-                    f"Failed to load user import config: {user_config_path}\n"
-                    f"Error: {e}"
+                    f'Failed to load user import config: {user_config_path}\n'
+                    f'Error: {e}'
                 )
 
         # No user config - return base config

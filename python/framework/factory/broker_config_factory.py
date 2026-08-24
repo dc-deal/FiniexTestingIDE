@@ -16,15 +16,9 @@ PERFORMANCE:
 import hashlib
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
-from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.reporting.console.broker_info_renderer import BrokerInfoRenderer
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
-from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
-from python.framework.trading_env.adapters.mt5_adapter import Mt5Adapter
-from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet, SingleScenario
 
 
 class BrokerConfigFactory:
@@ -48,7 +42,7 @@ class BrokerConfigFactory:
         path = Path(config_path)
 
         if not path.exists():
-            raise FileNotFoundError(f"Broker config not found: {config_path}")
+            raise FileNotFoundError(f'Broker config not found: {config_path}')
 
         # Load JSON
         with open(path, 'r') as f:

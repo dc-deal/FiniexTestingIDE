@@ -16,18 +16,17 @@ OBV tests use make_bars_with_volume() for explicit volume control.
 """
 
 import pytest
-
-from python.framework.workers.core.obv_worker import ObvWorker
-from python.framework.types.worker_types import WorkerResult
-
 from conftest import make_bars_with_volume, make_tick
+
+from python.framework.types.worker_types import WorkerResult
+from python.framework.workers.core.obv_worker import ObvWorker
 
 
 def _make_obv_worker(mock_logger, period=20):
     """Helper: create OBV worker with standard config."""
     return ObvWorker(
-        name="test_obv",
-        parameters={"periods": {"M5": period}},
+        name='test_obv',
+        parameters={'periods': {'M5': period}},
         logger=mock_logger,
     )
 
@@ -56,7 +55,7 @@ class TestOBVBasicComputation:
         tick = make_tick(bid=102.0)
 
         result = worker.compute(tick=tick, bar_history={
-                                "M5": bars}, current_bars={})
+                                'M5': bars}, current_bars={})
 
         assert isinstance(result, WorkerResult)
         assert result.get_signal('obv_value') == pytest.approx(1200.0, abs=0.01)
@@ -79,7 +78,7 @@ class TestOBVBasicComputation:
         tick = make_tick(bid=104.0)
 
         result = worker.compute(tick=tick, bar_history={
-                                "M5": bars}, current_bars={})
+                                'M5': bars}, current_bars={})
 
         assert result.get_signal('obv_value') == pytest.approx(1000.0, abs=0.01)
 
@@ -101,7 +100,7 @@ class TestOBVBasicComputation:
         tick = make_tick(bid=100.0)
 
         result = worker.compute(tick=tick, bar_history={
-                                "M5": bars}, current_bars={})
+                                'M5': bars}, current_bars={})
 
         assert result.get_signal('obv_value') == pytest.approx(-1000.0, abs=0.01)
 
@@ -123,7 +122,7 @@ class TestOBVBasicComputation:
         tick = make_tick(bid=100.0)
 
         result = worker.compute(tick=tick, bar_history={
-                                "M5": bars}, current_bars={})
+                                'M5': bars}, current_bars={})
 
         assert result.get_signal('obv_value') == pytest.approx(0.0, abs=0.01)
 
@@ -143,7 +142,7 @@ class TestOBVEdgeCases:
         tick = make_tick(bid=100.0)
 
         result = worker.compute(tick=tick, bar_history={
-                                "M5": bars}, current_bars={})
+                                'M5': bars}, current_bars={})
 
         assert result.get_signal('obv_value') == 0.0
         assert result.get_signal('trend') == 'neutral'
@@ -167,7 +166,7 @@ class TestOBVEdgeCases:
         tick = make_tick(bid=103.0)
 
         result = worker.compute(tick=tick, bar_history={
-                                "M5": bars}, current_bars={})
+                                'M5': bars}, current_bars={})
 
         assert result.get_signal('obv_value') == pytest.approx(0.0, abs=0.01)
 
@@ -189,7 +188,7 @@ class TestOBVEdgeCases:
         tick = make_tick(bid=105.0)
 
         result = worker.compute(tick=tick, bar_history={
-                                "M5": bars}, current_bars={})
+                                'M5': bars}, current_bars={})
 
         assert result.get_signal('obv_value') == pytest.approx(500.0, abs=0.01)
 
@@ -208,7 +207,7 @@ class TestOBVOutputFields:
         tick = make_tick(bid=102.0)
 
         result = worker.compute(tick=tick, bar_history={
-                                "M5": bars}, current_bars={})
+                                'M5': bars}, current_bars={})
 
         assert result.get_signal('bars_used') == 5
         assert result.get_signal('total_volume') == pytest.approx(
@@ -227,6 +226,6 @@ class TestOBVOutputFields:
         tick = make_tick(bid=101.0)
 
         result = worker.compute(tick=tick, bar_history={
-                                "M5": bars}, current_bars={})
+                                'M5': bars}, current_bars={})
 
         assert result.get_signal('has_volume') is False

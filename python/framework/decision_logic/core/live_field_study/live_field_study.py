@@ -18,7 +18,9 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
-from python.framework.decision_logic.core.live_field_study.field_study_phase_machine import FieldStudyPhaseMachine
+from python.framework.decision_logic.core.live_field_study.field_study_phase_machine import (
+    FieldStudyPhaseMachine,
+)
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
 from python.framework.types.autotrader_types.field_study_types import (
@@ -38,12 +40,16 @@ from python.framework.types.decision_event_types import (
     PartialCloseEvent,
     SessionEndSeverity,
 )
-from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionLogicAction
+from python.framework.types.decision_logic_types import (
+    AwarenessLevel,
+    Decision,
+    DecisionLogicAction,
+)
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
@@ -130,10 +136,10 @@ class LiveFieldStudy(AbstractDecisionLogic):
         self._cancelled_flag = False
 
         self.logger.info(
-            f"LiveFieldStudy initialized: {len(self._phases)} phases, "
-            f"lot_size={self._default_lot}, limit_offset={self._limit_offset_pct}, "
-            f"max_rearm={self._max_rearm_attempts}, "
-            f"budget=${self._max_session_cost_usd}"
+            f'LiveFieldStudy initialized: {len(self._phases)} phases, '
+            f'lot_size={self._default_lot}, limit_offset={self._limit_offset_pct}, '
+            f'max_rearm={self._max_rearm_attempts}, '
+            f'budget=${self._max_session_cost_usd}'
         )
 
     # ============================================
@@ -249,8 +255,8 @@ class LiveFieldStudy(AbstractDecisionLogic):
             status: Session-level market-data health snapshot
         """
         self.logger.warning(
-            f"🔌 Market data stale ({status.seconds_since_last_tick:.0f}s "
-            f"since last tick) — field study waiting; phase timeouts guard progress."
+            f'🔌 Market data stale ({status.seconds_since_last_tick:.0f}s '
+            f'since last tick) — field study waiting; phase timeouts guard progress.'
         )
         self.emit_event(
             '🔌 market data stale — field study waiting for ticks',
@@ -387,8 +393,8 @@ class LiveFieldStudy(AbstractDecisionLogic):
             self._record_phase_start(cur_phase)
             self._last_phase_id = cur_phase
             self.logger.debug(
-                f"[FS_RESTING] event=phase_start phase={cur_phase} "
-                f"{self._resting_snapshot_str()}")
+                f'[FS_RESTING] event=phase_start phase={cur_phase} '
+                f'{self._resting_snapshot_str()}')
 
         # Submits route through the standard BUY/SELL action so the safety circuit
         # breaker can suppress them (it overrides BUY/SELL → FLAT when blocked).
@@ -425,8 +431,8 @@ class LiveFieldStudy(AbstractDecisionLogic):
             # breaker blocked new entries — skip the submit (the machine times out).
             if decision.action not in (DecisionLogicAction.BUY, DecisionLogicAction.SELL):
                 self.logger.warning(
-                    f"Field Study submit suppressed by safety circuit breaker "
-                    f"(phase {action.phase_id})"
+                    f'Field Study submit suppressed by safety circuit breaker '
+                    f'(phase {action.phase_id})'
                 )
                 return None
             return self._submit(action)
@@ -486,8 +492,8 @@ class LiveFieldStudy(AbstractDecisionLogic):
         oid = result.order_id if result is not None else None
         status = result.status.value if result is not None and result.status else 'none'
         self.logger.debug(
-            f"[FS_SUBMIT] phase={action.phase_id} type={order_type.value} side={side.value} "
-            f"lots={action.lots} price={action.price} order_id={oid} status={status}")
+            f'[FS_SUBMIT] phase={action.phase_id} type={order_type.value} side={side.value} '
+            f'lots={action.lots} price={action.price} order_id={oid} status={status}')
         return result
 
     def _close_all(self) -> None:
@@ -514,7 +520,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
         # resting order, including any leaked from an earlier phase.
         resting = self.trading_api.get_active_orders()
         self.logger.debug(
-            f"[FS_CANCEL] event=cancel_all {self._resting_snapshot_str(resting)}")
+            f'[FS_CANCEL] event=cancel_all {self._resting_snapshot_str(resting)}')
         for order in resting:
             scheduled = self.trading_api.cancel_limit_order(order.pending_order_id)
             # scheduled=0 with ref=NONE → the cancel was dropped (broker_ref in-flight);
@@ -578,7 +584,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
         src = 'ghost' if is_ghost else 'tick'
         state = self._machine.get_state()
         submit_time = self._machine.get_submit_time()
-        age = f"{(ctx.now - submit_time).total_seconds():.1f}" if submit_time else "-1"
+        age = f'{(ctx.now - submit_time).total_seconds():.1f}' if submit_time else '-1'
         idx = self._machine.get_current_phase_index()
         line = (
             f"[FS_PHASE] src={src} phase={cur_phase or 'done'} idx={idx} "
@@ -665,9 +671,9 @@ class LiveFieldStudy(AbstractDecisionLogic):
 
     def _trigger_safe_abort(self) -> None:
         """Cancel resting orders, close all positions, and request a graceful session end."""
-        self.logger.warning(f"⛔ Field Study safe-abort: {self._abort_reason}")
+        self.logger.warning(f'⛔ Field Study safe-abort: {self._abort_reason}')
         self.emit_event(
-            f"safe-abort: {self._abort_reason}",
+            f'safe-abort: {self._abort_reason}',
             level=AwarenessLevel.ALERT, reason_key='field_study_abort',
         )
         self._cancel_resting()
@@ -690,14 +696,14 @@ class LiveFieldStudy(AbstractDecisionLogic):
             else:
                 level = AwarenessLevel.INFO
             self.emit_event(
-                f"phase ({idx + 1}/{total}) {result.phase_id} → {result.outcome.value}: {result.reason}",
+                f'phase ({idx + 1}/{total}) {result.phase_id} → {result.outcome.value}: {result.reason}',
                 level=level,
                 reason_key='field_study_phase',
             )
             # Resting-order snapshot at phase end — a fail with n>0 is the orphan/leak.
             self.logger.debug(
-                f"[FS_RESTING] event=phase_end phase={result.phase_id} "
-                f"outcome={result.outcome.value} {self._resting_snapshot_str()}")
+                f'[FS_RESTING] event=phase_end phase={result.phase_id} '
+                f'outcome={result.outcome.value} {self._resting_snapshot_str()}')
             if self._recorder:
                 self._recorder.record_phase_result(result)
             if self._halt_after_phase and result.phase_id == self._halt_after_phase:

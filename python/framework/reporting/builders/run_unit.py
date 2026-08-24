@@ -16,13 +16,19 @@ from python.framework.types.autotrader_types.autotrader_result_types import Auto
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.performance_types.performance_stats_types import (
-    DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats)
+    DecisionLogicStats,
+    WorkerCoordinatorPerformanceStats,
+    WorkerPerformanceStats,
+)
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
-from python.framework.types.trading_env_types.stress_test_types import StaleDataEvent, StressTestConfig
+from python.framework.types.trading_env_types.stress_test_types import (
+    StaleDataEvent,
+    StressTestConfig,
+)
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 

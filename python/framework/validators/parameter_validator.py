@@ -15,7 +15,7 @@ def validate_parameters(
     config: Dict[str, Any],
     schema: Dict[str, InputParamDef],
     strict: bool = True,
-    context_name: str = "",
+    context_name: str = '',
     reserved_keys: Optional[Set[str]] = None,
 ) -> List[str]:
     """
@@ -47,7 +47,7 @@ def validate_parameters(
 
     schema = schema or {}
     warnings: List[str] = []
-    prefix = f"'{context_name}': " if context_name else ""
+    prefix = f"'{context_name}': " if context_name else ''
 
     for param_name, param_def in schema.items():
 

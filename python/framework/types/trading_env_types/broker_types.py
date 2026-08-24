@@ -12,18 +12,17 @@ Architecture:
 """
 
 from dataclasses import dataclass
-from typing import Optional
 from enum import Enum
 
 
 class SwapMode(Enum):
     """Swap calculation mode for overnight positions"""
-    POINTS = "points"              # Swap in points (MT5)
-    INTEREST_CURRENT = "interest_current"  # Current interest rate
-    INTEREST_OPEN = "interest_open"        # Interest at position open
-    PERCENTAGE = "percentage"      # Percentage of position value
-    NONE = "none"                  # No swap (Crypto spot)
-    UNKNOWN = "unknown"            # Unparseable config string — never silently treated as POINTS
+    POINTS = 'points'              # Swap in points (MT5)
+    INTEREST_CURRENT = 'interest_current'  # Current interest rate
+    INTEREST_OPEN = 'interest_open'        # Interest at position open
+    PERCENTAGE = 'percentage'      # Percentage of position value
+    NONE = 'none'                  # No swap (Crypto spot)
+    UNKNOWN = 'unknown'            # Unparseable config string — never silently treated as POINTS
 
     @property
     def is_implemented(self) -> bool:
@@ -33,34 +32,34 @@ class SwapMode(Enum):
 
 class MarginMode(Enum):
     """Account margin calculation mode"""
-    RETAIL_NETTING = "retail_netting"    # Single position per symbol
-    RETAIL_HEDGING = "retail_hedging"    # Multiple positions allowed
-    EXCHANGE = "exchange"                # Exchange margin calculation
-    NONE = "none"                        # No margin (Spot trading, leverage=1)
+    RETAIL_NETTING = 'retail_netting'    # Single position per symbol
+    RETAIL_HEDGING = 'retail_hedging'    # Multiple positions allowed
+    EXCHANGE = 'exchange'                # Exchange margin calculation
+    NONE = 'none'                        # No margin (Spot trading, leverage=1)
 
 
 class FeeType(Enum):
     """Trading fee type classification"""
-    SPREAD = "spread"
-    SWAP = "swap"
-    COMMISSION = "commission"
-    MAKER_TAKER = "maker_taker"
+    SPREAD = 'spread'
+    SWAP = 'swap'
+    COMMISSION = 'commission'
+    MAKER_TAKER = 'maker_taker'
 
 
 class FeeStatus(Enum):
     """Fee payment status"""
-    PENDING = "pending"      # Fee calculated but not yet applied
-    APPLIED = "applied"      # Fee deducted from balance
-    DEFERRED = "deferred"    # Fee will be applied later (e.g., swap on close)
+    PENDING = 'pending'      # Fee calculated but not yet applied
+    APPLIED = 'applied'      # Fee deducted from balance
+    DEFERRED = 'deferred'    # Fee will be applied later (e.g., swap on close)
 
 
 class BrokerType(Enum):
     """Supported broker types"""
-    MT5_FOREX = "mt5"
-    MT5_CFD = "mt5_cfd"
-    MT5_CRYPTO = "mt5_crypto"
-    KRAKEN_SPOT = "kraken_spot"
-    BINANCE_FUTURES = "binance_futures"  # Post-V1
+    MT5_FOREX = 'mt5'
+    MT5_CFD = 'mt5_cfd'
+    MT5_CRYPTO = 'mt5_crypto'
+    KRAKEN_SPOT = 'kraken_spot'
+    BINANCE_FUTURES = 'binance_futures'  # Post-V1
 
 
 @dataclass(frozen=True)

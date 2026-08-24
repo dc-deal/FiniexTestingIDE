@@ -61,7 +61,7 @@ parquet_metadata = {
 
 ### Normal Import (C#003)
 ```bash
-python tick_importer.py
+python python/cli/data_index_cli.py import
 
 Processing: EURUSD_20250923_120000_ticks.json
   → Extracting data_collector: 'mt5'
@@ -75,7 +75,7 @@ Processing: EURUSD_20250923_120000_ticks.json
 
 ### Re-Import Detection - Same Collector
 ```bash
-python tick_importer.py
+python python/cli/data_index_cli.py import
 
 Processing: EURUSD_20250923_120000_ticks.json
   → Extracting data_collector: 'mt5'
@@ -134,7 +134,7 @@ ERROR:
 ```bash
 # Scenario: The same source accidentally imported under a different collector
 
-python tick_importer.py
+python python/cli/data_index_cli.py import
 
 Processing: EURUSD_20250923_120000_ticks.json
   → Extracting data_collector: 'ib'  # Different source!
@@ -187,7 +187,7 @@ ERROR:
 
 ### Enhanced Two-Layer Protection (C#003)
 
-#### 🛡️ Layer 1: Import Prevention (tick_importer.py)
+#### 🛡️ Layer 1: Import Prevention (tick_data_importer.py)
 **Searches across ALL data_collector directories**
 
 ```python
@@ -254,6 +254,21 @@ The duplicate report now also compares `data_collector`:
 **Important:** `data_collector` is **NOT** used as a duplicate criterion!
 - Duplicate = Same `source_file`
 - `data_collector` is only displayed for **informational purposes**
+
+### Signal import uses a different rule
+
+This whole document describes the **tick** path. The signal importer (JSONL → parquet, see
+[signal_data_source.md](signal_data_source.md)) does not search across collectors and does not
+read source metadata — it skips when the target parquet already exists, unless `--override`:
+
+| | Tick import | Signal import |
+|---|---|---|
+| Question asked | "was this *source file* already imported, under any collector?" | "does this *target file* already exist?" |
+| Compared | `source_file` in the parquet metadata, globbed over `*/ticks/{symbol}/` | `target_path.exists()` |
+| Reason | one JSON can land under the wrong collector directory, and that must be caught | the target path is derived from the source, so identity is already in the name |
+
+Do not carry assumptions from one to the other — a signal re-import under a changed path
+would not be detected as a duplicate the way a tick re-import is.
 
 ---
 

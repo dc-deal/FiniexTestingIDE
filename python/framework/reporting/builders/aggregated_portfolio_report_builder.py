@@ -13,8 +13,13 @@ from typing import Dict, List
 
 from python.framework.reporting.builders.report_aggregators import aggregate_full_portfolio
 from python.framework.types.api.report_types import (
-    AggregatedPortfolioCurrency, AggregatedPortfolioReport, ExecutionStatsReport,
-    PendingOrdersReport, PortfolioReport, PortfolioUnitRow)
+    AggregatedPortfolioCurrency,
+    AggregatedPortfolioReport,
+    ExecutionStatsReport,
+    PendingOrdersReport,
+    PortfolioReport,
+    PortfolioUnitRow,
+)
 
 
 def build_aggregated_portfolio_report(

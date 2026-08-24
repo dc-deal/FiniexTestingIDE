@@ -21,7 +21,9 @@ import pytest
 
 from python.framework.signal_data.signal_health_probe import SignalHealthProbe
 from python.framework.types.config_types.sentiment_config_types import (
-    SentimentHealthConfig, SentimentSourceConfig)
+    SentimentHealthConfig,
+    SentimentSourceConfig,
+)
 
 DEV_JOURNAL = '9c3fa4c80d95'
 PROD_JOURNAL = '138c68e48b15'

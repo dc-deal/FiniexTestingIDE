@@ -15,7 +15,6 @@ from typing import Any, Dict, Optional
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.process_serialization_utils import serialize_value
 
-
 # ============================================
 # Order Type Enums
 # ============================================
@@ -34,12 +33,12 @@ class OrderType(Enum):
         TRAILING_STOP: Dynamic stop that follows price movement
         ICEBERG: Large order split into smaller visible chunks
     """
-    MARKET = "market"
-    LIMIT = "limit"
-    STOP = "stop"
-    STOP_LIMIT = "stop_limit"
-    TRAILING_STOP = "trailing_stop"
-    ICEBERG = "iceberg"
+    MARKET = 'market'
+    LIMIT = 'limit'
+    STOP = 'stop'
+    STOP_LIMIT = 'stop_limit'
+    TRAILING_STOP = 'trailing_stop'
+    ICEBERG = 'iceberg'
 
 
 class OrderDirection(StrEnum):
@@ -51,8 +50,8 @@ class OrderDirection(StrEnum):
     algo-facing enum); the executor resolves side → direction based on the
     broker's trading model.
     """
-    LONG = "long"
-    SHORT = "short"
+    LONG = 'long'
+    SHORT = 'short'
 
 
 class OrderSide(StrEnum):
@@ -65,8 +64,8 @@ class OrderSide(StrEnum):
         Spot:   BUY → LONG, SELL → SHORT (internal marker; spot branch
                 handles base/quote balance movement)
     """
-    BUY = "buy"
-    SELL = "sell"
+    BUY = 'buy'
+    SELL = 'sell'
 
 
 class OrderAction(Enum):
@@ -81,8 +80,8 @@ class OrderAction(Enum):
     EventStreamWriter needs this to emit distinct ORDER_SUBMIT / CLOSE_SUBMIT
     events for opens vs closes on the same position.
     """
-    OPEN = "open"
-    CLOSE = "close"
+    OPEN = 'open'
+    CLOSE = 'close'
 
 
 class CloseType(Enum):
@@ -94,8 +93,8 @@ class CloseType(Enum):
     trade-record module imports from this one — order_types is the base
     order-domain type module.
     """
-    FULL = "full"
-    PARTIAL = "partial"
+    FULL = 'full'
+    PARTIAL = 'partial'
 
 
 def direction_to_side(direction: 'OrderDirection', action: OrderAction) -> 'OrderSide':
@@ -121,13 +120,13 @@ def direction_to_side(direction: 'OrderDirection', action: OrderAction) -> 'Orde
 
 class OrderStatus(Enum):
     """Order execution status"""
-    PENDING = "pending"          # Order created, not yet sent
-    SUBMITTED = "submitted"      # Sent to broker
-    EXECUTED = "executed"        # Fully filled
-    PARTIALLY_FILLED = "partial"  # Partially filled (large orders)
-    REJECTED = "rejected"        # Broker rejected
-    CANCELLED = "cancelled"      # User cancelled
-    EXPIRED = "expired"          # Time-based expiration
+    PENDING = 'pending'          # Order created, not yet sent
+    SUBMITTED = 'submitted'      # Sent to broker
+    EXECUTED = 'executed'        # Fully filled
+    PARTIALLY_FILLED = 'partial'  # Partially filled (large orders)
+    REJECTED = 'rejected'        # Broker rejected
+    CANCELLED = 'cancelled'      # User cancelled
+    EXPIRED = 'expired'          # Time-based expiration
 
 
 class FillType(Enum):
@@ -144,25 +143,25 @@ class FillType(Enum):
     Note: No STOP_IMMEDIATE — if stop price is already exceeded after latency,
     the order fills immediately at current market price (same as STOP).
     """
-    MARKET = "market"
-    LIMIT = "limit"
-    LIMIT_IMMEDIATE = "limit_immediate"
-    STOP = "stop"
-    STOP_LIMIT = "stop_limit"
+    MARKET = 'market'
+    LIMIT = 'limit'
+    LIMIT_IMMEDIATE = 'limit_immediate'
+    STOP = 'stop'
+    STOP_LIMIT = 'stop_limit'
 
 
 class RejectionReason(Enum):
     """Reasons why orders get rejected"""
-    INSUFFICIENT_MARGIN = "insufficient_margin"
-    INSUFFICIENT_FUNDS = "insufficient_funds"
-    INVALID_LOT_SIZE = "invalid_lot_size"
-    SYMBOL_NOT_TRADEABLE = "symbol_not_tradeable"
-    MARKET_CLOSED = "market_closed"
-    INVALID_PRICE = "invalid_price"
-    ORDER_TYPE_NOT_SUPPORTED = "order_type_not_supported"
-    BROKER_ERROR = "broker_error"
-    REJECTION_COOLDOWN = "rejection_cooldown"
-    STALE_MARKET_DATA = "stale_market_data"
+    INSUFFICIENT_MARGIN = 'insufficient_margin'
+    INSUFFICIENT_FUNDS = 'insufficient_funds'
+    INVALID_LOT_SIZE = 'invalid_lot_size'
+    SYMBOL_NOT_TRADEABLE = 'symbol_not_tradeable'
+    MARKET_CLOSED = 'market_closed'
+    INVALID_PRICE = 'invalid_price'
+    ORDER_TYPE_NOT_SUPPORTED = 'order_type_not_supported'
+    BROKER_ERROR = 'broker_error'
+    REJECTION_COOLDOWN = 'rejection_cooldown'
+    STALE_MARKET_DATA = 'stale_market_data'
 
 
 # ============================================
@@ -239,7 +238,7 @@ class BaseOrder:
     # Optional fields
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
-    comment: str = ""
+    comment: str = ''
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
@@ -353,7 +352,7 @@ class OrderResult:
     slippage_points: float = 0.0
 
     rejection_reason: Optional[RejectionReason] = None
-    rejection_message: str = ""
+    rejection_message: str = ''
 
     position_id: Optional[str] = None
 
@@ -429,7 +428,7 @@ class OrderResult:
 def create_rejection_result(
     order_id: str,
     reason: RejectionReason,
-    message: str = ""
+    message: str = ''
 ) -> OrderResult:
     """Create standardized rejection result"""
     return OrderResult(
@@ -470,7 +469,7 @@ class OpenOrderRequest:
     stop_price: Optional[float] = None
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
-    comment: str = ""
+    comment: str = ''
 
 
 # ============================================
@@ -484,18 +483,18 @@ class ModificationRejectionReason(Enum):
     Used by modify_position(), modify_limit_order(), and modify_stop_order()
     to provide structured rejection feedback.
     """
-    POSITION_NOT_FOUND = "position_not_found"
-    LIMIT_ORDER_NOT_FOUND = "limit_order_not_found"
-    STOP_ORDER_NOT_FOUND = "stop_order_not_found"
-    INVALID_SL_LEVEL = "invalid_sl_level"
-    INVALID_TP_LEVEL = "invalid_tp_level"
-    SL_TP_CROSS = "sl_tp_cross"
-    INVALID_PRICE = "invalid_price"
-    NO_CURRENT_PRICE = "no_current_price"
+    POSITION_NOT_FOUND = 'position_not_found'
+    LIMIT_ORDER_NOT_FOUND = 'limit_order_not_found'
+    STOP_ORDER_NOT_FOUND = 'stop_order_not_found'
+    INVALID_SL_LEVEL = 'invalid_sl_level'
+    INVALID_TP_LEVEL = 'invalid_tp_level'
+    SL_TP_CROSS = 'sl_tp_cross'
+    INVALID_PRICE = 'invalid_price'
+    NO_CURRENT_PRICE = 'no_current_price'
     # #318 — Async modify/cancel reject cases
-    ORDER_NOT_CONFIRMED = "order_not_confirmed"   # broker_ref still None (Option A)
-    OPERATION_BUSY = "operation_busy"             # another in_flight_operation already
-    ORDER_TYPE_NOT_SUPPORTED = "order_type_not_supported"   # capability gate (e.g. stop_orders=False)
+    ORDER_NOT_CONFIRMED = 'order_not_confirmed'   # broker_ref still None (Option A)
+    OPERATION_BUSY = 'operation_busy'             # another in_flight_operation already
+    ORDER_TYPE_NOT_SUPPORTED = 'order_type_not_supported'   # capability gate (e.g. stop_orders=False)
 
 
 class ModificationStatus(Enum):
@@ -510,9 +509,9 @@ class ModificationStatus(Enum):
              outcome surfaced via outcome listener).
     REJECTED: Modification rejected (validation, broker, or async outcome).
     """
-    PENDING = "pending"
-    SUCCESS = "success"
-    REJECTED = "rejected"
+    PENDING = 'pending'
+    SUCCESS = 'success'
+    REJECTED = 'rejected'
 
 
 @dataclass

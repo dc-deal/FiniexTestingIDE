@@ -15,21 +15,20 @@ Convention:
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.trading_env_types.order_types import OrderResult
-from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
-from python.scenario.scenario_config_loader import ScenarioConfigLoader
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
+from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
-
+from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
 # =============================================================================
 # SCENARIO EXECUTION
@@ -68,17 +67,17 @@ def extract_process_result(
     scenario_index: int = 0
 ) -> ProcessResult:
     """Extract ProcessResult for a specific scenario."""
-    assert summary.process_result_list, "No process results in summary"
+    assert summary.process_result_list, 'No process results in summary'
     assert scenario_index < len(summary.process_result_list), (
-        f"Scenario index {scenario_index} out of range "
-        f"(have {len(summary.process_result_list)} results)"
+        f'Scenario index {scenario_index} out of range '
+        f'(have {len(summary.process_result_list)} results)'
     )
     return summary.process_result_list[scenario_index]
 
 
 def extract_tick_loop_results(process_result: ProcessResult) -> ProcessTickLoopResult:
     """Extract tick loop results from process result."""
-    assert process_result.tick_loop_results, "No tick loop results"
+    assert process_result.tick_loop_results, 'No tick loop results'
     return process_result.tick_loop_results
 
 
@@ -87,7 +86,7 @@ def extract_backtesting_metadata(
 ) -> BacktestingMetadata:
     """Extract BacktestingMetadata from decision statistics."""
     stats = tick_loop_results.decision_statistics
-    assert stats.backtesting_metadata, "No backtesting metadata"
+    assert stats.backtesting_metadata, 'No backtesting metadata'
     return stats.backtesting_metadata
 
 
@@ -95,7 +94,7 @@ def extract_portfolio_stats(
     tick_loop_results: ProcessTickLoopResult
 ) -> PortfolioStats:
     """Extract portfolio statistics."""
-    assert tick_loop_results.portfolio_stats, "No portfolio stats"
+    assert tick_loop_results.portfolio_stats, 'No portfolio stats'
     return tick_loop_results.portfolio_stats
 
 
@@ -103,7 +102,7 @@ def extract_trade_history(
     tick_loop_results: ProcessTickLoopResult
 ) -> List[TradeRecord]:
     """Extract trade history for P&L verification."""
-    assert tick_loop_results.trade_history is not None, "No trade history"
+    assert tick_loop_results.trade_history is not None, 'No trade history'
     return tick_loop_results.trade_history
 
 
@@ -111,7 +110,7 @@ def extract_pending_stats(
     tick_loop_results: ProcessTickLoopResult
 ) -> PendingOrderStats:
     """Extract pending order statistics."""
-    assert tick_loop_results.pending_stats is not None, "No pending stats"
+    assert tick_loop_results.pending_stats is not None, 'No pending stats'
     return tick_loop_results.pending_stats
 
 
@@ -119,7 +118,7 @@ def extract_execution_stats(
     tick_loop_results: ProcessTickLoopResult
 ) -> ExecutionStats:
     """Extract execution statistics (order counts, SL/TP triggers)."""
-    assert tick_loop_results.execution_stats is not None, "No execution stats"
+    assert tick_loop_results.execution_stats is not None, 'No execution stats'
     return tick_loop_results.execution_stats
 
 
@@ -127,7 +126,7 @@ def extract_order_history(
     tick_loop_results: ProcessTickLoopResult
 ) -> List[OrderResult]:
     """Extract order history (executed + rejected orders)."""
-    assert tick_loop_results.order_history is not None, "No order history"
+    assert tick_loop_results.order_history is not None, 'No order history'
     return tick_loop_results.order_history
 
 

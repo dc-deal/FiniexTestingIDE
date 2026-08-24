@@ -4,16 +4,15 @@ Summary reports, formatted output, and developer convenience tools
 
 """
 
-from pathlib import Path
 import traceback
-
-import pandas as pd
 from typing import Dict
 
-from python.configuration.app_config_manager import AppConfigManager
-from python.framework.logging.bootstrap_logger import get_global_logger
+import pandas as pd
+
 from python.data_management.index.tick_index_manager import TickIndexManager
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.market_calendar import MarketCalendar
+
 vLog = get_global_logger()
 
 
@@ -42,11 +41,11 @@ class TickDataReporter:
         """
         # Check broker_type exists
         if broker_type not in self.index_manager.index:
-            return {"error": f"No data found for broker_type {broker_type}"}
+            return {'error': f'No data found for broker_type {broker_type}'}
 
         # Check symbol exists for this broker_type
         if symbol not in self.index_manager.index[broker_type]:
-            return {"error": f"No data found for symbol {symbol} in {broker_type}"}
+            return {'error': f'No data found for symbol {symbol} in {broker_type}'}
 
         files = self.index_manager.index[broker_type][symbol]
 
@@ -67,7 +66,7 @@ class TickDataReporter:
         # Weekend analysis
         weekend_info = MarketCalendar.get_weekend_statistics(
             start_time, end_time)
-        trading_days = duration_days - (weekend_info["full_weekends"] * 2)
+        trading_days = duration_days - (weekend_info['full_weekends'] * 2)
 
         # === AGGREGATE SPREAD STATISTICS ===
         # Weighted average by tick_count
@@ -101,43 +100,43 @@ class TickDataReporter:
         data_source = files[0].get('broker_type', broker_type)
 
         return {
-            "symbol": symbol,
-            "broker_type": broker_type,
-            "files": len(files),
-            "total_ticks": total_ticks,
-            "date_range": {
-                "start": start_time.isoformat(),
-                "end": end_time.isoformat(),
-                "start_formatted": start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                "end_formatted": end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                "duration": {
-                    "days": duration_days,
-                    "hours": round(duration_hours, 2),
-                    "minutes": round(duration_minutes, 2),
-                    "total_seconds": duration.total_seconds(),
-                    "trading_days": trading_days,
-                    "weekends": weekend_info,
+            'symbol': symbol,
+            'broker_type': broker_type,
+            'files': len(files),
+            'total_ticks': total_ticks,
+            'date_range': {
+                'start': start_time.isoformat(),
+                'end': end_time.isoformat(),
+                'start_formatted': start_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'end_formatted': end_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'duration': {
+                    'days': duration_days,
+                    'hours': round(duration_hours, 2),
+                    'minutes': round(duration_minutes, 2),
+                    'total_seconds': duration.total_seconds(),
+                    'trading_days': trading_days,
+                    'weekends': weekend_info,
                 },
             },
-            "statistics": {
-                "avg_spread_points": avg_spread_points,
-                "avg_spread_pct": avg_spread_pct,
-                "tick_frequency_per_second": tick_frequency,
+            'statistics': {
+                'avg_spread_points': avg_spread_points,
+                'avg_spread_pct': avg_spread_pct,
+                'tick_frequency_per_second': tick_frequency,
             },
-            "file_size_mb": round(total_size_mb, 2),
-            "sessions": sessions,
-            "market_type": market_type,
-            "data_source": data_source,
+            'file_size_mb': round(total_size_mb, 2),
+            'sessions': sessions,
+            'market_type': market_type,
+            'data_source': data_source,
         }
 
     def print_symbol_info(self, info: Dict):
         """Print formatted symbol information to console"""
-        if "error" in info:
+        if 'error' in info:
             vLog.info(
                 f"\n❌ {info.get('symbol', 'UNKNOWN')}: {info['error']}")
             return
 
-        weekends = info["date_range"]["duration"]["weekends"]
+        weekends = info['date_range']['duration']['weekends']
 
         vLog.info(f"\n📊 {info.get('broker_type', 'unknown')}/{info['symbol']}")
         vLog.info(
@@ -160,7 +159,7 @@ class TickDataReporter:
         vLog.info(f"   ├─ Files:         {info['files']}")
         vLog.info(f"   ├─ Size:          {info['file_size_mb']:.1f} MB")
 
-        if info["statistics"]["avg_spread_points"]:
+        if info['statistics']['avg_spread_points']:
             vLog.info(
                 f"   ├─ Ø Spread:      {info['statistics']['avg_spread_points']:.1f} Points "
                 f"({info['statistics']['avg_spread_pct']:.4f}%)"
@@ -171,15 +170,15 @@ class TickDataReporter:
             f"Ticks/Second"
         )
 
-        if info.get("sessions"):
-            sessions_str = ", ".join(
-                [f"{k}: {v}" for k, v in info["sessions"].items()])
-            vLog.info(f"      Sessions:     {sessions_str}")
+        if info.get('sessions'):
+            sessions_str = ', '.join(
+                [f'{k}: {v}' for k, v in info['sessions'].items()])
+            vLog.info(f'      Sessions:     {sessions_str}')
 
-        if info.get("market_type"):
+        if info.get('market_type'):
             vLog.info(f"   ├─ Market Type:  {info['market_type']}")
 
-        if info.get("data_source"):
+        if info.get('data_source'):
             vLog.info(f"   └─ Data Source:  {info['data_source']}")
 
     def print_all_symbols(self, broker_types: list = None):
@@ -192,14 +191,14 @@ class TickDataReporter:
         if broker_types is None:
             broker_types = self.index_manager.list_broker_types()
 
-        vLog.info("\n" + "=" * 100)
-        vLog.info("SYMBOL OVERVIEW WITH TIME RANGES")
-        vLog.info("=" * 100)
+        vLog.info('\n' + '=' * 100)
+        vLog.info('SYMBOL OVERVIEW WITH TIME RANGES')
+        vLog.info('=' * 100)
 
         for broker_type in broker_types:
             vLog.info(f"\n{'─' * 100}")
-            vLog.info(f"📁 Broker Type: {broker_type}")
-            vLog.info("─" * 100)
+            vLog.info(f'📁 Broker Type: {broker_type}')
+            vLog.info('─' * 100)
 
             symbols = self.index_manager.list_symbols(broker_type)
 
@@ -207,22 +206,22 @@ class TickDataReporter:
                 info = self.get_symbol_info(broker_type, symbol)
                 self.print_symbol_info(info)
 
-        vLog.info("\n" + "=" * 100)
+        vLog.info('\n' + '=' * 100)
 
     def test_load_symbol(self, symbol: str):
         """Test loading data for a symbol and display sample"""
-        vLog.info(f"\n🧪 TEST LOAD: {symbol}")
-        vLog.info("=" * 100)
+        vLog.info(f'\n🧪 TEST LOAD: {symbol}')
+        vLog.info('=' * 100)
 
         info = self.analyzer.get_symbol_info(symbol)
 
-        if "error" in info:
+        if 'error' in info:
             vLog.info(f"❌ Cannot load {symbol}: {info['error']}")
             return
 
-        start_date = info["date_range"]["start_formatted"].split()[
+        start_date = info['date_range']['start_formatted'].split()[
             0]
-        end_date = info["date_range"]["end_formatted"].split()[
+        end_date = info['date_range']['end_formatted'].split()[
             0]
         start_dt = pd.to_datetime(start_date).tz_localize('UTC')
         end_dt = pd.to_datetime(end_date).tz_localize('UTC')
@@ -233,13 +232,13 @@ class TickDataReporter:
             end_date=end_dt,
         )
 
-        vLog.info(f"✅ Loaded:      {len(df):,} ticks")
+        vLog.info(f'✅ Loaded:      {len(df):,} ticks')
         vLog.info(
             f"✅ Time Range:  {df['timestamp'].min()} to {df['timestamp'].max()}")
         vLog.info(
             f"✅ Columns:     {', '.join(df.columns[:5])}... ({len(df.columns)} total)"
         )
-        vLog.info(f"\n📋 Sample Data (first 3 ticks):")
+        vLog.info('\n📋 Sample Data (first 3 ticks):')
         vLog.info(df.head(3).to_string())
 
 
@@ -250,7 +249,7 @@ def run_summary_report(broker_type: str = None):
     Args:
         broker_type: Optional filter. If None, shows all broker_types.
     """
-    vLog.info("=== FiniexTestingIDE Data Loader Summary Report ===")
+    vLog.info('=== FiniexTestingIDE Data Loader Summary Report ===')
 
     try:
         # Initialize index manager with path from AppConfigManager
@@ -264,15 +263,15 @@ def run_summary_report(broker_type: str = None):
         all_broker_types = index_manager.list_broker_types()
 
         if not all_broker_types:
-            vLog.error("❌ No data found!")
-            vLog.info("\n" + "=" * 100)
-            vLog.info("NO DATA FOUND")
-            vLog.info("=" * 100)
-            vLog.info("\nSteps to collect data:")
-            vLog.info("1. Copy TickCollector.mq5 to MetaTrader 5")
-            vLog.info("2. Run data collection for 48+ hours")
-            vLog.info("3. Execute: python python/tick_importer.py")
-            vLog.info("4. Run this report again")
+            vLog.error('❌ No data found!')
+            vLog.info('\n' + '=' * 100)
+            vLog.info('NO DATA FOUND')
+            vLog.info('=' * 100)
+            vLog.info('\nSteps to collect data:')
+            vLog.info('1. Copy TickCollector.mq5 to MetaTrader 5')
+            vLog.info('2. Run data collection for 48+ hours')
+            vLog.info('3. Execute: python python/tick_importer.py')
+            vLog.info('4. Run this report again')
             return
 
         # Filter if broker_type specified
@@ -289,14 +288,14 @@ def run_summary_report(broker_type: str = None):
         all_symbols = []
         for bt in broker_types:
             symbols = index_manager.list_symbols(bt)
-            all_symbols.extend([f"{bt}/{s}" for s in symbols])
-        vLog.info(f"Broker types: {broker_types}")
-        vLog.info(f"Symbols: {all_symbols}")
+            all_symbols.extend([f'{bt}/{s}' for s in symbols])
+        vLog.info(f'Broker types: {broker_types}')
+        vLog.info(f'Symbols: {all_symbols}')
 
         # Print symbols (filtered or all)
         reporter.print_all_symbols(broker_types)
 
-        vLog.info("\n✅ Summary report completed successfully!")
+        vLog.info('\n✅ Summary report completed successfully!')
 
-    except Exception as e:
-        vLog.error(f"Error generating report: \n{traceback.format_exc()}")
+    except Exception:
+        vLog.error(f'Error generating report: \n{traceback.format_exc()}')

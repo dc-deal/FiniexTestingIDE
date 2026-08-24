@@ -8,9 +8,8 @@ this module holds the strategy enum and the per-strategy split configuration.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional
 from enum import StrEnum
-
+from typing import Dict, Optional
 
 # =============================================================================
 # ENUMS

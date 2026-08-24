@@ -21,22 +21,21 @@ from typing import Any, Dict, List, Optional
 import pytest
 
 from python.configuration.import_config_manager import ImportConfigManager
-from python.data_management.importers.tick_importer import TickDataImporter
-
+from python.data_management.importers.tick_data_importer import TickDataImporter
 
 # =============================================================================
 # SYNTHETIC DATA BUILDERS
 # =============================================================================
 
 def build_minimal_tick_json(
-    symbol: str = "TESTUSD",
-    broker: str = "TestBroker",
-    broker_type: str = "kraken_spot",
-    start_time: str = "2026.01.15 10:00:00",
+    symbol: str = 'TESTUSD',
+    broker: str = 'TestBroker',
+    broker_type: str = 'kraken_spot',
+    start_time: str = '2026.01.15 10:00:00',
     tick_count: int = 5,
     bid_start: float = 1.10000,
     ask_start: float = 1.10010,
-    data_format_version: str = "1.2.0",
+    data_format_version: str = '1.2.0',
     broker_utc_offset_hours: int = 0,
     extra_metadata: Optional[Dict[str, Any]] = None,
     custom_ticks: Optional[List[Dict[str, Any]]] = None,
@@ -61,38 +60,38 @@ def build_minimal_tick_json(
         Dict matching ImportJsonSchema structure
     """
     metadata = {
-        "symbol": symbol,
-        "broker": broker,
-        "broker_type": broker_type,
-        "start_time": start_time,
-        "data_format_version": data_format_version,
-        "broker_utc_offset_hours": broker_utc_offset_hours,
-        "data_collector": broker_type,
-        "collected_msc_timebase": "utc",
-        "server": "test_server",
-        "collection_purpose": "testing",
-        "operator": "automated",
-        "symbol_info": {
-            "point_value": 0.00001,
-            "digits": 5,
-            "tick_size": 0.00001,
-            "tick_value": 1.0
+        'symbol': symbol,
+        'broker': broker,
+        'broker_type': broker_type,
+        'start_time': start_time,
+        'data_format_version': data_format_version,
+        'broker_utc_offset_hours': broker_utc_offset_hours,
+        'data_collector': broker_type,
+        'collected_msc_timebase': 'utc',
+        'server': 'test_server',
+        'collection_purpose': 'testing',
+        'operator': 'automated',
+        'symbol_info': {
+            'point_value': 0.00001,
+            'digits': 5,
+            'tick_size': 0.00001,
+            'tick_value': 1.0
         },
-        "collection_settings": {
-            "max_ticks_per_file": 50000,
-            "max_errors_per_file": 1000,
-            "include_real_volume": True,
-            "include_tick_flags": True,
-            "stop_on_fatal_errors": False
+        'collection_settings': {
+            'max_ticks_per_file': 50000,
+            'max_errors_per_file': 1000,
+            'include_real_volume': True,
+            'include_tick_flags': True,
+            'stop_on_fatal_errors': False
         },
-        "error_tracking": {
-            "enabled": True,
-            "log_negligible": True,
-            "log_serious": True,
-            "log_fatal": True,
-            "max_spread_percent": 5.0,
-            "max_price_jump_percent": 10.0,
-            "max_data_gap_seconds": 300
+        'error_tracking': {
+            'enabled': True,
+            'log_negligible': True,
+            'log_serious': True,
+            'log_fatal': True,
+            'max_spread_percent': 5.0,
+            'max_price_jump_percent': 10.0,
+            'max_data_gap_seconds': 300
         }
     }
 
@@ -105,7 +104,7 @@ def build_minimal_tick_json(
         # timestamp and time_msc must describe the same moment — the collector
         # derives both from one MqlTick, and the import validator checks it.
         base_msc = int(datetime.strptime(
-            start_time, "%Y.%m.%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
+            start_time, '%Y.%m.%d %H:%M:%S').replace(tzinfo=timezone.utc).timestamp() * 1000)
 
         # time_msc is broker-local; collected_msc is UTC (post-restoration and
         # from collector 1.5.0 onwards). The registry offset is what separates
@@ -119,24 +118,24 @@ def build_minimal_tick_json(
             ask = ask_start + (i * 0.00001)
             tick_msc = base_msc + (i * 1000)
             ts = datetime.fromtimestamp(
-                tick_msc / 1000, timezone.utc).strftime("%Y.%m.%d %H:%M:%S")
+                tick_msc / 1000, timezone.utc).strftime('%Y.%m.%d %H:%M:%S')
             ticks.append({
-                "timestamp": ts,
-                "time_msc": tick_msc,
-                "bid": round(bid, 5),
-                "ask": round(ask, 5),
-                "last": round(bid, 5),
-                "tick_volume": 0,
-                "real_volume": 100.0 + i,
-                "chart_tick_volume": 1,
-                "spread_points": 1,
-                "spread_pct": 0.01,
-                "tick_flags": "BUY",
-                "session": "24h",
-                "collected_msc": tick_msc + collected_offset_ms
+                'timestamp': ts,
+                'time_msc': tick_msc,
+                'bid': round(bid, 5),
+                'ask': round(ask, 5),
+                'last': round(bid, 5),
+                'tick_volume': 0,
+                'real_volume': 100.0 + i,
+                'chart_tick_volume': 1,
+                'spread_points': 1,
+                'spread_pct': 0.01,
+                'tick_flags': 'BUY',
+                'session': '24h',
+                'collected_msc': tick_msc + collected_offset_ms
             })
 
-    return {"metadata": metadata, "ticks": ticks}
+    return {'metadata': metadata, 'ticks': ticks}
 
 
 def find_tick_parquets(target_dir: Path) -> List[Path]:
@@ -149,7 +148,7 @@ def find_tick_parquets(target_dir: Path) -> List[Path]:
     Returns:
         List of Parquet file paths (excluding hidden/index files)
     """
-    return [f for f in target_dir.glob("**/*.parquet") if not f.name.startswith(".")]
+    return [f for f in target_dir.glob('**/*.parquet') if not f.name.startswith('.')]
 
 
 def write_json_fixture(directory: Path, filename: str, data: Dict[str, Any]) -> Path:
@@ -166,7 +165,7 @@ def write_json_fixture(directory: Path, filename: str, data: Dict[str, Any]) -> 
     """
     directory.mkdir(parents=True, exist_ok=True)
     filepath = directory / filename
-    with open(filepath, "w", encoding="utf-8") as f:
+    with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
     return filepath
 
@@ -175,7 +174,7 @@ def write_json_fixture(directory: Path, filename: str, data: Dict[str, Any]) -> 
 # SESSION-SCOPED FIXTURES
 # =============================================================================
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def import_test_dirs(tmp_path_factory) -> Dict[str, Path]:
     """
     Create temporary source, target, and finished directories for import tests.
@@ -183,13 +182,13 @@ def import_test_dirs(tmp_path_factory) -> Dict[str, Path]:
     Returns:
         Dict with 'source', 'target', and 'finished' Path objects
     """
-    source = tmp_path_factory.mktemp("import_source")
-    target = tmp_path_factory.mktemp("import_target")
-    finished = tmp_path_factory.mktemp("import_finished")
-    return {"source": source, "target": target, "finished": finished}
+    source = tmp_path_factory.mktemp('import_source')
+    target = tmp_path_factory.mktemp('import_target')
+    finished = tmp_path_factory.mktemp('import_finished')
+    return {'source': source, 'target': target, 'finished': finished}
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope='session', autouse=True)
 def populate_persistent_test_output():
     """
     Write reference Parquets to persistent test directories.
@@ -210,7 +209,7 @@ def populate_persistent_test_output():
             for item in dir_path.iterdir():
                 if item.is_dir():
                     shutil.rmtree(item)
-                elif item.name != ".gitkeep":
+                elif item.name != '.gitkeep':
                     item.unlink()
 
     # Create dirs
@@ -220,10 +219,10 @@ def populate_persistent_test_output():
 
     # Generate reference data into raw/ (authentic pipeline: raw → processed)
     fixtures = [
-        ("BTCUSD", "kraken_spot", 0),
-        ("ETHUSD", "kraken_spot", 0),
-        ("EURUSD", "mt5", -3),
-        ("GBPUSD", "mt5", -3),
+        ('BTCUSD', 'kraken_spot', 0),
+        ('ETHUSD', 'kraken_spot', 0),
+        ('EURUSD', 'mt5', -3),
+        ('GBPUSD', 'mt5', -3),
     ]
 
     for symbol, broker_type, offset in fixtures:
@@ -233,13 +232,13 @@ def populate_persistent_test_output():
             tick_count=20,
             broker_utc_offset_hours=offset,
         )
-        write_json_fixture(raw_dir, f"{symbol}_ticks.json", data)
+        write_json_fixture(raw_dir, f'{symbol}_ticks.json', data)
 
     # Import: raw/ → processed/, move JSONs to finished/
     importer = TickDataImporter(
         source_dir=str(raw_dir),
         target_dir=str(processed_dir),
-        offset_registry={"mt5": -3, "kraken_spot": 0},
+        offset_registry={'mt5': -3, 'kraken_spot': 0},
         move_processed_files=True,
         finished_dir=str(finished_dir),
         auto_render_bars=False,

@@ -27,23 +27,29 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from python.framework.types.config_types.market_config_types import BrokerTransportConfig
-from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.broker_types import BrokerSpecification, BrokerType, MarginMode, SwapMode, SymbolSpecification
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
-from .abstract_adapter import AbstractAdapter
-from .dry_run_simulator import DryRunOrderSimulator
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
+from python.framework.types.trading_env_types.broker_types import (
+    BrokerSpecification,
+    BrokerType,
+    MarginMode,
+    SwapMode,
+    SymbolSpecification,
+)
 from python.framework.types.trading_env_types.order_types import (
-    OrderCapabilities,
-    OrderType,
-    MarketOrder,
-    LimitOrder,
-    StopLimitOrder,
     IcebergOrder,
+    LimitOrder,
+    MarketOrder,
+    OrderCapabilities,
     OrderDirection,
     OrderSide,
+    OrderType,
+    StopLimitOrder,
 )
+
+from .abstract_adapter import AbstractAdapter
+from .dry_run_simulator import DryRunOrderSimulator
 
 
 class KrakenAdapter(AbstractAdapter):
@@ -199,7 +205,7 @@ class KrakenAdapter(AbstractAdapter):
         # Validate order
         is_valid, error = self.validate_order(symbol, lots)
         if not is_valid:
-            raise ValueError(f"Invalid market order: {error}")
+            raise ValueError(f'Invalid market order: {error}')
 
         return MarketOrder(
             symbol=symbol,
@@ -226,10 +232,10 @@ class KrakenAdapter(AbstractAdapter):
         # Validate order
         is_valid, error = self.validate_order(symbol, lots)
         if not is_valid:
-            raise ValueError(f"Invalid limit order: {error}")
+            raise ValueError(f'Invalid limit order: {error}')
 
         if price <= 0:
-            raise ValueError(f"Invalid limit price: {price}")
+            raise ValueError(f'Invalid limit price: {price}')
 
         return LimitOrder(
             symbol=symbol,
@@ -258,12 +264,12 @@ class KrakenAdapter(AbstractAdapter):
         # Validate order
         is_valid, error = self.validate_order(symbol, lots)
         if not is_valid:
-            raise ValueError(f"Invalid stop-limit order: {error}")
+            raise ValueError(f'Invalid stop-limit order: {error}')
 
         if stop_price <= 0:
-            raise ValueError(f"Invalid stop price: {stop_price}")
+            raise ValueError(f'Invalid stop price: {stop_price}')
         if limit_price <= 0:
-            raise ValueError(f"Invalid limit price: {limit_price}")
+            raise ValueError(f'Invalid limit price: {limit_price}')
 
         return StopLimitOrder(
             symbol=symbol,
@@ -292,11 +298,11 @@ class KrakenAdapter(AbstractAdapter):
         # Validate order
         is_valid, error = self.validate_order(symbol, lots)
         if not is_valid:
-            raise ValueError(f"Invalid iceberg order: {error}")
+            raise ValueError(f'Invalid iceberg order: {error}')
 
         if visible_lots > lots:
             raise ValueError(
-                f"Visible lots ({visible_lots}) cannot exceed total lots ({lots})"
+                f'Visible lots ({visible_lots}) cannot exceed total lots ({lots})'
             )
 
         return IcebergOrder(
@@ -340,7 +346,7 @@ class KrakenAdapter(AbstractAdapter):
 
         # Check trading allowed
         if not symbol_info.get('trade_allowed', True):
-            return False, f"Trading not allowed for {symbol}"
+            return False, f'Trading not allowed for {symbol}'
 
         # Use common lot size validation from base class
         return self._validate_lot_size(symbol, lots)
@@ -1263,7 +1269,7 @@ class KrakenAdapter(AbstractAdapter):
         with self._private_lock:
             self._enforce_rate_limit()
             headers = self._sign_request(endpoint, data)
-            url = f"{self._api_base_url}{endpoint}"
+            url = f'{self._api_base_url}{endpoint}'
             response = requests.post(
                 url,
                 headers=headers,
@@ -1275,7 +1281,7 @@ class KrakenAdapter(AbstractAdapter):
         result = response.json()
         errors = result.get('error', [])
         if errors:
-            raise ConnectionError(f"Kraken API error: {errors}")
+            raise ConnectionError(f'Kraken API error: {errors}')
 
         return result.get('result', {})
 

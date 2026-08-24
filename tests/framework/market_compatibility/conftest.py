@@ -17,7 +17,7 @@ from python.framework.types.scenario_types.scenario_set_types import SingleScena
 from python.framework.validators.scenario_data_validator import ScenarioDataValidator
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def mock_logger():
     """Minimal logger mock for validator and factory."""
     logger = MagicMock()
@@ -28,13 +28,13 @@ def mock_logger():
     return logger
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def market_config_manager():
     """Real market config manager — reads configs/market_config.json."""
     return MarketConfigManager()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def worker_factory(mock_logger):
     """Worker factory with all CORE workers registered."""
     return WorkerFactory(logger=mock_logger, strict_parameter_validation=False)

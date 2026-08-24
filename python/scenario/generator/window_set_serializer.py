@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,
@@ -28,7 +29,6 @@ from python.framework.types.scenario_types.window_set_types import (
 )
 from python.scenario.generator.balance_defaults import ensure_quote_balance, resolve_quote_currency
 from python.scenario.generator.window_materializer import WindowMaterializer
-from python.framework.logging.bootstrap_logger import get_global_logger
 
 vLog = get_global_logger()
 
@@ -113,7 +113,7 @@ class WindowSetSerializer:
             config = json.load(f)
 
         # Update metadata
-        config['version'] = "1.0"
+        config['version'] = '1.0'
         config['scenario_set_name'] = filename.replace('.json', '')
         config['created'] = datetime.now(timezone.utc).isoformat()
 
@@ -188,7 +188,7 @@ class WindowSetSerializer:
         with open(output_path, 'w') as f:
             json.dump(self.to_profile_dict(window_set), f, indent=2, default=str)
 
-        vLog.info(f"Profile saved to {output_path}")
+        vLog.info(f'Profile saved to {output_path}')
 
         return output_path
 

@@ -20,7 +20,6 @@ from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.event_stream_csv_writer import EVENT_FIELDS
 from python.framework.types.trading_env_types.order_types import CloseType, OrderSide
 
-
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/partial_close_lifecycle.json'
 
 
@@ -111,8 +110,8 @@ class TestExecutionSides:
         """pos_usdjpy_1 is LONG — open via BUY, close via SELL on every record."""
         result, _ = session_result
         for tr in (t for t in result.trade_history if t.position_id == 'pos_usdjpy_1'):
-            assert tr.entry_side == OrderSide.BUY, f"entry_side {tr.entry_side}"
-            assert tr.exit_side == OrderSide.SELL, f"exit_side {tr.exit_side}"
+            assert tr.entry_side == OrderSide.BUY, f'entry_side {tr.entry_side}'
+            assert tr.exit_side == OrderSide.SELL, f'exit_side {tr.exit_side}'
 
     def test_short_position_records_have_sell_entry_buy_exit(self, session_result):
         """pos_usdjpy_2 is SHORT — open via SELL, close via BUY."""
@@ -128,9 +127,9 @@ class TestExecutionSides:
         result, _ = session_result
         for tr in result.trade_history:
             for bt in tr.entry_trades:
-                assert isinstance(bt.side, OrderSide), f"got {type(bt.side)}"
+                assert isinstance(bt.side, OrderSide), f'got {type(bt.side)}'
             for bt in tr.exit_trades:
-                assert isinstance(bt.side, OrderSide), f"got {type(bt.side)}"
+                assert isinstance(bt.side, OrderSide), f'got {type(bt.side)}'
 
 
 class TestSinglePositionIsolation:

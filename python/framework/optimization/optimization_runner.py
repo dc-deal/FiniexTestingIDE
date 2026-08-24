@@ -65,7 +65,7 @@ class OptimizationRunner:
 
         # All of this sweep's runs (the base mount build + every combination) nest under one
         # grouping dir so the log root stays tidy (#419).
-        run_group = f"sweeps/{sweep_id}"
+        run_group = f'sweeps/{sweep_id}'
 
         # Mount reuse (#419): load the data ONCE from the base and reuse it across every
         # combination (the grid varies only strategy_config → constant data identity).
@@ -77,20 +77,20 @@ class OptimizationRunner:
                 # Data-level failure (invalid window / missing data) — invariant across every
                 # combination → abort the whole sweep, nothing ran (§35).
                 vLog.error(
-                    f"🛑 Sweep {sweep_id} aborted: the base data could not be loaded for any "
-                    f"scenario (invalid window / missing data). Every combination shares this "
-                    f"data — nothing was run.")
+                    f'🛑 Sweep {sweep_id} aborted: the base data could not be loaded for any '
+                    f'scenario (invalid window / missing data). Every combination shares this '
+                    f'data — nothing was run.')
                 return sweep_id
 
         villain_abort = self._app_config.get_optimization_villain_abort_enabled()
         runs = 0
         for index, combo in enumerate(combos):
-            label = f"__{sweep_id}_c{index:03d}"
+            label = f'__{sweep_id}_c{index:03d}'
             cfg = apply_overrides(base, combo, label)
             sweep_context = SweepContext(
                 sweep_id=sweep_id, sweep_params=combo,
                 objective=spec.objective, maximize=spec.maximize)
-            vLog.info(f"  [{index + 1}/{len(combos)}] {combo}")
+            vLog.info(f'  [{index + 1}/{len(combos)}] {combo}')
             summary = initialize_batch_and_run(
                 cfg, self._app_config, sweep_context=sweep_context, mount=mount,
                 run_group=run_group)
@@ -100,13 +100,13 @@ class OptimizationRunner:
             # (a worker subprocess was OOM-killed), every combination would crash identically.
             if villain_abort and index == 0 and self._has_subprocess_oom(summary):
                 vLog.error(
-                    f"🛑 Sweep {sweep_id} aborted after the first combination: a worker "
-                    f"subprocess was terminated (out-of-memory). Every combination shares this "
-                    f"data + parallelism → the remaining {len(combos) - 1} would fail "
-                    f"identically. Lower max_parallel_scenarios or use smaller windows.")
+                    f'🛑 Sweep {sweep_id} aborted after the first combination: a worker '
+                    f'subprocess was terminated (out-of-memory). Every combination shares this '
+                    f'data + parallelism → the remaining {len(combos) - 1} would fail '
+                    f'identically. Lower max_parallel_scenarios or use smaller windows.')
                 break
 
-        vLog.info(f"✅ Sweep {sweep_id} complete — {runs} run(s) recorded in the ledger")
+        vLog.info(f'✅ Sweep {sweep_id} complete — {runs} run(s) recorded in the ledger')
         return sweep_id
 
     @staticmethod

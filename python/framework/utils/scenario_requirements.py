@@ -5,6 +5,7 @@ Calculates warmup and timeframe requirements from workers
 """
 
 from typing import List
+
 from python.framework.types.scenario_types.scenario_types import ScenarioRequirements
 
 

@@ -1,11 +1,14 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.process_data_types import ClippingStats, ProcessResult
 from python.framework.types.scenario_types.scenario_set_types import (
-    BrokerScenarioInfo, SignalScenarioInfo, SingleScenario)
+    BrokerScenarioInfo,
+    SignalScenarioInfo,
+    SingleScenario,
+)
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.validation_types import ValidationResult
 
 

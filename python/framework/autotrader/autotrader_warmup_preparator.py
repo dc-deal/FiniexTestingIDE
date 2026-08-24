@@ -14,6 +14,7 @@ from typing import Dict, List
 import pandas as pd
 
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -21,7 +22,6 @@ from python.framework.types.autotrader_types.autotrader_config_types import Auto
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.utils.scenario_requirements import calculate_scenario_requirements
-from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
 from python.framework.workers.abstract_worker import AbstractWorker
 
 
@@ -104,10 +104,10 @@ class AutotraderWarmupPreparator:
             if bars:
                 last = bars[-1]
                 self._logger.verbose(
-                    f"📊 Warmup tail {timeframe}: {last.timestamp} | "
-                    f"O={last.open:.5f} H={last.high:.5f} "
-                    f"L={last.low:.5f} C={last.close:.5f} | "
-                    f"Ticks={last.tick_count}"
+                    f'📊 Warmup tail {timeframe}: {last.timestamp} | '
+                    f'O={last.open:.5f} H={last.high:.5f} '
+                    f'L={last.low:.5f} C={last.close:.5f} | '
+                    f'Ticks={last.tick_count}'
                 )
 
     # =========================================================================
@@ -143,8 +143,8 @@ class AutotraderWarmupPreparator:
             bar_file = bar_index.get_bar_file(broker_type, symbol, timeframe)
             if bar_file is None:
                 self._logger.warning(
-                    f"⚠️  No bar file for {symbol} {timeframe} — "
-                    f"warmup skipped for this timeframe"
+                    f'⚠️  No bar file for {symbol} {timeframe} — '
+                    f'warmup skipped for this timeframe'
                 )
                 continue
 
@@ -177,7 +177,7 @@ class AutotraderWarmupPreparator:
             result[timeframe] = bars
 
             self._logger.debug(
-                f"  📊 {timeframe}: {len(bars)}/{warmup_count} bars loaded from parquet"
+                f'  📊 {timeframe}: {len(bars)}/{warmup_count} bars loaded from parquet'
             )
 
         return result
@@ -216,11 +216,11 @@ class AutotraderWarmupPreparator:
                 )
                 result[timeframe] = bars
                 self._logger.debug(
-                    f"  📊 {timeframe}: {len(bars)}/{warmup_count} bars fetched from API"
+                    f'  📊 {timeframe}: {len(bars)}/{warmup_count} bars fetched from API'
                 )
             except Exception as e:
                 self._logger.warning(
-                    f"⚠️  API bar fetch failed for {timeframe}: {e}"
+                    f'⚠️  API bar fetch failed for {timeframe}: {e}'
                 )
 
         return result
@@ -299,10 +299,10 @@ class AutotraderWarmupPreparator:
         )
 
         self._logger.debug(
-            f"🏷️  Display label cache built: "
-            f"{len(config_param_specs)} config params, "
-            f"{len(worker_display_output_keys)} workers, "
-            f"{sum(len(l) for l in worker_output_labels.values())} worker output labels"
+            f'🏷️  Display label cache built: '
+            f'{len(config_param_specs)} config params, '
+            f'{len(worker_display_output_keys)} workers, '
+            f'{sum(len(l) for l in worker_output_labels.values())} worker output labels'
         )
         return cache
 
@@ -322,7 +322,7 @@ class AutotraderWarmupPreparator:
             actual = len(bars_by_tf.get(timeframe, []))
             if actual < required_count:
                 self._logger.warning(
-                    f"⚠️  Insufficient warmup bars for {timeframe}: "
-                    f"{actual}/{required_count} — "
-                    f"workers may produce unreliable signals until history fills"
+                    f'⚠️  Insufficient warmup bars for {timeframe}: '
+                    f'{actual}/{required_count} — '
+                    f'workers may produce unreliable signals until history fills'
                 )

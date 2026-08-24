@@ -7,8 +7,6 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Optional
 
-from python.framework.types.market_types.market_data_types import TickData
-
 
 class AbstractTickSource(ABC):
     """

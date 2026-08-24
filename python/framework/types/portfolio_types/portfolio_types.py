@@ -3,21 +3,20 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
+from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import FeeType
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
-from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
 from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
 
 
 class PositionStatus(Enum):
     """Position status"""
-    OPEN = "open"
-    CLOSED = "closed"
-    PARTIALLY_CLOSED = "partially_closed"
+    OPEN = 'open'
+    CLOSED = 'closed'
+    PARTIALLY_CLOSED = 'partially_closed'
 
 
 @dataclass
@@ -55,7 +54,7 @@ class Position:
     status: PositionStatus = PositionStatus.OPEN
 
     # Metadata
-    comment: str = ""
+    comment: str = ''
     close_time: Optional[datetime] = None
     close_price: Optional[float] = None
 

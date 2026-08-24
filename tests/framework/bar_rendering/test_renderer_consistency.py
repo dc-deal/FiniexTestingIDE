@@ -23,15 +23,12 @@ from python.data_management.importers.vectorized_bar_renderer import VectorizedB
 from python.framework.bars.bar_renderer import BarRenderer
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
-from python.framework.utils.timeframe_config_utils import TimeframeConfig
-
 from tests.framework.bar_rendering.conftest import (
     generate_boundary_ticks,
     generate_ticks,
     generate_ticks_with_gap,
     ticks_to_dataframe,
 )
-
 
 # =============================================================================
 # HELPERS
@@ -167,8 +164,8 @@ def _assert_bars_equal(
         timeframe: Timeframe label for error messages
     """
     assert len(tick_bars) == len(vec_bars), (
-        f"[{timeframe}] Bar count mismatch: "
-        f"BarRenderer={len(tick_bars)}, Vectorized={len(vec_bars)}"
+        f'[{timeframe}] Bar count mismatch: '
+        f'BarRenderer={len(tick_bars)}, Vectorized={len(vec_bars)}'
     )
 
     for i, (tb, vb) in enumerate(zip(tick_bars, vec_bars)):
@@ -218,7 +215,7 @@ class TestRendererConsistency:
         tick_bars = _render_with_bar_renderer(ticks, timeframe)
         vec_bars = _render_with_vectorized(ticks, symbol, timeframe)
 
-        assert len(tick_bars) > 0, f"No bars produced for {timeframe}"
+        assert len(tick_bars) > 0, f'No bars produced for {timeframe}'
         _assert_bars_equal(tick_bars, vec_bars, timeframe)
 
     @pytest.mark.parametrize('timeframe', ['H1', 'H4'])
@@ -232,7 +229,7 @@ class TestRendererConsistency:
         tick_bars = _render_with_bar_renderer(ticks, timeframe)
         vec_bars = _render_with_vectorized(ticks, symbol, timeframe)
 
-        assert len(tick_bars) > 0, f"No bars produced for {timeframe}"
+        assert len(tick_bars) > 0, f'No bars produced for {timeframe}'
         _assert_bars_equal(tick_bars, vec_bars, timeframe)
 
     def test_gap_handling_m5(self) -> None:
@@ -320,8 +317,8 @@ class TestRendererConsistency:
             vec_count = len(all_vec_bars[timeframe])
 
             assert len(br_bars) == vec_count, (
-                f"[{timeframe}] Bar count mismatch: "
-                f"BarRenderer={len(br_bars)}, Vectorized={vec_count}"
+                f'[{timeframe}] Bar count mismatch: '
+                f'BarRenderer={len(br_bars)}, Vectorized={vec_count}'
             )
 
     def test_volume_aggregation(self) -> None:

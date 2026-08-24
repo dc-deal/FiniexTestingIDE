@@ -12,13 +12,25 @@ components, never summed.
 from typing import Dict, List, Optional
 
 from python.framework.types.api.report_types import (
-    AggregatedPortfolioRow, AggregatedPortfolioSpotScenarioRow,
-    ExecutionStatsRow, ExecutionStatsTotals, PendingOrdersUnitRow, PortfolioAggregateRow,
-    PortfolioUnitRow, ProfilingAggregate, ProfilingBottleneckRow, ProfilingOperationRow,
-    ProfilingUnitRow, SignalReport, TradeAnalytics, TradeHistoryRow, TradeScenarioTotals, WorkerDecisionUnitRow,
-    WorkerStatRow)
+    AggregatedPortfolioRow,
+    AggregatedPortfolioSpotScenarioRow,
+    ExecutionStatsRow,
+    ExecutionStatsTotals,
+    PendingOrdersUnitRow,
+    PortfolioAggregateRow,
+    PortfolioUnitRow,
+    ProfilingAggregate,
+    ProfilingBottleneckRow,
+    ProfilingOperationRow,
+    ProfilingUnitRow,
+    SignalReport,
+    TradeAnalytics,
+    TradeHistoryRow,
+    TradeScenarioTotals,
+    WorkerDecisionUnitRow,
+    WorkerStatRow,
+)
 from python.framework.types.scenario_types.scenario_set_performance_types import EXPECTED_OPERATIONS
-
 
 # --- Trade analytics (per account currency) -------------------------------------------
 

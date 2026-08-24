@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from python.configuration.test_config_loader import TestConfigLoader
 
@@ -110,8 +110,8 @@ class TestRunnerCli:
             sys.exit(1)
 
         start_dt = datetime.now(timezone.utc)
-        print(f"Running {len(suites)} test suites...")
-        print(f"Started:  {self._format_clock(start_dt)}")
+        print(f'Running {len(suites)} test suites...')
+        print(f'Started:  {self._format_clock(start_dt)}')
         print(self._SEPARATOR)
 
         results: List[SuiteResult] = []
@@ -120,7 +120,7 @@ class TestRunnerCli:
 
         for suite_name, pytest_paths in suites:
             # Show "running..." on current line
-            running_text = f"  {suite_name.ljust(max_name_len)}   running..."
+            running_text = f'  {suite_name.ljust(max_name_len)}   running...'
             sys.stdout.write(running_text)
             sys.stdout.flush()
 
@@ -138,7 +138,7 @@ class TestRunnerCli:
         # Summary
         print(self._SEPARATOR)
         self._print_summary(results, aborted)
-        print(f"Finished: {self._format_clock(datetime.now(timezone.utc))}")
+        print(f'Finished: {self._format_clock(datetime.now(timezone.utc))}')
 
         # Exit with failure if any suite failed
         has_failures = any(r.exit_code != 0 for r in results)
@@ -255,24 +255,24 @@ class TestRunnerCli:
             if result.passed == 0 and result.skipped == 0:
                 status = 'no tests'
             else:
-                status = f"{result.passed} passed"
+                status = f'{result.passed} passed'
                 if result.skipped > 0:
-                    status += f", {result.skipped} skipped"
-            line = f"  {name_col}   {status}  ({duration})"
+                    status += f', {result.skipped} skipped'
+            line = f'  {name_col}   {status}  ({duration})'
         else:
             parts = []
             if result.failed > 0:
-                parts.append(f"{result.failed} failed")
+                parts.append(f'{result.failed} failed')
             if result.errors > 0:
-                parts.append(f"{result.errors} errors")
+                parts.append(f'{result.errors} errors')
             if result.passed > 0:
-                parts.append(f"{result.passed} passed")
+                parts.append(f'{result.passed} passed')
             status = ', '.join(
-                parts) if parts else f"exit code {result.exit_code}"
-            line = f"  {name_col}   \u274c {status}  ({duration})"
+                parts) if parts else f'exit code {result.exit_code}'
+            line = f'  {name_col}   \u274c {status}  ({duration})'
 
         # Pad to overwrite any leftover characters from "running..."
-        print(f"{line:<80}")
+        print(f'{line:<80}')
 
     def _print_summary(self, results: List[SuiteResult], aborted: bool) -> None:
         """
@@ -292,22 +292,22 @@ class TestRunnerCli:
         # Print failing test details for every failed suite
         for result in results:
             if result.exit_code != 0 and result.failed_tests:
-                print(f"  {result.name}:")
+                print(f'  {result.name}:')
                 for entry in result.failed_tests:
-                    print(f"    {entry}")
+                    print(f'    {entry}')
 
         if aborted:
             failed_suite = results[-1].name
-            print(f"ABORTED (fail_fast) after {failed_suite}")
-            print(f"Suites run: {suites_run}")
+            print(f'ABORTED (fail_fast) after {failed_suite}')
+            print(f'Suites run: {suites_run}')
 
-        parts = [f"{total_passed} passed"]
+        parts = [f'{total_passed} passed']
         if total_failed > 0:
-            parts.append(f"{total_failed} failed")
+            parts.append(f'{total_failed} failed')
         if total_errors > 0:
-            parts.append(f"{total_errors} errors")
+            parts.append(f'{total_errors} errors')
         if total_skipped > 0:
-            parts.append(f"{total_skipped} skipped")
+            parts.append(f'{total_skipped} skipped')
 
         print(
             f"TOTAL: {', '.join(parts)}  ({self._format_duration(total_duration)})")
@@ -344,7 +344,7 @@ class TestRunnerCli:
         Returns:
             Formatted string (e.g. "2026-06-17 14:30:05 UTC")
         """
-        return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+        return dt.strftime('%Y-%m-%d %H:%M:%S UTC')
 
     @staticmethod
     def _format_duration(seconds: float) -> str:
@@ -358,10 +358,10 @@ class TestRunnerCli:
             Formatted string (e.g. "4s", "1m 23s")
         """
         if seconds < 60:
-            return f"{seconds:.0f}s"
+            return f'{seconds:.0f}s'
         minutes = int(seconds // 60)
         secs = int(seconds % 60)
-        return f"{minutes}m {secs:02d}s"
+        return f'{minutes}m {secs:02d}s'
 
 
 def main() -> None:

@@ -59,9 +59,9 @@ def surface_decision_logic_metadata(
     """
     meta = decision_logic.get_metadata()
 
-    version_line = f"🧬 Algo: {decision_logic.name} v{meta.version}"
+    version_line = f'🧬 Algo: {decision_logic.name} v{meta.version}'
     if meta.doc_link:
-        version_line += f" — {meta.doc_link}"
+        version_line += f' — {meta.doc_link}'
     logger.info(version_line)
 
     if meta.recommended_markets:

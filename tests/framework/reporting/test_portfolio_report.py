@@ -13,7 +13,9 @@ from datetime import datetime, timezone
 
 from python.framework.reporting.builders.portfolio_report_builder import build_portfolio_report
 from python.framework.reporting.builders.run_unit import (
-    run_units_from_batch, run_units_from_session)
+    run_units_from_batch,
+    run_units_from_session,
+)
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
@@ -21,8 +23,11 @@ from python.framework.types.process_data_types import ProcessResult, ProcessTick
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import (
-    OrderAction, OrderDirection, OrderResult, OrderStatus)
-
+    OrderAction,
+    OrderDirection,
+    OrderResult,
+    OrderStatus,
+)
 
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 

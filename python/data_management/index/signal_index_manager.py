@@ -21,8 +21,7 @@ import pyarrow.parquet as pq
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.signal_data_types import (
-    SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn)
+from python.framework.types.signal_data_types import SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn
 
 vLog = get_global_logger()
 
@@ -35,7 +34,7 @@ class SignalIndexManager:
     Memory: Nested dict {data_sentiment_type: {symbol: [entries]}}
     """
 
-    INDEX_FILE_PARQUET = ".signal_index.parquet"
+    INDEX_FILE_PARQUET = '.signal_index.parquet'
 
     def __init__(self, logger: AbstractLogger = vLog, data_dir: Optional[str] = None):
         """
@@ -52,7 +51,7 @@ class SignalIndexManager:
 
         # {data_sentiment_type: {symbol: [entries]}}
         self.index: Dict[str, Dict[str, List[Dict]]] = {}
-        self.logger.info("📡 Signal Index Manager initialized.")
+        self.logger.info('📡 Signal Index Manager initialized.')
 
     # =========================================================================
     # INDEX BUILDING
@@ -70,20 +69,20 @@ class SignalIndexManager:
             if not check_stale:
                 self._load_index()
                 self.logger.info(
-                    f"📡 Loaded existing signal index ({len(self.index)} sources)")
+                    f'📡 Loaded existing signal index ({len(self.index)} sources)')
                 return
             if not self.needs_rebuild():
                 self._load_index()
                 self.logger.info(
-                    f"📡 Loaded existing signal index ({len(self.index)} sources)")
+                    f'📡 Loaded existing signal index ({len(self.index)} sources)')
                 return
 
-        self.logger.info("🔍 Scanning signal parquet files...")
+        self.logger.info('🔍 Scanning signal parquet files...')
         start_time = time.time()
 
         parquet_files = self._parquet_files()
         if not parquet_files:
-            self.logger.warning(f"No signal parquet found in {self.data_dir}")
+            self.logger.warning(f'No signal parquet found in {self.data_dir}')
             self.index = {}
             return
 
@@ -99,7 +98,7 @@ class SignalIndexManager:
                         symbol, []).append(entry)
             except Exception as e:
                 self.logger.warning(
-                    f"Failed to index {parquet_file.name}: {e}")
+                    f'Failed to index {parquet_file.name}: {e}')
 
         for sentiment_type in self.index:
             for symbol in self.index[sentiment_type]:
@@ -115,13 +114,13 @@ class SignalIndexManager:
             for files in st.values()
         )
         self.logger.info(
-            f"✅ Signal index built: {total_files} file-entries across "
-            f"{len(self.index)} sources in {elapsed:.2f}s"
+            f'✅ Signal index built: {total_files} file-entries across '
+            f'{len(self.index)} sources in {elapsed:.2f}s'
         )
 
     def _parquet_files(self) -> List[Path]:
         """Signal parquet files (<pipeline_id>/*.parquet — excludes the index file at root)."""
-        return sorted(self.data_dir.glob("*/*.parquet"))
+        return sorted(self.data_dir.glob('*/*.parquet'))
 
     def _scan_file(self, parquet_file: Path) -> Dict:
         """
@@ -171,7 +170,7 @@ class SignalIndexManager:
             newest_parquet = max(f.stat().st_mtime for f in parquet_files)
             if newest_parquet > index_mtime:
                 self.logger.info(
-                    "📋 Signal index outdated - newer parquet files found")
+                    '📋 Signal index outdated - newer parquet files found')
                 return True
         return False
 
@@ -280,7 +279,7 @@ class SignalIndexManager:
         table = pa.Table.from_pandas(df)
         table = table.replace_schema_metadata({**table.schema.metadata, **metadata})
         pq.write_table(table, self.index_file)
-        self.logger.debug(f"💾 Signal index saved to {self.index_file}")
+        self.logger.debug(f'💾 Signal index saved to {self.index_file}')
 
     def _load_index(self) -> None:
         """Load the index from parquet into the nested dict."""
@@ -288,7 +287,7 @@ class SignalIndexManager:
             df = pd.read_parquet(self.index_file)
             self.index = self._dataframe_to_nested_dict(df)
         except Exception as e:
-            self.logger.warning(f"Failed to load signal index: {e}")
+            self.logger.warning(f'Failed to load signal index: {e}')
             self.index = {}
 
     def _dataframe_to_nested_dict(self, df: pd.DataFrame) -> Dict[str, Dict[str, List[Dict]]]:
@@ -354,21 +353,21 @@ class SignalIndexManager:
 
     def print_summary(self) -> None:
         """Print an index summary grouped by data_sentiment_type."""
-        print("\n" + "=" * 60)
-        print("📡 Signal Index Summary")
-        print("=" * 60)
+        print('\n' + '=' * 60)
+        print('📡 Signal Index Summary')
+        print('=' * 60)
 
         if not self.index:
-            print("   (empty signal index)")
+            print('   (empty signal index)')
             return
 
         for sentiment_type in sorted(self.index.keys()):
-            print(f"\n📂 {sentiment_type}:")
+            print(f'\n📂 {sentiment_type}:')
             for symbol in sorted(self.index[sentiment_type].keys()):
                 coverage = self.get_symbol_file_coverage(sentiment_type, symbol)
-                print(f"   {symbol}:")
+                print(f'   {symbol}:')
                 print(f"      Files:  {coverage['num_files']}")
                 print(f"      Rows:   {coverage['total_rows']:,}")
                 print(f"      Range:  {coverage['start_time'][:10]} → {coverage['end_time'][:10]}")
 
-        print("=" * 60 + "\n")
+        print('=' * 60 + '\n')

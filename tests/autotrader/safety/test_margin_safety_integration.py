@@ -22,7 +22,6 @@ from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.types.autotrader_types.autotrader_config_types import SafetyConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 
-
 # Base profile: margin (mt5), 15K ticks, display off, INSTANT_FILL mock adapter
 BASE_PROFILE = 'configs/autotrader_profiles/backtesting/margin_safety_test.json'
 
@@ -99,7 +98,7 @@ class TestMarginSafetyNoFalsePositive:
             if 'circuit breaker' in w.lower()
         ]
         assert len(safety_warnings) == 0, (
-            f"Safety falsely triggered: {safety_warnings}"
+            f'Safety falsely triggered: {safety_warnings}'
         )
 
     def test_trades_executed(self, margin_safe_session):
@@ -144,7 +143,7 @@ class TestMarginSafetyTriggers:
     def test_no_trades_after_trigger(self, margin_trigger_session):
         """Circuit breaker blocks all entries — no trades expected."""
         assert len(margin_trigger_session.trade_history) == 0, (
-            f"Expected no trades after safety trigger, got {len(margin_trigger_session.trade_history)}"
+            f'Expected no trades after safety trigger, got {len(margin_trigger_session.trade_history)}'
         )
 
 

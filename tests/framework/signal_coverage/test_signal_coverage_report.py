@@ -17,11 +17,9 @@ from typing import List
 import pandas as pd
 import pytest
 
-from python.framework.discoveries.signal_coverage.signal_coverage_report import (
-    SignalCoverageReport)
+from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
 from python.framework.types.coverage_report_types import GapCategory
-from python.framework.types.signal_data_types import (
-    SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn)
+from python.framework.types.signal_data_types import SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn
 
 CADENCE = timedelta(minutes=10)
 

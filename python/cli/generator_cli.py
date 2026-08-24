@@ -15,7 +15,6 @@ import sys
 
 from python.scenario.generator.generation_coordinator import GenerationCoordinator
 
-
 # =============================================================================
 # MAIN ENTRY POINT
 # =============================================================================

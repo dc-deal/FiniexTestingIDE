@@ -24,8 +24,8 @@ Records (cross-process channel, same pattern as the event probe #348):
 
 from typing import Any, Dict, List, Optional
 
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
@@ -88,7 +88,7 @@ class BacktestingOutageProbe(AbstractDecisionLogic):
         return {
             'lot_size': InputParamDef(
                 param_type=float, default=0.01, min_val=0.0, max_val=100.0,
-                description="Lot size of the deliberate stale-entry probe"
+                description='Lot size of the deliberate stale-entry probe'
             ),
         }
 
@@ -127,7 +127,7 @@ class BacktestingOutageProbe(AbstractDecisionLogic):
         """
         self._received_events.append(f'signal_stale:{worker_name}:{signal_kind}')
         self.logger.warning(
-            f"[PROBE] on_signal_stale fired: {worker_name} ({signal_kind})")
+            f'[PROBE] on_signal_stale fired: {worker_name} ({signal_kind})')
 
     def on_market_data_stale(self, status: MarketDataStatus) -> None:
         """
@@ -139,8 +139,8 @@ class BacktestingOutageProbe(AbstractDecisionLogic):
         self._received_events.append('market_data_stale')
         self._entry_probe_pending = True
         self.logger.warning(
-            f"[PROBE] on_market_data_stale fired "
-            f"({status.seconds_since_last_tick:.0f}s since last tick)")
+            f'[PROBE] on_market_data_stale fired '
+            f'({status.seconds_since_last_tick:.0f}s since last tick)')
 
     # ============================================
     # Core Logic: compute() + execute()
@@ -217,7 +217,7 @@ class BacktestingOutageProbe(AbstractDecisionLogic):
             self._received_events.append(
                 f'stale_entry_UNEXPECTED:{result.status.value}')
             self.logger.error(
-                f"[PROBE] stale entry NOT guard-blocked: {result.status.value}")
+                f'[PROBE] stale entry NOT guard-blocked: {result.status.value}')
         return result
 
     # ============================================

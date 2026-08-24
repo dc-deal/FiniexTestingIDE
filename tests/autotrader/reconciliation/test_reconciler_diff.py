@@ -7,7 +7,7 @@ async submit roundtrip and dry-run never read as false orphans.
 """
 
 from python.framework.testing.mock_broker_adapter import MockDivergenceMode
-from tests.autotrader.reconciliation.conftest import make_pending, make_broker_order
+from tests.autotrader.reconciliation.conftest import make_broker_order, make_pending
 
 
 def test_clean_when_orders_match(mock_adapter, make_reconciler):

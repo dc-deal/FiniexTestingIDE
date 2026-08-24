@@ -7,16 +7,23 @@ the event-stream CSV, the unified report artifacts (#391), the algo diagnostics
 CSV, and the post-session console summary. Report derivation itself lives in
 framework/reporting/*; this only orchestrates the persist + render.
 """
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, Optional, Tuple
 import io
 import re
 import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.reporting.builders.broker_report_builder import (
+    build_broker_report_from_session,
+)
+from python.framework.reporting.builders.run_unit import run_units_from_session
+from python.framework.reporting.builders.warnings_errors_report_builder import (
+    build_warnings_errors_report_from_session,
+)
 from python.framework.reporting.console.broker_summary import BrokerSummary
 from python.framework.reporting.console.feed_stability_summary import FeedStabilitySummary
 from python.framework.reporting.console.live_session_summary import LiveSessionSummary
@@ -24,25 +31,24 @@ from python.framework.reporting.console.performance_summary import PerformanceSu
 from python.framework.reporting.console.portfolio_summary import PortfolioSummary
 from python.framework.reporting.console.run_console_renderer import RunConsoleRenderer
 from python.framework.reporting.console.signal_summary import SignalSummary
-from python.framework.types.signal_data_types import SignalObservedSeries
 from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
 from python.framework.reporting.console.warnings_summary import WarningsSummary
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
-from python.framework.reporting.builders.broker_report_builder import build_broker_report_from_session
 from python.framework.reporting.io.broker_report_io import write_broker_report
-from python.framework.reporting.store.report_store import IO_SUBDIR
-from python.framework.reporting.builders.run_unit import run_units_from_session
-from python.framework.reporting.builders.warnings_errors_report_builder import build_warnings_errors_report_from_session
 from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
-from python.framework.reporting.store.run_provenance_builder import build_run_provenance_from_session
+from python.framework.reporting.store.report_store import IO_SUBDIR
+from python.framework.reporting.store.run_provenance_builder import (
+    build_run_provenance_from_session,
+)
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
-from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
+from python.framework.types.signal_data_types import SignalObservedSeries
+from python.framework.utils.console_renderer import ConsoleRenderer
 
 
 class AutotraderReportCoordinator:
@@ -204,5 +210,5 @@ class AutotraderReportCoordinator:
         print(full_output)
         self._summary_logger.info(re.sub(r'\033\[[0-9;]+m', '', full_output))
         self._global_logger.info(
-            f"📋 Session summary written — {result.ticks_processed} ticks, "
-            f"{len(result.warning_messages)} warnings, {len(result.error_messages)} errors")
+            f'📋 Session summary written — {result.ticks_processed} ticks, '
+            f'{len(result.warning_messages)} warnings, {len(result.error_messages)} errors')

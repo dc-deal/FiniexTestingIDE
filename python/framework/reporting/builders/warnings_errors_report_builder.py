@@ -13,7 +13,11 @@ by a validator upstream (pre-run phases + `PostRunValidator`). See docs/architec
 """
 
 from python.framework.types.api.report_types import (
-    UnitErrorRow, WarningRow, WarningsErrorsOutcome, WarningsErrorsReport)
+    UnitErrorRow,
+    WarningRow,
+    WarningsErrorsOutcome,
+    WarningsErrorsReport,
+)
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.log_level import LogLevel
@@ -97,8 +101,8 @@ def _batch_warnings(batch: BatchExecutionSummary) -> list:
     if pot_total > 0:
         warnings.append(WarningRow(
             tier='minor', scope='run',
-            message=(f"{pot_total} warning(s) in {pot_units} scenario log(s) "
-                     f"— see scenario logs for details")))
+            message=(f'{pot_total} warning(s) in {pot_units} scenario log(s) '
+                     f'— see scenario logs for details')))
     return warnings
 
 

@@ -13,12 +13,13 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import MagicMock
 
-
 from python.framework.signal_data.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.signal_inbox import SignalInbox
 from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.types.config_types.sentiment_config_types import (
-    SentimentHealthConfig, SentimentPollConfig)
+    SentimentHealthConfig,
+    SentimentPollConfig,
+)
 from python.framework.types.decision_logic_types import AwarenessLevel
 from python.framework.types.signal_data_types import SignalHealthStatus
 

@@ -10,14 +10,20 @@ scenarios (no tick_loop_results) must still appear.
 from datetime import datetime, timezone
 
 from python.framework.reporting.builders.scenario_details_report_builder import (
-    build_scenario_details_report_from_batch)
+    build_scenario_details_report_from_batch,
+)
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_types.performance_stats_types import (
-    DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats)
+    DecisionLogicStats,
+    WorkerCoordinatorPerformanceStats,
+    WorkerPerformanceStats,
+)
 from python.framework.types.process_data_types import (
-    ProcessResult, ProcessTickLoopResult, TickRangeStats)
+    ProcessResult,
+    ProcessTickLoopResult,
+    TickRangeStats,
+)
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-
 
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 _DT2 = datetime(2025, 10, 13, 1, 0, 0, tzinfo=timezone.utc)

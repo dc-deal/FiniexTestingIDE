@@ -64,17 +64,22 @@ Position Lifecycle (example with 3 overlapping trades):
 
 from typing import Any, Dict, List, Optional, Set
 
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.worker_types import WorkerRequirement, WorkerResult
-from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType, OrderDirection
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
+from python.framework.types.trading_env_types.order_types import (
+    OrderDirection,
+    OrderResult,
+    OrderSide,
+    OrderType,
+)
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
 class BacktestingMultiPosition(AbstractDecisionLogic):
@@ -163,9 +168,9 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         self.warmup_checked = False
 
         self.logger.info(
-            f"BacktestingMultiPosition initialized: "
-            f"{len(self.trade_sequence)} trades in sequence, "
-            f"lot_size={self.default_lot_size}"
+            f'BacktestingMultiPosition initialized: '
+            f'{len(self.trade_sequence)} trades in sequence, '
+            f'lot_size={self.default_lot_size}'
         )
 
     # ============================================
@@ -179,19 +184,19 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
             'trade_sequence': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of trade specs: tick_number, direction, hold_ticks, lot_size"
+                description='List of trade specs: tick_number, direction, hold_ticks, lot_size'
             ),
             'lot_size': InputParamDef(
                 param_type=float,
                 default=0.1,
                 min_val=0.0,
                 max_val=100.0,
-                description="Default lot size for trades without explicit lot_size"
+                description='Default lot size for trades without explicit lot_size'
             ),
             'partial_close_sequence': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of partial close specs: tick_number, position_index, close_lots"
+                description='List of partial close specs: tick_number, position_index, close_lots'
             ),
         }
 
@@ -250,7 +255,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
             Dict with worker instance mapping
         """
         return {
-            "backtesting_worker": WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
+            'backtesting_worker': WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
         }
 
     def on_market_data_stale(self, status: MarketDataStatus) -> None:
@@ -315,9 +320,9 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
                 hold_ticks = spec.get('hold_ticks', 100)
 
                 self.logger.info(
-                    f"🎯 Multi-position signal at tick {self.tick_count}: "
-                    f"{direction} {lot_size} lots, hold {hold_ticks} ticks "
-                    f"(trade #{idx}, {len(self._active_trades)} already active)"
+                    f'🎯 Multi-position signal at tick {self.tick_count}: '
+                    f'{direction} {lot_size} lots, hold {hold_ticks} ticks '
+                    f'(trade #{idx}, {len(self._active_trades)} already active)'
                 )
 
                 return Decision(
@@ -326,7 +331,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
                         'lot_size': lot_size,
                         'sequence_index': idx,
                         'hold_ticks': hold_ticks,
-                        'reason': f"Multi-position open {direction} at tick {self.tick_count}",
+                        'reason': f'Multi-position open {direction} at tick {self.tick_count}',
                         'price': tick.mid,
                     },
                 )
@@ -368,7 +373,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         """
         if not self.trading_api:
             self.logger.warning(
-                "No trading_api available - skipping execution")
+                'No trading_api available - skipping execution')
             return None
 
         # ============================================
@@ -404,7 +409,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
                 order_type=OrderType.MARKET,
                 side=side,
                 lots=lot_size,
-                comment=f"MultiPos #{seq_idx} {direction.value}"
+                comment=f'MultiPos #{seq_idx} {direction.value}'
             )
 
             if order_result and not order_result.is_rejected:
@@ -430,8 +435,8 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
 
             elif order_result and order_result.is_rejected:
                 self.logger.error(
-                    f"❌ Multi-position order rejected at tick {self.tick_count}: "
-                    f"{order_result.rejection_message}"
+                    f'❌ Multi-position order rejected at tick {self.tick_count}: '
+                    f'{order_result.rejection_message}'
                 )
 
         # ============================================
@@ -484,17 +489,17 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
                     })
 
                     self.logger.info(
-                        f"📍 Multi-position close at tick {self.tick_count}: "
-                        f"{order_id} (trade #{seq_idx}, "
-                        f"{len(self._active_trades) - 1} remaining)"
+                        f'📍 Multi-position close at tick {self.tick_count}: '
+                        f'{order_id} (trade #{seq_idx}, '
+                        f'{len(self._active_trades) - 1} remaining)'
                     )
                     closed = True
                     break
 
             if not closed:
                 self.logger.warning(
-                    f"⚠️ Could not close {order_id} at tick {self.tick_count} "
-                    f"(trade #{seq_idx} - position not found or pending close)"
+                    f'⚠️ Could not close {order_id} at tick {self.tick_count} '
+                    f'(trade #{seq_idx} - position not found or pending close)'
                 )
 
             # Remove from active trades regardless
@@ -532,8 +537,8 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
             order_id = self._position_map.get(position_index)
             if not order_id:
                 self.logger.warning(
-                    f"⚠️ Partial close #{idx}: no position for "
-                    f"sequence index {position_index}"
+                    f'⚠️ Partial close #{idx}: no position for '
+                    f'sequence index {position_index}'
                 )
                 continue
 
@@ -544,8 +549,8 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
                 if pos.position_id == order_id:
                     if self.trading_api.is_pending_close(pos.position_id):
                         self.logger.warning(
-                            f"⚠️ Partial close #{idx}: position {order_id} "
-                            f"has pending close — skipping"
+                            f'⚠️ Partial close #{idx}: position {order_id} '
+                            f'has pending close — skipping'
                         )
                         break
 
@@ -553,17 +558,17 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
                         pos.position_id, lots=close_lots)
 
                     self.logger.info(
-                        f"📊 Partial close at tick {self.tick_count}: "
-                        f"{order_id} closing {close_lots} lots "
-                        f"(trade #{position_index})"
+                        f'📊 Partial close at tick {self.tick_count}: '
+                        f'{order_id} closing {close_lots} lots '
+                        f'(trade #{position_index})'
                     )
                     found = True
                     break
 
             if not found:
                 self.logger.warning(
-                    f"⚠️ Partial close #{idx}: position {order_id} "
-                    f"not found at tick {self.tick_count}"
+                    f'⚠️ Partial close #{idx}: position {order_id} '
+                    f'not found at tick {self.tick_count}'
                 )
 
     # ============================================
@@ -585,10 +590,10 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
 
         if not worker_result:
             self.logger.warning(
-                "❌ BacktestingSampleWorker result not found - "
-                "warmup validation skipped"
+                '❌ BacktestingSampleWorker result not found - '
+                'warmup validation skipped'
             )
-            self.warmup_errors.append("Worker result not found")
+            self.warmup_errors.append('Worker result not found')
             return
 
         # Extract warmup status
@@ -598,7 +603,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
             if not status.get('valid', True):
                 error_msg = f"{timeframe}: {status.get('error', 'Unknown error')}"
                 self.warmup_errors.append(error_msg)
-                self.logger.warning(f"❌ Warmup error: {error_msg}")
+                self.logger.warning(f'❌ Warmup error: {error_msg}')
             else:
                 self.logger.debug(
                     f"✅ Warmup valid: {timeframe} = {status['actual']} bars"
@@ -637,12 +642,12 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         )
 
         self.logger.debug(
-            f"📊 MultiPosition Metadata: "
-            f"errors={len(self.warmup_errors)}, "
-            f"expected_trades={len(self.expected_trades)}, "
-            f"close_events={len(self._close_events)}, "
-            f"max_concurrent={self._max_concurrent}, "
-            f"ticks={self.tick_count}"
+            f'📊 MultiPosition Metadata: '
+            f'errors={len(self.warmup_errors)}, '
+            f'expected_trades={len(self.expected_trades)}, '
+            f'close_events={len(self._close_events)}, '
+            f'max_concurrent={self._max_concurrent}, '
+            f'ticks={self.tick_count}'
         )
 
         return base_stats

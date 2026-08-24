@@ -8,12 +8,12 @@ from python.framework.utils.time_utils import format_duration
 
 class GapCategory(Enum):
     """Gap classification categories"""
-    SEAMLESS = "seamless"
-    WEEKEND = "weekend"
-    HOLIDAY = "holiday"
-    SHORT = "short"
-    MODERATE = "moderate"
-    LARGE = "large"
+    SEAMLESS = 'seamless'
+    WEEKEND = 'weekend'
+    HOLIDAY = 'holiday'
+    SHORT = 'short'
+    MODERATE = 'moderate'
+    LARGE = 'large'
 
 
 @dataclass

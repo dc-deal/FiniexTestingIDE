@@ -68,7 +68,7 @@ The `--time-offset` parameter corrects broker timezones to UTC. After import, ba
 | | |
 |---|---|
 | **VS Code** | `📊 Tick Data Report` |
-| **CLI** | `python data_index_cli.py tick_data_report` |
+| **CLI** | `python python/cli/data_index_cli.py tick-data-report` |
 | **Purpose** | Complete report of all available symbols |
 
 Shows for each symbol: time range, tick count, session distribution, spread statistics.
@@ -610,7 +610,7 @@ Useful for understanding the raw data structure:
 | Task | VS Code Launch | CLI |
 |------|----------------|-----|
 | **Import data** | `📥 Import: Offset +3` | `data_index_cli.py import --time-offset +3 --offset-broker mt5` |
-| **Data overview** | `📊 Tick Data Report` | `data_index_cli.py tick_data_report` |
+| **Data overview** | `📊 Tick Data Report` | `data_index_cli.py tick-data-report` |
 | **Tick Index Status** | `📚 Tick Index: Status` | `tick_index_cli.py status` |
 | **Gap check (all)** | `🔍 Disc - Data Coverage: Validate All` | `discoveries_cli.py data-coverage validate` |
 | **Gap details** | `🔍 Disc - Data Coverage: mt5/EURUSD` | `discoveries_cli.py data-coverage show mt5 EURUSD` |

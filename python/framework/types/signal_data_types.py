@@ -14,8 +14,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from pydantic import (BaseModel, ConfigDict, Field, field_validator,
-                      model_validator)
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def _epoch_ms_to_utc(value):
@@ -376,8 +375,8 @@ class SignalObservedSeries:
         if self.seq_span is None:
             return 'not verifiable (no seq in this era)'
         first, last = self.seq_span
-        span = f"{first}→{last}"
-        return f"{self.seq_holes} holes {span}" if self.seq_holes else f"contiguous {span}"
+        span = f'{first}→{last}'
+        return f'{self.seq_holes} holes {span}' if self.seq_holes else f'contiguous {span}'
 
 
 class SignalEdge(str, Enum):

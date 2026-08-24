@@ -11,7 +11,10 @@ from dataclasses import asdict
 from typing import Any, Dict, Union
 
 from python.framework.types.autotrader_types.autotrader_display_types import AutoTraderDisplayStats
-from python.framework.types.live_types.live_scenario_stats_types import LiveScenarioStats, LiveStatusFrame
+from python.framework.types.live_types.live_scenario_stats_types import (
+    LiveScenarioStats,
+    LiveStatusFrame,
+)
 from python.framework.utils.process_serialization_utils import serialize_value
 
 

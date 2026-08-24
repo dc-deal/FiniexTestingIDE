@@ -7,10 +7,14 @@ ProcessResult / BlockBoundaryReport fixtures (the generator-mode lookup is a tri
 via the 'unknown' fallback).
 """
 from python.framework.reporting.builders.block_splitting_report_builder import (
-    build_block_splitting_report_from_batch)
+    build_block_splitting_report_from_batch,
+)
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import (
-    BlockBoundaryReport, ProcessResult, ProcessTickLoopResult)
+    BlockBoundaryReport,
+    ProcessResult,
+    ProcessTickLoopResult,
+)
 
 
 def _bbr(fc_trades=0, fc_pnl=0.0, nat_trades=0, nat_pnl=0.0, discarded=0) -> BlockBoundaryReport:

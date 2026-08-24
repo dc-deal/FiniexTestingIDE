@@ -68,7 +68,7 @@ class TestFieldStudyCertificate:
         if valid_until.tzinfo is None:
             valid_until = valid_until.replace(tzinfo=timezone.utc)
         assert datetime.now(timezone.utc) <= valid_until, (
-            f"Field Study certificate EXPIRED ({valid_until_str}) — re-run the Field Study."
+            f'Field Study certificate EXPIRED ({valid_until_str}) — re-run the Field Study.'
         )
 
     def test_report_passed(self):
@@ -92,4 +92,4 @@ class TestFieldStudyCertificate:
             'overall_status', 'phases', 'flat_at_session_end', 'realized_cost',
         ]
         missing = [f for f in required if f not in data]
-        assert not missing, f"Certificate missing fields: {missing}"
+        assert not missing, f'Certificate missing fields: {missing}'

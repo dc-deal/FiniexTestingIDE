@@ -3,11 +3,15 @@ FiniexTestingIDE - Application Configuration Types
 Top-level Pydantic model for app_config.json.
 """
 from typing import List
+
 from pydantic import BaseModel
+
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    AutotraderDefaultsConfig,
+)
+from python.framework.types.config_types.backtesting_config_types import BacktestingConfig
 from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
 from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
-from python.framework.types.config_types.backtesting_config_types import BacktestingConfig
-from python.framework.types.config_types.autotrader_defaults_config_types import AutotraderDefaultsConfig
 
 
 class SharedPaths(BaseModel):

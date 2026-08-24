@@ -16,6 +16,7 @@ Debug mode detection checks:
 """
 
 import sys
+
 import pytest
 
 
@@ -68,13 +69,13 @@ class TestEnvironmentCheck:
 
         if debugger_active:
             # Determine which debugger
-            debugger_type = "Unknown"
+            debugger_type = 'Unknown'
             if 'debugpy' in sys.modules:
-                debugger_type = "VS Code (debugpy)"
+                debugger_type = 'VS Code (debugpy)'
             elif 'pydevd' in sys.modules:
-                debugger_type = "PyCharm (pydevd)"
+                debugger_type = 'PyCharm (pydevd)'
             elif hasattr(sys, 'gettrace') and sys.gettrace() is not None:
-                debugger_type = "Trace-based debugger"
+                debugger_type = 'Trace-based debugger'
 
             pytest.fail(
                 f"\n{'='*60}\n"
@@ -91,7 +92,7 @@ class TestEnvironmentCheck:
                 f"{'='*60}"
             )
 
-        print(f"\n✅ Production mode confirmed - no debugger attached")
+        print('\n✅ Production mode confirmed - no debugger attached')
 
 
 class TestSystemResources:

@@ -10,16 +10,16 @@ Responsibilities:
 
 """
 
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from python.framework.logging.abstract_logger import AbstractLogger
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
-from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
+from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
+    DataCoverageReportCache,
+)
 from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
-from python.framework.types.coverage_report_types import IndexEntry
+from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
@@ -89,7 +89,7 @@ class DataCoverageReportManager:
                 data_coverage_reports[(broker_type, symbol)] = report
 
         self._logger.info(
-            f"✅ Generated {len(data_coverage_reports)} gap report(s)"
+            f'✅ Generated {len(data_coverage_reports)} gap report(s)'
         )
 
         self._data_coverage_reports = data_coverage_reports
@@ -143,7 +143,7 @@ class DataCoverageReportManager:
         Returns:
             Tuple of (valid_scenarios, invalid_scenarios_with_results)
         """
-        self._logger.info("🔍 Phase 0.5: Validating data availability...")
+        self._logger.info('🔍 Phase 0.5: Validating data availability...')
 
         for scenario in scenarios:
             # === STEP 1: Validate date logic (config sanity) ===
@@ -152,7 +152,7 @@ class DataCoverageReportManager:
             if date_logic_errors:
                 # Config error - don't proceed to availability check
                 for error in date_logic_errors:
-                    self._logger.error(f"❌ {scenario.name}: {error}")
+                    self._logger.error(f'❌ {scenario.name}: {error}')
 
                 validation_result = ValidationResult(
                     is_valid=False,
@@ -171,12 +171,12 @@ class DataCoverageReportManager:
                     is_valid=False,
                     scenario_name=scenario.name,
                     errors=[
-                        f"No coverage report available for {scenario.data_broker_type}/{scenario.symbol}"],
+                        f'No coverage report available for {scenario.data_broker_type}/{scenario.symbol}'],
                     warnings=[]
                 )
                 scenario.validation_result.append(validation_result)
                 self._logger.error(
-                    f"❌ {scenario.name}: No coverage report for {scenario.data_broker_type}/{scenario.symbol}"
+                    f'❌ {scenario.name}: No coverage report for {scenario.data_broker_type}/{scenario.symbol}'
                 )
                 continue
 
@@ -186,7 +186,7 @@ class DataCoverageReportManager:
 
             if availability_errors:
                 for error in availability_errors:
-                    self._logger.error(f"❌ {scenario.name}: {error}")
+                    self._logger.error(f'❌ {scenario.name}: {error}')
 
                 validation_result = ValidationResult(
                     is_valid=False,
@@ -202,9 +202,9 @@ class DataCoverageReportManager:
                 scenario)
 
             for error in signal_errors:
-                self._logger.error(f"❌ {scenario.name}: {error}")
+                self._logger.error(f'❌ {scenario.name}: {error}')
             for warning in signal_warnings:
-                self._logger.warning(f"⚠️  {scenario.name}: {warning}")
+                self._logger.warning(f'⚠️  {scenario.name}: {warning}')
 
             if signal_errors:
                 validation_result = ValidationResult(
@@ -244,7 +244,7 @@ class DataCoverageReportManager:
         Returns:
             Tuple of (valid_scenarios, invalid_scenarios_with_results)
         """
-        self._logger.info("🔍 Phase 1.5: Validating data quality...")
+        self._logger.info('🔍 Phase 1.5: Validating data quality...')
 
         # Validate all scenarios
         self._validator.validate_loaded_data(

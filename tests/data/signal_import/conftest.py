@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from python.data_management.importers.signal_importer import SignalDataImporter
+from python.data_management.importers.signal_data_importer import SignalDataImporter
 from python.data_management.index.signal_index_manager import SignalIndexManager
 
 # tests/fixtures/signals/signal_import_sample.jsonl (pipeline_id = 'test_sentiment')

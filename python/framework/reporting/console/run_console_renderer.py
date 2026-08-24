@@ -16,17 +16,19 @@ from typing import Optional, Protocol
 
 from python.framework.reporting.console.block_splitting_disposition import BlockSplittingDisposition
 from python.framework.reporting.console.broker_summary import BrokerSummary
-from python.framework.reporting.console.feed_stability_summary import FeedStabilitySummary
-from python.framework.reporting.console.signal_summary import SignalSummary
 from python.framework.reporting.console.execution_header_summary import ExecutionHeaderSummary
+from python.framework.reporting.console.feed_stability_summary import FeedStabilitySummary
 from python.framework.reporting.console.performance_summary import PerformanceSummary
 from python.framework.reporting.console.portfolio_summary import PortfolioSummary
 from python.framework.reporting.console.profiling_summary import ProfilingSummary
 from python.framework.reporting.console.robustness_summary import RobustnessSummary
 from python.framework.reporting.console.scenario_details_summary import ScenarioDetailsSummary
+from python.framework.reporting.console.signal_summary import SignalSummary
 from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
 from python.framework.reporting.console.warnings_summary import WarningsSummary
-from python.framework.reporting.console.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
+from python.framework.reporting.console.worker_decision_breakdown_summary import (
+    WorkerDecisionBreakdownSummary,
+)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 

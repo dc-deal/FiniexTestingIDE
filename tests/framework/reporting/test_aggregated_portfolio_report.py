@@ -11,12 +11,19 @@ import io
 import re
 from contextlib import redirect_stdout
 
-from python.framework.reporting.console.portfolio_summary import PortfolioSummary
 from python.framework.reporting.builders.aggregated_portfolio_report_builder import (
-    build_aggregated_portfolio_report)
+    build_aggregated_portfolio_report,
+)
+from python.framework.reporting.console.portfolio_summary import PortfolioSummary
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals, PendingOrdersReport,
-    PendingOrdersUnitRow, PortfolioReport, PortfolioUnitRow)
+    ExecutionStatsReport,
+    ExecutionStatsRow,
+    ExecutionStatsTotals,
+    PendingOrdersReport,
+    PendingOrdersUnitRow,
+    PortfolioReport,
+    PortfolioUnitRow,
+)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 

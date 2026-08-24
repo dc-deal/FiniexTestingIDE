@@ -12,8 +12,16 @@ from typing import Dict, Optional
 
 from python.framework.reporting.builders.report_aggregators import aggregate_signal_fresh_ratio
 from python.framework.types.api.report_types import (
-    ExecutionStatsReport, FeedStabilityReport, PortfolioAggregateRow, PortfolioReport,
-    RunSummary, RunSummaryCurrency, SignalReport, TradeAnalytics, TradeHistoryReport)
+    ExecutionStatsReport,
+    FeedStabilityReport,
+    PortfolioAggregateRow,
+    PortfolioReport,
+    RunSummary,
+    RunSummaryCurrency,
+    SignalReport,
+    TradeAnalytics,
+    TradeHistoryReport,
+)
 
 
 def build_run_summary(

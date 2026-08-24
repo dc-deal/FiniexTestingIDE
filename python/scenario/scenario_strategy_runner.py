@@ -9,16 +9,19 @@ from pathlib import Path
 from typing import List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig, ScenarioSet
-from python.framework.types.run_results_types import SweepContext
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.mount_package_types import MountPackage
-from python.scenario.generator.profile_loader import ProfileLoader
-from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
-
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.mount_package_types import MountPackage
+from python.framework.types.run_results_types import SweepContext
+from python.framework.types.scenario_types.scenario_set_types import (
+    LoadedScenarioConfig,
+    ScenarioSet,
+)
+from python.scenario.generator.profile_loader import ProfileLoader
+from python.scenario.scenario_config_loader import ScenarioConfigLoader
+
 vLog = get_global_logger()
 
 
@@ -31,7 +34,7 @@ def run_scenario_batch(scenario_set_json: str):
     """
 
     try:
-        vLog.info("🚀 Starting [BatchOrchestrator] Scenario Run")
+        vLog.info('🚀 Starting [BatchOrchestrator] Scenario Run')
 
         # ============================================================
         # Load Application Configuration
@@ -44,10 +47,10 @@ def run_scenario_batch(scenario_set_json: str):
         default_parallel_workers = app_config_loader.get_default_parallel_workers()
 
         vLog.info(
-            f"📋 Execution config: "
-            f"Parallel Scenarios={default_parallel_scenarios}, "
-            f"Max Workers={default_max_parallel_scenarios}, "
-            f"Worker Parallelism={default_parallel_workers}"
+            f'📋 Execution config: '
+            f'Parallel Scenarios={default_parallel_scenarios}, '
+            f'Max Workers={default_max_parallel_scenarios}, '
+            f'Worker Parallelism={default_parallel_workers}'
         )
 
         # ============================================================
@@ -60,14 +63,14 @@ def run_scenario_batch(scenario_set_json: str):
             scenario_set_json)
 
         vLog.info(
-            f"📂 Loaded scenario set: {scenario_set_json} ({len(scenario_config_data.scenarios)} scenarios)"
+            f'📂 Loaded scenario set: {scenario_set_json} ({len(scenario_config_data.scenarios)} scenarios)'
         )
 
         initialize_batch_and_run(scenario_config_data, app_config_loader)
 
     except Exception as e:
         vLog.hard_error(
-            f"Unexpected error during startup",
+            'Unexpected error during startup',
             exception=e
         )
 
@@ -84,7 +87,7 @@ def run_profile_batch(scenario_set_json: str, profile_paths: List[str]):
         profile_paths: List of paths to profile artifact JSON files
     """
     try:
-        vLog.info("🚀 Starting [BatchOrchestrator] Profile Run")
+        vLog.info('🚀 Starting [BatchOrchestrator] Profile Run')
 
         app_config_loader = AppConfigManager()
 
@@ -98,9 +101,9 @@ def run_profile_batch(scenario_set_json: str, profile_paths: List[str]):
             fingerprint_warnings = loader.validate_fingerprints(window_set)
             if fingerprint_warnings:
                 vLog.warning(
-                    f"⚠️ Profile {window_set.symbol} has "
-                    f"{len(fingerprint_warnings)} fingerprint warning(s) — "
-                    f"discovery configs may have changed since generation"
+                    f'⚠️ Profile {window_set.symbol} has '
+                    f'{len(fingerprint_warnings)} fingerprint warning(s) — '
+                    f'discovery configs may have changed since generation'
                 )
 
             window_sets.append(window_set)
@@ -127,7 +130,7 @@ def run_profile_batch(scenario_set_json: str, profile_paths: List[str]):
 
     except Exception as e:
         vLog.hard_error(
-            f"Unexpected error during Profile Run startup",
+            'Unexpected error during Profile Run startup',
             exception=e
         )
 
@@ -157,7 +160,7 @@ def initialize_batch_and_run(
         # ScenarioSet creates its own loggers internally
         scenario_set = ScenarioSet(scenario_config_data, app_config_loader, run_group=run_group)
 
-        vLog.info("📊 Writing system & version information...")
+        vLog.info('📊 Writing system & version information...')
         scenario_set.write_scenario_system_info_log()
         scenario_set.copy_config_snapshot()
 
@@ -187,13 +190,13 @@ def initialize_batch_and_run(
 
     except FileNotFoundError as e:
         vLog.config_error(
-            f"Config file not found: {e}",
+            f'Config file not found: {e}',
             file_path=str(e)
         )
 
     except Exception as e:
         vLog.hard_error(
-            f"Unexpected error during strategy test",
+            'Unexpected error during strategy test',
             exception=e
         )
 

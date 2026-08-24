@@ -17,7 +17,7 @@ instrumentation needed — keeps the hot path untouched.
 """
 
 import csv
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -25,7 +25,14 @@ from typing import List, Optional
 
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.order_types import CloseType, OrderAction, OrderDirection, OrderResult, OrderSide, OrderStatus
+from python.framework.types.trading_env_types.order_types import (
+    CloseType,
+    OrderAction,
+    OrderDirection,
+    OrderResult,
+    OrderSide,
+    OrderStatus,
+)
 
 
 class EventType(Enum):
@@ -185,7 +192,7 @@ class EventStreamWriter:
                 for event in sorted_events:
                     writer.writerow(_event_to_row(event))
         except Exception as e:
-            print(f"Warning: Failed to write event-stream CSV {out_path}: {e}")
+            print(f'Warning: Failed to write event-stream CSV {out_path}: {e}')
             return None
 
         return out_path

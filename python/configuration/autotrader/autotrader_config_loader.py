@@ -8,13 +8,11 @@ import json
 from pathlib import Path
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.utils.config_merge_utils import check_unknown_keys, deep_merge
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AutoTraderConfig,
     SafetyConfig,
     TickSourceConfig,
 )
-from python.framework.types.config_types.scenario_settings_config_types import ScenarioSettingsConfig
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     ApiMonitorConfig,
     AutotraderExecutionDefaults,
@@ -25,8 +23,13 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ReconciliationDefaults,
     StatePersistenceDefaults,
 )
-from python.framework.types.config_types.performance_tracking_config_types import AutoTraderPerformanceTrackingConfig
-
+from python.framework.types.config_types.performance_tracking_config_types import (
+    AutoTraderPerformanceTrackingConfig,
+)
+from python.framework.types.config_types.scenario_settings_config_types import (
+    ScenarioSettingsConfig,
+)
+from python.framework.utils.config_merge_utils import check_unknown_keys, deep_merge
 
 # ============================================
 # Known config keys per profile section
@@ -74,7 +77,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     """
     path = Path(config_path)
     if not path.exists():
-        raise FileNotFoundError(f"AutoTrader config not found: {config_path}")
+        raise FileNotFoundError(f'AutoTrader config not found: {config_path}')
 
     with open(path, 'r') as f:
         raw_profile_only = json.load(f)
@@ -84,7 +87,6 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     # `raw` can no longer distinguish between "profile explicitly set X" and
     # "X came from app_config defaults". Resolve those checks here against
     # the untouched profile dict.
-    profile_adapter_type = raw_profile_only.get('adapter_type', 'mock')
     profile_explicitly_set_drift_enabled = (
         'enabled' in raw_profile_only.get('drift_audit', {})
     )

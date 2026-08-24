@@ -14,8 +14,8 @@ Import this class into suite-specific test_order_history.py files.
 
 from typing import List
 
-from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.process_data_types import ProcessTickLoopResult
+from python.framework.types.trading_env_types.order_types import OrderResult
 
 
 class TestOrderHistoryBaseline:
@@ -24,7 +24,7 @@ class TestOrderHistoryBaseline:
     def test_order_history_not_none(self, order_history: List[OrderResult]):
         """order_history must be populated after scenario execution."""
         assert order_history is not None
-        assert len(order_history) > 0, "order_history is empty"
+        assert len(order_history) > 0, 'order_history is empty'
 
     def test_order_history_count_matches_stats(
         self,
@@ -47,12 +47,12 @@ class TestOrderHistoryBaseline:
         rejected_count = sum(1 for e in order_history if e.is_rejected)
         executed_count = sum(1 for e in order_history if e.is_success)
         assert rejected_count == stats.orders_rejected, (
-            f"Rejected entries in order_history ({rejected_count}) != "
-            f"orders_rejected ({stats.orders_rejected})"
+            f'Rejected entries in order_history ({rejected_count}) != '
+            f'orders_rejected ({stats.orders_rejected})'
         )
         assert executed_count >= stats.orders_executed, (
-            f"Executed entries in order_history ({executed_count}) < "
-            f"orders_executed ({stats.orders_executed})"
+            f'Executed entries in order_history ({executed_count}) < '
+            f'orders_executed ({stats.orders_executed})'
         )
 
     def test_order_history_executed_have_price(self, order_history: List[OrderResult]):
@@ -60,11 +60,11 @@ class TestOrderHistoryBaseline:
         for entry in order_history:
             if entry.is_success:
                 assert entry.executed_price is not None, (
-                    f"Executed order {entry.order_id} has no executed_price"
+                    f'Executed order {entry.order_id} has no executed_price'
                 )
                 assert entry.executed_price > 0, (
-                    f"Executed order {entry.order_id} has non-positive executed_price "
-                    f"({entry.executed_price})"
+                    f'Executed order {entry.order_id} has non-positive executed_price '
+                    f'({entry.executed_price})'
                 )
 
     def test_order_history_rejection_reasons(self, order_history: List[OrderResult]):
@@ -72,5 +72,5 @@ class TestOrderHistoryBaseline:
         for entry in order_history:
             if entry.is_rejected:
                 assert entry.rejection_reason is not None, (
-                    f"Rejected order {entry.order_id} has no rejection_reason"
+                    f'Rejected order {entry.order_id} has no rejection_reason'
                 )

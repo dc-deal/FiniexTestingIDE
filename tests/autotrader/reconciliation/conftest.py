@@ -17,14 +17,18 @@ import pytest
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter
 from python.framework.trading_env.live.reconciler import Reconciler
-from python.framework.types.config_types.autotrader_defaults_config_types import ReconciliationDefaults
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    ReconciliationDefaults,
+)
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
 from python.framework.types.portfolio_types.portfolio_types import Position
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderFills
+from python.framework.types.trading_env_types.latency_simulator_types import (
+    PendingOrder,
+    PendingOrderFills,
+)
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
-
 
 # =============================================================================
 # Builders
@@ -137,7 +141,7 @@ class FakeExecutor:
 @pytest.fixture
 def logger() -> GlobalLogger:
     """Logger for isolated reconciliation tests."""
-    return GlobalLogger(name="ReconciliationTest")
+    return GlobalLogger(name='ReconciliationTest')
 
 
 @pytest.fixture

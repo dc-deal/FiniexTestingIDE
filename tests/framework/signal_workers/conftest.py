@@ -15,7 +15,11 @@ import pytest
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.signal_data_types import (
-    RunError, SentimentResult, SignalSeries, SignalSnapshot)
+    RunError,
+    SentimentResult,
+    SignalSeries,
+    SignalSnapshot,
+)
 
 SYMBOL = 'BTCUSD'
 

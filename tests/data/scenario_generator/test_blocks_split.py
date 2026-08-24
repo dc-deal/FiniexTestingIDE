@@ -7,9 +7,11 @@ Tests cover: region extraction (ContinuousRegionExtractor), constrained/extended
 generation, data quality warnings, and count limiting.
 """
 
-import pytest
 from datetime import timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
+from conftest import make_gap, mock_coverage_report, utc
 
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.market_types.market_volatility_profile_types import (
@@ -17,13 +19,12 @@ from python.framework.types.market_types.market_volatility_profile_types import 
 )
 from python.framework.types.scenario_types.scenario_generator_types import (
     BlocksStrategyConfig,
+    GenerationStrategy,
 )
-from python.framework.types.scenario_types.scenario_generator_types import GenerationStrategy
 from python.scenario.generator.splitters.blocks_split import BlocksSplit
-from python.scenario.generator.splitters.continuous_region_extractor import ContinuousRegionExtractor
-
-from conftest import utc, make_gap, mock_coverage_report
-
+from python.scenario.generator.splitters.continuous_region_extractor import (
+    ContinuousRegionExtractor,
+)
 
 # =============================================================================
 # REGION EXTRACTION (ContinuousRegionExtractor)

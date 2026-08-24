@@ -4,16 +4,14 @@ Workers with artificial CPU load for testing parallel performance
 """
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
-from python.framework.workers.abstract_indicator_worker import \
-    AbstractIndicatorWorker
+from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 
 
 class HeavyRsiWorker(AbstractIndicatorWorker):
@@ -42,7 +40,7 @@ class HeavyRsiWorker(AbstractIndicatorWorker):
                 default=5.0,
                 min_val=0.0,
                 max_val=1000.0,
-                description="Artificial CPU load in milliseconds for parallel testing"
+                description='Artificial CPU load in milliseconds for parallel testing'
             ),
         }
 

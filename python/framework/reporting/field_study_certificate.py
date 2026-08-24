@@ -198,7 +198,7 @@ class FieldStudyCertificate:
         status = cert['overall_status']
         mark = '✅' if status == 'PASSED' else '❌'
         print(f"\n{'=' * 60}")
-        print(f"  {mark} FIELD STUDY CERTIFICATE — {status}")
+        print(f'  {mark} FIELD STUDY CERTIFICATE — {status}')
         print(f"  release: {cert['release_version']}  |  commit: {cert['git_commit']}")
         print(f"  profile: {cert['profile']}  |  symbol: {cert['symbol']}")
         print(f"  phases: {cert['phase_count']}  |  flat at end: {cert['flat_at_session_end']}")
@@ -210,7 +210,7 @@ class FieldStudyCertificate:
             f"  realized cost: {cert['realized_cost']:.6f}  "
             f"|  reconcile alerts: {cert['reconcile_alert_count']}"
         )
-        print(f"  certificate: {out_path}")
+        print(f'  certificate: {out_path}')
         print(f"{'=' * 60}\n")
 
     @staticmethod
@@ -219,7 +219,7 @@ class FieldStudyCertificate:
         path = Path(jsonl_path)
         lines = [ln for ln in path.read_text(encoding='utf-8').splitlines() if ln.strip()]
         if not lines:
-            raise ValueError(f"Field Study JSONL is empty: {jsonl_path}")
+            raise ValueError(f'Field Study JSONL is empty: {jsonl_path}')
         header = json.loads(lines[0])
         events = [json.loads(ln) for ln in lines[1:]]
         return header, events

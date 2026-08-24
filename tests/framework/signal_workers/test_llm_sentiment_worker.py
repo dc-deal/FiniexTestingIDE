@@ -4,8 +4,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-
 from conftest import SYMBOL, make_provider, make_tick, snapshot, utc
+
 from python.framework.exceptions.signal_data_errors import SignalProviderNotInjectedError
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction

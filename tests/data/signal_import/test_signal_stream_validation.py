@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from python.data_management.importers.signal_importer import SignalDataImporter
+from python.data_management.importers.signal_data_importer import SignalDataImporter
 from python.framework.exceptions.signal_data_errors import SignalSchemaError
 
 PIPELINE_ID = 'test_sentiment'

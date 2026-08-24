@@ -7,17 +7,17 @@ Phase 1.5: Post-Load Data Quality Validation
 
 from typing import Dict, List, Tuple
 
-from python.framework.logging.abstract_logger import AbstractLogger
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.exceptions.market_compatibility_errors import MarketCompatibilityError
-from python.framework.factory.worker_factory import WorkerFactory
-from python.framework.types.validation_types import ValidationResult
-from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
+from python.framework.exceptions.market_compatibility_errors import MarketCompatibilityError
+from python.framework.factory.worker_factory import WorkerFactory
+from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.coverage_report_types import GapCategory
+from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.validation_types import ValidationResult
 from python.framework.utils.process_serialization_utils import time_range_from_transport_ticks
 from python.framework.utils.time_utils import ensure_utc_aware, format_duration
 
@@ -384,7 +384,7 @@ class ScenarioDataValidator:
                     is_valid=False,
                     scenario_name=scenario.name,
                     errors=[
-                        f"No data package found for scenario index {idx}"],
+                        f'No data package found for scenario index {idx}'],
                     warnings=[]
                 )
                 continue
@@ -396,13 +396,13 @@ class ScenarioDataValidator:
             if result.is_valid:
                 # Log warnings if any
                 for warning in result.warnings:
-                    self._logger.warning(f"⚠️  {scenario.name}: {warning}")
+                    self._logger.warning(f'⚠️  {scenario.name}: {warning}')
                 if result.warnings:
                     scenario.validation_result.append(result)
             else:
                 # Log errors
                 for error in result.errors:
-                    self._logger.error(f"❌ {scenario.name}: {error}")
+                    self._logger.error(f'❌ {scenario.name}: {error}')
                     scenario.validation_result.append(result)
 
     def _validate_single_scenario(
@@ -430,7 +430,7 @@ class ScenarioDataValidator:
         report = self._data_coverage_reports.get(report_key)
         if not report:
             errors.append(
-                f"No coverage report available for {scenario.data_broker_type}/{scenario.symbol}")
+                f'No coverage report available for {scenario.data_broker_type}/{scenario.symbol}')
             return ValidationResult(
                 is_valid=False,
                 scenario_name=scenario.name,
@@ -656,8 +656,8 @@ class ScenarioDataValidator:
             if actual_count < bar_req.warmup_count:
                 pct = (actual_count / bar_req.warmup_count * 100) if bar_req.warmup_count > 0 else 0
                 msg = (
-                    f"Warmup for {bar_req.timeframe} has {actual_count}/{bar_req.warmup_count} bars "
-                    f"({pct:.0f}%) — insufficient for indicator stabilization."
+                    f'Warmup for {bar_req.timeframe} has {actual_count}/{bar_req.warmup_count} bars '
+                    f'({pct:.0f}%) — insufficient for indicator stabilization.'
                 )
                 if is_standard:
                     errors.append(msg)

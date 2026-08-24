@@ -16,20 +16,25 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 import pytest
 
-from python.framework.discoveries.signal_coverage.signal_coverage_report import (
-    SignalCoverageReport)
+from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
 from python.framework.reporting.builders.report_aggregators import aggregate_signal_fresh_ratio
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.builders.signal_report_builder import build_signal_report
 from python.framework.reporting.console.signal_summary import SignalSummary
+from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.types.api.report_types import SignalReport
 from python.framework.types.scenario_types.scenario_set_types import (
-    SignalScenarioInfo, SignalScenarioUsage)
-from python.framework.signal_data.signal_observed_accumulator import (
-    SignalObservedAccumulator)
+    SignalScenarioInfo,
+    SignalScenarioUsage,
+)
 from python.framework.types.signal_data_types import (
-    SIGNAL_ENVELOPE_SYMBOL, SentimentResult, SignalObservedSeries, SignalParquetColumn,
-    SignalResolutionStats, SignalSnapshot)
+    SIGNAL_ENVELOPE_SYMBOL,
+    SentimentResult,
+    SignalObservedSeries,
+    SignalParquetColumn,
+    SignalResolutionStats,
+    SignalSnapshot,
+)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 SOURCE = 'crypto_sentiment_mock'

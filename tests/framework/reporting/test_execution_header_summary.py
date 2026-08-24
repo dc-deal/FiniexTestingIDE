@@ -9,12 +9,15 @@ import io
 import re
 from contextlib import redirect_stdout
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.console.execution_header_summary import ExecutionHeaderSummary
 from python.framework.types.api.report_types import (
-    RunMetaReport, WarningsErrorsOutcome, WarningsErrorsReport)
+    RunMetaReport,
+    WarningsErrorsOutcome,
+    WarningsErrorsReport,
+)
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
-from python.configuration.app_config_manager import AppConfigManager
 
 
 def _header(failed=0, total=5, scenario_count=5, exec_time=1.5, is_profile=False, app_config=None):
