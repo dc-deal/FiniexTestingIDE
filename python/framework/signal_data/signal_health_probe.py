@@ -215,7 +215,11 @@ class SignalHealthProbe:
 
         A suspended budget reaches us as silence and nothing else: the transport stays
         healthy, envelopes simply stop. Naming the cause here is what separates "the
-        producer ran out of money" from "the producer died".
+        producer cannot pay for calls" from "the producer died".
+
+        The flag means the producer's LLM provider refused a call for quota — NOT that
+        the producer crossed a budget line of its own (corrected by the producer
+        2026-08-24; their day line is warn-only and suspends nothing).
 
         Args:
             suspended: Whether the producer is currently withholding evaluations
@@ -225,8 +229,9 @@ class SignalHealthProbe:
             detail = f': {reason}' if reason else ''
             self._emit('producer budget suspended', AwarenessLevel.ALERT)
             self._logger.warning(
-                f'📡 Producer budget suspended{detail} — it has stopped evaluating, so '
-                f'the feed will fall silent while the transport stays healthy.')
+                f'📡 Producer budget suspended{detail} — its LLM provider refused calls '
+                f'for quota, so it has stopped evaluating. The feed falls silent while '
+                f'the transport stays healthy.')
             return
         self._emit('producer budget resumed', AwarenessLevel.INFO)
         self._logger.info('📡 Producer budget resumed — evaluations continue.')

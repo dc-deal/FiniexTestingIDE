@@ -6,17 +6,22 @@ End-to-end validation of the AutoTrader mock pipeline and unit testing of AutoTr
 
 ## Test Files
 
-### test_autotrader_mock_session.py (4 Tests)
+### test_autotrader_mock_session.py (8 Tests)
 
 Full pipeline integration: runs a complete session with deterministic parquet replay data and asserts on the `AutoTraderResult`. Plus profile-loader parse guards (no session run).
 
 | Test | What it validates |
 |------|-------------------|
-| `test_full_mock_session` | Normal shutdown, tick count (29782), 0 clipping, 0 warnings/errors, trades produced, stats collected |
+| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (29782), 0 clipping, 0 warnings/errors, trades produced, stats collected |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
 | `test_broker_report_written` | Broker report persisted (unified model) + rendered in the summary |
 | `test_tick_source_fields_fully_parsed` | Every `tick_source` profile key reaches the config (no silently dropped keys, incl. the #436 freeze-lever fields) |
 | `test_staleness_contract_fields_parsed` | #436 knobs: `execution.market_data_stale_after_s` + `order_guard.block_stale_market_data` — per-profile override AND app_config JIC defaults |
+
+`TestSessionExitCode` (3 tests) covers the outcome→exit-code projection the CLI calls
+(`AutoTraderResult.get_exit_code()`): emergency → 1, normal → 0, and a **pinned** assertion that
+a normal run with logged errors still exits 0 — the §35 asymmetry #372 will close. That last one
+is meant to fail when the contract changes, so the change cannot pass unnoticed.
 
 **Data Dependency:** Uses `configs/autotrader_profiles/backtesting/mock_session_test.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`.
 

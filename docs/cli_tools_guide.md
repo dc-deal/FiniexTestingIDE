@@ -71,19 +71,43 @@ The `--time-offset` parameter corrects broker timezones to UTC. After import, ba
 | **CLI** | `python python/cli/data_index_cli.py tick-data-report` |
 | **Purpose** | Complete report of all available symbols |
 
-Shows for each symbol: time range, tick count, session distribution, spread statistics.
+Shows for each symbol: time range, tick count, session distribution, spread statistics, market type.
+
+Weekend accounting follows the market type from `market_config.json`: markets that close on
+weekends report trading days and weekend counts, markets that trade around the clock do not.
+
+Forex (MT5):
 
 ```
-📊 USDJPY
-   ├─ Time Range:    2025-09-17 17:58:34 to 2026-01-02 20:56:45
-   ├─ Duration:      107 days (2571.0 hours)
-   ├─ Trading Days:  77 (excluding 15 weekends)
-   ├─ Ticks:         9,920,219
-   ├─ Files:         204
-   ├─ Size:          179.6 MB
-   ├─ Ø Spread:      15.7 Points (0.0105%)
-   └─ Frequency:     1.07 Ticks/Second
-      Sessions:     new_york: 3,322,449 | sydney_tokyo: 3,240,081 | london: 3,330,993
+📊 mt5/EURUSD
+   ├─ Time Range:    2025-09-17 17:58:35 to 2026-08-19 21:23:00
+   ├─ Duration:      336 days (8067.4 hours)
+   ├─ Trading Days:  240 (excluding 48 weekends)
+   │  └─ Weekends:   48x complete (48 Sat, 48 Sun)
+   ├─ Ticks:         27,119,848
+   ├─ Files:         556
+   ├─ Size:          569.2 MB
+   ├─ Ø Spread:      13.4 Points (0.0120%)
+   ├─ Frequency:     0.93 Ticks/Second
+   │  └─ Sessions:   new_york: 5318570, sydney_tokyo: 8986214, transition: 169326, london: 12645738
+   ├─ Market Type:   forex
+   └─ Data Source:   mt5
+```
+
+Crypto (Kraken Spot) — no weekend closure, and no spread line where the source carries no spread:
+
+```
+📊 kraken_spot/BTCUSD
+   ├─ Time Range:    2026-01-24 14:19:46 to 2026-08-20 10:36:27
+   ├─ Duration:      207 days (4988.3 hours)
+   ├─ Trading Days:  207 (24/7 market, no weekend closure)
+   ├─ Ticks:         11,581,323
+   ├─ Files:         237
+   ├─ Size:          327.3 MB
+   ├─ Frequency:     0.64 Ticks/Second
+   │  └─ Sessions:   24h: 11581323
+   ├─ Market Type:   crypto
+   └─ Data Source:   kraken_spot
 ```
 
 ### 📚 Tick Index: Status

@@ -9,6 +9,7 @@ from typing import Dict
 
 import pandas as pd
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.market_calendar import MarketCalendar
@@ -27,6 +28,7 @@ class TickDataReporter:
             index_manager: TickIndexManager instance
         """
         self.index_manager = index_manager
+        self._market_config = MarketConfigManager()
 
     def get_symbol_info(self, broker_type: str, symbol: str) -> Dict:
         """
@@ -47,6 +49,10 @@ class TickDataReporter:
         if symbol not in self.index_manager.index[broker_type]:
             return {'error': f'No data found for symbol {symbol} in {broker_type}'}
 
+        # Market metadata is owned by the market config, not by the index
+        if broker_type not in self._market_config.get_all_broker_types():
+            return {'error': f'broker_type {broker_type} is not defined in market_config.json'}
+
         files = self.index_manager.index[broker_type][symbol]
 
         # === AGGREGATE STATISTICS FROM INDEX ===
@@ -63,10 +69,14 @@ class TickDataReporter:
         duration_hours = duration.total_seconds() / 3600
         duration_minutes = duration.total_seconds() / 60
 
-        # Weekend analysis
-        weekend_info = MarketCalendar.get_weekend_statistics(
-            start_time, end_time)
-        trading_days = duration_days - (weekend_info['full_weekends'] * 2)
+        # Weekend analysis - only for markets that close on weekends (24/7 markets have none)
+        if self._market_config.has_weekend_closure(broker_type):
+            weekend_info = MarketCalendar.get_weekend_statistics(
+                start_time, end_time)
+            trading_days = duration_days - (weekend_info['full_weekends'] * 2)
+        else:
+            weekend_info = None
+            trading_days = duration_days
 
         # === AGGREGATE SPREAD STATISTICS ===
         # Weighted average by tick_count
@@ -95,8 +105,8 @@ class TickDataReporter:
         tick_frequency = round(
             total_ticks / duration.total_seconds(), 2) if duration.total_seconds() > 0 else 0.0
 
-        # === MARKET METADATA (from first file) ===
-        market_type = files[0].get('market_type', 'forex_cfd')
+        # === MARKET METADATA ===
+        market_type = self._market_config.get_market_type(broker_type).value
         data_source = files[0].get('broker_type', broker_type)
 
         return {
@@ -147,14 +157,20 @@ class TickDataReporter:
             f"   ├─ Duration:      {info['date_range']['duration']['days']} days "
             f"({info['date_range']['duration']['hours']:.1f} hours)"
         )
-        vLog.info(
-            f"   ├─ Trading Days:  {info['date_range']['duration']['trading_days']} "
-            f"(excluding {weekends['full_weekends']} weekends)"
-        )
-        vLog.info(
-            f"   │  └─ Weekends:   {weekends['full_weekends']}x complete "
-            f"({weekends['saturdays']} Sat, {weekends['sundays']} Sun)"
-        )
+        if weekends:
+            vLog.info(
+                f"   ├─ Trading Days:  {info['date_range']['duration']['trading_days']} "
+                f"(excluding {weekends['full_weekends']} weekends)"
+            )
+            vLog.info(
+                f"   │  └─ Weekends:   {weekends['full_weekends']}x complete "
+                f"({weekends['saturdays']} Sat, {weekends['sundays']} Sun)"
+            )
+        else:
+            vLog.info(
+                f"   ├─ Trading Days:  {info['date_range']['duration']['trading_days']} "
+                f"(24/7 market, no weekend closure)"
+            )
         vLog.info(f"   ├─ Ticks:         {info['total_ticks']:,}")
         vLog.info(f"   ├─ Files:         {info['files']}")
         vLog.info(f"   ├─ Size:          {info['file_size_mb']:.1f} MB")
@@ -166,20 +182,17 @@ class TickDataReporter:
             )
 
         vLog.info(
-            f"   └─ Frequency:     {info['statistics']['tick_frequency_per_second']:.2f} "
+            f"   ├─ Frequency:     {info['statistics']['tick_frequency_per_second']:.2f} "
             f"Ticks/Second"
         )
 
         if info.get('sessions'):
             sessions_str = ', '.join(
                 [f'{k}: {v}' for k, v in info['sessions'].items()])
-            vLog.info(f'      Sessions:     {sessions_str}')
+            vLog.info(f'   │  └─ Sessions:   {sessions_str}')
 
-        if info.get('market_type'):
-            vLog.info(f"   ├─ Market Type:  {info['market_type']}")
-
-        if info.get('data_source'):
-            vLog.info(f"   └─ Data Source:  {info['data_source']}")
+        vLog.info(f"   ├─ Market Type:   {info['market_type']}")
+        vLog.info(f"   └─ Data Source:   {info['data_source']}")
 
     def print_all_symbols(self, broker_types: list = None):
         """
@@ -207,40 +220,6 @@ class TickDataReporter:
                 self.print_symbol_info(info)
 
         vLog.info('\n' + '=' * 100)
-
-    def test_load_symbol(self, symbol: str):
-        """Test loading data for a symbol and display sample"""
-        vLog.info(f'\n🧪 TEST LOAD: {symbol}')
-        vLog.info('=' * 100)
-
-        info = self.analyzer.get_symbol_info(symbol)
-
-        if 'error' in info:
-            vLog.info(f"❌ Cannot load {symbol}: {info['error']}")
-            return
-
-        start_date = info['date_range']['start_formatted'].split()[
-            0]
-        end_date = info['date_range']['end_formatted'].split()[
-            0]
-        start_dt = pd.to_datetime(start_date).tz_localize('UTC')
-        end_dt = pd.to_datetime(end_date).tz_localize('UTC')
-
-        df = self.loader.load_symbol_data(
-            symbol,
-            start_date=start_dt,
-            end_date=end_dt,
-        )
-
-        vLog.info(f'✅ Loaded:      {len(df):,} ticks')
-        vLog.info(
-            f"✅ Time Range:  {df['timestamp'].min()} to {df['timestamp'].max()}")
-        vLog.info(
-            f"✅ Columns:     {', '.join(df.columns[:5])}... ({len(df.columns)} total)"
-        )
-        vLog.info('\n📋 Sample Data (first 3 ticks):')
-        vLog.info(df.head(3).to_string())
-
 
 def run_summary_report(broker_type: str = None):
     """

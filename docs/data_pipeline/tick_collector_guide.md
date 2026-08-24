@@ -138,60 +138,29 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
 
 ### Metadata Section
 
-```json
-{
-  "metadata": {
-    "symbol": "EURUSD",
-    "broker": "Vantage International Group Limited",
-    "server": "VantageInternational-Demo",
-    "local_device_time": "2025.11.23 20:23:45",
-    "broker_server_time": "2025.11.23 21:23:45",
-    "start_time": "2025.11.23 21:23:45",
-    "start_time_unix": 1763933025,
-    "timeframe": "TICK",
-    "volume_timeframe": "PERIOD_M1",
-    "volume_timeframe_minutes": 1,
-    "data_format_version": "...",
-    "collected_msc_timebase": "utc",
-    "anchor_resyncs": 0,
-    "anchor_max_correction_ms": 0,
-    "broker_type": "mt5",
-    "market_type": "forex_cfd",
-    "collection_purpose": "backtesting",
-    "operator": "automated",
-    "symbol_info": {
-      "point_value": 0.00001000,
-      "digits": 5,
-      "tick_size": 0.00001000,
-      "tick_value": 0.86841740
-    },
-    "collection_settings": {
-      "max_ticks_per_file": 50000,
-      "max_errors_per_file": 1000,
-      "include_real_volume": true,
-      "include_tick_flags": true,
-      "stop_on_fatal_errors": false
-    },
-    "error_tracking": {
-      "enabled": true,
-      "log_negligible": true,
-      "log_serious": true,
-      "log_fatal": true,
-      "max_spread_percent": 5.00,
-      "max_price_jump_percent": 10.00,
-      "max_data_gap_seconds": 300
-    }
-  }
-}
+The metadata block carries the collection context: which collector wrote the file, for which
+symbol and broker, and the settings that were in force.
+
+**The field set is deliberately not reproduced here.** It differs per collector and changes with
+the data format version, so any copy in this guide would silently rot. The authoritative sources
+are the collector implementation and the header of a real file — read only the head, these files
+are several MB:
+
+```bash
+head -c 1500 data/finished/Archives/<symbol>_<timestamp>_ticks.json
 ```
 
-**Key Fields:**
+Two measured examples of that variance (both files collected 2026-08-19): the MT5 collector writes
+`data_collector` and `market_type`, the Kraken collector writes neither; the Kraken file declares
+data format 1.3.0, the MT5 file 1.1.0.
+
+**Fields that mean more than their name suggests:**
 - `data_format_version`: Schema version of the data collector output. A compile-time constant of the collector, not a chart input — it identifies the code that wrote the file.
-- `collected_msc_timebase`: Time base of `collected_msc`. `"utc"` from data format 1.5.0 onwards. Files without the field predate the change and carry device-local time until the restoration migration converts them.
-- `anchor_resyncs` / `anchor_max_correction_ms`: How often the collector had to discard a reading of its time source, and the largest correction it absorbed. Both are cumulative for the collector session and appear again in `summary.anchor` with the state at file close — a file whose closing count exceeds its opening count contains a correction.
+- `collected_msc_timebase`: Time base of `collected_msc`. `"utc"` means the field needs no offset conversion. Written by newer collectors, and set retroactively by the restoration migration — so its presence does not by itself date the file.
+- `collected_msc_restoration`: Record of that migration, present only in files it touched. `method` names what was applied (`noop` = inspected, nothing to correct), `shift_ms` the correction per segment. It documents a change to already-archived data and is therefore provenance, not collector output.
 - `local_device_time` / `broker_server_time`: Wall clock of the collecting machine and of the broker at file creation. Informational — the import pipeline never derives an offset from them.
-- `broker_type`: Broker identifier (e.g. "mt5", "kraken_spot")
-- `market_type`: Market classification (e.g. "forex_cfd")
+- `broker_type`: Broker identifier (e.g. "mt5", "kraken_spot"). Everything downstream keys on this — the market type, the trading rules and the broker config are all resolved from it.
+- `market_type` (MT5 collector only): the collector's own classification, e.g. `"forex_cfd"`. This is **not** the framework market type (`forex` / `crypto`) from `market_config.json`, which is resolved from `broker_type` and decides weekend and trading rules. Same field name, different vocabulary — do not read one as the other.
 - `collection_purpose`: Use case identifier (e.g. "backtesting")
 - `volume_timeframe`: Volume aggregation period (e.g. "PERIOD_M1")
 - `error_tracking.enabled`: Error system active
@@ -223,7 +192,7 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
 **Tick Fields:**
 - `timestamp`: Human-readable time (broker server time, truncated to the second). Redundant — derivable from `time_msc` with the broker UTC offset. Kept for backward compatibility.
 - `time_msc`: Broker matching engine timestamp (Unix epoch ms) — the **event** time. UTC-converted by importer (offset applied). Non-decreasing: measured across the full archive, 0 regressions in 251 M consecutive deltas. Ties are normal and carry meaning — a market order sweeping the book produces several fills in one millisecond (measured: 43 % of consecutive Kraken ticks share a `time_msc`, 0.06 % on MT5).
-- `collected_msc`: Local clock at tick receipt (Unix epoch ms) — the **arrival** time, and therefore the correct source for inter-tick interval measurement. Read from the OS clock via `GetSystemTimePreciseAsFileTime`, so it is **already UTC** and needs no offset conversion. Non-decreasing; a backwards step of the system clock is clamped and counted in `anchor_resyncs`.
+- `collected_msc`: Local clock at tick receipt (Unix epoch ms) — the **arrival** time, and therefore the correct source for inter-tick interval measurement. Read from the OS clock via `GetSystemTimePreciseAsFileTime`, so it is **already UTC** and needs no offset conversion. Non-decreasing; a backwards step of the system clock is clamped by the collector.
 - `bid` / `ask`: Bid and ask price
 - `last`: Last trade price (0 for forex/CFD)
 - `real_volume`: Real trade volume (crypto > 0, forex/CFD = 0)
