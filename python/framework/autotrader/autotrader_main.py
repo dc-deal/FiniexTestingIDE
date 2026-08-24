@@ -29,6 +29,8 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.signal_data.signal_inbox import SignalInbox
 from python.framework.signal_data.signal_health_probe import SignalHealthProbe
+from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
+from python.framework.types.signal_data_types import SignalObservedSeries
 from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -39,6 +41,7 @@ from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
+from python.framework.exceptions.live_execution_errors import DryRunConflictError
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
@@ -95,6 +98,9 @@ class AutotraderMain:
         # (signal source, symbol) → coverage + window, from the same shared preparation
         # the sim batch uses — the 📡 report section reads it (#433).
         self._signal_scenario_map: Dict[Tuple[str, str], SignalScenarioInfo] = {}
+        # Live counterpart of the prepared map: a live session has no archive to read its
+        # signal facts out of, so the transport accumulates them as envelopes pass through.
+        self._signal_observed: Optional[SignalObservedAccumulator] = None
         # #141 Part 2a: the live signal transport and its hand-off buffer. Both stay None
         # in a mock session, which mounts its series from the archive instead — then every
         # inbox drain in the loop is a no-op and the session behaves exactly as before.
@@ -440,14 +446,14 @@ class AutotraderMain:
     def _print_startup_error(self, message: str) -> None:
         """Print startup error to console. Startup errors abort the session."""
         print(f"\n{'=' * 60}")
-        print(f"  ❌ STARTUP FAILED")
+        print('  ❌ STARTUP FAILED')
         print(f"  {message}")
         print(f"{'=' * 60}\n")
 
     def _print_runtime_error(self, message: str) -> None:
         """Print a tick-loop runtime error to console. Aborts via emergency shutdown."""
         print(f"\n{'=' * 60}")
-        print(f"  ❌ RUNTIME ERROR — SESSION ABORTED (emergency shutdown)")
+        print('  ❌ RUNTIME ERROR — SESSION ABORTED (emergency shutdown)')
         print(f"  {message}")
         print(f"{'=' * 60}\n")
 
@@ -625,6 +631,7 @@ class AutotraderMain:
             global_logger=self._global_logger,
             broker_config=self._executor.broker if self._executor else None,
             signal_scenario_map=self._signal_scenario_map,
+            observed_feed=self._collect_observed_feed(),
         ).generate_and_log()
 
         # Close all loggers
@@ -697,6 +704,9 @@ class AutotraderMain:
             if health_config.enabled else None
         )
 
+        self._signal_observed = SignalObservedAccumulator(
+            source=poll_config.pipeline_id, symbol=self._config.symbol)
+
         self._signal_inbox = SignalInbox()
         self._signal_transport = SignalPollSource(
             config=poll_config,
@@ -705,6 +715,7 @@ class AutotraderMain:
             logger=self._session_logger,
             api_token=api_token,
             health_probe=health_probe,
+            observed=self._signal_observed,
         )
         self._signal_transport.start()
         self._print_startup_phase('Signal transport running')
@@ -801,16 +812,57 @@ class AutotraderMain:
         print('  ▸ Field Study preflight: no resting orders (starting balances recorded)')
         return True
 
+    def _collect_observed_feed(self) -> Optional[SignalObservedSeries]:
+        """
+        The live feed's observed plane for the run report, cadence included.
+
+        The cadence is the producer's OWN reported interval, which only the health probe
+        knows — a session that received four envelopes has no sample to measure a median
+        from. Read here rather than pushed on arrival: the probe answers on its own
+        schedule, and the report needs the last answer, not the first.
+
+        Returns:
+            The accumulated series, or None when this session consumed no live feed
+        """
+        if self._signal_observed is None:
+            return None
+        if self._signal_transport is not None:
+            cadence = self._signal_transport.get_transport_stats().health.producer_cadence_s
+            if cadence:
+                self._signal_observed.set_cadence_seconds(cadence)
+        return self._signal_observed.get_observed_series()
+
     def _is_dry_run(self) -> bool:
         """
-        Determine if the session is a dry-run based on market config.
+        Whether this session simulates order execution instead of placing real orders.
 
-        Mock adapter is always dry-run. Live adapter reads the dry_run flag
-        from market_config.json for the broker type.
+        Mock adapter is always dry-run. Otherwise the broker's market_config setting
+        applies, which a profile may TIGHTEN but never loosen: `dry_run: true` in the
+        profile wins over a live broker default, while `dry_run: false` against a
+        dry-run broker default is refused rather than honoured or ignored.
+
+        The asymmetry is deliberate. A profile is a per-run file that gets copied and
+        edited; the broker setting is the operator's standing posture. Letting a profile
+        switch real money ON would put that decision in the most easily-shared place,
+        and silently ignoring the attempt would leave a file claiming a safety it does
+        not have — which is exactly how a profile marked `dry_run: true` was read as an
+        observation run while the broker default said otherwise.
 
         Returns:
             True if dry-run mode
         """
         if self._config.adapter_type == 'mock':
             return True
-        return MarketConfigManager().get_dry_run(self._config.broker_type)
+        broker_default = MarketConfigManager().get_dry_run(self._config.broker_type)
+        profile_override = self._config.dry_run
+        if profile_override is None:
+            return broker_default
+        if broker_default and not profile_override:
+            raise DryRunConflictError(
+                f"Profile '{self._config.name}' sets dry_run=false, but "
+                f"market_config.json has dry_run=true for broker "
+                f"'{self._config.broker_type}'. A profile may only tighten the dry-run "
+                f"posture, never loosen it — enabling real orders is a deliberate change "
+                f"to market_config.json (or its user_configs override)."
+            )
+        return profile_override

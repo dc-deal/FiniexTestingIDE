@@ -207,6 +207,29 @@ rendered in the run's **📡 SIGNAL CONFIGURATION** section (#433):
 | Archive | what *can* happen | `SignalCoverageReport`, read once in preparation Phase 1 |
 | Decision basis | what the strategy *actually decided on* | per-tick counters on every SIGNAL worker |
 
+### A live session has only one of them
+
+A simulation and an AutoTrader **mock** run read their signal facts out of a finished archive. A
+**live** session has no archive: envelopes arrive while it runs. So the run report is built from
+whichever plane exists, and says which one it is:
+
+| | Archive | Feed |
+|---|---|---|
+| Provenance, composition, cadence, extent, stream position | read from parquet | accumulated from arrivals |
+| Gap classification, window coverage | measured against the market calendar | **not applicable** |
+
+`Archive:` and `Feed:` are different lines in the report on purpose. An absent gap analysis is
+**not** the same as a clean one: rendering an empty gap map as `no gaps` would assert continuity for
+a series that was never analysable, and a `coverage_ratio` default of `1.0` would claim 100 % of a
+window that never existed. Both are stated as absent instead.
+
+Live cadence is the **producer's own reported interval**, labelled `(producer)` rather than
+`(measured)` — a session that received three envelopes has no sample to take a median from.
+
+**Live is not missing an outage view.** When the feed actually breaks, that is the
+disturbance-episode protocol (📉 FEED STABILITY), which derives its spans from observed state across
+both staleness domains. The signal section does not duplicate it.
+
 The counters are three mutually exclusive classes that sum to the run's tick count:
 
 - **fresh** — a snapshot resolved and is younger than `max_staleness_minutes`
@@ -325,6 +348,40 @@ These two are the most misread fields in the archive.
 | `urgency` | 0.0 … 1.0, how time-critical the producer judged the story |
 | `is_breaking` | an urgent story drove this symbol's signal. **A content flag, not a scheduling marker** — a normal grid pass carries it too. Real rate: ~6 % of result rows (crypto), ~3 % (forex) |
 | `reasoning` | the producer's one-line justification. Human-readable only; nothing keys on it |
+
+### The breaking EDGE — derived here, never imported
+
+`is_breaking` is the **state** of one envelope. A decision usually wants the **transition**: the
+first envelope of a story, or the one where it ends. The `CORE/llm_sentiment` worker therefore
+derives `breaking_edge` — `entered` / `exited` / `none` — by comparing against the envelope it
+served before.
+
+The producer also offers a filtered breaking-only view, and we deliberately do not consume it. If
+the producer derived the boundary for the live path while we derived it in simulation, the two could
+drift and **the disagreement would be invisible** — each side internally consistent, the pair
+silently wrong. The same rule as the disturbance episodes: a boundary is always derived from
+observed state; an upstream declaration may contribute a label, never a boundary.
+
+Three situations report `none` although the state differs from the one before, each for its own
+reason:
+
+| Situation | Why not an edge |
+|---|---|
+| the first envelope of a session | a session that boots into an active story has witnessed no entry; reporting one makes every restart look like a fresh event |
+| a gap | nothing resolved means the state is **unknown**, not `false`. Reading it as `false` would emit an exit going in and an entry coming out |
+| an overtaking pass (`evidence_regressed`) | an envelope resting on older evidence did not witness what came after it, so letting it flip the edge turns the producer's commit order into a transition that never happened |
+
+### Sweeping the delay — `signal_delay_minutes`
+
+A worker parameter (default `0`, so nothing changes until it is set) that resolves as-of
+`now − delay` while measuring staleness against the **real** moment. A delayed resolution genuinely
+serves an older snapshot; measuring its age against the shifted moment would make every delay look
+free and hide the exact cost the sweep exists to measure.
+
+It answers one open question — **is the strategy's edge latency?** Sweeping 0 / 1 / 5 / 15 minutes
+against P&L decides whether heartbeat-paced delivery is enough or whether the event loop has to move
+ahead of live hardening. The zero column really is zero: the archive carries no unrecorded delay,
+measured against the producer's journal envelope for envelope.
 
 ### Provenance
 

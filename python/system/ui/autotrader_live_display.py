@@ -14,7 +14,7 @@ import queue
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Optional
 
 from rich import box
 from rich.console import Console
@@ -28,13 +28,10 @@ from python.framework.autotrader.tick_sources.abstract_tick_source import Abstra
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_display_types import (
     AutoTraderDisplayStats,
-    PositionSnapshot,
-    TradeHistoryEntry,
 )
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.decision_logic_types import AwarenessLevel, DecisionLogicAction
 from python.framework.types.trading_env_types.order_types import CloseType, OrderDirection
-from python.framework.types.trading_env_types.pending_order_stats_types import ActiveOrderSnapshot
 
 
 class AutoTraderLiveDisplay:

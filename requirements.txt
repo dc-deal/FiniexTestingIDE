@@ -38,3 +38,16 @@ certifi>=2023.7.22
 # Testing
 pytest>=7.0.0
 httpx>=0.27.0
+
+# Static analysis.
+# pyflakes — the undefined-name gate (tests/framework/static_analysis/). A name used but
+#   never imported is syntactically valid, so only an executed code path reveals it.
+# ruff    — unused imports (§7) and placeholder-free f-strings (§5) project-wide, plus the
+#   release-time import-order and quote sweep. NOTE: its default quote style is DOUBLE,
+#   the opposite of §5 — it must be configured, never run bare.
+# vulture — dead code across module boundaries (§19): a getter nobody calls is invisible
+#   to pyflakes, which only sees module-local disuse. Needs a whitelist (FastAPI routes and
+#   pytest fixtures are called by their frameworks, not by name).
+pyflakes>=3.4.0
+ruff>=0.16.0
+vulture>=2.14

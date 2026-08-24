@@ -29,7 +29,7 @@ class LlmSentimentWorker(AbstractSignalWorker):
     def get_metadata(cls) -> ComponentMetadata:
         """CORE worker metadata (version + doc pointer + market fit)."""
         return ComponentMetadata(
-            version='1.1.0',
+            version='1.2.0',
             doc_link='docs/user_guides/worker_naming_doc.md',
             recommended_markets=('crypto',),
         )
@@ -61,6 +61,15 @@ class LlmSentimentWorker(AbstractSignalWorker):
             'is_breaking': OutputParamDef(
                 param_type=bool,
                 description='Whether this snapshot is a breaking-news event',
+                category='INFO',
+            ),
+            'breaking_edge': OutputParamDef(
+                param_type=str, choices=('entered', 'exited', 'none'),
+                description=(
+                    'Transition of is_breaking against the previously served envelope. '
+                    'Derived here rather than taken from the producer\'s filtered view, so '
+                    'simulation and live cannot drift apart. A gap, a first envelope and an '
+                    'overtaking pass all report none — none of them witnessed a transition.'),
                 category='INFO',
             ),
             'reasoning': OutputParamDef(
@@ -101,18 +110,21 @@ class LlmSentimentWorker(AbstractSignalWorker):
                 'signal': 'HOLD',
                 'urgency': 0.0,
                 'is_breaking': False,
+                'breaking_edge': self._derive_edge(None).value,
                 'reasoning': 'No signal data',
                 'evidence_regressed': False,
             })
 
         result = resolved.result
+        is_breaking = bool(result.is_breaking)
 
         return WorkerResult(outputs={
             'sentiment_score': float(result.sentiment_score),
             'confidence': float(result.confidence),
             'signal': result.signal,
             'urgency': float(result.urgency),
-            'is_breaking': bool(result.is_breaking),
+            'is_breaking': is_breaking,
+            'breaking_edge': self._derive_edge(is_breaking).value,
             'reasoning': result.reasoning,
             'evidence_regressed': self.get_evidence_regressed(),
         })

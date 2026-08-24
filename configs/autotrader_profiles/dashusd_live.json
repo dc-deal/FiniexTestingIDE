@@ -31,12 +31,6 @@
       "min_free_margin": 0.01
     }
   },
-  "account": {
-    "balances": {
-      "USD": 0.0,
-      "DASH": 0.0
-    }
-  },
   "tick_source": {
     "type": "kraken"
   },

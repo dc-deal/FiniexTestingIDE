@@ -105,10 +105,13 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Reconciliation](tests/autotrader/reconciliation_tests.md) | Broker truth-pull + Reconciler ALERT_ONLY (#151) |
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |
 | [Kraken Adapter Nonce](tests/autotrader/kraken_adapter_tests.md) | Private-call nonce monotonicity + lock (#332) |
+| [Test Taxonomy](tests/test_taxonomy.md) | The human-readable test map — which suite covers which pipeline domain |
 | [Baseline Tests](tests/simulation/baseline_tests.md) | Core functionality validation |
 | [Batch Core Tests](tests/simulation/batch_core_tests.md) | Prepare/execute seam (#417): split equivalence, mount reuse/determinism, data identity |
 | [Margin Validation](tests/simulation/margin_validation_tests.md) | Margin rejection, fill timing |
 | [Multi-Position](tests/simulation/multi_position_tests.md) | Concurrent position management |
+| [Modify Lifecycle](tests/simulation/modify_lifecycle_tests.md) | Order modification across its lifecycle |
+| [Trade Emission](tests/simulation/trade_emission_tests.md) | Per-execution BrokerTrade records on fill |
 | [Pending Stats](tests/simulation/pending_stats_tests.md) | Pending order statistics |
 | [SL/TP & Limit Validation](tests/simulation/sltp_limit_validation_tests.md) | Stop-Loss/Take-Profit, limit/stop orders |
 | [Partial Close](tests/simulation/partial_close_tests.md) | Partial position close |
@@ -132,6 +135,8 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Batch Validations](tests/framework/batch_validations_tests.md) | Phase 0 validation: ScenarioValidator, BrokerDataPreparator map filtering |
 | [Config Tests (Cascade + Merge Utility)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
+| [Live Telemetry Tests](tests/framework/live_telemetry_tests.md) | Frame serialization + the signal-transport block in the operator's CONNECTION panel |
+| [Reporting Pipeline Tests](tests/framework/reporting_tests.md) | Unified reporting (#391–#403): builders, IO/store, console renderers — including the two signal planes and what a live run may not claim |
 | [Signal Worker Tests](tests/framework/signal_workers_tests.md) | SIGNAL worker type (#141): types, provider, llm_sentiment, hybrid decision, orchestrator dispatch |
 | [Signal Coverage Tests](tests/framework/signal_coverage_tests.md) | Signal-series gap detection + scenario signal-window validation |
 | [Data Coverage Tests](tests/framework/data_coverage_tests.md) | Data format version spans — which collector schema produced which archive window |

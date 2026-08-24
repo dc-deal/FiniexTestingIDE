@@ -27,7 +27,8 @@ def _worker(mock_logger, max_staleness: int = 30) -> LlmSentimentWorker:
     """A SIGNAL worker bound to the fixture symbol."""
     return LlmSentimentWorker(
         name='sentiment',
-        parameters={'max_staleness_minutes': max_staleness},
+        parameters={'max_staleness_minutes': max_staleness,
+                    'signal_delay_minutes': 0},
         logger=mock_logger,
         trading_context=SimpleNamespace(symbol=SYMBOL),
     )

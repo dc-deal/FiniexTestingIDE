@@ -174,6 +174,18 @@ resolved from a mapping on the producer's machine and may be renamed at any time
   reported (in both directions), so a long suspension does not repeat itself across a multi-week run.
 - **Lifecycle** — an unreachable producer never raises; a failed probe never erases what is known.
 
+### test_signal_off_tick_arrivals.py — the compute that nobody counted
+
+Beyond the merge/refresh split, this suite pins that an off-tick compute is **recorded as a
+compute**. The tick path times every recompute and hands it to the performance logger; the arrival
+path did not, so a worker whose first envelope lands *before the first tick* — which is the normal
+case, the transport starts before the market does — never seeded on the tick path either and stayed
+invisible for the rest of the session.
+
+Measured on the first live observation run: the SIGNAL worker refreshed three times and the run
+report said **`0 computes`** while the log beside it showed all three arrivals. A number an operator
+reads must not contradict the log next to it.
+
 ### test_signal_evidence_regression.py (RC-4, #141 Part 2a)
 
 The producer runs passes concurrently, so a long-running pass commits *after* a later one: it
@@ -191,6 +203,31 @@ Two properties decide whether the detection works, and both are counter-intuitiv
 The tests pin the accessor's precedence, the flag on an overtaking pass, and — as importantly — the
 cases that must **not** flag: the first envelope, a gap, an envelope resting on no evidence, and the
 envelope after a regression (the flag marks an envelope, not a session).
+
+### test_signal_breaking_edge.py (#141 Part 2a, Phase 4)
+
+`is_breaking` is the **state** of one envelope; the edge is the transition between two consecutively
+served ones. Derived on our side in both pipelines rather than taken from the producer's filtered
+view — if the producer derived the boundary live while we derived it in simulation, the two could
+drift and the disagreement would be invisible.
+
+Most of the file pins the three ways an edge must **not** fire, each with a different reason: the
+first envelope of a session (a boot is not an entry), a gap (unknown is not `false` — reading it as
+`false` emits an exit going in and an entry coming out), and an overtaking pass (an envelope on
+older evidence did not witness what came after it, so it must not flip the edge). The last one also
+pins that the suppressed envelope is **not remembered**, or the next correctly ordered one would
+compare against a view already discarded.
+
+### test_signal_delay_lever.py (#141 Part 2a)
+
+`signal_delay_minutes` resolves as-of `now − delay` while measuring staleness against the **real**
+moment — a delayed resolution genuinely serves an older snapshot, and measuring against the shifted
+moment would make every delay look free.
+
+Pinned: the default is `0` and changes nothing; the delay shifts the series rather than skipping
+through it; a delay past the whole archive goes blind rather than failing; and the refresh trigger
+reads the **same** as-of moment as the resolution — a disagreement there produces results that are
+correct individually and wrong in sequence.
 
 ---
 

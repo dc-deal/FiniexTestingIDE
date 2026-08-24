@@ -25,8 +25,11 @@ from python.framework.reporting.console.signal_summary import SignalSummary
 from python.framework.types.api.report_types import SignalReport
 from python.framework.types.scenario_types.scenario_set_types import (
     SignalScenarioInfo, SignalScenarioUsage)
+from python.framework.signal_data.signal_observed_accumulator import (
+    SignalObservedAccumulator)
 from python.framework.types.signal_data_types import (
-    SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn, SignalResolutionStats)
+    SIGNAL_ENVELOPE_SYMBOL, SentimentResult, SignalObservedSeries, SignalParquetColumn,
+    SignalResolutionStats, SignalSnapshot)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 SOURCE = 'crypto_sentiment_mock'
@@ -203,3 +206,131 @@ class TestRender:
         report = build_signal_report(
             {(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [_unit('alpha', 10, 0, 0)])
         assert '#mock-1e9e9fc4' in self._render(report)
+
+
+# ============================================================================
+# The FEED plane — a live session has no archive to read its facts out of
+# ============================================================================
+
+def _feed(*seqs, trigger: str = 'scheduled', epoch: int = 1,
+          cadence: float = 600.0) -> SignalObservedSeries:
+    """An accumulated live feed carrying the given sequence positions."""
+    accumulator = SignalObservedAccumulator(source=SOURCE, symbol=SYMBOL)
+    for seq in seqs:
+        accumulator.observe(SignalSnapshot(
+            collected_msc=1787508000000 + seq * 600_000,
+            schema_version='2.0', seq=seq, stream_epoch=epoch,
+            trigger_reason=trigger, data_origin='live',
+            config_fingerprint='904c2e16bbfb',
+            result=[SentimentResult(symbol=SYMBOL, signal='BUY')]))
+    accumulator.set_cadence_seconds(cadence)
+    return accumulator.get_observed_series()
+
+
+class TestFeedPlane:
+    """
+    What a live session can say about its signal source — and what it must not.
+
+    A live run consumed no archive, so there is no window it either covered or missed. The
+    first observation run (2026-08-23) rendered no signal section at all, because the
+    builder gated on a scenario map that only the mock path ever fills.
+    """
+
+    def test_a_feed_alone_produces_a_row(self):
+        """No scenario map, no archive — the counters still have somewhere to go."""
+        report = build_signal_report({}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84))
+        assert len(report.units) == 1
+        assert report.units[0].series_kind == 'feed'
+        assert report.units[0].snapshot_count == 3
+
+    def test_neither_plane_produces_nothing(self):
+        """A run that bound no signal source at all still renders no section."""
+        assert build_signal_report({}, [_unit('session', 10, 0, 0)]).units == []
+
+    def test_the_decision_basis_survives(self):
+        report = build_signal_report({}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84))
+        usage = report.units[0].usages[0]
+        assert (usage.fresh_ticks, usage.stale_ticks, usage.blind_ticks) == (977, 0, 0)
+        assert usage.fresh_ratio == 1.0
+
+    def test_composition_and_provenance_come_from_the_envelopes(self):
+        report = build_signal_report({}, [_unit('session', 5, 0, 0)], _feed(82, 83, 84))
+        unit = report.units[0]
+        assert unit.data_origin == 'live'
+        assert unit.config_fingerprint == '904c2e16bbfb'
+        assert unit.trigger_reasons == {'scheduled': 3}
+        assert unit.sequence == 'contiguous 82→84'
+
+
+class TestFeedClaimsNothingItCannotKnow:
+    """
+    The regression for the whole design: a default must not become an assertion.
+
+    Both values below would otherwise be produced by a field default and read as a
+    measurement — 'no gaps' for an archive that does not exist, '100.0% coverage' for a
+    window that was never analysable.
+    """
+
+    def _render(self, report: SignalReport) -> str:
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            SignalSummary(report).render(ConsoleRenderer())
+        return buffer.getvalue()
+
+    def test_an_absent_gap_analysis_never_renders_as_no_gaps(self):
+        output = self._render(
+            build_signal_report({}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84)))
+        assert 'no gaps' not in output
+        assert 'Archive:' not in output
+        assert 'Feed:' in output
+
+    def test_no_coverage_percentage_without_an_archive(self):
+        report = build_signal_report({}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84))
+        assert report.units[0].usages[0].coverage_ratio is None
+        assert 'coverage' not in self._render(report)
+
+    def test_the_cadence_is_labelled_as_the_producer_s_own(self):
+        """A session that received three envelopes has no sample to measure a median from."""
+        output = self._render(
+            build_signal_report({}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84)))
+        assert '(producer)' in output
+        assert '(measured)' not in output
+
+    def test_the_archive_plane_still_says_measured(self, coverage):
+        """The sim path is untouched — same section, same words."""
+        output = self._render(
+            build_signal_report({(SOURCE, SYMBOL): _info(coverage, 'a')}, [_unit('a', 10, 0, 0)]))
+        assert 'Archive:' in output and '(measured)' in output
+        assert 'Feed:' not in output
+
+
+class TestSequencePosition:
+    """Where the feed stands in the producer's series."""
+
+    def test_a_hole_is_reported(self):
+        series = _feed(82, 85)
+        assert series.seq_holes == 2
+        assert '2 holes' in series.get_sequence_description()
+
+    def test_an_epoch_restart_is_not_a_hole(self):
+        """
+        Sequence numbers restart at a producer boot, so the distance across the boundary
+        measures nothing — counting it would report a restart as lost data.
+        """
+        accumulator = SignalObservedAccumulator(source=SOURCE, symbol=SYMBOL)
+        for seq, epoch in ((90, 1), (91, 1), (1, 2), (2, 2)):
+            accumulator.observe(SignalSnapshot(
+                collected_msc=1787508000000 + seq * 600_000, schema_version='2.0',
+                seq=seq, stream_epoch=epoch, trigger_reason='scheduled',
+                result=[SentimentResult(symbol=SYMBOL, signal='HOLD')]))
+        series = accumulator.get_observed_series()
+        assert series.seq_holes == 0
+        assert series.stream_epochs == {1, 2}
+
+    def test_a_pre_stream_era_is_unverifiable_not_contiguous(self):
+        """Absent identity is a distinct state, never a clean verdict."""
+        accumulator = SignalObservedAccumulator(source=SOURCE)
+        accumulator.observe(SignalSnapshot(
+            collected_msc=1787508000000, schema_version='1.0',
+            result=[SentimentResult(symbol=SYMBOL, signal='HOLD')]))
+        assert 'not verifiable' in accumulator.get_observed_series().get_sequence_description()

@@ -23,7 +23,7 @@ from python.framework.types.performance_types.performance_stats_types import Wor
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.types.signal_data_types import (
     SignalResolution, SignalResolutionStats, SignalSnapshot)
-from python.framework.types.worker_types import ComputeBasis, SUBSCRIBE_ALL, WorkerRequirement, WorkerResult, WorkerState
+from python.framework.types.worker_types import ComputeBasis, SUBSCRIBE_ALL, WorkerResult, WorkerState
 from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
@@ -341,9 +341,9 @@ class WorkerOrchestrator:
         )
         if consumes_signal and type(self.decision_logic).on_signal_stale is AbstractDecisionLogic.on_signal_stale:
             errors.append(
-                f"Decision logic consumes SIGNAL worker(s) but does not override "
-                f"on_signal_stale() — the staleness reaction (fallback / flat / HALT / "
-                f"deliberate ignore) must be programmed explicitly."
+                'Decision logic consumes SIGNAL worker(s) but does not override '
+                'on_signal_stale() — the staleness reaction (fallback / flat / HALT / '
+                'deliberate ignore) must be programmed explicitly.'
             )
 
         # Raise all errors together
@@ -647,8 +647,19 @@ class WorkerOrchestrator:
                 continue
             if not worker.should_refresh_at(now):
                 continue
+            # Timed and recorded exactly as the tick path does. Without this a worker that
+            # only ever refreshes off-tick reports ZERO computes while its log shows the
+            # arrivals — measured on the first live observation run: 3 computes, reported 0.
+            # The tick index is the last processed tick: the compute happened after it.
+            start_time = time.perf_counter()
             self._worker_results[name] = worker.compute_signal_at(now)
+            computation_time_ms = (time.perf_counter() - start_time) * 1000
             self._signal_resolution_stats[name].off_tick_arrivals += 1
+            if worker.performance_logger:
+                worker.performance_logger.record(
+                    computation_time_ms,
+                    tick_index=self._coordination_stats.ticks_processed,
+                )
 
         self._process_signal_pass(now, count_tick=False)
         return merged
@@ -863,7 +874,7 @@ class WorkerOrchestrator:
                         tick_index=self._coordination_stats.ticks_processed,
                     )
 
-            except Exception as e:
+            except Exception:
                 self.logger.error(
                     f"❌ Worker '{name}' failed: \n{traceback.format_exc()}")
                 worker.set_state(WorkerState.ERROR)

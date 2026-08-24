@@ -15,8 +15,6 @@ Two things decide whether this works, and both are counter-intuitive enough to p
    and live would disagree — measured on the same week: 237 against 17.
 """
 
-from datetime import datetime, timedelta, timezone
-
 from conftest import SYMBOL, make_provider, utc
 
 from python.framework.types.signal_data_types import SentimentResult, SignalSnapshot
@@ -83,7 +81,7 @@ class TestRegressionDetection:
         from types import SimpleNamespace
         from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
         worker = LlmSentimentWorker(
-            name='sentiment', parameters={'max_staleness_minutes': 600},
+            name='sentiment', parameters={'max_staleness_minutes': 600, 'signal_delay_minutes': 0},
             logger=mock_logger, trading_context=SimpleNamespace(symbol=SYMBOL))
         worker.set_signal_provider(make_provider(*snapshots))
         return worker

@@ -22,6 +22,7 @@ from typing import Deque, Optional, Tuple
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.signal_data.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.signal_inbox import SignalInbox
+from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.types.autotrader_types.autotrader_display_types import (
     SignalTransportEvent, SignalTransportStats)
 from python.framework.types.config_types.sentiment_config_types import SentimentPollConfig
@@ -56,6 +57,7 @@ class SignalPollSource:
         logger: ScenarioLogger,
         api_token: str = '',
         health_probe: Optional[SignalHealthProbe] = None,
+        observed: Optional[SignalObservedAccumulator] = None,
     ):
         """
         Initialize the poll source.
@@ -68,6 +70,9 @@ class SignalPollSource:
             api_token: Bearer token; empty means send no Authorization header
             health_probe: Optional producer-identity probe, started and stopped with
                 this transport because it borrows this transport's address
+            observed: Optional accumulator recording what the arriving envelopes state
+                about themselves — the live half of the signal report, which has no
+                archive to read those facts out of
         """
         self._config = config
         self._signal_kind = signal_kind
@@ -75,6 +80,7 @@ class SignalPollSource:
         self._logger = logger
         self._api_token = api_token
         self._health_probe = health_probe
+        self._observed = observed
         self._url = (f"{config.base_url.rstrip('/')}"
                      f"/v1/pipelines/{config.pipeline_id}/latest")
 
@@ -234,6 +240,8 @@ class SignalPollSource:
         self._last_identity = identity
 
         self._inbox.put(self._signal_kind, [snapshot])
+        if self._observed is not None:
+            self._observed.observe(snapshot)
         with self._stats_lock:
             self._enqueued += 1
             self._last_seq = snapshot.seq

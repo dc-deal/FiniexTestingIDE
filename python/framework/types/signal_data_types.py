@@ -9,10 +9,10 @@ tolerant of producer-side metadata additions (only schema_version + the consumed
 fields are the strict contract).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from pydantic import (BaseModel, ConfigDict, Field, field_validator,
                       model_validator)
@@ -292,6 +292,108 @@ class SignalResolutionStats:
     # job; doing it early would make this run's ledger rows incomparable with every
     # earlier one.
     off_tick_arrivals: int = 0
+
+
+class SignalSeriesKind(str, Enum):
+    """
+    Where a signal series came from — which decides what can be said about it.
+
+    An ARCHIVE was collected, finished and can be analysed for continuity against a market
+    calendar. A FEED is being received right now: it has no "could have offered" plane at
+    all, because there is no window it either covered or missed.
+
+    The distinction is a field rather than an inference because the alternative is a
+    default that asserts: an absent gap analysis renders as "no gaps", which reads as
+    "analysed and seamless" for something that was never analysable.
+    """
+    ARCHIVE = 'archive'
+    FEED = 'feed'
+
+
+@dataclass
+class SignalObservedSeries:
+    """
+    What a series of envelopes states about itself — independent of where it came from.
+
+    The half of the signal picture that a live feed and a stored archive have in common:
+    provenance, composition, cadence, extent and stream position. Produced two ways —
+    read from parquet by SignalCoverageReport, or accumulated from arrivals by the live
+    transport — so one report shape serves both pipelines.
+
+    Deliberately does NOT carry gaps or window coverage. Those classify continuity against
+    a market calendar and presuppose a finished archive; a live feed's outage plane is the
+    disturbance-episode protocol instead, which derives its spans from observed state.
+
+    Args:
+        source: Signal source identity (the archive's / producer's pipeline_id)
+        symbol: Trading symbol the series is scoped to, '' for an envelope-level view
+        kind: Whether these facts were read from an archive or received from a feed
+        snapshot_count: Envelopes the archive holds / the session received
+        start_time: First envelope in the series
+        end_time: Last envelope in the series
+        cadence_seconds: Distance between envelopes — measured for an archive, the
+            producer's own reported interval for a feed (three arrivals is not a sample)
+        data_origins: Distinct data_origin values seen; empty = the producer predates it
+        config_fingerprints: Distinct producer input-config hashes seen
+        prompt_versions: Distinct prompt generations seen. A bump marks a SERIES BREAK —
+            different prompts yield different scores for the same news — so a run holding
+            more than one value spans two series and must say so. Filled on the feed side,
+            where the envelope carries it; empty for an archive, whose runtime projection
+            deliberately does not load the prompt provenance
+        trigger_reasons: Envelope counts per trigger_reason
+        trigger_unknown: Envelopes carrying no reason — kept apart so a partially stamped
+            series does not render as if the composition covered everything
+        envelopes_with_stream_identity: How many carry seq/epoch at all
+        seq_span: (first, last) seq observed, None when the era carries none
+        seq_holes: Missing positions within an epoch
+        stream_epochs: Distinct epochs seen; more than one means the series spans a
+            producer restart
+    """
+    source: str
+    symbol: str = ''
+    kind: SignalSeriesKind = SignalSeriesKind.ARCHIVE
+    snapshot_count: int = 0
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    cadence_seconds: float = 0.0
+    data_origins: Set[str] = field(default_factory=set)
+    config_fingerprints: Set[str] = field(default_factory=set)
+    prompt_versions: Set[str] = field(default_factory=set)
+    trigger_reasons: Dict[str, int] = field(default_factory=dict)
+    trigger_unknown: int = 0
+    envelopes_with_stream_identity: int = 0
+    seq_span: Optional[Tuple[int, int]] = None
+    seq_holes: int = 0
+    stream_epochs: Set[int] = field(default_factory=set)
+
+    def get_sequence_description(self) -> str:
+        """
+        One line describing the stream position, or why there is none.
+
+        Returns:
+            'contiguous 82→84' / '2 holes 82→90' / 'not verifiable (no seq in this era)'
+        """
+        if self.seq_span is None:
+            return 'not verifiable (no seq in this era)'
+        first, last = self.seq_span
+        span = f"{first}→{last}"
+        return f"{self.seq_holes} holes {span}" if self.seq_holes else f"contiguous {span}"
+
+
+class SignalEdge(str, Enum):
+    """
+    Transition of a boolean signal property between two consecutively served envelopes.
+
+    Derived on our side in BOTH pipelines rather than consumed from the producer's own
+    filtered view (#141 Part 2a). If the producer derived it live while we derived it in
+    simulation, the two derivations could drift and the disagreement would be invisible —
+    each side internally consistent, the pair silently wrong. Same rule as the disturbance
+    episodes (#451): a boundary is always derived from observed state; an upstream
+    declaration may contribute a label, never a boundary.
+    """
+    ENTERED = 'entered'
+    EXITED = 'exited'
+    NONE = 'none'
 
 
 @dataclass
