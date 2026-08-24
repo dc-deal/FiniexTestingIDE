@@ -97,14 +97,11 @@ class SignalIndexCli:
 
     def cmd_connect_check(self):
         """Probe the configured producer: reachable, and which credential answered."""
-        config = SentimentConfigManager().get_config()
-        credential = SentimentConfigManager().resolve_api_credential(
-            config.poll.credentials_file)
+        manager = SentimentConfigManager()
+        config = manager.get_config()
         result = run_connect_check(
-            base_url=config.poll.base_url,
+            producer=manager.resolve_active_producer(),
             pipeline_id=config.poll.pipeline_id,
-            token=credential.token,
-            credential_source=credential.describe_source(),
             timeout_s=config.poll.request_timeout_s)
         print_connect_check(result)
         return result

@@ -561,12 +561,14 @@ class ConnectCheckResult:
     Everything one connect check established.
 
     Args:
+        endpoint_name: Registered endpoint the address came from ('dev', 'production', …)
         base_url: Address probed, as configured
         credential_source: File the token came from — never the token itself (§29)
         credential_configured: Whether a non-empty token was sent
         steps: Per-route outcomes in probe order
         credential_rejected: True when the producer refused the token
     """
+    endpoint_name: str
     base_url: str
     credential_source: str
     credential_configured: bool

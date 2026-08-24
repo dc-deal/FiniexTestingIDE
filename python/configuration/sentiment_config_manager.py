@@ -15,6 +15,7 @@ from typing import Any, Dict
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.config_types.sentiment_config_types import (
+    ActiveProducer,
     ResolvedCredential,
     SentimentConfig,
 )
@@ -61,6 +62,24 @@ class SentimentConfigManager:
             Its SentimentSourceConfig, or None when the source is not registered
         """
         return self._config.get_source(pipeline_id)
+
+    def resolve_active_producer(self) -> ActiveProducer:
+        """
+        The producer endpoint this run talks to, with its credential already resolved.
+
+        One call on purpose: `producer.active` names an endpoint, and that endpoint owns
+        both the address and the credential file. Resolving them separately is how an
+        environment switch takes effect by half — a production token against a development
+        address is a 401, and a 401 stops the feed.
+
+        Returns:
+            The active endpoint and the credential that opens it
+        """
+        endpoint = self._config.producer.get_active_endpoint()
+        return ActiveProducer(
+            name=self._config.producer.active,
+            base_url=endpoint.base_url,
+            credential=self.resolve_api_credential(endpoint.credentials_file))
 
     def resolve_api_credential(self, credentials_filename: str) -> ResolvedCredential:
         """

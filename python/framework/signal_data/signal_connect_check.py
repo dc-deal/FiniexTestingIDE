@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional
 
+from python.framework.types.config_types.sentiment_config_types import ActiveProducer
 from python.framework.types.signal_data_types import (
     ConnectCheckResult,
     ConnectCheckStep,
@@ -84,29 +85,27 @@ def _probe(name: str, url: str, token: str, timeout_s: float,
 
 
 def run_connect_check(
-    base_url: str,
+    producer: ActiveProducer,
     pipeline_id: str,
-    token: str,
-    credential_source: str,
     timeout_s: float = 10.0,
 ) -> ConnectCheckResult:
     """
     Probe the producer's two free routes and report what answered.
 
     Args:
-        base_url: Producer address, hostname form preferred over a raw address
+        producer: Active endpoint with its resolved credential
         pipeline_id: Source to read one envelope from; empty skips that step
-        token: Bearer token; empty means send no Authorization header
-        credential_source: Where the token came from, for the operator's benefit
         timeout_s: Per-request timeout
 
     Returns:
         The accumulated result
     """
-    root = base_url.rstrip('/')
+    root = producer.base_url.rstrip('/')
+    token = producer.credential.token
     result = ConnectCheckResult(
+        endpoint_name=producer.name,
         base_url=root,
-        credential_source=credential_source,
+        credential_source=producer.credential.describe_source(),
         credential_configured=bool(token))
 
     def describe_health(payload: Dict[str, Any]) -> str:
@@ -143,6 +142,7 @@ def print_connect_check(result: ConnectCheckResult) -> None:
     print('=' * 72)
     print('📡 PRODUCER CONNECT CHECK')
     print('=' * 72)
+    print(f'   Endpoint:   {result.endpoint_name}')
     print(f'   Address:    {result.base_url}')
     print(f'   Credential: {result.credential_source}')
     if not result.credential_configured:

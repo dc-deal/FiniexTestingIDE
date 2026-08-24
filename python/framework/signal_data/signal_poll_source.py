@@ -27,7 +27,10 @@ from python.framework.types.autotrader_types.autotrader_display_types import (
     SignalTransportEvent,
     SignalTransportStats,
 )
-from python.framework.types.config_types.sentiment_config_types import SentimentPollConfig
+from python.framework.types.config_types.sentiment_config_types import (
+    ActiveProducer,
+    SentimentPollConfig,
+)
 from python.framework.types.decision_logic_types import AwarenessLevel
 from python.framework.types.signal_data_types import SignalHealthStatus, SignalSnapshot
 
@@ -59,10 +62,10 @@ class SignalPollSource:
     def __init__(
         self,
         config: SentimentPollConfig,
+        producer: ActiveProducer,
         signal_kind: str,
         inbox: SignalInbox,
         logger: ScenarioLogger,
-        api_token: str = '',
         health_probe: Optional[SignalHealthProbe] = None,
         observed: Optional[SignalObservedAccumulator] = None,
     ):
@@ -71,10 +74,11 @@ class SignalPollSource:
 
         Args:
             config: Poll transport configuration
+            producer: Active endpoint with its resolved credential — address and token
+                arrive as one unit so an environment switch cannot take effect by half
             signal_kind: Payload kind the snapshots are filed under
             inbox: Hand-off buffer drained by the loop
             logger: Session logger — operator-relevant failures belong here (§35)
-            api_token: Bearer token; empty means send no Authorization header
             health_probe: Optional producer-identity probe, started and stopped with
                 this transport because it borrows this transport's address
             observed: Optional accumulator recording what the arriving envelopes state
@@ -82,13 +86,14 @@ class SignalPollSource:
                 archive to read those facts out of
         """
         self._config = config
+        self._producer = producer
         self._signal_kind = signal_kind
         self._inbox = inbox
         self._logger = logger
-        self._api_token = api_token
+        self._api_token = producer.credential.token
         self._health_probe = health_probe
         self._observed = observed
-        self._url = (f"{config.base_url.rstrip('/')}"
+        self._url = (f"{producer.base_url.rstrip('/')}"
                      f"/v1/pipelines/{config.pipeline_id}/latest")
 
         self._thread: Optional[threading.Thread] = None
@@ -236,8 +241,9 @@ class SignalPollSource:
         self._record(f'credential rejected ({status_code})', AwarenessLevel.ALERT)
         self._logger.error(
             f'📡 Producer rejected our credential ({status_code}) — this is NOT a producer '
-            f'outage. Polling stopped; retrying cannot fix a token. Check '
-            f'user_configs/credentials/{self._config.credentials_file}, then restart the '
+            f'outage. Polling stopped; retrying cannot fix a token. Endpoint '
+            f'{self._producer.name}, credential '
+            f'{self._producer.credential.describe_source()} — fix it and restart the '
             f'session. The feed is now blind and the staleness contract will say so.')
 
     def _poll_once(self) -> bool:

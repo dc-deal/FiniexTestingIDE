@@ -88,6 +88,40 @@ on plain files, so an archived day must be unpacked first, stamped, and re-impor
 is packed, while it still sits in the inbox.
 
 
+### Producer endpoints — switching environments is one word
+
+`sentiment_config.json` registers the reachable producer instances and names the active one:
+
+```json
+"producer": {
+  "active": "dev",
+  "endpoints": {
+    "dev":        { "base_url": "http://host.docker.internal:8100",
+                    "credentials_file": "rag_credentials_dev.json" },
+    "production": { "base_url": "https://finiex-rag.duckdns.org",
+                    "credentials_file": "rag_credentials.json" }
+  }
+}
+```
+
+Switching is one word in `user_configs/sentiment_config.json`:
+`{"producer": {"active": "production"}}`.
+
+**The address and the credential belong to the endpoint, not to the transport, and they switch
+together.** That pairing is the point: a production token against a development address answers
+`401`, and a `401` stops the poll loop — so a switch that moved only the address would present as
+a feed outage diagnosed at the wrong system. It also removes a second hazard: `poll` and `stream`
+used to carry an address each, so they could name different producers, and the identity probe
+would then answer about an engine that is not the one delivering.
+
+An `active` naming an unregistered endpoint is a **hard error** listing the known names, never a
+fallback to the previous one. The session log states which endpoint answered, next to the
+credential's source file:
+
+```
+📡 Producer endpoint ← production (https://finiex-rag.duckdns.org) · credential user_configs/credentials/rag_credentials.json
+```
+
 ### Connect check — reachability and credential, before a session needs them
 
 `connect-check` probes the configured producer and answers three questions a live session
@@ -101,6 +135,7 @@ failure modes: health failing is the *address*, `/latest` failing alone is the *
 
 ```
 📡 PRODUCER CONNECT CHECK
+   Endpoint:   production
    Address:    https://finiex-rag.duckdns.org
    Credential: user_configs/credentials/rag_credentials.json
    ✅ GET /v1/health                              journal 138c68e48b15 (production) · engine 0.3.3

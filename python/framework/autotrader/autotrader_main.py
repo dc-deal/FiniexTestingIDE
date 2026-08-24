@@ -686,20 +686,19 @@ class AutotraderMain:
                 'Signal transport is enabled but poll.pipeline_id is empty — '
                 'name the producer pipeline in sentiment_config.json.')
 
-        credential = SentimentConfigManager().resolve_api_credential(
-            poll_config.credentials_file)
-        # Announce which file answered. With a tracked empty default and a gitignored
-        # override, a configured token and an empty one are otherwise indistinguishable
-        # in the log — and an empty one now means 401 on every authenticated route.
-        self._session_logger.info(
-            f'📡 Producer credential ← {credential.describe_source()}')
-        if not credential.is_configured():
+        producer = SentimentConfigManager().resolve_active_producer()
+        # Announce which endpoint and which file answered. With several registered
+        # endpoints and a tracked empty credential default, "I thought I was on dev" and
+        # "the token is configured" are otherwise both unverifiable from the log — and an
+        # empty token now means 401 on every route except /v1/health.
+        self._session_logger.info(f'📡 Producer endpoint ← {producer.describe()}')
+        if not producer.credential.is_configured():
             self._session_logger.warning(
                 '📡 No producer token configured — requests go out without an '
                 'Authorization header. Every route except /v1/health will answer 401. '
-                'Place the token in user_configs/credentials/'
-                f'{poll_config.credentials_file}.')
-        api_token = credential.token
+                'Place the token in user_configs/credentials/ for endpoint '
+                f"'{producer.name}'.")
+        api_token = producer.credential.token
 
         # The probe borrows the transport's address on purpose: the question it answers
         # is which journal these envelopes come from, so asking a second address could
@@ -708,7 +707,7 @@ class AutotraderMain:
         health_probe = (
             SignalHealthProbe(
                 config=health_config,
-                base_url=poll_config.base_url,
+                base_url=producer.base_url,
                 logger=self._session_logger,
                 api_token=api_token,
                 pipeline_id=poll_config.pipeline_id,
@@ -724,10 +723,10 @@ class AutotraderMain:
         self._signal_inbox = SignalInbox()
         self._signal_transport = SignalPollSource(
             config=poll_config,
+            producer=producer,
             signal_kind=signal_kinds.pop(),
             inbox=self._signal_inbox,
             logger=self._session_logger,
-            api_token=api_token,
             health_probe=health_probe,
             observed=self._signal_observed,
         )
