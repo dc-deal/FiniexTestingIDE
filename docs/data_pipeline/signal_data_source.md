@@ -122,6 +122,25 @@ credential's source file:
 📡 Producer endpoint ← production (https://finiex-rag.duckdns.org) · credential user_configs/credentials/rag_credentials.json
 ```
 
+### The producer's routes
+
+Four routes exist; three are free reads and one spends money. The split is theirs, and it is
+what lets a release gate certify the feed without buying a single LLM call.
+
+| Route | Token | Gives | Notes |
+|---|---|---|---|
+| `GET /v1/health` | no | `journal_id`, `environment`, engine version, per-worker cadence, budget + stall state | their one always-open route, rate-limited |
+| `GET /v1/build` | no | `version`, `commit`, `committed_at`, `dirty`, `started_at` | **open by their default, behind a `build_info_public` switch.** Their repository is public, so a commit hash discloses nothing not already on GitHub; behind a private repository the same field would fingerprint known defects — hence the switch. Treat absence as a policy answer, never as a fault |
+| `GET /v1/pipelines` | yes | registered sources: symbols, `outcome_type`, `trigger_type`, `cadence_seconds` | |
+| `GET /v1/pipelines/{id}/latest` | yes | one envelope | |
+| `POST /v1/pipelines/{id}/run` | — | **spends** on their LLM provider | **does not exist in production** (404). Never call it |
+
+**`version` is not a build identity.** Measured 2026-08-25: they deployed a new commit at 16:28
+while `version` stayed `0.3.3`, so two reads twenty minutes apart came from different code and
+looked identical. `commit` binds, `version` does not — the same relationship `journal_id` has to
+the environment name. `started_at` changing between two observations means the process restarted,
+which is the one moment a sequence counter can be re-minted.
+
 ### Connect check — reachability and credential, before a session needs them
 
 `connect-check` probes the configured producer and answers three questions a live session
@@ -142,6 +161,12 @@ failure modes: health failing is the *address*, `/latest` failing alone is the *
    ✅ GET /v1/pipelines/crypto_sentiment/latest   seq 331 · epoch 1 · schema 2.0 · origin live
    ✅ Reachable and authenticated.
 ```
+
+It **shows** these facts; it does not assert them and writes no artifact. Asserting them, plus the
+whole envelope contract, is the release gate: see
+[Live Signal Feed Certificate](../tests/live_signal_feed/signal_feed_certificate_guide.md) (#466).
+Both share one HTTP read (`signal_http_reader.py`), so the "401 is a credential condition, never
+their outage" rule exists in exactly one place.
 
 It prints the credential's **source file**, never the token, and says so explicitly when the file
 is empty — with a tracked empty default and a gitignored override, "configured" and "empty" are
@@ -463,7 +488,7 @@ These two are the most misread fields in the archive.
 | `confidence` | 0.0 … 1.0. A `no_data` HOLD carries `0.0` by contract |
 | `urgency` | 0.0 … 1.0, how time-critical the producer judged the story |
 | `is_breaking` | an urgent story drove this symbol's signal. **A content flag, not a scheduling marker** — a normal grid pass carries it too. Real rate: ~6 % of result rows (crypto), ~3 % (forex) |
-| `reasoning` | the producer's one-line justification. Human-readable only; nothing keys on it |
+| `reasoning` | the producer's one-line justification. Nothing keys on it **here** — but see below: on their side it is the *measured* substrate, not decoration |
 | `breaking_episode_id` | the story's identity — see below. **Opaque**, empty outside an episode |
 | `breaking_episode_start` | a **flag**: true only on the pass that opened the episode |
 
@@ -488,6 +513,28 @@ reason:
 | the first envelope of a session | a session that boots into an active story has witnessed no entry; reporting one makes every restart look like a fresh event |
 | a gap | nothing resolved means the state is **unknown**, not `false`. Reading it as `false` would emit an exit going in and an entry coming out |
 | an overtaking pass (`evidence_regressed`) | an envelope resting on older evidence did not witness what came after it, so letting it flip the edge turns the producer's commit order into a transition that never happened |
+
+### `reasoning` vs. `breaking_reason` — measured substrate vs. display half
+
+Two text fields arrive per row and they are **not** interchangeable. The distinction is the
+producer's and it is worth keeping, because the names do not carry it:
+
+| Field | What it is | Use it for |
+|---|---|---|
+| `reasoning` | the **measured** substrate — their story clustering runs on it, and that threshold was calibrated over 1,455 real texts | grouping, comparing, clustering: the field with ground under it |
+| `breaking_reason` | the **display** half — a headline of at most 25 words, event first, written only where urgency is high *and* the articles name a concrete event. No calibration behind it | putting in front of a person |
+
+So `reasoning` is the one to compute on and `breaking_reason` the one to show. Its **coverage is not
+guaranteed by design**: absent on plenty of high-urgency rows, because "no nameable event" is a
+normal outcome and is explicitly not allowed to move the scores. A report built on it has holes, and
+the holes are not errors.
+
+**We do not consume `breaking_reason` today** (2026-08-25) — it is on the wire and in the archive,
+undeclared, so the transport announces it once as an unread field and the value is discarded. A
+breaking headline in an operator's run report is a real use and worth having eventually; the reason
+to wait is that its population rate is the least stable thing in the feed right now — the v3 → v4
+prompt change moves the condition deliberately, and the after-figure is not measured yet. Typing a
+field against a presence rate nobody can quote is how a fixture stops matching production.
 
 ### The breaking EPISODE — the identity to gate on
 

@@ -617,6 +617,30 @@ SIGNAL_RUNTIME_COLUMNS = frozenset({
 
 
 @dataclass
+class ProducerRead:
+    """
+    Outcome of one JSON read against a producer route.
+
+    A result rather than an exception because both callers need the DISTINCTION, not the
+    stack: the producer's connect contract states that 401 is not a transport failure, so
+    "the token was refused" and "nothing answered" must stay separable all the way to the
+    operator.
+
+    Args:
+        ok: Whether the route answered with a decodable payload
+        payload: The decoded response, None on failure
+        detail: One line describing what came back, or why nothing did
+        credential_rejected: The producer refused the credential (401 / 403)
+        status_code: HTTP status when the producer answered with one
+    """
+    ok: bool
+    payload: Optional[Dict[str, Any]] = None
+    detail: str = ''
+    credential_rejected: bool = False
+    status_code: Optional[int] = None
+
+
+@dataclass
 class ConnectCheckStep:
     """
     Outcome of one probed route.

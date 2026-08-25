@@ -97,6 +97,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [AutoTrader Integration](tests/autotrader/integration_tests.md) | End-to-end mock session validation |
 | [Kraken Adapter Live Integration](tests/live_adapters/kraken_adapter_integration_tests.md) | Dry-run order lifecycle against real Kraken API — real account required, release-gate |
 | [Live Field Study](tests/live_field_study/field_study_guide.md) | End-to-end live acceptance test + PASS/FAIL certificate — operator-driven, release-gate (#332) |
+| [Live Signal Feed Certificate](tests/live_signal_feed/signal_feed_certificate_guide.md) | Producer contract proof + PASS/FAIL certificate — operator-driven, release-gate (#466) |
 | [Safety Circuit Breaker](tests/autotrader/safety_tests.md) | Equity-based safety, phantom drawdown fix, config split |
 | [Live Executor](tests/autotrader/live_executor_tests.md) | LiveTradeExecutor pipeline |
 | [Loop Cadence](tests/autotrader/loop_cadence_tests.md) | Clock injection, heartbeat re-poll, decision ghost-pass (#360) |

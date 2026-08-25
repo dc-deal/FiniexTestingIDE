@@ -1,6 +1,6 @@
 # Signal Import Tests
 
-**Suite:** `tests/data/signal_import/` · **Mark:** `data` · **Issue:** #429
+**Suite:** `tests/data/signal_import/` · **Mark:** `data` · **Issue:** #429, #466
 
 Validates the signal data source pipeline — JSONL import → columnar parquet → index → projected
 reader — and, the key guarantee, **bit-identical parity with the v0 JSONL path** on the consumed
@@ -94,6 +94,44 @@ Pinned: splitting on `:` yields more parts than the contract's three segments (b
 production form is not path-safe while the mock form is; and the production form is more than twice
 the mock's length and past 64 characters. That last pair exists so nobody calibrates escaping or
 column width on the mock and calls it covered — the narrow form is the easy case.
+
+### test_signal_feed_contract_validator.py (#466)
+
+The **netless half of the release-gate certificate**. The certificate itself runs against the live
+producer, which makes it expensive to develop and impossible to put in the daily suite — but its
+assertions are pure functions over an envelope, so they belong here.
+
+Two halves, and the second is the point:
+
+| Half | What it does |
+|---|---|
+| positive | every `signal` frame of the frozen sample passes the whole check list, with nothing mocked. A reissue that changes the contract turns this red — which is the signal the frozen sample exists to give |
+| negative | **deliberately broken copies** must fail the RIGHT check: a flag typed as a timestamp, `is_breaking: 1`, `urgency: "0.8"`, `confidence: true`, `trigger_reason` demoted into `metadata`, `collected_msc` on the wire, evidence stamped after availability, an evidence stamp that disagrees with its sources, a stamp on a row with no sources, an unsupported schema major, an absent contracted field, a cleanly splittable episode id, an opener that names no episode |
+
+A validator that has only ever seen a correct envelope is an assertion nobody has watched fail —
+which is the shape of every mismatch this project has had with the producer. Each negative case above
+is one of those mistakes, pinned so it cannot come back silently.
+
+**Two tiers, and why they are separate.** `validate_wire_shape()` reads the RAW payload;
+`validate_envelope()` adds our reader's own guarantees. A wrongly typed flag makes the model raise,
+so the reader tier reports "refused" — and on its own that is precisely the report we already lived
+through, our schema reading as their outage. The wire tier runs over the same payload regardless and
+names the field, which turns "something is wrong" into a diagnosis. One test asserts both halves at
+once for exactly that case.
+
+Also pinned here, needing no producer at all: the **rewind comparison across two certificates** — a
+lower `seq` on the same journal is a rewind, a different journal is a finding, the first certificate
+establishes the binding, and the detail names whether the producer **restarted** between the two
+(the one moment a counter gets re-minted). Plus **build provenance** in both directions: their
+unpublished build is *not asserted* (their route sits behind a switch), a dirty build of theirs
+fails, and our own uncommitted tree is recorded during a rehearsal but fails a **declared** release.
+Full operator guide:
+[Live Signal Feed Certificate](../live_signal_feed/signal_feed_certificate_guide.md).
+
+**One guard on the positive half.** `evidence_matches_max_fetched_at` can only fail on rows carrying
+both a stamp and sources, so the suite asserts the sample's own coverage of that case. Otherwise a
+future sample without it would make the check report success while comparing nothing — the same
+zero-iteration trap as the opacity rule above.
 
 ---
 

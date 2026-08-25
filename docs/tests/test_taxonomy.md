@@ -16,6 +16,7 @@ All tests are classified by **pipeline domain** and **test type**. pytest marks 
 | `benchmark` | `tests/simulation/benchmark/` | excluded from normal runner |
 | `live_adapter` | `tests/live_adapters/` | excluded from normal runner — requires real account |
 | `live_field_study` | `tests/live_field_study/` | excluded from normal runner — operator-driven live release gate (#332) |
+| `live_signal_feed` | `tests/live_signal_feed/` | excluded from normal runner — operator-driven producer contract gate (#466) |
 | `integration` | any path containing `/integration/` | `pytest -m integration` |
 | `unit` | order_guard, live_executor, safety, bar_rendering, workers, etc. | `pytest -m unit` |
 
@@ -111,10 +112,21 @@ tests/
 │   ├── test_kraken_adapter_order_lifecycle_fill.py   Fill validation, real MARKET execution
 │   └── reports/           release receipt JSON files (committed per release)
 │
-└── live_field_study/      acceptance — operator-driven live release gate (excluded from runner) (#332)
-    ├── test_field_study_certificate.py  CI-friendly committed-certificate validation
-    └── reports/           PASS/FAIL acceptance certificates (committed per release)
+├── live_field_study/      acceptance — operator-driven live release gate (excluded from runner) (#332)
+│   ├── test_field_study_certificate.py  CI-friendly committed-certificate validation
+│   └── reports/           PASS/FAIL acceptance certificates (committed per release)
+│
+└── live_signal_feed/      acceptance — producer contract gate (excluded from runner) (#466)
+    ├── test_signal_feed_transport.py    endpoint, credential, free-routes-only, provenance
+    ├── test_signal_feed_contract.py     envelope shape / stamps / reader — transport-independent
+    ├── test_signal_feed_series.py       seq + epoch in-run, and rewind across two certificates
+    ├── test_signal_feed_certificate.py  CI-friendly committed-certificate validation
+    └── reports/           PASS/FAIL contract certificates (committed per release)
 ```
+
+The contract assertions themselves are pure functions over an envelope, so they are also
+exercised WITHOUT a network in `data/signal_import/` against the frozen frame sample and
+against deliberately broken copies of it (#466 netless half).
 
 ---
 

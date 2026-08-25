@@ -3141,6 +3141,47 @@
                 "order": 6
             }
         },
+        {
+            "name": "🧩 Pytest: Live Signal Feed (All) - production producer",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/live_signal_feed/",
+                "-v",
+                "--tb=short",
+                "-m",
+                "live_signal_feed",
+                "--release-version",
+                "dev"
+            ],
+            "env": {
+                "FINIEX_CONFIG_ISOLATION": "0"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "12_release_gate",
+                "order": 7
+            }
+        },
+        {
+            "name": "🧩 Pytest: Live Signal Feed Certificate (validate committed)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/live_signal_feed/test_signal_feed_certificate.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "12_release_gate",
+                "order": 8
+            }
+        },
     ],
     "inputs": [
         {

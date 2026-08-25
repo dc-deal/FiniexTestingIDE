@@ -12,38 +12,14 @@ transport failure. A check that reports "unreachable" for a rejected token sends
 operator looking at the wrong system.
 """
 
-import json
-import urllib.error
-import urllib.request
 from typing import Any, Dict, Optional
 
+from python.framework.signal_data.signal_http_reader import fetch_json
 from python.framework.types.config_types.sentiment_config_types import ActiveProducer
 from python.framework.types.signal_data_types import (
     ConnectCheckResult,
     ConnectCheckStep,
 )
-
-# The contract's own wording: these mean "your credential", never "their outage".
-CREDENTIAL_STATUS_CODES = (401, 403)
-
-
-def _fetch(url: str, token: str, timeout_s: float) -> Dict[str, Any]:
-    """
-    Read one JSON route, sending the bearer token when one is configured.
-
-    Args:
-        url: Full route URL
-        token: Bearer token; empty means send no Authorization header
-        timeout_s: Request timeout
-
-    Returns:
-        The decoded response
-    """
-    request = urllib.request.Request(url)
-    if token:
-        request.add_header('Authorization', f'Bearer {token}')
-    with urllib.request.urlopen(request, timeout=timeout_s) as response:
-        return json.loads(response.read().decode('utf-8'))
 
 
 def _probe(name: str, url: str, token: str, timeout_s: float,
@@ -62,26 +38,16 @@ def _probe(name: str, url: str, token: str, timeout_s: float,
     Returns:
         The payload on success, None otherwise
     """
-    try:
-        payload = _fetch(url, token, timeout_s)
-    except urllib.error.HTTPError as error:
-        if error.code in CREDENTIAL_STATUS_CODES:
+    read = fetch_json(url, token, timeout_s)
+    if not read.ok:
+        if read.credential_rejected:
             result.credential_rejected = True
-            result.steps.append(ConnectCheckStep(
-                name, False,
-                f'{error.code} — the producer refused the credential. This is NOT an '
-                f'outage on their side; the token is missing, wrong or revoked.'))
-        else:
-            result.steps.append(ConnectCheckStep(
-                name, False, f'HTTP {error.code} — {error.reason}'))
-        return None
-    except Exception as error:   # noqa: BLE001 — a diagnostic never crashes on its subject
-        result.steps.append(ConnectCheckStep(
-            name, False, f'unreachable: {type(error).__name__} — {error}'))
+        result.steps.append(ConnectCheckStep(name, False, read.detail))
         return None
 
-    result.steps.append(ConnectCheckStep(name, True, describe(payload), payload))
-    return payload
+    result.steps.append(
+        ConnectCheckStep(name, True, describe(read.payload), read.payload))
+    return read.payload
 
 
 def run_connect_check(
