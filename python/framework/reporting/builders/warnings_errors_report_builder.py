@@ -5,7 +5,8 @@ Reads the **already-decided** structured truth and maps it to `WarningsErrorsRep
 - Tier-1 major warnings ← `ValidationResult.warnings` (per-scenario + the batch-level channel);
 - Tier-2 minor warnings ← the log WARNING pot (summarized);
 - errors ← `ValidationResult.errors` + the `ProcessResult` villain + the log ERROR pot;
-- outcome ← failed-scenario rollup (sim) / shutdown + emergency (live).
+- outcome ← failed-scenario rollup (sim) / shutdown + emergency (live), plus the canonical
+  `run_outcome` grading (#372) stamped from the pipeline's own result object.
 
 **Batch-direct** (NOT via `RunUnit`): failed scenarios carry no `RunUnit`, and the warnings live on
 the scenario / batch validation channels. The builder makes NO decisions — every verdict was produced
@@ -69,6 +70,7 @@ def build_warnings_errors_report_from_session(
             logged_errors=list(result.error_messages)))
 
     outcome = WarningsErrorsOutcome(
+        run_outcome=result.get_outcome().value,
         failed_count=1 if result.emergency_reason else 0,
         total_units=1,
         failed_unit_names=[name] if result.emergency_reason else [],
@@ -134,6 +136,7 @@ def _batch_outcome(batch: BatchExecutionSummary) -> WarningsErrorsOutcome:
     failed = [r for r in results if not r.success]
     first = failed[0] if failed else None
     return WarningsErrorsOutcome(
+        run_outcome=batch.get_outcome().value,
         failed_count=len(failed),
         total_units=len(results),
         failed_unit_names=[r.scenario_name for r in failed],

@@ -18,10 +18,16 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 | `test_tick_source_fields_fully_parsed` | Every `tick_source` profile key reaches the config (no silently dropped keys, incl. the #436 freeze-lever fields) |
 | `test_staleness_contract_fields_parsed` | #436 knobs: `execution.market_data_stale_after_s` + `order_guard.block_stale_market_data` — per-profile override AND app_config JIC defaults |
 
-`TestSessionExitCode` (3 tests) covers the outcome→exit-code projection the CLI calls
-(`AutoTraderResult.get_exit_code()`): emergency → 1, normal → 0, and a **pinned** assertion that
-a normal run with logged errors still exits 0 — the §35 asymmetry #372 will close. That last one
-is meant to fail when the contract changes, so the change cannot pass unnoticed.
+`TestSessionExitCode` (5 tests) covers the outcome→exit-code projection the CLI calls
+(`AutoTraderResult.get_outcome()` / `get_exit_code()`, #372): a framework emergency → 2, a normal
+shutdown → 0, an **operator** Ctrl+C → 0, a #348 safety escalation *without* an `emergency_reason`
+→ still 2, and a normal session that logged errors → 3. The last one closes the §35 asymmetry and
+replaces the pinned assertion that used to hold the old behaviour in place.
+
+The two that carry the most weight are the operator/safety pair: both arrive as
+`shutdown_mode='emergency'` with no reason attached, so only `operator_interrupted` separates a
+deliberate stop from a safety-triggered one. Reading it off a missing reason would let the safety
+layer fire and still report success.
 
 **Data Dependency:** Uses `configs/autotrader_profiles/backtesting/mock_session_test.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`.
 

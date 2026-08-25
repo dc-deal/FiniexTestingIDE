@@ -196,7 +196,8 @@ class AutotraderReportCoordinator:
             performance_summary=PerformanceSummary(unified.worker_decision),
             warnings_summary=WarningsSummary(warnings_errors_report),
             closing_block=LiveSessionSummary(
-                result, unified.trade_history, self._run_dir, unified.run_summary),
+                result, unified.trade_history, self._run_dir, unified.run_summary,
+                warnings_errors_report),
         )
 
         # Render once (live always full detail); capture, print to console (with colors), and

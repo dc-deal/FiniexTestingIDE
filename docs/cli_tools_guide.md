@@ -553,6 +553,15 @@ Scenario Set: eurusd_3_windows_reference.json
    Speedup:            2,360x (20 hours → 30 seconds)
 ```
 
+**Exit codes** (#372) — the run outcome reaches the process, so wrappers and CI can read it:
+
+| Code | Meaning |
+|---|---|
+| `0` | every scenario completed |
+| `1` | the process did not complete — startup abort or an uncaught exception |
+| `2` | the batch ran, but scenarios failed |
+| `3` | the batch ran, no scenario crashed, but errors were logged |
+
 ### 🔬 List Scenarios
 
 | | |

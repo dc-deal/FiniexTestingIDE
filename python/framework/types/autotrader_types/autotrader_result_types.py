@@ -14,6 +14,7 @@ from python.framework.types.performance_types.performance_stats_types import (
 )
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
@@ -41,6 +42,7 @@ class AutoTraderResult:
         disturbance_episodes: Observed outage spans of both staleness domains (#451)
         market_data_tick_stats: Market-data resolution counters (#451 Part 4)
         shutdown_mode: How the session ended ('normal' or 'emergency')
+        operator_interrupted: Whether the operator requested the stop (SIGINT)
         warning_messages: Warning messages from session logger buffer
         error_messages: Error messages from session logger buffer
         emergency_reason: Fatal cause when shutdown_mode == 'emergency' (None otherwise)
@@ -59,19 +61,37 @@ class AutoTraderResult:
     disturbance_episodes: List[DisturbanceEpisode] = field(default_factory=list)
     market_data_tick_stats: Optional[MarketDataTickStats] = None
     shutdown_mode: str = 'normal'
+    operator_interrupted: bool = False
     emergency_reason: Optional[str] = None
     warning_messages: List[str] = field(default_factory=list)
     error_messages: List[str] = field(default_factory=list)
+
+    def get_outcome(self) -> RunOutcome:
+        """
+        Grade this session (#372).
+
+        An emergency the operator did not initiate is a failed run — a startup abort, a
+        tick-loop crash, or a safety escalation (#348). An operator Ctrl+C is not: it also
+        arrives as 'emergency', and emergency_reason does not separate the two, which is
+        why operator_interrupted is explicit. Logged errors re-grade an otherwise clean
+        session, closing the §35 asymmetry.
+
+        Returns:
+            The classified session outcome
+        """
+        if self.shutdown_mode == 'emergency' and not self.operator_interrupted:
+            return RunOutcome.FAILED
+
+        if self.error_messages:
+            return RunOutcome.FINISHED_WITH_ERRORS
+
+        return RunOutcome.SUCCESS
 
     def get_exit_code(self) -> int:
         """
         Process exit code for this session outcome.
 
-        An emergency shutdown is a failed run and must not report success to a
-        supervisor. A normal shutdown that logged errors still returns 0 today —
-        closing that gap is #372 (§35 'known asymmetry').
-
         Returns:
-            0 on normal shutdown, 1 on emergency shutdown
+            The outcome's exit code, so a supervisor reads the run result
         """
-        return 1 if self.shutdown_mode == 'emergency' else 0
+        return self.get_outcome().get_exit_code()

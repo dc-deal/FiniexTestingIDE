@@ -12,8 +12,13 @@ from pathlib import Path
 from typing import Optional
 
 from python.framework.reporting.console.feed_stability_summary import format_disturbance_line
-from python.framework.types.api.report_types import RunSummary, TradeHistoryReport
+from python.framework.types.api.report_types import (
+    RunSummary,
+    TradeHistoryReport,
+    WarningsErrorsReport,
+)
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -26,6 +31,7 @@ class LiveSessionSummary:
         trade_report: Optional[TradeHistoryReport],
         run_dir: Optional[Path],
         run_summary: Optional[RunSummary] = None,
+        warnings_errors_report: Optional[WarningsErrorsReport] = None,
     ):
         """
         Args:
@@ -33,11 +39,14 @@ class LiveSessionSummary:
             trade_report: Unified trade-history report — its #389 analytics line is appended
             run_dir: The session's run directory (output-locations section)
             run_summary: Cross-section KPI summary — supplies the #451 disturbance line
+            warnings_errors_report: Warnings/errors model — supplies the canonical run
+                grading (#372), so the outcome is read rather than re-asked of the result
         """
         self._result = result
         self._trade_report = trade_report
         self._run_dir = run_dir
         self._run_summary = run_summary
+        self._warnings_errors_report = warnings_errors_report
 
     def render(self, renderer: ConsoleRenderer) -> None:
         """Render the closing block (session stats + output locations)."""
@@ -56,6 +65,12 @@ class LiveSessionSummary:
         print(f'  Shutdown:       {result.shutdown_mode}')
         if result.shutdown_mode == 'emergency' and result.emergency_reason:
             print(renderer.red(f'  ❌ EMERGENCY CAUSE: {result.emergency_reason}'))
+        outcome = (self._warnings_errors_report.outcome.run_outcome
+                   if self._warnings_errors_report else '')
+        if outcome == RunOutcome.FINISHED_WITH_ERRORS.value:
+            print(renderer.yellow(
+                '  ⚠️  FINISHED WITH ERRORS — '
+                f'{len(result.error_messages)} error(s) logged during the session'))
 
         if result.portfolio_stats:
             pnl = result.portfolio_stats.total_profit - result.portfolio_stats.total_loss

@@ -582,6 +582,7 @@ class AutotraderMain:
             ticks_processed=ticks_processed,
             ticks_clipped=ticks_clipped,
             shutdown_mode=self._shutdown_mode,
+            operator_interrupted=self._first_interrupt_time > 0,
             emergency_reason=self._emergency_reason,
             warning_messages=[line for _, line in warnings],
             error_messages=[line for _, line in errors],

@@ -63,8 +63,7 @@ def main():
             trader = AutotraderMain(config)
             result = trader.run()
 
-            # Both normal (SIGTERM) and emergency (Ctrl+C) are valid shutdown paths,
-            # but only a normal one is a successful run (#372)
+            # The result carries the graded outcome; the CLI only maps it (#372)
             sys.exit(result.get_exit_code())
 
     except KeyboardInterrupt:

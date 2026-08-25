@@ -13,6 +13,7 @@ from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagn
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
 from python.framework.types.process_data_types import (
+    LOGGED_ERRORS_TYPE,
     ProcessDataPackage,
     ProcessResult,
     ProcessScenarioConfig,
@@ -130,7 +131,7 @@ def process_main(
         if len(errors_in_buffer) > 0 and tick_loop_error is None:
             # Logged errors WITHOUT exception
             success = False
-            error_type = 'LoggedErrors'
+            error_type = LOGGED_ERRORS_TYPE
             error_message = f'Scenario logged {len(errors_in_buffer)} ERROR(s)'
             send_status_update_process(
                 live_queue, config, ScenarioStatus.FINISHED_WITH_ERROR)

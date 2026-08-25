@@ -25,12 +25,15 @@ from python.scenario.scenario_config_loader import ScenarioConfigLoader
 vLog = get_global_logger()
 
 
-def run_scenario_batch(scenario_set_json: str):
+def run_scenario_batch(scenario_set_json: str) -> Optional[BatchExecutionSummary]:
     """
     Run a scenario batch from a scenario set config.
 
     Args:
         scenario_set_json: Config filename (e.g., "eurusd_3_windows.json")
+
+    Returns:
+        The batch summary, or None when the run failed before producing one (#372)
     """
 
     try:
@@ -66,7 +69,7 @@ def run_scenario_batch(scenario_set_json: str):
             f'📂 Loaded scenario set: {scenario_set_json} ({len(scenario_config_data.scenarios)} scenarios)'
         )
 
-        initialize_batch_and_run(scenario_config_data, app_config_loader)
+        return initialize_batch_and_run(scenario_config_data, app_config_loader)
 
     except Exception as e:
         vLog.hard_error(
@@ -74,8 +77,13 @@ def run_scenario_batch(scenario_set_json: str):
             exception=e
         )
 
+    return None
 
-def run_profile_batch(scenario_set_json: str, profile_paths: List[str]):
+
+def run_profile_batch(
+    scenario_set_json: str,
+    profile_paths: List[str],
+) -> Optional[BatchExecutionSummary]:
     """
     Run a Profile Run — loads profile blocks as scenarios.
 
@@ -85,6 +93,9 @@ def run_profile_batch(scenario_set_json: str, profile_paths: List[str]):
     Args:
         scenario_set_json: Scenario set config (for global strategy/execution config)
         profile_paths: List of paths to profile artifact JSON files
+
+    Returns:
+        The batch summary, or None when the run failed before producing one (#372)
     """
     try:
         vLog.info('🚀 Starting [BatchOrchestrator] Profile Run')
@@ -126,13 +137,15 @@ def run_profile_batch(scenario_set_json: str, profile_paths: List[str]):
             f"{total_blocks} blocks, symbols: {', '.join(symbols)}"
         )
 
-        initialize_batch_and_run(scenario_config_data, app_config_loader)
+        return initialize_batch_and_run(scenario_config_data, app_config_loader)
 
     except Exception as e:
         vLog.hard_error(
             'Unexpected error during Profile Run startup',
             exception=e
         )
+
+    return None
 
 
 def initialize_batch_and_run(

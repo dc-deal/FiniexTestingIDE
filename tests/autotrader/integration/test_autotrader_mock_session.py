@@ -17,6 +17,7 @@ from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.io.broker_report_io import read_broker_report
 from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.run_outcome_types import RunOutcome
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'
 
@@ -183,23 +184,46 @@ class TestProfileLoader:
 class TestSessionExitCode:
     """The run outcome reaches the process exit code (#372)."""
 
-    def test_emergency_shutdown_exits_nonzero(self):
-        """An emergency shutdown is a failed run and must not report success."""
+    def test_framework_emergency_exits_two(self):
+        """An emergency the operator did not initiate is a failed run."""
         result = AutoTraderResult(shutdown_mode='emergency',
                                   emergency_reason='tick loop crashed')
-        assert result.get_exit_code() == 1
+        assert result.get_outcome() == RunOutcome.FAILED
+        assert result.get_exit_code() == 2
 
     def test_normal_shutdown_exits_zero(self):
         """A normal shutdown reports success."""
         assert AutoTraderResult(shutdown_mode='normal').get_exit_code() == 0
 
-    def test_logged_errors_do_not_yet_change_the_code(self):
+    def test_operator_interrupt_exits_zero(self):
         """
-        Known asymmetry (§35): a normal run that logged errors still exits 0.
+        A deliberate Ctrl+C is not a failed run.
 
-        Pinned deliberately so the day #372 closes it, this test fails and states
-        where the contract changed, instead of the change passing unnoticed.
+        The SIGINT handler sets shutdown_mode='emergency' itself, so operator_interrupted
+        is the only thing separating a deliberate stop from a crash.
+        """
+        result = AutoTraderResult(shutdown_mode='emergency', operator_interrupted=True)
+        assert result.get_outcome() == RunOutcome.SUCCESS
+        assert result.get_exit_code() == 0
+
+    def test_safety_escalation_without_a_reason_still_fails(self):
+        """
+        A #348 EMERGENCY session-end escalation raises an emergency with no reason.
+
+        Inferring 'the operator did it' from a missing reason would let the safety layer
+        fire and still report success — the exact blindness this issue removes.
+        """
+        result = AutoTraderResult(shutdown_mode='emergency')
+        assert result.get_outcome() == RunOutcome.FAILED
+        assert result.get_exit_code() == 2
+
+    def test_logged_errors_regrade_a_normal_run(self):
+        """
+        The §35 asymmetry, closed: a session that logged errors is not a clean run.
+
+        This replaces the pinned assertion that held the old behaviour in place.
         """
         result = AutoTraderResult(shutdown_mode='normal',
                                   error_messages=['something went wrong'])
-        assert result.get_exit_code() == 0
+        assert result.get_outcome() == RunOutcome.FINISHED_WITH_ERRORS
+        assert result.get_exit_code() == 3

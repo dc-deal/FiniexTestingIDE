@@ -193,9 +193,26 @@ Two modes:
 | Mode | Trigger | Behavior |
 |------|---------|----------|
 | **Normal** | Tick source exhausted, SIGTERM | Close positions, cancel orders, collect full stats |
-| **Emergency** | SIGINT (Ctrl+C) | Immediate close, best-effort stats |
+| **Emergency** | SIGINT (Ctrl+C), a startup or tick-loop exception, or an EMERGENCY session-end escalation (#348) | Immediate close, best-effort stats |
 
-Signal handling: First Ctrl+C → normal shutdown. Second Ctrl+C within 3s → force exit.
+Signal handling: first Ctrl+C requests shutdown (positions are still closed); a second within 3s
+forces exit.
+
+### Session outcome and exit code (#372)
+
+`shutdown_mode` alone does not say whether the run failed — an operator Ctrl+C and a
+safety-triggered escalation both arrive as `emergency`, and `emergency_reason` is empty for both.
+`AutoTraderResult.operator_interrupted` (set only by the SIGINT handler) is what separates them,
+and `get_outcome()` grades the session from there:
+
+| Outcome | Exit | When |
+|---|---|---|
+| `SUCCESS` | `0` | normal shutdown, or an operator Ctrl+C — no errors logged |
+| `CRASHED` | `1` | an uncaught exception reached the CLI |
+| `FAILED` | `2` | `emergency` that the operator did not initiate — startup abort, tick-loop crash, safety escalation |
+| `FINISHED_WITH_ERRORS` | `3` | the session ended without an emergency, but errors were logged |
+
+Full taxonomy: [Warnings & Errors — Tier Taxonomy](../architecture/warnings_errors_tiers.md).
 
 ## Configuration
 

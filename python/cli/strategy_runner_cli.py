@@ -12,9 +12,11 @@ import argparse
 import sys
 import traceback
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.utils.time_utils import format_duration
 from python.scenario.scenario_set_finder import ScenarioSetFinder
 from python.scenario.scenario_strategy_runner import run_profile_batch, run_scenario_batch
@@ -33,13 +35,20 @@ class StrategyRunnerCli:
         """Initialize CLI"""
         self._finder = ScenarioSetFinder()
 
-    def cmd_run(self, scenario_set_json: str, generator_profiles: List[str] = None):
+    def cmd_run(
+        self,
+        scenario_set_json: str,
+        generator_profiles: List[str] = None,
+    ) -> Optional[BatchExecutionSummary]:
         """
         Run batch execution with specified scenario set.
 
         Args:
             scenario_set_json: Config filename (e.g., 'eurusd_3_windows.json')
             generator_profiles: Optional profile paths/directories for Profile Run
+
+        Returns:
+            The batch summary, or None when the run failed before producing one (#372)
         """
         if generator_profiles:
             profile_paths = self._resolve_profile_paths(generator_profiles)
@@ -53,7 +62,7 @@ class StrategyRunnerCli:
                 print(f'  • {Path(p).name}')
             print('='*80 + '\n')
 
-            run_profile_batch(scenario_set_json, profile_paths)
+            return run_profile_batch(scenario_set_json, profile_paths)
         else:
             print('\n' + '='*80)
             print('🔬 Strategy Runner')
@@ -61,7 +70,7 @@ class StrategyRunnerCli:
             print(f'Scenario Set: {scenario_set_json}')
             print('='*80 + '\n')
 
-            run_scenario_batch(scenario_set_json)
+            return run_scenario_batch(scenario_set_json)
 
     def _resolve_profile_paths(self, inputs: List[str]) -> List[str]:
         """
@@ -233,7 +242,11 @@ def main():
 
     try:
         if args.command == 'run':
-            cli.cmd_run(args.scenario_set, generator_profiles=args.generator_profile)
+            summary = cli.cmd_run(
+                args.scenario_set, generator_profiles=args.generator_profile)
+            # No summary means the batch never ran — a dead process, not a clean one (#372)
+            sys.exit(summary.get_exit_code() if summary
+                     else RunOutcome.CRASHED.get_exit_code())
 
         elif args.command == 'list':
             cli.cmd_list(full_details=args.full_details)

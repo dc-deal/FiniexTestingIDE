@@ -572,6 +572,11 @@ class ProcessTickLoopResult:
 # PROCESS RESULT (Process → Phase 2)
 # ============================================================================
 
+# The error_type a scenario carries when it finished but logged errors (§35 error pot).
+# Read by BatchExecutionSummary.get_outcome() to tell a pot run from a crash.
+LOGGED_ERRORS_TYPE = 'LoggedErrors'
+
+
 @dataclass
 class ProcessResult:
     """
