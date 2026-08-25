@@ -49,6 +49,3 @@ class AbstractTradingFee(ABC):
         """Mark fee as applied to balance"""
         self.status = FeeStatus.APPLIED
 
-    def get_display_name(self) -> str:
-        """Get human-readable fee name"""
-        return self.fee_type.value.replace('_', ' ').title()

@@ -88,10 +88,6 @@ class AbstractAdapter(ABC):
         """
         self._api_monitor = monitor
 
-    def get_api_monitor(self) -> Optional[ApiPerfMonitor]:
-        """Return the attached ApiPerfMonitor, or None if not instrumented."""
-        return self._api_monitor
-
     def _timed_call(self, endpoint: str, fn: Callable[[], Any]) -> Any:
         """
         Time a broker transport call and record it to the API monitor (#351).

@@ -1000,10 +1000,6 @@ class PortfolioManager:
         """Get specific position by ID"""
         return self.open_positions.get(position_id)
 
-    def has_open_positions(self) -> bool:
-        """Check if any positions are open"""
-        return len(self.open_positions) > 0
-
     # ============================================
     # Account Information - for example, for decision
     # ============================================
