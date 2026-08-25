@@ -842,7 +842,10 @@ class AutoTraderLiveDisplay:
             # useful than rendering an idle connection that was never meant to run.
             return ['', '[dim]Signal Feed:    mounted (no transport)[/dim]']
 
-        colors = {'live': 'green', 'degraded': 'yellow', 'error': 'red'}
+        # 'unauthorized' and 'contract' are dead-feed states too — left on the default
+        # 'dim' they under-signalled exactly the silence this panel exists to surface.
+        colors = {'live': 'green', 'degraded': 'yellow', 'error': 'red',
+                  'unauthorized': 'red', 'contract': 'red'}
         color = colors.get(transport.state, 'dim')
         marker = '●' if transport.state == 'live' else '◌'
         position = (f'epoch {transport.stream_epoch}  seq {transport.last_seq}'

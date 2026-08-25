@@ -56,6 +56,45 @@ The producer spent a **major** version on an otherwise additive field group for 
 would not have fired the branch the fallback lives behind. An unknown major is refused rather than
 guessed at: it may carry a changed `result` structure.
 
+From the producer's #65 note onward the rule is stated on their side too — **MINOR for an additive
+field, MAJOR for a breaking one** — so pinning the major is the supported way to stay readable while
+the shape grows. The supported set now lives in `signal_data_types.py` and is shared with the live
+transport, which gates on it as well: two copies would have let the archive path and the live path
+disagree about what we can read.
+
+### test_signal_frame_sample.py
+
+The producer's committed stream-frame sample parsed through the **production model**, not by eye.
+
+It exists because reading it by eye already cost us once: reissue 5 carried
+`breaking_episode_start: false` on 2026-08-21, three days before the field went live, while our
+declaration typed it as a timestamp. Every live envelope was then rejected and the rejection was
+misfiled as the producer's outage. Nothing had ever run the sample through the reader.
+
+Pinned: every `signal` frame validates as a `SignalSnapshot` (with `collected_msc` supplied the way
+the transport supplies it — it is absent on the wire by contract); both episode fields keep their
+shape, the flag as a `bool` and the id as a `str`; and a populated id carries more colons than its
+three segments, which is the documentation-by-assertion of why the contract calls it **opaque**.
+
+A reissued sample therefore checks itself. The producer's reissue 6 will carry an opener, a
+continuation and a hold-band pass — the three shapes a consumer can get wrong.
+
+**The opacity rule is pinned apart from the sample, and the reason is a mistake worth keeping
+visible.** The first version asserted it by looping over the sample's populated ids — of which
+reissue 5 has none, so the loop body ran zero times and the test passed while proving nothing. It now
+**skips** with a reason when the sample carries no id, and `TestIdOpacity` pins the rule
+unconditionally against the two forms the producer published:
+
+| Form | Example | Why both |
+|---|---|---|
+| production | `forex_macro_sentiment:US Dollar Canadian Dollar USD/CAD Bank of Canada BOC:…` | the episode key is the retrieval query — free text with spaces and a slash |
+| mock | `crypto_sentiment_mock:BTC:…` | the mock keys on the base currency: same contract, no spaces, no slash |
+
+Pinned: splitting on `:` yields more parts than the contract's three segments (both forms); the
+production form is not path-safe while the mock form is; and the production form is more than twice
+the mock's length and past 64 characters. That last pair exists so nobody calibrates escaping or
+column width on the mock and calls it covered — the narrow form is the easy case.
+
 ---
 
 ## Fixture

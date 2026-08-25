@@ -10,6 +10,7 @@ envelope until its next pass, and its degraded answer must never be mistaken for
 
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import MagicMock
 
@@ -43,6 +44,18 @@ def envelope(seq: int, stream_epoch: int = 1) -> dict:
         'result': [{'symbol': 'BTCUSD', 'signal': 'BUY', 'sentiment_score': 0.8,
                     'confidence': 0.9, 'basis': 'llm'}],
     }
+
+
+def unreadable_envelope(seq: int = 23) -> dict:
+    """
+    A well-formed HTTP answer our schema cannot read.
+
+    Modelled on the real case: the producer added `breaking_episode_start` additively, with
+    no schema_version change, and our declaration had it as a timestamp rather than a flag.
+    """
+    line = envelope(seq)
+    line['available_msc'] = 'not-a-timestamp'
+    return line
 
 
 def store_unavailable() -> dict:
@@ -329,3 +342,128 @@ class TestLifecycle:
             source.start()
             source.stop()
             source.stop()
+
+
+class TestContractViolation:
+    """
+    An envelope the producer served and we cannot read.
+
+    Pinned because the first version of this loop counted it as a **transport** error and
+    retried forever: a schema mismatch on our side presented as their outage, and the
+    staleness contract then declared the feed blind for the wrong reason. Exactly the
+    misattribution the credential (401) rule already forbids.
+    """
+
+    def _drive_until_classified(self, source) -> None:
+        """Run the real loop until it has classified one failure, then stop it."""
+        source.start()
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            stats = source.get_transport_stats()
+            if stats.contract_errors or stats.transport_errors:
+                break
+            time.sleep(0.02)
+        source.stop()
+
+    def test_an_unreadable_envelope_is_not_a_transport_error(self):
+        inbox = SignalInbox()
+        with _Stub([unreadable_envelope()] * 20) as stub:
+            source = build(stub, inbox)
+            self._drive_until_classified(source)
+            stats = source.get_transport_stats()
+        assert stats.contract_errors >= 1
+        assert stats.transport_errors == 0, 'a schema mismatch must not blame their transport'
+        assert stats.state == 'contract'
+
+    def test_nothing_reaches_the_inbox(self):
+        """The decision path must not receive a half-read envelope."""
+        inbox = SignalInbox()
+        with _Stub([unreadable_envelope()] * 20) as stub:
+            source = build(stub, inbox)
+            self._drive_until_classified(source)
+        assert inbox.drain() == {}
+
+    def test_an_unsupported_major_is_refused_not_mis_read(self):
+        """
+        The mirror image of the bug above: accepting an envelope we cannot really read.
+
+        The archive path has always gated on the major; the live path did not, so a breaking
+        bump would have been parsed with `extra='ignore'` quietly dropping whatever moved.
+        The producer now bumps the MINOR for an additive field, so a minor we have not seen
+        stays readable and must NOT trip this.
+        """
+        inbox = SignalInbox()
+        breaking_major = envelope(23)
+        breaking_major['schema_version'] = '9.0'
+        with _Stub([breaking_major] * 20) as stub:
+            source = build(stub, inbox)
+            self._drive_until_classified(source)
+            stats = source.get_transport_stats()
+        assert stats.contract_errors >= 1
+        assert stats.transport_errors == 0
+        assert inbox.drain() == {}
+
+    def test_an_unseen_minor_is_readable(self):
+        """A minor bump means the shape grew; the envelope is still ours to read."""
+        inbox = SignalInbox()
+        grown = envelope(23)
+        grown['schema_version'] = '2.7'
+        with _Stub([grown]) as stub:
+            source = build(stub, inbox)
+            source._poll_once()
+            stats = source.get_transport_stats()
+        assert stats.contract_errors == 0
+        assert len(inbox.drain()[SIGNAL_KIND]) == 1
+
+    def test_a_grown_shape_is_named_once(self):
+        """
+        Their MINOR bump says the shape grew; it does not say what grew, and our models
+        discard what they do not declare — so without this the new field is invisible.
+
+        A notice, not an error: the envelope is accepted and enqueued. And once per distinct
+        set, or a grown shape would log on every poll for the life of the session.
+        """
+        inbox = SignalInbox()
+        logger = MagicMock()
+        grown = envelope(23)
+        grown['schema_version'] = '2.1'
+        grown['sentiment_regime'] = 'risk_off'
+        grown['result'][0]['half_life_minutes'] = 45
+        with _Stub([grown, envelope(24)]) as stub:
+            source = SignalPollSource(
+                config=SentimentPollConfig(
+                    enabled=True, pipeline_id='crypto_sentiment',
+                    interval_s=0.05, request_timeout_s=3.0, degraded_backoff_s=0.05),
+                producer=producer_at(stub.base_url),
+                signal_kind=SIGNAL_KIND, inbox=inbox, logger=logger)
+            source._poll_once()
+            stats = source.get_transport_stats()
+            assert stats.contract_errors == 0, 'a grown shape is not a violation'
+            assert len(inbox.drain()[SIGNAL_KIND]) == 1, 'the envelope is still consumed'
+
+            names = logger.warning.call_args[0][0]
+            assert 'sentiment_regime' in names
+            assert 'result.half_life_minutes' in names
+
+            logger.warning.reset_mock()
+            source._poll_once()
+            assert not logger.warning.called, 'the same set must not be announced twice'
+
+    def test_the_operator_is_told_which_field_disagreed(self):
+        """A diagnosis naming the field is the difference between a fix and a hunt."""
+        inbox = SignalInbox()
+        logger = MagicMock()
+        with _Stub([unreadable_envelope()] * 20) as stub:
+            source = SignalPollSource(
+                config=SentimentPollConfig(
+                    enabled=True, pipeline_id='crypto_sentiment',
+                    interval_s=0.05, request_timeout_s=3.0, degraded_backoff_s=0.05),
+                producer=producer_at(stub.base_url),
+                signal_kind=SIGNAL_KIND, inbox=inbox, logger=logger)
+            self._drive_until_classified(source)
+        # Session logger, not the global one (§35) — so it enters the error pot and the run
+        # grades FINISHED_WITH_ERRORS (#372) instead of finishing clean on an empty feed.
+        assert logger.error.called
+        message = logger.error.call_args[0][0]
+        assert 'available_msc' in message
+        assert 'NOT a producer outage' in message

@@ -71,15 +71,35 @@ class SentimentResult(BaseModel):
     # already acted on (the producer runs passes concurrently, so a higher seq can carry
     # older evidence).
     evidence_as_of: Optional[datetime] = None
-    breaking_episode_id: str = ''          # story identity — distinguishes a new story from a continuing one
-    breaking_episode_start: Optional[datetime] = None
+    # Story identity (producer #65, live 2026-08-24). Set on every pass the producer counts as
+    # INSIDE the episode — the opener, a hold-band pass (is_breaking false, urgency at or above
+    # the exit threshold) and a dip inside the gap — so it does NOT track is_breaking. Use the id
+    # for episode identity, is_breaking for 'this pass crossed the threshold'.
+    # OPAQUE by the producer's contract: it reads '<pipeline_id>:<query>:<start>' and is meant to
+    # be legible in a log line, but the middle segment is free-text pipeline config and the string
+    # carries further ':' plus spaces and '/'. Never split it, never derive the symbol or the start
+    # instant from it — what it guarantees is byte equality: same story, same value. Length is
+    # bounded by their query text (70-100 chars today), so store it as variable-length text and
+    # encode it if it ever reaches a URL path or a filename.
+    # Arrives as JSON null outside an episode and is normalized to the empty string here:
+    # every consumer then asks one question ('is there an id') instead of two, and the parquet
+    # column stays a plain string. Also empty on everything archived before the field existed.
+    breaking_episode_id: str = ''
+    # A FLAG, not a timestamp: true only on the pass that opened the episode.
+    breaking_episode_start: bool = False
     sources: List[ArticleRef] = Field(default_factory=list)
 
-    @field_validator('evidence_as_of', 'breaking_episode_start', mode='before')
+    @field_validator('evidence_as_of', mode='before')
     @classmethod
     def _coerce_epoch_ms(cls, value):
         """Normalize epoch-ms (int) → UTC datetime; pass ISO/datetime/None through."""
         return _epoch_ms_to_utc(value)
+
+    @field_validator('breaking_episode_id', mode='before')
+    @classmethod
+    def _coerce_absent_episode(cls, value):
+        """Normalize a null episode id to '' — 'outside an episode' is one state, not two."""
+        return '' if value is None else value
 
 
 class AnalysisEnvelope(BaseModel):
@@ -379,6 +399,37 @@ class SignalObservedSeries:
         return f'{self.seq_holes} holes {span}' if self.seq_holes else f'contiguous {span}'
 
 
+# Major schema versions our reader understands, shared by the archive path and the live
+# transport — two copies would let the two disagree about what we can read, and the whole
+# point of the gate is that both answer the same way.
+#
+# '1' — the original contract.
+# '2' — the stream contract (#141 Part 2a): adds seq / stream_epoch / available_msc /
+#       evidence_as_of, and RELOCATES trigger_reason out of metadata to the top level.
+#       That relocation is why the producer spent a major on an otherwise additive group:
+#       a minor would not have fired this gate, and the fallback that reads the old
+#       location lives behind it. Both majors are read by one model — see
+#       AnalysisEnvelope._lift_trigger_reason.
+#
+# From their #65 note onward the producer bumps the MINOR for an additive field and the
+# MAJOR for a breaking one, so pinning the major is the supported way to stay readable
+# while the shape grows.
+SUPPORTED_SCHEMA_MAJORS = frozenset({'1', '2'})
+
+
+def schema_major(version: str) -> str:
+    """
+    Major component of an 'X.Y' schema version string.
+
+    Args:
+        version: The declared schema version
+
+    Returns:
+        The major component, or the whole string when it carries no separator
+    """
+    return version.split('.', 1)[0]
+
+
 class SignalEdge(str, Enum):
     """
     Transition of a boolean signal property between two consecutively served envelopes.
@@ -393,6 +444,25 @@ class SignalEdge(str, Enum):
     ENTERED = 'entered'
     EXITED = 'exited'
     NONE = 'none'
+
+
+class SignalEpisodeEdge(str, Enum):
+    """
+    Transition of the producer's breaking-EPISODE identity between two served envelopes.
+
+    Separate from SignalEdge because an episode is not a boolean, and because it carries the
+    one case a boolean cannot express: one story ending and another beginning with no quiet
+    pass between them. Against `is_breaking` that reads as nothing at all — the flag simply
+    stays true — which is why the producer's own guidance is to gate on the identity.
+
+    The restraint is the same as SignalEdge's, for the same three reasons: no previous
+    observation, a gap, and an overtaking pass all report NONE. The identity is the
+    producer's label; the boundary is still derived here.
+    """
+    OPENED = 'opened'     # no episode -> inside one
+    CHANGED = 'changed'   # inside one episode -> inside a DIFFERENT one, no gap between
+    CLOSED = 'closed'     # inside an episode -> outside
+    NONE = 'none'         # the same episode, or nothing a transition could be read from
 
 
 @dataclass
@@ -482,6 +552,12 @@ class SignalParquetColumn(str, Enum):
     REASONING = 'reasoning'
     URGENCY = 'urgency'
     IS_BREAKING = 'is_breaking'
+    # Episode identity (producer #65). Runtime, not provenance: gating on the episode instead
+    # of the raw is_breaking edge is the whole point of the field, and a decision that cannot
+    # read it in simulation cannot be backtested. Absent on parquet written before this column
+    # existed — the reader defaults, which IS the pre-field era's meaning.
+    BREAKING_EPISODE_ID = 'breaking_episode_id'
+    BREAKING_EPISODE_START = 'breaking_episode_start'   # flag: this pass opened the episode
     BASIS = 'basis'                      # per-symbol signal quality (llm / no_data / degraded)
     STATUS = 'status'                    # envelope status — reconstructs error/empty snapshots
     # --- prompt provenance (traceability — cheap, envelope-scalar) ---
@@ -525,6 +601,8 @@ SIGNAL_RUNTIME_COLUMNS = frozenset({
     SignalParquetColumn.REASONING.value,
     SignalParquetColumn.URGENCY.value,
     SignalParquetColumn.IS_BREAKING.value,
+    SignalParquetColumn.BREAKING_EPISODE_ID.value,
+    SignalParquetColumn.BREAKING_EPISODE_START.value,
     SignalParquetColumn.BASIS.value,
     SignalParquetColumn.STATUS.value,
     SignalParquetColumn.SCHEMA_VERSION.value,

@@ -12,7 +12,12 @@ from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef
-from python.framework.types.signal_data_types import ResolvedSignal, SignalEdge, SignalResolution
+from python.framework.types.signal_data_types import (
+    ResolvedSignal,
+    SignalEdge,
+    SignalEpisodeEdge,
+    SignalResolution,
+)
 from python.framework.types.worker_types import WorkerResult, WorkerType
 from python.framework.workers.abstract_worker import AbstractWorker
 
@@ -79,6 +84,7 @@ class AbstractSignalWorker(AbstractWorker):
         # None until the first observation, and left untouched by a gap or an overtaking
         # pass — see _derive_edge.
         self._last_edge_value: Optional[bool] = None
+        self._last_episode_id: Optional[str] = None
 
     def set_signal_provider(self, provider: SignalDataProvider) -> None:
         """
@@ -239,6 +245,35 @@ class AbstractSignalWorker(AbstractWorker):
         if previous is None or previous == observed:
             return SignalEdge.NONE
         return SignalEdge.ENTERED if observed else SignalEdge.EXITED
+
+    def _derive_episode_edge(self, observed: Optional[str]) -> SignalEpisodeEdge:
+        """
+        Transition of the breaking-episode identity against the previous envelope.
+
+        Mirrors `_derive_edge`'s restraint exactly — no previous observation, a gap and an
+        overtaking pass all report NONE, for the same three reasons — and adds the case a
+        boolean cannot carry: one episode replaced by another with no quiet pass between,
+        which `is_breaking` reports as no change at all.
+
+        The identity itself is the producer's, and it is treated as OPAQUE: compared for
+        equality, never parsed. Its empty value means "no episode", which is why an empty id
+        read against a remembered one is a close rather than a change.
+
+        Args:
+            observed: The episode id in this envelope (empty outside an episode), None on a gap
+
+        Returns:
+            The transition, or NONE when there is none to report
+        """
+        if observed is None or self._evidence_regressed:
+            return SignalEpisodeEdge.NONE
+        previous = self._last_episode_id
+        self._last_episode_id = observed
+        if previous is None or previous == observed:
+            return SignalEpisodeEdge.NONE
+        if not previous:
+            return SignalEpisodeEdge.OPENED
+        return SignalEpisodeEdge.CLOSED if not observed else SignalEpisodeEdge.CHANGED
 
     def should_refresh(self, tick: TickData) -> bool:
         """

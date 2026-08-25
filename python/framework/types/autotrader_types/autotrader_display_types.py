@@ -163,7 +163,8 @@ class SignalTransportStats:
     Args:
         configured: False in a mounted session — then the panel says so instead of
             rendering an idle transport that was never meant to run
-        state: Transport condition — 'mounted' / 'live' / 'degraded' / 'error'
+        state: Transport condition — 'mounted' / 'live' / 'degraded' / 'error' /
+            'unauthorized' / 'contract'
         source: The signal source being consumed
         last_seq: Position of the newest envelope received ('' era: None)
         stream_epoch: Series generation of that envelope
@@ -171,6 +172,9 @@ class SignalTransportStats:
         envelopes_received: New envelopes accepted this session
         degraded_responses: Times the producer could not serve from its store
         transport_errors: Times the transport itself failed
+        contract_errors: Times the producer answered but we could not read the envelope —
+            counted apart from transport_errors on purpose, because blaming their
+            infrastructure for our own schema is a diagnosis sent to the wrong system
         tape: Bounded, newest-last transport events
         total_events: Events emitted over the session (the tape shows the tail)
         health: Which producer journal the envelopes come from — the one fact no
@@ -186,6 +190,7 @@ class SignalTransportStats:
     envelopes_received: int = 0
     degraded_responses: int = 0
     transport_errors: int = 0
+    contract_errors: int = 0
     tape: List[SignalTransportEvent] = field(default_factory=list)
     total_events: int = 0
     health: SignalHealthStatus = field(default_factory=SignalHealthStatus)
