@@ -13,12 +13,15 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import MagicMock
 
-
 from python.framework.signal_data.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.signal_inbox import SignalInbox
 from python.framework.signal_data.signal_poll_source import SignalPollSource
 from python.framework.types.config_types.sentiment_config_types import (
-    SentimentHealthConfig, SentimentPollConfig)
+    ActiveProducer,
+    ResolvedCredential,
+    SentimentHealthConfig,
+    SentimentPollConfig,
+)
 from python.framework.types.decision_logic_types import AwarenessLevel
 from python.framework.types.signal_data_types import SignalHealthStatus
 
@@ -94,13 +97,31 @@ class _Stub:
         return f'http://127.0.0.1:{self.server.server_port}'
 
 
+def producer_at(base_url: str, token: str = '') -> ActiveProducer:
+    """
+    An active endpoint pointed at a stub, with the credential already resolved.
+
+    Args:
+        base_url: Address the stub listens on
+        token: Bearer token; empty means send no Authorization header
+
+    Returns:
+        The endpoint the transport talks to
+    """
+    return ActiveProducer(
+        name='test',
+        base_url=base_url,
+        credential=ResolvedCredential(token=token, source='tests (in-memory)'))
+
+
 def build(stub, inbox, token: str = '', health_probe=None) -> SignalPollSource:
     """A poll source pointed at the stub."""
     return SignalPollSource(
         config=SentimentPollConfig(
-            enabled=True, base_url=stub.base_url, pipeline_id='crypto_sentiment',
+            enabled=True, pipeline_id='crypto_sentiment',
             interval_s=0.05, request_timeout_s=3.0, degraded_backoff_s=0.05),
-        signal_kind=SIGNAL_KIND, inbox=inbox, logger=MagicMock(), api_token=token,
+        producer=producer_at(stub.base_url, token),
+        signal_kind=SIGNAL_KIND, inbox=inbox, logger=MagicMock(),
         health_probe=health_probe)
 
 
@@ -285,8 +306,9 @@ class TestLifecycle:
         inbox = SignalInbox()
         source = SignalPollSource(
             config=SentimentPollConfig(
-                enabled=True, base_url='http://127.0.0.1:9', pipeline_id='crypto_sentiment',
+                enabled=True, pipeline_id='crypto_sentiment',
                 interval_s=0.05, request_timeout_s=1.0),
+            producer=producer_at('http://127.0.0.1:9'),
             signal_kind=SIGNAL_KIND, inbox=inbox, logger=MagicMock())
         source.start()
         source.stop()

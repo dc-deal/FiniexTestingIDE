@@ -4,7 +4,7 @@ Deep merging utility for multi-level config inheritance
 """
 
 import copy
-from typing import Dict, Any
+from typing import Any, Dict
 
 from python.framework.utils.config_merge_utils import deep_merge
 

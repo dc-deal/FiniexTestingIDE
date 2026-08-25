@@ -94,7 +94,7 @@ class KrakenOhlcBarFetcher:
         bars_data = self._extract_bars_data(data, pair)
         if bars_data is None:
             self._log_warning(
-                f"No OHLC data returned for {pair} {timeframe}"
+                f'No OHLC data returned for {pair} {timeframe}'
             )
             return []
 
@@ -134,7 +134,7 @@ class KrakenOhlcBarFetcher:
         Returns:
             API result dict
         """
-        url = f"{self.API_BASE}/0/public/OHLC"
+        url = f'{self.API_BASE}/0/public/OHLC'
         params = {
             'pair': pair,
             'interval': interval,
@@ -147,7 +147,7 @@ class KrakenOhlcBarFetcher:
         data = response.json()
         errors = data.get('error', [])
         if errors:
-            raise ConnectionError(f"Kraken OHLC API error: {errors}")
+            raise ConnectionError(f'Kraken OHLC API error: {errors}')
 
         return data.get('result', {})
 

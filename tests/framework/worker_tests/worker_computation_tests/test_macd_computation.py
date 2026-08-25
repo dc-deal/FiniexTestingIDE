@@ -17,11 +17,10 @@ Key implementation details (verified from source):
 
 import numpy as np
 import pytest
-
-from python.framework.workers.core.macd_worker import MacdWorker
-from python.framework.types.worker_types import WorkerResult
-
 from conftest import make_bars, make_tick
+
+from python.framework.types.worker_types import WorkerResult
+from python.framework.workers.core.macd_worker import MacdWorker
 
 
 class TestEMACalculation:
@@ -34,12 +33,12 @@ class TestEMACalculation:
     def _make_macd_worker(self, mock_logger):
         """Helper: create a MACD worker for EMA access."""
         return MacdWorker(
-            name="test_macd",
+            name='test_macd',
             parameters={
-                "periods": {"M5": 10},
-                "fast_period": 3,
-                "slow_period": 5,
-                "signal_period": 2,
+                'periods': {'M5': 10},
+                'fast_period': 3,
+                'slow_period': 5,
+                'signal_period': 2,
             },
             logger=mock_logger,
         )
@@ -116,12 +115,12 @@ class TestMACDStructure:
     def test_macd_returns_worker_result(self, mock_logger):
         """MACD compute() must return a WorkerResult."""
         worker = MacdWorker(
-            name="test_macd",
+            name='test_macd',
             parameters={
-                "periods": {"M5": 10},
-                "fast_period": 3,
-                "slow_period": 5,
-                "signal_period": 2,
+                'periods': {'M5': 10},
+                'fast_period': 3,
+                'slow_period': 5,
+                'signal_period': 2,
             },
             logger=mock_logger,
         )
@@ -129,19 +128,19 @@ class TestMACDStructure:
         bars = make_bars([100, 102, 104, 103, 105, 107, 106, 108, 110, 109])
         tick = make_tick(bid=109.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={'M5': bars}, current_bars={})
 
         assert isinstance(result, WorkerResult)
 
     def test_macd_output_keys(self, mock_logger):
         """Result outputs dict must contain schema-declared keys."""
         worker = MacdWorker(
-            name="test_macd",
+            name='test_macd',
             parameters={
-                "periods": {"M5": 10},
-                "fast_period": 3,
-                "slow_period": 5,
-                "signal_period": 2,
+                'periods': {'M5': 10},
+                'fast_period': 3,
+                'slow_period': 5,
+                'signal_period': 2,
             },
             logger=mock_logger,
         )
@@ -149,7 +148,7 @@ class TestMACDStructure:
         bars = make_bars([100, 102, 104, 103, 105, 107, 106, 108, 110, 109])
         tick = make_tick(bid=109.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={'M5': bars}, current_bars={})
 
         expected_keys = {'macd', 'signal', 'histogram', 'fast_ema', 'slow_ema', 'bars_used'}
         assert set(result.outputs.keys()) == expected_keys
@@ -157,12 +156,12 @@ class TestMACDStructure:
     def test_macd_values_are_float(self, mock_logger):
         """All MACD values must be Python floats (not numpy)."""
         worker = MacdWorker(
-            name="test_macd",
+            name='test_macd',
             parameters={
-                "periods": {"M5": 10},
-                "fast_period": 3,
-                "slow_period": 5,
-                "signal_period": 2,
+                'periods': {'M5': 10},
+                'fast_period': 3,
+                'slow_period': 5,
+                'signal_period': 2,
             },
             logger=mock_logger,
         )
@@ -170,7 +169,7 @@ class TestMACDStructure:
         bars = make_bars([100, 102, 104, 103, 105, 107, 106, 108, 110, 109])
         tick = make_tick(bid=109.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={'M5': bars}, current_bars={})
 
         for key, value in result.outputs.items():
             assert isinstance(value, float), (
@@ -180,12 +179,12 @@ class TestMACDStructure:
     def test_macd_bars_used_output(self, mock_logger):
         """bars_used output must match input bar count."""
         worker = MacdWorker(
-            name="test_macd",
+            name='test_macd',
             parameters={
-                "periods": {"M5": 10},
-                "fast_period": 3,
-                "slow_period": 5,
-                "signal_period": 2,
+                'periods': {'M5': 10},
+                'fast_period': 3,
+                'slow_period': 5,
+                'signal_period': 2,
             },
             logger=mock_logger,
         )
@@ -193,7 +192,7 @@ class TestMACDStructure:
         bars = make_bars([100, 102, 104, 103, 105, 107, 106, 108, 110, 109])
         tick = make_tick(bid=109.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={'M5': bars}, current_bars={})
 
         assert result.outputs['bars_used'] == 10
 
@@ -208,12 +207,12 @@ class TestMACDDirection:
         Fast EMA reacts quicker to the uptrend, overshooting slow EMA.
         """
         worker = MacdWorker(
-            name="test_macd",
+            name='test_macd',
             parameters={
-                "periods": {"M5": 10},
-                "fast_period": 3,
-                "slow_period": 5,
-                "signal_period": 2,
+                'periods': {'M5': 10},
+                'fast_period': 3,
+                'slow_period': 5,
+                'signal_period': 2,
             },
             logger=mock_logger,
         )
@@ -223,12 +222,12 @@ class TestMACDDirection:
         bars = make_bars(closes)
         tick = make_tick(bid=109.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={'M5': bars}, current_bars={})
 
-        assert result.outputs["macd"] > 0, (
+        assert result.outputs['macd'] > 0, (
             f"Rising prices should produce positive MACD, got {result.outputs['macd']}"
         )
-        assert result.outputs["fast_ema"] > result.outputs["slow_ema"]
+        assert result.outputs['fast_ema'] > result.outputs['slow_ema']
 
     def test_macd_falling_prices_negative(self, mock_logger):
         """
@@ -237,12 +236,12 @@ class TestMACDDirection:
         Fast EMA drops quicker, undershooting slow EMA.
         """
         worker = MacdWorker(
-            name="test_macd",
+            name='test_macd',
             parameters={
-                "periods": {"M5": 10},
-                "fast_period": 3,
-                "slow_period": 5,
-                "signal_period": 2,
+                'periods': {'M5': 10},
+                'fast_period': 3,
+                'slow_period': 5,
+                'signal_period': 2,
             },
             logger=mock_logger,
         )
@@ -252,22 +251,22 @@ class TestMACDDirection:
         bars = make_bars(closes)
         tick = make_tick(bid=100.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={'M5': bars}, current_bars={})
 
-        assert result.outputs["macd"] < 0, (
+        assert result.outputs['macd'] < 0, (
             f"Falling prices should produce negative MACD, got {result.outputs['macd']}"
         )
-        assert result.outputs["fast_ema"] < result.outputs["slow_ema"]
+        assert result.outputs['fast_ema'] < result.outputs['slow_ema']
 
     def test_macd_histogram_equals_macd_minus_signal(self, mock_logger):
         """Histogram must always equal MACD line minus Signal line."""
         worker = MacdWorker(
-            name="test_macd",
+            name='test_macd',
             parameters={
-                "periods": {"M5": 10},
-                "fast_period": 3,
-                "slow_period": 5,
-                "signal_period": 2,
+                'periods': {'M5': 10},
+                'fast_period': 3,
+                'slow_period': 5,
+                'signal_period': 2,
             },
             logger=mock_logger,
         )
@@ -276,7 +275,7 @@ class TestMACDDirection:
         bars = make_bars(closes)
         tick = make_tick(bid=109.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={'M5': bars}, current_bars={})
 
-        expected_histogram = result.outputs["macd"] - result.outputs["signal"]
-        assert result.outputs["histogram"] == pytest.approx(expected_histogram, abs=0.0001)
+        expected_histogram = result.outputs['macd'] - result.outputs['signal']
+        assert result.outputs['histogram'] == pytest.approx(expected_histogram, abs=0.0001)

@@ -29,7 +29,6 @@ from tests.shared.fixture_helpers import (
     run_scenario,
 )
 
-
 SPOT_SELL_CONFIG = 'backtesting/spot_sell_test.json'
 
 
@@ -81,8 +80,8 @@ class TestSpotSellWithBalance:
             if r.order_id.startswith('guard_')
         ]
         assert len(guard_rejections) == 0, (
-            f"Expected no guard rejections on spot, "
-            f"got {len(guard_rejections)}: {[r.rejection_reason for r in guard_rejections]}"
+            f'Expected no guard rejections on spot, '
+            f'got {len(guard_rejections)}: {[r.rejection_reason for r in guard_rejections]}'
         )
 
     def test_at_least_two_orders_executed(
@@ -95,8 +94,8 @@ class TestSpotSellWithBalance:
             if r.status == OrderStatus.EXECUTED
         ]
         assert len(executed) >= 2, (
-            f"Expected at least 2 executed orders (BUY + SELL), "
-            f"got {len(executed)}"
+            f'Expected at least 2 executed orders (BUY + SELL), '
+            f'got {len(executed)}'
         )
 
 
@@ -113,8 +112,8 @@ class TestSpotSellInsufficientBalance:
             if r.rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
         ]
         assert len(insufficient) >= 1, (
-            f"Expected at least 1 INSUFFICIENT_FUNDS rejection for "
-            f"SELL without base balance, got {len(insufficient)}"
+            f'Expected at least 1 INSUFFICIENT_FUNDS rejection for '
+            f'SELL without base balance, got {len(insufficient)}'
         )
 
     def test_execution_stats_counts_rejection(
@@ -123,6 +122,6 @@ class TestSpotSellInsufficientBalance:
     ):
         """The INSUFFICIENT_FUNDS rejection must appear in stats."""
         assert spot_sell_execution_stats.orders_rejected >= 1, (
-            f"Expected at least 1 rejection in execution_stats, "
-            f"got {spot_sell_execution_stats.orders_rejected}"
+            f'Expected at least 1 rejection in execution_stats, '
+            f'got {spot_sell_execution_stats.orders_rejected}'
         )

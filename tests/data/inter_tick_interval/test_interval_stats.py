@@ -10,18 +10,15 @@ Covers:
 - Integration with ProfilingData.from_dicts()
 """
 
-import pytest
-import numpy as np
 from collections import defaultdict
+
+import numpy as np
+import pytest
 
 from python.framework.types.scenario_types.scenario_set_performance_types import (
     ProfilingData,
 )
-from python.framework.types.performance_types.performance_metrics_types import (
-    InterTickIntervalStats,
-)
 from tests.data.inter_tick_interval.conftest import make_intervals_from_timestamps, utc
-
 
 # =============================================================================
 # STATS COMPUTATION

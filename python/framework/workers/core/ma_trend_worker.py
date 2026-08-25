@@ -7,14 +7,13 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
 from python.framework.utils.trading_math.moving_average import moving_average
 from python.framework.utils.trading_math.normalizer import Normalizer
-from python.framework.workers.abstract_indicator_worker import \
-    AbstractIndicatorWorker
+from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 
 
 class MaTrendWorker(AbstractIndicatorWorker):
@@ -54,13 +53,13 @@ class MaTrendWorker(AbstractIndicatorWorker):
                 param_type=str,
                 default='ema',
                 choices=('sma', 'ema'),
-                description="Moving-average type for the trend line (sma or ema)"
+                description='Moving-average type for the trend line (sma or ema)'
             ),
             'neutral_band': InputParamDef(
                 param_type=float,
                 default=0.1,
                 min_val=0.0,
-                description="Slope magnitude (volatility units/bar) below which the trend is NEUTRAL"
+                description='Slope magnitude (volatility units/bar) below which the trend is NEUTRAL'
             ),
         }
 

@@ -144,9 +144,9 @@ class ActivityVolumeProvider:
             Label string (e.g., "Ticks", "Volume")
         """
         if self._is_volume_based(market_type):
-            return "Volume"
+            return 'Volume'
         else:
-            return "Ticks"
+            return 'Ticks'
 
     def get_metric_name(self, market_type: Union[MarketType, str]) -> str:
         """
@@ -159,9 +159,9 @@ class ActivityVolumeProvider:
             Field name (e.g., "tick_count", "volume")
         """
         if self._is_volume_based(market_type):
-            return "volume"
+            return 'volume'
         else:
-            return "tick_count"
+            return 'tick_count'
 
     def get_activity_summary(
         self,
@@ -202,14 +202,14 @@ class ActivityVolumeProvider:
         if self._is_volume_based(market_type):
             # Volume: show with decimals
             if value >= 1_000_000:
-                return f"{value/1_000_000:.2f}M"
+                return f'{value/1_000_000:.2f}M'
             elif value >= 1_000:
-                return f"{value/1_000:.2f}K"
+                return f'{value/1_000:.2f}K'
             else:
-                return f"{value:.2f}"
+                return f'{value:.2f}'
         else:
             # Ticks: show as integer with thousands separator
-            return f"{int(value):,}"
+            return f'{int(value):,}'
 
     def is_volume_based(self, market_type: Union[MarketType, str]) -> bool:
         """

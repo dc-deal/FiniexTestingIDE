@@ -10,28 +10,31 @@ import time
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
+
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.types.config_types.market_config_types import PipMode
-from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.broker_types import BrokerSpecification, BrokerType, FeeType, SymbolSpecification
-from python.framework.types.market_types.market_data_types import TickData
-from python.framework.utils.trading_math.pip_math import derive_pip_size
 from python.framework.types.live_types.live_execution_types import BrokerResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
-from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
-from python.framework.types.trading_env_types.order_types import (
-    OrderCapabilities,
-    OrderType,
-    MarketOrder,
-    LimitOrder,
-    StopOrder,
-    StopLimitOrder,
-    IcebergOrder,
-    OrderResult,
-    OrderDirection,
-    RejectionReason,
-    create_rejection_result
+from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
+from python.framework.types.trading_env_types.broker_types import (
+    BrokerSpecification,
+    BrokerType,
+    FeeType,
+    SymbolSpecification,
 )
+from python.framework.types.trading_env_types.order_types import (
+    IcebergOrder,
+    LimitOrder,
+    MarketOrder,
+    OrderCapabilities,
+    OrderDirection,
+    OrderType,
+    StopLimitOrder,
+    StopOrder,
+)
+from python.framework.utils.trading_math.pip_math import derive_pip_size
 
 
 class AbstractAdapter(ABC):
@@ -159,7 +162,7 @@ class AbstractAdapter(ABC):
             )
         if len(symbols) == 0:
             raise ValueError(
-                "❌ No symbols configured in broker config"
+                '❌ No symbols configured in broker config'
             )
 
         # Leverage-dependent validation
@@ -170,8 +173,8 @@ class AbstractAdapter(ABC):
             missing = [f for f in margin_fields if f not in broker_info]
             if missing:
                 raise ValueError(
-                    f"❌ Broker has leverage={leverage} but missing margin fields: {missing}\n"
-                    f"   When leverage > 1, these fields are mandatory in broker_info"
+                    f'❌ Broker has leverage={leverage} but missing margin fields: {missing}\n'
+                    f'   When leverage > 1, these fields are mandatory in broker_info'
                 )
 
         # Validate each symbol has required fields
@@ -330,7 +333,7 @@ class AbstractAdapter(ABC):
         Override in subclass if broker supports stop orders.
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not support stop orders"
+            f'{self.get_broker_name()} does not support stop orders'
         )
 
     def create_stop_limit_order(
@@ -349,7 +352,7 @@ class AbstractAdapter(ABC):
         Default implementation raises NotImplementedError.
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not support stop-limit orders"
+            f'{self.get_broker_name()} does not support stop-limit orders'
         )
 
     def create_iceberg_order(
@@ -368,7 +371,7 @@ class AbstractAdapter(ABC):
         Default implementation raises NotImplementedError.
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not support iceberg orders"
+            f'{self.get_broker_name()} does not support iceberg orders'
         )
 
     # ============================================
@@ -449,7 +452,7 @@ class AbstractAdapter(ABC):
             Adapter-specific payload dict (passed to _do_request_submit)
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _build_submit_payload"
+            f'{self.get_broker_name()} does not implement _build_submit_payload'
         )
 
     def _build_query_payload(self, broker_ref: str) -> Dict[str, Any]:
@@ -465,7 +468,7 @@ class AbstractAdapter(ABC):
             Adapter-specific payload dict (passed to _do_request_query)
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _build_query_payload"
+            f'{self.get_broker_name()} does not implement _build_query_payload'
         )
 
     def _build_cancel_payload(self, broker_ref: str) -> Dict[str, Any]:
@@ -481,7 +484,7 @@ class AbstractAdapter(ABC):
             Adapter-specific payload dict (passed to _do_request_cancel)
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _build_cancel_payload"
+            f'{self.get_broker_name()} does not implement _build_cancel_payload'
         )
 
     def _build_modify_payload(
@@ -508,7 +511,7 @@ class AbstractAdapter(ABC):
             Adapter-specific payload dict (passed to _do_request_modify)
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _build_modify_payload"
+            f'{self.get_broker_name()} does not implement _build_modify_payload'
         )
 
     def _build_trades_query_payload(self, broker_ref: str) -> Dict[str, Any]:
@@ -526,7 +529,7 @@ class AbstractAdapter(ABC):
             Adapter-specific payload dict (passed to _do_request_trades_query)
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _build_trades_query_payload"
+            f'{self.get_broker_name()} does not implement _build_trades_query_payload'
         )
 
     # --- Transport (broker-side I/O, raises on error) ---
@@ -545,7 +548,7 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _do_request_submit"
+            f'{self.get_broker_name()} does not implement _do_request_submit'
         )
 
     def _do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -559,7 +562,7 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _do_request_query"
+            f'{self.get_broker_name()} does not implement _do_request_query'
         )
 
     def _do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -573,7 +576,7 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _do_request_cancel"
+            f'{self.get_broker_name()} does not implement _do_request_cancel'
         )
 
     def _do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -587,7 +590,7 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _do_request_modify"
+            f'{self.get_broker_name()} does not implement _do_request_modify'
         )
 
     def _do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -601,7 +604,7 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _do_request_trades_query"
+            f'{self.get_broker_name()} does not implement _do_request_trades_query'
         )
 
     # --- Parse responses (pure) ---
@@ -624,7 +627,7 @@ class AbstractAdapter(ABC):
             BrokerResponse with broker_ref and status
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _parse_submit_response"
+            f'{self.get_broker_name()} does not implement _parse_submit_response'
         )
 
     def _parse_query_response(
@@ -647,7 +650,7 @@ class AbstractAdapter(ABC):
             BrokerResponse with current status
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _parse_query_response"
+            f'{self.get_broker_name()} does not implement _parse_query_response'
         )
 
     def _parse_cancel_response(
@@ -670,7 +673,7 @@ class AbstractAdapter(ABC):
             BrokerResponse with cancellation status
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _parse_cancel_response"
+            f'{self.get_broker_name()} does not implement _parse_cancel_response'
         )
 
     def _parse_modify_response(
@@ -695,7 +698,7 @@ class AbstractAdapter(ABC):
             BrokerResponse with (potentially new) broker_ref
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _parse_modify_response"
+            f'{self.get_broker_name()} does not implement _parse_modify_response'
         )
 
     def _parse_trades_query_response(
@@ -721,7 +724,7 @@ class AbstractAdapter(ABC):
             List of BrokerTrade records (empty list = no executions found / error)
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _parse_trades_query_response"
+            f'{self.get_broker_name()} does not implement _parse_trades_query_response'
         )
 
     # ============================================
@@ -775,7 +778,7 @@ class AbstractAdapter(ABC):
             Adapter-specific payload dict (passed to _do_request_openorders)
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _build_openorders_payload"
+            f'{self.get_broker_name()} does not implement _build_openorders_payload'
         )
 
     def _build_balance_payload(self) -> Dict[str, Any]:
@@ -786,7 +789,7 @@ class AbstractAdapter(ABC):
             Adapter-specific payload dict (passed to _do_request_balance)
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _build_balance_payload"
+            f'{self.get_broker_name()} does not implement _build_balance_payload'
         )
 
     def _build_openpositions_payload(self) -> Dict[str, Any]:
@@ -797,7 +800,7 @@ class AbstractAdapter(ABC):
             Adapter-specific payload dict (passed to _do_request_openpositions)
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _build_openpositions_payload"
+            f'{self.get_broker_name()} does not implement _build_openpositions_payload'
         )
 
     # --- Transport (broker-side I/O, raises on error) ---
@@ -813,7 +816,7 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _do_request_openorders"
+            f'{self.get_broker_name()} does not implement _do_request_openorders'
         )
 
     def _do_request_balance(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -827,7 +830,7 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _do_request_balance"
+            f'{self.get_broker_name()} does not implement _do_request_balance'
         )
 
     def _do_request_openpositions(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -841,7 +844,7 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _do_request_openpositions"
+            f'{self.get_broker_name()} does not implement _do_request_openpositions'
         )
 
     # --- Parse responses (pure) ---
@@ -857,7 +860,7 @@ class AbstractAdapter(ABC):
             List of BrokerOrder (empty list = none reported)
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _parse_openorders_response"
+            f'{self.get_broker_name()} does not implement _parse_openorders_response'
         )
 
     def _parse_balance_response(self, raw: Dict[str, Any]) -> Dict[str, float]:
@@ -871,7 +874,7 @@ class AbstractAdapter(ABC):
             Balance dict keyed by asset
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _parse_balance_response"
+            f'{self.get_broker_name()} does not implement _parse_balance_response'
         )
 
     def _parse_openpositions_response(self, raw: Dict[str, Any]) -> List[BrokerPosition]:
@@ -885,7 +888,7 @@ class AbstractAdapter(ABC):
             List of BrokerPosition (empty list = none reported / spot)
         """
         raise NotImplementedError(
-            f"{self.get_broker_name()} does not implement _parse_openpositions_response"
+            f'{self.get_broker_name()} does not implement _parse_openpositions_response'
         )
 
     # ============================================
@@ -1075,17 +1078,17 @@ class AbstractAdapter(ABC):
 
         # Check bounds
         if lots < min_lot:
-            return False, f"Lot size {lots} below minimum {min_lot}"
+            return False, f'Lot size {lots} below minimum {min_lot}'
 
         if lots > max_lot:
-            return False, f"Lot size {lots} exceeds maximum {max_lot}"
+            return False, f'Lot size {lots} exceeds maximum {max_lot}'
 
         # Check step compliance
         if lot_step > 0:
             remainder = (lots - min_lot) % lot_step
             # Handle floating point: remainder should be ~0 or ~lot_step
             if remainder > 1e-6 and (lot_step - remainder) > 1e-6:
-                return False, f"Lot size {lots} not aligned with step {lot_step}"
+                return False, f'Lot size {lots} not aligned with step {lot_step}'
 
         return True, None
 

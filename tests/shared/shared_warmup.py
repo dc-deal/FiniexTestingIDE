@@ -6,7 +6,7 @@ Used by: baseline, multi_position, margin_validation
 Import these classes into suite-specific test_warmup_validation.py files.
 """
 
-import pytest
+
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 
 
@@ -16,7 +16,7 @@ class TestWarmupValidation:
     def test_no_warmup_errors(self, backtesting_metadata: BacktestingMetadata):
         """Warmup validation should pass with no errors."""
         assert backtesting_metadata.warmup_errors == [], (
-            f"Warmup errors detected: {backtesting_metadata.warmup_errors}"
+            f'Warmup errors detected: {backtesting_metadata.warmup_errors}'
         )
 
     def test_warmup_errors_list_exists(self, backtesting_metadata: BacktestingMetadata):

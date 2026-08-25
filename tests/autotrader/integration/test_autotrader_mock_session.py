@@ -16,7 +16,8 @@ from python.configuration.autotrader.autotrader_config_loader import load_autotr
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.io.broker_report_io import read_broker_report
 from python.framework.reporting.store.report_store import IO_SUBDIR
-
+from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.run_outcome_types import RunOutcome
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'
 
@@ -57,14 +58,19 @@ class TestAutotraderMockSession:
             f"Expected normal shutdown, got '{result.shutdown_mode}'"
         )
 
+        # A normal shutdown must report success to whoever started the process (#372)
+        assert result.get_exit_code() == 0, (
+            f'Normal shutdown must exit 0, got {result.get_exit_code()}'
+        )
+
         # === All ticks processed ===
         assert result.ticks_processed == 29782, (
-            f"Expected 29782 ticks, got {result.ticks_processed}"
+            f'Expected 29782 ticks, got {result.ticks_processed}'
         )
 
         # === No clipping in replay mode ===
         assert result.ticks_clipped == 0, (
-            f"Expected 0 clipped ticks in replay mode, got {result.ticks_clipped}"
+            f'Expected 0 clipped ticks in replay mode, got {result.ticks_clipped}'
         )
 
         # === Clean session — no unexpected warnings or errors ===
@@ -74,10 +80,10 @@ class TestAutotraderMockSession:
             if 'positions remain open' not in w
         ]
         assert len(unexpected_warnings) == 0, (
-            f"Unexpected warnings: {unexpected_warnings[:5]}"
+            f'Unexpected warnings: {unexpected_warnings[:5]}'
         )
         assert len(result.error_messages) == 0, (
-            f"Unexpected errors: {result.error_messages[:5]}"
+            f'Unexpected errors: {result.error_messages[:5]}'
         )
 
         # === Decision logic produced trades ===
@@ -95,7 +101,7 @@ class TestAutotraderMockSession:
         """Verify that all expected log files are created."""
         _, run_dir = mock_session
 
-        assert run_dir.exists(), f"Run directory not created: {run_dir}"
+        assert run_dir.exists(), f'Run directory not created: {run_dir}'
         assert (run_dir / 'autotrader_global.log').exists()
         assert (run_dir / 'autotrader_summary.log').exists()
         assert (run_dir / 'session_logs').is_dir()
@@ -149,8 +155,8 @@ class TestProfileLoader:
         tick_source = load_autotrader_config(str(profile_path)).tick_source
         for key, expected in profile['tick_source'].items():
             assert getattr(tick_source, key) == expected, (
-                f"tick_source.{key} not parsed: expected {expected!r}, "
-                f"got {getattr(tick_source, key)!r}"
+                f'tick_source.{key} not parsed: expected {expected!r}, '
+                f'got {getattr(tick_source, key)!r}'
             )
 
     def test_staleness_contract_fields_parsed(self, tmp_path):
@@ -173,3 +179,51 @@ class TestProfileLoader:
         default_config = load_autotrader_config(MOCK_PROFILE)
         assert default_config.execution.market_data_stale_after_s == 300.0
         assert default_config.order_guard.block_stale_market_data is True
+
+
+class TestSessionExitCode:
+    """The run outcome reaches the process exit code (#372)."""
+
+    def test_framework_emergency_exits_two(self):
+        """An emergency the operator did not initiate is a failed run."""
+        result = AutoTraderResult(shutdown_mode='emergency',
+                                  emergency_reason='tick loop crashed')
+        assert result.get_outcome() == RunOutcome.FAILED
+        assert result.get_exit_code() == 2
+
+    def test_normal_shutdown_exits_zero(self):
+        """A normal shutdown reports success."""
+        assert AutoTraderResult(shutdown_mode='normal').get_exit_code() == 0
+
+    def test_operator_interrupt_exits_zero(self):
+        """
+        A deliberate Ctrl+C is not a failed run.
+
+        The SIGINT handler sets shutdown_mode='emergency' itself, so operator_interrupted
+        is the only thing separating a deliberate stop from a crash.
+        """
+        result = AutoTraderResult(shutdown_mode='emergency', operator_interrupted=True)
+        assert result.get_outcome() == RunOutcome.SUCCESS
+        assert result.get_exit_code() == 0
+
+    def test_safety_escalation_without_a_reason_still_fails(self):
+        """
+        A #348 EMERGENCY session-end escalation raises an emergency with no reason.
+
+        Inferring 'the operator did it' from a missing reason would let the safety layer
+        fire and still report success — the exact blindness this issue removes.
+        """
+        result = AutoTraderResult(shutdown_mode='emergency')
+        assert result.get_outcome() == RunOutcome.FAILED
+        assert result.get_exit_code() == 2
+
+    def test_logged_errors_regrade_a_normal_run(self):
+        """
+        The §35 asymmetry, closed: a session that logged errors is not a clean run.
+
+        This replaces the pinned assertion that held the old behaviour in place.
+        """
+        result = AutoTraderResult(shutdown_mode='normal',
+                                  error_messages=['something went wrong'])
+        assert result.get_outcome() == RunOutcome.FINISHED_WITH_ERRORS
+        assert result.get_exit_code() == 3

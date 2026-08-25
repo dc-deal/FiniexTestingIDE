@@ -9,7 +9,6 @@ from typing import Any, Dict, Optional, Set, Type
 
 from pydantic import BaseModel, ValidationError
 
-
 _CONFIG_ISOLATION_ENV: str = 'FINIEX_CONFIG_ISOLATION'
 
 
@@ -147,7 +146,7 @@ def check_unknown_keys(
     """
     unknown = set(config.keys()) - known - _CONFIG_META_KEYS
     if unknown:
-        raise ValueError(f"Unknown keys in {location}: {unknown} — check for typos or add to known keys")
+        raise ValueError(f'Unknown keys in {location}: {unknown} — check for typos or add to known keys')
 
 
 def validate_merged_config(
@@ -171,4 +170,4 @@ def validate_merged_config(
     try:
         model_class.model_validate(config)
     except ValidationError as e:
-        raise ValueError(f"Type error in {location}: {e}") from e
+        raise ValueError(f'Type error in {location}: {e}') from e

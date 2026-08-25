@@ -10,17 +10,24 @@ run required), built into RunUnits — the units must tag the unit name correctl
 from datetime import datetime, timezone
 
 from python.framework.reporting.builders.run_unit import (
-    run_units_from_batch, run_units_from_session)
-from python.framework.reporting.builders.trade_history_report_builder import build_trade_history_report
+    run_units_from_batch,
+    run_units_from_session,
+)
+from python.framework.reporting.builders.trade_history_report_builder import (
+    build_trade_history_report,
+)
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
-    CloseReason, CloseType, EntryType, TradeRecord)
+    CloseReason,
+    CloseType,
+    EntryType,
+    TradeRecord,
+)
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
-
 
 _T0 = datetime(2025, 10, 13, 8, 0, 0, tzinfo=timezone.utc)
 

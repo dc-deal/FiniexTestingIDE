@@ -13,17 +13,15 @@ No real HTTP calls; all external I/O is patched or replaced with tmp_path files.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from python.configuration.autotrader.kraken_config_fetcher import (
     KrakenConfigFetcher,
     _merge_with_cache,
 )
-
 
 # =============================================================================
 # HELPERS

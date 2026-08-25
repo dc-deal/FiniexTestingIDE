@@ -19,7 +19,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderSide,
     OrderType,
 )
-
 from tests.simulation.trade_emission.conftest import feed_sim_tick
 
 

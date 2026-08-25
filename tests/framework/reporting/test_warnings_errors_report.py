@@ -13,15 +13,22 @@ import re
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 
-from python.framework.reporting.console.warnings_summary import WarningsSummary
 from python.framework.reporting.builders.warnings_errors_report_builder import (
-    build_warnings_errors_report_from_batch, build_warnings_errors_report_from_session)
+    build_warnings_errors_report_from_batch,
+    build_warnings_errors_report_from_session,
+)
+from python.framework.reporting.console.warnings_summary import WarningsSummary
 from python.framework.types.api.report_types import (
-    UnitErrorRow, WarningRow, WarningsErrorsOutcome, WarningsErrorsReport)
+    UnitErrorRow,
+    WarningRow,
+    WarningsErrorsOutcome,
+    WarningsErrorsReport,
+)
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.log_level import LogLevel
-from python.framework.types.process_data_types import ProcessResult
+from python.framework.types.process_data_types import LOGGED_ERRORS_TYPE, ProcessResult
+from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult
 from python.framework.utils.console_renderer import ConsoleRenderer
@@ -100,6 +107,30 @@ class TestBuildFromBatch:
         assert report.warnings == [] and report.errors == []
         assert report.outcome.failed_count == 0
 
+    def test_outcome_carries_the_canonical_grading(self):
+        """
+        The model carries the grading itself (#372), not only the counts.
+
+        Without it every surface downstream — artifact, store, API — would have to decide
+        again what the counts mean, which is the second derivation the pipeline forbids.
+        """
+        clean = _batch([_result('ok', 0)], [_scenario('ok', 0, 'BTCUSD')])
+        assert build_warnings_errors_report_from_batch(clean).outcome.run_outcome == \
+            RunOutcome.SUCCESS.value
+
+        crashed = _batch(
+            [_result('bad', 0, success=False, error_type='ValueError', error_message='boom')],
+            [_scenario('bad', 0, 'BTCUSD')])
+        assert build_warnings_errors_report_from_batch(crashed).outcome.run_outcome == \
+            RunOutcome.FAILED.value
+
+        pot = _batch(
+            [_result('noisy', 0, success=False, error_type=LOGGED_ERRORS_TYPE,
+                     error_message='Scenario logged 2 ERROR(s)')],
+            [_scenario('noisy', 0, 'BTCUSD')])
+        assert build_warnings_errors_report_from_batch(pot).outcome.run_outcome == \
+            RunOutcome.FINISHED_WITH_ERRORS.value
+
 
 class TestBuildFromSession:
     def test_live_warnings_and_errors(self):
@@ -119,6 +150,21 @@ class TestBuildFromSession:
         report = build_warnings_errors_report_from_session(AutoTraderResult(), 'p', 'BTCUSD')
         assert report.warnings == [] and report.errors == []
         assert report.outcome.shutdown_mode == 'normal' and report.outcome.failed_count == 0
+
+    def test_live_outcome_carries_the_canonical_grading(self):
+        """The live half stamps the same field, so both pipelines answer identically."""
+        clean = build_warnings_errors_report_from_session(AutoTraderResult(), 'p', 'BTCUSD')
+        assert clean.outcome.run_outcome == RunOutcome.SUCCESS.value
+
+        emergency = build_warnings_errors_report_from_session(
+            AutoTraderResult(shutdown_mode='emergency', emergency_reason='balance breach'),
+            'p', 'BTCUSD')
+        assert emergency.outcome.run_outcome == RunOutcome.FAILED.value
+
+        pot = build_warnings_errors_report_from_session(
+            AutoTraderResult(shutdown_mode='normal', error_messages=['order rejected']),
+            'p', 'BTCUSD')
+        assert pot.outcome.run_outcome == RunOutcome.FINISHED_WITH_ERRORS.value
 
 
 class TestRender:

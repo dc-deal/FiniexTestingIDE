@@ -9,13 +9,13 @@ Covers:
 - Unknown broker_type raises ValueError
 """
 
+from unittest.mock import patch
+
 import pytest
 from pydantic import ValidationError
-from unittest.mock import patch
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.config_types.market_config_types import ConfigMode
-
 
 _CONFIG_STATIC_AND_DYNAMIC = {
     'version': '1.0',
@@ -91,7 +91,7 @@ class TestConfigModeParsing:
                 },
             ],
         }
-        with pytest.raises(ValidationError, match="config_mode"):
+        with pytest.raises(ValidationError, match='config_mode'):
             _make_manager(config)
 
     def test_get_config_mode_getter(self):
@@ -102,5 +102,5 @@ class TestConfigModeParsing:
 
     def test_unknown_broker_raises(self):
         manager = _make_manager(_CONFIG_STATIC_AND_DYNAMIC)
-        with pytest.raises(ValueError, match="Unknown broker_type"):
+        with pytest.raises(ValueError, match='Unknown broker_type'):
             manager.get_config_mode('unknown_broker')

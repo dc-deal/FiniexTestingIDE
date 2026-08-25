@@ -3,7 +3,9 @@ FiniexTestingIDE - Console Logging Configuration Types
 Pydantic models for the console_logging section of app_config.json.
 """
 from typing import Optional
+
 from pydantic import BaseModel
+
 from python.framework.types.log_level import LogLevel
 
 
@@ -102,8 +104,8 @@ class ConsoleLoggingConfig(BaseModel):
     def __repr__(self) -> str:
         """Debug representation"""
         return (
-            f"LoggingConfig("
-            f"console={self.enabled}/{self.log_level}, "
-            f"scenario={self.scenario_enabled}/{self.scenario_log_level}, "
-            f"system_info={self.scenario.write_system_info})"
+            f'LoggingConfig('
+            f'console={self.enabled}/{self.log_level}, '
+            f'scenario={self.scenario_enabled}/{self.scenario_log_level}, '
+            f'system_info={self.scenario.write_system_info})'
         )

@@ -7,8 +7,7 @@ NOTE: margin_validation has its own execution tests (rejections expected).
 Import these classes into suite-specific test_trade_execution.py files.
 """
 
-import pytest
-from typing import Dict, Any, List
+
 
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
@@ -25,8 +24,8 @@ class TestTradeExecution:
     ):
         """Expected trades should match config sequence length."""
         assert len(backtesting_metadata.expected_trades) == len(trade_sequence), (
-            f"Expected {len(trade_sequence)} trades, "
-            f"got {len(backtesting_metadata.expected_trades)}"
+            f'Expected {len(trade_sequence)} trades, '
+            f'got {len(backtesting_metadata.expected_trades)}'
         )
 
     def test_executed_trade_count(
@@ -36,22 +35,22 @@ class TestTradeExecution:
     ):
         """Executed trades should match expected count."""
         assert portfolio_stats.total_trades == len(trade_sequence), (
-            f"Expected {len(trade_sequence)} executed trades, "
-            f"got {portfolio_stats.total_trades}"
+            f'Expected {len(trade_sequence)} executed trades, '
+            f'got {portfolio_stats.total_trades}'
         )
 
     def test_no_rejected_orders(self, tick_loop_results: ProcessTickLoopResult):
         """All orders should be executed without rejection."""
         exec_stats = tick_loop_results.execution_stats
         assert exec_stats.orders_rejected == 0, (
-            f"Orders rejected: {exec_stats.orders_rejected}"
+            f'Orders rejected: {exec_stats.orders_rejected}'
         )
 
     def test_orders_sent_equals_executed(self, tick_loop_results: ProcessTickLoopResult):
         """All sent orders should be executed."""
         exec_stats = tick_loop_results.execution_stats
         assert exec_stats.orders_sent == exec_stats.orders_executed, (
-            f"Sent: {exec_stats.orders_sent}, Executed: {exec_stats.orders_executed}"
+            f'Sent: {exec_stats.orders_sent}, Executed: {exec_stats.orders_executed}'
         )
 
     def test_trade_directions_match(
@@ -96,8 +95,8 @@ class TestTradeExecution:
             1 for t in trade_sequence if t['direction'] == 'SHORT')
 
         assert portfolio_stats.total_long_trades == expected_long, (
-            f"Expected {expected_long} long trades, got {portfolio_stats.total_long_trades}"
+            f'Expected {expected_long} long trades, got {portfolio_stats.total_long_trades}'
         )
         assert portfolio_stats.total_short_trades == expected_short, (
-            f"Expected {expected_short} short trades, got {portfolio_stats.total_short_trades}"
+            f'Expected {expected_short} short trades, got {portfolio_stats.total_short_trades}'
         )

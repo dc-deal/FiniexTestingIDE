@@ -19,75 +19,75 @@ Usage:
 
 CURRENCY_SYMBOLS = {
     # === MAJOR CURRENCIES (G10) ===
-    "USD": "$",      # United States Dollar
-    "EUR": "€",      # Euro
-    "GBP": "£",      # British Pound Sterling
-    "JPY": "¥",      # Japanese Yen
-    "CHF": "CHF",    # Swiss Franc (no unique symbol)
-    "CAD": "C$",     # Canadian Dollar
-    "AUD": "A$",     # Australian Dollar
-    "NZD": "NZ$",    # New Zealand Dollar
+    'USD': '$',      # United States Dollar
+    'EUR': '€',      # Euro
+    'GBP': '£',      # British Pound Sterling
+    'JPY': '¥',      # Japanese Yen
+    'CHF': 'CHF',    # Swiss Franc (no unique symbol)
+    'CAD': 'C$',     # Canadian Dollar
+    'AUD': 'A$',     # Australian Dollar
+    'NZD': 'NZ$',    # New Zealand Dollar
 
     # === SCANDINAVIAN CURRENCIES ===
-    "SEK": "kr",     # Swedish Krona
-    "NOK": "kr",     # Norwegian Krone
-    "DKK": "kr",     # Danish Krone
+    'SEK': 'kr',     # Swedish Krona
+    'NOK': 'kr',     # Norwegian Krone
+    'DKK': 'kr',     # Danish Krone
 
     # === ASIAN CURRENCIES ===
-    "CNY": "¥",      # Chinese Yuan Renminbi
-    "HKD": "HK$",    # Hong Kong Dollar
-    "SGD": "S$",     # Singapore Dollar
-    "KRW": "₩",      # South Korean Won
-    "TWD": "NT$",    # Taiwan Dollar
-    "THB": "฿",      # Thai Baht
-    "INR": "₹",      # Indian Rupee
-    "IDR": "Rp",     # Indonesian Rupiah
-    "MYR": "RM",     # Malaysian Ringgit
-    "PHP": "₱",      # Philippine Peso
-    "VND": "₫",      # Vietnamese Dong
+    'CNY': '¥',      # Chinese Yuan Renminbi
+    'HKD': 'HK$',    # Hong Kong Dollar
+    'SGD': 'S$',     # Singapore Dollar
+    'KRW': '₩',      # South Korean Won
+    'TWD': 'NT$',    # Taiwan Dollar
+    'THB': '฿',      # Thai Baht
+    'INR': '₹',      # Indian Rupee
+    'IDR': 'Rp',     # Indonesian Rupiah
+    'MYR': 'RM',     # Malaysian Ringgit
+    'PHP': '₱',      # Philippine Peso
+    'VND': '₫',      # Vietnamese Dong
 
     # === CENTRAL/EASTERN EUROPEAN CURRENCIES ===
-    "PLN": "zł",     # Polish Zloty
-    "CZK": "Kč",     # Czech Koruna
-    "HUF": "Ft",     # Hungarian Forint
-    "RON": "lei",    # Romanian Leu
-    "RUB": "₽",      # Russian Ruble
-    "TRY": "₺",      # Turkish Lira
+    'PLN': 'zł',     # Polish Zloty
+    'CZK': 'Kč',     # Czech Koruna
+    'HUF': 'Ft',     # Hungarian Forint
+    'RON': 'lei',    # Romanian Leu
+    'RUB': '₽',      # Russian Ruble
+    'TRY': '₺',      # Turkish Lira
 
     # === MIDDLE EASTERN CURRENCIES ===
-    "ILS": "₪",      # Israeli New Shekel
-    "SAR": "﷼",      # Saudi Riyal
-    "AED": "د.إ",    # UAE Dirham
-    "KWD": "د.ك",    # Kuwaiti Dinar
+    'ILS': '₪',      # Israeli New Shekel
+    'SAR': '﷼',      # Saudi Riyal
+    'AED': 'د.إ',    # UAE Dirham
+    'KWD': 'د.ك',    # Kuwaiti Dinar
 
     # === LATIN AMERICAN CURRENCIES ===
-    "MXN": "Mex$",   # Mexican Peso
-    "BRL": "R$",     # Brazilian Real
-    "ARS": "AR$",    # Argentine Peso
-    "CLP": "CLP$",   # Chilean Peso
-    "COP": "COL$",   # Colombian Peso
-    "PEN": "S/",     # Peruvian Sol
+    'MXN': 'Mex$',   # Mexican Peso
+    'BRL': 'R$',     # Brazilian Real
+    'ARS': 'AR$',    # Argentine Peso
+    'CLP': 'CLP$',   # Chilean Peso
+    'COP': 'COL$',   # Colombian Peso
+    'PEN': 'S/',     # Peruvian Sol
 
     # === AFRICAN CURRENCIES ===
-    "ZAR": "R",      # South African Rand
-    "EGP": "E£",     # Egyptian Pound
-    "NGN": "₦",      # Nigerian Naira
-    "KES": "KSh",    # Kenyan Shilling
+    'ZAR': 'R',      # South African Rand
+    'EGP': 'E£',     # Egyptian Pound
+    'NGN': '₦',      # Nigerian Naira
+    'KES': 'KSh',    # Kenyan Shilling
 
     # === OTHER IMPORTANT FOREX CURRENCIES ===
-    "XAU": "XAU",    # Gold (Troy Ounce)
-    "XAG": "XAG",    # Silver (Troy Ounce)
-    "BTC": "₿",      # Bitcoin (if trading crypto CFDs)
+    'XAU': 'XAU',    # Gold (Troy Ounce)
+    'XAG': 'XAG',    # Silver (Troy Ounce)
+    'BTC': '₿',      # Bitcoin (if trading crypto CFDs)
 }
 
 # ============================================================================
 # NUMBER FORMAT TEMPLATES (REUSABLE)
 # ============================================================================
 
-FMT_EN = {"thousands": ",", "decimal": "."}
-FMT_DE = {"thousands": ".", "decimal": ","}
-FMT_CH = {"thousands": "'", "decimal": "."}
-FMT_NONE = {"thousands": "", "decimal": "."}  # fallback / simple
+FMT_EN = {'thousands': ',', 'decimal': '.'}
+FMT_DE = {'thousands': '.', 'decimal': ','}
+FMT_CH = {'thousands': "'", 'decimal': '.'}
+FMT_NONE = {'thousands': '', 'decimal': '.'}  # fallback / simple
 
 
 # ============================================================================
@@ -96,61 +96,61 @@ FMT_NONE = {"thousands": "", "decimal": "."}  # fallback / simple
 
 CURRENCY_FORMATS = {
     # Anglo style
-    "USD": FMT_EN,
-    "GBP": FMT_EN,
-    "CAD": FMT_EN,
-    "AUD": FMT_EN,
-    "NZD": FMT_EN,
-    "HKD": FMT_EN,
-    "SGD": FMT_EN,
-    "MXN": FMT_EN,
-    "ZAR": FMT_EN,
+    'USD': FMT_EN,
+    'GBP': FMT_EN,
+    'CAD': FMT_EN,
+    'AUD': FMT_EN,
+    'NZD': FMT_EN,
+    'HKD': FMT_EN,
+    'SGD': FMT_EN,
+    'MXN': FMT_EN,
+    'ZAR': FMT_EN,
 
     # Euro / European style
-    "EUR": FMT_DE,
-    "PLN": FMT_DE,
-    "CZK": FMT_DE,
-    "HUF": FMT_DE,
-    "RON": FMT_DE,
-    "TRY": FMT_DE,
-    "RUB": FMT_DE,
+    'EUR': FMT_DE,
+    'PLN': FMT_DE,
+    'CZK': FMT_DE,
+    'HUF': FMT_DE,
+    'RON': FMT_DE,
+    'TRY': FMT_DE,
+    'RUB': FMT_DE,
 
     # Swiss
-    "CHF": FMT_CH,
+    'CHF': FMT_CH,
 
     # Asian mostly English style
-    "JPY": FMT_EN,
-    "CNY": FMT_EN,
-    "KRW": FMT_EN,
-    "INR": FMT_EN,
-    "IDR": FMT_EN,
-    "MYR": FMT_EN,
-    "PHP": FMT_EN,
-    "THB": FMT_EN,
-    "TWD": FMT_EN,
+    'JPY': FMT_EN,
+    'CNY': FMT_EN,
+    'KRW': FMT_EN,
+    'INR': FMT_EN,
+    'IDR': FMT_EN,
+    'MYR': FMT_EN,
+    'PHP': FMT_EN,
+    'THB': FMT_EN,
+    'TWD': FMT_EN,
 
     # Middle East
-    "ILS": FMT_EN,
-    "SAR": FMT_EN,
-    "AED": FMT_EN,
-    "KWD": FMT_EN,
+    'ILS': FMT_EN,
+    'SAR': FMT_EN,
+    'AED': FMT_EN,
+    'KWD': FMT_EN,
 
     # Latin America
-    "BRL": FMT_DE,
-    "ARS": FMT_DE,
-    "CLP": FMT_DE,
-    "COP": FMT_DE,
-    "PEN": FMT_DE,
+    'BRL': FMT_DE,
+    'ARS': FMT_DE,
+    'CLP': FMT_DE,
+    'COP': FMT_DE,
+    'PEN': FMT_DE,
 
     # Africa
-    "EGP": FMT_EN,
-    "NGN": FMT_EN,
-    "KES": FMT_EN,
+    'EGP': FMT_EN,
+    'NGN': FMT_EN,
+    'KES': FMT_EN,
 
     # Commodities / Crypto
-    "XAU": FMT_EN,
-    "XAG": FMT_EN,
-    "BTC": FMT_EN,
+    'XAU': FMT_EN,
+    'XAG': FMT_EN,
+    'BTC': FMT_EN,
 }
 
 # ============================================================================
@@ -229,11 +229,11 @@ def format_currency_simple(amount: float, currency_code: str, use_decimals: bool
     fmt = CURRENCY_FORMATS.get(currency_code.upper(), FMT_NONE)
 
     # build number string
-    raw = f"{abs(amount):.2f}" if use_decimals else f"{abs(amount):.0f}"
-    int_part, dec_part = raw.split(".") if use_decimals else (raw, None)
+    raw = f'{abs(amount):.2f}' if use_decimals else f'{abs(amount):.0f}'
+    int_part, dec_part = raw.split('.') if use_decimals else (raw, None)
 
     # apply thousands separator
-    int_part = f"{int(int_part):,}".replace(",", fmt["thousands"])
+    int_part = f'{int(int_part):,}'.replace(',', fmt['thousands'])
 
     # combine integer + decimals
     formatted_amount = (
@@ -244,6 +244,6 @@ def format_currency_simple(amount: float, currency_code: str, use_decimals: bool
 
     # handle symbol + fallback formatting
     if symbol == currency_code:
-        return f"{symbol} {formatted_amount}"
+        return f'{symbol} {formatted_amount}'
     else:
-        return f"{symbol}{formatted_amount}"
+        return f'{symbol}{formatted_amount}'

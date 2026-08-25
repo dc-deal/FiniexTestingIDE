@@ -15,8 +15,13 @@ from typing import Dict, Optional
 
 from python.framework.reporting.builders.report_aggregators import aggregate_profiling
 from python.framework.types.api.report_types import (
-    ClippingRow, InterTickStatsRow, ProfilingOperationRow, ProfilingReport, ProfilingUnitRow,
-    WarmupPhaseRow)
+    ClippingRow,
+    InterTickStatsRow,
+    ProfilingOperationRow,
+    ProfilingReport,
+    ProfilingUnitRow,
+    WarmupPhaseRow,
+)
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.process_data_types import ClippingStats, ProcessResult
 from python.framework.types.scenario_types.scenario_set_performance_types import ProfilingData

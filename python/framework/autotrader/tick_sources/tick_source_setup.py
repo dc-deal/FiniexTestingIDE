@@ -81,8 +81,8 @@ def setup_tick_source(
     )
     tick_thread.start()
     logger.info(
-        f"📡 Tick source started: {config.tick_source.type} "
-        f"({config.symbol})"
+        f'📡 Tick source started: {config.tick_source.type} '
+        f'({config.symbol})'
     )
 
     return tick_source, tick_thread

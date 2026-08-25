@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
+
 vLog = get_global_logger()
 
 
@@ -35,8 +36,8 @@ class BarsIndexManager:
     """
 
     # Index file names
-    INDEX_FILE_PARQUET = ".parquet_bars_index.parquet"
-    INDEX_FILE_JSON_LEGACY = ".parquet_bars_index.json"
+    INDEX_FILE_PARQUET = '.parquet_bars_index.parquet'
+    INDEX_FILE_JSON_LEGACY = '.parquet_bars_index.json'
 
     def __init__(self, logger: AbstractLogger = vLog):
         """Initialize bar index manager."""
@@ -70,30 +71,30 @@ class BarsIndexManager:
             if not check_stale:
                 self._load_index()
                 self.logger.info(
-                    f"📚 Loaded existing bar index ({self._count_symbols()} symbols)")
+                    f'📚 Loaded existing bar index ({self._count_symbols()} symbols)')
                 return
 
             if not self.needs_rebuild():
                 self._load_index()
                 self.logger.info(
-                    f"📚 Loaded existing bar index ({self._count_symbols()} symbols)")
+                    f'📚 Loaded existing bar index ({self._count_symbols()} symbols)')
                 return
 
         # Check for legacy JSON and migrate
         if not force_rebuild and self._legacy_json_file.exists() and not self.index_file.exists():
-            self.logger.info("🔄 Migrating legacy JSON bar index to Parquet...")
+            self.logger.info('🔄 Migrating legacy JSON bar index to Parquet...')
             if self._migrate_from_json():
-                self.logger.info("✅ Migration complete")
+                self.logger.info('✅ Migration complete')
                 return
 
-        self.logger.info("🔍 Scanning bar files for index...")
+        self.logger.info('🔍 Scanning bar files for index...')
         start_time = time.time()
 
         # Scan pattern: */bars/**/*.parquet
-        bar_files = list(self.data_dir.glob("*/bars/**/*_BARS.parquet"))
+        bar_files = list(self.data_dir.glob('*/bars/**/*_BARS.parquet'))
 
         if not bar_files:
-            self.logger.warning(f"No bar files found in {self.data_dir}")
+            self.logger.warning(f'No bar files found in {self.data_dir}')
             self.index = {}
             return
 
@@ -115,7 +116,7 @@ class BarsIndexManager:
 
             except Exception as e:
                 self.logger.warning(
-                    f"Failed to index bar file {bar_file.name}: {e}")
+                    f'Failed to index bar file {bar_file.name}: {e}')
 
         self._save_index()
 
@@ -126,8 +127,8 @@ class BarsIndexManager:
             for tfs in symbols.values()
         )
         self.logger.info(
-            f"✅ Bar index built: {total_entries} timeframes across "
-            f"{self._count_symbols()} symbols in {elapsed:.2f}s"
+            f'✅ Bar index built: {total_entries} timeframes across '
+            f'{self._count_symbols()} symbols in {elapsed:.2f}s'
         )
 
     def _count_symbols(self) -> int:
@@ -223,13 +224,13 @@ class BarsIndexManager:
 
         index_mtime = self.index_file.stat().st_mtime
 
-        bar_files = list(self.data_dir.glob("*/bars/**/*_BARS.parquet"))
+        bar_files = list(self.data_dir.glob('*/bars/**/*_BARS.parquet'))
         if bar_files:
             newest_bar = max(f.stat().st_mtime for f in bar_files)
 
             if newest_bar > index_mtime:
                 self.logger.info(
-                    "📋 Bar index outdated - newer bar files found")
+                    '📋 Bar index outdated - newer bar files found')
                 return True
 
         return False
@@ -335,7 +336,7 @@ class BarsIndexManager:
             {**table.schema.metadata, **metadata})
 
         pq.write_table(table, self.index_file)
-        self.logger.debug(f"💾 Bar index saved to {self.index_file}")
+        self.logger.debug(f'💾 Bar index saved to {self.index_file}')
 
     def _load_index(self) -> None:
         """Load index from Parquet file and convert to nested dict."""
@@ -343,7 +344,7 @@ class BarsIndexManager:
             df = pd.read_parquet(self.index_file)
             self.index = self._dataframe_to_nested_dict(df)
         except Exception as e:
-            self.logger.warning(f"Failed to load bar index: {e}")
+            self.logger.warning(f'Failed to load bar index: {e}')
             self.index = {}
 
     def _dataframe_to_nested_dict(self, df: pd.DataFrame) -> Dict[str, Dict[str, Dict[str, Dict]]]:
@@ -399,11 +400,11 @@ class BarsIndexManager:
 
             backup_path = self._legacy_json_file.with_suffix('.json.bak')
             self._legacy_json_file.rename(backup_path)
-            self.logger.info(f"📦 Legacy JSON backed up to {backup_path}")
+            self.logger.info(f'📦 Legacy JSON backed up to {backup_path}')
 
             return True
         except Exception as e:
-            self.logger.error(f"Migration failed: {e}")
+            self.logger.error(f'Migration failed: {e}')
             return False
 
     # =========================================================================
@@ -459,19 +460,19 @@ class BarsIndexManager:
 
     def print_summary(self) -> None:
         """Print bar index summary grouped by broker_type."""
-        print("\n" + "="*60)
-        print("📊 Bar Index Summary")
-        print("="*60)
+        print('\n' + '='*60)
+        print('📊 Bar Index Summary')
+        print('='*60)
 
         if not self.index:
-            print("   (empty bar index)")
+            print('   (empty bar index)')
             return
 
         for broker_type in sorted(self.index.keys()):
-            print(f"\n📂 {broker_type}:")
+            print(f'\n📂 {broker_type}:')
 
             for symbol in sorted(self.index[broker_type].keys()):
-                print(f"   {symbol}:")
+                print(f'   {symbol}:')
                 stats = self.get_symbol_stats(broker_type, symbol)
 
                 for timeframe in sorted(stats.keys()):
@@ -479,4 +480,4 @@ class BarsIndexManager:
                     print(f"      {timeframe}: {tf_stats['bar_count']:,} bars "
                           f"({tf_stats['file_size_mb']:.1f} MB)")
 
-        print("="*60 + "\n")
+        print('='*60 + '\n')

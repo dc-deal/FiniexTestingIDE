@@ -13,9 +13,15 @@ from datetime import datetime, timezone
 
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_types.performance_stats_types import (
-    DecisionLogicStats, WorkerPerformanceStats)
+    DecisionLogicStats,
+    WorkerPerformanceStats,
+)
 from python.framework.types.process_data_types import (
-    ClippingStats, ProcessProfileData, ProcessResult, ProcessTickLoopResult)
+    ClippingStats,
+    ProcessProfileData,
+    ProcessResult,
+    ProcessTickLoopResult,
+)
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.validators.post_run_validator import PostRunValidator
 

@@ -3,9 +3,15 @@ FiniexTestingIDE - Feed Stability Summary
 Displays the observed disturbance episodes per data source in run reports (#451)
 """
 
-from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import (
+    AbstractBatchSummarySection,
+)
 from python.framework.types.api.report_types import (
-    FeedStabilityEpisodeRow, FeedStabilityReport, FeedStabilitySourceRow, RunSummary)
+    FeedStabilityEpisodeRow,
+    FeedStabilityReport,
+    FeedStabilitySourceRow,
+    RunSummary,
+)
 from python.framework.types.disturbance_episode_types import DisturbanceDomain, DisturbanceOrigin
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.utils.time_utils import format_duration
@@ -30,10 +36,10 @@ def format_disturbance_line(summary: RunSummary) -> str:
 
     sources = (f"{summary.disturbance_source_count} source"
                f"{'s' if summary.disturbance_source_count != 1 else ''}")
-    injected = (f" ({summary.disturbance_stress_injected} stress-injected)"
+    injected = (f' ({summary.disturbance_stress_injected} stress-injected)'
                 if summary.disturbance_stress_injected else '')
-    return (f"⚠️  Feed disturbance: {summary.disturbance_episode_count} episodes across "
-            f"{sources} — {format_duration(summary.disturbance_stale_seconds)} stale{injected}")
+    return (f'⚠️  Feed disturbance: {summary.disturbance_episode_count} episodes across '
+            f'{sources} — {format_duration(summary.disturbance_stale_seconds)} stale{injected}')
 
 
 class FeedStabilitySummary(AbstractBatchSummarySection):
@@ -64,12 +70,12 @@ class FeedStabilitySummary(AbstractBatchSummarySection):
         print(f"{indent}{'Source':<28}{'Domain':<10}{'Stale time':>12}"
               f"{'Episodes':>11}   Origin")
         for unit in self._units:
-            print(f"{indent}{unit.source[:27]:<28}{unit.domain:<10}"
-                  f"{format_duration(unit.stale_seconds):>12}{unit.episode_count:>11}   "
-                  f"{self._format_origins(unit)}")
+            print(f'{indent}{unit.source[:27]:<28}{unit.domain:<10}'
+                  f'{format_duration(unit.stale_seconds):>12}{unit.episode_count:>11}   '
+                  f'{self._format_origins(unit)}')
 
         for unit in self._units:
-            print("")
+            print('')
             self._render_source_detail(unit, threshold=threshold)
 
     def _render_source_detail(
@@ -87,12 +93,12 @@ class FeedStabilitySummary(AbstractBatchSummarySection):
         `feed_stability.json` (and the run log), so nothing is lost by collapsing.
         """
         indent = '   '
-        print(f"{indent}📉 {unit.source} ({unit.domain})")
-        print(f"{indent}   {self._counter_line(unit)}")
+        print(f'{indent}📉 {unit.source} ({unit.domain})')
+        print(f'{indent}   {self._counter_line(unit)}')
 
         if len(unit.episodes) > threshold:
-            print(f"{indent}     {len(unit.episodes)} episodes — "
-                  f"full list in feed_stability.json")
+            print(f'{indent}     {len(unit.episodes)} episodes — '
+                  f'full list in feed_stability.json')
             return
 
         for episode in unit.episodes:
@@ -102,9 +108,9 @@ class FeedStabilitySummary(AbstractBatchSummarySection):
         """Render one episode span; an open episode reads as a dead tail, not a recovery."""
         end = self._stamp(episode.stale_to) if episode.stale_to else 'run end'
         origin = self._format_origin(episode.origin, episode.label)
-        unit_tag = f" [{episode.unit}]" if episode.unit else ''
-        print(f"{indent}     stale {self._stamp(episode.stale_from)} → {end}   "
-              f"({format_duration(episode.duration_seconds)})   {origin}{unit_tag}")
+        unit_tag = f' [{episode.unit}]' if episode.unit else ''
+        print(f'{indent}     stale {self._stamp(episode.stale_from)} → {end}   '
+              f'({format_duration(episode.duration_seconds)})   {origin}{unit_tag}')
 
     def _counter_line(self, unit: FeedStabilitySourceRow) -> str:
         """The domain's per-tick counters — signal carries a third (blind) class."""
@@ -114,10 +120,10 @@ class FeedStabilitySummary(AbstractBatchSummarySection):
 
         fresh_pct = unit.fresh_ticks / total * 100
         if unit.domain == DisturbanceDomain.SIGNAL.value:
-            return (f"{unit.fresh_ticks:,} fresh · {unit.stale_ticks:,} stale · "
-                    f"{unit.blind_ticks:,} blind     ({fresh_pct:.1f}% fresh)")
-        return (f"{unit.fresh_ticks:,} fresh · {unit.stale_ticks:,} stale ticks"
-                f"     ({fresh_pct:.1f}% fresh)")
+            return (f'{unit.fresh_ticks:,} fresh · {unit.stale_ticks:,} stale · '
+                    f'{unit.blind_ticks:,} blind     ({fresh_pct:.1f}% fresh)')
+        return (f'{unit.fresh_ticks:,} fresh · {unit.stale_ticks:,} stale ticks'
+                f'     ({fresh_pct:.1f}% fresh)')
 
     def _format_origins(self, unit: FeedStabilitySourceRow) -> str:
         """Origin column of the table row (a source can carry both kinds)."""
@@ -130,7 +136,7 @@ class FeedStabilitySummary(AbstractBatchSummarySection):
             return origin
         if not label:
             return '🧪 stress-injected'
-        return f"🧪 [STRESS] \"{label}\""
+        return f'🧪 [STRESS] \"{label}\"'
 
     def _stamp(self, iso: str) -> str:
         """Minute-precision timestamp of an ISO string ('' stays empty)."""

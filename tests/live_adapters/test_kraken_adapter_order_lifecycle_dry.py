@@ -24,7 +24,6 @@ from python.framework.types.config_types.market_config_types import BrokerTransp
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, TimeoutConfig
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
-
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
 _BROKER_SETTINGS_PATH = Path('configs/broker_settings/kraken_spot.json')
 _CREDENTIALS_PATH = Path('user_configs/credentials/kraken_credentials.json')
@@ -102,7 +101,7 @@ class TestKrakenAdapterOrderLifecycle:
         )
         assert response.status == BrokerOrderStatus.PENDING
         assert response.broker_ref.startswith('DRYRUN-'), (
-            f"Expected DRYRUN ref, got: {response.broker_ref}"
+            f'Expected DRYRUN ref, got: {response.broker_ref}'
         )
 
     def test_market_sell_dryrun(self, live_adapter, processor):
@@ -116,7 +115,7 @@ class TestKrakenAdapterOrderLifecycle:
         )
         assert response.status == BrokerOrderStatus.PENDING
         assert response.broker_ref.startswith('DRYRUN-'), (
-            f"Expected DRYRUN ref, got: {response.broker_ref}"
+            f'Expected DRYRUN ref, got: {response.broker_ref}'
         )
 
     def test_limit_buy_dryrun(self, live_adapter, processor):
@@ -131,7 +130,7 @@ class TestKrakenAdapterOrderLifecycle:
         )
         assert response.status == BrokerOrderStatus.PENDING
         assert response.broker_ref.startswith('DRYRUN-'), (
-            f"Expected DRYRUN ref, got: {response.broker_ref}"
+            f'Expected DRYRUN ref, got: {response.broker_ref}'
         )
 
     def test_limit_buy_with_sltp_dryrun(self, live_adapter, processor):
@@ -148,7 +147,7 @@ class TestKrakenAdapterOrderLifecycle:
         )
         assert response.status == BrokerOrderStatus.PENDING
         assert response.broker_ref.startswith('DRYRUN-'), (
-            f"Expected DRYRUN ref, got: {response.broker_ref}"
+            f'Expected DRYRUN ref, got: {response.broker_ref}'
         )
 
     def test_invalid_symbol_rejected(self, live_adapter, processor):
@@ -161,7 +160,7 @@ class TestKrakenAdapterOrderLifecycle:
             adapter=live_adapter,
         )
         assert response.status == BrokerOrderStatus.REJECTED, (
-            f"Expected REJECTED for unknown symbol, got: {response.status}"
+            f'Expected REJECTED for unknown symbol, got: {response.status}'
         )
         assert response.rejection_reason, 'Expected non-empty rejection reason'
 
@@ -175,6 +174,6 @@ class TestKrakenAdapterOrderLifecycle:
             adapter=live_adapter,
         )
         assert response.status == BrokerOrderStatus.REJECTED, (
-            f"Expected REJECTED for below-min volume, got: {response.status}"
+            f'Expected REJECTED for below-min volume, got: {response.status}'
         )
         assert response.rejection_reason, 'Expected non-empty rejection reason'

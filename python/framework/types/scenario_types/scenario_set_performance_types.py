@@ -11,7 +11,9 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from python.framework.types.performance_types.performance_metrics_types import InterTickIntervalStats
+from python.framework.types.performance_types.performance_metrics_types import (
+    InterTickIntervalStats,
+)
 
 # Operations that are the intended hot path (strategy work) — a high share here is GOOD, not a
 # bottleneck. Single source of truth for the profiling presenter + the post-run advisory validator.

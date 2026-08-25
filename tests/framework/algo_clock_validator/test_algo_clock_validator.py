@@ -12,7 +12,7 @@ load USER algos (importlib from file path).
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict
+from typing import Dict
 
 import pytest
 

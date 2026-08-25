@@ -14,7 +14,9 @@ and never reached active_limit_count == 0.
 from unittest.mock import MagicMock
 
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrderExecutionState
+from python.framework.types.trading_env_types.latency_simulator_types import (
+    PendingOrderExecutionState,
+)
 
 
 class _Order:

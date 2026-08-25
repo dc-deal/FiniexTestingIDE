@@ -27,12 +27,12 @@ class BrokerOrderStatus(Enum):
     Represents the lifecycle of an order at the broker level.
     Mapped from broker-specific status codes to this unified enum.
     """
-    PENDING = "pending"
-    FILLED = "filled"
-    PARTIALLY_FILLED = "partially_filled"
-    REJECTED = "rejected"
-    CANCELLED = "cancelled"
-    EXPIRED = "expired"
+    PENDING = 'pending'
+    FILLED = 'filled'
+    PARTIALLY_FILLED = 'partially_filled'
+    REJECTED = 'rejected'
+    CANCELLED = 'cancelled'
+    EXPIRED = 'expired'
 
 
 @dataclass

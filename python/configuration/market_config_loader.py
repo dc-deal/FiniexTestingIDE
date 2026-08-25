@@ -20,8 +20,8 @@ class MarketConfigFileLoader:
     """
 
     _config: Optional[Dict[str, Any]] = None
-    _config_path: str = "configs/market_config.json"
-    _user_config_path: str = "user_configs/market_config.json"  # ← ADDED
+    _config_path: str = 'configs/market_config.json'
+    _user_config_path: str = 'user_configs/market_config.json'  # ← ADDED
     _lock = Lock()
 
     @staticmethod
@@ -79,14 +79,14 @@ class MarketConfigFileLoader:
         # Load base configuration
         if not config_path.exists():
             raise FileNotFoundError(
-                f"❌ Market config not found: {config_path}\n"
-                f"   Please create {config_path} with broker and market type mappings."
+                f'❌ Market config not found: {config_path}\n'
+                f'   Please create {config_path} with broker and market type mappings.'
             )
 
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             base_config = json.load(f)
 
-        print(f"📋 Loaded market config: {config_path}")
+        print(f'📋 Loaded market config: {config_path}')
 
         # Try to load user override configuration.
         # Tests run with FINIEX_CONFIG_ISOLATION=1 (see tests/conftest.py) — the
@@ -94,25 +94,25 @@ class MarketConfigFileLoader:
         user_config_path = Path(MarketConfigFileLoader._user_config_path)
         if user_config_path.exists() and not is_config_isolation_active():
             try:
-                with open(user_config_path, "r", encoding="utf-8") as f:
+                with open(user_config_path, 'r', encoding='utf-8') as f:
                     user_override = json.load(f)
 
                 # Merge user overrides into base config
                 merged_config = MarketConfigFileLoader._deep_merge(
                     base_config, user_override)
-                print(f"✅ Merged user_configs/market_config.json")
+                print('✅ Merged user_configs/market_config.json')
                 return merged_config
 
             except json.JSONDecodeError as e:
                 raise RuntimeError(
-                    f"Invalid JSON in user market config: {user_config_path}\n"
-                    f"Error: {e}\n"
-                    f"Please fix the JSON syntax or remove the file."
+                    f'Invalid JSON in user market config: {user_config_path}\n'
+                    f'Error: {e}\n'
+                    f'Please fix the JSON syntax or remove the file.'
                 )
             except Exception as e:
                 raise RuntimeError(
-                    f"Failed to load user market config: {user_config_path}\n"
-                    f"Error: {e}"
+                    f'Failed to load user market config: {user_config_path}\n'
+                    f'Error: {e}'
                 )
 
         # No user config - return base config

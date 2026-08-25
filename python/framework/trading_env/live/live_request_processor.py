@@ -40,7 +40,7 @@ import queue
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
@@ -309,8 +309,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
 
         ref_str = broker_ref if broker_ref is not None else 'awaiting confirmation'
         self.logger.info(
-            f"Live order tracked: {order_id} (broker_ref={ref_str}) "
-            f"timeout_at={timeout_at.isoformat()}"
+            f'Live order tracked: {order_id} (broker_ref={ref_str}) '
+            f'timeout_at={timeout_at.isoformat()}'
         )
 
         return order_id
@@ -358,7 +358,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
 
         ref_str = broker_ref if broker_ref is not None else 'awaiting confirmation'
         self.logger.info(
-            f"Live close order tracked: {position_id} (broker_ref={ref_str})"
+            f'Live close order tracked: {position_id} (broker_ref={ref_str})'
         )
 
         return position_id
@@ -390,21 +390,21 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         order_id = self._broker_ref_index.pop(broker_ref, None)
         if order_id is None:
             self.logger.warning(
-                f"mark_filled: unknown broker_ref={broker_ref}"
+                f'mark_filled: unknown broker_ref={broker_ref}'
             )
             return None
 
         pending = self.remove_order(order_id)
         if pending is None:
             self.logger.warning(
-                f"mark_filled: order_id={order_id} not in pending cache"
+                f'mark_filled: order_id={order_id} not in pending cache'
             )
             return None
 
-        price_str = f"{fill_price:.5f}" if fill_price is not None else 'N/A'
+        price_str = f'{fill_price:.5f}' if fill_price is not None else 'N/A'
         self.logger.info(
-            f"Order filled: {order_id} at {price_str} "
-            f"({filled_lots} lots, broker_ref={broker_ref})"
+            f'Order filled: {order_id} at {price_str} '
+            f'({filled_lots} lots, broker_ref={broker_ref})'
         )
 
         # Dry-run market orders have no real fill price — Kraken validate
@@ -412,9 +412,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # in a later refactor step.
         if fill_price is not None and fill_price == 0.0:
             self.logger.warning(
-                f"⚠️  Fill price is 0.00000 for {order_id} — "
-                f"dry-run mode cannot determine market fill price. "
-                f"P&L calculations will be inaccurate."
+                f'⚠️  Fill price is 0.00000 for {order_id} — '
+                f'dry-run mode cannot determine market fill price. '
+                f'P&L calculations will be inaccurate.'
             )
 
         return pending
@@ -440,20 +440,20 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         order_id = self._broker_ref_index.pop(broker_ref, None)
         if order_id is None:
             self.logger.warning(
-                f"mark_rejected: unknown broker_ref={broker_ref}"
+                f'mark_rejected: unknown broker_ref={broker_ref}'
             )
             return None
 
         pending = self.remove_order(order_id)
         if pending is None:
             self.logger.warning(
-                f"mark_rejected: order_id={order_id} not in pending cache"
+                f'mark_rejected: order_id={order_id} not in pending cache'
             )
             return None
 
         self.logger.warning(
-            f"Order rejected: {order_id} reason={reason} "
-            f"(broker_ref={broker_ref})"
+            f'Order rejected: {order_id} reason={reason} '
+            f'(broker_ref={broker_ref})'
         )
 
         return pending
@@ -503,7 +503,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         order_id = self._broker_ref_index.pop(old_ref, None)
         if order_id is None:
             self.logger.warning(
-                f"update_broker_ref: old_ref={old_ref} not found in index"
+                f'update_broker_ref: old_ref={old_ref} not found in index'
             )
             return False
 
@@ -514,7 +514,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             pending.broker_ref = new_ref
 
         self.logger.info(
-            f"Broker ref updated: {order_id} ({old_ref} → {new_ref})"
+            f'Broker ref updated: {order_id} ({old_ref} → {new_ref})'
         )
         return True
 
@@ -944,7 +944,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 return True
             time.sleep(0.005)
         self.logger.warning(
-            f"flush_outbox: outbox not drained within {timeout}s"
+            f'flush_outbox: outbox not drained within {timeout}s'
         )
         return False
 
@@ -1002,8 +1002,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 self._limit_response_hook(item.order_id, item.broker_response)
             else:
                 self.logger.warning(
-                    f"drain_inbox: LIMIT SubmitResponse for {item.order_id} "
-                    f"but no limit_response_hook registered"
+                    f'drain_inbox: LIMIT SubmitResponse for {item.order_id} '
+                    f'but no limit_response_hook registered'
                 )
             return
 
@@ -1011,7 +1011,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         pending = self._pending_orders.get(item.order_id)
         if pending is None:
             self.logger.warning(
-                f"drain_inbox: SubmitResponse for unknown order_id {item.order_id}"
+                f'drain_inbox: SubmitResponse for unknown order_id {item.order_id}'
             )
             return
 
@@ -1074,8 +1074,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             self._modify_response_hook(item.order_id, item.broker_response)
         else:
             self.logger.warning(
-                f"drain_inbox: EditResponse for {item.order_id} "
-                f"but no modify_response_hook registered"
+                f'drain_inbox: EditResponse for {item.order_id} '
+                f'but no modify_response_hook registered'
             )
 
     def _handle_cancel_response(self, item: CancelResponse) -> None:
@@ -1090,8 +1090,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             self._cancel_response_hook(item.order_id, item.broker_response)
         else:
             self.logger.warning(
-                f"drain_inbox: CancelResponse for {item.order_id} "
-                f"but no cancel_response_hook registered"
+                f'drain_inbox: CancelResponse for {item.order_id} '
+                f'but no cancel_response_hook registered'
             )
 
     def _handle_position_modify_response(self, item: PositionModifyResponse) -> None:
@@ -1108,8 +1108,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             )
         else:
             self.logger.warning(
-                f"drain_inbox: PositionModifyResponse for {item.position_id} "
-                f"but no position_modify_response_hook registered"
+                f'drain_inbox: PositionModifyResponse for {item.position_id} '
+                f'but no position_modify_response_hook registered'
             )
 
     def _handle_query_response(self, item: QueryResponse) -> None:
@@ -1126,8 +1126,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             self._query_response_hook(item)
         else:
             self.logger.warning(
-                f"drain_inbox: QueryResponse for {item.order_id} "
-                f"but no query_response_hook registered"
+                f'drain_inbox: QueryResponse for {item.order_id} '
+                f'but no query_response_hook registered'
             )
 
     def _handle_trades_query_response(self, item: TradesQueryResponse) -> None:
@@ -1143,8 +1143,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             self._trades_response_hook(item)
         else:
             self.logger.warning(
-                f"drain_inbox: TradesQueryResponse for {item.order_id} "
-                f"but no trades_response_hook registered"
+                f'drain_inbox: TradesQueryResponse for {item.order_id} '
+                f'but no trades_response_hook registered'
             )
 
     # ============================================

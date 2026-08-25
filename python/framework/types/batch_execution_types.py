@@ -1,11 +1,19 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
-from python.framework.types.process_data_types import ClippingStats, ProcessResult
+from python.framework.types.process_data_types import (
+    LOGGED_ERRORS_TYPE,
+    ClippingStats,
+    ProcessResult,
+)
+from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.scenario_types.scenario_set_types import (
-    BrokerScenarioInfo, SignalScenarioInfo, SingleScenario)
+    BrokerScenarioInfo,
+    SignalScenarioInfo,
+    SingleScenario,
+)
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.validation_types import ValidationResult
 
 
@@ -60,6 +68,39 @@ class BatchExecutionSummary:
         self._batch_validation_result: List[ValidationResult] = batch_validation_result or []
         # Set-wide robustness mode (#367) — read by the robustness builder + PostRunValidator.
         self._robustness_config: RobustnessConfig = robustness_config or RobustnessConfig()
+
+    def get_outcome(self) -> RunOutcome:
+        """
+        Grade this batch (#372).
+
+        A batch that produced no results did not run at all — a dead process, not a clean
+        one. Otherwise the KIND of failure decides: a scenario that merely logged errors
+        (§35 error pot) finished, a scenario that raised did not.
+
+        Returns:
+            The classified batch outcome
+        """
+        results = self._process_result_list
+        if not results:
+            return RunOutcome.CRASHED
+
+        failed = [result for result in results if not result.success]
+        if not failed:
+            return RunOutcome.SUCCESS
+
+        if all(result.error_type == LOGGED_ERRORS_TYPE for result in failed):
+            return RunOutcome.FINISHED_WITH_ERRORS
+
+        return RunOutcome.FAILED
+
+    def get_exit_code(self) -> int:
+        """
+        Process exit code for this batch outcome.
+
+        Returns:
+            The outcome's exit code, so a supervisor reads the run result
+        """
+        return self.get_outcome().get_exit_code()
 
     @property
     def batch_execution_time(self) -> float:

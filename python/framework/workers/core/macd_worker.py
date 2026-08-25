@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import REQUIRED, InputParamDef, OutputParamDef
@@ -34,8 +33,6 @@ class MacdWorker(AbstractIndicatorWorker):
             logger=logger, trading_context=trading_context
         )
 
-        params = parameters or {}
-
         # Algorithm parameters (all REQUIRED in schema → guaranteed present)
         self.fast_period = self.params.get('fast_period')
         self.slow_period = self.params.get('slow_period')
@@ -61,21 +58,21 @@ class MacdWorker(AbstractIndicatorWorker):
                 default=REQUIRED,
                 min_val=1,
                 max_val=200,
-                description="Fast EMA period (e.g. 12)"
+                description='Fast EMA period (e.g. 12)'
             ),
             'slow_period': InputParamDef(
                 param_type=int,
                 default=REQUIRED,
                 min_val=2,
                 max_val=500,
-                description="Slow EMA period (e.g. 26), must be > fast_period"
+                description='Slow EMA period (e.g. 26), must be > fast_period'
             ),
             'signal_period': InputParamDef(
                 param_type=int,
                 default=REQUIRED,
                 min_val=1,
                 max_val=200,
-                description="Signal line EMA period (e.g. 9)"
+                description='Signal line EMA period (e.g. 9)'
             ),
         }
 
@@ -154,7 +151,7 @@ class MacdWorker(AbstractIndicatorWorker):
             {"M5": 35}
         """
         # Use periods directly from config
-        return config.get("periods", {})
+        return config.get('periods', {})
 
     # ============================================
     # DYNAMIC: Instance methods for Runtime

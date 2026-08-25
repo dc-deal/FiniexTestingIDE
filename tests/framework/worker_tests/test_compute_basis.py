@@ -26,7 +26,6 @@ from python.framework.types.worker_types import ComputeBasis, WorkerResult
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
-
 # =============================================================================
 # HELPERS
 # =============================================================================

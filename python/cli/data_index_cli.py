@@ -16,13 +16,13 @@ import sys
 import traceback
 
 from python.configuration.import_config_manager import ImportConfigManager
+from python.data_management.importers.tick_data_reporter import run_summary_report
+from python.data_management.importers.tick_data_importer import TickDataImporter
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.data_inspector import DataInspector
 from python.data_management.index.tick_index_manager import TickIndexManager
-from python.data_management.importers.tick_data_report import run_summary_report
-from python.data_management.importers.tick_importer import TickDataImporter
-
 from python.framework.logging.bootstrap_logger import get_global_logger
+
 vLog = get_global_logger()
 
 
@@ -50,9 +50,9 @@ class DataIndexCli:
         Args:
             override: If True, overwrite existing Parquet files
         """
-        print("\n" + "="*80)
-        print("📥 Tick Data Import")
-        print("="*80)
+        print('\n' + '='*80)
+        print('📥 Tick Data Import')
+        print('='*80)
         print(f"Override Mode:  {'ENABLED' if override else 'DISABLED'}")
         print(
             f"Move Files:     {'YES' if self._import_config.get_move_processed_files() else 'NO'}")
@@ -62,19 +62,19 @@ class DataIndexCli:
         # Display offset registry
         registry = self._import_config.get_offset_registry()
         if registry:
-            print(f"Offset Registry:")
+            print('Offset Registry:')
             for bt, entry in registry.items():
                 offset = entry.get('default_offset_hours', 0)
                 desc = entry.get('description', '')
                 if offset != 0:
-                    print(f"   {bt}: {offset:+d}h — {desc}")
-                    print(f"   ⚠️  Times for {bt} will be converted to UTC!")
+                    print(f'   {bt}: {offset:+d}h — {desc}')
+                    print(f'   ⚠️  Times for {bt} will be converted to UTC!')
                 else:
-                    print(f"   {bt}: {offset:+d}h — {desc}")
+                    print(f'   {bt}: {offset:+d}h — {desc}')
         else:
-            print(f"Offset Registry: EMPTY (no offsets configured)")
+            print('Offset Registry: EMPTY (no offsets configured)')
 
-        print("="*80 + "\n")
+        print('='*80 + '\n')
 
         # Build offset registry as flat dict {broker_type: offset_hours}
         offset_flat = {
@@ -102,11 +102,11 @@ class DataIndexCli:
             broker_type: Optional filter for specific broker_type.
                         If None, shows all broker_types.
         """
-        print("\n" + "=" * 60)
-        print("📊 Tick Data Report")
+        print('\n' + '=' * 60)
+        print('📊 Tick Data Report')
         if broker_type:
-            print(f"   Filter: {broker_type}")
-        print("=" * 60)
+            print(f'   Filter: {broker_type}')
+        print('=' * 60)
 
         run_summary_report(broker_type=broker_type)
 
@@ -205,10 +205,10 @@ def main():
             )
 
     except KeyboardInterrupt:
-        print("\n\n👋 Interrupted by user")
+        print('\n\n👋 Interrupted by user')
         sys.exit(0)
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f'\n❌ Error: {e}')
         traceback.print_exc()
         sys.exit(1)
 

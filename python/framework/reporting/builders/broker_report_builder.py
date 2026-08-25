@@ -17,8 +17,7 @@ from typing import List
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.trading_env.broker_config import BrokerConfig
-from python.framework.types.api.report_types import (
-    BrokerInfoRow, BrokerReport, BrokerSymbolRow)
+from python.framework.types.api.report_types import BrokerInfoRow, BrokerReport, BrokerSymbolRow
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 

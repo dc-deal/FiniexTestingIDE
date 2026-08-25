@@ -16,16 +16,18 @@ import pandas as pd
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.discoveries.data_coverage.data_coverage_report_cache import DataCoverageReportCache
+from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
+    DataCoverageReportCache,
+)
+from python.framework.factory.broker_config_factory import BrokerConfigFactory
+from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.discovery_types import (
     ExtremeMove,
     ExtremeMoveResult,
     MoveDirection,
 )
-from python.framework.factory.broker_config_factory import BrokerConfigFactory
-from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 from python.framework.utils.trading_math.pip_math import derive_pip_size
 
@@ -89,7 +91,7 @@ class ExtremeMoveScanner:
                 self._loaded_broker_types.add(broker_type)
             except Exception as e:
                 self._logger.warning(
-                    f"Failed to load broker config for {broker_type}: {e}")
+                    f'Failed to load broker config for {broker_type}: {e}')
 
         return self._symbol_specs.get(symbol)
 
@@ -109,7 +111,7 @@ class ExtremeMoveScanner:
         bar_file = bar_index.get_bar_file(broker_type, symbol, timeframe)
         if not bar_file:
             raise ValueError(
-                f"No bar data found for {broker_type}/{symbol} {timeframe}")
+                f'No bar data found for {broker_type}/{symbol} {timeframe}')
 
         df = pd.read_parquet(bar_file)
 
@@ -163,7 +165,7 @@ class ExtremeMoveScanner:
         spec = self._load_symbol_spec(broker_type, symbol)
         if not spec:
             raise ValueError(
-                f"No symbol specification found for {broker_type}/{symbol}")
+                f'No symbol specification found for {broker_type}/{symbol}')
 
         pip_size = self._get_pip_size(spec, broker_type)
         df = self._load_and_prepare_bars(broker_type, symbol, tf)
@@ -277,8 +279,8 @@ class ExtremeMoveScanner:
         all_shorts.sort(key=lambda m: m.move_atr_multiple, reverse=True)
 
         self._logger.info(
-            f"Scanned {total_bars} bars for {broker_type}/{symbol}: "
-            f"found {len(all_longs)} LONG, {len(all_shorts)} SHORT extreme moves"
+            f'Scanned {total_bars} bars for {broker_type}/{symbol}: '
+            f'found {len(all_longs)} LONG, {len(all_shorts)} SHORT extreme moves'
         )
 
         return ExtremeMoveResult(
@@ -320,7 +322,7 @@ class ExtremeMoveScanner:
         report = coverage_cache.get_report(broker_type, symbol)
         if not report:
             self._logger.warning(
-                f"No coverage report for {broker_type}/{symbol}, skipping gap filter"
+                f'No coverage report for {broker_type}/{symbol}, skipping gap filter'
             )
             return moves
 
@@ -350,8 +352,8 @@ class ExtremeMoveScanner:
         if filtered_count > 0:
             direction = moves[0].direction.value.upper()
             self._logger.info(
-                f"Coverage gap filter: removed {filtered_count} "
-                f"{direction} move(s) starting in data gaps"
+                f'Coverage gap filter: removed {filtered_count} '
+                f'{direction} move(s) starting in data gaps'
             )
 
         return validated
@@ -424,14 +426,14 @@ class ExtremeMoveScanner:
             result: ExtremeMoveResult (from scan or cache)
             top_n: Number of top results per direction
         """
-        print("\n" + "=" * 158)
-        print(f"EXTREME MOVE DISCOVERY: {result.symbol}")
-        print("=" * 158)
-        print(f"Data Source:    {result.broker_type}")
-        print(f"Timeframe:      {result.timeframe}")
-        print(f"Bars Scanned:   {result.scanned_bars:,}")
-        print(f"Avg ATR:        {result.avg_atr}")
-        print(f"Pip Size:       {result.pip_size}")
+        print('\n' + '=' * 158)
+        print(f'EXTREME MOVE DISCOVERY: {result.symbol}')
+        print('=' * 158)
+        print(f'Data Source:    {result.broker_type}')
+        print(f'Timeframe:      {result.timeframe}')
+        print(f'Bars Scanned:   {result.scanned_bars:,}')
+        print(f'Avg ATR:        {result.avg_atr}')
+        print(f'Pip Size:       {result.pip_size}')
 
         pip = result.pip_size
 
@@ -442,9 +444,9 @@ class ExtremeMoveScanner:
         )
 
         # LONG moves
-        print("\n" + "-" * 158)
-        print(f"LONG Extreme Moves (top {top_n})")
-        print("-" * 158)
+        print('\n' + '-' * 158)
+        print(f'LONG Extreme Moves (top {top_n})')
+        print('-' * 158)
         if result.longs:
             print(header)
             for i, move in enumerate(result.longs[:top_n], 1):
@@ -460,12 +462,12 @@ class ExtremeMoveScanner:
                     f"{move.end_time.strftime('%Y-%m-%d %a %H:%M'):>24}"
                 )
         else:
-            print("   No extreme LONG moves found")
+            print('   No extreme LONG moves found')
 
         # SHORT moves
-        print("\n" + "-" * 158)
-        print(f"SHORT Extreme Moves (top {top_n})")
-        print("-" * 158)
+        print('\n' + '-' * 158)
+        print(f'SHORT Extreme Moves (top {top_n})')
+        print('-' * 158)
         if result.shorts:
             print(header)
             for i, move in enumerate(result.shorts[:top_n], 1):
@@ -481,6 +483,6 @@ class ExtremeMoveScanner:
                     f"{move.end_time.strftime('%Y-%m-%d %a %H:%M'):>24}"
                 )
         else:
-            print("   No extreme SHORT moves found")
+            print('   No extreme SHORT moves found')
 
-        print("=" * 158 + "\n")
+        print('=' * 158 + '\n')

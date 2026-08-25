@@ -31,7 +31,6 @@ from python.framework.types.live_types.live_execution_types import (
 )
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
-
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
 _BROKER_SETTINGS_PATH = Path('configs/broker_settings/kraken_spot.json')
 _CREDENTIALS_PATH = Path('user_configs/credentials/kraken_credentials.json')
@@ -117,24 +116,24 @@ class TestKrakenAdapterOrderLifecycleFill:
             adapter=live_adapter_fill,
         )
         assert buy_response.status == BrokerOrderStatus.PENDING, (
-            f"Expected PENDING after MARKET buy, got: {buy_response.status}"
-            f" — {buy_response.rejection_reason}"
+            f'Expected PENDING after MARKET buy, got: {buy_response.status}'
+            f' — {buy_response.rejection_reason}'
         )
         assert not buy_response.broker_ref.startswith('DRYRUN-'), (
-            f"Expected real txid, got DRYRUN ref — adapter may be in dry_run mode"
+            'Expected real txid, got DRYRUN ref — adapter may be in dry_run mode'
         )
         buy_txid = buy_response.broker_ref
 
         # 2. Poll until buy is filled (MARKET orders fill in ~100-500ms)
         buy_fill = _poll_until_filled(processor, live_adapter_fill, buy_txid)
         assert buy_fill.status == BrokerOrderStatus.FILLED, (
-            f"Buy order not filled after {_POLL_MAX} polls: {buy_fill.status}"
+            f'Buy order not filled after {_POLL_MAX} polls: {buy_fill.status}'
         )
         assert buy_fill.fill_price is not None and buy_fill.fill_price > 0, (
-            f"Expected fill_price > 0, got: {buy_fill.fill_price}"
+            f'Expected fill_price > 0, got: {buy_fill.fill_price}'
         )
         assert buy_fill.filled_lots is not None and buy_fill.filled_lots > 0, (
-            f"Expected filled_lots > 0, got: {buy_fill.filled_lots}"
+            f'Expected filled_lots > 0, got: {buy_fill.filled_lots}'
         )
 
         # 3. Immediately sell to close — net exposure back to zero
@@ -146,19 +145,19 @@ class TestKrakenAdapterOrderLifecycleFill:
             adapter=live_adapter_fill,
         )
         assert sell_response.status == BrokerOrderStatus.PENDING, (
-            f"Expected PENDING after MARKET sell, got: {sell_response.status}"
-            f" — {sell_response.rejection_reason}"
+            f'Expected PENDING after MARKET sell, got: {sell_response.status}'
+            f' — {sell_response.rejection_reason}'
         )
         sell_txid = sell_response.broker_ref
 
         # 4. Poll until sell is filled
         sell_fill = _poll_until_filled(processor, live_adapter_fill, sell_txid)
         assert sell_fill.status == BrokerOrderStatus.FILLED, (
-            f"Sell order not filled after {_POLL_MAX} polls: {sell_fill.status}"
+            f'Sell order not filled after {_POLL_MAX} polls: {sell_fill.status}'
         )
         assert sell_fill.fill_price is not None and sell_fill.fill_price > 0, (
-            f"Expected fill_price > 0, got: {sell_fill.fill_price}"
+            f'Expected fill_price > 0, got: {sell_fill.fill_price}'
         )
         assert sell_fill.filled_lots is not None and sell_fill.filled_lots > 0, (
-            f"Expected filled_lots > 0, got: {sell_fill.filled_lots}"
+            f'Expected filled_lots > 0, got: {sell_fill.filled_lots}'
         )

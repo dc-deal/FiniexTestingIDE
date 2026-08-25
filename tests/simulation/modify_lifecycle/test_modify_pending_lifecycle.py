@@ -13,11 +13,9 @@ from python.framework.types.trading_env_types.order_types import (
     ModificationRejectionReason,
     ModificationStatus,
     OpenOrderRequest,
-    OrderCapabilities,
     OrderDirection,
     OrderType,
 )
-
 from tests.simulation.modify_lifecycle.conftest import feed_sim_tick
 
 
@@ -157,7 +155,7 @@ class TestModifyPositionCapabilityGate:
         """
         # Setup: place a MARKET order so we have a position to modify
         feed_sim_tick(sim_executor, msc=1000)
-        result = sim_executor.open_order(OpenOrderRequest(
+        sim_executor.open_order(OpenOrderRequest(
             symbol='BTCUSD', order_type=OrderType.MARKET,
             direction=OrderDirection.LONG, lots=0.001,
         ))

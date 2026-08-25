@@ -31,7 +31,11 @@ import pyarrow.parquet as pq
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.framework.types.coverage_report_types import Gap, GapCategory
 from python.framework.types.signal_data_types import (
-    SIGNAL_ENVELOPE_SYMBOL, SignalObservedSeries, SignalParquetColumn, SignalSeriesKind)
+    SIGNAL_ENVELOPE_SYMBOL,
+    SignalObservedSeries,
+    SignalParquetColumn,
+    SignalSeriesKind,
+)
 from python.framework.utils.market_calendar import MarketCalendar
 from python.framework.utils.time_utils import format_duration
 
@@ -152,7 +156,7 @@ class SignalCoverageReport:
             gap = Gap(
                 gap_seconds=delta_s,
                 category=category,
-                reason=f"{reason} [~{missed} snapshots missed]",
+                reason=f'{reason} [~{missed} snapshots missed]',
                 gap_start=prev_ts,
                 gap_end=curr_ts
             )
@@ -495,8 +499,8 @@ class SignalCoverageReport:
             return 'collected_msc (available_msc absent — pre-stream era)'
         if stream == total:
             return 'available_msc'
-        return (f"mixed — available_msc on {stream:,} of {total:,} envelopes, "
-                f"collected_msc on the rest (pre-stream era)")
+        return (f'mixed — available_msc on {stream:,} of {total:,} envelopes, '
+                f'collected_msc on the rest (pre-stream era)')
 
     def get_sequence_description(self) -> str:
         """
@@ -507,12 +511,12 @@ class SignalCoverageReport:
         """
         if not self.envelopes_with_stream_identity:
             return 'not verifiable (no seq in this era)'
-        span = f"{self.seq_span[0]:,}→{self.seq_span[1]:,}"
-        epochs = (f", {len(self.stream_epochs)} epochs"
+        span = f'{self.seq_span[0]:,}→{self.seq_span[1]:,}'
+        epochs = (f', {len(self.stream_epochs)} epochs'
                   if len(self.stream_epochs) > 1 else '')
         if self.seq_holes:
-            return f"⚠️  {self.seq_holes:,} missing  {span}{epochs}"
-        return f"contiguous  {span}{epochs}  (0 holes)"
+            return f'⚠️  {self.seq_holes:,} missing  {span}{epochs}'
+        return f'contiguous  {span}{epochs}  (0 holes)'
 
     def has_issues(self) -> bool:
         """
@@ -538,13 +542,13 @@ class SignalCoverageReport:
 
         report.append(f"\n{'='*60}")
         report.append(
-            f"📡 SIGNAL COVERAGE REPORT: {self.data_sentiment_type}/{self.symbol}")
+            f'📡 SIGNAL COVERAGE REPORT: {self.data_sentiment_type}/{self.symbol}')
         report.append(f"{'='*60}")
 
         if not self.snapshot_count:
-            report.append("   (no snapshots — source or symbol not imported)")
+            report.append('   (no snapshots — source or symbol not imported)')
             report.append(f"{'='*60}\n")
-            return "\n".join(report)
+            return '\n'.join(report)
 
         report.append(
             f"Time Range:   {self.start_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
@@ -553,18 +557,18 @@ class SignalCoverageReport:
 
         duration = self.end_time - self.start_time
         report.append(
-            f"Duration:     {duration.days}d {int(duration.total_seconds() / 3600 % 24)}h")
-        report.append(f"Snapshots:    {self.snapshot_count:,}")
+            f'Duration:     {duration.days}d {int(duration.total_seconds() / 3600 % 24)}h')
+        report.append(f'Snapshots:    {self.snapshot_count:,}')
         report.append(
-            f"Cadence:      {format_duration(self.cadence_seconds)} (measured median)")
+            f'Cadence:      {format_duration(self.cadence_seconds)} (measured median)')
 
         origin = self.get_data_origin()
         if origin == 'synthetic':
-            report.append("Origin:       🧪 SYNTHETIC — generated data, not a market record")
+            report.append('Origin:       🧪 SYNTHETIC — generated data, not a market record')
         elif origin:
-            report.append(f"Origin:       {origin}")
+            report.append(f'Origin:       {origin}')
         else:
-            report.append("Origin:       unknown (producer predates the data_origin field)")
+            report.append('Origin:       unknown (producer predates the data_origin field)')
 
         fingerprint = self.get_config_fingerprint()
         if fingerprint == 'mixed':
@@ -572,28 +576,28 @@ class SignalCoverageReport:
                 f"Config:       ⚠️  {len(self.config_fingerprints)} fingerprints — the producer's "
                 f"input config changed inside this archive")
         elif fingerprint:
-            report.append(f"Config:       #{fingerprint}")
+            report.append(f'Config:       #{fingerprint}')
         else:
-            report.append("Config:       unknown (producer predates the config_fingerprint field)")
+            report.append('Config:       unknown (producer predates the config_fingerprint field)')
 
-        report.append(f"Merge key:    {self.get_merge_key_description()}")
-        report.append(f"Sequence:     {self.get_sequence_description()}")
+        report.append(f'Merge key:    {self.get_merge_key_description()}')
+        report.append(f'Sequence:     {self.get_sequence_description()}')
 
         if self.trigger_reasons:
             parts = ' · '.join(
-                f"{count:,} {reason}"
+                f'{count:,} {reason}'
                 for reason, count in sorted(
                     self.trigger_reasons.items(), key=lambda kv: -kv[1]))
             # A partially stamped archive must say so — otherwise the composition
             # reads as if it covered every snapshot.
             if self.trigger_unknown:
-                parts += f" · {self.trigger_unknown:,} unknown (pre-contract)"
-            report.append(f"Triggers:     {parts}")
+                parts += f' · {self.trigger_unknown:,} unknown (pre-contract)'
+            report.append(f'Triggers:     {parts}')
         else:
-            report.append("Triggers:     unknown (producer predates the trigger_reason field)")
+            report.append('Triggers:     unknown (producer predates the trigger_reason field)')
 
         report.append(f"\n{'─'*60}")
-        report.append("GAP ANALYSIS:")
+        report.append('GAP ANALYSIS:')
         report.append(f"{'─'*60}")
         report.append(
             f"⚠️  Short:        {self.gap_counts['short']} gaps")
@@ -609,24 +613,24 @@ class SignalCoverageReport:
 
         if problematic:
             report.append(f"\n{'─'*60}")
-            report.append("⚠️  GAP DETAILS:")
+            report.append('⚠️  GAP DETAILS:')
             report.append(f"{'─'*60}")
             for gap in problematic:
                 report.append(
-                    f"\n{gap.severity_icon} {gap.category.value.upper()} GAP:")
+                    f'\n{gap.severity_icon} {gap.category.value.upper()} GAP:')
                 report.append(
                     f"   Start:  {gap.gap_start.strftime('%Y-%m-%d %H:%M:%S')} UTC")
                 report.append(
                     f"   End:    {gap.gap_end.strftime('%Y-%m-%d %H:%M:%S')} UTC")
                 report.append(
-                    f"   Gap:    {gap.duration_human} ({gap.gap_hours:.2f}h)")
-                report.append(f"   Reason: {gap.reason}")
+                    f'   Gap:    {gap.duration_human} ({gap.gap_hours:.2f}h)')
+                report.append(f'   Reason: {gap.reason}')
 
         short_gaps = [g for g in self.gaps if g.category == GapCategory.SHORT]
         if short_gaps:
             max_display = 20
             report.append(f"\n{'─'*60}")
-            report.append(f"ℹ️  SHORT GAPS: {len(short_gaps)} total")
+            report.append(f'ℹ️  SHORT GAPS: {len(short_gaps)} total')
             report.append(f"{'─'*60}")
             for gap in short_gaps[:max_display]:
                 report.append(
@@ -635,11 +639,11 @@ class SignalCoverageReport:
                 )
             if len(short_gaps) > max_display:
                 report.append(
-                    f"   ... and {len(short_gaps) - max_display} more short gaps")
+                    f'   ... and {len(short_gaps) - max_display} more short gaps')
 
         if not self.gaps:
-            report.append("\n✅ Continuous signal series - no gaps detected!")
+            report.append('\n✅ Continuous signal series - no gaps detected!')
 
         report.append(f"{'='*60}\n")
 
-        return "\n".join(report)
+        return '\n'.join(report)

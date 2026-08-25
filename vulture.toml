@@ -1,0 +1,66 @@
+# Vulture configuration — dead code across module boundaries (§19, §40).
+#
+# Vulture is the BACKLOG tier of §40, never a gate: it is measured during the release
+# sweep and triaged by hand. Its unique job is what pyflakes structurally cannot see —
+# pyflakes reports disuse inside one module, so a getter that nobody anywhere calls is
+# invisible to it. Run it as:
+#
+#     python -m vulture --config vulture.toml
+#
+# ⚠️ Order matters — run this AFTER `ruff check python/ tests/ --fix`. Ruff clears unused
+#    imports project-wide; measured before that, vulture reports the same imports a second
+#    time (53 of them on 2026-08-24) and buries its own findings underneath them.
+#
+# ⚠️ `user_algos/` is deliberately not scanned — a separate, gitignored workspace. A public
+#    framework method that only a private algo calls therefore reads as dead here. Check
+#    that workspace before deleting anything the framework exposes outward.
+#
+# ⚠️ Serialization hides reads. A dataclass or Pydantic field written once and then dumped
+#    to JSON/CSV is never referenced by name, so most findings under
+#    `python/framework/types/` are fields, not dead code — but not all of them, and §19
+#    wants dead config found. That bucket is a judgement pass, not a delete list.
+#
+# ⚠️ CONFIGURATION SELECTS BY STRING. A decision logic is a path in a profile, a worker is a
+#    `USER/name` type, an adapter is a `broker_type`. None of that is an import, so no
+#    config-selected class is visible here. Before deleting a class, grep the JSON under
+#    `configs/` and `tests/fixtures/` for its file name. Measured case: the diagnostics probe
+#    decision is reachable only through `"decision_logic_type"` in an AutoTrader profile.
+#
+# What is ignored below is only what a framework calls along a path vulture cannot follow.
+# Nothing is ignored for being inconvenient.
+
+[tool.vulture]
+paths = ["python", "tests"]
+exclude = ["python/experiments", "*/__pycache__"]
+
+# 60 is where vulture's own contribution lives: unused methods, functions, properties and
+# classes are reported at this confidence. At 80 only imports (90) and variables (100)
+# survive — the exact set ruff already covers, so an 80 run adds nothing to the sweep.
+min_confidence = 60
+
+# Called by a framework, never by name from our own code:
+#   @pytest.fixture     collected by pytest
+#   @router.* / @app.*  FastAPI routing and exception handlers
+#   @field_validator    Pydantic
+#   @model_validator    Pydantic
+ignore_decorators = [
+    "@pytest.fixture",
+    "@router.*",
+    "@app.*",
+    "@field_validator",
+    "@model_validator",
+]
+
+# Signatures a framework dictates, so the name is not ours to remove:
+#   pytest_*      pytest hooks (addoption, configure, sessionfinish, collection_modifyitems)
+#   do_GET        http.server request dispatch in the signal transport tests
+#   signum        the signal-handler signature
+#   exitstatus    the pytest_sessionfinish signature
+#   model_config  Pydantic reads it off the class body
+ignore_names = [
+    "pytest_*",
+    "do_GET",
+    "signum",
+    "exitstatus",
+    "model_config",
+]

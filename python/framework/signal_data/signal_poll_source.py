@@ -15,8 +15,8 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
 from collections import deque
+from datetime import datetime, timezone
 from typing import Deque, Optional, Tuple
 
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -24,8 +24,13 @@ from python.framework.signal_data.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.signal_inbox import SignalInbox
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.types.autotrader_types.autotrader_display_types import (
-    SignalTransportEvent, SignalTransportStats)
-from python.framework.types.config_types.sentiment_config_types import SentimentPollConfig
+    SignalTransportEvent,
+    SignalTransportStats,
+)
+from python.framework.types.config_types.sentiment_config_types import (
+    ActiveProducer,
+    SentimentPollConfig,
+)
 from python.framework.types.decision_logic_types import AwarenessLevel
 from python.framework.types.signal_data_types import SignalHealthStatus, SignalSnapshot
 
@@ -33,6 +38,11 @@ from python.framework.types.signal_data_types import SignalHealthStatus, SignalS
 # cannot answer, it says so in the contract's error envelope instead of degrading to a
 # paid run. That is the one condition worth waiting out rather than hammering.
 STORE_UNAVAILABLE_ERROR = 'VECTOR_STORE_ERROR'
+
+# The producer's connect contract is explicit that these are NOT transport failures:
+# "stop retrying and report a credential problem". Retrying forever against a dead token
+# and calling it the producer's outage is exactly what the distinction prevents.
+CREDENTIAL_STATUS_CODES = (401, 403)
 
 # How many transport moments the operator panel keeps. The tail is what a human
 # reads; the total is what tells them the tail is a tail.
@@ -52,10 +62,10 @@ class SignalPollSource:
     def __init__(
         self,
         config: SentimentPollConfig,
+        producer: ActiveProducer,
         signal_kind: str,
         inbox: SignalInbox,
         logger: ScenarioLogger,
-        api_token: str = '',
         health_probe: Optional[SignalHealthProbe] = None,
         observed: Optional[SignalObservedAccumulator] = None,
     ):
@@ -64,10 +74,11 @@ class SignalPollSource:
 
         Args:
             config: Poll transport configuration
+            producer: Active endpoint with its resolved credential — address and token
+                arrive as one unit so an environment switch cannot take effect by half
             signal_kind: Payload kind the snapshots are filed under
             inbox: Hand-off buffer drained by the loop
             logger: Session logger — operator-relevant failures belong here (§35)
-            api_token: Bearer token; empty means send no Authorization header
             health_probe: Optional producer-identity probe, started and stopped with
                 this transport because it borrows this transport's address
             observed: Optional accumulator recording what the arriving envelopes state
@@ -75,13 +86,14 @@ class SignalPollSource:
                 archive to read those facts out of
         """
         self._config = config
+        self._producer = producer
         self._signal_kind = signal_kind
         self._inbox = inbox
         self._logger = logger
-        self._api_token = api_token
+        self._api_token = producer.credential.token
         self._health_probe = health_probe
         self._observed = observed
-        self._url = (f"{config.base_url.rstrip('/')}"
+        self._url = (f"{producer.base_url.rstrip('/')}"
                      f"/v1/pipelines/{config.pipeline_id}/latest")
 
         self._thread: Optional[threading.Thread] = None
@@ -114,9 +126,9 @@ class SignalPollSource:
         self._thread.start()
         if self._health_probe is not None:
             self._health_probe.start()
-        self._record(f"connected — {self._config.interval_s:.0f}s cadence")
+        self._record(f'connected — {self._config.interval_s:.0f}s cadence')
         self._logger.info(
-            f"📡 Signal poll started: {self._url} every {self._config.interval_s:.0f}s")
+            f'📡 Signal poll started: {self._url} every {self._config.interval_s:.0f}s')
 
     def stop(self) -> None:
         """Stop polling and wait for the thread to finish."""
@@ -127,8 +139,8 @@ class SignalPollSource:
             self._thread.join(timeout=self._config.request_timeout_s + 2.0)
             self._thread = None
         self._logger.info(
-            f"📡 Signal poll stopped: {self._polls} polls, {self._enqueued} new envelopes, "
-            f"{self._degraded} degraded responses")
+            f'📡 Signal poll stopped: {self._polls} polls, {self._enqueued} new envelopes, '
+            f'{self._degraded} degraded responses')
 
     def get_stats(self) -> Tuple[int, int, int]:
         """
@@ -188,14 +200,51 @@ class SignalPollSource:
             try:
                 if self._poll_once():
                     wait_s = self._config.degraded_backoff_s
+            except urllib.error.HTTPError as error:
+                if error.code in CREDENTIAL_STATUS_CODES:
+                    self._handle_unauthorized(error.code)
+                    return
+                self._record_transport_failure(error)
             except Exception as error:   # noqa: BLE001 — a transport fault never stops the loop
-                with self._stats_lock:
-                    self._transport_errors += 1
-                    self._state = 'error'
-                self._record(f"transport failed: {type(error).__name__}",
-                             AwarenessLevel.ALERT)
-                self._logger.warning(f"📡 Signal poll failed: {error}")
+                self._record_transport_failure(error)
             self._stop.wait(wait_s)
+
+    def _record_transport_failure(self, error: Exception) -> None:
+        """
+        Count and report a genuine transport fault, which never stops the loop.
+
+        Args:
+            error: The failure to report
+        """
+        with self._stats_lock:
+            self._transport_errors += 1
+            self._state = 'error'
+        self._record(f'transport failed: {type(error).__name__}',
+                     AwarenessLevel.ALERT)
+        self._logger.warning(f'📡 Signal poll failed: {error}')
+
+    def _handle_unauthorized(self, status_code: int) -> None:
+        """
+        Report a credential problem and stop polling — retrying cannot fix it.
+
+        Deliberately not counted as a transport error: the producer is answering
+        correctly, we are the ones without a valid token. Stopping is safe because the
+        staleness contract then declares the feed blind, which is a state the decision
+        logic is required to handle — a silence the strategy is TOLD about rather than
+        one it has to infer.
+
+        Args:
+            status_code: The status the producer answered with
+        """
+        with self._stats_lock:
+            self._state = 'unauthorized'
+        self._record(f'credential rejected ({status_code})', AwarenessLevel.ALERT)
+        self._logger.error(
+            f'📡 Producer rejected our credential ({status_code}) — this is NOT a producer '
+            f'outage. Polling stopped; retrying cannot fix a token. Endpoint '
+            f'{self._producer.name}, credential '
+            f'{self._producer.credential.describe_source()} — fix it and restart the '
+            f'session. The feed is now blind and the staleness contract will say so.')
 
     def _poll_once(self) -> bool:
         """
@@ -213,11 +262,11 @@ class SignalPollSource:
                 self._degraded += 1
                 self._state = 'degraded'
             detail = (payload.get('errors') or [{}])[0].get('message', '')
-            self._record(f"producer store unavailable — backing off "
-                         f"{self._config.degraded_backoff_s:.0f}s", AwarenessLevel.NOTICE)
+            self._record(f'producer store unavailable — backing off '
+                         f'{self._config.degraded_backoff_s:.0f}s', AwarenessLevel.NOTICE)
             self._logger.warning(
-                f"📡 Producer store unavailable, backing off "
-                f"{self._config.degraded_backoff_s:.0f}s: {detail}")
+                f'📡 Producer store unavailable, backing off '
+                f'{self._config.degraded_backoff_s:.0f}s: {detail}')
             return True
 
         # The producer served an envelope, so whatever fault the state carries is over.

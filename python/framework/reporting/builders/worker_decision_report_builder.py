@@ -13,7 +13,10 @@ from typing import List
 from python.framework.reporting.builders.report_aggregators import aggregate_worker_totals
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
-    WorkerDecisionReport, WorkerDecisionUnitRow, WorkerStatRow)
+    WorkerDecisionReport,
+    WorkerDecisionUnitRow,
+    WorkerStatRow,
+)
 
 
 def build_worker_decision_report(units: List[RunUnit]) -> WorkerDecisionReport:

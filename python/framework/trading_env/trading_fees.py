@@ -11,15 +11,12 @@ Architecture:
 Each Position contains List[AbstractTradingFee] that accumulate over time.
 """
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
-from enum import Enum
 
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.types.trading_env_types.broker_types import FeeStatus, FeeType
-from python.framework.types.market_types.market_data_types import TickData
 
 # ============================================
 # Concrete Fee Types
@@ -225,11 +222,11 @@ class CommissionFee(AbstractTradingFee):
     """
 
     # Commission configuration
-    commission_mode: str = "per_lot"  # "per_lot" or "percentage"
+    commission_mode: str = 'per_lot'  # "per_lot" or "percentage"
     commission_rate: float = 0.0  # $7 per lot OR 0.1% etc.
     lots: float = 0.0
     order_value: float = 0.0  # For percentage calculation
-    side: str = "entry"  # "entry", "exit", or "both"
+    side: str = 'entry'  # "entry", "exit", or "both"
 
     def __init__(
         self,
@@ -237,7 +234,7 @@ class CommissionFee(AbstractTradingFee):
         commission_rate: float,
         lots: float,
         order_value: float = 0.0,
-        side: str = "entry",
+        side: str = 'entry',
         timestamp: Optional[datetime] = None
     ):
         """

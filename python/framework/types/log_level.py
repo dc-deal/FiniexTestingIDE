@@ -20,21 +20,21 @@ class ColorCodes:
 
 # Priority mapping — outside class to avoid str Enum member collision
 _LOG_LEVEL_PRIORITY = {
-    "VERBOSE": 0,
-    "DEBUG": 10,
-    "INFO": 20,
-    "WARNING": 30,
-    "ERROR": 40
+    'VERBOSE': 0,
+    'DEBUG': 10,
+    'INFO': 20,
+    'WARNING': 30,
+    'ERROR': 40
 }
 
 
 class LogLevel(StrEnum):
     """Log level definitions and validation."""
-    VERBOSE = "VERBOSE"
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARNING = "WARNING"
-    ERROR = "ERROR"
+    VERBOSE = 'VERBOSE'
+    DEBUG = 'DEBUG'
+    INFO = 'INFO'
+    WARNING = 'WARNING'
+    ERROR = 'ERROR'
 
     @classmethod
     def validate(cls, level: str) -> 'LogLevel':
@@ -52,7 +52,7 @@ class LogLevel(StrEnum):
         """
         if not isinstance(level, str):
             raise TypeError(
-                f"Log level must be a string, but got {type(level).__name__}: {level}"
+                f'Log level must be a string, but got {type(level).__name__}: {level}'
             )
         try:
             return cls(level.upper())

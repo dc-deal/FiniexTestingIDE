@@ -17,7 +17,6 @@ import pytest
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 
-
 OUTAGE_PROFILE = 'configs/autotrader_profiles/backtesting/market_data_outage_test.json'
 
 
@@ -44,7 +43,7 @@ class TestMarketDataOutage:
         assert result.shutdown_mode == 'normal'
         assert result.ticks_processed == 3000
         assert len(result.error_messages) == 0, (
-            f"Unexpected errors: {result.error_messages[:5]}")
+            f'Unexpected errors: {result.error_messages[:5]}')
 
     def test_stale_episode_reaches_the_pot_with_span(self, outage_session):
         """One freeze → exactly one flip warning + one recovery span line."""

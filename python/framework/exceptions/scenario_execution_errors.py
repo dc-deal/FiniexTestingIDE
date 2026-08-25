@@ -5,6 +5,7 @@ Exception types for scenario execution failures
 
 
 from typing import List
+
 from python.framework.exceptions.finiex_error import FiniexError
 from python.framework.types.log_level import LogLevel
 from python.framework.types.process_data_types import ProcessResult
@@ -113,21 +114,21 @@ class BatchExecutionError(ScenarioExecutionError):
 
             # Show exception traceback if exists
             if result.traceback:
-                self._message += f"\n  Exception Traceback:\n"
+                self._message += '\n  Exception Traceback:\n'
                 for line in result.traceback.split('\n'):
                     if line.strip():
-                        self._message += f"    {line}\n"
+                        self._message += f'    {line}\n'
 
             # Extract and show logged errors from buffer
             logged_errors = self._extract_logged_errors(
                 result.scenario_logger_buffer)
             if logged_errors:
-                self._message += f"\n  Logged Errors ({len(logged_errors)}):\n"
+                self._message += f'\n  Logged Errors ({len(logged_errors)}):\n'
                 # Show first 5 errors
                 for _, error_line in logged_errors[:5]:
-                    self._message += f"    • {error_line}\n"
+                    self._message += f'    • {error_line}\n'
                 if len(logged_errors) > 5:
-                    self._message += f"    ... and {len(logged_errors) - 5} more\n"
+                    self._message += f'    ... and {len(logged_errors) - 5} more\n'
 
             self._message += f"{'─'*80}\n"
 

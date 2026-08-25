@@ -79,6 +79,7 @@ class TestRegressionDetection:
     def _worker(self, mock_logger, *snapshots):
         """A worker over the given snapshots, already provided."""
         from types import SimpleNamespace
+
         from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
         worker = LlmSentimentWorker(
             name='sentiment', parameters={'max_staleness_minutes': 600, 'signal_delay_minutes': 0},

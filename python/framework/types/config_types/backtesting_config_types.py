@@ -3,9 +3,12 @@ FiniexTestingIDE - Backtesting Pipeline Configuration Types
 Pydantic models for the app_config.json::backtesting section.
 """
 from typing import Dict, List
+
 from pydantic import BaseModel, ConfigDict
 
-from python.framework.types.config_types.performance_tracking_config_types import PerformanceTrackingConfig
+from python.framework.types.config_types.performance_tracking_config_types import (
+    PerformanceTrackingConfig,
+)
 
 
 class DefaultScenarioExecutionConfig(BaseModel):

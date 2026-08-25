@@ -12,7 +12,6 @@ import pytest
 
 from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 
-
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -172,7 +171,7 @@ class TestVolumeChain:
         # The critical assertion: bar volume must be > 0
         total_volume = m5_bars['volume'].sum()
         assert total_volume > 0, (
-            f"Bar volume should be > 0 for crypto data, got {total_volume}"
+            f'Bar volume should be > 0 for crypto data, got {total_volume}'
         )
 
         # Volume should match sum of tick volumes

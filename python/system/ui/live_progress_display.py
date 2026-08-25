@@ -23,21 +23,26 @@ Usage:
 import threading
 import time
 import traceback
-import psutil
 from multiprocessing import Queue
-from typing import List, Optional, Dict, Union
-from rich.console import Console
-from rich.live import Live
-from rich.table import Table
-from rich.panel import Panel
-from rich.layout import Layout
-from rich import box
+from typing import Dict, List, Optional, Union
 
-from python.framework.types.trading_env_types.currency_codes import format_currency_simple, get_currency_symbol
-from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
-from python.framework.types.live_types.live_scenario_stats_types import LiveScenarioStats, LiveStatusFrame, ScenarioStatus
+import psutil
+from rich import box
+from rich.console import Console
+from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
+
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.live_types.live_core_snapshot_types import LiveCoreSnapshot
+from python.framework.types.live_types.live_scenario_stats_types import (
+    LiveScenarioStats,
+    LiveStatusFrame,
+    ScenarioStatus,
+)
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 
 vLog = get_global_logger()
 
@@ -165,8 +170,8 @@ class LiveProgressDisplay:
                     # === 3. HART warten ===
                     time.sleep(self.update_interval)
 
-                except Exception as e:
-                    vLog.error(f"\n❌ CRITICAL ERROR in LiveProgressDisplay:")
+                except Exception:
+                    vLog.error('\n❌ CRITICAL ERROR in LiveProgressDisplay:')
                     vLog.error(traceback.format_exc())
                     self._running = False
                     raise
@@ -217,8 +222,8 @@ class LiveProgressDisplay:
 
         return Panel(
             layout,
-            title="[bold cyan]🔬 Strategy Execution Progress[/bold cyan]",
-            border_style="cyan",
+            title='[bold cyan]🔬 Strategy Execution Progress[/bold cyan]',
+            border_style='cyan',
             box=box.ROUNDED
         )
 
@@ -270,22 +275,22 @@ class LiveProgressDisplay:
             elapsed = int(time.perf_counter() - self._start_time)
             h, rem = divmod(elapsed, 3600)
             m, s = divmod(rem, 60)
-            runtime_str = f"{h:02d}:{m:02d}:{s:02d}"
+            runtime_str = f'{h:02d}:{m:02d}:{s:02d}'
 
         line1 = (
-            f"[bold yellow]⚡ System Resources[/bold yellow] │ "
-            f"[cyan]CPU:[/cyan] {cpu_percent:>5.1f}% │ "
-            f"[cyan]RAM:[/cyan] {ram_used_gb:>5.1f}/{ram_total_gb:.1f} GB │ "
-            f"[dim]Runtime:[/dim] {runtime_str}"
+            f'[bold yellow]⚡ System Resources[/bold yellow] │ '
+            f'[cyan]CPU:[/cyan] {cpu_percent:>5.1f}% │ '
+            f'[cyan]RAM:[/cyan] {ram_used_gb:>5.1f}/{ram_total_gb:.1f} GB │ '
+            f'[dim]Runtime:[/dim] {runtime_str}'
         )
         line2 = (
-            f"[yellow]⏳ Warmup:[/yellow] {warmup_count:<4} │ "
-            f"[cyan]🚦 Waiting:[/cyan] {waiting_count:<4} │ "
-            f"[green]🔬 Running:[/green] {running_count}/{total_count} │ "
-            f"[blue]✅ Completed:[/blue] {completed_count}/{total_count}"
+            f'[yellow]⏳ Warmup:[/yellow] {warmup_count:<4} │ '
+            f'[cyan]🚦 Waiting:[/cyan] {waiting_count:<4} │ '
+            f'[green]🔬 Running:[/green] {running_count}/{total_count} │ '
+            f'[blue]✅ Completed:[/blue] {completed_count}/{total_count}'
         )
 
-        return f"{line1}\n{line2}"
+        return f'{line1}\n{line2}'
 
     def _get_status_sort_priority(self, status: ScenarioStatus) -> int:
         """
@@ -337,17 +342,17 @@ class LiveProgressDisplay:
 
         # Add columns
         name_length = 25
-        table.add_column("Icon", width=2)
-        table.add_column("Scenario", width=name_length)
-        table.add_column("Progress", width=20)
-        table.add_column("Stats", width=50)
+        table.add_column('Icon', width=2)
+        table.add_column('Scenario', width=name_length)
+        table.add_column('Progress', width=20)
+        table.add_column('Stats', width=50)
 
         if not all_stats:
             table.add_row(
-                "",
-                "",
-                "[yellow]No scenarios running...[/yellow]",
-                ""
+                '',
+                '',
+                '[yellow]No scenarios running...[/yellow]',
+                ''
             )
             return table
 
@@ -381,7 +386,7 @@ class LiveProgressDisplay:
             # Truncate scenario name
             name = stats.scenario_name
             if len(name) > name_length - 2:
-                name = name[:name_length - 5] + "..."
+                name = name[:name_length - 5] + '...'
 
             # Status-based icon and color
             icon, name_color = self._get_status_display(stats.status)
@@ -395,7 +400,7 @@ class LiveProgressDisplay:
             winning = stats.core.winning_trades
             losing = stats.core.losing_trades
 
-            trades = ""
+            trades = ''
             # Only show trades when not in initial states
             if stats.status not in (
                 ScenarioStatus.INITIALIZED,
@@ -406,19 +411,19 @@ class LiveProgressDisplay:
                 ScenarioStatus.INIT_PROCESS,
                 ScenarioStatus.BARRIER
             ):
-                trades = f"Trades: {total_trades} ({winning}W / {losing}L)"
+                trades = f'Trades: {total_trades} ({winning}W / {losing}L)'
 
             # Format P/L
             pnl = stats.core.balance - stats.core.initial_balance
             if pnl >= 0:
-                pnl_color = "green"
-                pnl_sign = "+"
+                pnl_color = 'green'
+                pnl_sign = '+'
             else:
-                pnl_color = "red"
-                pnl_sign = "-"
+                pnl_color = 'red'
+                pnl_sign = '-'
 
             # Dirty flag indicator
-            dirty_flag = " 🏴" if stats.portfolio_dirty_flag else ""
+            dirty_flag = ' 🏴' if stats.portfolio_dirty_flag else ''
 
             # AwarenessChannel suffix (truncated to 30 chars)
             awareness_suffix = ''
@@ -436,18 +441,18 @@ class LiveProgressDisplay:
                 else:
                     a_suffix_color = 'dim'
                     a_icon = 'i'
-                awareness_suffix = f" [{a_suffix_color}]· {a_icon} {a_msg}[/{a_suffix_color}]"
+                awareness_suffix = f' [{a_suffix_color}]· {a_icon} {a_msg}[/{a_suffix_color}]'
 
             stats_text = (
-                f"[{pnl_color}]{format_currency_simple(portfolio_value, account_currency)}{dirty_flag}[/{pnl_color}] "
-                f"[dim]({pnl_sign}{format_currency_simple(pnl, account_currency)})[/dim] \n"
-                f"[blue]{trades}[/blue]{awareness_suffix}"
+                f'[{pnl_color}]{format_currency_simple(portfolio_value, account_currency)}{dirty_flag}[/{pnl_color}] '
+                f'[dim]({pnl_sign}{format_currency_simple(pnl, account_currency)})[/dim] \n'
+                f'[blue]{trades}[/blue]{awareness_suffix}'
             )
 
             # Add row
             table.add_row(
                 icon,
-                f"[{name_color}]{name}[/{name_color}]",
+                f'[{name_color}]{name}[/{name_color}]',
                 progress_text,
                 stats_text
             )
@@ -460,14 +465,14 @@ class LiveProgressDisplay:
             hidden_other = hidden_count - hidden_completed
             parts = []
             if hidden_completed:
-                parts.append(f"{hidden_completed} completed")
+                parts.append(f'{hidden_completed} completed')
             if hidden_other:
-                parts.append(f"{hidden_other} pending")
+                parts.append(f'{hidden_other} pending')
             table.add_row(
-                "[dim]…[/dim]",
+                '[dim]…[/dim]',
                 f"[dim]+{hidden_count} more hidden ({', '.join(parts)})[/dim]",
-                "",
-                ""
+                '',
+                ''
             )
 
         return table
@@ -484,27 +489,27 @@ class LiveProgressDisplay:
         """
         match status:
             case ScenarioStatus.INITIALIZED:
-                return "⏸️", "dim"
+                return '⏸️', 'dim'
             case ScenarioStatus.WARMUP_COVERAGE:
-                return "📊", "dim"
+                return '📊', 'dim'
             case ScenarioStatus.WARMUP_DATA_TICKS:
-                return "🔥", "yellow"
+                return '🔥', 'yellow'
             case ScenarioStatus.WARMUP_DATA_BARS:
-                return "🔥", "yellow"
+                return '🔥', 'yellow'
             case ScenarioStatus.WARMUP_TRADER:
-                return "🔥", "yellow"
+                return '🔥', 'yellow'
             case ScenarioStatus.INIT_PROCESS:
-                return "⚙️", "cyan"
+                return '⚙️', 'cyan'
             case ScenarioStatus.BARRIER:
-                return "🚦", "cyan"
+                return '🚦', 'cyan'
             case ScenarioStatus.RUNNING:
-                return "🔬", "cyan"
+                return '🔬', 'cyan'
             case ScenarioStatus.COMPLETED:
-                return "✅", "green"
+                return '✅', 'green'
             case ScenarioStatus.FINISHED_WITH_ERROR:
-                return "❌", "red"
+                return '❌', 'red'
             case _:
-                return "❓", "white"
+                return '❓', 'white'
 
     def _build_progress_text(self, stats: LiveScenarioStats) -> str:
         """
@@ -519,24 +524,24 @@ class LiveProgressDisplay:
         # Status-specific messages for non-running states
         match stats.status:
             case ScenarioStatus.INITIALIZED:
-                return "[dim]Initialized[/dim]"
+                return '[dim]Initialized[/dim]'
             case ScenarioStatus.WARMUP_COVERAGE:
-                return "[yellow]Loading coverage...[/yellow]"
+                return '[yellow]Loading coverage...[/yellow]'
             case ScenarioStatus.WARMUP_DATA_TICKS:
-                return "[yellow]Loading ticks...[/yellow]"
+                return '[yellow]Loading ticks...[/yellow]'
             case ScenarioStatus.WARMUP_DATA_BARS:
-                return "[yellow]Rendering bars...[/yellow]"
+                return '[yellow]Rendering bars...[/yellow]'
             case ScenarioStatus.WARMUP_TRADER:
-                return "[yellow]Loading broker...[/yellow]"
+                return '[yellow]Loading broker...[/yellow]'
             case ScenarioStatus.INIT_PROCESS:
-                return "[cyan]Starting...[/cyan]"
+                return '[cyan]Starting...[/cyan]'
             case ScenarioStatus.BARRIER:
-                return "[cyan]Waiting...[/cyan]"
+                return '[cyan]Waiting...[/cyan]'
 
         # For RUNNING and COMPLETED: show progress bar
         progress_percent = stats.progress_percent
         bar_width = 20
         filled = int((progress_percent / 100.0) * bar_width)
-        bar = "█" * filled + "░" * (bar_width - filled)
+        bar = '█' * filled + '░' * (bar_width - filled)
 
-        return f"{bar} {progress_percent:>5.1f}%"
+        return f'{bar} {progress_percent:>5.1f}%'

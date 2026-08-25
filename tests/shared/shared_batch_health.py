@@ -23,10 +23,10 @@ class TestBatchHealth:
         for pr in batch_execution_summary.process_result_list:
             if not pr.success:
                 failed.append(
-                    f"{pr.scenario_name}: {pr.error_type} — {pr.error_message}"
+                    f'{pr.scenario_name}: {pr.error_type} — {pr.error_message}'
                 )
 
         assert not failed, (
-            f"{len(failed)} scenario(s) failed:\n" +
-            "\n".join(f"  - {f}" for f in failed)
+            f'{len(failed)} scenario(s) failed:\n' +
+            '\n'.join(f'  - {f}' for f in failed)
         )

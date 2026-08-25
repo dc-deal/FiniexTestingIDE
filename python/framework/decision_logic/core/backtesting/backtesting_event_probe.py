@@ -30,8 +30,8 @@ Configuration:
 
 from typing import Any, Dict, List, Optional, Set
 
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.decision_event_types import (
     DecisionEventType,
@@ -47,12 +47,12 @@ from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderResult,
     OrderSide,
     OrderType,
 )
-from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
@@ -93,9 +93,9 @@ class BacktestingEventProbe(AbstractDecisionLogic):
         self._received_events: List[str] = []
 
         self.logger.info(
-            f"BacktestingEventProbe initialized: open@{self._open_tick}, "
-            f"partial_close@{self._partial_close_tick} ({self._partial_close_lots} lots), "
-            f"session_end@{self._session_end_tick}"
+            f'BacktestingEventProbe initialized: open@{self._open_tick}, '
+            f'partial_close@{self._partial_close_tick} ({self._partial_close_lots} lots), '
+            f'session_end@{self._session_end_tick}'
         )
 
     # ============================================
@@ -107,23 +107,23 @@ class BacktestingEventProbe(AbstractDecisionLogic):
         return {
             'open_tick': InputParamDef(
                 param_type=int, default=100, min_val=1,
-                description="Tick at which to open the MARKET position"
+                description='Tick at which to open the MARKET position'
             ),
             'lot_size': InputParamDef(
                 param_type=float, default=0.02, min_val=0.0, max_val=100.0,
-                description="Lot size for the opened position"
+                description='Lot size for the opened position'
             ),
             'partial_close_tick': InputParamDef(
                 param_type=int, default=2000, min_val=1,
-                description="Tick at which to partially close the position"
+                description='Tick at which to partially close the position'
             ),
             'partial_close_lots': InputParamDef(
                 param_type=float, default=0.01, min_val=0.0, max_val=100.0,
-                description="Lots to close at the partial close (< lot_size)"
+                description='Lots to close at the partial close (< lot_size)'
             ),
             'session_end_tick': InputParamDef(
                 param_type=int, default=5000, min_val=1,
-                description="Tick at which to request session end"
+                description='Tick at which to request session end'
             ),
         }
 
@@ -164,7 +164,7 @@ class BacktestingEventProbe(AbstractDecisionLogic):
 
     def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         return {
-            "backtesting_worker": WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
+            'backtesting_worker': WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
         }
 
     # ============================================
@@ -173,26 +173,26 @@ class BacktestingEventProbe(AbstractDecisionLogic):
 
     def on_order_filled(self, event: OrderFilledEvent) -> None:
         self._received_events.append(DecisionEventType.ORDER_FILLED.value)
-        self.logger.info(f"[EVENT] order_filled {event.order_id} @ {event.fill_price}")
+        self.logger.info(f'[EVENT] order_filled {event.order_id} @ {event.fill_price}')
 
     def on_order_rejected(self, event: OrderRejectedEvent) -> None:
         self._received_events.append(DecisionEventType.ORDER_REJECTED.value)
-        self.logger.info(f"[EVENT] order_rejected {event.order_id} ({event.message})")
+        self.logger.info(f'[EVENT] order_rejected {event.order_id} ({event.message})')
 
     def on_order_cancelled(self, event: OrderCancelledEvent) -> None:
         self._received_events.append(DecisionEventType.ORDER_CANCELLED.value)
-        self.logger.info(f"[EVENT] order_cancelled {event.order_id}")
+        self.logger.info(f'[EVENT] order_cancelled {event.order_id}')
 
     def on_partial_close(self, event: PartialCloseEvent) -> None:
         self._received_events.append(DecisionEventType.PARTIAL_CLOSE.value)
         self.logger.info(
-            f"[EVENT] partial_close {event.position_id} "
-            f"closed={event.closed_lots} remaining={event.remaining_lots}"
+            f'[EVENT] partial_close {event.position_id} '
+            f'closed={event.closed_lots} remaining={event.remaining_lots}'
         )
 
     def on_session_end(self, event: SessionEndEvent) -> None:
         self._received_events.append(DecisionEventType.SESSION_END.value)
-        self.logger.info(f"[EVENT] session_end ({event.reason})")
+        self.logger.info(f'[EVENT] session_end ({event.reason})')
 
     def on_market_data_stale(self, status: MarketDataStatus) -> None:
         """
@@ -221,7 +221,7 @@ class BacktestingEventProbe(AbstractDecisionLogic):
                 action=DecisionLogicAction.BUY,
                 outputs={
                     'lot_size': self._lot_size,
-                    'reason': f"Event-probe open at tick {self.tick_count}",
+                    'reason': f'Event-probe open at tick {self.tick_count}',
                     'price': tick.mid,
                 },
             )
@@ -237,7 +237,7 @@ class BacktestingEventProbe(AbstractDecisionLogic):
         tick: TickData
     ) -> Optional[OrderResult]:
         if not self.trading_api:
-            self.logger.warning("No trading_api available - skipping execution")
+            self.logger.warning('No trading_api available - skipping execution')
             return None
 
         # Partial close at the configured tick
@@ -279,8 +279,8 @@ class BacktestingEventProbe(AbstractDecisionLogic):
                 self.trading_api.close_position(
                     pos.position_id, lots=self._partial_close_lots)
                 self.logger.info(
-                    f"📊 Event-probe partial close at tick {self.tick_count}: "
-                    f"{self._position_id} closing {self._partial_close_lots} lots"
+                    f'📊 Event-probe partial close at tick {self.tick_count}: '
+                    f'{self._position_id} closing {self._partial_close_lots} lots'
                 )
                 return
 
@@ -294,7 +294,7 @@ class BacktestingEventProbe(AbstractDecisionLogic):
         self.trading_api.request_session_end(
             'event probe complete', SessionEndSeverity.NORMAL)
         self.logger.info(
-            f"🛑 Event-probe requested session end at tick {self.tick_count}")
+            f'🛑 Event-probe requested session end at tick {self.tick_count}')
 
     # ============================================
     # Public Access + Statistics

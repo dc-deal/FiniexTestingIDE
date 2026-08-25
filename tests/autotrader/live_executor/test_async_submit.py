@@ -19,7 +19,6 @@ from datetime import datetime, timezone
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.order_guard import OrderGuard
-from python.framework.types.live_types.live_execution_types import TimeoutConfig
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
@@ -42,7 +41,7 @@ class TestAsyncSubmitInstantFill:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         result = executor_instant.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
+            symbol='BTCUSD', order_type=OrderType.MARKET,
             direction=OrderDirection.LONG, lots=0.001,
         ))
 
@@ -55,7 +54,7 @@ class TestAsyncSubmitInstantFill:
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         executor_instant.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
+            symbol='BTCUSD', order_type=OrderType.MARKET,
             direction=OrderDirection.LONG, lots=0.001,
         ))
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
@@ -76,7 +75,7 @@ class TestAsyncSubmitRejection:
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
 
         result = executor_reject.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
+            symbol='BTCUSD', order_type=OrderType.MARKET,
             direction=OrderDirection.LONG, lots=0.001,
         ))
         # Initial async return is PENDING — rejection arrives via drain
@@ -108,7 +107,7 @@ class TestAsyncSubmitRejection:
 
         mock_reject.feed_tick(executor_reject, bid=49999.0, ask=50001.0)
         executor_reject.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
+            symbol='BTCUSD', order_type=OrderType.MARKET,
             direction=OrderDirection.LONG, lots=0.001,
         ))
         # No cooldown yet — rejection hasn't drained
@@ -135,7 +134,7 @@ class TestAsyncSubmitDelayedFill:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
+            symbol='BTCUSD', order_type=OrderType.MARKET,
             direction=OrderDirection.LONG, lots=0.001,
         ))
         order_id = result.order_id
@@ -160,7 +159,7 @@ class TestAsyncSubmitDelayedFill:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
+            symbol='BTCUSD', order_type=OrderType.MARKET,
             direction=OrderDirection.LONG, lots=0.001,
         ))
         order_id = result.order_id
@@ -177,7 +176,7 @@ class TestAsyncSubmitDelayedFill:
         pending_post = executor_delayed._request_processor.get_pending_orders()
         target = next(p for p in pending_post if p.pending_order_id == order_id)
         assert target.broker_ref is not None
-        assert target.broker_ref.startswith("MOCK-")
+        assert target.broker_ref.startswith('MOCK-')
 
 
 class TestAsyncSubmitClose:
@@ -188,7 +187,7 @@ class TestAsyncSubmitClose:
         # Open + drain fill
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
         executor_instant.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
+            symbol='BTCUSD', order_type=OrderType.MARKET,
             direction=OrderDirection.LONG, lots=0.001,
         ))
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
@@ -220,7 +219,7 @@ class TestAsyncSubmitShutdown:
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
+            symbol='BTCUSD', order_type=OrderType.MARKET,
             direction=OrderDirection.LONG, lots=0.001,
         ))
         # Confirm broker_ref but do NOT trigger Phase-2 polling — we want the
@@ -246,7 +245,7 @@ class TestAsyncSubmitTimeout:
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.MARKET,
+            symbol='BTCUSD', order_type=OrderType.MARKET,
             direction=OrderDirection.LONG, lots=0.001,
         ))
         mock.await_submit_confirmation(executor)
@@ -274,9 +273,9 @@ class TestAsyncSubmitMultiple:
 
         for i in range(3):
             result = executor_instant.open_order(OpenOrderRequest(
-                symbol="BTCUSD", order_type=OrderType.MARKET,
+                symbol='BTCUSD', order_type=OrderType.MARKET,
                 direction=OrderDirection.LONG, lots=0.001,
-                comment=f"order_{i}",
+                comment=f'order_{i}',
             ))
             assert result.status == OrderStatus.PENDING
             assert result.position_id is None

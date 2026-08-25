@@ -8,7 +8,7 @@ orphan. On MARGIN the same diff lights up (the MT5 path, #209).
 
 from python.framework.testing.mock_broker_adapter import MockDivergenceMode
 from python.framework.types.config_types.market_config_types import TradingModel
-from tests.autotrader.reconciliation.conftest import make_position, make_broker_position
+from tests.autotrader.reconciliation.conftest import make_broker_position, make_position
 
 
 def test_spot_skips_position_diff_no_false_orphan(mock_adapter, make_reconciler):

@@ -12,10 +12,16 @@ config-driven, per-scenario rejection injection.
 from typing import Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.types.trading_env_types.stress_test_types import StressTestRejectOrderConfig
-from python.framework.types.trading_env_types.order_types import OrderResult, RejectionReason, create_rejection_result
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
-from python.framework.utils.seeded_generators.seeded_probability_filter import SeededProbabilityFilter
+from python.framework.types.trading_env_types.order_types import (
+    OrderResult,
+    RejectionReason,
+    create_rejection_result,
+)
+from python.framework.types.trading_env_types.stress_test_types import StressTestRejectOrderConfig
+from python.framework.utils.seeded_generators.seeded_probability_filter import (
+    SeededProbabilityFilter,
+)
 
 
 class StressTestRejection:
@@ -41,8 +47,8 @@ class StressTestRejection:
                 probability=config.probability
             )
             logger.info(
-                f"[STRESS TEST] Order rejection enabled — "
-                f"probability: {config.probability:.0%}, seed: {config.seed}"
+                f'[STRESS TEST] Order rejection enabled — '
+                f'probability: {config.probability:.0%}, seed: {config.seed}'
             )
         else:
             self._filter = None
@@ -68,13 +74,13 @@ class StressTestRejection:
         rejection = create_rejection_result(
             order_id=pending_order.pending_order_id,
             reason=RejectionReason.BROKER_ERROR,
-            message=f"[STRESS TEST] Seeded rejection #{self._rejection_count} "
-            f"(probability: {self._config.probability:.0%})"
+            message=f'[STRESS TEST] Seeded rejection #{self._rejection_count} '
+            f'(probability: {self._config.probability:.0%})'
         )
 
         self._logger.warning(
-            f"[STRESS TEST] Order {pending_order.pending_order_id} rejected "
-            f"(#{self._rejection_count}, probability: {self._config.probability:.0%})"
+            f'[STRESS TEST] Order {pending_order.pending_order_id} rejected '
+            f'(#{self._rejection_count}, probability: {self._config.probability:.0%})'
         )
 
         return rejection

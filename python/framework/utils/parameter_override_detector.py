@@ -11,7 +11,7 @@ Central config management for cascade detection and override extraction
 - ✅ Supports all config sections: workers, decision_logic_config, execution_config, trade_simulator_config
 """
 
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple
 
 
 class ParameterOverrideDetector:
@@ -32,18 +32,18 @@ class ParameterOverrideDetector:
     @staticmethod
     def detect_overrides(
         global_config: Dict[str, Any],
-        scenario_config: Dict[str, Any],
-        path_prefix: str = ""
+        scenario_config: Dict[str, Any]
     ) -> List[Tuple[str, Any, Any]]:
         """
-        Recursively detect parameter overrides between global and scenario configs.
+        Detect parameter overrides between global and scenario configs.
 
+        Walks the known config sections; the recursion into nested keys happens in
+        _check_dict_overrides, which carries the display path.
         Used in load_config() to warn about parameter changes.
 
         Args:
             global_config: Global configuration dict
             scenario_config: Scenario-specific configuration dict
-            path_prefix: Current path in nested dict (for display)
 
         Returns:
             List of tuples: (parameter_path, global_value, scenario_value)
@@ -82,9 +82,9 @@ class ParameterOverrideDetector:
 
         for path, global_val, scenario_val in overrides:
             if global_val is None:
-                formatted[path] = f"{scenario_val} (NEW)"
+                formatted[path] = f'{scenario_val} (NEW)'
             else:
-                formatted[path] = f"{global_val} → {scenario_val}"
+                formatted[path] = f'{global_val} → {scenario_val}'
 
         return formatted
 
@@ -114,7 +114,7 @@ class ParameterOverrideDetector:
         overrides = []
 
         for key, scenario_value in scenario_dict.items():
-            full_path = f"{path}.{key}"
+            full_path = f'{path}.{key}'
 
             if key not in global_dict:
                 # parameter in scenario (not in global)
@@ -210,6 +210,6 @@ class ParameterOverrideDetector:
             logger.warning(
                 f"⚠️  Parameter overrides in scenario '{scenario_name}':")
             for path, change in formatted.items():
-                logger.warning(f"   └─ {path}: {change}")
+                logger.warning(f'   └─ {path}: {change}')
 
         return all_overrides

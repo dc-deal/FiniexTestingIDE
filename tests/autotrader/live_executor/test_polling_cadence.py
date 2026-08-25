@@ -35,7 +35,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
 )
 
-
 # =============================================================================
 # Helpers
 # =============================================================================
@@ -45,7 +44,7 @@ def _submit_limit_and_confirm(mock, executor, price=49000.0, lots=0.001):
     """Submit a LIMIT order and confirm broker_ref via drain (no Phase-2 fill)."""
     mock.feed_tick(executor, bid=49999.0, ask=50001.0)
     result = executor.open_order(OpenOrderRequest(
-        symbol="BTCUSD", order_type=OrderType.LIMIT,
+        symbol='BTCUSD', order_type=OrderType.LIMIT,
         direction=OrderDirection.LONG, lots=lots, price=price,
     ))
     mock.await_submit_confirmation(executor)
@@ -151,7 +150,7 @@ class TestThrottle:
             timestamp=datetime.now(timezone.utc),
             symbol='BTCUSD', bid=49999.0, ask=50001.0,
         ))
-        result = executor.open_order(OpenOrderRequest(
+        executor.open_order(OpenOrderRequest(
             symbol='BTCUSD', order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=49000.0,
         ))
@@ -180,7 +179,7 @@ class TestThrottle:
             executor._request_processor.flush_outbox()
             executor._request_processor.drain_inbox()
 
-        assert len(dispatches) == 1, f"Expected 1 dispatch within throttle window, got {len(dispatches)}"
+        assert len(dispatches) == 1, f'Expected 1 dispatch within throttle window, got {len(dispatches)}'
 
     def test_throttle_interval_configurable(self):
         """poll_interval_ms=200 → second dispatch only after sleeping past the window."""
@@ -216,7 +215,7 @@ class TestThrottle:
         time.sleep(0.25)  # past 200 ms window
         executor._process_active_orders()
 
-        assert len(dispatches) == 2, f"Expected 2 dispatches across two intervals, got {len(dispatches)}"
+        assert len(dispatches) == 2, f'Expected 2 dispatches across two intervals, got {len(dispatches)}'
 
     def test_throttle_uses_wall_clock_not_tick_time(self):
         """last_polled_at_ms is wall-clock based — tick.time_msc jumps don't bypass throttle."""
@@ -256,7 +255,7 @@ class TestThrottle:
         )
         executor.on_tick(future_tick)
 
-        assert len(dispatches) == 1, f"Future tick must not bypass wall-clock throttle, got {len(dispatches)}"
+        assert len(dispatches) == 1, f'Future tick must not bypass wall-clock throttle, got {len(dispatches)}'
 
 
 # =============================================================================
@@ -288,7 +287,6 @@ class TestInFlightGuard:
         pending.execution_state.last_polled_at_ms = 0.0
 
         dispatches = []
-        original = executor._request_processor.submit_query_order_async
         executor._request_processor.submit_query_order_async = (
             lambda order_id, broker_ref, adapter: dispatches.append(order_id)
         )

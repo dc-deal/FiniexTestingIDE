@@ -16,7 +16,6 @@ from python.framework.types.trading_env_types.order_types import (
     RejectionReason,
 )
 
-
 _T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 

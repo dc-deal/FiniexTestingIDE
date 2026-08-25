@@ -17,9 +17,7 @@ that #327 Drift Audit consumes.
 from datetime import datetime, timezone
 
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
-from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.types.live_types.live_request_types import (
-    TradesQueryJob,
     TradesQueryResponse,
 )
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
@@ -29,7 +27,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderType,
 )
-
 
 # =============================================================================
 # PendingOrder.append_trade aggregation

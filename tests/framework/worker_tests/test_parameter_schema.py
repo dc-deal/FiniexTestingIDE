@@ -12,25 +12,26 @@ Tests (parametrized over all CORE components):
 """
 
 import pytest
+from conftest import (
+    ALL_COMPONENTS,
+    ALL_WORKERS,
+)
 
-from python.framework.types.parameter_types import InputParamDef, OutputParamDef, REQUIRED, _RequiredSentinel
-from python.framework.workers.core.rsi_worker import RsiWorker
+from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
+from python.framework.decision_logic.core.backtesting.backtesting_deterministic import (
+    BacktestingDeterministic,
+)
+from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
+from python.framework.types.parameter_types import (
+    InputParamDef,
+    OutputParamDef,
+)
+from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
-from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
-from python.framework.workers.core.backtesting.backtesting_sample_worker import BacktestingSampleWorker
-from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
-from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
-from python.framework.decision_logic.core.backtesting.backtesting_deterministic import BacktestingDeterministic
-
-from conftest import (
-    ALL_WORKERS,
-    ALL_DECISION_LOGICS,
-    ALL_COMPONENTS,
-)
-
+from python.framework.workers.core.rsi_worker import RsiWorker
 
 # ============================================
 # Schema Structure Tests
@@ -39,33 +40,33 @@ from conftest import (
 class TestSchemaStructure:
     """Validate schema declaration format for all components."""
 
-    @pytest.mark.parametrize("cls", ALL_COMPONENTS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_COMPONENTS, ids=lambda c: c.__name__)
     def test_schema_returns_dict(self, cls):
         """get_parameter_schema() must return a dict."""
         schema = cls.get_parameter_schema()
         assert isinstance(schema, dict), (
-            f"{cls.__name__}.get_parameter_schema() returned "
-            f"{type(schema).__name__}, expected dict"
+            f'{cls.__name__}.get_parameter_schema() returned '
+            f'{type(schema).__name__}, expected dict'
         )
 
-    @pytest.mark.parametrize("cls", ALL_COMPONENTS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_COMPONENTS, ids=lambda c: c.__name__)
     def test_schema_values_are_parameter_defs(self, cls):
         """All schema values must be InputParamDef instances."""
         schema = cls.get_parameter_schema()
         for param_name, param_def in schema.items():
             assert isinstance(param_def, InputParamDef), (
-                f"{cls.__name__}.{param_name}: expected InputParamDef, "
-                f"got {type(param_def).__name__}"
+                f'{cls.__name__}.{param_name}: expected InputParamDef, '
+                f'got {type(param_def).__name__}'
             )
 
-    @pytest.mark.parametrize("cls", ALL_COMPONENTS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_COMPONENTS, ids=lambda c: c.__name__)
     def test_schema_keys_are_strings(self, cls):
         """All schema keys must be non-empty strings."""
         schema = cls.get_parameter_schema()
         for param_name in schema.keys():
             assert isinstance(param_name, str) and len(param_name) > 0, (
-                f"{cls.__name__}: schema key must be non-empty string, "
-                f"got {repr(param_name)}"
+                f'{cls.__name__}: schema key must be non-empty string, '
+                f'got {repr(param_name)}'
             )
 
 
@@ -78,28 +79,28 @@ class TestInputParamDefValidity:
 
     SUPPORTED_TYPES = (float, int, bool, str, list)
 
-    @pytest.mark.parametrize("cls", ALL_COMPONENTS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_COMPONENTS, ids=lambda c: c.__name__)
     def test_param_types_are_supported(self, cls):
         """param_type must be a supported Python type."""
         schema = cls.get_parameter_schema()
         for param_name, param_def in schema.items():
             assert param_def.param_type in self.SUPPORTED_TYPES, (
-                f"{cls.__name__}.{param_name}: unsupported param_type "
-                f"{param_def.param_type}, allowed: {self.SUPPORTED_TYPES}"
+                f'{cls.__name__}.{param_name}: unsupported param_type '
+                f'{param_def.param_type}, allowed: {self.SUPPORTED_TYPES}'
             )
 
-    @pytest.mark.parametrize("cls", ALL_COMPONENTS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_COMPONENTS, ids=lambda c: c.__name__)
     def test_min_less_than_max(self, cls):
         """If both min_val and max_val are set, min must be < max."""
         schema = cls.get_parameter_schema()
         for param_name, param_def in schema.items():
             if param_def.min_val is not None and param_def.max_val is not None:
                 assert param_def.min_val < param_def.max_val, (
-                    f"{cls.__name__}.{param_name}: min_val={param_def.min_val} "
-                    f">= max_val={param_def.max_val}"
+                    f'{cls.__name__}.{param_name}: min_val={param_def.min_val} '
+                    f'>= max_val={param_def.max_val}'
                 )
 
-    @pytest.mark.parametrize("cls", ALL_COMPONENTS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_COMPONENTS, ids=lambda c: c.__name__)
     def test_defaults_within_bounds(self, cls):
         """Non-REQUIRED defaults must be within declared min/max bounds."""
         schema = cls.get_parameter_schema()
@@ -111,17 +112,17 @@ class TestInputParamDefValidity:
 
             if param_def.min_val is not None and isinstance(default, (int, float)):
                 assert default >= param_def.min_val, (
-                    f"{cls.__name__}.{param_name}: default={default} "
-                    f"is below min_val={param_def.min_val}"
+                    f'{cls.__name__}.{param_name}: default={default} '
+                    f'is below min_val={param_def.min_val}'
                 )
 
             if param_def.max_val is not None and isinstance(default, (int, float)):
                 assert default <= param_def.max_val, (
-                    f"{cls.__name__}.{param_name}: default={default} "
-                    f"is above max_val={param_def.max_val}"
+                    f'{cls.__name__}.{param_name}: default={default} '
+                    f'is above max_val={param_def.max_val}'
                 )
 
-    @pytest.mark.parametrize("cls", ALL_COMPONENTS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_COMPONENTS, ids=lambda c: c.__name__)
     def test_defaults_match_declared_type(self, cls):
         """Non-REQUIRED defaults must match their declared param_type."""
         schema = cls.get_parameter_schema()
@@ -142,29 +143,29 @@ class TestInputParamDefValidity:
                 f"param_type={expected_type.__name__}"
             )
 
-    @pytest.mark.parametrize("cls", ALL_COMPONENTS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_COMPONENTS, ids=lambda c: c.__name__)
     def test_choices_contain_valid_values(self, cls):
         """If choices are declared, they must be a tuple with values."""
         schema = cls.get_parameter_schema()
         for param_name, param_def in schema.items():
             if param_def.choices is not None:
                 assert isinstance(param_def.choices, tuple), (
-                    f"{cls.__name__}.{param_name}: choices must be tuple, "
-                    f"got {type(param_def.choices).__name__}"
+                    f'{cls.__name__}.{param_name}: choices must be tuple, '
+                    f'got {type(param_def.choices).__name__}'
                 )
                 assert len(param_def.choices) >= 2, (
-                    f"{cls.__name__}.{param_name}: choices must have >= 2 values"
+                    f'{cls.__name__}.{param_name}: choices must have >= 2 values'
                 )
 
-    @pytest.mark.parametrize("cls", ALL_COMPONENTS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_COMPONENTS, ids=lambda c: c.__name__)
     def test_defaults_in_choices(self, cls):
         """If choices are declared and param is optional, default must be in choices."""
         schema = cls.get_parameter_schema()
         for param_name, param_def in schema.items():
             if param_def.choices is not None and not param_def.is_required:
                 assert param_def.default in param_def.choices, (
-                    f"{cls.__name__}.{param_name}: default={param_def.default} "
-                    f"not in choices={param_def.choices}"
+                    f'{cls.__name__}.{param_name}: default={param_def.default} '
+                    f'not in choices={param_def.choices}'
                 )
 
 
@@ -219,8 +220,8 @@ class TestWorkerSpecificSchemas:
         """MacdWorker must declare fast_period, slow_period, signal_period as REQUIRED."""
         schema = MacdWorker.get_parameter_schema()
         for param_name in ('fast_period', 'slow_period', 'signal_period'):
-            assert param_name in schema, f"Missing {param_name}"
-            assert schema[param_name].is_required, f"{param_name} should be REQUIRED"
+            assert param_name in schema, f'Missing {param_name}'
+            assert schema[param_name].is_required, f'{param_name} should be REQUIRED'
             assert schema[param_name].param_type == int
 
     def test_heavy_rsi_has_artificial_load(self):
@@ -266,8 +267,8 @@ class TestDecisionLogicSpecificSchemas:
         """
         for cls in (SimpleConsensus, AggressiveTrend):
             schema = cls.get_parameter_schema()
-            assert 'lot_size' in schema, f"{cls.__name__} missing lot_size"
-            assert schema['lot_size'].min_val >= 0, f"{cls.__name__} lot_size min must be >= 0"
+            assert 'lot_size' in schema, f'{cls.__name__} missing lot_size'
+            assert schema['lot_size'].min_val >= 0, f'{cls.__name__} lot_size min must be >= 0'
 
 
 # ============================================
@@ -277,36 +278,36 @@ class TestDecisionLogicSpecificSchemas:
 class TestOutputSchemaStructure:
     """Validate output schema declaration format for all workers."""
 
-    @pytest.mark.parametrize("cls", ALL_WORKERS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_WORKERS, ids=lambda c: c.__name__)
     def test_output_schema_returns_dict(self, cls):
         """get_output_schema() must return a dict."""
         schema = cls.get_output_schema()
         assert isinstance(schema, dict), (
-            f"{cls.__name__}.get_output_schema() returned "
-            f"{type(schema).__name__}, expected dict"
+            f'{cls.__name__}.get_output_schema() returned '
+            f'{type(schema).__name__}, expected dict'
         )
 
-    @pytest.mark.parametrize("cls", ALL_WORKERS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_WORKERS, ids=lambda c: c.__name__)
     def test_output_schema_values_are_output_param_defs(self, cls):
         """All output schema values must be OutputParamDef instances."""
         schema = cls.get_output_schema()
         for param_name, param_def in schema.items():
             assert isinstance(param_def, OutputParamDef), (
-                f"{cls.__name__}.{param_name}: expected OutputParamDef, "
-                f"got {type(param_def).__name__}"
+                f'{cls.__name__}.{param_name}: expected OutputParamDef, '
+                f'got {type(param_def).__name__}'
             )
 
-    @pytest.mark.parametrize("cls", ALL_WORKERS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_WORKERS, ids=lambda c: c.__name__)
     def test_output_schema_keys_are_strings(self, cls):
         """All output schema keys must be non-empty strings."""
         schema = cls.get_output_schema()
         for param_name in schema.keys():
             assert isinstance(param_name, str) and len(param_name) > 0, (
-                f"{cls.__name__}: output schema key must be non-empty string, "
-                f"got {repr(param_name)}"
+                f'{cls.__name__}: output schema key must be non-empty string, '
+                f'got {repr(param_name)}'
             )
 
-    @pytest.mark.parametrize("cls", ALL_WORKERS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_WORKERS, ids=lambda c: c.__name__)
     def test_output_category_is_valid(self, cls):
         """Output category must be 'SIGNAL' or 'INFO'."""
         schema = cls.get_output_schema()
@@ -316,15 +317,15 @@ class TestOutputSchemaStructure:
                 f"must be 'SIGNAL' or 'INFO'"
             )
 
-    @pytest.mark.parametrize("cls", ALL_WORKERS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('cls', ALL_WORKERS, ids=lambda c: c.__name__)
     def test_output_min_less_than_max(self, cls):
         """If both min_val and max_val are set, min must be < max."""
         schema = cls.get_output_schema()
         for param_name, param_def in schema.items():
             if param_def.min_val is not None and param_def.max_val is not None:
                 assert param_def.min_val < param_def.max_val, (
-                    f"{cls.__name__}.{param_name}: min_val={param_def.min_val} "
-                    f">= max_val={param_def.max_val}"
+                    f'{cls.__name__}.{param_name}: min_val={param_def.min_val} '
+                    f'>= max_val={param_def.max_val}'
                 )
 
 
@@ -350,14 +351,14 @@ class TestWorkerSpecificOutputSchemas:
         """Bollinger must declare its band + extension outputs as SIGNAL."""
         schema = BollingerWorker.get_output_schema()
         for key in ('upper', 'lower', 'position', 'position_raw', 'slope', 'width_pct'):
-            assert key in schema, f"Missing output: {key}"
+            assert key in schema, f'Missing output: {key}'
             assert schema[key].category == 'SIGNAL'
 
     def test_ma_trend_output_schema(self):
         """MaTrend must declare direction (with choices), slope, ma_value, volatility_pct as SIGNAL."""
         schema = MaTrendWorker.get_output_schema()
         for key in ('direction', 'slope', 'ma_value', 'volatility_pct'):
-            assert key in schema, f"Missing output: {key}"
+            assert key in schema, f'Missing output: {key}'
             assert schema[key].category == 'SIGNAL'
         assert schema['direction'].choices == ('up', 'down', 'neutral')
 
@@ -365,7 +366,7 @@ class TestWorkerSpecificOutputSchemas:
         """MACD must declare macd, signal, histogram as SIGNAL."""
         schema = MacdWorker.get_output_schema()
         for key in ('macd', 'signal', 'histogram'):
-            assert key in schema, f"Missing output: {key}"
+            assert key in schema, f'Missing output: {key}'
             assert schema[key].category == 'SIGNAL'
             assert schema[key].display is True
 

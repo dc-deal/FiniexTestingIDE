@@ -7,7 +7,9 @@ debug-mode), then a Tier-2 minor summary. This presenter makes NO decisions — 
 produced by a validator upstream; it only formats. See docs/architecture/warnings_errors_tiers.md.
 """
 
-from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import (
+    AbstractBatchSummarySection,
+)
 from python.framework.types.api.report_types import UnitErrorRow, WarningRow, WarningsErrorsReport
 from python.framework.utils.console_renderer import ConsoleRenderer
 
@@ -55,7 +57,7 @@ class WarningsSummary(AbstractBatchSummarySection):
 
         self._render_section_header(renderer)
         if not blocks:
-            print(renderer.green("✅ No warnings or errors"))
+            print(renderer.green('✅ No warnings or errors'))
             return
         for i, block in enumerate(blocks):
             print(block)
@@ -68,30 +70,30 @@ class WarningsSummary(AbstractBatchSummarySection):
         """Build the per-unit errors block (the prominent red headline + per-unit detail)."""
         errors = self._report.errors
         lines = [renderer.red(renderer.bold(
-            f"❌ Scenario errors detected — {len(errors)} unit(s) with error(s)"))]
+            f'❌ Scenario errors detected — {len(errors)} unit(s) with error(s)'))]
         for err in errors:
             lines.append(renderer.red(self._error_head(err)))
             # Validation failures carry the structured error list; a pure execution villain
             # has none → show its exception message instead (no multi-line report dump).
             if err.validation_errors:
                 for ve in err.validation_errors[:3]:
-                    lines.append(renderer.yellow(f"      ✗ {self._trim(ve)}"))
+                    lines.append(renderer.yellow(f'      ✗ {self._trim(ve)}'))
                 extra = len(err.validation_errors) - 3
                 if extra > 0:
-                    lines.append(renderer.yellow(f"      … +{extra} more validation error(s)"))
+                    lines.append(renderer.yellow(f'      … +{extra} more validation error(s)'))
             elif err.error_type or err.error_message:
-                detail = f"{err.error_type}: {self._trim(err.error_message)}".strip(': ')
-                lines.append(renderer.yellow(f"      {detail}"))
+                detail = f'{err.error_type}: {self._trim(err.error_message)}'.strip(': ')
+                lines.append(renderer.yellow(f'      {detail}'))
             if err.logged_errors:
                 lines.append(renderer.yellow(
-                    f"      {len(err.logged_errors)} logged error(s) — see scenario log"))
+                    f'      {len(err.logged_errors)} logged error(s) — see scenario log'))
         return '\n'.join(lines)
 
     def _error_head(self, err: UnitErrorRow) -> str:
         """Unit header line for an error row."""
-        head = f"  • {err.name}"
+        head = f'  • {err.name}'
         if err.symbol:
-            head += f" ({err.symbol})"
+            head += f' ({err.symbol})'
         return head
 
     def _trim(self, text: str) -> str:
@@ -108,6 +110,6 @@ class WarningsSummary(AbstractBatchSummarySection):
             return '\n'.join(out)
 
         # Per-scenario major warning — prefix with the unit scope
-        head = renderer.yellow(f"[{warning.scope}] {msg_lines[0]}")
+        head = renderer.yellow(f'[{warning.scope}] {msg_lines[0]}')
         rest = [renderer.yellow(line) for line in msg_lines[1:]]
         return '\n'.join([head] + rest)

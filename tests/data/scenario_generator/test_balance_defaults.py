@@ -11,8 +11,12 @@ import pytest
 from python.framework.exceptions.finiex_error import FiniexError
 from python.framework.exceptions.generator_errors import SymbolCurrencyError
 from python.scenario.generator.balance_defaults import (
-    DEFAULT_QUOTE_BALANCE, _validate_symbol_currencies, ensure_quote_balance,
-    resolve_quote_currency, resolve_symbol_currencies)
+    DEFAULT_QUOTE_BALANCE,
+    _validate_symbol_currencies,
+    ensure_quote_balance,
+    resolve_quote_currency,
+    resolve_symbol_currencies,
+)
 
 
 class TestEnsureQuoteBalance:

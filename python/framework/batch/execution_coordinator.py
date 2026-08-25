@@ -5,20 +5,23 @@ Phase 2: Coordinates sequential and parallel scenario execution
 Extracted from BatchOrchestrator to separate execution logic.
 """
 import pickle
-from python.framework.process.process_executor import ProcessExecutor
-from python.framework.process.process_live_queue_helper import broadcast_status_update
-from python.framework.process.process_main import process_main
-from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult
-from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
-from python.configuration.app_config_manager import AppConfigManager
-from python.framework.logging.abstract_logger import AbstractLogger
+import time
+import traceback
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from multiprocessing import Queue
 from typing import Dict, List, Optional
-import time
-import traceback
 
+from python.configuration.app_config_manager import AppConfigManager
+from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.process.process_executor import ProcessExecutor
+from python.framework.process.process_live_queue_helper import broadcast_status_update
+from python.framework.process.process_main import process_main
+from python.framework.types.live_types.live_stats_config_types import (
+    LiveStatsExportConfig,
+    ScenarioStatus,
+)
+from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import ValidationResult, get_validation_list_report
 from python.framework.utils.runtime_env_utils import is_debug_execution
 
@@ -92,8 +95,8 @@ class ExecutionCoordinator:
                 continue
 
             self._logger.info(
-                f"▶️  Executing scenario {readable_index}/{len(scenarios)}: "
-                f"{scenario.name}"
+                f'▶️  Executing scenario {readable_index}/{len(scenarios)}: '
+                f'{scenario.name}'
             )
 
             # Create executor
@@ -112,7 +115,7 @@ class ExecutionCoordinator:
             if scenario_data is None:
                 # Should never happen if validation passed
                 results[idx] = self._create_validation_failed_result(
-                    scenario, idx, live_queue,  f"❌ No data package for scenario {idx}: {scenario.name} - data packages: {len(scenario_packages)}")
+                    scenario, idx, live_queue,  f'❌ No data package for scenario {idx}: {scenario.name} - data packages: {len(scenario_packages)}')
                 continue
 
             # Execute with scenario-specific data
@@ -121,12 +124,12 @@ class ExecutionCoordinator:
 
             if results[idx].success:
                 self._logger.debug(
-                    f"✅ Scenario {readable_index} completed in "
-                    f"{results[idx].execution_time_ms:.0f}ms"
+                    f'✅ Scenario {readable_index} completed in '
+                    f'{results[idx].execution_time_ms:.0f}ms'
                 )
             else:
                 self._logger.error(
-                    f"❌ Scenario {readable_index} failed: {results[idx].error_message}"
+                    f'❌ Scenario {readable_index} failed: {results[idx].error_message}'
                 )
 
         return results, 0.0, 0.0
@@ -157,19 +160,19 @@ class ExecutionCoordinator:
         if is_debug_execution():
             use_processpool = False
             self._logger.warning(
-                "⚠️  Debugger detected - using ThreadPool "
-                "(performance not representative!)"
+                '⚠️  Debugger detected - using ThreadPool '
+                '(performance not representative!)'
             )
         else:
             use_processpool = True
-            self._logger.info("🚀 Performance mode - using ProcessPool")
+            self._logger.info('🚀 Performance mode - using ProcessPool')
 
         executor_class = ProcessPoolExecutor if use_processpool else ThreadPoolExecutor
         max_workers = self._app_config.get_default_max_parallel_scenarios()
 
         self._logger.info(
-            f"🔀 Parallel execution: {executor_class.__name__} "
-            f"(max_workers={max_workers})"
+            f'🔀 Parallel execution: {executor_class.__name__} '
+            f'(max_workers={max_workers})'
         )
 
         results = [None] * len(scenarios)
@@ -203,7 +206,7 @@ class ExecutionCoordinator:
                 scenario_data = scenario_packages.get(idx)
                 if scenario_data is None:
                     results[idx] = self._create_validation_failed_result(
-                        scenario, idx, live_queue,  f"❌ No data package for scenario {idx}: {scenario.name} - data packages: {len(scenario_packages)}")
+                        scenario, idx, live_queue,  f'❌ No data package for scenario {idx}: {scenario.name} - data packages: {len(scenario_packages)}')
                     continue
 
                 # Sample package size once (scenario 0 only) — ~28ms overhead
@@ -233,20 +236,20 @@ class ExecutionCoordinator:
 
                     if result.success:
                         self._logger.debug(
-                            f"✅ Scenario {readable_index} completed: "
-                            f"{result.scenario_name} ({result.execution_time_ms:.0f}ms)"
+                            f'✅ Scenario {readable_index} completed: '
+                            f'{result.scenario_name} ({result.execution_time_ms:.0f}ms)'
                         )
                     else:
                         self._logger.error(
-                            f"❌ Scenario {readable_index} failed: "
-                            f"{result.scenario_name} - {result.error_message}"
+                            f'❌ Scenario {readable_index} failed: '
+                            f'{result.scenario_name} - {result.error_message}'
                         )
 
                 except Exception as e:
                     # Unexpected error (not caught in process_main)
                     self._logger.error(
-                        f"❌ Scenario {readable_index} crashed: "
-                        f"\n{traceback.format_exc()}"
+                        f'❌ Scenario {readable_index} crashed: '
+                        f'\n{traceback.format_exc()}'
                     )
                     results[idx] = ProcessResult(
                         success=False,
@@ -258,16 +261,16 @@ class ExecutionCoordinator:
                     )
 
             self._logger.info(
-                "🕐 All futures collected, exiting context manager..."
+                '🕐 All futures collected, exiting context manager...'
             )
             self._logger.info(
-                "🕐 If a major slowdown occurs here, " +
+                '🕐 If a major slowdown occurs here, ' +
                 "it's just the debugger who waits for processes." +
                 " You can't skip this..."
             )
 
         self._logger.info(
-            f"🕐 ProcessPoolExecutor shutdown complete! Time: {time.time()}"
+            f'🕐 ProcessPoolExecutor shutdown complete! Time: {time.time()}'
         )
 
         return results, pickle_time_s, pickle_sample_mb
@@ -292,8 +295,8 @@ class ExecutionCoordinator:
 
         readable_index = scenario_index + 1
         self._logger.warning(
-            f"⚠️  Scenario {readable_index}: {scenario.name} - "
-            f"SKIPPED (validation failed)"
+            f'⚠️  Scenario {readable_index}: {scenario.name} - '
+            f'SKIPPED (validation failed)'
         )
 
         # Broadcast FAILED status to display
@@ -320,7 +323,7 @@ class ExecutionCoordinator:
             success=False,
             scenario_name=scenario.name,
             scenario_index=scenario_index,
-            error_type="ValidationError",
+            error_type='ValidationError',
             error_message=get_validation_list_report(validation_result),
             traceback=None,  # No traceback for validation errors
             execution_time_ms=0.0

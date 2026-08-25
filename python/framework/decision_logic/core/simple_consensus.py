@@ -40,23 +40,25 @@ This logic requires three workers:
 import traceback
 from typing import Any, Dict, List, Optional
 
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.decision_logic.abstract_decision_logic import \
-    AbstractDecisionLogic
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.component_metadata_types import ComponentMetadata
+from python.framework.types.decision_logic_types import (
+    AwarenessLevel,
+    Decision,
+    DecisionLogicAction,
+)
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionLogicAction
-
+from python.framework.types.parameter_types import InputParamDef, OutputParamDef
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
+    OrderDirection,
+    OrderResult,
+    OrderSide,
     OrderStatus,
     OrderType,
-    OrderDirection,
-    OrderSide,
-    OrderResult
 )
-from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.component_metadata_types import ComponentMetadata
-from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
@@ -119,11 +121,11 @@ class SimpleConsensus(AbstractDecisionLogic):
         self.obv_confidence_boost = self.params.get('obv_confidence_boost')
 
         self.logger.debug(
-            f"SimpleConsensus initialized: "
-            f"RSI({self.rsi_oversold}/{self.rsi_overbought}), "
-            f"Bollinger({self.bollinger_lower}/{self.bollinger_upper}), "
-            f"OBV(enabled={self.obv_filter_enabled}, boost={self.obv_confidence_boost}), "
-            f"Lots={self.lot_size}, MinMargin={self.min_free_margin}"
+            f'SimpleConsensus initialized: '
+            f'RSI({self.rsi_oversold}/{self.rsi_overbought}), '
+            f'Bollinger({self.bollinger_lower}/{self.bollinger_upper}), '
+            f'OBV(enabled={self.obv_filter_enabled}, boost={self.obv_confidence_boost}), '
+            f'Lots={self.lot_size}, MinMargin={self.min_free_margin}'
         )
 
     # ============================================
@@ -136,48 +138,48 @@ class SimpleConsensus(AbstractDecisionLogic):
         return {
             'rsi_oversold': InputParamDef(
                 param_type=float, default=30, min_val=1, max_val=49,
-                description="RSI oversold threshold (buy signal)",
+                description='RSI oversold threshold (buy signal)',
                 display=True, display_label='rsi_os',
             ),
             'rsi_overbought': InputParamDef(
                 param_type=float, default=70, min_val=51, max_val=99,
-                description="RSI overbought threshold (sell signal)",
+                description='RSI overbought threshold (sell signal)',
                 display=True, display_label='rsi_ob',
             ),
             'bollinger_lower_threshold': InputParamDef(
                 param_type=float, default=0.3, min_val=0.0, max_val=1.0,
-                description="Bollinger position threshold for buy signal",
+                description='Bollinger position threshold for buy signal',
                 display=True, display_label='env_l',
             ),
             'bollinger_upper_threshold': InputParamDef(
                 param_type=float, default=0.7, min_val=0.0, max_val=1.0,
-                description="Bollinger position threshold for sell signal",
+                description='Bollinger position threshold for sell signal',
                 display=True, display_label='env_u',
             ),
             'min_confidence': InputParamDef(
                 param_type=float, default=0.5, min_val=0.0, max_val=1.0,
-                description="Minimum confidence to generate trading signal",
+                description='Minimum confidence to generate trading signal',
                 display=True, display_label='min_conf',
             ),
             'min_free_margin': InputParamDef(
                 param_type=float, default=1000, min_val=0,
-                description="Minimum free margin required before opening trade"
+                description='Minimum free margin required before opening trade'
             ),
             'lot_size': InputParamDef(
                 param_type=float, default=0.1, min_val=0.0, max_val=100.0,
-                description="Fixed lot size for market orders"
+                description='Fixed lot size for market orders'
             ),
             'obv_filter_enabled': InputParamDef(
                 param_type=bool, default=True,
-                description="Enable OBV volume confirmation filter"
+                description='Enable OBV volume confirmation filter'
             ),
             'obv_block_opposite_trend': InputParamDef(
                 param_type=bool, default=True,
-                description="Block trades when OBV trend opposes signal direction"
+                description='Block trades when OBV trend opposes signal direction'
             ),
             'obv_confidence_boost': InputParamDef(
                 param_type=float, default=0.1, min_val=0.0, max_val=1.0,
-                description="Confidence bonus when OBV confirms trade direction"
+                description='Confidence bonus when OBV confirms trade direction'
             ),
         }
 
@@ -227,8 +229,8 @@ class SimpleConsensus(AbstractDecisionLogic):
             status: Session-level market-data health snapshot
         """
         self.logger.warning(
-            f"🔌 Market data stale ({status.seconds_since_last_tick:.0f}s "
-            f"since last tick) — holding until ticks resume."
+            f'🔌 Market data stale ({status.seconds_since_last_tick:.0f}s '
+            f'since last tick) — holding until ticks resume.'
         )
         self.emit_event(
             '🔌 market data stale — holding until ticks resume',
@@ -274,7 +276,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         # Check if trading API is available
         if not self.trading_api:
             self.logger.warning(
-                "Trading API not available - cannot execute decision")
+                'Trading API not available - cannot execute decision')
             return None
 
         if decision.action == DecisionLogicAction.FLAT:
@@ -308,13 +310,13 @@ class SimpleConsensus(AbstractDecisionLogic):
 
             # Opposite direction? Close old position (signal reversal)
             self.emit_event(
-                f"Signal reversal: {current_position.direction} → {new_direction}",
+                f'Signal reversal: {current_position.direction} → {new_direction}',
                 AwarenessLevel.NOTICE,
                 'signal_reversal',
             )
             self.logger.info(
-                f"   Closing {current_position.direction} position "
-                f"(ID: {current_position.position_id})"
+                f'   Closing {current_position.direction} position '
+                f'(ID: {current_position.position_id})'
             )
             self.trading_api.close_position(current_position.position_id)
             # This is it for this tick, we'll wait until the position gets closed properly
@@ -340,8 +342,8 @@ class SimpleConsensus(AbstractDecisionLogic):
 
         if account.free_margin < self.min_free_margin:
             self.logger.info(
-                f"Insufficient free margin: {account.free_margin:.2f} "
-                f"< {self.min_free_margin} - skipping trade"
+                f'Insufficient free margin: {account.free_margin:.2f} '
+                f'< {self.min_free_margin} - skipping trade'
             )
             return None
 
@@ -358,7 +360,7 @@ class SimpleConsensus(AbstractDecisionLogic):
             # Log order submission status
             if order_result.status == OrderStatus.PENDING:
                 self.emit_event(
-                    f"Order submitted: {new_side} {self.lot_size} lots",
+                    f'Order submitted: {new_side} {self.lot_size} lots',
                     AwarenessLevel.INFO,
                     'order_submitted',
                 )
@@ -370,9 +372,9 @@ class SimpleConsensus(AbstractDecisionLogic):
 
             return order_result
 
-        except Exception as e:
+        except Exception:
             self.logger.error(
-                f"❌ Order execution failed: \n{traceback.format_exc()}")
+                f'❌ Order execution failed: \n{traceback.format_exc()}')
             return None
 
     # ============================================
@@ -390,9 +392,9 @@ class SimpleConsensus(AbstractDecisionLogic):
             Dict[instance_name, WorkerRequirement]
         """
         return {
-            "rsi_fast": WorkerRequirement.all('CORE/rsi'),
-            "bollinger_main": WorkerRequirement.all('CORE/bollinger'),
-            "obv_volume": WorkerRequirement.all('CORE/obv'),
+            'rsi_fast': WorkerRequirement.all('CORE/rsi'),
+            'bollinger_main': WorkerRequirement.all('CORE/bollinger'),
+            'obv_volume': WorkerRequirement.all('CORE/obv'),
         }
 
     def compute_tick(
@@ -414,9 +416,9 @@ class SimpleConsensus(AbstractDecisionLogic):
             Decision object with action, confidence, and reason
         """
         # Extract worker results
-        rsi_result = worker_results.get("rsi_fast")
-        bollinger_result = worker_results.get("bollinger_main")
-        obv_result = worker_results.get("obv_volume")
+        rsi_result = worker_results.get('rsi_fast')
+        bollinger_result = worker_results.get('bollinger_main')
+        obv_result = worker_results.get('obv_volume')
 
         if not rsi_result or not bollinger_result:
             return Decision(
@@ -441,8 +443,8 @@ class SimpleConsensus(AbstractDecisionLogic):
             obv_has_volume = obv_result.get_signal('has_volume')
 
         self.logger.verbose(
-            f"📊 Indicators: RSI={rsi_value:.1f}, Bollinger={bollinger_position:.2f}, "
-            f"OBV trend={obv_trend}, has_volume={obv_has_volume}"
+            f'📊 Indicators: RSI={rsi_value:.1f}, Bollinger={bollinger_position:.2f}, '
+            f'OBV trend={obv_trend}, has_volume={obv_has_volume}'
         )
 
         # Check for BUY signal (consensus required)
@@ -454,23 +456,23 @@ class SimpleConsensus(AbstractDecisionLogic):
             obv_blocks = (
                 self.obv_filter_enabled
                 and self.obv_block_opposite_trend
-                and obv_trend == "bearish"
+                and obv_trend == 'bearish'
             )
 
             if obv_blocks:
                 self.notify_awareness(
-                    f"BUY blocked — OBV trend {obv_trend}",
+                    f'BUY blocked — OBV trend {obv_trend}',
                     AwarenessLevel.NOTICE,
                     'obv_filter'
                 )
                 self.logger.verbose(
-                    f"🚫 BUY blocked by OBV: trend={obv_trend} (bearish opposes buy)"
+                    f'🚫 BUY blocked by OBV: trend={obv_trend} (bearish opposes buy)'
                 )
                 return Decision(
                     action=DecisionLogicAction.FLAT,
                     outputs={
                         'confidence': 0.3,
-                        'reason': f"BUY signal blocked by OBV (trend={obv_trend})",
+                        'reason': f'BUY signal blocked by OBV (trend={obv_trend})',
                         'price': tick.mid,
                         'timestamp': tick.timestamp.isoformat(),
                     },
@@ -481,17 +483,17 @@ class SimpleConsensus(AbstractDecisionLogic):
 
             # OBV Confidence Boost: Add bonus if volume confirms direction
             obv_boost = 0.0
-            if self.obv_filter_enabled and obv_trend == "bullish":
+            if self.obv_filter_enabled and obv_trend == 'bullish':
                 obv_boost = self.obv_confidence_boost
                 confidence = min(1.0, confidence + obv_boost)
 
             self.logger.verbose(
-                f"✅ BUY signal: confidence={confidence:.2f} (OBV boost={obv_boost:.2f})"
+                f'✅ BUY signal: confidence={confidence:.2f} (OBV boost={obv_boost:.2f})'
             )
 
             if confidence >= self.min_confidence:
                 self.notify_awareness(
-                    f"BUY mode — RSI {rsi_value:.1f}, env {bollinger_position:.2f}, OBV {obv_trend}",
+                    f'BUY mode — RSI {rsi_value:.1f}, env {bollinger_position:.2f}, OBV {obv_trend}',
                     AwarenessLevel.INFO,
                     'buy_mode'
                 )
@@ -499,7 +501,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                     action=DecisionLogicAction.BUY,
                     outputs={
                         'confidence': confidence,
-                        'reason': f"RSI={rsi_value:.1f} + Bollinger={bollinger_position:.2f} + OBV={obv_trend}",
+                        'reason': f'RSI={rsi_value:.1f} + Bollinger={bollinger_position:.2f} + OBV={obv_trend}',
                         'price': tick.mid,
                         'timestamp': tick.timestamp.isoformat(),
                     },
@@ -514,23 +516,23 @@ class SimpleConsensus(AbstractDecisionLogic):
             obv_blocks = (
                 self.obv_filter_enabled
                 and self.obv_block_opposite_trend
-                and obv_trend == "bullish"
+                and obv_trend == 'bullish'
             )
 
             if obv_blocks:
                 self.notify_awareness(
-                    f"SELL blocked — OBV trend {obv_trend}",
+                    f'SELL blocked — OBV trend {obv_trend}',
                     AwarenessLevel.NOTICE,
                     'obv_filter'
                 )
                 self.logger.verbose(
-                    f"🚫 SELL blocked by OBV: trend={obv_trend} (bullish opposes sell)"
+                    f'🚫 SELL blocked by OBV: trend={obv_trend} (bullish opposes sell)'
                 )
                 return Decision(
                     action=DecisionLogicAction.FLAT,
                     outputs={
                         'confidence': 0.3,
-                        'reason': f"SELL signal blocked by OBV (trend={obv_trend})",
+                        'reason': f'SELL signal blocked by OBV (trend={obv_trend})',
                         'price': tick.mid,
                         'timestamp': tick.timestamp.isoformat(),
                     },
@@ -541,17 +543,17 @@ class SimpleConsensus(AbstractDecisionLogic):
 
             # OBV Confidence Boost: Add bonus if volume confirms direction
             obv_boost = 0.0
-            if self.obv_filter_enabled and obv_trend == "bearish":
+            if self.obv_filter_enabled and obv_trend == 'bearish':
                 obv_boost = self.obv_confidence_boost
                 confidence = min(1.0, confidence + obv_boost)
 
             self.logger.verbose(
-                f"✅ SELL signal: confidence={confidence:.2f} (OBV boost={obv_boost:.2f})"
+                f'✅ SELL signal: confidence={confidence:.2f} (OBV boost={obv_boost:.2f})'
             )
 
             if confidence >= self.min_confidence:
                 self.notify_awareness(
-                    f"SELL mode — RSI {rsi_value:.1f}, env {bollinger_position:.2f}, OBV {obv_trend}",
+                    f'SELL mode — RSI {rsi_value:.1f}, env {bollinger_position:.2f}, OBV {obv_trend}',
                     AwarenessLevel.INFO,
                     'sell_mode'
                 )
@@ -559,7 +561,7 @@ class SimpleConsensus(AbstractDecisionLogic):
                     action=DecisionLogicAction.SELL,
                     outputs={
                         'confidence': confidence,
-                        'reason': f"RSI={rsi_value:.1f} + Bollinger={bollinger_position:.2f} + OBV={obv_trend}",
+                        'reason': f'RSI={rsi_value:.1f} + Bollinger={bollinger_position:.2f} + OBV={obv_trend}',
                         'price': tick.mid,
                         'timestamp': tick.timestamp.isoformat(),
                     },
@@ -567,7 +569,7 @@ class SimpleConsensus(AbstractDecisionLogic):
 
         # No clear signal - stay flat
         self.notify_awareness(
-            f"No consensus — RSI {rsi_value:.1f}, env {bollinger_position:.2f}",
+            f'No consensus — RSI {rsi_value:.1f}, env {bollinger_position:.2f}',
             AwarenessLevel.INFO,
             'no_consensus'
         )

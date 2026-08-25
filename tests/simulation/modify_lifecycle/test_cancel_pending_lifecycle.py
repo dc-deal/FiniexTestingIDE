@@ -15,7 +15,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderType,
 )
-
 from tests.simulation.modify_lifecycle.conftest import feed_sim_tick
 
 

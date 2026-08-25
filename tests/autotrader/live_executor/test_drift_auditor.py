@@ -25,16 +25,17 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 from python.framework.types.live_types.drift_audit_types import DriftType
 from python.framework.types.live_types.live_request_types import TradesQueryResponse
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrderAction
-from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
+from python.framework.types.trading_env_types.latency_simulator_types import (
+    PendingOrder,
+    PendingOrderAction,
+)
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderResult,
     OrderStatus,
     OrderType,
 )
-
+from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 
 # =============================================================================
 # Helpers

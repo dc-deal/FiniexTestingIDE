@@ -77,10 +77,33 @@ A live session has **no multi-scenario validation phase**; startup/preflight val
 - **Errors** → `AutoTraderResult.error_messages` (session ERROR buffer) + `emergency_reason` (the villain).
 - **Tier 2** → `AutoTraderResult.warning_messages` (session WARNING buffer).
 - **Tier 1 / validation** → effectively empty (preflight aborts instead of warning).
-- **Outcome** → `shutdown_mode` (+ `emergency_reason`).
+- **Outcome** → `shutdown_mode` (+ `emergency_reason`), re-graded by `get_outcome()` (below).
 
-Known asymmetry: the AutoTrader has no `FINISHED_WITH_ERROR` equivalent — a normal run with pot errors
-stays `shutdown_mode='normal'`; the errors are listed but the outcome is not re-graded.
+The asymmetry is closed (#372): a normal session with pot errors is no longer graded as a clean run.
+Both pipelines now answer with the same `RunOutcome`, and the process exit code is that answer.
+
+## The run outcome — the same question both pipelines answer
+
+`RunOutcome` (`framework/types/run_outcome_types.py`) is the one classification, derived by each
+pipeline from its **own** result object. The CLIs map it to an exit code; they never derive it.
+
+| `RunOutcome` | Exit | Simulation — `BatchExecutionSummary.get_outcome()` | AutoTrader — `AutoTraderResult.get_outcome()` |
+|---|---|---|---|
+| `SUCCESS` | `0` | every `ProcessResult.success` true | normal shutdown, no pot errors — **or** an operator Ctrl+C with none |
+| `CRASHED` | `1` | no summary produced at all (startup abort), or an uncaught exception at the CLI | an uncaught exception at the CLI |
+| `FAILED` | `2` | any unit failed for a reason other than logged errors | `shutdown_mode == 'emergency'` that the operator did not initiate |
+| `FINISHED_WITH_ERRORS` | `3` | units failed and **every** one of them is the `LoggedErrors` kind | normal shutdown (or operator Ctrl+C) with a non-empty error pot |
+
+Two properties worth stating, because both were bugs waiting to happen:
+
+- **The sim already graded its pot** — `process_main` sets `success=False` with
+  `error_type='LoggedErrors'` for a scenario that logged errors without crashing. So `FAILED` and
+  `FINISHED_WITH_ERRORS` are distinguished by *why* units failed, not by a second channel.
+- **An operator Ctrl+C is not a failed run, but a safety-triggered emergency is.** Both arrive as
+  `shutdown_mode='emergency'`, and `emergency_reason` does not separate them — the #348 session-end
+  escalation raises an emergency with no reason attached. `AutoTraderResult.operator_interrupted`
+  is therefore explicit: only the SIGINT handler sets it. Inferring it from a missing reason would
+  have let a safety-initiated shutdown report success.
 
 ## The model
 
@@ -90,5 +113,16 @@ rendered to console / file / API identically:
 - `warnings: list[WarningRow]` — `tier` ('major' | 'minor'), `scope` ('run' | unit name), `message`.
 - `errors: list[UnitErrorRow]` — per unit with any error: `error_type` / `error_message`,
   `validation_errors`, `logged_errors`, `traceback`.
-- `outcome: WarningsErrorsOutcome` — `failed_count` / `failed_unit_names` / `first_failure_*` (sim) and
-  `emergency_reason` / `shutdown_mode` (live). The Executive headline reads this — it does not re-scan.
+- `outcome: WarningsErrorsOutcome` — `run_outcome` (the canonical grading, below) plus
+  `failed_count` / `failed_unit_names` / `first_failure_*` (sim) and `emergency_reason` /
+  `shutdown_mode` (live). The Executive headline reads this — it does not re-scan.
+
+`run_outcome` is stamped once at DERIVE from the pipeline's own result object
+(`BatchExecutionSummary.get_outcome()` / `AutoTraderResult.get_outcome()`), so the grading a
+supervisor reads as the exit code is the same one the artifact, the store and the API carry. A
+surface that needs the verdict reads this field; none of them re-derives it from the counts.
+
+One deliberate exception remains: the run-results ledger (`run_provenance_builder._run_status`)
+error-flags only a **total** failure — a partial run keeps its usable data for ranking. That is a
+policy over the outcome, not a second grading, and it still needs `failed_count` / `total_units` to
+express it.

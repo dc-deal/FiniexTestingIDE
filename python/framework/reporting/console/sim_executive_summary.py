@@ -12,19 +12,28 @@ Provides comprehensive summary:
 - System resources
 """
 
-import psutil
 from typing import Dict, List, Optional
+
+import psutil
+
+from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import (
+    AbstractBatchSummarySection,
+)
 from python.framework.reporting.console.feed_stability_summary import format_disturbance_line
 from python.framework.types.api.report_types import (
-    AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
-    ProfilingReport, RunMetaReport, RunSummary, ScenarioDetailsReport, WarningsErrorsOutcome,
-    WarningsErrorsReport)
+    AggregatedPortfolioReport,
+    AggregatedPortfolioRow,
+    ProfilingReport,
+    RunMetaReport,
+    RunSummary,
+    ScenarioDetailsReport,
+    WarningsErrorsReport,
+)
 from python.framework.types.scenario_types.window_set_types import WindowSet
-from python.framework.utils.console_renderer import ConsoleRenderer
-from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
+from python.framework.utils.console_renderer import ConsoleRenderer
 
 
 class SimExecutiveSummary(AbstractBatchSummarySection):
@@ -99,18 +108,18 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         """
         summary = self._run_summary
 
-        renderer.print_bold("RUN SUMMARY")
+        renderer.print_bold('RUN SUMMARY')
         renderer.print_separator(width=68)
-        print(f"Scenarios:          {summary.unit_count}")
+        print(f'Scenarios:          {summary.unit_count}')
 
         exec_rate = (summary.orders_executed / summary.orders_sent *
                      100) if summary.orders_sent > 0 else 0.0
-        orders_line = (f"Orders:             {summary.orders_executed}/{summary.orders_sent} "
-                       f"executed ({exec_rate:.1f}%)")
+        orders_line = (f'Orders:             {summary.orders_executed}/{summary.orders_sent} '
+                       f'executed ({exec_rate:.1f}%)')
         if summary.orders_rejected > 0:
             orders_line += f" | {renderer.yellow(f'{summary.orders_rejected} rejected')}"
         if summary.sl_tp_triggered > 0:
-            orders_line += f" | {summary.sl_tp_triggered} SL/TP"
+            orders_line += f' | {summary.sl_tp_triggered} SL/TP'
         print(orders_line)
 
         # Feed disturbance (#451) — a disturbed run must not read as a clean one.
@@ -121,17 +130,17 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         if not summary.currencies:
             return
 
-        print("")
+        print('')
         for c in summary.currencies:
             # Expectancy (mean R) is only meaningful with stop-loss trades.
-            exp_str = f"{c.expectancy:+.2f}R" if c.r_trade_count > 0 else "n/a"
+            exp_str = f'{c.expectancy:+.2f}R' if c.r_trade_count > 0 else 'n/a'
             print(
-                f"{c.currency}:".ljust(20)
-                + f"P&L {renderer.pnl(c.net_pnl, c.currency)} | "
-                + f"Win {c.win_rate * 100:.1f}% ({c.winning_trades}W/{c.losing_trades}L) | "
-                + f"PF {c.profit_factor:.2f} | "
-                + f"Exp {exp_str} | "
-                + f"Fees {format_currency_simple(c.total_fees, c.currency)}"
+                f'{c.currency}:'.ljust(20)
+                + f'P&L {renderer.pnl(c.net_pnl, c.currency)} | '
+                + f'Win {c.win_rate * 100:.1f}% ({c.winning_trades}W/{c.losing_trades}L) | '
+                + f'PF {c.profit_factor:.2f} | '
+                + f'Exp {exp_str} | '
+                + f'Fees {format_currency_simple(c.total_fees, c.currency)}'
             )
 
     def _render_execution_results(self, renderer: ConsoleRenderer):
@@ -154,24 +163,24 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
 
         # Calculate status
         if failed == 0:
-            status_str = renderer.green("✅ Complete Success")
+            status_str = renderer.green('✅ Complete Success')
         elif successful == 0:
-            status_str = renderer.red("❌ Complete Failure")
+            status_str = renderer.red('❌ Complete Failure')
         else:
             status_str = renderer.yellow(
-                f"⚠️ Partial ({successful}/{total_scenarios})")
+                f'⚠️ Partial ({successful}/{total_scenarios})')
 
         # Count disabled scenarios (run-level, from the meta model)
         disabled = self._run_meta.disabled_count
 
         # Render section
-        renderer.print_bold("EXECUTION RESULTS")
+        renderer.print_bold('EXECUTION RESULTS')
         renderer.print_separator(width=68)
-        print(f"Scenarios:          {total_scenarios} executed" +
-              (f" ({disabled} disabled)" if disabled > 0 else ""))
+        print(f'Scenarios:          {total_scenarios} executed' +
+              (f' ({disabled} disabled)' if disabled > 0 else ''))
         print(
-            f"Success Rate:       {success_rate:.1f}% ({successful}/{total_scenarios} successful)")
-        print(f"Status:             {status_str}")
+            f'Success Rate:       {success_rate:.1f}% ({successful}/{total_scenarios} successful)')
+        print(f'Status:             {status_str}')
 
         # Show first failed scenario details (from the model outcome)
         if failed > 0:
@@ -180,15 +189,15 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         # Batch time with warmup/tickrun split
         if warmup_time > 0:
             print(
-                f"Batch Time:         {batch_time:.1f}s (warmup: {warmup_time:.1f}s | tickrun: {tickrun_time:.1f}s)")
+                f'Batch Time:         {batch_time:.1f}s (warmup: {warmup_time:.1f}s | tickrun: {tickrun_time:.1f}s)')
         else:
             # Mounted mode - no warmup
-            print(f"Batch Time:         {batch_time:.1f}s")
+            print(f'Batch Time:         {batch_time:.1f}s')
 
         # Warmup hotspot one-liner (always shown when warmup phases available)
         warmup_hotspot = self._format_warmup_hotspot(renderer)
         if warmup_hotspot:
-            print(f"Warmup Hotspot:     {warmup_hotspot}")
+            print(f'Warmup Hotspot:     {warmup_hotspot}')
 
         # Mode line carries the run-quality tag (recorded at execution time):
         # PRODUCTION (real subprocesses, timings representative) vs DEBUG (serial
@@ -199,17 +208,17 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         else:
             mode_str = 'Parallel' if parallel else 'Sequential'
             if parallel:
-                mode_str += f" (max {max_workers} workers)"
+                mode_str += f' (max {max_workers} workers)'
             mode_str += f" {renderer.green('— PRODUCTION')}"
-        print(f"Mode:               {mode_str}")
+        print(f'Mode:               {mode_str}')
 
         # Source line (Profile Run vs Scenario Set)
         if self._generator_profiles:
             modes = sorted(set(ws.mode for ws in self._generator_profiles))
             mode_str = ', '.join(modes)
-            print(f"Source:             Profile Run ({len(self._generator_profiles)} profile(s), {mode_str})")
+            print(f'Source:             Profile Run ({len(self._generator_profiles)} profile(s), {mode_str})')
         else:
-            print(f"Source:             Scenario Set")
+            print('Source:             Scenario Set')
 
         # Performance tracking status (#137) — surface when at least one
         # tracking layer is off so the user knows why summary sections are missing
@@ -232,7 +241,7 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             broker_type_stats[bt]['symbols'].add(unit.symbol)
 
         # Render section
-        renderer.print_bold("DATA SOURCES")
+        renderer.print_bold('DATA SOURCES')
         renderer.print_separator(width=68)
 
         market_config = MarketConfigManager()
@@ -241,11 +250,11 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             symbols_str = ', '.join(sorted(stats['symbols']))
             # Truncate if too long
             if len(symbols_str) > 40:
-                symbols_str = symbols_str[:37] + "..."
+                symbols_str = symbols_str[:37] + '...'
 
             market_type = market_config.get_market_type(broker_type).value
             print(
-                f"{broker_type} [{market_type}]".ljust(24) +
+                f'{broker_type} [{market_type}]'.ljust(24) +
                 f"{stats['count']} scenario(s) ({symbols_str})")
 
     def _render_first_failure(self, renderer: ConsoleRenderer):
@@ -257,28 +266,28 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         """
         scenario_name = self._outcome.first_failure_name
         total_failed = self._outcome.failed_count
-        error_msg = self._outcome.first_failure_error or "No error message available"
+        error_msg = self._outcome.first_failure_error or 'No error message available'
 
         # Extract first meaningful error line
         lines = [line.strip()
                  for line in error_msg.split('\n') if line.strip()]
         error_lines = [
             line for line in lines
-            if not (line.startswith("Scenario '") and "failed validation:" in line)
+            if not (line.startswith("Scenario '") and 'failed validation:' in line)
         ]
 
-        first_error = error_lines[0] if error_lines else "Unknown error"
+        first_error = error_lines[0] if error_lines else 'Unknown error'
         remaining_errors = len(error_lines) - 1
         remaining_scenarios = total_failed - 1
 
         # Truncate error if too long
         max_len = 80
         if len(first_error) > max_len:
-            first_error = first_error[:max_len - 3] + "..."
+            first_error = first_error[:max_len - 3] + '...'
 
         # Add suffixes
-        error_suffix = f" (+ {remaining_errors} more)" if remaining_errors > 0 else ""
-        scenario_suffix = f" (+ {remaining_scenarios} more)" if remaining_scenarios > 0 else ""
+        error_suffix = f' (+ {remaining_errors} more)' if remaining_errors > 0 else ''
+        scenario_suffix = f' (+ {remaining_scenarios} more)' if remaining_scenarios > 0 else ''
 
         # Color highlights for errors
         print(
@@ -308,15 +317,15 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             tickrun_time if tickrun_time > 0 else 0
 
         # Render IN-TIME section
-        renderer.print_bold("IN-TIME PERFORMANCE (Simulated Market Time)")
+        renderer.print_bold('IN-TIME PERFORMANCE (Simulated Market Time)')
         renderer.print_separator(width=68)
         print(
             f"Total Simulation:   {in_time_stats['total_hours']:.1f} hours ({in_time_stats['total_days']:.1f} days)")
         print(f"Avg per Scenario:   {in_time_stats['avg_hours']:.2f} hours")
         if has_clipping:
-            print(f"Ticks Processed:    {loop_ticks:,} total ({algo_ticks:,} algo)")
+            print(f'Ticks Processed:    {loop_ticks:,} total ({algo_ticks:,} algo)')
         else:
-            print(f"Ticks Processed:    {algo_ticks:,} total")
+            print(f'Ticks Processed:    {algo_ticks:,} total')
 
         # Tick budget one-liner (only when clipping was active)
         if agg.budget_active:
@@ -326,10 +335,10 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             if total_clipped > 0:
                 rate = total_clipped / total_original * 100 if total_original > 0 else 0
                 print(
-                    f"Tick Budget:        {budget_str} "
-                    f"({total_clipped:,} clipped = {rate:.1f}%)")
+                    f'Tick Budget:        {budget_str} '
+                    f'({total_clipped:,} clipped = {rate:.1f}%)')
             else:
-                print(f"Tick Budget:        {budget_str} (no ticks clipped)")
+                print(f'Tick Budget:        {budget_str} (no ticks clipped)')
 
         print(
             f"Ticks/Hour:         {in_time_stats['ticks_per_hour']:,.0f} (market density)")
@@ -337,21 +346,21 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         print()
 
         # Render REAL-TIME section (tick processing speed)
-        renderer.print_bold("REAL-TIME PERFORMANCE (Tick Processing Speed)")
+        renderer.print_bold('REAL-TIME PERFORMANCE (Tick Processing Speed)')
         renderer.print_separator(width=68)
         pickle_time = self._run_meta.pickle_time_s
         pickle_mb = self._run_meta.pickle_sample_mb
         if pickle_time > 0.0:
             execution_time = tickrun_time - pickle_time
-            mb_str = f" ~{pickle_mb:.1f} MB/scenario" if pickle_mb > 0.0 else ''
+            mb_str = f' ~{pickle_mb:.1f} MB/scenario' if pickle_mb > 0.0 else ''
             print(
-                f"Tick Run Time:      {tickrun_time:.1f} seconds "
-                f"(pickle: {pickle_time:.1f}s{mb_str} | execution: {execution_time:.1f}s)"
+                f'Tick Run Time:      {tickrun_time:.1f} seconds '
+                f'(pickle: {pickle_time:.1f}s{mb_str} | execution: {execution_time:.1f}s)'
             )
         else:
-            print(f"Tick Run Time:      {tickrun_time:.1f} seconds")
+            print(f'Tick Run Time:      {tickrun_time:.1f} seconds')
         print(
-            f"Ticks/Second:       {ticks_per_second:,.0f} (processing rate)")
+            f'Ticks/Second:       {ticks_per_second:,.0f} (processing rate)')
         print(
             f"Speedup:            {speedup:,.0f}x ({in_time_stats['total_hours']:.0f} hours → {tickrun_time:.0f} seconds)")
 
@@ -360,9 +369,9 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         currencies = self._aggregated_report.currencies
 
         if not currencies:
-            renderer.print_bold("PORTFOLIO PERFORMANCE")
+            renderer.print_bold('PORTFOLIO PERFORMANCE')
             renderer.print_separator(width=68)
-            print("No portfolio data available")
+            print('No portfolio data available')
             return
 
         # Render each currency — the model carries the margin/spot split for mixed batches
@@ -404,17 +413,17 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         scenario_count = h.unit_count
 
         # Render section
-        section_title = f"PORTFOLIO PERFORMANCE ({currency})"
+        section_title = f'PORTFOLIO PERFORMANCE ({currency})'
         if row.label:
-            section_title = f"PORTFOLIO PERFORMANCE ({currency} — {row.label})"
+            section_title = f'PORTFOLIO PERFORMANCE ({currency} — {row.label})'
         renderer.print_bold(section_title)
         renderer.print_separator(width=68)
-        print(f"Scenarios:          {scenario_count}")
+        print(f'Scenarios:          {scenario_count}')
         print(
-            f"Initial Capital:    {format_currency_simple(initial, currency)} (avg {format_currency_simple(row.avg_initial, currency)}/scenario)")
-        print(f"Final Balance:      {format_currency_simple(final, currency)}")
+            f'Initial Capital:    {format_currency_simple(initial, currency)} (avg {format_currency_simple(row.avg_initial, currency)}/scenario)')
+        print(f'Final Balance:      {format_currency_simple(final, currency)}')
 
-        print(f"Total P&L:          {renderer.pnl(pnl, currency)} ({pnl_pct:+.2f}%)")
+        print(f'Total P&L:          {renderer.pnl(pnl, currency)} ({pnl_pct:+.2f}%)')
         # Order execution stats
         orders_sent = row.orders_sent
         orders_executed = row.orders_executed
@@ -422,14 +431,14 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         exec_rate = (orders_executed / orders_sent *
                      100) if orders_sent > 0 else 0
 
-        print("")
-        print(f"Total Trades:       {total_trades} ({winning}W / {losing}L)")
-        print(f"Win Rate:           {win_rate * 100:.1f}%")
+        print('')
+        print(f'Total Trades:       {total_trades} ({winning}W / {losing}L)')
+        print(f'Win Rate:           {win_rate * 100:.1f}%')
         print(
-            f"Avg Win:            {format_currency_simple(row.avg_win, currency)}")
+            f'Avg Win:            {format_currency_simple(row.avg_win, currency)}')
         print(
-            f"Avg Loss:           {format_currency_simple(row.avg_loss, currency)}")
-        print(f"Profit Factor:      {profit_factor:.2f}")
+            f'Avg Loss:           {format_currency_simple(row.avg_loss, currency)}')
+        print(f'Profit Factor:      {profit_factor:.2f}')
 
         if orders_rejected > 0:
             print(
@@ -437,7 +446,7 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
                 f"{renderer.yellow(f'{orders_rejected} rejected')} ({exec_rate:.1f}%)")
         else:
             print(
-                f"Orders:             {orders_executed}/{orders_sent} executed ({exec_rate:.1f}%)")
+                f'Orders:             {orders_executed}/{orders_sent} executed ({exec_rate:.1f}%)')
 
         # Pending order latency (green)
         if row.pending_total_resolved > 0:
@@ -448,23 +457,23 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         # Order pipeline status (always visible)
         self._render_order_pipeline(renderer, row)
 
-        print("")
+        print('')
         print(
-            f"Max Drawdown:       {format_currency_simple(abs(h.max_drawdown), currency)} ({row.max_dd_pct:.1f}%)")
+            f'Max Drawdown:       {format_currency_simple(abs(h.max_drawdown), currency)} ({row.max_dd_pct:.1f}%)')
         print(
-            f"Max Equity:         {format_currency_simple(row.max_equity, currency)}")
-        print(f"Recovery Factor:    {row.recovery_factor:.2f}")
-        print("")
+            f'Max Equity:         {format_currency_simple(row.max_equity, currency)}')
+        print(f'Recovery Factor:    {row.recovery_factor:.2f}')
+        print('')
         print(
-            f"Spread Cost:        {format_currency_simple(row.total_spread_cost, currency)} (avg {format_currency_simple(row.avg_spread, currency)}/trade)")
+            f'Spread Cost:        {format_currency_simple(row.total_spread_cost, currency)} (avg {format_currency_simple(row.avg_spread, currency)}/trade)')
         print(
-            f"Commission:         {format_currency_simple(row.total_commission, currency)}")
+            f'Commission:         {format_currency_simple(row.total_commission, currency)}')
         print(
-            f"Swap:               {format_currency_simple(row.total_swap, currency)}")
+            f'Swap:               {format_currency_simple(row.total_swap, currency)}')
         print(
-            f"Maker Fee:          {format_currency_simple(row.maker_fee, currency)}")
+            f'Maker Fee:          {format_currency_simple(row.maker_fee, currency)}')
         print(
-            f"Taker Fee:          {format_currency_simple(row.taker_fee, currency)}")
+            f'Taker Fee:          {format_currency_simple(row.taker_fee, currency)}')
 
     def _render_spot_portfolio(
         self, renderer: ConsoleRenderer, currency: str, row: AggregatedPortfolioRow
@@ -481,58 +490,58 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         """
         h = row.headline
 
-        renderer.print_bold(f"PORTFOLIO PERFORMANCE ({currency} — Spot)")
+        renderer.print_bold(f'PORTFOLIO PERFORMANCE ({currency} — Spot)')
         renderer.print_separator(width=68)
-        print(f"Scenarios:          {h.unit_count}")
+        print(f'Scenarios:          {h.unit_count}')
 
         print(
-            f"Initial Capital:    {format_currency_simple(row.initial_balance, currency)} (avg {format_currency_simple(row.avg_initial, currency)}/scenario)")
+            f'Initial Capital:    {format_currency_simple(row.initial_balance, currency)} (avg {format_currency_simple(row.avg_initial, currency)}/scenario)')
 
         # Per-scenario spot balances
         for s in row.spot_scenarios:
             base_fmt = f'{s.base_balance:,.4f}' if s.base_balance < 100 else f'{s.base_balance:,.2f}'
-            print(f"  {s.scenario_name}:")
-            print(f"    Balances: {format_currency_simple(s.quote_balance, s.quote_currency)} | {s.base_currency} {base_fmt}")
+            print(f'  {s.scenario_name}:')
+            print(f'    Balances: {format_currency_simple(s.quote_balance, s.quote_currency)} | {s.base_currency} {base_fmt}')
             if s.has_base_holdings:
-                print(f"    Est. Value: {format_currency_simple(s.est_current, s.quote_currency)} @ {s.base_currency} {format_currency_simple(s.last_price, s.quote_currency)}")
+                print(f'    Est. Value: {format_currency_simple(s.est_current, s.quote_currency)} @ {s.base_currency} {format_currency_simple(s.last_price, s.quote_currency)}')
 
         # Totals
-        print("")
+        print('')
         if row.spot_has_base_holdings and row.spot_total_est_initial > 0:
             total_pnl = row.spot_total_est_current - row.spot_total_est_initial
             total_pnl_pct = (total_pnl / row.spot_total_est_initial * 100)
-            print(f"Est. Portfolio:     {format_currency_simple(row.spot_total_est_current, currency)}")
-            print(f"Total P&L:          {renderer.pnl(total_pnl, currency)} ({total_pnl_pct:+.2f}%)")
+            print(f'Est. Portfolio:     {format_currency_simple(row.spot_total_est_current, currency)}')
+            print(f'Total P&L:          {renderer.pnl(total_pnl, currency)} ({total_pnl_pct:+.2f}%)')
         else:
             # Simple P&L when no base holdings (same as margin)
             pnl = row.final_balance - row.initial_balance
             pnl_pct = (pnl / row.initial_balance * 100) if row.initial_balance > 0 else 0
-            print(f"Final Balance:      {format_currency_simple(row.final_balance, currency)}")
-            print(f"Total P&L:          {renderer.pnl(pnl, currency)} ({pnl_pct:+.2f}%)")
+            print(f'Final Balance:      {format_currency_simple(row.final_balance, currency)}')
+            print(f'Total P&L:          {renderer.pnl(pnl, currency)} ({pnl_pct:+.2f}%)')
 
         # Trade stats
         if h.total_trades > 0:
-            print("")
-            print(f"Total Trades:       {h.total_trades} ({h.winning_trades}W / {h.losing_trades}L)")
-            print(f"Win Rate:           {h.win_rate * 100:.1f}%")
+            print('')
+            print(f'Total Trades:       {h.total_trades} ({h.winning_trades}W / {h.losing_trades}L)')
+            print(f'Win Rate:           {h.win_rate * 100:.1f}%')
 
         # Order execution
         if row.orders_sent > 0:
             print(
-                f"Orders:             {row.orders_executed}/{row.orders_sent} executed")
+                f'Orders:             {row.orders_executed}/{row.orders_sent} executed')
 
         # Costs (layout A — all five categories, zeros where n/a; spot fees are maker/taker)
-        print("")
+        print('')
         print(
-            f"Spread Cost:        {format_currency_simple(row.total_spread_cost, currency)}")
+            f'Spread Cost:        {format_currency_simple(row.total_spread_cost, currency)}')
         print(
-            f"Commission:         {format_currency_simple(row.total_commission, currency)}")
+            f'Commission:         {format_currency_simple(row.total_commission, currency)}')
         print(
-            f"Swap:               {format_currency_simple(row.total_swap, currency)}")
+            f'Swap:               {format_currency_simple(row.total_swap, currency)}')
         print(
-            f"Maker Fee:          {format_currency_simple(row.maker_fee, currency)}")
+            f'Maker Fee:          {format_currency_simple(row.maker_fee, currency)}')
         print(
-            f"Taker Fee:          {format_currency_simple(row.taker_fee, currency)}")
+            f'Taker Fee:          {format_currency_simple(row.taker_fee, currency)}')
 
     @staticmethod
     def _format_pending_latency(renderer: ConsoleRenderer, row: AggregatedPortfolioRow) -> str:
@@ -548,19 +557,19 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         """
         # Millisecond-based latency
         if row.pending_min_latency_ms is not None:
-            line = (f"Avg Latency:        {row.pending_avg_latency_ms:.0f}ms "
-                    f"(min: {row.pending_min_latency_ms:.0f}ms | max: {row.pending_max_latency_ms:.0f}ms)")
+            line = (f'Avg Latency:        {row.pending_avg_latency_ms:.0f}ms '
+                    f'(min: {row.pending_min_latency_ms:.0f}ms | max: {row.pending_max_latency_ms:.0f}ms)')
             # Anomaly suffix (force-closed, timed out)
             anomaly_parts = []
             if row.pending_total_force_closed > 0:
-                anomaly_parts.append(f"{row.pending_total_force_closed} force-closed")
+                anomaly_parts.append(f'{row.pending_total_force_closed} force-closed')
             if row.pending_total_timed_out > 0:
-                anomaly_parts.append(f"{row.pending_total_timed_out} timed out")
+                anomaly_parts.append(f'{row.pending_total_timed_out} timed out')
             if anomaly_parts:
                 line += f" | {renderer.yellow(' | '.join(anomaly_parts))}"
             return renderer.green(line)
 
-        return ""
+        return ''
 
     @staticmethod
     def _render_order_pipeline(
@@ -577,8 +586,8 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             renderer: Console renderer for color formatting
             row: Aggregated portfolio row carrying the active-order counts
         """
-        line = (f"Order Pipeline:     0 pending | {row.pending_active_limit_count} active limits | "
-                f"{row.pending_active_stop_count} active stops")
+        line = (f'Order Pipeline:     0 pending | {row.pending_active_limit_count} active limits | '
+                f'{row.pending_active_stop_count} active stops')
         print(renderer.cyan(line))
 
     def _format_tracking_status_line(self, renderer: ConsoleRenderer) -> str:
@@ -609,7 +618,7 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             msg = ('⚠️  Tick-loop profiling OFF '
                    '(operation hotspot analysis unavailable)')
 
-        return f"Tracking:           {renderer.yellow(msg)}"
+        return f'Tracking:           {renderer.yellow(msg)}'
 
     def _format_warmup_hotspot(self, renderer: ConsoleRenderer) -> str:
         """
@@ -634,13 +643,13 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         slowest = max(phases, key=lambda p: p.duration_s)
         pct = slowest.duration_s / total_warmup * 100
         phase_part = renderer.yellow(
-            f"Phase [{slowest.name}]  {slowest.duration_s:.1f}s ({pct:.1f}%)"
+            f'Phase [{slowest.name}]  {slowest.duration_s:.1f}s ({pct:.1f}%)'
         )
 
         # Slowest scenario deviation (only when >1 scenario and profiling data present)
         scenario_part = self._format_slowest_scenario_deviation(renderer)
         if scenario_part:
-            return f"{phase_part}  |  {scenario_part}"
+            return f'{phase_part}  |  {scenario_part}'
         return phase_part
 
     def _format_slowest_scenario_deviation(self, renderer: ConsoleRenderer) -> str:
@@ -674,7 +683,7 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         if deviation_pct < 15.0:
             return ''
 
-        return renderer.yellow(f"Slowest Scenario: {slowest_name}  +{deviation_pct:.0f}% vs avg")
+        return renderer.yellow(f'Slowest Scenario: {slowest_name}  +{deviation_pct:.0f}% vs avg')
 
     def _render_system_resources(self, renderer: ConsoleRenderer):
         """Render system resources section."""
@@ -684,15 +693,15 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             ram_total_gb = mem.total / (1024**3)
             ram_available_gb = mem.available / (1024**3)
         except:
-            cpu_count = "N/A"
+            cpu_count = 'N/A'
             ram_total_gb = 0
             ram_available_gb = 0
 
-        renderer.print_bold("SYSTEM RESOURCES")
+        renderer.print_bold('SYSTEM RESOURCES')
         renderer.print_separator(width=68)
-        print(f"CPU Cores:          {cpu_count}")
+        print(f'CPU Cores:          {cpu_count}')
         print(
-            f"RAM:                {ram_available_gb:.1f} GB available / {ram_total_gb:.1f} GB total")
+            f'RAM:                {ram_available_gb:.1f} GB available / {ram_total_gb:.1f} GB total')
 
     def _calculate_in_time_stats(self) -> Dict[str, float]:
         """

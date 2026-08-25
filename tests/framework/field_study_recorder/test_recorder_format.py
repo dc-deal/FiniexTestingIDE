@@ -9,9 +9,9 @@ session-end marker.
 import json
 
 from python.framework.reporting.field_study_recorder import (
-    FieldStudyRecorder,
     PLANE_BOT,
     PLANE_BROKER_TRUTH,
+    FieldStudyRecorder,
 )
 from python.framework.types.autotrader_types.field_study_types import (
     PhaseOutcome,

@@ -6,8 +6,7 @@ report can state which collector schema produced which window of the archive. Pu
 over index entries — no index, no IO.
 """
 
-from python.framework.discoveries.data_coverage.data_format_version_spans import (
-    build_version_spans)
+from python.framework.discoveries.data_coverage.data_format_version_spans import build_version_spans
 
 
 def _entry(version, start, end, ticks=100):
@@ -23,8 +22,8 @@ def _entry(version, start, end, ticks=100):
         Index entry dict as the tick index stores it
     """
     return {
-        'start_time': f"{start}T00:00:00+00:00",
-        'end_time': f"{end}T00:00:00+00:00",
+        'start_time': f'{start}T00:00:00+00:00',
+        'end_time': f'{end}T00:00:00+00:00',
         'tick_count': ticks,
         'data_format_version': version,
     }

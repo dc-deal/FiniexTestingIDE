@@ -16,27 +16,26 @@ Workflow:
 
 """
 
+import time
+import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Optional, Tuple
-import time
-import traceback
 
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.configuration.import_config_manager import ImportConfigManager
-from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.vectorized_bar_renderer import VectorizedBarRenderer
-from python.data_management.index.tick_index_manager import TickIndexManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-
-
-from python.framework.logging.bootstrap_logger import get_global_logger
+from python.data_management.index.tick_index_manager import TickIndexManager
+from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.import_result_types import BarRenderResult
+
 vLog = get_global_logger()
 
 
@@ -77,11 +76,11 @@ def _render_symbol_worker(
         tick_index.build_index()
 
         # === 2. LOAD TICK DATA ===
-        log_buffer.append(f"  ├─ Loading tick data for {broker_type}/{symbol}...")
+        log_buffer.append(f'  ├─ Loading tick data for {broker_type}/{symbol}...')
         ticks_df = _load_all_ticks_for_symbol(tick_index, symbol, broker_type, log_buffer)
 
         if ticks_df.empty:
-            log_buffer.append(f"  └─ No tick data found for {broker_type}/{symbol}")
+            log_buffer.append(f'  └─ No tick data found for {broker_type}/{symbol}')
             return BarRenderResult(
                 symbol=symbol,
                 broker_type=broker_type,
@@ -90,7 +89,7 @@ def _render_symbol_worker(
                 log_buffer=log_buffer
             )
 
-        log_buffer.append(f"  ├─ Loaded {len(ticks_df):,} ticks")
+        log_buffer.append(f'  ├─ Loaded {len(ticks_df):,} ticks')
 
         # === 2.5 EXTRACT SOURCE VERSIONS ===
         tick_files = [
@@ -101,12 +100,12 @@ def _render_symbol_worker(
             tick_files, log_buffer)
 
         # === 3. RENDER BARS ===
-        log_buffer.append(f"  ├─ Rendering bars...")
+        log_buffer.append('  ├─ Rendering bars...')
         renderer = VectorizedBarRenderer(symbol, broker_type, log_buffer=log_buffer)
         all_bars = renderer.render_all_timeframes(ticks_df)
 
         # === 4. WRITE BAR FILES ===
-        log_buffer.append(f"  ├─ Writing bar files...")
+        log_buffer.append('  ├─ Writing bar files...')
         bars_written = 0
 
         for timeframe, bars_df in all_bars.items():
@@ -122,8 +121,8 @@ def _render_symbol_worker(
         # === 5. LOG STATISTICS ===
         elapsed = time.time() - start_time
         log_buffer.append(
-            f"  └─ ✅ {broker_type}/{symbol}: {bars_written:,} bars across "
-            f"{len(all_bars)} timeframes in {elapsed:.2f}s"
+            f'  └─ ✅ {broker_type}/{symbol}: {bars_written:,} bars across '
+            f'{len(all_bars)} timeframes in {elapsed:.2f}s'
         )
 
         return BarRenderResult(
@@ -135,14 +134,14 @@ def _render_symbol_worker(
         )
 
     except Exception as e:
-        log_buffer.append(f"  └─ ❌ ERROR: {str(e)}")
+        log_buffer.append(f'  └─ ❌ ERROR: {str(e)}')
         log_buffer.append(traceback.format_exc())
         return BarRenderResult(
             symbol=symbol,
             broker_type=broker_type,
             bars_rendered=0,
             success=False,
-            error_message=f"ERROR in {broker_type}/{symbol}: {str(e)}",
+            error_message=f'ERROR in {broker_type}/{symbol}: {str(e)}',
             log_buffer=log_buffer
         )
 
@@ -223,10 +222,10 @@ def _write_bar_file(
         source_version_max: Maximum source data version
         log_buffer: Buffer for log messages
     """
-    bars_dir = data_dir / broker_type / "bars" / symbol
+    bars_dir = data_dir / broker_type / 'bars' / symbol
     bars_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{symbol}_{timeframe}_BARS.parquet"
+    filename = f'{symbol}_{timeframe}_BARS.parquet'
     filepath = bars_dir / filename
 
     market_config = MarketConfigManager()
@@ -248,13 +247,13 @@ def _write_bar_file(
 
     table = pa.Table.from_pandas(bars_df)
     table = table.replace_schema_metadata(metadata)
-    pq.write_table(table, filepath, compression="snappy")
+    pq.write_table(table, filepath, compression='snappy')
 
     file_size_mb = filepath.stat().st_size / (1024 * 1024)
     if log_buffer is not None:
         log_buffer.append(
-            f"    ├─ Written: {filename} "
-            f"({len(bars_df):,} bars, {file_size_mb:.2f} MB)"
+            f'    ├─ Written: {filename} '
+            f'({len(bars_df):,} bars, {file_size_mb:.2f} MB)'
         )
 
 
@@ -294,7 +293,7 @@ def _extract_source_versions(
 
         except Exception as e:
             log_buffer.append(
-                f"  ⚠️ Could not extract version from {tick_file.name}: {e}")
+                f'  ⚠️ Could not extract version from {tick_file.name}: {e}')
             versions.append('1.0.0')
 
     if not versions:
@@ -317,7 +316,7 @@ class BarImporter:
     One file per timeframe per symbol.
     """
 
-    VERSION = "1.1"  # Updated for broker_type-first index structure
+    VERSION = '1.1'  # Updated for broker_type-first index structure
 
     def __init__(self, data_dir: Optional[str] = None):
         """
@@ -334,7 +333,7 @@ class BarImporter:
             self.data_dir = Path(self._import_config.get_import_output_path())
         if not self.data_dir.exists():
             raise FileNotFoundError(
-                f"Data directory not found: {self.data_dir}")
+                f'Data directory not found: {self.data_dir}')
 
         # Initialize tick index for finding tick files
         self.tick_index = TickIndexManager(data_dir=str(self.data_dir))
@@ -362,11 +361,11 @@ class BarImporter:
         """
         max_workers = self._import_config.get_bar_render_workers()
 
-        vLog.info("\n" + "=" * 80)
+        vLog.info('\n' + '=' * 80)
         vLog.info(
             f"Bar Pre-Rendering - Batch Mode ({', '.join(broker_types)})")
-        vLog.info(f"Workers: {max_workers}")
-        vLog.info("=" * 80)
+        vLog.info(f'Workers: {max_workers}')
+        vLog.info('=' * 80)
 
         # === CLEAN MODE: Delete all bars first ===
         if clean_mode:
@@ -389,10 +388,10 @@ class BarImporter:
             return
 
         vLog.info(
-            f"Found {len(all_tasks)} symbols to process across "
-            f"{len(broker_types)} broker_types"
+            f'Found {len(all_tasks)} symbols to process across '
+            f'{len(broker_types)} broker_types'
         )
-        vLog.info("=" * 80 + "\n")
+        vLog.info('=' * 80 + '\n')
 
         # === PARALLEL RENDERING ===
         effective_workers = min(max_workers, len(all_tasks))
@@ -414,7 +413,7 @@ class BarImporter:
         """
         for i, (broker_type, symbol) in enumerate(tasks, 1):
             vLog.info(
-                f"\n[{i}/{len(tasks)}] Processing {broker_type}/{symbol}...")
+                f'\n[{i}/{len(tasks)}] Processing {broker_type}/{symbol}...')
 
             result = _render_symbol_worker(
                 symbol, broker_type, str(self.data_dir), self.VERSION
@@ -444,8 +443,8 @@ class BarImporter:
             max_workers: Number of worker processes
         """
         vLog.info(
-            f"🚀 Launching {max_workers} worker processes for "
-            f"{len(tasks)} symbols...\n"
+            f'🚀 Launching {max_workers} worker processes for '
+            f'{len(tasks)} symbols...\n'
         )
 
         results: list[BarRenderResult] = []
@@ -465,20 +464,20 @@ class BarImporter:
                     result = future.result()
                     results.append(result)
                 except Exception as e:
-                    error_msg = f"ERROR in {broker_type}/{symbol}: {str(e)}"
+                    error_msg = f'ERROR in {broker_type}/{symbol}: {str(e)}'
                     results.append(BarRenderResult(
                         symbol=symbol,
                         broker_type=broker_type,
                         success=False,
                         error_message=error_msg,
-                        log_buffer=[f"  └─ ❌ Worker crashed: {str(e)}"]
+                        log_buffer=[f'  └─ ❌ Worker crashed: {str(e)}']
                     ))
 
         # Flush all log buffers sorted by broker_type/symbol
         results.sort(key=lambda r: (r.broker_type, r.symbol))
         for i, result in enumerate(results, 1):
             vLog.info(
-                f"\n[{i}/{len(results)}] {result.broker_type}/{result.symbol}:")
+                f'\n[{i}/{len(results)}] {result.broker_type}/{result.symbol}:')
             for line in result.log_buffer:
                 vLog.info(line)
 
@@ -496,27 +495,27 @@ class BarImporter:
         Args:
             broker_type: Broker type identifier
         """
-        bars_base_dir = self.data_dir / broker_type / "bars"
+        bars_base_dir = self.data_dir / broker_type / 'bars'
 
         if bars_base_dir.exists():
             vLog.warning(
-                f"🗑️  CLEAN MODE: Deleting all bars in {bars_base_dir}")
+                f'🗑️  CLEAN MODE: Deleting all bars in {bars_base_dir}')
 
             deleted_count = 0
-            for bar_file in bars_base_dir.glob("**/*_BARS.parquet"):
+            for bar_file in bars_base_dir.glob('**/*_BARS.parquet'):
                 bar_file.unlink()
                 deleted_count += 1
 
-            vLog.info(f"   Deleted {deleted_count} bar files")
+            vLog.info(f'   Deleted {deleted_count} bar files')
 
             # Clean up empty directories
             for symbol_dir in bars_base_dir.iterdir():
                 if symbol_dir.is_dir() and not any(symbol_dir.iterdir()):
                     symbol_dir.rmdir()
                     vLog.debug(
-                        f"   Removed empty directory: {symbol_dir.name}")
+                        f'   Removed empty directory: {symbol_dir.name}')
         else:
-            vLog.info(f"   No bars directory found - nothing to clean")
+            vLog.info('   No bars directory found - nothing to clean')
 
     def render_bars_for_symbol(
         self,
@@ -552,7 +551,7 @@ class BarImporter:
         Creates/updates .parquet_bars_index.parquet and rebuilds discovery caches.
         Called by the caller after rendering is complete — not automatically.
         """
-        vLog.info("\n📄 Updating bar index...")
+        vLog.info('\n📄 Updating bar index...')
         try:
             bar_index = BarsIndexManager()
             bar_index.build_index(force_rebuild=True)
@@ -567,28 +566,28 @@ class BarImporter:
 
             # Rebuild all discovery caches
             DiscoveryCacheManager().rebuild_all(force=True)
-            vLog.info(f"✅ Discovery caches rebuilt")
+            vLog.info('✅ Discovery caches rebuilt')
 
         except ImportError as e:
-            vLog.error(f"❌ Failed to import BarsIndexManager: {e}")
-            vLog.error("   Make sure bars_index_manager.py is available")
-            vLog.error("   You can manually build the index later.")
+            vLog.error(f'❌ Failed to import BarsIndexManager: {e}')
+            vLog.error('   Make sure bars_index_manager.py is available')
+            vLog.error('   You can manually build the index later.')
         except Exception as e:
-            vLog.error(f"❌ Failed to update bar index: {e}")
-            vLog.error("   Index may be outdated - run manual rebuild!")
+            vLog.error(f'❌ Failed to update bar index: {e}')
+            vLog.error('   Index may be outdated - run manual rebuild!')
 
     def _print_summary(self):
         """Print processing summary"""
-        vLog.info("\n" + "=" * 80)
-        vLog.info("BAR RENDERING SUMMARY")
-        vLog.info("=" * 80)
-        vLog.info(f"✅ Processed Symbols: {self.processed_symbols}")
-        vLog.info(f"✅ Rendered Bars: {self.total_bars_rendered:,}")
-        vLog.info(f"❌ Errors: {len(self.errors)}")
+        vLog.info('\n' + '=' * 80)
+        vLog.info('BAR RENDERING SUMMARY')
+        vLog.info('=' * 80)
+        vLog.info(f'✅ Processed Symbols: {self.processed_symbols}')
+        vLog.info(f'✅ Rendered Bars: {self.total_bars_rendered:,}')
+        vLog.info(f'❌ Errors: {len(self.errors)}')
 
         if self.errors:
-            vLog.error("\nERROR LIST:")
+            vLog.error('\nERROR LIST:')
             for error in self.errors:
-                vLog.error(f"  - {error}")
+                vLog.error(f'  - {error}')
 
-        vLog.info("=" * 80 + "\n")
+        vLog.info('=' * 80 + '\n')

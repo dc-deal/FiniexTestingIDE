@@ -16,10 +16,20 @@ Renders:
 
 from typing import Dict, List, Tuple
 
-from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
-from python.framework.utils.console_renderer import ConsoleRenderer
+from python.framework.reporting.console.abstract_batch_summary_section import (
+    AbstractBatchSummarySection,
+)
 from python.framework.types.api.report_types import WorkerDecisionReport, WorkerDecisionUnitRow
-from python.framework.types.performance_types.performance_summary_aggregation_types import AggregatedPerformanceStats, DecisionLogicBottleneckData, ParallelBottleneckData, PerformanceBottlenecks, ScenarioBottleneckData, WorkerAggregateData, WorkerBottleneckData
+from python.framework.types.performance_types.performance_summary_aggregation_types import (
+    AggregatedPerformanceStats,
+    DecisionLogicBottleneckData,
+    ParallelBottleneckData,
+    PerformanceBottlenecks,
+    ScenarioBottleneckData,
+    WorkerAggregateData,
+    WorkerBottleneckData,
+)
+from python.framework.utils.console_renderer import ConsoleRenderer
 
 
 class PerformanceSummary(AbstractBatchSummarySection):
@@ -59,14 +69,14 @@ class PerformanceSummary(AbstractBatchSummarySection):
         self._render_section_header(renderer)
 
         if not self._units:
-            print("No performance data available")
+            print('No performance data available')
             return
 
         for idx, unit in enumerate(self._units, 1):
             # Separator between scenarios
             if idx > 1:
                 print()
-                renderer.print_separator(width=120, char="·")
+                renderer.print_separator(width=120, char='·')
                 print()
 
             self._render_scenario_performance(unit, renderer)
@@ -86,7 +96,7 @@ class PerformanceSummary(AbstractBatchSummarySection):
 
         print()
         renderer.section_separator()
-        renderer.print_bold("📊 AGGREGATED SUMMARY (ALL SCENARIOS)")
+        renderer.print_bold('📊 AGGREGATED SUMMARY (ALL SCENARIOS)')
         renderer.section_separator()
 
         self._render_aggregated_details(aggregated, renderer)
@@ -132,7 +142,7 @@ class PerformanceSummary(AbstractBatchSummarySection):
         total_calls = sum(w.call_count for w in unit.workers)
 
         mode_str = renderer.green(
-            "Parallel") if parallel_workers else renderer.yellow("Sequential")
+            'Parallel') if parallel_workers else renderer.yellow('Sequential')
         print(f"{renderer.bold('📊 SCENARIO PERFORMANCE:')} {unit.name}")
         print(f"{renderer.bold('   Workers:')} {total_workers} workers ({mode_str})  |  "
               f"Ticks: {ticks_processed:,}  |  "
@@ -150,10 +160,10 @@ class PerformanceSummary(AbstractBatchSummarySection):
                 if total_ticks > 0:
                     pct = w.call_count / total_ticks * 100
                     idle = (total_ticks - w.last_compute_tick) if w.last_compute_tick >= 0 else 0
-                    cadence = (f"{w.compute_basis:9} {w.call_count:>5}/{total_ticks} "
-                               f"computes ({pct:4.0f}%, {idle} idle)")
+                    cadence = (f'{w.compute_basis:9} {w.call_count:>5}/{total_ticks} '
+                               f'computes ({pct:4.0f}%, {idle} idle)')
                 else:
-                    cadence = f"{w.compute_basis:9} {w.call_count:>5} computes"
+                    cadence = f'{w.compute_basis:9} {w.call_count:>5} computes'
                 print(f"      {renderer.blue(f'{w.worker_name:15}->{w.worker_type:15}')}  "
                       f"{cadence}  |  "
                       f"Avg: {w.avg_time_ms:>6.3f}ms  |  "
@@ -167,18 +177,18 @@ class PerformanceSummary(AbstractBatchSummarySection):
             status = self._get_parallel_status(parallel_time_saved_ms)
 
             print(f"\n{renderer.bold('   ⚡ PARALLEL EFFICIENCY:')}")
-            print(f"      Time saved: {parallel_time_saved_ms:>8.2f}ms total  |  "
-                  f"Avg/tick: {parallel_avg_saved_per_tick_ms:>6.3f}ms  |  "
-                  f"Status: {status}")
+            print(f'      Time saved: {parallel_time_saved_ms:>8.2f}ms total  |  '
+                  f'Avg/tick: {parallel_avg_saved_per_tick_ms:>6.3f}ms  |  '
+                  f'Status: {status}')
 
         # Decision logic
         if unit.decision_logic_name or unit.decision_count:
             print(
                 f"\n{renderer.bold('   🧠 DECISION LOGIC:')} {unit.decision_logic_name} ({unit.decision_logic_type})")
-            print(f"      Decisions: {unit.decision_count}  |  "
-                  f"Avg: {unit.decision_avg_time_ms:>6.3f}ms  |  "
-                  f"Range: {unit.decision_min_time_ms:>6.3f}-{unit.decision_max_time_ms:>6.3f}ms  |  "
-                  f"Total: {unit.decision_total_time_ms:>8.2f}ms")
+            print(f'      Decisions: {unit.decision_count}  |  '
+                  f'Avg: {unit.decision_avg_time_ms:>6.3f}ms  |  '
+                  f'Range: {unit.decision_min_time_ms:>6.3f}-{unit.decision_max_time_ms:>6.3f}ms  |  '
+                  f'Total: {unit.decision_total_time_ms:>8.2f}ms')
 
         print()
 
@@ -229,9 +239,9 @@ class PerformanceSummary(AbstractBatchSummarySection):
         """
         print()
         print(f"{renderer.bold('   📊 AGGREGATED STATS:')}")
-        print(f"      Total Ticks: {aggregated.total_ticks:,}  |  "
-              f"Total Signals: {aggregated.total_signals:,}  |  "
-              f"Total Decisions: {aggregated.total_decisions:,}")
+        print(f'      Total Ticks: {aggregated.total_ticks:,}  |  '
+              f'Total Signals: {aggregated.total_signals:,}  |  '
+              f'Total Decisions: {aggregated.total_decisions:,}')
 
         # Worker aggregates
         if aggregated.worker_aggregates:
@@ -260,10 +270,10 @@ class PerformanceSummary(AbstractBatchSummarySection):
                 len(decision_agg.times) if decision_agg.times else 0.0
 
             print(f"\n{renderer.bold('   🧠 DECISION LOGIC (AGGREGATED):')}")
-            print(f"      Total Decisions: {total_calls}  |  "
-                  f"Total Time: {total_time:>8.2f}ms  |  "
-                  f"Avg: {avg_time:>6.3f}ms  |  "
-                  f"Scenario Avg: {scenario_avg:>6.3f}ms")
+            print(f'      Total Decisions: {total_calls}  |  '
+                  f'Total Time: {total_time:>8.2f}ms  |  '
+                  f'Avg: {avg_time:>6.3f}ms  |  '
+                  f'Scenario Avg: {scenario_avg:>6.3f}ms')
 
     def _analyze_bottlenecks(self) -> PerformanceBottlenecks:
         """
@@ -366,10 +376,10 @@ class PerformanceSummary(AbstractBatchSummarySection):
         if bottlenecks.slowest_scenario:
             scenario = bottlenecks.slowest_scenario
             print(f"{renderer.bold('   🌶 SLOWEST SCENARIO:')}")
-            avg_str = renderer.red(f"{scenario.avg_time_per_tick:.3f}ms")
-            print(f"      {renderer.red(scenario.name)}  |  "
-                  f"Avg/tick: {avg_str}  |  "
-                  f"Total: {scenario.total_time:.2f}ms")
+            avg_str = renderer.red(f'{scenario.avg_time_per_tick:.3f}ms')
+            print(f'      {renderer.red(scenario.name)}  |  '
+                  f'Avg/tick: {avg_str}  |  '
+                  f'Total: {scenario.total_time:.2f}ms')
             print(
                 f"      {renderer.yellow('→ This scenario took the longest time per tick')}")
 
@@ -377,21 +387,21 @@ class PerformanceSummary(AbstractBatchSummarySection):
         if bottlenecks.slowest_worker:
             worker = bottlenecks.slowest_worker
             print(f"\n{renderer.bold('   🌶 SLOWEST WORKER:')}")
-            avg_str = renderer.red(f"{worker.avg_time:.3f}ms")
-            print(f"      {renderer.red(worker.name)}  |  "
-                  f"Avg: {avg_str} (across all scenarios)")
+            avg_str = renderer.red(f'{worker.avg_time:.3f}ms')
+            print(f'      {renderer.red(worker.name)}  |  '
+                  f'Avg: {avg_str} (across all scenarios)')
 
             worst_scenario = max(worker.scenarios, key=lambda x: x[1])
             worst_msg = f"→ Worst in scenario '{worst_scenario[0]}': {worst_scenario[1]:.3f}ms"
-            print(f"      {renderer.yellow(worst_msg)}")
+            print(f'      {renderer.yellow(worst_msg)}')
 
         # Slowest decision logic
         if bottlenecks.slowest_decision_logic and bottlenecks.slowest_decision_logic.avg_time > 0.5:
             logic = bottlenecks.slowest_decision_logic
             print(f"\n{renderer.bold('   🌶 SLOWEST DECISION LOGIC:')}")
-            avg_str = renderer.red(f"{logic.avg_time:.3f}ms")
-            print(f"      {renderer.red(logic.name)}  |  "
-                  f"Avg: {avg_str} (across all scenarios)")
+            avg_str = renderer.red(f'{logic.avg_time:.3f}ms')
+            print(f'      {renderer.red(logic.name)}  |  '
+                  f'Avg: {avg_str} (across all scenarios)')
             print(
                 f"      {renderer.yellow('→ Consider optimizing decision logic if > 1ms')}")
 
@@ -399,10 +409,10 @@ class PerformanceSummary(AbstractBatchSummarySection):
         if bottlenecks.worst_parallel and bottlenecks.worst_parallel.time_saved < 0:
             parallel = bottlenecks.worst_parallel
             print(f"\n{renderer.bold('   🌶 WORST PARALLEL EFFICIENCY:')}")
-            time_saved_str = renderer.red(f"{parallel.time_saved:.2f}ms")
-            print(f"      {renderer.red(parallel.name)}  |  "
-                  f"Time saved: {time_saved_str}  |  "
-                  f"Status: {parallel.status}")
+            time_saved_str = renderer.red(f'{parallel.time_saved:.2f}ms')
+            print(f'      {renderer.red(parallel.name)}  |  '
+                  f'Time saved: {time_saved_str}  |  '
+                  f'Status: {parallel.status}')
             print(
                 f"      {renderer.yellow('→ Parallel execution slower than sequential! Consider disabling.')}")
 
@@ -412,17 +422,17 @@ class PerformanceSummary(AbstractBatchSummarySection):
         has_issues: bool = False
         if bottlenecks.slowest_worker and bottlenecks.slowest_worker.avg_time > 1.0:
             worker_name = renderer.yellow(bottlenecks.slowest_worker.name)
-            print(f"      • Optimize {worker_name} worker (slowest component)")
+            print(f'      • Optimize {worker_name} worker (slowest component)')
             has_issues = True
 
         if bottlenecks.slowest_decision_logic and bottlenecks.slowest_decision_logic.avg_time > 1.0:
             logic_name = renderer.yellow(
                 bottlenecks.slowest_decision_logic.name)
-            print(f"      • Optimize {logic_name} decision logic")
+            print(f'      • Optimize {logic_name} decision logic')
             has_issues = True
 
         if bottlenecks.worst_parallel and bottlenecks.worst_parallel.time_saved < 0:
-            print(f"      • Disable parallel workers for better performance")
+            print('      • Disable parallel workers for better performance')
             has_issues = True
 
         if not has_issues:
@@ -442,8 +452,8 @@ class PerformanceSummary(AbstractBatchSummarySection):
             Status string
         """
         if time_saved_ms > 0.01:
-            return "✅ Faster"
+            return '✅ Faster'
         elif time_saved_ms < -0.01:
-            return "⚠️ Slower"
+            return '⚠️ Slower'
         else:
-            return "≈ Equal"
+            return '≈ Equal'

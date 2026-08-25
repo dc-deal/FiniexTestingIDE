@@ -33,23 +33,25 @@ trailing stop / partial close.
 import traceback
 from typing import Any, Dict, List, Optional
 
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.decision_logic.abstract_decision_logic import \
-    AbstractDecisionLogic
+from python.framework.types.component_metadata_types import ComponentMetadata
+from python.framework.types.decision_logic_types import (
+    AwarenessLevel,
+    Decision,
+    DecisionLogicAction,
+)
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionLogicAction
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.component_metadata_types import ComponentMetadata
-from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
-    OrderStatus,
-    OrderType,
     OrderDirection,
-    OrderSide,
     OrderResult,
+    OrderSide,
+    OrderType,
 )
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
 class TrendChannelReference(AbstractDecisionLogic):
@@ -124,10 +126,10 @@ class TrendChannelReference(AbstractDecisionLogic):
         self._partial_done: set = set()
 
         self.logger.debug(
-            f"TrendChannelReference initialized: mode={self.entry_mode}, "
-            f"sl={self.sl_mult} tp={self.tp_mult} trail={self.trail_mult}, "
-            f"partial={self.partial_fraction}@R{self.partial_rr}, "
-            f"max_pos={self.max_positions}, lots={self.lot_size}"
+            f'TrendChannelReference initialized: mode={self.entry_mode}, '
+            f'sl={self.sl_mult} tp={self.tp_mult} trail={self.trail_mult}, '
+            f'partial={self.partial_fraction}@R{self.partial_rr}, '
+            f'max_pos={self.max_positions}, lots={self.lot_size}'
         )
 
     # ============================================
@@ -141,55 +143,55 @@ class TrendChannelReference(AbstractDecisionLogic):
             'entry_mode': InputParamDef(
                 param_type=str, default='limit_pullback',
                 choices=('limit_pullback', 'stop_breakout'),
-                description="Resting entry style: LIMIT pullback or STOP breakout",
+                description='Resting entry style: LIMIT pullback or STOP breakout',
                 display=True, display_label='mode',
             ),
             'entry_band_pos': InputParamDef(
                 param_type=float, default=0.15, min_val=0.0, max_val=0.5,
-                description="%B threshold that arms a pullback entry (limit_pullback)",
+                description='%B threshold that arms a pullback entry (limit_pullback)',
                 display=True, display_label='band_x',
             ),
             'breakout_offset_mult': InputParamDef(
                 param_type=float, default=0.25, min_val=0.0, max_val=2.0,
-                description="STOP trigger distance beyond the band, in band halves",
+                description='STOP trigger distance beyond the band, in band halves',
             ),
             'sl_mult': InputParamDef(
                 param_type=float, default=1.0, min_val=0.1, max_val=5.0,
-                description="Stop-loss distance from entry, in band halves",
+                description='Stop-loss distance from entry, in band halves',
                 display=True, display_label='sl_x',
             ),
             'tp_mult': InputParamDef(
                 param_type=float, default=2.0, min_val=0.1, max_val=10.0,
-                description="Take-profit distance from entry, in band halves",
+                description='Take-profit distance from entry, in band halves',
                 display=True, display_label='tp_x',
             ),
             'trail_mult': InputParamDef(
                 param_type=float, default=1.0, min_val=0.1, max_val=5.0,
-                description="Trailing-stop distance behind price, in band halves",
+                description='Trailing-stop distance behind price, in band halves',
                 display=True, display_label='trail_x',
             ),
             'partial_rr': InputParamDef(
                 param_type=float, default=1.0, min_val=0.1, max_val=10.0,
-                description="R-multiple rung at which the partial close fires",
+                description='R-multiple rung at which the partial close fires',
                 display=True, display_label='p_rr',
             ),
             'partial_fraction': InputParamDef(
                 param_type=float, default=0.5, min_val=0.0, max_val=1.0,
-                description="Fraction of the original lots closed at the partial rung",
+                description='Fraction of the original lots closed at the partial rung',
                 display=True, display_label='p_frac',
             ),
             'max_positions': InputParamDef(
                 param_type=int, default=2, min_val=1, max_val=10,
-                description="Max concurrent positions stacked on the symbol",
+                description='Max concurrent positions stacked on the symbol',
                 display=True, display_label='max_pos',
             ),
             'lot_size': InputParamDef(
                 param_type=float, default=0.1, min_val=0.0, max_val=100.0,
-                description="Fixed lot size for entries",
+                description='Fixed lot size for entries',
             ),
             'min_free_margin': InputParamDef(
                 param_type=float, default=1000, min_val=0,
-                description="Minimum free margin required before opening an entry",
+                description='Minimum free margin required before opening an entry',
             ),
         }
 
@@ -265,8 +267,8 @@ class TrendChannelReference(AbstractDecisionLogic):
             status: Session-level market-data health snapshot
         """
         self.logger.warning(
-            f"🔌 Market data stale ({status.seconds_since_last_tick:.0f}s "
-            f"since last tick) — holding until ticks resume."
+            f'🔌 Market data stale ({status.seconds_since_last_tick:.0f}s '
+            f'since last tick) — holding until ticks resume.'
         )
         self.emit_event(
             '🔌 market data stale — holding until ticks resume',
@@ -363,15 +365,15 @@ class TrendChannelReference(AbstractDecisionLogic):
 
         if not self._is_armed(side, tick.mid, entry_price, pos_raw):
             self.notify_awareness(
-                f"Gate {gate} — no {self.entry_mode} setup (%B {pos_raw:.2f})",
+                f'Gate {gate} — no {self.entry_mode} setup (%B {pos_raw:.2f})',
                 AwarenessLevel.INFO, 'no_setup',
             )
-            return self._flat(tick, f"No {self.entry_mode} setup")
+            return self._flat(tick, f'No {self.entry_mode} setup')
 
         action = DecisionLogicAction.BUY if side == OrderSide.BUY else DecisionLogicAction.SELL
         self.notify_awareness(
-            f"{self.entry_mode} {side.value} armed @ {entry_price:.5f} "
-            f"(gate {gate}, %B {pos_raw:.2f})",
+            f'{self.entry_mode} {side.value} armed @ {entry_price:.5f} '
+            f'(gate {gate}, %B {pos_raw:.2f})',
             AwarenessLevel.INFO, 'armed',
         )
         return Decision(
@@ -383,7 +385,7 @@ class TrendChannelReference(AbstractDecisionLogic):
                 'stop_loss': float(stop_loss),
                 'take_profit': float(take_profit),
                 'band_width': float(upper - lower),
-                'reason': f"{self.entry_mode} {side.value} armed",
+                'reason': f'{self.entry_mode} {side.value} armed',
                 'price': tick.mid,
                 'timestamp': tick.timestamp.isoformat(),
             },
@@ -543,10 +545,10 @@ class TrendChannelReference(AbstractDecisionLogic):
                 stop_price=stop_price,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
-                comment=f"TrendChannelRef {self.entry_mode} {side.value}",
+                comment=f'TrendChannelRef {self.entry_mode} {side.value}',
             )
         except Exception:
-            self.logger.error(f"❌ Entry submission failed:\n{traceback.format_exc()}")
+            self.logger.error(f'❌ Entry submission failed:\n{traceback.format_exc()}')
             return None
 
         if result and not result.is_rejected:
@@ -559,8 +561,8 @@ class TrendChannelReference(AbstractDecisionLogic):
                 'tp': take_profit,
             }
             self.emit_event(
-                f"{order_type.value} {side.value} resting @ {entry_price:.5f} "
-                f"SL {stop_loss:.5f} TP {take_profit:.5f}",
+                f'{order_type.value} {side.value} resting @ {entry_price:.5f} '
+                f'SL {stop_loss:.5f} TP {take_profit:.5f}',
                 AwarenessLevel.INFO, 'entry_submitted',
             )
             self._record_setup_diagnostic(side, decision, tick)
@@ -616,7 +618,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         self.trading_api.close_position(pid, lots=close_lots)
         self._partial_done.add(pid)
         self.emit_event(
-            f"Partial close {close_lots} lots @ {self.partial_rr:.1f}R {pid}",
+            f'Partial close {close_lots} lots @ {self.partial_rr:.1f}R {pid}',
             AwarenessLevel.NOTICE, 'partial_close',
         )
 
@@ -690,7 +692,7 @@ class TrendChannelReference(AbstractDecisionLogic):
                 self._initial_risk[oid] = abs(pos.entry_price - info['sl'])
                 del self._resting_entries[oid]
                 self.emit_event(
-                    f"Entry filled {oid} @ {pos.entry_price:.5f}",
+                    f'Entry filled {oid} @ {pos.entry_price:.5f}',
                     AwarenessLevel.INFO, 'entry_filled',
                 )
                 continue
@@ -735,7 +737,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         if cancelled:
             del self._resting_entries[oid]
             self.emit_event(
-                f"Cancel resting entry {oid} (gate flip)",
+                f'Cancel resting entry {oid} (gate flip)',
                 AwarenessLevel.NOTICE, 'entry_cancelled',
             )
 
@@ -775,7 +777,7 @@ class TrendChannelReference(AbstractDecisionLogic):
                 oid, price=new_price, stop_loss=new_sl, take_profit=new_tp)
         info['price'], info['sl'], info['tp'] = new_price, new_sl, new_tp
         self.emit_event(
-            f"Re-price resting entry {oid} → {new_price:.5f}",
+            f'Re-price resting entry {oid} → {new_price:.5f}',
             AwarenessLevel.INFO, 'entry_repriced',
         )
 

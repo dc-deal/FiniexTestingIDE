@@ -70,7 +70,7 @@ class MarketCalendar:
             Tuple of (spans_weekend: bool, weekend_days: int)
         """
         if start > end:
-            raise ValueError("Start time must be before end time")
+            raise ValueError('Start time must be before end time')
 
         days_between = (end - start).days
 
@@ -128,7 +128,7 @@ class MarketCalendar:
             Number of trading days in range
         """
         if start > end:
-            raise ValueError("Start time must be before end time")
+            raise ValueError('Start time must be before end time')
 
         trading_days = 0
         current = start.date()
@@ -315,7 +315,7 @@ class MarketCalendar:
             }
         """
         if start > end:
-            raise ValueError("Start time must be before end time")
+            raise ValueError('Start time must be before end time')
 
         # Number of full weeks
         full_weeks = (end - start).days // 7
@@ -351,13 +351,13 @@ class MarketCalendar:
         end_weekday = end.weekday()
 
         return {
-            "full_weekends": full_weekends,
-            "saturdays": saturdays,
-            "sundays": sundays,
-            "total_weekend_days": weekend_days,
-            "start_is_weekend": start_weekday >= 5,
-            "end_is_weekend": end_weekday >= 5,
-            "weekend_percentage": round(weekend_percentage, 2)
+            'full_weekends': full_weekends,
+            'saturdays': saturdays,
+            'sundays': sundays,
+            'total_weekend_days': weekend_days,
+            'start_is_weekend': start_weekday >= 5,
+            'end_is_weekend': end_weekday >= 5,
+            'weekend_percentage': round(weekend_percentage, 2)
         }
 
     @staticmethod

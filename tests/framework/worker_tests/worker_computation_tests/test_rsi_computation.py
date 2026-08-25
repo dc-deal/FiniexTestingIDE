@@ -19,11 +19,10 @@ Reference formula:
 """
 
 import pytest
-
-from python.framework.workers.core.rsi_worker import RsiWorker
-from python.framework.types.worker_types import WorkerResult
-
 from conftest import make_bars, make_tick
+
+from python.framework.types.worker_types import WorkerResult
+from python.framework.workers.core.rsi_worker import RsiWorker
 
 
 class TestRSIBasicComputation:
@@ -41,8 +40,8 @@ class TestRSIBasicComputation:
         RSI = 100 - 100/(1+5) = 83.333...
         """
         worker = RsiWorker(
-            name="test_rsi",
-            parameters={"periods": {"M5": 4}},
+            name='test_rsi',
+            parameters={'periods': {'M5': 4}},
             logger=mock_logger,
         )
 
@@ -51,7 +50,7 @@ class TestRSIBasicComputation:
 
         result = worker.compute(
             tick=tick,
-            bar_history={"M5": bars},
+            bar_history={'M5': bars},
             current_bars={},
         )
 
@@ -69,8 +68,8 @@ class TestRSIBasicComputation:
         avg_loss == 0 → RSI = 100.0 (special case in code)
         """
         worker = RsiWorker(
-            name="test_rsi",
-            parameters={"periods": {"M5": 4}},
+            name='test_rsi',
+            parameters={'periods': {'M5': 4}},
             logger=mock_logger,
         )
 
@@ -79,7 +78,7 @@ class TestRSIBasicComputation:
 
         result = worker.compute(
             tick=tick,
-            bar_history={"M5": bars},
+            bar_history={'M5': bars},
             current_bars={},
         )
 
@@ -97,8 +96,8 @@ class TestRSIBasicComputation:
         RSI = 100 - 100/(1+0) = 0.0
         """
         worker = RsiWorker(
-            name="test_rsi",
-            parameters={"periods": {"M5": 4}},
+            name='test_rsi',
+            parameters={'periods': {'M5': 4}},
             logger=mock_logger,
         )
 
@@ -107,7 +106,7 @@ class TestRSIBasicComputation:
 
         result = worker.compute(
             tick=tick,
-            bar_history={"M5": bars},
+            bar_history={'M5': bars},
             current_bars={},
         )
 
@@ -125,8 +124,8 @@ class TestRSIBasicComputation:
         RSI = 100 - 100/(1+1) = 50.0
         """
         worker = RsiWorker(
-            name="test_rsi",
-            parameters={"periods": {"M5": 4}},
+            name='test_rsi',
+            parameters={'periods': {'M5': 4}},
             logger=mock_logger,
         )
 
@@ -135,7 +134,7 @@ class TestRSIBasicComputation:
 
         result = worker.compute(
             tick=tick,
-            bar_history={"M5": bars},
+            bar_history={'M5': bars},
             current_bars={},
         )
 
@@ -154,15 +153,15 @@ class TestRSIOutputFields:
         avg_loss = 1/4 = 0.25
         """
         worker = RsiWorker(
-            name="test_rsi",
-            parameters={"periods": {"M5": 4}},
+            name='test_rsi',
+            parameters={'periods': {'M5': 4}},
             logger=mock_logger,
         )
 
         bars = make_bars([100, 102, 101, 103, 104])
         tick = make_tick(bid=104.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={'M5': bars}, current_bars={})
 
         assert result.get_signal('avg_gain') == pytest.approx(1.25, abs=0.001)
         assert result.get_signal('avg_loss') == pytest.approx(0.25, abs=0.001)
@@ -170,15 +169,15 @@ class TestRSIOutputFields:
     def test_rsi_output_bars_used(self, mock_logger):
         """bars_used output must match number of close prices used."""
         worker = RsiWorker(
-            name="test_rsi",
-            parameters={"periods": {"M5": 4}},
+            name='test_rsi',
+            parameters={'periods': {'M5': 4}},
             logger=mock_logger,
         )
 
         bars = make_bars([100, 102, 101, 103, 104])
         tick = make_tick(bid=104.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={'M5': bars}, current_bars={})
 
         assert result.get_signal('bars_used') == 5
 
@@ -189,8 +188,8 @@ class TestRSIBoundaryAndRange:
     def test_rsi_always_between_0_and_100(self, mock_logger):
         """RSI must be in [0, 100] regardless of input."""
         worker = RsiWorker(
-            name="test_rsi",
-            parameters={"periods": {"M5": 4}},
+            name='test_rsi',
+            parameters={'periods': {'M5': 4}},
             logger=mock_logger,
         )
 
@@ -198,15 +197,15 @@ class TestRSIBoundaryAndRange:
         bars = make_bars([100, 150, 80, 120, 90])
         tick = make_tick(bid=90.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={'M5': bars}, current_bars={})
 
         assert 0.0 <= result.get_signal('rsi_value') <= 100.0
 
     def test_rsi_with_large_period(self, mock_logger):
         """RSI with period=14 (standard) and enough data."""
         worker = RsiWorker(
-            name="test_rsi",
-            parameters={"periods": {"M5": 14}},
+            name='test_rsi',
+            parameters={'periods': {'M5': 14}},
             logger=mock_logger,
         )
 
@@ -219,7 +218,7 @@ class TestRSIBoundaryAndRange:
         bars = make_bars(closes)
         tick = make_tick(bid=46.0)
 
-        result = worker.compute(tick=tick, bar_history={"M5": bars}, current_bars={})
+        result = worker.compute(tick=tick, bar_history={'M5': bars}, current_bars={})
 
         # Must return a valid RSI in range
         assert 0.0 <= result.get_signal('rsi_value') <= 100.0

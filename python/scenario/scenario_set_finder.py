@@ -5,17 +5,16 @@ Discovers and extracts metadata from scenario set config files
 FIX01: Added time analysis and strategy info extraction
 """
 
-from pathlib import Path
-import traceback
-from typing import List
-from datetime import datetime
 import json
+import traceback
+from pathlib import Path
+from typing import List
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSetMetadata
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
-from python.framework.logging.bootstrap_logger import get_global_logger
 vLog = get_global_logger()
 
 
@@ -124,7 +123,7 @@ class ScenarioSetFinder:
         config_path = self._resolve_path(filename)
 
         if not config_path.exists():
-            raise FileNotFoundError(f"Config file not found: {config_path}")
+            raise FileNotFoundError(f'Config file not found: {config_path}')
 
         # Load via ScenarioConfigLoader (full validation)
         loaded_scenario_set = self._config_loader.load_config(filename)
@@ -228,9 +227,9 @@ class ScenarioSetFinder:
             try:
                 metadata = self.get_scenario_set_details(file_path.name)
                 results.append(metadata)
-            except Exception as e:
+            except Exception:
                 vLog.warning(
-                    f"⚠️ Skipping invalid config: {file_path.name}, {traceback.format_exc()}"
+                    f'⚠️ Skipping invalid config: {file_path.name}, {traceback.format_exc()}'
                 )
 
         return results

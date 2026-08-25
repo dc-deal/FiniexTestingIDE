@@ -6,8 +6,9 @@ Covers:
 - _inject_symbols_hash(): 8-char SHA256 of symbols block; stable across meta-only changes
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 
@@ -44,12 +45,12 @@ class TestSymbolIntegrityValidation:
 
     def test_wrong_base_currency_raises(self):
         config = {'symbols': {'DASHUSD': _make_symbol('DASHUSD', 'ETH', 'USD')}}
-        with pytest.raises(ValueError, match="DASHUSD"):
+        with pytest.raises(ValueError, match='DASHUSD'):
             BrokerConfigFactory._validate_symbol_integrity(config, _DUMMY_PATH)
 
     def test_wrong_quote_currency_raises(self):
         config = {'symbols': {'BTCUSD': _make_symbol('BTCUSD', 'BTC', 'EUR')}}
-        with pytest.raises(ValueError, match="BTCUSD"):
+        with pytest.raises(ValueError, match='BTCUSD'):
             BrokerConfigFactory._validate_symbol_integrity(config, _DUMMY_PATH)
 
     def test_7char_symbol_validates_correctly(self):

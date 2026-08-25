@@ -108,7 +108,7 @@ class TickImportValidator:
         result = TickFileValidationResult(is_valid=True, file_name=file_name)
 
         if df.empty:
-            result.add_error("File contains no ticks")
+            result.add_error('File contains no ticks')
             return result
 
         self._check_tick_count(df, declared_tick_count, result)
@@ -119,7 +119,7 @@ class TickImportValidator:
         # nothing about its timing can be asserted either.
         if 'time_msc' not in df.columns:
             result.add_warning(
-                "No time_msc column — tick timing cannot be validated")
+                'No time_msc column — tick timing cannot be validated')
             return result
 
         self._check_monotonic(df, result)
@@ -148,8 +148,8 @@ class TickImportValidator:
 
         if len(df) != declared_tick_count:
             result.add_error(
-                f"Tick count mismatch: {len(df)} rows delivered, "
-                f"summary.total_ticks declares {declared_tick_count}"
+                f'Tick count mismatch: {len(df)} rows delivered, '
+                f'summary.total_ticks declares {declared_tick_count}'
             )
 
     def _check_prices(self, df: pd.DataFrame, result: TickFileValidationResult) -> None:
@@ -165,11 +165,11 @@ class TickImportValidator:
 
         non_positive = int(((bid <= 0) | (ask <= 0)).sum())
         if non_positive > 0:
-            result.add_error(f"{non_positive} ticks with bid or ask <= 0")
+            result.add_error(f'{non_positive} ticks with bid or ask <= 0')
 
         inverted = int((ask < bid).sum())
         if inverted > 0:
-            result.add_error(f"{inverted} ticks with ask < bid (inverted spread)")
+            result.add_error(f'{inverted} ticks with ask < bid (inverted spread)')
 
     def _check_monotonic(self, df: pd.DataFrame, result: TickFileValidationResult) -> None:
         """
@@ -193,8 +193,8 @@ class TickImportValidator:
             backwards = int((deltas < 0).sum())
             if backwards > 0:
                 result.add_error(
-                    f"{column} steps backwards {backwards}x "
-                    f"(largest step {int(deltas.min())} ms)"
+                    f'{column} steps backwards {backwards}x '
+                    f'(largest step {int(deltas.min())} ms)'
                 )
 
     def _check_timestamp_consistency(
@@ -221,9 +221,9 @@ class TickImportValidator:
         outside = int((deviation > TIMESTAMP_CONSISTENCY_TOLERANCE_MS).sum())
         if outside > 0:
             result.add_error(
-                f"{outside} ticks where timestamp and time_msc disagree by more "
-                f"than {TIMESTAMP_CONSISTENCY_TOLERANCE_MS} ms "
-                f"(worst {int(deviation.max())} ms)"
+                f'{outside} ticks where timestamp and time_msc disagree by more '
+                f'than {TIMESTAMP_CONSISTENCY_TOLERANCE_MS} ms '
+                f'(worst {int(deviation.max())} ms)'
             )
 
     def _check_collected_msc_lag(
@@ -251,8 +251,8 @@ class TickImportValidator:
 
         if not collected.any():
             result.add_warning(
-                "collected_msc is zero throughout — pre-V1.3.0 data, no arrival "
-                "timing available"
+                'collected_msc is zero throughout — pre-V1.3.0 data, no arrival '
+                'timing available'
             )
             return
 
@@ -271,11 +271,11 @@ class TickImportValidator:
             return
 
         detail = (
-            f"collected_msc sits {worst_lag} ms from the tick event time "
-            f"(tolerated: +/-{PLAUSIBLE_LAG_WINDOW_MS} ms)"
+            f'collected_msc sits {worst_lag} ms from the tick event time '
+            f'(tolerated: +/-{PLAUSIBLE_LAG_WINDOW_MS} ms)'
         )
         if len(segments) > 1:
-            detail += f", across {len(segments)} anchor segments"
+            detail += f', across {len(segments)} anchor segments'
 
         if collected_msc_is_utc:
             result.add_error(
@@ -284,8 +284,8 @@ class TickImportValidator:
             )
         else:
             result.add_error(
-                f"{detail}. Legacy timing — run the collected_msc restoration "
-                f"(python/experiments/restore_collected_msc_v3.py) before importing."
+                f'{detail}. Legacy timing — run the collected_msc restoration '
+                f'(python/experiments/restore_collected_msc_v3.py) before importing.'
             )
 
     def _collect_burst_metrics(
@@ -358,8 +358,8 @@ class TickImportValidator:
 
                     if cur_start < prev_end:
                         findings.append(
-                            f"{broker_type}/{symbol}: {prev_file} overlaps "
-                            f"{cur_file} by {prev_end - cur_start} (event time)"
+                            f'{broker_type}/{symbol}: {prev_file} overlaps '
+                            f'{cur_file} by {prev_end - cur_start} (event time)'
                         )
 
                     # Arrival is a physical sequence: a tick cannot be observed
@@ -373,16 +373,16 @@ class TickImportValidator:
 
                     if cur_arrival_start < prev_arrival_end:
                         findings.append(
-                            f"{broker_type}/{symbol}: collected_msc steps back "
-                            f"{prev_arrival_end - cur_arrival_start} ms from "
-                            f"{prev_file} to {cur_file} (arrival time)"
+                            f'{broker_type}/{symbol}: collected_msc steps back '
+                            f'{prev_arrival_end - cur_arrival_start} ms from '
+                            f'{prev_file} to {cur_file} (arrival time)'
                         )
 
         if unchecked:
             findings.append(
-                f"Arrival bounds missing on {unchecked} of {transitions} file "
-                f"transitions — collected_msc continuity NOT verified there. "
-                f"Rebuild the tick index."
+                f'Arrival bounds missing on {unchecked} of {transitions} file '
+                f'transitions — collected_msc continuity NOT verified there. '
+                f'Rebuild the tick index.'
             )
 
         return findings

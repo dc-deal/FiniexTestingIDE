@@ -16,7 +16,10 @@ strategy behaviors on the real trade history.
 from typing import Dict, List
 
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
-    CloseReason, EntryType, TradeRecord)
+    CloseReason,
+    EntryType,
+    TradeRecord,
+)
 from python.framework.types.trading_env_types.order_types import OrderDirection
 
 # The fixed entry size both fixtures use (a partial portion is strictly smaller).
@@ -98,7 +101,7 @@ class TestTrailingStop:
             t for t in all_trades
             if t.close_reason == CloseReason.SL_TRIGGERED and t.gross_pnl > 0
         ]
-        assert trailed, "no SL-triggered trade closed in profit — trailing did not ratchet"
+        assert trailed, 'no SL-triggered trade closed in profit — trailing did not ratchet'
         for t in trailed:
             if t.direction == OrderDirection.LONG:
                 assert t.stop_loss > t.entry_price   # LONG SL trailed above entry

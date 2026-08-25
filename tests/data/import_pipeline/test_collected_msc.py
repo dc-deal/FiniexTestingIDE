@@ -10,9 +10,8 @@ Tests for the collected_msc field introduced in data format V1.3.0:
 """
 
 import pandas as pd
-import pytest
 
-from python.data_management.importers.tick_importer import TickDataImporter
+from python.data_management.importers.tick_data_importer import TickDataImporter
 from tests.data.import_pipeline.conftest import (
     build_minimal_tick_json,
     find_tick_parquets,
@@ -339,8 +338,8 @@ class TestTickOrderPreservation:
 
         for i in range(1, len(collected)):
             assert collected[i] >= collected[i - 1], (
-                f"collected_msc not monotonic at index {i}: "
-                f"{collected[i - 1]} -> {collected[i]}"
+                f'collected_msc not monotonic at index {i}: '
+                f'{collected[i - 1]} -> {collected[i]}'
             )
 
 

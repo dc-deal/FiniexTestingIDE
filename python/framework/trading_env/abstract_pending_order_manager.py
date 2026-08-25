@@ -205,7 +205,7 @@ class AbstractPendingOrderManager(ABC):
     def clear_pending(
         self,
         current_msc: Optional[int] = None,
-        reason: str = "scenario_end"
+        reason: str = 'scenario_end'
     ) -> None:
         """
         Clear all pending orders. Records remaining orders as FORCE_CLOSED.
@@ -226,7 +226,7 @@ class AbstractPendingOrderManager(ABC):
 
         count = len(self._pending_orders)
         self.logger.warning(
-            f"Clearing {count} pending order(s) — recording as FORCE_CLOSED (reason: {reason})"
+            f'Clearing {count} pending order(s) — recording as FORCE_CLOSED (reason: {reason})'
         )
 
         # Record each remaining order as FORCE_CLOSED

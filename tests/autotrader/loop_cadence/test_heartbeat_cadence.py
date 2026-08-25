@@ -9,16 +9,15 @@ logics that opt in via wants_heartbeat(), invoking compute_heartbeat (the HEARTB
 pass-trigger handler) with cached worker results (workers are never recomputed).
 """
 
-from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.trading_env_types.order_types import (
-    OrderType,
-    OrderDirection,
     OpenOrderRequest,
+    OrderDirection,
+    OrderType,
 )
 from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator

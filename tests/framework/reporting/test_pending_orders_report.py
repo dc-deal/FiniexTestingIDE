@@ -6,11 +6,15 @@ PendingOrdersReport. Tested with real PendingOrderStats / ActiveOrderSnapshot fi
 wrapped in RunUnits — units with no pending activity are skipped (mirrors the console).
 """
 
-from python.framework.reporting.builders.pending_orders_report_builder import build_pending_orders_report
+from python.framework.reporting.builders.pending_orders_report_builder import (
+    build_pending_orders_report,
+)
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 from python.framework.types.trading_env_types.pending_order_stats_types import (
-    ActiveOrderSnapshot, PendingOrderStats)
+    ActiveOrderSnapshot,
+    PendingOrderStats,
+)
 
 
 def _active(order_id: str = 'L1', order_type: OrderType = OrderType.LIMIT) -> ActiveOrderSnapshot:

@@ -32,7 +32,7 @@ class GlobalLogger(AbstractLogger):
     - Singleton pattern
     """
 
-    def __init__(self, name: str = "FiniexTestingIDE"):
+    def __init__(self, name: str = 'FiniexTestingIDE'):
         """
         Initialize global logger.
 
@@ -52,7 +52,7 @@ class GlobalLogger(AbstractLogger):
 
             self.file_logger = FileLogger(
                 file_path=log_file_path,
-                log_filename="global.log",
+                log_filename='global.log',
                 log_level=self._file_logging_config.global_log_level,
                 append_mode=self._file_logging_config.global_append_mode
             )
@@ -65,11 +65,11 @@ class GlobalLogger(AbstractLogger):
     def print_log_info(self):
         """Print where logs are being written (or if disabled)"""
         if self.file_logging_enabled and self.file_logger:
-            print(f"📝 Global Log: {self.file_logger.log_file_path}")
+            print(f'📝 Global Log: {self.file_logger.log_file_path}')
         elif self.file_logging_enabled:
-            print(f"⚠️  Global Log: FAILED to create (check path config)")
+            print('⚠️  Global Log: FAILED to create (check path config)')
         else:
-            print(f"ℹ️  Global Log: Disabled")
+            print('ℹ️  Global Log: Disabled')
 
     def _get_timestamp(self) -> str:
         """
@@ -78,7 +78,7 @@ class GlobalLogger(AbstractLogger):
         Returns:
             DateTime string (e.g., "2025-10-22 14:30:45")
         """
-        return datetime.now(timezone.utc) .strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.now(timezone.utc) .strftime('%Y-%m-%d %H:%M:%S')
 
     def _should_log_console(self, level: LogLevel) -> str:
         """

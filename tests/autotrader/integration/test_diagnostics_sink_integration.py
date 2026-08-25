@@ -14,7 +14,6 @@ import pytest
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 
-
 _PROFILE = 'configs/autotrader_profiles/backtesting/diagnostics_probe_test.json'
 
 

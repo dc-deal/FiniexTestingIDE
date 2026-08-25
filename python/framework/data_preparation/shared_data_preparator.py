@@ -10,36 +10,42 @@ UTC-FIX:
 - Prevents timezone comparison errors
 """
 
-from pathlib import Path
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
 import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import pandas as pd
 
+from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.data_management.index.signal_index_manager import SignalIndexManager
+from python.data_management.index.tick_index_manager import TickIndexManager
+from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
+from python.framework.exceptions.signal_data_errors import SignalDataUnavailableError
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.signal_data.signal_jsonl_loader import load_signal_series
+from python.framework.signal_data.signal_parquet_reader import load_signal_series_from_parquet
+from python.framework.stress_test.stale_data_slicer import StaleDataSlicer
 from python.framework.types.process_data_types import (
+    BarRequirement,
     ClippingStats,
     DataLoadTimings,
     ProcessDataPackage,
     RequirementsMap,
     TickRequirement,
-    BarRequirement
 )
-from python.data_management.index.tick_index_manager import TickIndexManager
-from python.data_management.index.signal_index_manager import SignalIndexManager
-from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
-from python.framework.signal_data.signal_jsonl_loader import load_signal_series
-from python.framework.signal_data.signal_parquet_reader import load_signal_series_from_parquet
-from python.framework.exceptions.signal_data_errors import SignalDataUnavailableError
-from python.framework.stress_test.stale_data_slicer import StaleDataSlicer
-from python.framework.types.trading_env_types.stress_test_types import (
-    StressTestConfig, StressTestStaleDataConfig)
-from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.validation_types import ValidationResult
-from python.framework.utils.process_serialization_utils import serialize_ticks_for_transport, time_range_from_transport_ticks
-from python.framework.utils.time_utils import ensure_utc_aware
 from python.framework.types.signal_data_types import SignalSeries
+from python.framework.types.trading_env_types.stress_test_types import (
+    StressTestConfig,
+    StressTestStaleDataConfig,
+)
+from python.framework.types.validation_types import ValidationResult
+from python.framework.utils.process_serialization_utils import (
+    serialize_ticks_for_transport,
+    time_range_from_transport_ticks,
+)
+from python.framework.utils.time_utils import ensure_utc_aware
 
 
 class SharedDataPreparator:
@@ -76,7 +82,7 @@ class SharedDataPreparator:
                                   List[Tuple[Any, Any, str]]] = {}
 
         # Use existing index managers
-        self._logger.debug("📚 Initializing index managers...")
+        self._logger.debug('📚 Initializing index managers...')
 
         # Tick index manager
         self.tick_index_manager = TickIndexManager(self._logger)
@@ -91,10 +97,10 @@ class SharedDataPreparator:
         self.signal_index_manager.build_index()  # Auto-loads or rebuilds
 
         self._logger.info(
-            f"✅ Indices loaded: "
-            f"{len(self.tick_index_manager.list_symbols())} tick symbols, "
-            f"{len(self.bar_index_manager.list_symbols())} bar symbols, "
-            f"{len(self.signal_index_manager.list_sentiment_types())} signal sources"
+            f'✅ Indices loaded: '
+            f'{len(self.tick_index_manager.list_symbols())} tick symbols, '
+            f'{len(self.bar_index_manager.list_symbols())} bar symbols, '
+            f'{len(self.signal_index_manager.list_sentiment_types())} signal sources'
         )
 
     def prepare_scenario_packages(
@@ -128,7 +134,7 @@ class SharedDataPreparator:
             Invalid scenarios are skipped (no entry in dicts)
         """
         self._logger.info(
-            "📦 Phase 1: Preparing scenario-specific data packages...")
+            '📦 Phase 1: Preparing scenario-specific data packages...')
 
         # === STEP 1: Load ALL data once (existing methods) ===
         _t_ticks = time.time()
@@ -169,9 +175,9 @@ class SharedDataPreparator:
                 clipping_stats_map[scenario_index] = clipping
                 if clipping.ticks_clipped > 0:
                     self._logger.info(
-                        f"✂️  Budget {budget_ms}ms → {scenario.name}: "
-                        f"{clipping.ticks_clipped:,}/{clipping.ticks_total:,} "
-                        f"clipped ({clipping.clipping_rate_pct:.1f}%)"
+                        f'✂️  Budget {budget_ms}ms → {scenario.name}: '
+                        f'{clipping.ticks_clipped:,}/{clipping.ticks_total:,} '
+                        f'clipped ({clipping.clipping_rate_pct:.1f}%)'
                     )
 
             # Filter bars for this scenario
@@ -184,7 +190,7 @@ class SharedDataPreparator:
             # scenario); signal-source windows are carved at load time below.
             stale_error, stale_cfg = self._resolve_stale_stress(scenario)
             if stale_error:
-                self._logger.error(f"❌ {scenario.name}: {stale_error}")
+                self._logger.error(f'❌ {scenario.name}: {stale_error}')
                 scenario.validation_result.append(ValidationResult(
                     is_valid=False, scenario_name=scenario.name,
                     errors=[stale_error], warnings=[]))
@@ -197,7 +203,7 @@ class SharedDataPreparator:
                 signal_series = self._load_signals_for_scenario(
                     scenario, requirements_map, stale_cfg)
             except SignalDataUnavailableError as e:
-                self._logger.error(f"❌ {scenario.name}: {e}")
+                self._logger.error(f'❌ {scenario.name}: {e}')
                 scenario.validation_result.append(ValidationResult(
                     is_valid=False, scenario_name=scenario.name,
                     errors=[str(e)], warnings=[]))
@@ -224,14 +230,14 @@ class SharedDataPreparator:
             tick_count = sum(scenario_ticks['counts'].values())
             bar_count = sum(scenario_bars['counts'].values())
             self._logger.debug(
-                f"✅ Package {idx} ({scenario.name}): "
-                f"{tick_count:,} ticks, {bar_count} bars"
+                f'✅ Package {idx} ({scenario.name}): '
+                f'{tick_count:,} ticks, {bar_count} bars'
             )
 
         packaging_s = time.time() - _t_packaging
 
         self._logger.info(
-            f"✅ Created {len(scenario_packages)} scenario-specific packages"
+            f'✅ Created {len(scenario_packages)} scenario-specific packages'
         )
 
         return scenario_packages, clipping_stats_map, DataLoadTimings(
@@ -443,7 +449,7 @@ class SharedDataPreparator:
         # Get ticks for this scenario (already loaded by scenario_name)
         if scenario_name not in all_ticks_dict:
             error_message = f"No tick data found for scenario '{scenario_name}' " + \
-                f"(available: {list(all_ticks_dict.keys())})"
+                f'(available: {list(all_ticks_dict.keys())})'
             validation_error = ValidationResult(
                 is_valid=False,
                 scenario_name=scenario.name,
@@ -497,8 +503,8 @@ class SharedDataPreparator:
         first_tick = ticks_tuple[0]
         if first_tick.get('collected_msc', 0) == 0:
             self._logger.warning(
-                f"⚠️  Budget filtering skipped for {symbol}: "
-                f"collected_msc not available (pre-V1.3.0 data)"
+                f'⚠️  Budget filtering skipped for {symbol}: '
+                f'collected_msc not available (pre-V1.3.0 data)'
             )
             return scenario_ticks, ClippingStats(
                 ticks_total=ticks_total,
@@ -639,8 +645,8 @@ class SharedDataPreparator:
         # === STEP 2+3: Load each symbol once into RAM, filter per scenario ===
         for (broker_type, symbol), reqs in by_broker_symbol.items():
             self._logger.info(
-                f"📥 Loading ticks for {broker_type}/{symbol} "
-                f"({len(reqs)} scenario(s))..."
+                f'📥 Loading ticks for {broker_type}/{symbol} '
+                f'({len(reqs)} scenario(s))...'
             )
 
             # Validate index entries before doing any IO
@@ -677,8 +683,8 @@ class SharedDataPreparator:
             )
             if not relevant_files:
                 self._logger.error(
-                    f"❌ No tick files found for {broker_type}/{symbol} "
-                    f"in range {union_start} - {union_end}"
+                    f'❌ No tick files found for {broker_type}/{symbol} '
+                    f'in range {union_start} - {union_end}'
                 )
                 continue
 
@@ -698,8 +704,8 @@ class SharedDataPreparator:
                 ['timestamp', 'time_msc']).reset_index(drop=True)
 
             self._logger.info(
-                f"  ✅ {len(full_df):,} ticks in RAM from {len(relevant_files)} file(s) "
-                f"({union_start} → {union_end})"
+                f'  ✅ {len(full_df):,} ticks in RAM from {len(relevant_files)} file(s) '
+                f'({union_start} → {union_end})'
             )
 
             # === STEP 4: Filter per requirement using searchsorted (O(log n)) ===
@@ -780,7 +786,7 @@ class SharedDataPreparator:
         # Load and filter for each (broker_type, symbol, timeframe)
         for (broker_type, symbol, timeframe), reqs in by_broker_symbol_tf.items():
             self._logger.info(
-                f"📊 Loading bars for {broker_type}/{symbol} {timeframe}...")
+                f'📊 Loading bars for {broker_type}/{symbol} {timeframe}...')
 
             # Use manager's API to get bar file
             bar_file = self.bar_index_manager.get_bar_file(
@@ -788,8 +794,8 @@ class SharedDataPreparator:
 
             if bar_file is None:
                 self._logger.error(
-                    f"Bar file not found for {broker_type}/{symbol} {timeframe} - "
-                    f"available timeframes: {self.bar_index_manager.get_available_timeframes(broker_type, symbol)}"
+                    f'Bar file not found for {broker_type}/{symbol} {timeframe} - '
+                    f'available timeframes: {self.bar_index_manager.get_available_timeframes(broker_type, symbol)}'
                 )
                 continue
 
@@ -820,9 +826,9 @@ class SharedDataPreparator:
                 # Validate count
                 if len(warmup_bars_df) < req.warmup_count:
                     self._logger.warning(
-                        f"  ⚠️  Only {len(warmup_bars_df)} warmup bars available "
-                        f"(requested {req.warmup_count}) for {symbol} {timeframe} "
-                        f"before {req_start_time}"
+                        f'  ⚠️  Only {len(warmup_bars_df)} warmup bars available '
+                        f'(requested {req.warmup_count}) for {symbol} {timeframe} '
+                        f'before {req_start_time}'
                     )
 
                 # Convert to records and tuple
@@ -836,8 +842,8 @@ class SharedDataPreparator:
                 bar_counts[key] = len(bars_list)
 
                 self._logger.debug(
-                    f"  ✅ {len(bars_list)} warmup bars filtered "
-                    f"(before {req_start_time})"
+                    f'  ✅ {len(bars_list)} warmup bars filtered '
+                    f'(before {req_start_time})'
                 )
 
         return bars_data, bar_counts

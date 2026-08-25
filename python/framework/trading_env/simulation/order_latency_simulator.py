@@ -34,11 +34,14 @@ from typing import Dict, List, Optional
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder, PendingOrderAction, PendingOrderTiming
-from python.framework.types.trading_env_types.order_types import OpenOrderRequest, OrderDirection, OrderType
+from python.framework.types.trading_env_types.latency_simulator_types import (
+    PendingOrder,
+    PendingOrderAction,
+    PendingOrderTiming,
+)
+from python.framework.types.trading_env_types.order_types import OpenOrderRequest, OrderType
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
-
 
 # Module-level flag for one-time fallback warning
 _fallback_warned = False
@@ -127,7 +130,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
 
         if not _fallback_warned:
             logging.getLogger(__name__).warning(
-                f"⚠️ collected_msc=0 — falling back to time_msc for latency timing"
+                '⚠️ collected_msc=0 — falling back to time_msc for latency timing'
             )
             _fallback_warned = True
 
@@ -166,11 +169,11 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         # Build order_kwargs dict from request
         order_kwargs = {}
         if request.stop_loss is not None:
-            order_kwargs["stop_loss"] = request.stop_loss
+            order_kwargs['stop_loss'] = request.stop_loss
         if request.take_profit is not None:
-            order_kwargs["take_profit"] = request.take_profit
+            order_kwargs['take_profit'] = request.take_profit
         if request.comment:
-            order_kwargs["comment"] = request.comment
+            order_kwargs['comment'] = request.comment
 
         # entry_price: depends on order type
         # LIMIT: limit price (fill price)
@@ -181,7 +184,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         elif request.order_type in (OrderType.STOP, OrderType.STOP_LIMIT) and request.stop_price is not None:
             entry_price = request.stop_price
             if request.order_type == OrderType.STOP_LIMIT and request.price is not None:
-                order_kwargs["limit_price"] = request.price
+                order_kwargs['limit_price'] = request.price
         else:
             entry_price = 0
 
@@ -208,13 +211,13 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
 
         # Log order reception
         self.logger.info(
-            f"📨 Order received: {order_id} ({request.direction.value} {request.lots} lots) "
-            f"- inbound: {inbound_delay}ms | tick_msc={current_msc}"
+            f'📨 Order received: {order_id} ({request.direction.value} {request.lots} lots) '
+            f'- inbound: {inbound_delay}ms | tick_msc={current_msc}'
         )
 
         self.logger.debug(
-            f"  placed_at_msc={current_msc}, broker_fill_msc={broker_fill_msc}, "
-            f"collected_msc={tick.collected_msc}, time_msc={tick.time_msc}"
+            f'  placed_at_msc={current_msc}, broker_fill_msc={broker_fill_msc}, '
+            f'collected_msc={tick.collected_msc}, time_msc={tick.time_msc}'
         )
 
         return order_id
@@ -261,13 +264,13 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
 
         # Log close order reception
         self.logger.info(
-            f"📨 Close order received: {position_id} "
-            f"- inbound: {inbound_delay}ms | tick_msc={current_msc}"
+            f'📨 Close order received: {position_id} '
+            f'- inbound: {inbound_delay}ms | tick_msc={current_msc}'
         )
 
         self.logger.debug(
-            f"  placed_at_msc={current_msc}, broker_fill_msc={broker_fill_msc}, "
-            f"collected_msc={tick.collected_msc}, time_msc={tick.time_msc}"
+            f'  placed_at_msc={current_msc}, broker_fill_msc={broker_fill_msc}, '
+            f'collected_msc={tick.collected_msc}, time_msc={tick.time_msc}'
         )
 
         return position_id
@@ -317,9 +320,9 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
                 # Log order ready for fill
                 actual_latency = current_msc - pending.timing.placed_at_msc
                 self.logger.debug(
-                    f"✅ Order ready: {order_id} ({pending.order_action}) "
-                    f"- latency: {actual_latency}ms | current_msc={current_msc}, "
-                    f"placed_at_msc={pending.timing.placed_at_msc}"
+                    f'✅ Order ready: {order_id} ({pending.order_action}) '
+                    f'- latency: {actual_latency}ms | current_msc={current_msc}, '
+                    f'placed_at_msc={pending.timing.placed_at_msc}'
                 )
 
         # Remove filled orders from pending

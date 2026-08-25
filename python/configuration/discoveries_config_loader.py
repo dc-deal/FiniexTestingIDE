@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import Any, Dict
 
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.utils.config_merge_utils import deep_merge, is_config_isolation_active
 from python.framework.types.market_types.market_volatility_profile_types import (
     CrossInstrumentRankingConfig,
     VolatilityProfileConfig,
 )
+from python.framework.utils.config_merge_utils import deep_merge, is_config_isolation_active
 
 vLog = get_global_logger()
 
@@ -92,7 +92,7 @@ class DiscoveriesConfigLoader:
             with open(self.config_path, 'r') as f:
                 base_config = json.load(f)
         except Exception as e:
-            vLog.error(f"Failed to load discoveries_config: {e}")
+            vLog.error(f'Failed to load discoveries_config: {e}')
             raise e
 
         # Try to load user override configuration.
@@ -106,17 +106,17 @@ class DiscoveriesConfigLoader:
                 # Merge user overrides into base config
                 merged_config = self._deep_merge(base_config, user_override)
                 vLog.debug(
-                    f"Merged user discoveries config from {self.user_config_path}")
+                    f'Merged user discoveries config from {self.user_config_path}')
                 return merged_config
 
             except json.JSONDecodeError as e:
                 raise RuntimeError(
-                    f"Invalid JSON in user discoveries config: {self.user_config_path}\n"
-                    f"Error: {e}\n"
-                    f"Please fix the JSON syntax or remove the file."
+                    f'Invalid JSON in user discoveries config: {self.user_config_path}\n'
+                    f'Error: {e}\n'
+                    f'Please fix the JSON syntax or remove the file.'
                 )
             except Exception as e:
-                vLog.error(f"Failed to load user discoveries config: {e}")
+                vLog.error(f'Failed to load user discoveries config: {e}')
                 raise e
 
         # No user config - return base config

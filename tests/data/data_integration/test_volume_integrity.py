@@ -16,13 +16,11 @@ Market Type Rules:
 - forex:  volume == 0 (CFD has no real volume, only tick_count)
 """
 
+
 import pytest
-from typing import Dict, List
 
-import pandas as pd
-
-from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.configuration.market_config_manager import MarketConfigManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.config_types.market_config_types import MarketType
 
 
@@ -51,9 +49,9 @@ class TestVolumeSchema:
                         errors.append(
                             f"{broker_type}/{symbol}/{tf}: missing 'volume' column")
                 except Exception as e:
-                    errors.append(f"{broker_type}/{symbol}/{tf}: {e}")
+                    errors.append(f'{broker_type}/{symbol}/{tf}: {e}')
 
-        assert not errors, f"Volume schema errors:\n" + "\n".join(errors)
+        assert not errors, 'Volume schema errors:\n' + '\n'.join(errors)
 
     def test_tick_count_column_exists(
         self,
@@ -75,9 +73,9 @@ class TestVolumeSchema:
                         errors.append(
                             f"{broker_type}/{symbol}/{tf}: missing 'tick_count' column")
                 except Exception as e:
-                    errors.append(f"{broker_type}/{symbol}/{tf}: {e}")
+                    errors.append(f'{broker_type}/{symbol}/{tf}: {e}')
 
-        assert not errors, f"Tick count schema errors:\n" + "\n".join(errors)
+        assert not errors, 'Tick count schema errors:\n' + '\n'.join(errors)
 
 
 class TestCryptoVolume:
@@ -114,19 +112,19 @@ class TestCryptoVolume:
 
                     if total_volume <= 0:
                         errors.append(
-                            f"{broker_type}/{symbol}/{tf}: "
-                            f"crypto volume should be > 0, got {total_volume}"
+                            f'{broker_type}/{symbol}/{tf}: '
+                            f'crypto volume should be > 0, got {total_volume}'
                         )
 
                     tested += 1
 
                 except Exception as e:
-                    errors.append(f"{broker_type}/{symbol}/{tf}: {e}")
+                    errors.append(f'{broker_type}/{symbol}/{tf}: {e}')
 
         if tested == 0:
-            pytest.skip("No crypto data available")
+            pytest.skip('No crypto data available')
 
-        assert not errors, f"Crypto volume errors ({tested} symbols tested):\n" + "\n".join(
+        assert not errors, f'Crypto volume errors ({tested} symbols tested):\n' + '\n'.join(
             errors)
 
     def test_crypto_volume_per_bar_positive(
@@ -155,14 +153,14 @@ class TestCryptoVolume:
 
                     if negative_volume > 0:
                         errors.append(
-                            f"{broker_type}/{symbol}/{tf}: "
-                            f"{negative_volume} bars with negative volume"
+                            f'{broker_type}/{symbol}/{tf}: '
+                            f'{negative_volume} bars with negative volume'
                         )
 
                 except Exception as e:
-                    errors.append(f"{broker_type}/{symbol}/{tf}: {e}")
+                    errors.append(f'{broker_type}/{symbol}/{tf}: {e}')
 
-        assert not errors, f"Negative volume errors:\n" + "\n".join(errors)
+        assert not errors, 'Negative volume errors:\n' + '\n'.join(errors)
 
 
 class TestForexVolume:
@@ -195,19 +193,19 @@ class TestForexVolume:
 
                     if total_volume != 0:
                         errors.append(
-                            f"{broker_type}/{symbol}/{tf}: "
-                            f"forex volume should be 0, got {total_volume}"
+                            f'{broker_type}/{symbol}/{tf}: '
+                            f'forex volume should be 0, got {total_volume}'
                         )
 
                     tested += 1
 
                 except Exception as e:
-                    errors.append(f"{broker_type}/{symbol}/{tf}: {e}")
+                    errors.append(f'{broker_type}/{symbol}/{tf}: {e}')
 
         if tested == 0:
-            pytest.skip("No forex data available")
+            pytest.skip('No forex data available')
 
-        assert not errors, f"Forex volume errors ({tested} symbols tested):\n" + "\n".join(
+        assert not errors, f'Forex volume errors ({tested} symbols tested):\n' + '\n'.join(
             errors)
 
 
@@ -238,14 +236,14 @@ class TestTickCount:
 
                     if total_ticks <= 0:
                         errors.append(
-                            f"{broker_type}/{symbol}/{tf}: "
-                            f"tick_count should be > 0, got {total_ticks}"
+                            f'{broker_type}/{symbol}/{tf}: '
+                            f'tick_count should be > 0, got {total_ticks}'
                         )
 
                 except Exception as e:
-                    errors.append(f"{broker_type}/{symbol}/{tf}: {e}")
+                    errors.append(f'{broker_type}/{symbol}/{tf}: {e}')
 
-        assert not errors, f"Tick count errors:\n" + "\n".join(errors)
+        assert not errors, 'Tick count errors:\n' + '\n'.join(errors)
 
 
 class TestIndexBarConsistency:
@@ -282,15 +280,15 @@ class TestIndexBarConsistency:
                     diff = abs(index_volume - actual_volume)
                     if diff > tolerance and diff / max(actual_volume, 1) > 0.001:
                         errors.append(
-                            f"{broker_type}/{symbol}/{tf}: "
-                            f"index volume={index_volume:.2f}, "
-                            f"actual={actual_volume:.2f}, diff={diff:.2f}"
+                            f'{broker_type}/{symbol}/{tf}: '
+                            f'index volume={index_volume:.2f}, '
+                            f'actual={actual_volume:.2f}, diff={diff:.2f}'
                         )
 
                 except Exception as e:
-                    errors.append(f"{broker_type}/{symbol}/{tf}: {e}")
+                    errors.append(f'{broker_type}/{symbol}/{tf}: {e}')
 
-        assert not errors, f"Index/bar volume mismatch:\n" + "\n".join(errors)
+        assert not errors, 'Index/bar volume mismatch:\n' + '\n'.join(errors)
 
     def test_index_tick_count_matches_bar_data(
         self,
@@ -318,15 +316,15 @@ class TestIndexBarConsistency:
                     # Compare (exact match for integers)
                     if index_ticks != actual_ticks:
                         errors.append(
-                            f"{broker_type}/{symbol}/{tf}: "
-                            f"index ticks={index_ticks}, actual={actual_ticks}"
+                            f'{broker_type}/{symbol}/{tf}: '
+                            f'index ticks={index_ticks}, actual={actual_ticks}'
                         )
 
                 except Exception as e:
-                    errors.append(f"{broker_type}/{symbol}/{tf}: {e}")
+                    errors.append(f'{broker_type}/{symbol}/{tf}: {e}')
 
-        assert not errors, f"Index/bar tick count mismatch:\n" + \
-            "\n".join(errors)
+        assert not errors, 'Index/bar tick count mismatch:\n' + \
+            '\n'.join(errors)
 
 
 class TestAllTimeframes:
@@ -376,11 +374,11 @@ class TestAllTimeframes:
 
                 if max_vol > 0 and (max_vol - min_vol) / max_vol > 0.01:
                     errors.append(
-                        f"{broker_type}/{symbol}: volume varies across timeframes: "
-                        f"min={min_vol:.2f}, max={max_vol:.2f}"
+                        f'{broker_type}/{symbol}: volume varies across timeframes: '
+                        f'min={min_vol:.2f}, max={max_vol:.2f}'
                     )
 
         # This is a warning-level check, not a hard failure
         if errors:
             pytest.xfail(
-                f"Volume inconsistencies (may be acceptable):\n" + "\n".join(errors[:5]))
+                'Volume inconsistencies (may be acceptable):\n' + '\n'.join(errors[:5]))

@@ -19,7 +19,6 @@ import pytest
 
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
-
 _FIXTURE_DIR = Path(__file__).resolve().parents[2] / 'fixtures' / 'scenario_sets' / 'cascade'
 
 

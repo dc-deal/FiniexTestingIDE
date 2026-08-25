@@ -27,7 +27,6 @@ from python.framework.types.config_types.market_config_types import BrokerTransp
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, TimeoutConfig
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
-
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
 _BROKER_SETTINGS_PATH = Path('configs/broker_settings/kraken_spot.json')
 _CREDENTIALS_PATH = Path('user_configs/credentials/kraken_credentials.json')
@@ -96,18 +95,18 @@ class TestKrakenAdapterOrderLifecyclePhase2:
                 price=100.0,
             )
             assert response.status == BrokerOrderStatus.PENDING, (
-                f"Expected PENDING after placing LIMIT order, got: {response.status}"
-                f" — {response.rejection_reason}"
+                f'Expected PENDING after placing LIMIT order, got: {response.status}'
+                f' — {response.rejection_reason}'
             )
             assert not response.broker_ref.startswith('DRYRUN-'), (
-                f"Expected real txid, got DRYRUN ref — adapter may still be in dry_run mode"
+                'Expected real txid, got DRYRUN ref — adapter may still be in dry_run mode'
             )
             txid = response.broker_ref
 
             # 2. Query — order should be open (Kraken 'open' maps to PENDING)
             status_response = processor.query_order_sync(txid, live_adapter_real)
             assert status_response.status == BrokerOrderStatus.PENDING, (
-                f"Expected PENDING for open order, got: {status_response.status}"
+                f'Expected PENDING for open order, got: {status_response.status}'
             )
 
             # 3. Modify price — Kraken AmendOrder amends in-place (same txid)
@@ -120,8 +119,8 @@ class TestKrakenAdapterOrderLifecyclePhase2:
                 adapter=live_adapter_real,
             )
             assert modify_response.status == BrokerOrderStatus.PENDING, (
-                f"Expected PENDING after modify, got: {modify_response.status}"
-                f" — {modify_response.rejection_reason}"
+                f'Expected PENDING after modify, got: {modify_response.status}'
+                f' — {modify_response.rejection_reason}'
             )
             assert modify_response.broker_ref == txid, (
                 'Expected unchanged txid from Kraken AmendOrder (in-place amend)'
@@ -130,13 +129,13 @@ class TestKrakenAdapterOrderLifecyclePhase2:
             # 4. Query modified order — should still be open
             modified_status = processor.query_order_sync(txid, live_adapter_real)
             assert modified_status.status == BrokerOrderStatus.PENDING, (
-                f"Expected PENDING for modified order, got: {modified_status.status}"
+                f'Expected PENDING for modified order, got: {modified_status.status}'
             )
 
             # 5. Cancel
             cancel_response = processor.cancel_order_sync(txid, live_adapter_real)
             assert cancel_response.status == BrokerOrderStatus.CANCELLED, (
-                f"Expected CANCELLED, got: {cancel_response.status}"
+                f'Expected CANCELLED, got: {cancel_response.status}'
             )
             txid = None  # prevent double-cancel in finally
 

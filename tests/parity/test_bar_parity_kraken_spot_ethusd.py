@@ -19,7 +19,9 @@ from unittest.mock import MagicMock
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
-from python.framework.decision_logic.core.backtesting.backtesting_deterministic import BacktestingDeterministic
+from python.framework.decision_logic.core.backtesting.backtesting_deterministic import (
+    BacktestingDeterministic,
+)
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_tick_loop import execute_tick_loop
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
@@ -28,14 +30,20 @@ from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.config_types.market_config_types import TradingModel
+from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.process_data_types import ProcessScenarioConfig
 from python.framework.types.trading_env_types.broker_types import BrokerType
-
-from tests.shared.parity_comparators import assert_bars_equal, assert_portfolio_equal, assert_trades_equal
-from tests.shared.parity_fixtures import flag_clipped_ticks, make_flat_ethusd_ticks, make_synthetic_ethusd_ticks
-
+from tests.shared.parity_comparators import (
+    assert_bars_equal,
+    assert_portfolio_equal,
+    assert_trades_equal,
+)
+from tests.shared.parity_fixtures import (
+    flag_clipped_ticks,
+    make_flat_ethusd_ticks,
+    make_synthetic_ethusd_ticks,
+)
 
 SYMBOL = 'ETHUSD'
 TIMEFRAME = 'M1'

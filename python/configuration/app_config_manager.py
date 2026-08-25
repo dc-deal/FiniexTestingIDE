@@ -3,12 +3,12 @@ FiniexTestingIDE - Application Configuration Loader
 Centralized app config management
 """
 
-from typing import Dict, Any, List
-from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
-from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
+from typing import Any, Dict, List
+
 from python.configuration.config_file_loader import ConfigFileLoader
 from python.framework.types.config_types.app_config_types import AppConfig
-from python.framework.types.log_level import LogLevel
+from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
+from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
 
 
 class AppConfigManager:
@@ -33,7 +33,7 @@ class AppConfigManager:
         """Print config status (replaces old config.py print)"""
         dev_mode = self.get_dev_mode()
         print(
-            f"🔧 Config loaded - DEV_MODE: {dev_mode}")
+            f'🔧 Config loaded - DEV_MODE: {dev_mode}')
 
     def get_console_logging_config_object(self) -> ConsoleLoggingConfig:
         """

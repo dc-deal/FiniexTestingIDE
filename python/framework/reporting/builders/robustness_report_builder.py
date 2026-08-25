@@ -10,17 +10,30 @@ block-splitting disposition is copied in as the trust-gate input for that verdic
 import statistics
 from typing import Dict, List, Optional
 
-from python.framework.reporting.builders.block_splitting_report_builder import build_block_splitting_report_from_batch
-from python.framework.reporting.builders.execution_stats_report_builder import build_execution_stats_report
+from python.framework.reporting.builders.block_splitting_report_builder import (
+    build_block_splitting_report_from_batch,
+)
+from python.framework.reporting.builders.execution_stats_report_builder import (
+    build_execution_stats_report,
+)
 from python.framework.reporting.builders.portfolio_report_builder import build_portfolio_report
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
 from python.framework.reporting.builders.run_unit import RunUnit, run_units_from_batch
-from python.framework.reporting.builders.trade_history_report_builder import build_trade_history_report
+from python.framework.reporting.builders.trade_history_report_builder import (
+    build_trade_history_report,
+)
 from python.framework.types.api.report_types import (
-    RobustnessDistribution, RobustnessRegimeRow, RobustnessReport, RobustnessRoleAggregate,
-    RobustnessWindowRow)
+    RobustnessDistribution,
+    RobustnessRegimeRow,
+    RobustnessReport,
+    RobustnessRoleAggregate,
+    RobustnessWindowRow,
+)
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.config_types.robustness_config_types import RobustnessMetric, RobustnessRole
+from python.framework.types.config_types.robustness_config_types import (
+    RobustnessMetric,
+    RobustnessRole,
+)
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.validators.scenario_validator import ScenarioValidator
 

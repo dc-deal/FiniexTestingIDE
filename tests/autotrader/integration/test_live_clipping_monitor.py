@@ -7,11 +7,9 @@ session summaries, queue depth tracking, and edge cases.
 All tests use controlled inputs (no real ticks, no time dependency).
 """
 
-import time
 from unittest.mock import patch
 
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
-
 
 # --- Helpers ---
 

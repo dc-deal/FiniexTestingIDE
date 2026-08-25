@@ -12,14 +12,17 @@ stale or unavailable (pure indicator mode). Long-only (spot-friendly).
 import traceback
 from typing import Any, Dict, List, Optional
 
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.component_metadata_types import ComponentMetadata
+from python.framework.types.decision_logic_types import (
+    AwarenessLevel,
+    Decision,
+    DecisionLogicAction,
+)
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionLogicAction
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.component_metadata_types import ComponentMetadata
-from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
@@ -28,6 +31,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
 )
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
 class HybridSentimentReference(AbstractDecisionLogic):
@@ -186,7 +190,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
             f"degrading to pure-indicator mode until fresh data arrives."
         )
         self.emit_event(
-            f"📡 sentiment stale ({signal_kind}) — indicator-only mode",
+            f'📡 sentiment stale ({signal_kind}) — indicator-only mode',
             AwarenessLevel.NOTICE, 'signal_stale')
 
     # ============================================
@@ -206,8 +210,8 @@ class HybridSentimentReference(AbstractDecisionLogic):
             status: Session-level market-data health snapshot
         """
         self.logger.warning(
-            f"🔌 Market data stale ({status.seconds_since_last_tick:.0f}s "
-            f"since last tick) — holding, entries guard-blocked until recovery."
+            f'🔌 Market data stale ({status.seconds_since_last_tick:.0f}s '
+            f'since last tick) — holding, entries guard-blocked until recovery.'
         )
         self.emit_event(
             '🔌 market data stale — holding until ticks resume',

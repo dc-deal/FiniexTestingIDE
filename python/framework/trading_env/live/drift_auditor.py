@@ -26,7 +26,7 @@ Architecture:
 """
 
 from datetime import datetime, timezone
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.config_types.autotrader_defaults_config_types import DriftAuditConfig
@@ -85,10 +85,10 @@ class DriftAuditor:
         executor.add_trades_response_consumer(self._on_trades_response)
 
         self._logger.info(
-            f"📊 DriftAuditor active — thresholds: "
-            f"fee={config.fee_threshold_pct}%, vol={config.volume_threshold_pct}%, "
-            f"price={config.price_threshold_pct}%, "
-            f"slippage={config.slippage_threshold_pct}% (structural)"
+            f'📊 DriftAuditor active — thresholds: '
+            f'fee={config.fee_threshold_pct}%, vol={config.volume_threshold_pct}%, '
+            f'price={config.price_threshold_pct}%, '
+            f'slippage={config.slippage_threshold_pct}% (structural)'
         )
 
     # ============================================
@@ -170,8 +170,8 @@ class DriftAuditor:
 
         if not response.trades:
             self._logger.warning(
-                f"[DRIFT] {response.order_id} trades query returned empty list, audit skipped "
-                f"(possibly broker settlement lag)"
+                f'[DRIFT] {response.order_id} trades query returned empty list, audit skipped '
+                f'(possibly broker settlement lag)'
             )
             return
 
@@ -189,8 +189,8 @@ class DriftAuditor:
         # FEE drift — currency-aware (skip if mismatch, surface warning)
         if snapshot.fee_currency and real_currency and snapshot.fee_currency != real_currency:
             self._logger.warning(
-                f"[DRIFT] {snapshot.order_id} fee currency mismatch "
-                f"(local={snapshot.fee_currency}, broker={real_currency}) — fee comparison skipped"
+                f'[DRIFT] {snapshot.order_id} fee currency mismatch '
+                f'(local={snapshot.fee_currency}, broker={real_currency}) — fee comparison skipped'
             )
         else:
             self._compare_and_record(
@@ -321,11 +321,11 @@ class DriftAuditor:
             structural_tag = ' [STRUCTURAL]' if is_structural else ''
             cur_tag = f' {fee_currency}' if fee_currency else ''
             self._logger.warning(
-                f"[DRIFT]{structural_tag} order={snapshot.order_id} "
-                f"broker_ref={snapshot.broker_ref} symbol={snapshot.symbol}\n"
-                f"   {drift_type.value.upper()}  local={local:.6f}{cur_tag}  "
-                f"broker={broker:.6f}{cur_tag}  delta={relative_delta_pct:+.2f}%  "
-                f"(threshold {threshold_pct}%)"
+                f'[DRIFT]{structural_tag} order={snapshot.order_id} '
+                f'broker_ref={snapshot.broker_ref} symbol={snapshot.symbol}\n'
+                f'   {drift_type.value.upper()}  local={local:.6f}{cur_tag}  '
+                f'broker={broker:.6f}{cur_tag}  delta={relative_delta_pct:+.2f}%  '
+                f'(threshold {threshold_pct}%)'
             )
 
     # ============================================
@@ -368,15 +368,15 @@ class DriftAuditor:
         """
         if self._pending_audits:
             self._logger.warning(
-                f"[DRIFT] {len(self._pending_audits)} audits unfinished at shutdown: "
-                f"{list(self._pending_audits.keys())}"
+                f'[DRIFT] {len(self._pending_audits)} audits unfinished at shutdown: '
+                f'{list(self._pending_audits.keys())}'
             )
         self._pending_audits.clear()
 
         self._logger.info(
-            f"📊 DriftAudit final: {self._summary.total_orders_audited} orders audited | "
-            f"FEE: {self._summary.fee_events} events (max {self._summary.max_fee_drift_pct:.2f}%) | "
-            f"VOL: {self._summary.volume_events} events (max {self._summary.max_volume_drift_pct:.2f}%) | "
-            f"PRICE: {self._summary.price_events} events (max {self._summary.max_price_drift_pct:.2f}%) | "
-            f"SLIP: {self._summary.slippage_events} events (max {self._summary.max_slippage_drift_pct:.2f}%)"
+            f'📊 DriftAudit final: {self._summary.total_orders_audited} orders audited | '
+            f'FEE: {self._summary.fee_events} events (max {self._summary.max_fee_drift_pct:.2f}%) | '
+            f'VOL: {self._summary.volume_events} events (max {self._summary.max_volume_drift_pct:.2f}%) | '
+            f'PRICE: {self._summary.price_events} events (max {self._summary.max_price_drift_pct:.2f}%) | '
+            f'SLIP: {self._summary.slippage_events} events (max {self._summary.max_slippage_drift_pct:.2f}%)'
         )

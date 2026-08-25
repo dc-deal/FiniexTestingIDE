@@ -13,7 +13,11 @@ from enum import Enum
 from typing import List, Optional
 
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
-from python.framework.types.trading_env_types.order_types import CloseType, OrderDirection, OrderSide
+from python.framework.types.trading_env_types.order_types import (
+    CloseType,
+    OrderDirection,
+    OrderSide,
+)
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 
 
@@ -26,10 +30,10 @@ class CloseReason(Enum):
     TP_TRIGGERED: Take-profit price level hit
     SCENARIO_END: Position auto-closed at end of simulation
     """
-    MANUAL = ""
-    SL_TRIGGERED = "sl_triggered"
-    TP_TRIGGERED = "tp_triggered"
-    SCENARIO_END = "scenario_end"
+    MANUAL = ''
+    SL_TRIGGERED = 'sl_triggered'
+    TP_TRIGGERED = 'tp_triggered'
+    SCENARIO_END = 'scenario_end'
 
 
 class EntryType(Enum):
@@ -46,10 +50,10 @@ class EntryType(Enum):
         STOP: Opened via stop order (trigger price reached → market fill)
         STOP_LIMIT: Opened via stop-limit order (trigger → limit fill)
     """
-    MARKET = "market"
-    LIMIT = "limit"
-    STOP = "stop"
-    STOP_LIMIT = "stop_limit"
+    MARKET = 'market'
+    LIMIT = 'limit'
+    STOP = 'stop'
+    STOP_LIMIT = 'stop_limit'
 
 
 @dataclass
@@ -105,7 +109,7 @@ class TradeRecord:
     # === Optional Metadata ===
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
-    comment: str = ""
+    comment: str = ''
 
     # === Trade Analytics (#389) ===
     # MAE/MFE = max adverse / favorable excursion over the position's life (price +
@@ -124,7 +128,7 @@ class TradeRecord:
     entry_type: EntryType = EntryType.MARKET
 
     # === Account Context ===
-    account_currency: str = ""
+    account_currency: str = ''
 
     # === Per-Execution Detail (#330) ===
     # Shallow copy of Position.entry_trades (shared across all derived

@@ -9,11 +9,11 @@ must access timeframe-related information exclusively through this unit.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Iterable
+from typing import Dict, Iterable, List
 
 from python.framework.exceptions.timeframe_errors import (
-    UnsupportedTimeframeError,
     TimeframeConfigError,
+    UnsupportedTimeframeError,
 )
 
 
@@ -49,13 +49,13 @@ class TimeframeConfig:
 
     # Base registry entries (extendable later)
     _REGISTRY: Dict[str, Dict[str, object]] = {
-        "M1":  {"minutes": 1,    "resample": "1min"},
-        "M5":  {"minutes": 5,    "resample": "5min"},
-        "M15": {"minutes": 15,   "resample": "15min"},
-        "M30": {"minutes": 30,   "resample": "30min"},
-        "H1":  {"minutes": 60,   "resample": "1h"},
-        "H4":  {"minutes": 240,  "resample": "4h"},
-        "D1":  {"minutes": 1440, "resample": "1D"},
+        'M1':  {'minutes': 1,    'resample': '1min'},
+        'M5':  {'minutes': 5,    'resample': '5min'},
+        'M15': {'minutes': 15,   'resample': '15min'},
+        'M30': {'minutes': 30,   'resample': '30min'},
+        'H1':  {'minutes': 60,   'resample': '1h'},
+        'H4':  {'minutes': 240,  'resample': '4h'},
+        'D1':  {'minutes': 1440, 'resample': '1D'},
     }
 
     _OBJECTS: Dict[str, Timeframe] = {}
@@ -75,17 +75,17 @@ class TimeframeConfig:
         sort_index = 0
 
         for name, entry in cls._REGISTRY.items():
-            minutes = entry.get("minutes")
-            resample = entry.get("resample")
+            minutes = entry.get('minutes')
+            resample = entry.get('resample')
 
             if not isinstance(minutes, int) or minutes <= 0:
                 raise TimeframeConfigError(
-                    f"Invalid minute mapping for timeframe {name}."
+                    f'Invalid minute mapping for timeframe {name}.'
                 )
 
             if not isinstance(resample, str) or len(resample) == 0:
                 raise TimeframeConfigError(
-                    f"Invalid resample rule for timeframe {name}."
+                    f'Invalid resample rule for timeframe {name}.'
                 )
 
             tf_obj = Timeframe(

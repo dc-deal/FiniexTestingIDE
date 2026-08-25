@@ -14,7 +14,6 @@ Cache Structure:
         mt5_USDJPY_extreme_moves.parquet
 """
 
-import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,15 +26,18 @@ import pyarrow.parquet as pq
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint, read_fingerprint_from_parquet
+from python.framework.discoveries.extreme_move_scanner import ExtremeMoveScanner
+from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.discovery_types import (
     ExtremeMove,
     ExtremeMoveResult,
     MoveDirection,
 )
-from python.framework.discoveries.extreme_move_scanner import ExtremeMoveScanner
-from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.utils.config_fingerprint_utils import (
+    generate_config_fingerprint,
+    read_fingerprint_from_parquet,
+)
 
 vLog = get_global_logger()
 
@@ -47,9 +49,9 @@ class DiscoveryCache:
     Auto-invalidates when source bar files change (mtime comparison).
     """
 
-    CACHE_PARENT_DIR = ".discovery_caches"
-    CACHE_SUB_DIR = "extreme_moves_cache"
-    GRANULARITY = "M5"
+    CACHE_PARENT_DIR = '.discovery_caches'
+    CACHE_SUB_DIR = 'extreme_moves_cache'
+    GRANULARITY = 'M5'
 
     def __init__(self, logger: AbstractLogger = vLog):
         self._logger = logger
@@ -68,7 +70,7 @@ class DiscoveryCache:
 
     def _get_cache_path(self, broker_type: str, symbol: str, discovery_type: str) -> Path:
         """Get cache file path."""
-        return self.cache_dir / f"{broker_type}_{symbol}_{discovery_type}.parquet"
+        return self.cache_dir / f'{broker_type}_{symbol}_{discovery_type}.parquet'
 
     def _get_source_bar_mtime(self, broker_type: str, symbol: str) -> Optional[float]:
         """Get modification time of source M5 bar file."""
@@ -151,16 +153,16 @@ class DiscoveryCache:
         Returns:
             ExtremeMoveResult or None if data unavailable
         """
-        discovery_type = "extreme_moves"
+        discovery_type = 'extreme_moves'
 
         if not force_rebuild and self.is_cache_valid(broker_type, symbol, discovery_type):
             result = self._load_extreme_moves(broker_type, symbol)
             if result:
                 self._logger.debug(
-                    f"Cache hit: {broker_type}/{symbol} extreme_moves")
+                    f'Cache hit: {broker_type}/{symbol} extreme_moves')
                 return result
 
-        self._logger.debug(f"Scanning: {broker_type}/{symbol} extreme_moves")
+        self._logger.debug(f'Scanning: {broker_type}/{symbol} extreme_moves')
         scanner = ExtremeMoveScanner(logger=self._logger)
         result = scanner.scan(broker_type, symbol)
 
@@ -173,7 +175,7 @@ class DiscoveryCache:
         symbol: str
     ) -> Optional[ExtremeMoveResult]:
         """Load ExtremeMoveResult from cache."""
-        cache_path = self._get_cache_path(broker_type, symbol, "extreme_moves")
+        cache_path = self._get_cache_path(broker_type, symbol, 'extreme_moves')
 
         try:
             pq_file = pq.ParquetFile(cache_path)
@@ -231,7 +233,7 @@ class DiscoveryCache:
 
         except Exception as e:
             self._logger.warning(
-                f"Failed to load cache for {broker_type}/{symbol}: {e}")
+                f'Failed to load cache for {broker_type}/{symbol}: {e}')
             return None
 
     def _save_extreme_moves(
@@ -241,7 +243,7 @@ class DiscoveryCache:
         result: ExtremeMoveResult
     ) -> None:
         """Save ExtremeMoveResult to cache."""
-        cache_path = self._get_cache_path(broker_type, symbol, "extreme_moves")
+        cache_path = self._get_cache_path(broker_type, symbol, 'extreme_moves')
 
         try:
             rows = []
@@ -293,11 +295,11 @@ class DiscoveryCache:
             })
 
             pq.write_table(table, cache_path)
-            self._logger.debug(f"Cached: {broker_type}/{symbol} extreme_moves")
+            self._logger.debug(f'Cached: {broker_type}/{symbol} extreme_moves')
 
         except Exception as e:
             self._logger.warning(
-                f"Failed to cache {broker_type}/{symbol}: {e}")
+                f'Failed to cache {broker_type}/{symbol}: {e}')
 
     # =========================================================================
     # BULK OPERATIONS
@@ -318,7 +320,7 @@ class DiscoveryCache:
             for symbol in bar_index.list_symbols(broker_type):
                 try:
                     if not force_rebuild and self.is_cache_valid(
-                        broker_type, symbol, "extreme_moves"
+                        broker_type, symbol, 'extreme_moves'
                     ):
                         stats['skipped'] += 1
                         continue
@@ -332,7 +334,7 @@ class DiscoveryCache:
 
                 except Exception as e:
                     self._logger.warning(
-                        f"Failed to build cache for {broker_type}/{symbol}: {e}")
+                        f'Failed to build cache for {broker_type}/{symbol}: {e}')
                     stats['failed'] += 1
 
         elapsed = time.time() - start_time
@@ -347,10 +349,10 @@ class DiscoveryCache:
 
     def clear_cache(self) -> int:
         """Clear all cached discovery results."""
-        cache_files = list(self.cache_dir.glob("*.parquet"))
+        cache_files = list(self.cache_dir.glob('*.parquet'))
         for cache_file in cache_files:
             cache_file.unlink()
-        self._logger.info(f"Cleared {len(cache_files)} discovery cache files")
+        self._logger.info(f'Cleared {len(cache_files)} discovery cache files')
         return len(cache_files)
 
     def get_cache_status(self) -> Dict:
@@ -362,7 +364,7 @@ class DiscoveryCache:
         stale = 0
         missing = 0
 
-        cache_files = list(self.cache_dir.glob("*.parquet"))
+        cache_files = list(self.cache_dir.glob('*.parquet'))
         total_size_mb = sum(
             f.stat().st_size for f in cache_files) / (1024 * 1024)
 
@@ -370,10 +372,10 @@ class DiscoveryCache:
             for symbol in bar_index.list_symbols(broker_type):
                 total_symbols += 1
                 cache_path = self._get_cache_path(
-                    broker_type, symbol, "extreme_moves")
+                    broker_type, symbol, 'extreme_moves')
                 if not cache_path.exists():
                     missing += 1
-                elif self.is_cache_valid(broker_type, symbol, "extreme_moves"):
+                elif self.is_cache_valid(broker_type, symbol, 'extreme_moves'):
                     cached += 1
                 else:
                     stale += 1

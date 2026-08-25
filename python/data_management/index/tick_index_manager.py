@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.trading_env_types.broker_types import BrokerType
+
 vLog = get_global_logger()
 
 
@@ -32,8 +32,8 @@ class TickIndexManager:
     """
 
     # Index file names
-    INDEX_FILE_PARQUET = ".parquet_tick_index.parquet"
-    INDEX_FILE_JSON_LEGACY = ".parquet_tick_index.json"
+    INDEX_FILE_PARQUET = '.parquet_tick_index.parquet'
+    INDEX_FILE_JSON_LEGACY = '.parquet_tick_index.json'
 
     def __init__(self, logger: AbstractLogger = vLog, data_dir: Optional[str] = None):
         """
@@ -53,7 +53,7 @@ class TickIndexManager:
 
         # {broker_type: {symbol: [files]}} - unchanged API
         self.index: Dict[str, Dict[str, List[Dict]]] = {}
-        self.logger.info("📚 Parquet Tick Index Manager initialized.")
+        self.logger.info('📚 Parquet Tick Index Manager initialized.')
 
     # =========================================================================
     # INDEX BUILDING
@@ -73,30 +73,30 @@ class TickIndexManager:
             if not check_stale:
                 self._load_index()
                 self.logger.info(
-                    f"📚 Loaded existing tick index ({len(self.index)} broker types)")
+                    f'📚 Loaded existing tick index ({len(self.index)} broker types)')
                 return
 
             if not self.needs_rebuild():
                 self._load_index()
                 self.logger.info(
-                    f"📚 Loaded existing tick index ({len(self.index)} broker types)")
+                    f'📚 Loaded existing tick index ({len(self.index)} broker types)')
                 return
 
         # Check for legacy JSON and migrate
         if not force_rebuild and self._legacy_json_file.exists() and not self.index_file.exists():
-            self.logger.info("🔄 Migrating legacy JSON index to Parquet...")
+            self.logger.info('🔄 Migrating legacy JSON index to Parquet...')
             if self._migrate_from_json():
-                self.logger.info("✅ Migration complete")
+                self.logger.info('✅ Migration complete')
                 return
 
-        self.logger.info("🔍 Scanning Parquet files for tick index...")
+        self.logger.info('🔍 Scanning Parquet files for tick index...')
         start_time = time.time()
 
         # Pattern: mt5/ticks/EURUSD/*.parquet
-        parquet_files = list(self.data_dir.glob("*/ticks/**/*.parquet"))
+        parquet_files = list(self.data_dir.glob('*/ticks/**/*.parquet'))
 
         if not parquet_files:
-            self.logger.warning(f"No Parquet files found in {self.data_dir}")
+            self.logger.warning(f'No Parquet files found in {self.data_dir}')
             self.index = {}
             return
 
@@ -116,7 +116,7 @@ class TickIndexManager:
 
             except Exception as e:
                 self.logger.warning(
-                    f"Failed to index {parquet_file.name}: {e}")
+                    f'Failed to index {parquet_file.name}: {e}')
 
         # Sort files chronologically per broker_type/symbol
         for broker_type in self.index:
@@ -133,8 +133,8 @@ class TickIndexManager:
             for files in bt.values()
         )
         self.logger.info(
-            f"✅ Index built: {total_files} files across {len(self.index)} broker types "
-            f"in {elapsed:.2f}s"
+            f'✅ Index built: {total_files} files across {len(self.index)} broker types '
+            f'in {elapsed:.2f}s'
         )
 
     def _scan_file(self, parquet_file: Path) -> Dict:
@@ -146,7 +146,7 @@ class TickIndexManager:
         try:
             symbol = parquet_file.name.split('_')[0]
         except IndexError:
-            symbol = "UNKNOWN"
+            symbol = 'UNKNOWN'
 
         # === BASIC METADATA ===
         first_row_group = pq_file.read_row_group(0, columns=['timestamp'])
@@ -242,13 +242,13 @@ class TickIndexManager:
 
         index_mtime = self.index_file.stat().st_mtime
 
-        parquet_files = list(self.data_dir.glob("*/ticks/**/*.parquet"))
+        parquet_files = list(self.data_dir.glob('*/ticks/**/*.parquet'))
         if parquet_files:
             newest_parquet = max(f.stat().st_mtime for f in parquet_files)
 
             if newest_parquet > index_mtime:
                 self.logger.info(
-                    "📋 Tick index outdated - newer Parquet files found")
+                    '📋 Tick index outdated - newer Parquet files found')
                 return True
 
         return False
@@ -343,7 +343,7 @@ class TickIndexManager:
             {**table.schema.metadata, **metadata})
 
         pq.write_table(table, self.index_file)
-        self.logger.debug(f"💾 Tick index saved to {self.index_file}")
+        self.logger.debug(f'💾 Tick index saved to {self.index_file}')
 
     def _load_index(self) -> None:
         """Load index from Parquet file and convert to nested dict."""
@@ -351,7 +351,7 @@ class TickIndexManager:
             df = pd.read_parquet(self.index_file)
             self.index = self._dataframe_to_nested_dict(df)
         except Exception as e:
-            self.logger.warning(f"Failed to load tick index: {e}")
+            self.logger.warning(f'Failed to load tick index: {e}')
             self.index = {}
 
     def _dataframe_to_nested_dict(self, df: pd.DataFrame) -> Dict[str, Dict[str, List[Dict]]]:
@@ -412,11 +412,11 @@ class TickIndexManager:
             # Optionally rename old file
             backup_path = self._legacy_json_file.with_suffix('.json.bak')
             self._legacy_json_file.rename(backup_path)
-            self.logger.info(f"📦 Legacy JSON backed up to {backup_path}")
+            self.logger.info(f'📦 Legacy JSON backed up to {backup_path}')
 
             return True
         except Exception as e:
-            self.logger.error(f"Migration failed: {e}")
+            self.logger.error(f'Migration failed: {e}')
             return False
 
     # =========================================================================
@@ -489,24 +489,24 @@ class TickIndexManager:
 
     def print_summary(self) -> None:
         """Print index summary grouped by broker_type."""
-        print("\n" + "="*60)
-        print("📚 Parquet Tick Index Summary")
-        print("="*60)
+        print('\n' + '='*60)
+        print('📚 Parquet Tick Index Summary')
+        print('='*60)
 
         if not self.index:
-            print("   (empty tick index)")
+            print('   (empty tick index)')
             return
 
         for broker_type in sorted(self.index.keys()):
-            print(f"\n📂 {broker_type}:")
+            print(f'\n📂 {broker_type}:')
 
             for symbol in sorted(self.index[broker_type].keys()):
                 coverage = self.get_symbol_file_coverage(broker_type, symbol)
-                print(f"   {symbol}:")
+                print(f'   {symbol}:')
                 print(f"      Files:  {coverage['num_files']}")
                 print(f"      Ticks:  {coverage['total_ticks']:,}")
                 print(f"      Size:   {coverage['total_size_mb']:.1f} MB")
                 print(
                     f"      Range:  {coverage['start_time'][:10]} → {coverage['end_time'][:10]}")
 
-        print("="*60 + "\n")
+        print('='*60 + '\n')

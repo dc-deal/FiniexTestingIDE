@@ -5,23 +5,30 @@ Config Loader (FIXED: Deep copy prevents config mutation)
 
 import json
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List
 
-from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.scenario_types.window_set_types import WindowSet
-from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig, ScenarioSet, SingleScenario
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.utils.time_utils import parse_datetime
-from python.scenario.scenario_cascade import ScenarioCascade
-from python.framework.utils.config_merge_utils import check_unknown_keys, validate_merged_config
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.config_types.backtesting_config_types import (
     DefaultScenarioExecutionConfig,
     TradeSimulatorDefaults,
 )
-from python.framework.types.config_types.robustness_config_types import RobustnessConfig, RobustnessRole
+from python.framework.types.config_types.robustness_config_types import (
+    RobustnessConfig,
+    RobustnessRole,
+)
+from python.framework.types.scenario_types.scenario_set_types import (
+    LoadedScenarioConfig,
+    SingleScenario,
+)
+from python.framework.types.scenario_types.window_set_types import WindowSet
+from python.framework.utils.config_merge_utils import check_unknown_keys, validate_merged_config
+from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
+from python.framework.utils.time_utils import parse_datetime
 from python.scenario.generator.window_materializer import WindowMaterializer
+from python.scenario.scenario_cascade import ScenarioCascade
+
 vLog = get_global_logger()
 
 
@@ -108,9 +115,9 @@ class ScenarioConfigLoader:
         config_path = self._resolve_path(config_file)
 
         if not config_path.exists():
-            raise FileNotFoundError(f"Config file not found: {config_path}")
+            raise FileNotFoundError(f'Config file not found: {config_path}')
 
-        vLog.info(f"📂 Loading scenarios from: {config_path}")
+        vLog.info(f'📂 Loading scenarios from: {config_path}')
 
         with open(config_path, 'r') as f:
             config = json.load(f)
@@ -146,7 +153,7 @@ class ScenarioConfigLoader:
         scenarios: List[SingleScenario] = []
         disabled_count = 0
 
-        scenario_set_name = config.get('scenario_set_name', "unknown")
+        scenario_set_name = config.get('scenario_set_name', 'unknown')
 
         current_scenario_index = 0
         for scenario_data in config.get('scenarios', []):
@@ -273,9 +280,9 @@ class ScenarioConfigLoader:
 
         if disabled_count > 0:
             vLog.debug(
-                f"🔻 Filtered out {disabled_count} disabled scenario(s)")
+                f'🔻 Filtered out {disabled_count} disabled scenario(s)')
 
-        vLog.info(f"✅ Loaded {len(scenarios)} scenarios from {config_file}")
+        vLog.info(f'✅ Loaded {len(scenarios)} scenarios from {config_file}')
 
         # ScenarioSet creates its own loggers
         return LoadedScenarioConfig(
@@ -308,7 +315,7 @@ class ScenarioConfigLoader:
         config_path = self._resolve_path(scenario_set_json)
 
         if not config_path.exists():
-            raise FileNotFoundError(f"Config file not found: {config_path}")
+            raise FileNotFoundError(f'Config file not found: {config_path}')
 
         with open(config_path, 'r') as f:
             config = json.load(f)
@@ -367,13 +374,13 @@ class ScenarioConfigLoader:
             global_index += len(set_scenarios)
 
             vLog.info(
-                f"✅ Loaded {window_set.block_count} blocks from profile "
-                f"({window_set.mode}, {window_set.symbol})"
+                f'✅ Loaded {window_set.block_count} blocks from profile '
+                f'({window_set.mode}, {window_set.symbol})'
             )
 
         vLog.info(
-            f"✅ Created {len(scenarios)} scenarios from "
-            f"{len(window_sets)} profile(s)"
+            f'✅ Created {len(scenarios)} scenarios from '
+            f'{len(window_sets)} profile(s)'
         )
 
         return LoadedScenarioConfig(

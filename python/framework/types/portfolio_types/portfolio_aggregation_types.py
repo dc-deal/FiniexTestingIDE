@@ -3,9 +3,8 @@ FiniexTestingIDE - Portfolio Aggregation Types
 Types for currency-grouped portfolio aggregation
 """
 
-from typing import Dict
 from dataclasses import dataclass, field
-
+from typing import Dict
 
 from python.framework.types.trading_env_types.broker_types import BrokerType
 

@@ -30,23 +30,26 @@ Order types used:
 import traceback
 from typing import Any, Dict, List, Optional
 
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.decision_logic.abstract_decision_logic import \
-    AbstractDecisionLogic
-from python.framework.types.market_types.market_data_types import Bar, TickData
-from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionLogicAction
+from python.framework.types.component_metadata_types import ComponentMetadata
+from python.framework.types.decision_logic_types import (
+    AwarenessLevel,
+    Decision,
+    DecisionLogicAction,
+)
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.component_metadata_types import ComponentMetadata
-from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
+    OrderDirection,
+    OrderResult,
+    OrderSide,
     OrderStatus,
     OrderType,
-    OrderDirection,
-    OrderSide,
-    OrderResult
 )
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
 class CautiousMacd(AbstractDecisionLogic):
@@ -121,15 +124,15 @@ class CautiousMacd(AbstractDecisionLogic):
         self._break_even_applied: bool = False
         self._current_position_id: Optional[str] = None
 
-        _order_mode = "STOP_LIMIT" if self.use_stop_limit else "STOP"
-        _conf_str = f"minConf={self.min_confidence}" if self.min_confidence > 0.0 else "minConf=off"
+        _order_mode = 'STOP_LIMIT' if self.use_stop_limit else 'STOP'
+        _conf_str = f'minConf={self.min_confidence}' if self.min_confidence > 0.0 else 'minConf=off'
         self.logger.debug(
-            f"CautiousMacd initialized: "
-            f"RSI filter({self.rsi_filter_buy}/{self.rsi_filter_sell}), "
-            f"{_order_mode} dist={self.stop_distance_pips}pip, "
-            f"SL={self.sl_pips}/TP={self.tp_pips}, "
-            f"BreakEven={self.break_even_trigger_pips}pip, "
-            f"Lots={self.lot_size}, {_conf_str}"
+            f'CautiousMacd initialized: '
+            f'RSI filter({self.rsi_filter_buy}/{self.rsi_filter_sell}), '
+            f'{_order_mode} dist={self.stop_distance_pips}pip, '
+            f'SL={self.sl_pips}/TP={self.tp_pips}, '
+            f'BreakEven={self.break_even_trigger_pips}pip, '
+            f'Lots={self.lot_size}, {_conf_str}'
         )
 
     # ============================================
@@ -142,60 +145,60 @@ class CautiousMacd(AbstractDecisionLogic):
         return {
             'rsi_filter_buy': InputParamDef(
                 param_type=float, default=60, min_val=1, max_val=99,
-                description="RSI max for BUY entry (skip if RSI is overbought)",
+                description='RSI max for BUY entry (skip if RSI is overbought)',
                 display=True, display_label='rsi_fb',
             ),
             'rsi_filter_sell': InputParamDef(
                 param_type=float, default=40, min_val=1, max_val=99,
-                description="RSI min for SELL entry (skip if RSI is oversold)",
+                description='RSI min for SELL entry (skip if RSI is oversold)',
                 display=True, display_label='rsi_fs',
             ),
             'stop_distance_pips': InputParamDef(
                 param_type=float, default=15, min_val=1, max_val=500,
-                description="STOP trigger distance from current price in pips"
+                description='STOP trigger distance from current price in pips'
             ),
             'sl_pips': InputParamDef(
                 param_type=float, default=20, min_val=1, max_val=1000,
-                description="Stop loss distance from estimated entry in pips"
+                description='Stop loss distance from estimated entry in pips'
             ),
             'tp_pips': InputParamDef(
                 param_type=float, default=40, min_val=1, max_val=2000,
-                description="Take profit distance from estimated entry in pips"
+                description='Take profit distance from estimated entry in pips'
             ),
             'pip_size': InputParamDef(
                 param_type=float, default=None, min_val=0.000001, max_val=1.0,
-                description="Pip size for the traded instrument (auto-derived from the "
-                "broker if unset, #167; 0.01 for JPY pairs)"
+                description='Pip size for the traded instrument (auto-derived from the '
+                'broker if unset, #167; 0.01 for JPY pairs)'
             ),
             'break_even_trigger_pips': InputParamDef(
                 param_type=float, default=15, min_val=0, max_val=1000,
-                description="Move SL to entry after X pips profit (0 = disabled)",
+                description='Move SL to entry after X pips profit (0 = disabled)',
                 display=True, display_label='be_pips',
             ),
             'min_histogram': InputParamDef(
                 param_type=float, default=0.00005, min_val=0, max_val=100000,
-                description="Minimum |histogram| value for a valid crossover (noise filter)"
+                description='Minimum |histogram| value for a valid crossover (noise filter)'
             ),
             'min_confidence': InputParamDef(
                 param_type=float, default=0.0, min_val=0.0, max_val=1.0,
-                description="Minimum confidence score to act on a crossover (0.0 = disabled)",
+                description='Minimum confidence score to act on a crossover (0.0 = disabled)',
                 display=True, display_label='min_conf',
             ),
             'lot_size': InputParamDef(
                 param_type=float, default=0.1, min_val=0.0, max_val=100.0,
-                description="Fixed lot size for STOP orders"
+                description='Fixed lot size for STOP orders'
             ),
             'min_free_margin': InputParamDef(
                 param_type=float, default=1000, min_val=0,
-                description="Minimum free margin before opening new position"
+                description='Minimum free margin before opening new position'
             ),
             'use_stop_limit': InputParamDef(
                 param_type=bool, default=False,
-                description="Use STOP_LIMIT instead of STOP (required for Kraken)"
+                description='Use STOP_LIMIT instead of STOP (required for Kraken)'
             ),
             'stop_limit_offset_pips': InputParamDef(
                 param_type=float, default=2, min_val=0, max_val=100,
-                description="Limit price offset beyond stop_price for STOP_LIMIT orders (in pips)"
+                description='Limit price offset beyond stop_price for STOP_LIMIT orders (in pips)'
             ),
         }
 
@@ -246,8 +249,8 @@ class CautiousMacd(AbstractDecisionLogic):
             status: Session-level market-data health snapshot
         """
         self.logger.warning(
-            f"🔌 Market data stale ({status.seconds_since_last_tick:.0f}s "
-            f"since last tick) — holding until ticks resume."
+            f'🔌 Market data stale ({status.seconds_since_last_tick:.0f}s '
+            f'since last tick) — holding until ticks resume.'
         )
         self.emit_event(
             '🔌 market data stale — holding until ticks resume',
@@ -279,8 +282,8 @@ class CautiousMacd(AbstractDecisionLogic):
             Dict[instance_name, WorkerRequirement]
         """
         return {
-            "macd_main": WorkerRequirement.all('CORE/macd'),
-            "rsi_filter": WorkerRequirement.all('CORE/rsi'),
+            'macd_main': WorkerRequirement.all('CORE/macd'),
+            'rsi_filter': WorkerRequirement.all('CORE/rsi'),
         }
 
     def compute_tick(
@@ -306,8 +309,8 @@ class CautiousMacd(AbstractDecisionLogic):
         Returns:
             Decision with BUY, SELL, or FLAT action
         """
-        macd_result = worker_results.get("macd_main")
-        rsi_result = worker_results.get("rsi_filter")
+        macd_result = worker_results.get('macd_main')
+        rsi_result = worker_results.get('rsi_filter')
 
         if not macd_result or not rsi_result:
             return Decision(
@@ -325,10 +328,10 @@ class CautiousMacd(AbstractDecisionLogic):
         signal_line = macd_result.get_signal('signal')
         rsi_value = rsi_result.get_signal('rsi_value')
 
-        _prev = f"{self._prev_histogram:.4f}" if self._prev_histogram is not None else "None"
+        _prev = f'{self._prev_histogram:.4f}' if self._prev_histogram is not None else 'None'
         self.logger.verbose(
-            f"[compute] MACD={macd_line:.4f} sig={signal_line:.4f} "
-            f"hist={histogram:.4f} (prev={_prev}) RSI={rsi_value:.1f}"
+            f'[compute] MACD={macd_line:.4f} sig={signal_line:.4f} '
+            f'hist={histogram:.4f} (prev={_prev}) RSI={rsi_value:.1f}'
         )
 
         # Crossover detection (no crossover if histogram didn't change)
@@ -340,7 +343,7 @@ class CautiousMacd(AbstractDecisionLogic):
                     and abs(histogram) >= self.min_histogram):
                 crossed_up = True
                 self.emit_event(
-                    f"MACD cross-UP: hist {self._prev_histogram:.4f} → {histogram:.4f}, RSI={rsi_value:.1f}",
+                    f'MACD cross-UP: hist {self._prev_histogram:.4f} → {histogram:.4f}, RSI={rsi_value:.1f}',
                     AwarenessLevel.INFO,
                     'macd_cross_up',
                 )
@@ -348,7 +351,7 @@ class CautiousMacd(AbstractDecisionLogic):
                     and abs(histogram) >= self.min_histogram):
                 crossed_down = True
                 self.emit_event(
-                    f"MACD cross-DOWN: hist {self._prev_histogram:.4f} → {histogram:.4f}, RSI={rsi_value:.1f}",
+                    f'MACD cross-DOWN: hist {self._prev_histogram:.4f} → {histogram:.4f}, RSI={rsi_value:.1f}',
                     AwarenessLevel.INFO,
                     'macd_cross_down',
                 )
@@ -359,7 +362,7 @@ class CautiousMacd(AbstractDecisionLogic):
                     or (self._prev_histogram >= 0 and histogram < 0)
                 ):
                     self.logger.debug(
-                        f"[compute] Cross attempt blocked: |hist|={abs(histogram):.4f} < min={self.min_histogram}"
+                        f'[compute] Cross attempt blocked: |hist|={abs(histogram):.4f} < min={self.min_histogram}'
                     )
 
         self._prev_histogram = histogram
@@ -369,16 +372,16 @@ class CautiousMacd(AbstractDecisionLogic):
             confidence = self._calculate_confidence(histogram, rsi_value, True)
             if self.min_confidence > 0.0 and confidence < self.min_confidence:
                 self.notify_awareness(
-                    f"BUY blocked — conf {confidence:.2f} < {self.min_confidence}",
+                    f'BUY blocked — conf {confidence:.2f} < {self.min_confidence}',
                     AwarenessLevel.NOTICE,
                     'low_confidence'
                 )
                 self.logger.verbose(
-                    f"🚫 BUY blocked by confidence: {confidence:.2f} < {self.min_confidence}"
+                    f'🚫 BUY blocked by confidence: {confidence:.2f} < {self.min_confidence}'
                 )
             else:
                 self.notify_awareness(
-                    f"BUY mode — MACD cross-up hist {histogram:.4f}, RSI {rsi_value:.1f}",
+                    f'BUY mode — MACD cross-up hist {histogram:.4f}, RSI {rsi_value:.1f}',
                     AwarenessLevel.INFO,
                     'buy_mode'
                 )
@@ -386,7 +389,7 @@ class CautiousMacd(AbstractDecisionLogic):
                     action=DecisionLogicAction.BUY,
                     outputs={
                         'confidence': confidence,
-                        'reason': f"MACD cross-up hist={histogram:.4f}, RSI={rsi_value:.1f}, conf={confidence:.2f}",
+                        'reason': f'MACD cross-up hist={histogram:.4f}, RSI={rsi_value:.1f}, conf={confidence:.2f}',
                         'price': tick.mid,
                         'timestamp': tick.timestamp.isoformat(),
                     },
@@ -394,12 +397,12 @@ class CautiousMacd(AbstractDecisionLogic):
 
         if crossed_up and rsi_value >= self.rsi_filter_buy:
             self.notify_awareness(
-                f"BUY blocked — RSI {rsi_value:.1f} >= {self.rsi_filter_buy}",
+                f'BUY blocked — RSI {rsi_value:.1f} >= {self.rsi_filter_buy}',
                 AwarenessLevel.NOTICE,
                 'rsi_filter_buy'
             )
             self.logger.verbose(
-                f"🚫 BUY blocked by RSI: {rsi_value:.1f} >= {self.rsi_filter_buy}"
+                f'🚫 BUY blocked by RSI: {rsi_value:.1f} >= {self.rsi_filter_buy}'
             )
 
         # SELL: crossed down + RSI not oversold
@@ -408,16 +411,16 @@ class CautiousMacd(AbstractDecisionLogic):
                 histogram, rsi_value, False)
             if self.min_confidence > 0.0 and confidence < self.min_confidence:
                 self.notify_awareness(
-                    f"SELL blocked — conf {confidence:.2f} < {self.min_confidence}",
+                    f'SELL blocked — conf {confidence:.2f} < {self.min_confidence}',
                     AwarenessLevel.NOTICE,
                     'low_confidence'
                 )
                 self.logger.verbose(
-                    f"🚫 SELL blocked by confidence: {confidence:.2f} < {self.min_confidence}"
+                    f'🚫 SELL blocked by confidence: {confidence:.2f} < {self.min_confidence}'
                 )
             else:
                 self.notify_awareness(
-                    f"SELL mode — MACD cross-down hist {histogram:.4f}, RSI {rsi_value:.1f}",
+                    f'SELL mode — MACD cross-down hist {histogram:.4f}, RSI {rsi_value:.1f}',
                     AwarenessLevel.INFO,
                     'sell_mode'
                 )
@@ -425,7 +428,7 @@ class CautiousMacd(AbstractDecisionLogic):
                     action=DecisionLogicAction.SELL,
                     outputs={
                         'confidence': confidence,
-                        'reason': f"MACD cross-down hist={histogram:.4f}, RSI={rsi_value:.1f}, conf={confidence:.2f}",
+                        'reason': f'MACD cross-down hist={histogram:.4f}, RSI={rsi_value:.1f}, conf={confidence:.2f}',
                         'price': tick.mid,
                         'timestamp': tick.timestamp.isoformat(),
                     },
@@ -433,12 +436,12 @@ class CautiousMacd(AbstractDecisionLogic):
 
         if crossed_down and rsi_value <= self.rsi_filter_sell:
             self.notify_awareness(
-                f"SELL blocked — RSI {rsi_value:.1f} <= {self.rsi_filter_sell}",
+                f'SELL blocked — RSI {rsi_value:.1f} <= {self.rsi_filter_sell}',
                 AwarenessLevel.NOTICE,
                 'rsi_filter_sell'
             )
             self.logger.verbose(
-                f"🚫 SELL blocked by RSI: {rsi_value:.1f} <= {self.rsi_filter_sell}"
+                f'🚫 SELL blocked by RSI: {rsi_value:.1f} <= {self.rsi_filter_sell}'
             )
 
         return Decision(
@@ -480,13 +483,13 @@ class CautiousMacd(AbstractDecisionLogic):
             OrderResult if order was placed, None otherwise
         """
         if not self.trading_api:
-            self.logger.warning("Trading API not available - cannot execute")
+            self.logger.warning('Trading API not available - cannot execute')
             return None
 
         open_positions = self.trading_api.get_open_positions()
         active_counts = self.trading_api.get_active_order_counts()
         in_pipeline = self.trading_api.has_pipeline_orders()
-        has_active_stop = active_counts.get("active_stops", 0) > 0
+        has_active_stop = active_counts.get('active_stops', 0) > 0
 
         self.logger.verbose(
             f"[state] positions={len(open_positions)} in_pipeline={in_pipeline} "
@@ -507,7 +510,7 @@ class CautiousMacd(AbstractDecisionLogic):
                 self._pending_direction = None
                 self._break_even_applied = False
                 self.emit_event(
-                    f"STOP triggered → {position.direction} {position.lots} lots @ {position.entry_price:.5f}",
+                    f'STOP triggered → {position.direction} {position.lots} lots @ {position.entry_price:.5f}',
                     AwarenessLevel.INFO,
                     'stop_triggered',
                 )
@@ -524,7 +527,7 @@ class CautiousMacd(AbstractDecisionLogic):
             if (decision.action != DecisionLogicAction.FLAT
                     and position.direction != new_dir):
                 self.emit_event(
-                    f"Counter-signal close: {position.direction} position",
+                    f'Counter-signal close: {position.direction} position',
                     AwarenessLevel.NOTICE,
                     'counter_signal_close',
                 )
@@ -558,7 +561,7 @@ class CautiousMacd(AbstractDecisionLogic):
                     )
                     if cancelled:
                         self.emit_event(
-                            f"STOP order cancelled (counter/flat signal)",
+                            'STOP order cancelled (counter/flat signal)',
                             AwarenessLevel.NOTICE,
                             'stop_cancelled',
                         )
@@ -595,8 +598,8 @@ class CautiousMacd(AbstractDecisionLogic):
         account = self.trading_api.get_account_info(new_direction)
         if account.free_margin < self.min_free_margin:
             self.logger.info(
-                f"Insufficient free margin: {account.free_margin:.2f} "
-                f"< {self.min_free_margin} - skipping entry"
+                f'Insufficient free margin: {account.free_margin:.2f} '
+                f'< {self.min_free_margin} - skipping entry'
             )
             return None
 
@@ -644,12 +647,12 @@ class CautiousMacd(AbstractDecisionLogic):
                     comment=f"CautiousMacd: {decision.get_signal('reason')[:50]}"
                 )
 
-            _mode = "STOP_LIMIT" if self.use_stop_limit else "STOP"
+            _mode = 'STOP_LIMIT' if self.use_stop_limit else 'STOP'
             if order_result.status == OrderStatus.PENDING:
                 self._pending_stop_order_id = order_result.order_id
                 self._pending_direction = new_direction
                 self.emit_event(
-                    f"{_mode} order placed: {new_direction} {self.lot_size} lots trigger={stop_price:.5f}",
+                    f'{_mode} order placed: {new_direction} {self.lot_size} lots trigger={stop_price:.5f}',
                     AwarenessLevel.INFO,
                     'stop_order_placed',
                 )
@@ -664,7 +667,7 @@ class CautiousMacd(AbstractDecisionLogic):
 
         except Exception:
             self.logger.error(
-                f"❌ STOP order failed:\n{traceback.format_exc()}"
+                f'❌ STOP order failed:\n{traceback.format_exc()}'
             )
             return None
 
@@ -698,13 +701,13 @@ class CautiousMacd(AbstractDecisionLogic):
         if result.success:
             self._break_even_applied = True
             self.emit_event(
-                f"Break-even set: SL → {position.entry_price:.5f} ({profit_move / self.pip_size:.1f} pips)",
+                f'Break-even set: SL → {position.entry_price:.5f} ({profit_move / self.pip_size:.1f} pips)',
                 AwarenessLevel.INFO,
                 'break_even_set',
             )
         else:
             self.logger.debug(
-                f"Break-even modify rejected: {result.rejection_reason}"
+                f'Break-even modify rejected: {result.rejection_reason}'
             )
 
     def _calculate_confidence(

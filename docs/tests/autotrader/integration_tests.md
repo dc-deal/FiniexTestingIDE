@@ -6,17 +6,28 @@ End-to-end validation of the AutoTrader mock pipeline and unit testing of AutoTr
 
 ## Test Files
 
-### test_autotrader_mock_session.py (4 Tests)
+### test_autotrader_mock_session.py (8 Tests)
 
 Full pipeline integration: runs a complete session with deterministic parquet replay data and asserts on the `AutoTraderResult`. Plus profile-loader parse guards (no session run).
 
 | Test | What it validates |
 |------|-------------------|
-| `test_full_mock_session` | Normal shutdown, tick count (29782), 0 clipping, 0 warnings/errors, trades produced, stats collected |
+| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (29782), 0 clipping, 0 warnings/errors, trades produced, stats collected |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
 | `test_broker_report_written` | Broker report persisted (unified model) + rendered in the summary |
 | `test_tick_source_fields_fully_parsed` | Every `tick_source` profile key reaches the config (no silently dropped keys, incl. the #436 freeze-lever fields) |
 | `test_staleness_contract_fields_parsed` | #436 knobs: `execution.market_data_stale_after_s` + `order_guard.block_stale_market_data` — per-profile override AND app_config JIC defaults |
+
+`TestSessionExitCode` (5 tests) covers the outcome→exit-code projection the CLI calls
+(`AutoTraderResult.get_outcome()` / `get_exit_code()`, #372): a framework emergency → 2, a normal
+shutdown → 0, an **operator** Ctrl+C → 0, a #348 safety escalation *without* an `emergency_reason`
+→ still 2, and a normal session that logged errors → 3. The last one closes the §35 asymmetry and
+replaces the pinned assertion that used to hold the old behaviour in place.
+
+The two that carry the most weight are the operator/safety pair: both arrive as
+`shutdown_mode='emergency'` with no reason attached, so only `operator_interrupted` separates a
+deliberate stop from a safety-triggered one. Reading it off a missing reason would let the safety
+layer fire and still report success.
 
 **Data Dependency:** Uses `configs/autotrader_profiles/backtesting/mock_session_test.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`.
 

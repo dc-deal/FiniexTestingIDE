@@ -5,7 +5,8 @@ Validates time range coverage and detects gaps in tick data
 Gap detection and human-readable coverage reports
 """
 
-from typing import List, Dict
+from typing import Dict, List
+
 import pandas as pd
 
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
@@ -13,14 +14,14 @@ from python.configuration.import_config_manager import ImportConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
-from python.framework.discoveries.data_coverage.data_format_version_spans import (
-    build_version_spans)
+from python.framework.discoveries.data_coverage.data_format_version_spans import build_version_spans
 from python.framework.discoveries.data_coverage.gap_file_attribution import (
-    ROLLOVER_TOLERANCE_S, attribute_gaps_to_files)
+    ROLLOVER_TOLERANCE_S,
+    attribute_gaps_to_files,
+)
+from python.framework.types.coverage_report_types import Gap
 from python.framework.types.trading_env_types.broker_types import BrokerType
-from python.framework.types.coverage_report_types import Gap, IndexEntry
-from python.framework.utils.market_calendar import MarketCalendar, GapCategory
-from python.framework.types.market_types.market_types import VALIDATION_TIMEZONE
+from python.framework.utils.market_calendar import GapCategory, MarketCalendar
 from python.framework.utils.time_utils import ensure_utc_aware, format_duration
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
@@ -187,7 +188,7 @@ class DataCoverageReport:
                     gap = Gap(
                         gap_seconds=seg_seconds,
                         category=category,
-                        reason=f"{reason} [detected via {granularity}]",
+                        reason=f'{reason} [detected via {granularity}]',
                         gap_start=seg_start,
                         gap_end=seg_end
                     )
@@ -216,26 +217,26 @@ class DataCoverageReport:
 
         if self.gap_counts['short'] > 0:
             recommendations.append(
-                "Short gaps detected - likely MT5 restarts or connection blips (usually harmless)"
+                'Short gaps detected - likely MT5 restarts or connection blips (usually harmless)'
             )
 
         if self.gap_counts['moderate'] > 0:
             recommendations.append(
-                "Check MQL5 TickCollector logs for moderate gaps"
+                'Check MQL5 TickCollector logs for moderate gaps'
             )
             recommendations.append(
-                "Verify broker connection stability during gap periods"
+                'Verify broker connection stability during gap periods'
             )
 
         if self.gap_counts['large'] > 0:
             recommendations.append(
-                "🔴 Large gaps detected - consider re-collecting data for these periods"
+                '🔴 Large gaps detected - consider re-collecting data for these periods'
             )
             recommendations.append(
-                "Check if MQL5 TickCollector was stopped intentionally"
+                'Check if MQL5 TickCollector was stopped intentionally'
             )
             recommendations.append(
-                "Review broker connection logs for extended outages"
+                'Review broker connection logs for extended outages'
             )
 
         return recommendations
@@ -254,17 +255,17 @@ class DataCoverageReport:
         tick_index.build_index()
         entries = tick_index.get_symbol_entries(self.broker_type, self.symbol)
 
-        lines = [f"\n{'─'*60}", "DATA FORMAT VERSION:", f"{'─'*60}"]
+        lines = [f"\n{'─'*60}", 'DATA FORMAT VERSION:', f"{'─'*60}"]
 
         spans = build_version_spans(entries)
 
         if not spans:
-            lines.append("   (no tick index entries for this symbol)")
+            lines.append('   (no tick index entries for this symbol)')
             return lines
 
         for span in spans[:MAX_VERSION_SPANS_DISPLAYED]:
             file_label = 'file' if span.file_count == 1 else 'files'
-            files = f"{span.file_count:>5} {file_label},"
+            files = f'{span.file_count:>5} {file_label},'
             lines.append(
                 f"   {span.version:<7} "
                 f"{span.start_time.strftime('%Y-%m-%d %H:%M')} → "
@@ -275,7 +276,7 @@ class DataCoverageReport:
 
         if len(spans) > MAX_VERSION_SPANS_DISPLAYED:
             lines.append(
-                f"   ... and {len(spans) - MAX_VERSION_SPANS_DISPLAYED} more spans")
+                f'   ... and {len(spans) - MAX_VERSION_SPANS_DISPLAYED} more spans')
 
         return lines
 
@@ -304,10 +305,10 @@ class DataCoverageReport:
         Returns:
             Length string for the report
         """
-        extent = f"{gap.duration_human} ({gap.gap_hours:.2f}h"
+        extent = f'{gap.duration_human} ({gap.gap_hours:.2f}h'
         if gap.gap_hours >= DAY_SCALE_THRESHOLD_H:
-            extent += f" · {gap.gap_hours / 24:.1f}d"
-        return extent + ")"
+            extent += f' · {gap.gap_hours / 24:.1f}d'
+        return extent + ')'
 
     def _trading_time_lost(self, gap: Gap) -> str:
         """
@@ -343,9 +344,9 @@ class DataCoverageReport:
         weeks, remainder = divmod(days, TRADING_DAYS_PER_WEEK)
         if remainder == 0 and weeks >= 1:
             plural = 's' if weeks > 1 else ''
-            return f"{label} ({weeks} full trading week{plural})"
+            return f'{label} ({weeks} full trading week{plural})'
         if days > TRADING_DAYS_PER_WEEK:
-            return f"{label} ({days / TRADING_DAYS_PER_WEEK:.1f} trading weeks)"
+            return f'{label} ({days / TRADING_DAYS_PER_WEEK:.1f} trading weeks)'
         return label
 
     def _gap_location(self, gap: Gap) -> str:
@@ -364,21 +365,21 @@ class DataCoverageReport:
             One-line description for the report
         """
         if gap.file_before is None or gap.file_after is None:
-            return "unattributed (no tick index entry)"
+            return 'unattributed (no tick index entry)'
 
         if gap.file_before == gap.file_after:
-            return f"Intra-file — {gap.file_before} (collector was running)"
+            return f'Intra-file — {gap.file_before} (collector was running)'
 
-        transition = f"File boundary — {gap.file_before} → {gap.file_after}"
+        transition = f'File boundary — {gap.file_before} → {gap.file_after}'
 
         resumed = gap.next_file_opened_after_s
         if resumed is None:
             return transition
 
         if abs(resumed) < ROLLOVER_TOLERANCE_S:
-            return f"{transition} (rollover, collection continued)"
+            return f'{transition} (rollover, collection continued)'
 
-        return f"{transition} (collection resumed {format_duration(resumed)} later)"
+        return f'{transition} (collection resumed {format_duration(resumed)} later)'
 
     def generate_report(self) -> str:
         """
@@ -392,13 +393,13 @@ class DataCoverageReport:
         # === SECTION 1: Overview ===
         report.append(f"\n{'='*60}")
         report.append(
-            f"📊 DATA COVERAGE REPORT: {self.broker_type}/{self.symbol}")
+            f'📊 DATA COVERAGE REPORT: {self.broker_type}/{self.symbol}')
         report.append(f"{'='*60}")
 
         market_config = MarketConfigManager()
         market_type = market_config.get_market_type(self.broker_type)
         report.append(
-            f"Market Type:  {market_type.value}")
+            f'Market Type:  {market_type.value}')
         report.append(
             f"Time Range:   {self.start_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
         report.append(
@@ -408,14 +409,14 @@ class DataCoverageReport:
         duration_days = duration.days
         duration_hours = duration.total_seconds() / 3600
         report.append(
-            f"Duration:     {duration_days}d {int(duration_hours % 24)}h")
+            f'Duration:     {duration_days}d {int(duration_hours % 24)}h')
 
         # === SECTION 1b: Data Format Version ===
         report.extend(self._version_spans_section())
 
         # === SECTION 2: Gap Summary ===
         report.append(f"\n{'─'*60}")
-        report.append("GAP ANALYSIS:")
+        report.append('GAP ANALYSIS:')
         report.append(f"{'─'*60}")
         report.append(
             f"✅ Seamless:     {self.gap_counts['seamless']} transitions")
@@ -426,9 +427,9 @@ class DataCoverageReport:
                 f"✅ Holiday:      {self.gap_counts['holiday']} gaps (expected)")
         else:
             report.append(
-                f"   Weekend:      n/a (24/7 market)")
+                '   Weekend:      n/a (24/7 market)')
             report.append(
-                f"   Holiday:      n/a (24/7 market)")
+                '   Holiday:      n/a (24/7 market)')
         report.append(
             f"⚠️  Short:        {self.gap_counts['short']} gaps (< 30 min)")
         report.append(
@@ -446,8 +447,8 @@ class DataCoverageReport:
             last_end = weekend_gaps[-1].gap_end.strftime('%Y-%m-%d')
             report.append(f"\n{'─'*60}")
             report.append(
-                f"✅ WEEKEND GAPS: {len(weekend_gaps)} closures, "
-                f"{total_hours:.0f}h total ({first_start} → {last_end})"
+                f'✅ WEEKEND GAPS: {len(weekend_gaps)} closures, '
+                f'{total_hours:.0f}h total ({first_start} → {last_end})'
             )
 
         # === SECTION 3b: Holiday Gaps (compact summary) ===
@@ -468,28 +469,28 @@ class DataCoverageReport:
 
         if problematic_gaps:
             report.append(f"\n{'─'*60}")
-            report.append("⚠️  GAP DETAILS:")
+            report.append('⚠️  GAP DETAILS:')
             report.append(f"{'─'*60}")
 
             self._attribute_gaps()
 
             for gap in problematic_gaps:
                 report.append(
-                    f"\n{gap.severity_icon} {gap.category.value.upper()} GAP:")
+                    f'\n{gap.severity_icon} {gap.category.value.upper()} GAP:')
 
-                report.append(f"   Type:   {self._gap_location(gap)}")
+                report.append(f'   Type:   {self._gap_location(gap)}')
                 report.append(
                     f"   Start:  {gap.gap_start.strftime('%Y-%m-%d %H:%M:%S')} UTC")
                 report.append(
                     f"   End:    {gap.gap_end.strftime('%Y-%m-%d %H:%M:%S')} UTC")
 
-                report.append(f"   Gap:    {self._gap_extent(gap)}")
+                report.append(f'   Gap:    {self._gap_extent(gap)}')
 
                 trading_loss = self._trading_time_lost(gap)
                 if trading_loss:
-                    report.append(f"   Lost:   {trading_loss}")
+                    report.append(f'   Lost:   {trading_loss}')
 
-                report.append(f"   Reason: {gap.reason}")
+                report.append(f'   Reason: {gap.reason}')
 
         # Show short gaps if present (compact format, capped display)
         short_gaps = [g for g in self.gaps if g.category == GapCategory.SHORT]
@@ -497,7 +498,7 @@ class DataCoverageReport:
             max_display = 20
             report.append(f"\n{'─'*60}")
             report.append(
-                f"ℹ️  SHORT GAPS (< 30 min): {len(short_gaps)} total")
+                f'ℹ️  SHORT GAPS (< 30 min): {len(short_gaps)} total')
             report.append(f"{'─'*60}")
             for gap in short_gaps[:max_display]:
                 report.append(
@@ -506,7 +507,7 @@ class DataCoverageReport:
                 )
             if len(short_gaps) > max_display:
                 report.append(
-                    f"   ... and {len(short_gaps) - max_display} more short gaps"
+                    f'   ... and {len(short_gaps) - max_display} more short gaps'
                 )
 
         # === SECTION 5: Recommendations ===
@@ -514,14 +515,14 @@ class DataCoverageReport:
 
         if recommendations:
             report.append(f"\n{'─'*60}")
-            report.append("💡 RECOMMENDATIONS:")
+            report.append('💡 RECOMMENDATIONS:')
             report.append(f"{'─'*60}")
             for rec in recommendations:
-                report.append(f"   • {rec}")
+                report.append(f'   • {rec}')
         else:
             report.append(
-                f"\n✅ All files form continuous timeline - no action needed!")
+                '\n✅ All files form continuous timeline - no action needed!')
 
         report.append(f"{'='*60}\n")
 
-        return "\n".join(report)
+        return '\n'.join(report)

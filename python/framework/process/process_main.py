@@ -1,19 +1,25 @@
 
 
-from multiprocessing import Queue
 import time
 import traceback
+from multiprocessing import Queue
 from typing import Optional
+
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.process.process_tick_loop import execute_tick_loop
-from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.process.process_startup_preparation import process_startup_preparation
+from python.framework.process.process_tick_loop import execute_tick_loop
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
-from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
+from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
-from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult, ProcessScenarioConfig
-from python.framework.utils.file_utils import file_name_for_scenario, pad_int
+from python.framework.types.process_data_types import (
+    LOGGED_ERRORS_TYPE,
+    ProcessDataPackage,
+    ProcessResult,
+    ProcessScenarioConfig,
+)
+from python.framework.utils.file_utils import file_name_for_scenario
+from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
 
 
 def process_main(
@@ -51,7 +57,7 @@ def process_main(
             run_group=config.run_group,
             use_scenario_logs_subdir=True
         )
-        scenario_logger.info(f"⏱️  Process started at {start_time}")
+        scenario_logger.info(f'⏱️  Process started at {start_time}')
 
         # === STARTUP PREPARATION ===
         (worker_coordinator,
@@ -62,7 +68,7 @@ def process_main(
          ticks) = process_startup_preparation(
             config, shared_data, scenario_logger)
         scenario_logger.debug(
-            f"🔄 Process preparation finished")
+            '🔄 Process preparation finished')
 
         # Component metadata advisory (#118 Stage 0) — version line + soft market-fit warning
         surface_decision_logic_metadata(
@@ -86,7 +92,7 @@ def process_main(
             scenario_logger, ticks, live_queue,
             decision_event_dispatcher)
         scenario_logger.debug(
-            f"🔄 Execute tick loop finished")
+            '🔄 Execute tick loop finished')
 
         # === DIAGNOSTICS CSV (#376) ===
         # Flush algo-declared diagnostics sinks next to events_<scenario>.csv.
@@ -125,8 +131,8 @@ def process_main(
         if len(errors_in_buffer) > 0 and tick_loop_error is None:
             # Logged errors WITHOUT exception
             success = False
-            error_type = "LoggedErrors"
-            error_message = f"Scenario logged {len(errors_in_buffer)} ERROR(s)"
+            error_type = LOGGED_ERRORS_TYPE
+            error_message = f'Scenario logged {len(errors_in_buffer)} ERROR(s)'
             send_status_update_process(
                 live_queue, config, ScenarioStatus.FINISHED_WITH_ERROR)
 
@@ -147,7 +153,7 @@ def process_main(
             traceback=error_traceback
         )
         scenario_logger.debug(
-            f"🕐 {config.name} returning at {time.time()}")
+            f'🕐 {config.name} returning at {time.time()}')
         return result
 
     except Exception as e:

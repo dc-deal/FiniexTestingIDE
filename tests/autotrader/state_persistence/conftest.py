@@ -10,7 +10,9 @@ from typing import Any, Dict, Optional
 
 import pytest
 
-from python.framework.types.config_types.autotrader_defaults_config_types import StatePersistenceDefaults
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    StatePersistenceDefaults,
+)
 
 
 class StubDecisionLogic:

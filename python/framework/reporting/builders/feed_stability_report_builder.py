@@ -17,9 +17,15 @@ from typing import Dict, List, Optional, Tuple
 
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
-    FeedStabilityEpisodeRow, FeedStabilityReport, FeedStabilitySourceRow)
+    FeedStabilityEpisodeRow,
+    FeedStabilityReport,
+    FeedStabilitySourceRow,
+)
 from python.framework.types.disturbance_episode_types import (
-    DisturbanceDomain, DisturbanceEpisode, DisturbanceOrigin)
+    DisturbanceDomain,
+    DisturbanceEpisode,
+    DisturbanceOrigin,
+)
 from python.framework.types.trading_env_types.stress_test_types import StaleDataEvent
 
 # Fallback identity for a signal episode whose unit binds no named source

@@ -11,8 +11,9 @@ Provides:
 """
 
 import re
-from python.framework.types.trading_env_types.currency_codes import format_currency_simple
+
 from python.framework.types.log_level import ColorCodes
+from python.framework.types.trading_env_types.currency_codes import format_currency_simple
 
 
 class ConsoleRenderer:
@@ -35,40 +36,40 @@ class ConsoleRenderer:
 
     def red(self, text: str) -> str:
         """Color text red."""
-        return f"{ColorCodes.RED}{text}{ColorCodes.RESET}"
+        return f'{ColorCodes.RED}{text}{ColorCodes.RESET}'
 
     def yellow(self, text: str) -> str:
         """Color text yellow."""
-        return f"{ColorCodes.YELLOW}{text}{ColorCodes.RESET}"
+        return f'{ColorCodes.YELLOW}{text}{ColorCodes.RESET}'
 
     def blue(self, text: str) -> str:
         """Color text blue."""
-        return f"{ColorCodes.BLUE}{text}{ColorCodes.RESET}"
+        return f'{ColorCodes.BLUE}{text}{ColorCodes.RESET}'
 
     def green(self, text: str) -> str:
         """Color text green."""
-        return f"{ColorCodes.GREEN}{text}{ColorCodes.RESET}"
+        return f'{ColorCodes.GREEN}{text}{ColorCodes.RESET}'
 
     def cyan(self, text: str) -> str:
         """Color text cyan."""
-        return f"{ColorCodes.CYAN}{text}{ColorCodes.RESET}"
+        return f'{ColorCodes.CYAN}{text}{ColorCodes.RESET}'
 
     def gray(self, text: str) -> str:
         """Color text gray."""
-        return f"{ColorCodes.GRAY}{text}{ColorCodes.RESET}"
+        return f'{ColorCodes.GRAY}{text}{ColorCodes.RESET}'
 
     def bold(self, text: str) -> str:
         """Make text bold."""
-        return f"{ColorCodes.BOLD}{text}{ColorCodes.RESET}"
+        return f'{ColorCodes.BOLD}{text}{ColorCodes.RESET}'
 
     def pnl(self, input: float, currency: str):
         """Return colorized P&L string based on value."""
         amount_str = format_currency_simple(input, currency)
 
         if input > 0:
-            return self.green(f"+{amount_str}")
+            return self.green(f'+{amount_str}')
         elif input < 0:
-            return self.red(f"-{amount_str}")
+            return self.red(f'-{amount_str}')
         else:
             return amount_str
 
@@ -76,17 +77,17 @@ class ConsoleRenderer:
     # Section Formatting
     # ============================================
 
-    def section_header(self, title: str, width: int = 60, char: str = "="):
+    def section_header(self, title: str, width: int = 60, char: str = '='):
         """Print section header."""
-        print(f"\n{ColorCodes.BOLD}{char * width}{ColorCodes.RESET}")
-        print(f"{ColorCodes.BOLD}{title.center(width)}{ColorCodes.RESET}")
-        print(f"{ColorCodes.BOLD}{char * width}{ColorCodes.RESET}")
+        print(f'\n{ColorCodes.BOLD}{char * width}{ColorCodes.RESET}')
+        print(f'{ColorCodes.BOLD}{title.center(width)}{ColorCodes.RESET}')
+        print(f'{ColorCodes.BOLD}{char * width}{ColorCodes.RESET}')
 
-    def section_separator(self, width: int = 60, char: str = "-"):
+    def section_separator(self, width: int = 60, char: str = '-'):
         """Print section separator."""
-        print(f"{char * width}")
+        print(f'{char * width}')
 
-    def print_separator(self, width: int = 60, char: str = "-"):
+    def print_separator(self, width: int = 60, char: str = '-'):
         """Print simple separator line."""
         print(char * width)
 

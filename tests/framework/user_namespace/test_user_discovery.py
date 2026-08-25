@@ -12,16 +12,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.factory.worker_factory import WorkerFactory
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.types.worker_types import WorkerRequirement
 from tests.framework.user_namespace.conftest import (
-    write_module,
-    VALID_WORKER_CODE,
-    VALID_LOGIC_CODE,
     NOT_A_WORKER_CODE,
     SYNTAX_ERROR_CODE,
-    IMPORT_ERROR_CODE,
+    VALID_LOGIC_CODE,
+    VALID_WORKER_CODE,
+    write_module,
 )
 
 
@@ -195,22 +195,22 @@ class TestCoreRegistration:
     def test_core_workers_registered(self, mock_logger):
         factory = WorkerFactory(logger=mock_logger)
         for key in ['CORE/rsi', 'CORE/bollinger', 'CORE/ma_trend', 'CORE/macd', 'CORE/obv', 'CORE/heavy_rsi']:
-            assert key in factory._registry, f"Missing: {key}"
+            assert key in factory._registry, f'Missing: {key}'
 
     def test_core_logics_registered(self, mock_logger):
         factory = DecisionLogicFactory(logger=mock_logger)
         for key in ['CORE/simple_consensus', 'CORE/aggressive_trend', 'CORE/cautious_macd']:
-            assert key in factory._registry, f"Missing: {key}"
+            assert key in factory._registry, f'Missing: {key}'
 
     def test_unknown_core_worker_raises(self, mock_logger):
         """Unknown CORE/ reference → ValueError, not a path load attempt."""
         factory = WorkerFactory(logger=mock_logger)
-        with pytest.raises(ValueError, match="Unknown CORE worker"):
+        with pytest.raises(ValueError, match='Unknown CORE worker'):
             factory.resolve_worker_class('CORE/nonexistent_worker')
 
     def test_unknown_core_logic_raises(self, mock_logger):
         factory = DecisionLogicFactory(logger=mock_logger)
-        with pytest.raises(ValueError, match="Unknown CORE decision logic"):
+        with pytest.raises(ValueError, match='Unknown CORE decision logic'):
             factory.resolve_logic_class('CORE/nonexistent_logic')
 
 
@@ -359,9 +359,7 @@ class TestUserAlgoIntegration:
         factory = DecisionLogicFactory(logger=mock_logger)
         try:
             logic_class, source_path = factory._load_path_logic(str(logic_file))
-            assert issubclass(logic_class, factory._registry.get(
-                str(source_path), (logic_class, None)
-            )[0].__bases__[0] if False else logic_class)
+            assert issubclass(logic_class, AbstractDecisionLogic)
             assert source_path == logic_file.resolve()
         except ValueError:
             pytest.skip(f'File {logic_file} is not a valid decision logic')

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from python.configuration.market_config_manager import MarketConfigManager
+from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.autotrader.autotrader_broker_config_setup import create_broker_config
 from python.framework.autotrader.autotrader_warmup_preparator import AutotraderWarmupPreparator
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
@@ -20,7 +21,6 @@ from python.framework.factory.live_trade_executor_factory import build_live_exec
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.process.process_startup_preparation import inject_signal_providers
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
@@ -179,7 +179,7 @@ def setup_pipeline(
         config.strategy_config.get('decision_logic_config', {})
     )
     logger.debug(
-        f"📋 Decision logic requires: {[t.value for t in required_order_types]}"
+        f'📋 Decision logic requires: {[t.value for t in required_order_types]}'
     )
 
     # === Phase 3: Resolve trading model ===
@@ -218,7 +218,7 @@ def setup_pipeline(
         poll_interval_ms=broker_entry.broker_transport.poll_interval_ms,
     )
     logger.info(
-        f"💱 LiveTradeExecutor created: balances={balances}"
+        f'💱 LiveTradeExecutor created: balances={balances}'
     )
 
     # === Phase 5: TradingContext ===
@@ -240,7 +240,7 @@ def setup_pipeline(
         trading_context=trading_context
     )
     workers = list(workers_dict.values())
-    logger.debug(f"✅ Created {len(workers)} workers")
+    logger.debug(f'✅ Created {len(workers)} workers')
 
     # === Phase 6b: Signal Providers (#431/#438, live transport #141 Part 2a) ===
     # A SIGNAL worker resolves against exactly one collaborator and never learns where its
@@ -258,7 +258,7 @@ def setup_pipeline(
             worker.set_signal_provider(SignalDataProvider(
                 SignalSeries(signal_kind=worker.get_consumed_signal_kind(), snapshots=[])))
         logger.info(
-            f"📡 {len(signal_workers)} SIGNAL worker(s) start empty — the live transport fills them")
+            f'📡 {len(signal_workers)} SIGNAL worker(s) start empty — the live transport fills them')
     elif signal_workers:
         names = ', '.join(f"'{w.name}'" for w in signal_workers)
         raise ValueError(
@@ -288,7 +288,7 @@ def setup_pipeline(
         worker_decision_tracking=config.execution.performance_tracking.worker_decision_tracking,
     )
     worker_orchestrator.initialize()
-    logger.debug(f"✅ Orchestrator initialized: {len(workers)} workers")
+    logger.debug(f'✅ Orchestrator initialized: {len(workers)} workers')
 
     trading_api = DecisionTradingApi(
         executor=executor,
@@ -328,8 +328,8 @@ def setup_pipeline(
         strategy=config.clipping_monitor.strategy,
     )
     logger.debug(
-        f"✅ ClippingMonitor: strategy={config.clipping_monitor.strategy}, "
-        f"report_interval={config.clipping_monitor.report_interval_s}s"
+        f'✅ ClippingMonitor: strategy={config.clipping_monitor.strategy}, '
+        f'report_interval={config.clipping_monitor.report_interval_s}s'
     )
 
     return executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor, trading_model, display_label_cache

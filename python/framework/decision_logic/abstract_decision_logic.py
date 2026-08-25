@@ -13,12 +13,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.decision_logic.decision_logic_performance_tracker import (
+    DecisionLogicPerformanceTracker,
+)
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.diagnostics_csv_sink import DiagnosticsCsvSink
-from python.framework.types.component_metadata_types import ComponentMetadata
-from python.framework.decision_logic.decision_logic_performance_tracker import DecisionLogicPerformanceTracker
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
-from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionAwareness, StrategyEvent
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_event_types import (
     DecisionEventType,
     OrderCancelledEvent,
@@ -27,13 +28,23 @@ from python.framework.types.decision_event_types import (
     PartialCloseEvent,
     SessionEndEvent,
 )
+from python.framework.types.decision_logic_types import (
+    AwarenessLevel,
+    Decision,
+    DecisionAwareness,
+    StrategyEvent,
+)
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
+from python.framework.types.parameter_types import (
+    InputParamDef,
+    OutputParamDef,
+    ValidatedParameters,
+)
+from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.persistence_types import RestoreContext
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import OrderResult, OrderType
-from python.framework.types.parameter_types import InputParamDef, OutputParamDef, ValidatedParameters
-from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.validators.parameter_validator import validate_parameters
 
@@ -413,7 +424,7 @@ class AbstractDecisionLogic(ABC):
         self._event_history.append(event)
         self._total_events_emitted += 1
         self.logger.info(
-            f"[EVENT][{level.name}] t={tick_time.isoformat()} {message}"
+            f'[EVENT][{level.name}] t={tick_time.isoformat()} {message}'
         )
 
     def get_event_history(self) -> List[StrategyEvent]:

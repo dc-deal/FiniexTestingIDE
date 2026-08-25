@@ -129,9 +129,9 @@ Two-tier system: **default configs** (`configs/`, version controlled) and **user
 
 ## Sample Data
 
-A sample dataset is available for testing and learning (updated 2026-05-09):
+A sample dataset is available for testing and learning (updated 2026-08-24, 4.29 GB):
 
-**Download:** [download page](http://62.171.169.252/downloads/)
+**Download:** [download page](https://finiex-rag.duckdns.org/downloads/)
 
 ### Installation
 
@@ -141,27 +141,36 @@ Extract the ZIP contents to `data/processed/`:
 data/processed/
 ├── .parquet_tick_index.parquet
 ├── .parquet_bars_index.parquet
+├── .discovery_caches/
 ├── mt5/
 │   ├── ticks/
 │   │   ├── AUDUSD/ ... USDJPY/
 │   └── bars/
-└── kraken_spot/
-    ├── ticks/
-    │   ├── BTCUSD/ ... XRPUSD/
-    └── bars/
+├── kraken_spot/
+│   ├── ticks/
+│   │   ├── BTCUSD/ ... XRPUSD/
+│   └── bars/
+└── signals/
+    ├── .signal_index.parquet
+    └── crypto_sentiment/ ... forex_macro_sentiment/
 ```
 
 ### Dataset Overview
 
 | Broker | Symbols | Time Range | Ticks |
 |--------|---------|------------|-------|
-| MT5 (Forex) | AUDUSD, EURGBP, EURUSD, GBPUSD, NZDUSD, USDCAD, USDCHF, USDJPY | Sep 2025 → May 2026 | ~150M |
-| Kraken Spot | ADAUSD, BTCUSD, DASHUSD, ETHEUR, ETHUSD, LTCUSD, SOLUSD, XRPUSD | Jan → May 2026 | ~16M |
+| MT5 (Forex) | AUDUSD, EURGBP, EURUSD, GBPUSD, NZDUSD, USDCAD, USDCHF, USDJPY | Sep 2025 → Aug 2026 | ~223M |
+| Kraken Spot | ADAUSD, BTCUSD, DASHUSD, ETHEUR, ETHUSD, LTCUSD, SOLUSD, XRPUSD | Jan → Aug 2026 | ~31M |
 
-**Total: ~166M ticks across 16 instruments (8 Forex pairs + 8 Crypto), with auto-rendered M1–D1 bars**
+**Total: ~254M ticks across 16 instruments (8 Forex pairs + 8 Crypto), with auto-rendered M1–D1 bars**
+
+Sentiment signals are included as a separate data source: ~4.9M rows across crypto and
+forex macro sentiment, covering Jan → Aug 2026 (synthetic backfill up to 2026-07-15,
+collected from a live feed afterwards).
 
 > ⚠️ **Data Disclaimer:** The provided dataset consists of historical tick and bar data
-collected locally via MetaTrader 5 and processed into Parquet format.
+collected locally via MetaTrader 5 and the Kraken Spot API and processed into Parquet
+format. The included sentiment signals are partly synthetic.
 
 The data is provided strictly for research, backtesting and
 educational purposes. It is not a licensed market data feed,

@@ -18,7 +18,9 @@ from typing import Any, Dict, Optional
 
 import requests
 
-from python.configuration.autotrader.abstract_broker_config_fetcher import AbstractBrokerConfigFetcher
+from python.configuration.autotrader.abstract_broker_config_fetcher import (
+    AbstractBrokerConfigFetcher,
+)
 from python.framework.logging.scenario_logger import ScenarioLogger
 
 
@@ -82,7 +84,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         Returns:
             Complete broker config dict
         """
-        self._log_info(f"Fetching broker config for {symbol} from Kraken API...")
+        self._log_info(f'Fetching broker config for {symbol} from Kraken API...')
 
         pairs_data = self._fetch_public('/0/public/AssetPairs')
         symbol_config = self._find_symbol_in_pairs(symbol, pairs_data)
@@ -94,7 +96,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             )
 
         config = self._build_full_config(symbol, symbol_config, broker_type)
-        self._log_info(f"✅ Broker config fetched: {symbol}")
+        self._log_info(f'✅ Broker config fetched: {symbol}')
         return config
 
     def fetch_broker_config_with_cache(self, symbol: str, broker_type: str) -> Dict[str, Any]:
@@ -124,9 +126,9 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             cached = _load_json(cache_path)
             if symbol in cached.get('symbols', {}):
                 self._log_info(
-                    f"🗄  Broker config from cache: {broker_type} "
-                    f"({cache_age_days:.0f}d old, refresh in "
-                    f"{_CACHE_REFRESH_DAYS - cache_age_days:.0f}d)"
+                    f'🗄  Broker config from cache: {broker_type} '
+                    f'({cache_age_days:.0f}d old, refresh in '
+                    f'{_CACHE_REFRESH_DAYS - cache_age_days:.0f}d)'
                 )
                 return cached
             # Symbol not in cache yet — fall through to fetch and extend
@@ -143,8 +145,8 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             hash_tag = f' [{config_hash}]' if config_hash else ''
             active_count = sum(1 for s in merged.get('symbols', {}).values() if s.get('_active', True))
             self._log_info(
-                f"💱 Broker config refreshed: {broker_type}{hash_tag} — {active_count} active symbols\n"
-                f"    Cache: {cache_path}"
+                f'💱 Broker config refreshed: {broker_type}{hash_tag} — {active_count} active symbols\n'
+                f'    Cache: {cache_path}'
             )
             return merged
         except Exception as e:
@@ -179,12 +181,12 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         Returns:
             Balance amount, or None if currency not found in account
         """
-        self._log_info(f"Fetching account balance ({currency}) from Kraken API...")
+        self._log_info(f'Fetching account balance ({currency}) from Kraken API...')
 
         try:
             balance_data = self._fetch_private('/0/private/Balance')
         except Exception as e:
-            self._log_warning(f"Balance fetch failed: {e}")
+            self._log_warning(f'Balance fetch failed: {e}')
             return None
 
         # Try Kraken-specific key variants (e.g., USD → ZUSD)
@@ -194,7 +196,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         for key in keys_to_try:
             if key in balance_data:
                 balance = float(balance_data[key])
-                self._log_info(f"✅ Balance: {balance} {currency} (key={key})")
+                self._log_info(f'✅ Balance: {balance} {currency} (key={key})')
                 return balance
 
         self._log_warning(
@@ -218,14 +220,14 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         Returns:
             API result dict
         """
-        url = f"{self._api_base_url}{endpoint}"
+        url = f'{self._api_base_url}{endpoint}'
         response = requests.get(url, params=params, timeout=self.REQUEST_TIMEOUT_S)
         response.raise_for_status()
 
         data = response.json()
         errors = data.get('error', [])
         if errors:
-            raise ConnectionError(f"Kraken API error: {errors}")
+            raise ConnectionError(f'Kraken API error: {errors}')
 
         return data.get('result', {})
 
@@ -244,7 +246,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             data = {}
 
         headers = self._sign_request(endpoint, data)
-        url = f"{self._api_base_url}{endpoint}"
+        url = f'{self._api_base_url}{endpoint}'
 
         response = requests.post(
             url,
@@ -257,7 +259,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         result = response.json()
         errors = result.get('error', [])
         if errors:
-            raise ConnectionError(f"Kraken API error: {errors}")
+            raise ConnectionError(f'Kraken API error: {errors}')
 
         return result.get('result', {})
 
@@ -355,7 +357,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         tick_size = 10 ** (-pair_decimals)
 
         return {
-            'description': f"{base_currency} vs {quote_currency}",
+            'description': f'{base_currency} vs {quote_currency}',
             'base_currency': base_currency,
             'quote_currency': quote_currency,
             'trade_allowed': True,
@@ -709,7 +711,7 @@ def _warn_stale_cache(
         symbols = cached_data.get('symbols', {})
         active_count = sum(1 for s in symbols.values() if s.get('_active', True))
         hash_tag = f' [{config_hash}]' if config_hash else ''
-        symbol_summary = f"{active_count} active symbols{hash_tag}"
+        symbol_summary = f'{active_count} active symbols{hash_tag}'
     except Exception:
         symbol_summary = 'cache unreadable'
 
@@ -718,33 +720,33 @@ def _warn_stale_cache(
     except Exception:
         last_fetched = 'unknown'
 
-    age_label = f"{age_days:.0f} days ago"
+    age_label = f'{age_days:.0f} days ago'
 
     if is_very_stale:
         msg = (
-            f"⚠️  Broker config is {age_days:.0f} days old — symbol specs may be outdated.\n"
-            f"    Cache:   {cache_path}\n"
-            f"    Cached:  {last_fetched} ({age_label}) — STALE (>{_CACHE_STALE_WARN_DAYS} days)\n"
-            f"    Config:  {symbol_summary}\n"
-            f"    Reason:  {error}\n"
-            f"\n"
-            f"    Risk:    Volume limits, tick sizes, or listed symbols may have changed.\n"
-            f"             Delisted symbols will continue trading on outdated specs.\n"
-            f"    Fix:     Ensure internet / API access and restart to force a refresh.\n"
-            f"\n"
-            f"    Static seed (for manual inspection and git-tracked reference):\n"
-            f"    configs/brokers/kraken/kraken_spot_broker_config.json\n"
-            f"    (sync and commit after a successful cache refresh)"
+            f'⚠️  Broker config is {age_days:.0f} days old — symbol specs may be outdated.\n'
+            f'    Cache:   {cache_path}\n'
+            f'    Cached:  {last_fetched} ({age_label}) — STALE (>{_CACHE_STALE_WARN_DAYS} days)\n'
+            f'    Config:  {symbol_summary}\n'
+            f'    Reason:  {error}\n'
+            f'\n'
+            f'    Risk:    Volume limits, tick sizes, or listed symbols may have changed.\n'
+            f'             Delisted symbols will continue trading on outdated specs.\n'
+            f'    Fix:     Ensure internet / API access and restart to force a refresh.\n'
+            f'\n'
+            f'    Static seed (for manual inspection and git-tracked reference):\n'
+            f'    configs/brokers/kraken/kraken_spot_broker_config.json\n'
+            f'    (sync and commit after a successful cache refresh)'
         )
     else:
         msg = (
-            f"⚠️  Could not refresh broker config — using cached version.\n"
-            f"    Cache:   {cache_path}\n"
-            f"    Cached:  {last_fetched} ({age_label}) — within acceptable range\n"
-            f"    Config:  {symbol_summary}\n"
-            f"    Reason:  {error}\n"
-            f"    Next:    A fresh fetch will be attempted on your next session start.\n"
-            f"             To force a refresh: ensure API access and restart."
+            f'⚠️  Could not refresh broker config — using cached version.\n'
+            f'    Cache:   {cache_path}\n'
+            f'    Cached:  {last_fetched} ({age_label}) — within acceptable range\n'
+            f'    Config:  {symbol_summary}\n'
+            f'    Reason:  {error}\n'
+            f'    Next:    A fresh fetch will be attempted on your next session start.\n'
+            f'             To force a refresh: ensure API access and restart.'
         )
 
     if logger:

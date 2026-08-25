@@ -8,10 +8,11 @@ Placed before Executive Summary in batch output. Thin presenter over the model
 GOOD/MODERATE/HIGH/UNRELIABLE display class is applied here.
 """
 
-from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import (
+    AbstractBatchSummarySection,
+)
 from python.framework.types.api.report_types import BlockSplittingReport
 from python.framework.utils.console_renderer import ConsoleRenderer
-
 
 # ============================================================================
 # Assessment Thresholds (display class)
@@ -60,25 +61,25 @@ class BlockSplittingDisposition(AbstractBatchSummarySection):
 
             # Header line per symbol
             print(renderer.bold(
-                f"  {disp.symbol} ({mode_short}, {disp.block_count} blocks):"
+                f'  {disp.symbol} ({mode_short}, {disp.block_count} blocks):'
             ))
 
             # Force-close stats
-            fc_ratio_str = f"{disp.force_close_ratio:.1f}%"
+            fc_ratio_str = f'{disp.force_close_ratio:.1f}%'
             print(
-                f"    Force-closed: {disp.force_closed_trades}/{disp.total_trades} "
-                f"({fc_ratio_str})  |  "
-                f"Force-close P&L: {disp.force_closed_pnl:+.2f}"
+                f'    Force-closed: {disp.force_closed_trades}/{disp.total_trades} '
+                f'({fc_ratio_str})  |  '
+                f'Force-close P&L: {disp.force_closed_pnl:+.2f}'
             )
 
             # Pending orders (only if any)
             if disp.discarded_pending_orders > 0:
                 print(
-                    f"    Discarded pending orders: {disp.discarded_pending_orders}"
+                    f'    Discarded pending orders: {disp.discarded_pending_orders}'
                 )
 
             # Disposition assessment
-            print(f"    Disposition: {self._format_assessment(disp.disposition_pct, renderer)}")
+            print(f'    Disposition: {self._format_assessment(disp.disposition_pct, renderer)}')
             print()
 
         # Aggregate disposition (if multiple symbols)
@@ -97,9 +98,9 @@ class BlockSplittingDisposition(AbstractBatchSummarySection):
 
         renderer.print_separator(width=60, char='─')
         print(renderer.bold(
-            f"  Aggregate: {self._report.agg_force_closed_trades}/{self._report.agg_total_trades} "
-            f"force-closed ({self._report.agg_force_close_ratio:.1f}%)  |  "
-            f"Disposition: {agg_pct:.1f}% {label}"
+            f'  Aggregate: {self._report.agg_force_closed_trades}/{self._report.agg_total_trades} '
+            f'force-closed ({self._report.agg_force_close_ratio:.1f}%)  |  '
+            f'Disposition: {agg_pct:.1f}% {label}'
         ))
 
     def _format_assessment(self, pct: float, renderer: ConsoleRenderer) -> str:
@@ -113,7 +114,7 @@ class BlockSplittingDisposition(AbstractBatchSummarySection):
         Returns:
             Formatted string like "14.6% ⚠️ MODERATE"
         """
-        return f"{pct:.1f}% {self._assessment_label(pct, renderer)}"
+        return f'{pct:.1f}% {self._assessment_label(pct, renderer)}'
 
     def _assessment_label(self, pct: float, renderer: ConsoleRenderer) -> str:
         """

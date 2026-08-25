@@ -6,6 +6,8 @@ The import pipeline converts JSON tick exports from data collectors into optimiz
 
 **Related**: [tick_collector_guide.md](tick_collector_guide.md) — MQL5 collector usage, JSON schema, error classification.
 
+**Scope — this doc covers the TICK path only.** Signal data (LLM sentiment envelopes, JSONL → parquet) has its own importer with its own duplicate rule; see [signal_data_source.md](signal_data_source.md).
+
 **Flow:**
 ```
 Data Collectors (JSON)

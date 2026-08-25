@@ -18,7 +18,6 @@ import pytest
 
 from python.framework.types.trading_env_types.order_types import (
     OrderResult,
-    OrderStatus,
     RejectionReason,
 )
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
@@ -28,7 +27,6 @@ from tests.shared.fixture_helpers import (
     extract_tick_loop_results,
     run_scenario,
 )
-
 
 # =============================================================================
 # COOLDOWN SCENARIO
@@ -68,8 +66,8 @@ class TestRejectionCooldown:
             if r.rejection_reason == RejectionReason.INSUFFICIENT_MARGIN
         ]
         assert len(margin_rejections) >= 1, (
-            f"Expected at least 1 INSUFFICIENT_MARGIN rejection to arm "
-            f"cooldown (threshold=1), got {len(margin_rejections)}"
+            f'Expected at least 1 INSUFFICIENT_MARGIN rejection to arm '
+            f'cooldown (threshold=1), got {len(margin_rejections)}'
         )
 
     def test_cooldown_rejection_present(
@@ -82,8 +80,8 @@ class TestRejectionCooldown:
             if r.rejection_reason == RejectionReason.REJECTION_COOLDOWN
         ]
         assert len(cooldown_rejections) >= 1, (
-            f"Expected at least 1 REJECTION_COOLDOWN rejection, "
-            f"got {len(cooldown_rejections)}"
+            f'Expected at least 1 REJECTION_COOLDOWN rejection, '
+            f'got {len(cooldown_rejections)}'
         )
 
     def test_cooldown_rejection_is_guard_sourced(
@@ -94,7 +92,7 @@ class TestRejectionCooldown:
         for result in cooldown_order_history:
             if result.rejection_reason == RejectionReason.REJECTION_COOLDOWN:
                 assert result.order_id.startswith('guard_'), (
-                    f"Cooldown rejection has wrong id prefix: {result.order_id}"
+                    f'Cooldown rejection has wrong id prefix: {result.order_id}'
                 )
 
     def test_execution_stats_counts_all_rejections(
@@ -103,6 +101,6 @@ class TestRejectionCooldown:
     ):
         """orders_rejected must include both broker and guard rejections."""
         assert cooldown_execution_stats.orders_rejected >= 2, (
-            f"Expected >= 2 rejections (1 broker + 1 guard), "
-            f"got {cooldown_execution_stats.orders_rejected}"
+            f'Expected >= 2 rejections (1 broker + 1 guard), '
+            f'got {cooldown_execution_stats.orders_rejected}'
         )

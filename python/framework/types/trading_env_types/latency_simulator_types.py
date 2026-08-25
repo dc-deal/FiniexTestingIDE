@@ -30,8 +30,8 @@ class PendingOrderAction(StrEnum):
     OPEN: New position order
     CLOSE: Close existing position order
     """
-    OPEN = "open"
-    CLOSE = "close"
+    OPEN = 'open'
+    CLOSE = 'close'
 
 
 class PendingOrderOutcome(StrEnum):
@@ -43,10 +43,10 @@ class PendingOrderOutcome(StrEnum):
     TIMED_OUT: Broker did not respond within timeout threshold (live only)
     FORCE_CLOSED: Forcefully resolved at scenario end (orders still in queue)
     """
-    FILLED = "filled"
-    REJECTED = "rejected"
-    TIMED_OUT = "timed_out"
-    FORCE_CLOSED = "force_closed"
+    FILLED = 'filled'
+    REJECTED = 'rejected'
+    TIMED_OUT = 'timed_out'
+    FORCE_CLOSED = 'force_closed'
 
 
 class PendingOperation(StrEnum):
@@ -64,10 +64,10 @@ class PendingOperation(StrEnum):
     PENDING_MODIFY: Modify dispatched, awaiting next-tick resolve / drain
     PENDING_CANCEL: Cancel dispatched, awaiting next-tick resolve / drain
     """
-    NONE = "none"
-    PENDING_SUBMIT = "submit"
-    PENDING_MODIFY = "modify"
-    PENDING_CANCEL = "cancel"
+    NONE = 'none'
+    PENDING_SUBMIT = 'submit'
+    PENDING_MODIFY = 'modify'
+    PENDING_CANCEL = 'cancel'
 
 
 @dataclass

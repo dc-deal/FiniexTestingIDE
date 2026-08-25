@@ -33,7 +33,7 @@ class ArtificialDuplicateException(DataQualityException):
 
     def __init__(self, report: DuplicateReport):
         self.report = report
-        super().__init__(f"\n\n{report.get_detailed_report()}")
+        super().__init__(f'\n\n{report.get_detailed_report()}')
 
 
 class TickFileValidationException(DataQualityException):
@@ -49,7 +49,7 @@ class TickFileValidationException(DataQualityException):
 
     def __init__(self, result: TickFileValidationResult):
         self.result = result
-        super().__init__(f"\n\n{result.get_full_report()}")
+        super().__init__(f'\n\n{result.get_full_report()}')
 
 
 class InvalidDataModeException(DataQualityException):

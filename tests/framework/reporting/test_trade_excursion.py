@@ -14,7 +14,6 @@ import pytest
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.trading_env_types.order_types import OrderDirection
 
-
 _T = datetime(2025, 10, 13, tzinfo=timezone.utc)
 
 

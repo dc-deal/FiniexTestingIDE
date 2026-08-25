@@ -165,36 +165,36 @@ class ImportJsonSchema(TypedDict):
 
 # Fields that MUST be present in metadata for a valid import
 MANDATORY_METADATA_FIELDS: List[str] = [
-    "symbol",
-    "start_time",
+    'symbol',
+    'start_time',
 ]
 
 # At least one of these must be present (broker identification)
 BROKER_IDENTIFICATION_FIELDS: List[str] = [
-    "broker_type",
-    "data_collector",
+    'broker_type',
+    'data_collector',
 ]
 
 # Fields that MUST be present in each tick entry
 MANDATORY_TICK_FIELDS: List[str] = [
-    "timestamp",
-    "bid",
-    "ask",
+    'timestamp',
+    'bid',
+    'ask',
 ]
 
 # Nested metadata keys that are stored as JSON strings in Parquet
 NESTED_METADATA_KEYS: List[str] = [
-    "symbol_info",
-    "collection_settings",
-    "error_tracking",
+    'symbol_info',
+    'collection_settings',
+    'error_tracking',
 ]
 
 # Metadata keys already captured at top level in Parquet header
 # (skipped during source_meta_ prefix passthrough to avoid duplication)
 ALREADY_CAPTURED_METADATA_KEYS: List[str] = [
-    "symbol",
-    "broker",
-    "ticks",
+    'symbol',
+    'broker',
+    'ticks',
 ]
 
 

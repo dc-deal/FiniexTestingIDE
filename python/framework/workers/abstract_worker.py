@@ -6,13 +6,17 @@ Base class for all worker implementations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Set
 
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.parameter_types import InputParamDef, OutputParamDef, ValidatedParameters
+from python.framework.types.parameter_types import (
+    InputParamDef,
+    OutputParamDef,
+    ValidatedParameters,
+)
+from python.framework.types.worker_types import WorkerResult, WorkerState, WorkerType
 from python.framework.validators.parameter_validator import validate_parameters
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
-from python.framework.types.worker_types import WorkerResult, WorkerState, WorkerType
-from python.framework.logging.scenario_logger import ScenarioLogger
 
 
 class AbstractWorker(ABC):
@@ -27,9 +31,9 @@ class AbstractWorker(ABC):
 
     # Type-specific required config fields
     REQUIRED_CONFIG_FIELDS = {
-        WorkerType.INDICATOR: ["periods"],
-        WorkerType.API: ["endpoints"],      # Post-V1
-        WorkerType.EVENT: ["subscriptions"]  # Post-V1
+        WorkerType.INDICATOR: ['periods'],
+        WorkerType.API: ['endpoints'],      # Post-V1
+        WorkerType.EVENT: ['subscriptions']  # Post-V1
     }
 
     def __init__(

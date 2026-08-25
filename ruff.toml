@@ -42,5 +42,9 @@ inline-quotes = "single"
 docstring-quotes = "double"
 
 [lint.per-file-ignores]
-# Test files legitimately import fixtures they do not reference by name.
-"tests/**/conftest.py" = ["F401"]
+# F401 is NEVER auto-fixable in the test tree. A suite directory collects shared test
+# classes by IMPORTING them (`from tests.shared.shared_x import TestY`) — the import IS
+# the collection mechanism, and it looks exactly like an unused import. Removing those
+# deleted 226 tests on 2026-08-24 while the suite stayed green, because the tests were
+# gone rather than failing. conftest fixtures are the same shape.
+"tests/**" = ["F401"]

@@ -15,11 +15,8 @@ Covers:
 - ClippingStats correctness
 """
 
-import pytest
 
-from python.framework.types.process_data_types import ClippingStats
-from tests.data.tick_processing_budget.conftest import make_tick, make_scenario_ticks
-
+from tests.data.tick_processing_budget.conftest import make_scenario_ticks, make_tick
 
 SYMBOL = 'BTCUSD'
 

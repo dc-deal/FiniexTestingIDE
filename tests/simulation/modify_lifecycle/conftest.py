@@ -8,7 +8,6 @@ subsequent ticks with controlled msc values.
 """
 
 from datetime import datetime, timezone
-from typing import Optional
 
 import pytest
 

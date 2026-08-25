@@ -40,4 +40,4 @@ def test_apply_overrides_tags_scenario_set_name():
     """The label is appended to scenario_set_name → unique run dir per combination."""
     base = ScenarioConfigLoader().load_config(_BASE_SET)
     cfg = apply_overrides(base, {}, '__sweep_20260101_c003')
-    assert cfg.scenario_set_name == f"{base.scenario_set_name}__sweep_20260101_c003"
+    assert cfg.scenario_set_name == f'{base.scenario_set_name}__sweep_20260101_c003'

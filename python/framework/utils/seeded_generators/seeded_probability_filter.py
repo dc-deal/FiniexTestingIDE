@@ -27,7 +27,7 @@ class SeededProbabilityFilter:
     def __init__(self, seed: int, probability: float):
         if not 0.0 <= probability <= 1.0:
             raise ValueError(
-                f"Probability must be between 0.0 and 1.0, got {probability}"
+                f'Probability must be between 0.0 and 1.0, got {probability}'
             )
         self._rng = random.Random(seed)
         self._probability = probability

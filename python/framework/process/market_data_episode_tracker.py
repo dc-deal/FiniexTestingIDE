@@ -18,7 +18,11 @@ from typing import List, Optional
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.disturbance_episode_types import (
-    DisturbanceDomain, DisturbanceEpisode, DisturbanceOrigin, MarketDataTickStats)
+    DisturbanceDomain,
+    DisturbanceEpisode,
+    DisturbanceOrigin,
+    MarketDataTickStats,
+)
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.utils.time_utils import format_duration
 

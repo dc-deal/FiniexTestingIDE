@@ -23,10 +23,12 @@ Divergence vocabulary:
 
 import time
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.types.config_types.autotrader_defaults_config_types import ReconciliationDefaults
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    ReconciliationDefaults,
+)
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.reconciliation_types import (
     BrokerOrder,
@@ -96,8 +98,8 @@ class Reconciler:
         self._state_since: float = time.monotonic()  # when the current clean/divergent state began
 
         self._logger.info(
-            f"🔍 Reconciler active (ALERT_ONLY) — cadence: every {config.interval_ticks} ticks "
-            f"or {config.min_interval_seconds}s | model={trading_model.value}"
+            f'🔍 Reconciler active (ALERT_ONLY) — cadence: every {config.interval_ticks} ticks '
+            f'or {config.min_interval_seconds}s | model={trading_model.value}'
         )
 
     # ============================================
@@ -148,10 +150,10 @@ class Reconciler:
         # cycle logs a concise INFO line so the poll is visible in the session log.
         if result.is_clean:
             skipped = sum(1 for o in local_orders if not self._is_reconcilable_ref(o.broker_ref))
-            skipped_note = f" ({skipped} dry-run/in-flight skipped)" if skipped else ""
+            skipped_note = f' ({skipped} dry-run/in-flight skipped)' if skipped else ''
             self._logger.info(
-                f"🔍 reconcile #{self._reconcile_count}: clean — "
-                f"broker_orders={len(broker_orders)} local_orders={len(local_orders)}{skipped_note}"
+                f'🔍 reconcile #{self._reconcile_count}: clean — '
+                f'broker_orders={len(broker_orders)} local_orders={len(local_orders)}{skipped_note}'
             )
 
         self._last_reconcile_tick = current_tick
@@ -346,12 +348,12 @@ class Reconciler:
 
         self._divergence_count += n   # cumulative session total (final summary)
         self._logger.warning(
-            f"[RECONCILE] {n} divergence(s) detected (ALERT_ONLY)\n"
-            f"   orders     ghost={len(result.ghost_orders)} "
-            f"orphan={len(result.orphan_orders)} stale={len(result.stale_orders)}\n"
-            f"   positions  ghost={len(result.ghost_positions)} "
-            f"orphan={len(result.orphan_positions)} stale={len(result.stale_positions)}\n"
-            f"   partial_fills={len(result.partial_fills)} (observed, not a divergence)"
+            f'[RECONCILE] {n} divergence(s) detected (ALERT_ONLY)\n'
+            f'   orders     ghost={len(result.ghost_orders)} '
+            f'orphan={len(result.orphan_orders)} stale={len(result.stale_orders)}\n'
+            f'   positions  ghost={len(result.ghost_positions)} '
+            f'orphan={len(result.orphan_positions)} stale={len(result.stale_positions)}\n'
+            f'   partial_fills={len(result.partial_fills)} (observed, not a divergence)'
         )
 
     # ============================================
@@ -445,6 +447,6 @@ class Reconciler:
     def shutdown(self) -> None:
         """Emit a final one-line reconciliation summary to the session log."""
         self._logger.info(
-            f"🔍 Reconciliation final: {self._reconcile_count} cycles | "
-            f"{self._divergence_count} total divergence(s) (ALERT_ONLY)"
+            f'🔍 Reconciliation final: {self._reconcile_count} cycles | '
+            f'{self._divergence_count} total divergence(s) (ALERT_ONLY)'
         )

@@ -17,6 +17,7 @@ import pandas as pd
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
+
 vLog = get_global_logger()
 
 
@@ -88,7 +89,7 @@ class VectorizedBarRenderer:
             Dict[timeframe, DataFrame] - Bars for each timeframe
         """
         self._log('info',
-            f"🔧 Rendering bars for {self.symbol} from {len(ticks_df):,} ticks")
+            f'🔧 Rendering bars for {self.symbol} from {len(ticks_df):,} ticks')
 
         # Prepare tick data for resampling
         prepared_df = self._prepare_ticks_for_resampling(ticks_df)
@@ -96,12 +97,12 @@ class VectorizedBarRenderer:
         # Render all timeframes
         all_bars = {}
         for timeframe in self._resample_rules.keys():
-            self._log('debug', f"  ├─ Rendering {timeframe}...")
+            self._log('debug', f'  ├─ Rendering {timeframe}...')
             bars_df = self._render_single_timeframe(prepared_df, timeframe)
             all_bars[timeframe] = bars_df
-            self._log('info', f"  ├─ {timeframe}: {len(bars_df):,} bars rendered")
+            self._log('info', f'  ├─ {timeframe}: {len(bars_df):,} bars rendered')
 
-        self._log('info', f"✅ All timeframes rendered for {self.symbol}")
+        self._log('info', f'✅ All timeframes rendered for {self.symbol}')
         return all_bars
 
     def _prepare_ticks_for_resampling(self, ticks_df: pd.DataFrame) -> pd.DataFrame:

@@ -15,16 +15,15 @@ Usage:
 """
 
 from pathlib import Path
-from typing import Dict, Optional, Any
-import json
+from typing import Any, Dict, Optional
 
 import pandas as pd
 import pyarrow.parquet as pq
 
-from python.data_management.index.tick_index_manager import TickIndexManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-
+from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.logging.bootstrap_logger import get_global_logger
+
 vLog = get_global_logger()
 
 
@@ -42,7 +41,7 @@ class DataInspector:
     # Skip arrow metadatakeys (example:
     # Arrow scema is a serialized flatbuffer, so you don't want to read this.)
     SKIP_KEYS = {
-        "ARROW:schema",
+        'ARROW:schema',
     }
 
     def __init__(
@@ -149,7 +148,7 @@ class DataInspector:
 
         if not bar_file:
             return {
-                'error': f"Bar file not found for {broker_type}/{symbol} {timeframe}",
+                'error': f'Bar file not found for {broker_type}/{symbol} {timeframe}',
                 'broker_type': broker_type,
                 'symbol': symbol,
                 'timeframe': timeframe
@@ -241,18 +240,18 @@ class DataInspector:
             return
 
         # Header
-        vLog.info("\n" + "=" * 80)
+        vLog.info('\n' + '=' * 80)
         if result['data_type'] == 'ticks':
             vLog.info(
                 f"🔍 TICK DATA INSPECTION: {result['broker_type']}/{result['symbol']}")
         else:
             vLog.info(
                 f"🔍 BAR DATA INSPECTION: {result['broker_type']}/{result['symbol']} {result['timeframe']}")
-        vLog.info("=" * 80)
+        vLog.info('=' * 80)
 
         # File statistics
         stats = result['stats']
-        vLog.info(f"\n📁 File Information:")
+        vLog.info('\n📁 File Information:')
         vLog.info(f"   File:       {stats['file_name']}")
         vLog.info(f"   Size:       {stats['file_size_mb']:.2f} MB")
         if result['data_type'] == 'ticks':
@@ -264,21 +263,21 @@ class DataInspector:
             f"   Time Range: {stats['start_time']} → {stats['end_time']}")
 
         # Parquet metadata
-        vLog.info(f"\n📋 Parquet Metadata:")
+        vLog.info('\n📋 Parquet Metadata:')
         metadata = result['metadata']
         for key, value in sorted(metadata.items()):
             if key in self.SKIP_KEYS:
                 continue
-            vLog.info(f"   {key:30s} = {value}")
+            vLog.info(f'   {key:30s} = {value}')
 
         # Schema
-        vLog.info(f"\n🔧 Schema:")
+        vLog.info('\n🔧 Schema:')
         schema = result['schema']
         for col_name, col_type in schema.items():
-            vLog.info(f"   {col_name:30s} : {col_type}")
+            vLog.info(f'   {col_name:30s} : {col_type}')
 
         # Sample rows
-        vLog.info(f"\n📊 Sample Data (first 10 rows):")
+        vLog.info('\n📊 Sample Data (first 10 rows):')
         sample_df = result['sample_rows']
 
         # Format DataFrame for display
@@ -286,6 +285,6 @@ class DataInspector:
         pd.set_option('display.width', None)
         pd.set_option('display.max_colwidth', 30)
 
-        vLog.info("\n" + sample_df.to_string())
+        vLog.info('\n' + sample_df.to_string())
 
-        vLog.info("\n" + "=" * 80 + "\n")
+        vLog.info('\n' + '=' * 80 + '\n')

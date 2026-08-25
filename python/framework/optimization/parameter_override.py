@@ -48,7 +48,7 @@ def apply_overrides(
         A new LoadedScenarioConfig with the combination's parameters applied
     """
     cfg = copy.deepcopy(base)
-    cfg.scenario_set_name = f"{base.scenario_set_name}{label}"
+    cfg.scenario_set_name = f'{base.scenario_set_name}{label}'
     for scenario in cfg.scenarios:
         for dotted_path, value in combo.items():
             set_by_path(scenario.strategy_config, dotted_path, value)

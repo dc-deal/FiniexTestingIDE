@@ -10,7 +10,6 @@ from typing import List, Optional
 from python.framework.exceptions.signal_data_errors import SignalSchemaError
 from python.framework.types.signal_data_types import SignalSeries, SignalSnapshot
 
-
 # Major schema versions this reader understands. A line with an unlisted major may
 # carry a changed result structure → SignalSchemaError.
 #

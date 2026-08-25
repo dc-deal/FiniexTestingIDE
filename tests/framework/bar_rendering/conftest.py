@@ -7,13 +7,12 @@ cases, boundary crossings, gaps, and all timeframes.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List
+from typing import List
 
 import pandas as pd
 import pytest
 
 from python.framework.types.market_types.market_data_types import TickData
-
 
 # =============================================================================
 # SYNTHETIC TICK GENERATORS

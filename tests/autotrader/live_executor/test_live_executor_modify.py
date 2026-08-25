@@ -11,16 +11,15 @@ Tests modify_limit_order() via broker adapter:
 Uses DELAYED_FILL mode so orders stay in pending (broker_ref tracked).
 """
 
-from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
+from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
-from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.trading_env_types.order_types import (
-    OrderType,
-    OrderDirection,
-    OrderStatus,
     ModificationRejectionReason,
     ModificationStatus,
     OpenOrderRequest,
+    OrderDirection,
+    OrderStatus,
+    OrderType,
 )
 
 
@@ -39,7 +38,7 @@ class TestModifyLimitOrderSuccess:
 
         # Submit LIMIT order — async, broker_ref still None
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         assert result.status == OrderStatus.PENDING
@@ -61,7 +60,7 @@ class TestModifyLimitOrderSuccess:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
@@ -80,7 +79,7 @@ class TestModifyLimitOrderSuccess:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
@@ -102,7 +101,7 @@ class TestModifyLimitOrderNotFound:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         mod_result = executor_delayed.modify_limit_order(
-            order_id="NONEXISTENT-ORDER", new_price=51000.0)
+            order_id='NONEXISTENT-ORDER', new_price=51000.0)
 
         assert mod_result.success is False
         assert mod_result.rejection_reason == ModificationRejectionReason.LIMIT_ORDER_NOT_FOUND
@@ -112,7 +111,7 @@ class TestModifyLimitOrderNotFound:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
@@ -141,7 +140,7 @@ class TestModifyLimitOrderBrokerRejection:
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
         result = executor.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
@@ -174,7 +173,7 @@ class TestModifyLimitOrderAdapterException:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=49000.0
         ))
         order_id = result.order_id
@@ -184,7 +183,7 @@ class TestModifyLimitOrderAdapterException:
         # Monkey-patch adapter's Tier-3 _do_request_modify to raise.
         # Worker catches it and surfaces as REJECTED EditResponse via inbox.
         def raise_on_modify(*args, **kwargs):
-            raise ConnectionError("Broker connection lost")
+            raise ConnectionError('Broker connection lost')
 
         executor_delayed.broker.adapter._do_request_modify = raise_on_modify
 
@@ -208,56 +207,56 @@ class TestGetBrokerRefReverseLookup:
     def test_get_broker_ref_returns_ref(self, request_processor):
         """get_broker_ref() returns broker_ref for known order_id."""
         request_processor.register_pending_open(
-            order_id="ORD-100",
-            symbol="BTCUSD",
+            order_id='ORD-100',
+            symbol='BTCUSD',
             direction=OrderDirection.LONG,
             lots=0.001,
-            broker_ref="MOCK-000100",
+            broker_ref='MOCK-000100',
         )
 
-        broker_ref = request_processor.get_broker_ref("ORD-100")
-        assert broker_ref == "MOCK-000100"
+        broker_ref = request_processor.get_broker_ref('ORD-100')
+        assert broker_ref == 'MOCK-000100'
 
     def test_get_broker_ref_unknown_returns_none(self, request_processor):
         """get_broker_ref() returns None for unknown order_id."""
-        broker_ref = request_processor.get_broker_ref("NONEXISTENT")
+        broker_ref = request_processor.get_broker_ref('NONEXISTENT')
         assert broker_ref is None
 
     def test_get_broker_ref_after_fill_returns_none(self, request_processor):
         """get_broker_ref() returns None after order is filled (removed from index)."""
         request_processor.register_pending_open(
-            order_id="ORD-101",
-            symbol="BTCUSD",
+            order_id='ORD-101',
+            symbol='BTCUSD',
             direction=OrderDirection.LONG,
             lots=0.001,
-            broker_ref="MOCK-000101",
+            broker_ref='MOCK-000101',
         )
 
         request_processor.mark_filled(
-            broker_ref="MOCK-000101",
+            broker_ref='MOCK-000101',
             fill_price=50000.0,
             filled_lots=0.001,
         )
 
-        broker_ref = request_processor.get_broker_ref("ORD-101")
+        broker_ref = request_processor.get_broker_ref('ORD-101')
         assert broker_ref is None
 
     def test_get_broker_ref_multiple_orders(self, request_processor):
         """get_broker_ref() returns correct ref when multiple orders tracked."""
         request_processor.register_pending_open(
-            order_id="ORD-102",
-            symbol="BTCUSD",
+            order_id='ORD-102',
+            symbol='BTCUSD',
             direction=OrderDirection.LONG,
             lots=0.001,
-            broker_ref="MOCK-000102",
+            broker_ref='MOCK-000102',
         )
         request_processor.register_pending_open(
-            order_id="ORD-103",
-            symbol="BTCUSD",
+            order_id='ORD-103',
+            symbol='BTCUSD',
             direction=OrderDirection.SHORT,
             lots=0.002,
-            broker_ref="MOCK-000103",
+            broker_ref='MOCK-000103',
         )
 
-        assert request_processor.get_broker_ref("ORD-102") == "MOCK-000102"
-        assert request_processor.get_broker_ref("ORD-103") == "MOCK-000103"
+        assert request_processor.get_broker_ref('ORD-102') == 'MOCK-000102'
+        assert request_processor.get_broker_ref('ORD-103') == 'MOCK-000103'

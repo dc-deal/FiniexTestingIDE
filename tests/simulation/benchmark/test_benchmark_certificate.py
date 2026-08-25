@@ -16,13 +16,13 @@ Usage locally (run full benchmark):
 """
 
 import json
-import pytest
-from pathlib import Path
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+from pathlib import Path
+from typing import Any, Dict, Optional
 
+import pytest
 
-BENCHMARK_REPORTS_DIR = Path(__file__).parent / "reports"
+BENCHMARK_REPORTS_DIR = Path(__file__).parent / 'reports'
 
 
 def _find_latest_report() -> Optional[Path]:
@@ -35,7 +35,7 @@ def _find_latest_report() -> Optional[Path]:
     if not BENCHMARK_REPORTS_DIR.exists():
         return None
 
-    reports = list(BENCHMARK_REPORTS_DIR.glob("benchmark_report_*.json"))
+    reports = list(BENCHMARK_REPORTS_DIR.glob('benchmark_report_*.json'))
 
     if not reports:
         return None
@@ -49,7 +49,7 @@ def _find_latest_report() -> Optional[Path]:
             with open(report_path, 'r') as f:
                 report = json.load(f)
 
-            timestamp_str = report.get("timestamp")
+            timestamp_str = report.get('timestamp')
             if timestamp_str:
                 timestamp = datetime.fromisoformat(timestamp_str)
                 if latest_timestamp is None or timestamp > latest_timestamp:
@@ -105,15 +105,15 @@ class TestBenchmarkCertificate:
 
         if latest_report is None:
             pytest.skip(
-                f"No benchmark report found in {BENCHMARK_REPORTS_DIR}\n"
-                f"\n"
-                f"To generate a benchmark report:\n"
-                f"1. Run: pytest tests/simulation/benchmark/test_throughput_regression.py -v\n"
-                f"2. Commit the generated report file\n"
-                f"3. Re-run this test"
+                f'No benchmark report found in {BENCHMARK_REPORTS_DIR}\n'
+                f'\n'
+                f'To generate a benchmark report:\n'
+                f'1. Run: pytest tests/simulation/benchmark/test_throughput_regression.py -v\n'
+                f'2. Commit the generated report file\n'
+                f'3. Re-run this test'
             )
 
-        print(f"\n✅ Found report: {latest_report.name}")
+        print(f'\n✅ Found report: {latest_report.name}')
 
     def test_report_not_expired(self):
         """
@@ -125,11 +125,11 @@ class TestBenchmarkCertificate:
         latest_report = _find_latest_report()
 
         if latest_report is None:
-            pytest.skip("No report found - see test_report_exists")
+            pytest.skip('No report found - see test_report_exists')
 
         report = _load_report(latest_report)
 
-        valid_until_str = report.get("valid_until")
+        valid_until_str = report.get('valid_until')
         assert valid_until_str, "Report missing 'valid_until' field"
 
         valid_until = datetime.fromisoformat(valid_until_str)
@@ -155,8 +155,8 @@ class TestBenchmarkCertificate:
             f"3. Push to trigger CI again"
         )
 
-        print(f"\n✅ Report valid for {days_remaining} more days")
-        print(f"   Expires: {valid_until_str}")
+        print(f'\n✅ Report valid for {days_remaining} more days')
+        print(f'   Expires: {valid_until_str}')
 
     def test_report_passed(self):
         """
@@ -169,46 +169,46 @@ class TestBenchmarkCertificate:
         latest_report = _find_latest_report()
 
         if latest_report is None:
-            pytest.skip("No report found - see test_report_exists")
+            pytest.skip('No report found - see test_report_exists')
 
         report = _load_report(latest_report)
 
-        overall_status = report.get("overall_status")
-        debug_mode = report.get("debug_mode_detected", False)
+        overall_status = report.get('overall_status')
+        debug_mode = report.get('debug_mode_detected', False)
 
         # Special handling for debug mode
         if debug_mode:
             pytest.fail(
-                f"Benchmark report was generated in DEBUG MODE!\n"
-                f"\n"
-                f"Report: {latest_report.name}\n"
-                f"\n"
-                f"Debug mode invalidates all performance measurements.\n"
-                f"Re-run the benchmark WITHOUT a debugger attached:\n"
-                f"  pytest tests/simulation/benchmark/test_throughput_regression.py -v\n"
+                f'Benchmark report was generated in DEBUG MODE!\n'
+                f'\n'
+                f'Report: {latest_report.name}\n'
+                f'\n'
+                f'Debug mode invalidates all performance measurements.\n'
+                f'Re-run the benchmark WITHOUT a debugger attached:\n'
+                f'  pytest tests/simulation/benchmark/test_throughput_regression.py -v\n'
             )
 
-        assert overall_status == "PASSED", (
-            f"Benchmark report shows FAILED status!\n"
-            f"\n"
-            f"Report: {latest_report.name}\n"
-            f"Status: {overall_status}\n"
-            f"\n"
-            f"Failed metrics:\n" +
+        assert overall_status == 'PASSED', (
+            f'Benchmark report shows FAILED status!\n'
+            f'\n'
+            f'Report: {latest_report.name}\n'
+            f'Status: {overall_status}\n'
+            f'\n'
+            f'Failed metrics:\n' +
             _format_failed_metrics(report) +
-            f"\n"
-            f"This indicates a performance regression.\n"
-            f"Investigate and fix before merging."
+            '\n'
+            'This indicates a performance regression.\n'
+            'Investigate and fix before merging.'
         )
 
         # Check for warnings
-        warnings = report.get("warnings", [])
+        warnings = report.get('warnings', [])
         if warnings:
-            print(f"\n✅ PASSED with {len(warnings)} warning(s):")
+            print(f'\n✅ PASSED with {len(warnings)} warning(s):')
             for w in warnings:
-                print(f"   ⚠️  {w}")
+                print(f'   ⚠️  {w}')
         else:
-            print(f"\n✅ PASSED - no warnings")
+            print('\n✅ PASSED - no warnings')
 
         # Print summary
         print(f"\n   System: {report.get('system_id', 'unknown')}")
@@ -223,52 +223,52 @@ class TestBenchmarkCertificate:
         latest_report = _find_latest_report()
 
         if latest_report is None:
-            pytest.skip("No report found - see test_report_exists")
+            pytest.skip('No report found - see test_report_exists')
 
         report = _load_report(latest_report)
 
         required_fields = [
-            "timestamp",
-            "valid_until",
-            "system_id",
-            "scenario",
-            "runs",
-            "debug_mode_detected",
-            "overall_status",
-            "metrics",
-            "raw_measurements",
-            "artifacts"
+            'timestamp',
+            'valid_until',
+            'system_id',
+            'scenario',
+            'runs',
+            'debug_mode_detected',
+            'overall_status',
+            'metrics',
+            'raw_measurements',
+            'artifacts'
         ]
 
         missing = [f for f in required_fields if f not in report]
 
         assert not missing, (
-            f"Report missing required fields: {missing}\n"
-            f"Report may be corrupted or from an older version.\n"
-            f"Re-run the benchmark to generate a new report."
+            f'Report missing required fields: {missing}\n'
+            f'Report may be corrupted or from an older version.\n'
+            f'Re-run the benchmark to generate a new report.'
         )
 
         # Validate metrics structure
-        metrics = report.get("metrics", [])
-        assert len(metrics) > 0, "Report has no metrics"
+        metrics = report.get('metrics', [])
+        assert len(metrics) > 0, 'Report has no metrics'
 
         for metric in metrics:
-            if metric.get("status") != "INFO":
-                assert "tolerance_percent" in metric, (
+            if metric.get('status') != 'INFO':
+                assert 'tolerance_percent' in metric, (
                     f"Metric {metric.get('name')} missing tolerance_percent"
                 )
 
-        print(f"\n✅ Report integrity verified")
-        print(f"   {len(metrics)} metrics recorded")
+        print('\n✅ Report integrity verified')
+        print(f'   {len(metrics)} metrics recorded')
 
 
 def _format_failed_metrics(report: Dict[str, Any]) -> str:
     """Format failed metrics for error message."""
-    metrics = report.get("metrics", [])
-    failed = [m for m in metrics if m.get("status") == "FAILED"]
+    metrics = report.get('metrics', [])
+    failed = [m for m in metrics if m.get('status') == 'FAILED']
 
     if not failed:
-        return "   (no details available)\n"
+        return '   (no details available)\n'
 
     lines = []
     for m in failed:
@@ -279,4 +279,4 @@ def _format_failed_metrics(report: Dict[str, Any]) -> str:
             f"tolerance: ±{m['tolerance_percent']}%)"
         )
 
-    return "\n".join(lines) + "\n"
+    return '\n'.join(lines) + '\n'

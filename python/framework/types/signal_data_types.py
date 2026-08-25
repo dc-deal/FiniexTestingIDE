@@ -14,8 +14,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from pydantic import (BaseModel, ConfigDict, Field, field_validator,
-                      model_validator)
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def _epoch_ms_to_utc(value):
@@ -376,8 +375,8 @@ class SignalObservedSeries:
         if self.seq_span is None:
             return 'not verifiable (no seq in this era)'
         first, last = self.seq_span
-        span = f"{first}→{last}"
-        return f"{self.seq_holes} holes {span}" if self.seq_holes else f"contiguous {span}"
+        span = f'{first}→{last}'
+        return f'{self.seq_holes} holes {span}' if self.seq_holes else f'contiguous {span}'
 
 
 class SignalEdge(str, Enum):
@@ -537,3 +536,50 @@ SIGNAL_RUNTIME_COLUMNS = frozenset({
     SignalParquetColumn.EVIDENCE_AS_OF.value,
     SignalParquetColumn.ENVELOPE_EVIDENCE_AS_OF.value,
 })
+
+
+@dataclass
+class ConnectCheckStep:
+    """
+    Outcome of one probed route.
+
+    Args:
+        name: Route as the operator recognizes it
+        ok: Whether the route answered as expected
+        detail: One line describing what came back, or why nothing did
+        payload: Decoded response when there was one
+    """
+    name: str
+    ok: bool
+    detail: str
+    payload: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class ConnectCheckResult:
+    """
+    Everything one connect check established.
+
+    Args:
+        endpoint_name: Registered endpoint the address came from ('dev', 'production', …)
+        base_url: Address probed, as configured
+        credential_source: File the token came from — never the token itself (§29)
+        credential_configured: Whether a non-empty token was sent
+        steps: Per-route outcomes in probe order
+        credential_rejected: True when the producer refused the token
+    """
+    endpoint_name: str
+    base_url: str
+    credential_source: str
+    credential_configured: bool
+    steps: List[ConnectCheckStep] = field(default_factory=list)
+    credential_rejected: bool = False
+
+    def is_ok(self) -> bool:
+        """
+        Whether every probed route answered as expected.
+
+        Returns:
+            True when no step failed
+        """
+        return all(step.ok for step in self.steps)

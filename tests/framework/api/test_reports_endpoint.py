@@ -14,30 +14,57 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
-from python.framework.reporting.io.aggregated_portfolio_report_io import write_aggregated_portfolio_report
+from python.framework.reporting.io.aggregated_portfolio_report_io import (
+    write_aggregated_portfolio_report,
+)
 from python.framework.reporting.io.broker_report_io import write_broker_report
-from python.framework.reporting.io.signal_report_io import write_signal_report
 from python.framework.reporting.io.execution_stats_report_io import write_execution_stats_report
 from python.framework.reporting.io.feed_stability_report_io import write_feed_stability_report
-from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.io.order_history_report_io import write_order_history_report
 from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
-from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
 from python.framework.reporting.io.run_summary_io import write_run_summary
 from python.framework.reporting.io.scenario_details_report_io import write_scenario_details_report
+from python.framework.reporting.io.signal_report_io import write_signal_report
 from python.framework.reporting.io.trade_history_report_io import write_trade_history_report
+from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
+from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
 from python.framework.types.api.report_types import (
-    ActiveOrderRow, AggregatedPortfolioCurrency, AggregatedPortfolioReport, AggregatedPortfolioRow,
-    BrokerInfoRow, BrokerReport, BrokerSymbolRow,
-    ExecutionStatsReport, ExecutionStatsRow, ExecutionStatsTotals,
-    FeedStabilityEpisodeRow, FeedStabilityReport, FeedStabilitySourceRow,
-    OrderHistoryReport, OrderHistoryRow, PendingOrdersReport, PendingOrdersUnitRow,
-    PortfolioAggregateRow, PortfolioReport, PortfolioUnitRow, RunSummary, RunSummaryCurrency,
-    ScenarioDetailsReport, ScenarioDetailsRow,
-    SignalReport, SignalSourceRow, SignalUsageRow,
-    TradeAnalytics, TradeHistoryReport, TradeHistoryRow,
-    UnitErrorRow, WarningRow, WarningsErrorsOutcome, WarningsErrorsReport)
+    ActiveOrderRow,
+    AggregatedPortfolioCurrency,
+    AggregatedPortfolioReport,
+    AggregatedPortfolioRow,
+    BrokerInfoRow,
+    BrokerReport,
+    BrokerSymbolRow,
+    ExecutionStatsReport,
+    ExecutionStatsRow,
+    ExecutionStatsTotals,
+    FeedStabilityEpisodeRow,
+    FeedStabilityReport,
+    FeedStabilitySourceRow,
+    OrderHistoryReport,
+    OrderHistoryRow,
+    PendingOrdersReport,
+    PendingOrdersUnitRow,
+    PortfolioAggregateRow,
+    PortfolioReport,
+    PortfolioUnitRow,
+    RunSummary,
+    RunSummaryCurrency,
+    ScenarioDetailsReport,
+    ScenarioDetailsRow,
+    SignalReport,
+    SignalSourceRow,
+    SignalUsageRow,
+    TradeAnalytics,
+    TradeHistoryReport,
+    TradeHistoryRow,
+    UnitErrorRow,
+    WarningRow,
+    WarningsErrorsOutcome,
+    WarningsErrorsReport,
+)
 
 _ZERO_ANALYTICS = TradeAnalytics(
     expectancy=0.0, avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0,

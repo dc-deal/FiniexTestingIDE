@@ -154,6 +154,21 @@
             }
         },
         {
+            "name": "📡 Signal Connect Check (Producer)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "connect-check"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 10
+            }
+        },
+        {
             "name": "📡 Signal Index: Status",
             "type": "debugpy",
             "request": "launch",
@@ -165,7 +180,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "02_data_pipeline",
-                "order": 10
+                "order": 11
             }
         },
         {
@@ -180,7 +195,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "02_data_pipeline",
-                "order": 11
+                "order": 12
             }
         },
         {

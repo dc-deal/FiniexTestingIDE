@@ -25,7 +25,6 @@ from python.framework.reporting.builders.signal_report_builder import build_sign
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
-
 FIXTURE_SET = (
     Path(__file__).resolve().parents[3]
     / 'tests' / 'fixtures' / 'scenario_sets' / 'signal_resolution'
@@ -53,7 +52,7 @@ def summary():
 def _counters(summary, index: int):
     """The scenario's single SIGNAL worker counters + its processed tick count."""
     result = summary.process_result_list[index]
-    assert result.success, f"Scenario {index} failed: {result.error_message}"
+    assert result.success, f'Scenario {index} failed: {result.error_message}'
     stats = result.tick_loop_results.signal_statistics
     assert len(stats) == 1, 'the fixture binds exactly one SIGNAL worker per scenario'
     return stats[0], result.tick_loop_results.coordination_statistics.ticks_processed

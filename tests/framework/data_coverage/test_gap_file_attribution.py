@@ -11,7 +11,9 @@ separates the two. Pure function over index entries — no index, no IO.
 import pandas as pd
 
 from python.framework.discoveries.data_coverage.gap_file_attribution import (
-    attribute_gaps_to_files, parse_file_open_time)
+    attribute_gaps_to_files,
+    parse_file_open_time,
+)
 from python.framework.types.coverage_report_types import Gap
 from python.framework.utils.market_calendar import GapCategory
 

@@ -14,21 +14,31 @@ import re
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 
-from python.framework.reporting.console.profiling_summary import ProfilingSummary
 from python.framework.reporting.builders.profiling_report_builder import (
-    build_profiling_report_from_batch)
+    build_profiling_report_from_batch,
+)
 from python.framework.reporting.builders.report_aggregators import aggregate_profiling
+from python.framework.reporting.console.profiling_summary import ProfilingSummary
 from python.framework.types.api.report_types import (
-    ClippingRow, InterTickStatsRow, ProfilingOperationRow, ProfilingReport, ProfilingUnitRow,
-    WarmupPhaseRow)
+    ClippingRow,
+    InterTickStatsRow,
+    ProfilingOperationRow,
+    ProfilingReport,
+    ProfilingUnitRow,
+    WarmupPhaseRow,
+)
 from python.framework.types.batch_execution_types import BatchExecutionSummary, WarmupPhaseEntry
-from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.types.performance_types.performance_stats_types import (
-    WorkerCoordinatorPerformanceStats)
+    WorkerCoordinatorPerformanceStats,
+)
 from python.framework.types.process_data_types import (
-    ClippingStats, ProcessProfileData, ProcessResult, ProcessTickLoopResult)
+    ClippingStats,
+    ProcessProfileData,
+    ProcessResult,
+    ProcessTickLoopResult,
+)
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-
+from python.framework.utils.console_renderer import ConsoleRenderer
 
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 

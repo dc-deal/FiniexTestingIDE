@@ -33,25 +33,26 @@ FUTURE NOTES:
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Union
 
-from .abstract_trade_executor import AbstractTradeExecutor
-from .order_guard import OrderGuard
-from .portfolio_manager import UNSET, _UnsetType
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
-    OrderType,
-    OrderDirection,
-    OrderSide,
-    OrderStatus,
-    OrderResult,
-    OrderCapabilities,
     ModificationResult,
     OpenOrderRequest,
+    OrderCapabilities,
+    OrderDirection,
+    OrderResult,
+    OrderSide,
+    OrderStatus,
+    OrderType,
     RejectionReason,
 )
+
+from .abstract_trade_executor import AbstractTradeExecutor
+from .order_guard import OrderGuard
+from .portfolio_manager import UNSET, _UnsetType
 
 # Rejection reasons that indicate broker/account-side problems worth
 # cooling down on. Local validation rejections (lot size, unsupported type)
@@ -180,7 +181,7 @@ class DecisionTradingApi:
         stop_price: Optional[float] = None,
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
-        comment: str = "",
+        comment: str = '',
     ) -> OrderResult:
         """
         Send order to trading environment.
@@ -778,6 +779,6 @@ class DecisionTradingApi:
             List of OrderResult objects
         """
         raise NotImplementedError(
-            "Order history is Post-V1 feature. "
-            "Use get_open_positions() for V1."
+            'Order history is Post-V1 feature. '
+            'Use get_open_positions() for V1.'
         )

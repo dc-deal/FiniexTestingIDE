@@ -14,14 +14,12 @@ asserts the in-flight state transitions so a regression to sync-modify
 cannot slip through outcome-only assertions.
 """
 
-from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation
 from python.framework.types.trading_env_types.order_types import (
     ModificationRejectionReason,
     ModificationStatus,
     OpenOrderRequest,
     OrderDirection,
-    OrderStatus,
     OrderType,
 )
 
@@ -30,7 +28,7 @@ def _submit_limit_and_confirm(mock, executor, price=49000.0, lots=0.001):
     """Helper: submit a LIMIT order and confirm broker_ref via drain (no Phase-2 fill)."""
     mock.feed_tick(executor, bid=49999.0, ask=50001.0)
     result = executor.open_order(OpenOrderRequest(
-        symbol="BTCUSD", order_type=OrderType.LIMIT,
+        symbol='BTCUSD', order_type=OrderType.LIMIT,
         direction=OrderDirection.LONG, lots=lots, price=price,
     ))
     mock.await_submit_confirmation(executor)
@@ -135,7 +133,7 @@ class TestModifyLimitOrderNotConfirmed:
         """Order in _active_limit_orders with broker_ref=None → ORDER_NOT_CONFIRMED."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
         result = executor_delayed.open_order(OpenOrderRequest(
-            symbol="BTCUSD", order_type=OrderType.LIMIT,
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=49000.0,
         ))
         order_id = result.order_id
@@ -155,7 +153,7 @@ class TestModifyLimitOrderNotFound:
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         mod_result = executor_delayed.modify_limit_order(
-            order_id="NONEXISTENT", new_price=51000.0)
+            order_id='NONEXISTENT', new_price=51000.0)
         assert mod_result.success is False
         assert mod_result.rejection_reason == ModificationRejectionReason.LIMIT_ORDER_NOT_FOUND
 
@@ -166,7 +164,7 @@ class TestModifyStopOrderCapabilityGate:
     def test_modify_stop_order_rejected_for_kraken_profile(self, mock_delayed, executor_delayed):
         """Mock adapter declares stop_orders=False → ORDER_TYPE_NOT_SUPPORTED."""
         mod_result = executor_delayed.modify_stop_order(
-            order_id="anything", new_stop_price=50000.0)
+            order_id='anything', new_stop_price=50000.0)
         assert mod_result.success is False
         assert mod_result.rejection_reason == ModificationRejectionReason.ORDER_TYPE_NOT_SUPPORTED
 

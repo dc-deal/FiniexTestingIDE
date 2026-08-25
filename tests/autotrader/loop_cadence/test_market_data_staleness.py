@@ -19,7 +19,9 @@ from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.stress_test.stale_data_stress_driver import (
-    StaleDataStressDriver, warn_events_outside_range)
+    StaleDataStressDriver,
+    warn_events_outside_range,
+)
 from python.framework.trading_env.order_guard import OrderGuard
 from python.framework.types.disturbance_episode_types import DisturbanceOrigin
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus

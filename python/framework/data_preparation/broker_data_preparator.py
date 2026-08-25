@@ -10,17 +10,22 @@ Responsibilities:
 - Log concise broker overview
 """
 
-from typing import Dict, List, Any
-from dataclasses import dataclass
+from typing import Any, Dict, List
 
+from python.configuration.autotrader.kraken_config_fetcher import (
+    get_runtime_cache_path,
+    load_runtime_cache,
+)
 from python.configuration.market_config_manager import MarketConfigManager
-from python.configuration.autotrader.kraken_config_fetcher import get_runtime_cache_path, load_runtime_cache
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
-from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.console.broker_info_renderer import BrokerInfoRenderer
+from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.types.config_types.market_config_types import ConfigMode
-from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import (
+    BrokerScenarioInfo,
+    SingleScenario,
+)
 from python.framework.types.validation_types import ValidationResult
 
 
@@ -274,7 +279,7 @@ class BrokerDataPreparator:
         """
         num_brokers = len(self._broker_scenario_map)
         self.logger.info(
-            f"🏦 Broker Configuration: {num_brokers} unique broker(s) loaded"
+            f'🏦 Broker Configuration: {num_brokers} unique broker(s) loaded'
         )
 
         for broker_type, info in self._broker_scenario_map.items():
@@ -286,8 +291,8 @@ class BrokerDataPreparator:
             num_scenarios = len(info.scenarios)
             broker_scenario_names = ', '.join(info.scenarios)
 
-            self.logger.info(f"   {broker_info_line}")
-            self.logger.debug(f"      Config: {info.config_path}")
+            self.logger.info(f'   {broker_info_line}')
+            self.logger.debug(f'      Config: {info.config_path}')
             self.logger.debug(
-                f"      Used by {num_scenarios} scenario(s): {broker_scenario_names}"
+                f'      Used by {num_scenarios} scenario(s): {broker_scenario_names}'
             )

@@ -12,15 +12,19 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
+
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
-from python.configuration.app_config_manager import AppConfigManager
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
-from python.framework.types.validation_types import ValidationResult
+from python.framework.types.config_types.robustness_config_types import (
+    RobustnessConfig,
+    RobustnessRole,
+)
 from python.framework.types.scenario_types.window_set_types import WindowSet
-from python.framework.types.config_types.robustness_config_types import RobustnessConfig, RobustnessRole
+from python.framework.types.validation_types import ValidationResult
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
 
@@ -44,7 +48,7 @@ class SingleScenario:
     start_date: datetime
     end_date: Optional[datetime] = None
     max_ticks: Optional[int] = None
-    data_mode: str = "realistic"
+    data_mode: str = 'realistic'
     enabled: bool = True  # Default: enabled
 
     # ============================================
@@ -99,7 +103,7 @@ class SingleScenario:
     def __post_init__(self):
         if self.name is None:
             raise ValueError(
-                "Property name of scenario array Objects must be filled.")
+                'Property name of scenario array Objects must be filled.')
 
         # Smart defaults for execution config
         if self.execution_config is None:
@@ -109,13 +113,13 @@ class SingleScenario:
                 # ============================================
                 # Worker-Level Parallelization
                 # True = workers run in parallel (good with 4+ workers)
-                "parallel_workers": None,  # Auto-detect
-                "worker_parallel_threshold_ms": 1.0,  # Only parallelize when worker takes >1ms
+                'parallel_workers': None,  # Auto-detect
+                'worker_parallel_threshold_ms': 1.0,  # Only parallelize when worker takes >1ms
                 # Performance Tuning
-                "adaptive_parallelization": True,  # Auto-detect optimal mode
+                'adaptive_parallelization': True,  # Auto-detect optimal mode
                 # Parameter Validation
                 # True = abort on boundary violations, False = warn only
-                "strict_parameter_validation": True,
+                'strict_parameter_validation': True,
             }
 
     def to_config_string_for_display(self) -> str:
@@ -126,7 +130,7 @@ class SingleScenario:
             Human-readable config summary
         """
         sentiment_line = (
-            f"  Sentiment Source: {self.data_sentiment_type}\n"
+            f'  Sentiment Source: {self.data_sentiment_type}\n'
             if self.data_sentiment_type else ''
         )
         return (
@@ -237,7 +241,7 @@ class ScenarioSet:
             except Exception as e:
                 vLog = get_global_logger()
                 vLog.warning(
-                    f"⚠️ Failed to copy profile {profile_path.name}: {e}")
+                    f'⚠️ Failed to copy profile {profile_path.name}: {e}')
 
     def write_scenario_system_info_log(self):
         """

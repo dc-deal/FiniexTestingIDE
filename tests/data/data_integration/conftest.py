@@ -11,21 +11,19 @@ Provides:
 - Index data extraction helpers
 """
 
-import pytest
-from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List
 
 import pandas as pd
+import pytest
 
-from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.configuration.market_config_manager import MarketConfigManager
-
+from python.data_management.index.bars_index_manager import BarsIndexManager
 
 # =============================================================================
 # CORE MANAGER FIXTURES (Session Scope)
 # =============================================================================
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def bars_index_manager() -> BarsIndexManager:
     """
     Initialize BarsIndexManager and load index.
@@ -40,7 +38,7 @@ def bars_index_manager() -> BarsIndexManager:
     return manager
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def market_config() -> MarketConfigManager:
     """
     Initialize MarketConfigManager.
@@ -57,7 +55,7 @@ def market_config() -> MarketConfigManager:
 # INDEX DATA FIXTURES
 # =============================================================================
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def available_broker_types(bars_index_manager: BarsIndexManager) -> List[str]:
     """
     Get list of available broker types from index.
@@ -68,7 +66,7 @@ def available_broker_types(bars_index_manager: BarsIndexManager) -> List[str]:
     return bars_index_manager.list_broker_types()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def index_data(bars_index_manager: BarsIndexManager) -> Dict[str, Dict[str, Dict[str, Dict]]]:
     """
     Get raw index data structure.
@@ -85,7 +83,7 @@ def index_data(bars_index_manager: BarsIndexManager) -> Dict[str, Dict[str, Dict
 # HELPER FIXTURES
 # =============================================================================
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def bar_file_loader(bars_index_manager: BarsIndexManager):
     """
     Factory fixture for loading bar DataFrames.
@@ -97,14 +95,14 @@ def bar_file_loader(bars_index_manager: BarsIndexManager):
         bar_file = bars_index_manager.get_bar_file(broker_type, symbol, timeframe)
         if bar_file is None:
             raise FileNotFoundError(
-                f"Bar file not found: {broker_type}/{symbol}/{timeframe}"
+                f'Bar file not found: {broker_type}/{symbol}/{timeframe}'
             )
         return pd.read_parquet(bar_file)
     
     return _load
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def get_market_type(market_config: MarketConfigManager):
     """
     Factory fixture for market type lookup.

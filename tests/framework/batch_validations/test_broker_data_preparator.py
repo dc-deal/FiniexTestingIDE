@@ -8,8 +8,11 @@ that prevents same-symbol-on-different-brokers from polluting the reporting map.
 from unittest.mock import MagicMock
 
 from python.framework.data_preparation.broker_data_preparator import BrokerDataPreparator
+from python.framework.types.scenario_types.scenario_set_types import (
+    BrokerScenarioInfo,
+    SingleScenario,
+)
 from python.framework.types.trading_env_types.broker_types import BrokerType
-from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo, SingleScenario
 
 
 def _make_valid_scenario(name: str, symbol: str, broker_type: BrokerType) -> MagicMock:

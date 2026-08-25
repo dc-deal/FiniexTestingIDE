@@ -34,9 +34,19 @@ from typing import Callable, Dict, List, Optional, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
-from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
+from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
+from python.framework.types.live_types.live_execution_types import (
+    BrokerOrderStatus,
+    BrokerResponse,
+    TimeoutConfig,
+)
+from python.framework.types.live_types.live_request_types import QueryResponse, TradesQueryResponse
+from python.framework.types.portfolio_types.portfolio_trade_record_types import (
+    CloseReason,
+    EntryType,
+)
 from python.framework.types.trading_env_types.latency_simulator_types import (
     ModificationRequest,
     PendingOperation,
@@ -45,25 +55,18 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrderOutcome,
     PendingOrderTiming,
 )
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason, EntryType
-from python.framework.types.live_types.live_execution_types import (
-    BrokerOrderStatus,
-    BrokerResponse,
-    TimeoutConfig,
-)
-from python.framework.types.live_types.live_request_types import QueryResponse, TradesQueryResponse
 from python.framework.types.trading_env_types.order_types import (
-    OrderAction,
-    OrderType,
-    OrderDirection,
-    OrderStatus,
-    OrderResult,
     FillType,
-    RejectionReason,
     ModificationRejectionReason,
     ModificationResult,
     ModificationStatus,
     OpenOrderRequest,
+    OrderAction,
+    OrderDirection,
+    OrderResult,
+    OrderStatus,
+    OrderType,
+    RejectionReason,
     create_rejection_result,
 )
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
@@ -166,9 +169,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._trades_response_consumers: List[Callable[[TradesQueryResponse], None]] = []
 
         self.logger.info(
-            f"LiveTradeExecutor initialized with broker: "
-            f"{broker_config.get_broker_name()} "
-            f"(timeout={self._timeout_config.order_timeout_seconds}s)"
+            f'LiveTradeExecutor initialized with broker: '
+            f'{broker_config.get_broker_name()} '
+            f'(timeout={self._timeout_config.order_timeout_seconds}s)'
         )
 
         # Wire the processor's drain-inbox hooks into the executor.
@@ -291,7 +294,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         elif response.status == BrokerOrderStatus.REJECTED:
             rejected = self._request_processor.mark_rejected(
                 broker_ref=pending.broker_ref,
-                reason=response.rejection_reason or "broker_rejected",
+                reason=response.rejection_reason or 'broker_rejected',
             )
             if rejected is None:
                 return
@@ -329,7 +332,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 )
             except Exception as e:
                 self.logger.warning(
-                    f"Failed to cancel timed-out order {pending.pending_order_id}: {e}"
+                    f'Failed to cancel timed-out order {pending.pending_order_id}: {e}'
                 )
 
         # Record pending outcome as TIMED_OUT
@@ -340,7 +343,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # Remove from tracker
         self._request_processor.mark_rejected(
             broker_ref=pending.broker_ref,
-            reason="order_timeout",
+            reason='order_timeout',
         )
 
         # Record timeout as rejection
@@ -348,14 +351,14 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         rejection = create_rejection_result(
             order_id=pending.pending_order_id,
             reason=RejectionReason.BROKER_ERROR,
-            message=f"Order timed out after {self._timeout_config.order_timeout_seconds}s",
+            message=f'Order timed out after {self._timeout_config.order_timeout_seconds}s',
         )
         self._order_history.append(rejection)
         self._notify_outcome(pending.direction, rejection, pending)
 
         self.logger.warning(
-            f"Order {pending.pending_order_id} timed out "
-            f"(broker_ref={pending.broker_ref})"
+            f'Order {pending.pending_order_id} timed out '
+            f'(broker_ref={pending.broker_ref})'
         )
 
     # ============================================
@@ -415,7 +418,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 break
         if pending is None:
             self.logger.warning(
-                f"drain_inbox: LIMIT SubmitResponse for unknown order_id {order_id}"
+                f'drain_inbox: LIMIT SubmitResponse for unknown order_id {order_id}'
             )
             return
 
@@ -449,8 +452,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 adapter=self.broker.adapter,
             )
             self.logger.info(
-                f"❌ Limit order {order_id} deferred cancel issued "
-                f"(broker_ref={pending.broker_ref})"
+                f'❌ Limit order {order_id} deferred cancel issued '
+                f'(broker_ref={pending.broker_ref})'
             )
         # else: PENDING — pending stays in _active_limit_orders,
         # _process_active_orders Phase 2 polls it for fills.
@@ -487,7 +490,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         pending = self._find_active_order(order_id)
         if pending is None:
             self.logger.warning(
-                f"drain_inbox: EditResponse for unknown order_id {order_id}"
+                f'drain_inbox: EditResponse for unknown order_id {order_id}'
             )
             return
 
@@ -530,8 +533,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 pending.broker_ref = response.broker_ref
 
             self.logger.info(
-                f"✏️ Order {order_id} modify resolved "
-                f"(broker_ref={pending.broker_ref})"
+                f'✏️ Order {order_id} modify resolved '
+                f'(broker_ref={pending.broker_ref})'
             )
 
         # Clear in-flight state in all cases (success or rejection)
@@ -555,7 +558,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         pending = self._find_active_order(order_id)
         if pending is None:
             self.logger.warning(
-                f"drain_inbox: CancelResponse for unknown order_id {order_id}"
+                f'drain_inbox: CancelResponse for unknown order_id {order_id}'
             )
             return
 
@@ -581,7 +584,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         pending.execution_state.in_flight_operation = PendingOperation.NONE
         self.logger.info(
-            f"❌ Order {order_id} cancel resolved (broker_ref={pending.broker_ref})"
+            f'❌ Order {order_id} cancel resolved (broker_ref={pending.broker_ref})'
         )
         self._emit_order_cancelled(pending)
 
@@ -601,7 +604,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         mod = self._pending_position_modifications.pop(position_id, None)
         if mod is None:
             self.logger.warning(
-                f"drain_inbox: PositionModifyResponse for unknown position_id {position_id}"
+                f'drain_inbox: PositionModifyResponse for unknown position_id {position_id}'
             )
             return
 
@@ -619,8 +622,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             new_take_profit=mod.new_take_profit,
         )
         self.logger.info(
-            f"✏️ Position {position_id} modify resolved "
-            f"(sl={mod.new_stop_loss}, tp={mod.new_take_profit})"
+            f'✏️ Position {position_id} modify resolved '
+            f'(sl={mod.new_stop_loss}, tp={mod.new_take_profit})'
         )
 
     # ============================================
@@ -720,17 +723,17 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 # data arrived too late to influence the fill. Future #320 async
                 # polling will keep the order alive until trades arrive.
                 self.logger.debug(
-                    f"drain_inbox: TradesQueryResponse for {response.order_id} "
-                    f"(order already finalized — V1 sync polling path)"
+                    f'drain_inbox: TradesQueryResponse for {response.order_id} '
+                    f'(order already finalized — V1 sync polling path)'
                 )
                 return
 
             # Stale-response guard — broker_ref may have flipped via EditOrder
             if pending.broker_ref != response.broker_ref:
                 self.logger.debug(
-                    f"Discarding stale trades response for {response.order_id} "
-                    f"(response.broker_ref={response.broker_ref} != "
-                    f"pending.broker_ref={pending.broker_ref})"
+                    f'Discarding stale trades response for {response.order_id} '
+                    f'(response.broker_ref={response.broker_ref} != '
+                    f'pending.broker_ref={pending.broker_ref})'
                 )
                 return
 
@@ -748,10 +751,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     fill_type=FillType.LIMIT,
                 )
                 self.logger.info(
-                    f"🎯 Order {pending.pending_order_id} filled via trades drain "
-                    f"at avg {pending.fills.cumulative_avg_price:.5f} "
-                    f"({len(pending.fills.trades)} trade(s), "
-                    f"cumulative_lots={pending.fills.cumulative_filled_lots})"
+                    f'🎯 Order {pending.pending_order_id} filled via trades drain '
+                    f'at avg {pending.fills.cumulative_avg_price:.5f} '
+                    f'({len(pending.fills.trades)} trade(s), '
+                    f'cumulative_lots={pending.fills.cumulative_filled_lots})'
                 )
         finally:
             # #327 — Multi-consumer fan-out. Always runs, regardless of
@@ -762,7 +765,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     consumer(response)
                 except Exception as e:
                     self.logger.error(
-                        f"trades_response consumer raised: {e}",
+                        f'trades_response consumer raised: {e}',
                         exc_info=True,
                     )
 
@@ -827,7 +830,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         pending = self._find_active_order(order_id)
         if pending is None:
             self.logger.warning(
-                f"drain_inbox: QueryResponse for unknown order_id {order_id}"
+                f'drain_inbox: QueryResponse for unknown order_id {order_id}'
             )
             return
 
@@ -840,8 +843,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # current ref.
         if pending.broker_ref != broker_response.broker_ref:
             self.logger.debug(
-                f"QueryResponse stale broker_ref for {order_id}: "
-                f"response={broker_response.broker_ref} current={pending.broker_ref}"
+                f'QueryResponse stale broker_ref for {order_id}: '
+                f'response={broker_response.broker_ref} current={pending.broker_ref}'
             )
             return
 
@@ -854,8 +857,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 fill_type=FillType.LIMIT,
             )
             self.logger.info(
-                f"🎯 Active limit order {order_id} filled at "
-                f"{broker_response.fill_price} (broker_ref={pending.broker_ref})"
+                f'🎯 Active limit order {order_id} filled at '
+                f'{broker_response.fill_price} (broker_ref={pending.broker_ref})'
             )
         elif broker_response.is_terminal:
             # REJECTED / CANCELLED / EXPIRED by broker
@@ -870,9 +873,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self._order_history.append(rejection)
             self._notify_outcome(pending.direction, rejection, pending)
             self.logger.warning(
-                f"Active limit order {order_id} "
-                f"{broker_response.status.value} by broker "
-                f"(broker_ref={pending.broker_ref})"
+                f'Active limit order {order_id} '
+                f'{broker_response.status.value} by broker '
+                f'(broker_ref={pending.broker_ref})'
             )
         # else: PENDING / PARTIALLY_FILLED — no state change, next cycle re-polls
 
@@ -919,7 +922,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             result = create_rejection_result(
                 order_id=order_id,
                 reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
-                message=f"Order type {request.order_type.value} not supported in live",
+                message=f'Order type {request.order_type.value} not supported in live',
             )
             self._order_history.append(result)
             return result
@@ -940,13 +943,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # Build order kwargs for adapter and tracker
         order_kwargs = {}
         if request.stop_loss is not None:
-            order_kwargs["stop_loss"] = request.stop_loss
+            order_kwargs['stop_loss'] = request.stop_loss
         if request.take_profit is not None:
-            order_kwargs["take_profit"] = request.take_profit
+            order_kwargs['take_profit'] = request.take_profit
         if request.comment:
-            order_kwargs["comment"] = request.comment
+            order_kwargs['comment'] = request.comment
         if request.order_type == OrderType.LIMIT and request.price is not None:
-            order_kwargs["price"] = request.price
+            order_kwargs['price'] = request.price
 
         # MARKET: async submit via the processor worker thread.
         # 1) Register the pending in the processor with broker_ref=None
@@ -983,7 +986,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 requested_lots=request.lots,
                 submission=self._current_submission(),
                 metadata={
-                    "broker_ref": None,
+                    'broker_ref': None,
                 },
             )
             self._order_history.append(result)
@@ -1037,7 +1040,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             requested_lots=request.lots,
             submission=self._current_submission(),
             metadata={
-                "broker_ref": None,
+                'broker_ref': None,
             },
         )
         self._order_history.append(result)
@@ -1066,9 +1069,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         position = self.portfolio.get_position(position_id)
         if not position:
             return create_rejection_result(
-                order_id=f"close_{position_id}",
+                order_id=f'close_{position_id}',
                 reason=RejectionReason.BROKER_ERROR,
-                message=f"Position {position_id} not found",
+                message=f'Position {position_id} not found',
             )
 
         # Send close to broker — close = reverse direction order
@@ -1107,7 +1110,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             direction=position.direction,
             requested_lots=close_lots,
             submission=self._current_submission(),
-            metadata={"awaiting_fill": True, "broker_ref": None},
+            metadata={'awaiting_fill': True, 'broker_ref': None},
         )
 
     # ============================================
@@ -1182,8 +1185,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
 
         self.logger.info(
-            f"✏️ Position {position_id} modify scheduled — "
-            f"sl={effective_sl}, tp={effective_tp}"
+            f'✏️ Position {position_id} modify scheduled — '
+            f'sl={effective_sl}, tp={effective_tp}'
         )
 
         return ModificationResult(
@@ -1282,9 +1285,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
 
         self.logger.info(
-            f"✏️ Limit order {order_id} modify scheduled — "
-            f"price={adapter_price}, sl={adapter_sl}, tp={adapter_tp} "
-            f"(broker_ref={target_pending.broker_ref})"
+            f'✏️ Limit order {order_id} modify scheduled — '
+            f'price={adapter_price}, sl={adapter_sl}, tp={adapter_tp} '
+            f'(broker_ref={target_pending.broker_ref})'
         )
 
         return ModificationResult(
@@ -1385,9 +1388,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
 
         self.logger.info(
-            f"✏️ Stop order {order_id} modify scheduled — "
-            f"stop={adapter_stop}, limit={adapter_limit}, "
-            f"sl={adapter_sl}, tp={adapter_tp}"
+            f'✏️ Stop order {order_id} modify scheduled — '
+            f'stop={adapter_stop}, limit={adapter_limit}, '
+            f'sl={adapter_sl}, tp={adapter_tp}'
         )
 
         return ModificationResult(
@@ -1421,12 +1424,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 # Dropping it here orphaned the order (#13/#15 cert blocker, proven live).
                 pending.execution_state.cancel_requested = True
                 self.logger.debug(
-                    f"[CANCEL_DEFER] order={order_id} reason=broker_ref_in_flight")
+                    f'[CANCEL_DEFER] order={order_id} reason=broker_ref_in_flight')
                 return True
             if pending.execution_state.in_flight_operation != PendingOperation.NONE:
                 self.logger.debug(
-                    f"[CANCEL_SKIP] order={order_id} reason=busy "
-                    f"op={pending.execution_state.in_flight_operation.name} scheduled=0")
+                    f'[CANCEL_SKIP] order={order_id} reason=busy '
+                    f'op={pending.execution_state.in_flight_operation.name} scheduled=0')
                 return False  # busy
 
             pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
@@ -1436,12 +1439,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 adapter=self.broker.adapter,
             )
             self.logger.info(
-                f"❌ Limit order {order_id} cancel scheduled "
-                f"(broker_ref={pending.broker_ref})"
+                f'❌ Limit order {order_id} cancel scheduled '
+                f'(broker_ref={pending.broker_ref})'
             )
             return True
         self.logger.debug(
-            f"[CANCEL_SKIP] order={order_id} reason=not_in_active_limits scheduled=0")
+            f'[CANCEL_SKIP] order={order_id} reason=not_in_active_limits scheduled=0')
         return False
 
     def cancel_stop_order(self, order_id: str) -> bool:
@@ -1478,8 +1481,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 adapter=self.broker.adapter,
             )
             self.logger.info(
-                f"❌ Stop order {order_id} cancel scheduled "
-                f"(broker_ref={pending.broker_ref})"
+                f'❌ Stop order {order_id} cancel scheduled '
+                f'(broker_ref={pending.broker_ref})'
             )
             return True
         return False
@@ -1562,8 +1565,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # Phase 1: Cancel active limit orders at broker and expire locally
         if self._active_limit_orders:
             self.logger.info(
-                f"📋 {len(self._active_limit_orders)} active limit orders "
-                f"at session end — cancelling at broker")
+                f'📋 {len(self._active_limit_orders)} active limit orders '
+                f'at session end — cancelling at broker')
             for pending in self._active_limit_orders:
                 if pending.broker_ref:
                     try:
@@ -1573,15 +1576,15 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                         )
                     except Exception as e:
                         self.logger.warning(
-                            f"Failed to cancel active limit "
-                            f"{pending.pending_order_id}: {e}")
+                            f'Failed to cancel active limit '
+                            f'{pending.pending_order_id}: {e}')
             self._expire_active_orders()
 
         # Phase 2: Direct-fill open positions
         open_positions = self.get_open_positions()
         if open_positions:
             self.logger.warning(
-                f"{len(open_positions)} positions remain open — direct-closing (no pending)"
+                f'{len(open_positions)} positions remain open — direct-closing (no pending)'
             )
             for pos in open_positions:
                 synthetic = self._request_processor.create_synthetic_close_order(
@@ -1590,13 +1593,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     synthetic, close_reason=CloseReason.SCENARIO_END)
 
         # Phase 3: Catch genuine stuck-in-pipeline orders (real anomalies)
-        self._request_processor.clear_pending(reason="scenario_end")
+        self._request_processor.clear_pending(reason='scenario_end')
 
         # #318 — clear pending position modifications (live tracker)
         if self._pending_position_modifications:
             self.logger.info(
-                f"✏️ {len(self._pending_position_modifications)} pending "
-                f"position modifications at scenario end — discarded"
+                f'✏️ {len(self._pending_position_modifications)} pending '
+                f'position modifications at scenario end — discarded'
             )
             self._pending_position_modifications.clear()
 

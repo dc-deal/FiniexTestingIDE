@@ -1,10 +1,11 @@
 from typing import List
-from python.framework.logging.scenario_logger import ScenarioLogger
+
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.config_types.market_config_types import TradingModel
-from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessScenarioConfig
+from python.framework.types.trading_env_types.order_types import OrderType
 
 
 def prepare_trade_executor_for_scenario(
@@ -37,15 +38,15 @@ def prepare_trade_executor_for_scenario(
 
     # Log configuration
     logger.info(
-        f"💱 Trade Executor Configuration:\n"
-        f"   Symbol: {config.symbol}\n"
-        f"   Balances: {config.balances}"
+        f'💱 Trade Executor Configuration:\n'
+        f'   Symbol: {config.symbol}\n'
+        f'   Balances: {config.balances}'
     )
 
     # Log stress test config if any test is enabled
     if config.stress_test_config.has_any_enabled():
         logger.info(
-            f"⚡ Stress Test Configuration: ACTIVE"
+            '⚡ Stress Test Configuration: ACTIVE'
         )
 
     # Spot mode from trading_model

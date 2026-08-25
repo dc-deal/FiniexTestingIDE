@@ -5,51 +5,70 @@ Coordinates batch execution report generation and logging
 Extracted from strategy_runner.py to separate reporting concerns.
 This is the coordination layer — the section sub-presenters live in framework/reporting/console/.
 """
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
+import io
+import re
+import sys
+
+from python.configuration.app_config_manager import AppConfigManager
+from python.framework.reporting.builders.aggregated_portfolio_report_builder import (
+    build_aggregated_portfolio_report,
+)
+from python.framework.reporting.builders.block_splitting_report_builder import (
+    build_block_splitting_report_from_batch,
+)
+from python.framework.reporting.builders.broker_report_builder import build_broker_report_from_batch
+from python.framework.reporting.builders.profiling_report_builder import (
+    build_profiling_report_from_batch,
+)
+from python.framework.reporting.builders.robustness_report_builder import (
+    build_robustness_report_from_batch,
+)
+from python.framework.reporting.builders.run_meta_report_builder import (
+    build_run_meta_report_from_batch,
+)
+from python.framework.reporting.builders.run_unit import run_units_from_batch
+from python.framework.reporting.builders.scenario_details_report_builder import (
+    build_scenario_details_report_from_batch,
+)
+from python.framework.reporting.builders.warnings_errors_report_builder import (
+    build_warnings_errors_report_from_batch,
+)
 from python.framework.reporting.console.block_splitting_disposition import BlockSplittingDisposition
 from python.framework.reporting.console.broker_summary import BrokerSummary
-from python.framework.reporting.console.feed_stability_summary import FeedStabilitySummary
-from python.framework.reporting.console.signal_summary import SignalSummary
 from python.framework.reporting.console.execution_header_summary import ExecutionHeaderSummary
-from python.framework.reporting.console.sim_executive_summary import SimExecutiveSummary
+from python.framework.reporting.console.feed_stability_summary import FeedStabilitySummary
 from python.framework.reporting.console.performance_summary import PerformanceSummary
 from python.framework.reporting.console.portfolio_summary import PortfolioSummary
 from python.framework.reporting.console.profiling_summary import ProfilingSummary
+from python.framework.reporting.console.robustness_summary import RobustnessSummary
+from python.framework.reporting.console.run_console_renderer import RunConsoleRenderer
 from python.framework.reporting.console.scenario_details_summary import ScenarioDetailsSummary
+from python.framework.reporting.console.signal_summary import SignalSummary
+from python.framework.reporting.console.sim_executive_summary import SimExecutiveSummary
 from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
 from python.framework.reporting.console.warnings_summary import WarningsSummary
-from python.framework.reporting.console.worker_decision_breakdown_summary import WorkerDecisionBreakdownSummary
-from python.framework.reporting.console.run_console_renderer import RunConsoleRenderer
-from python.framework.utils.console_renderer import ConsoleRenderer
+from python.framework.reporting.console.worker_decision_breakdown_summary import (
+    WorkerDecisionBreakdownSummary,
+)
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
-from python.framework.reporting.builders.aggregated_portfolio_report_builder import build_aggregated_portfolio_report
-from python.framework.reporting.io.aggregated_portfolio_report_io import write_aggregated_portfolio_report
-from python.framework.reporting.builders.block_splitting_report_builder import build_block_splitting_report_from_batch
+from python.framework.reporting.io.aggregated_portfolio_report_io import (
+    write_aggregated_portfolio_report,
+)
 from python.framework.reporting.io.block_splitting_report_io import write_block_splitting_report
-from python.framework.reporting.builders.broker_report_builder import build_broker_report_from_batch
 from python.framework.reporting.io.broker_report_io import write_broker_report
-from python.framework.reporting.store.report_store import IO_SUBDIR
-from python.framework.reporting.builders.profiling_report_builder import build_profiling_report_from_batch
 from python.framework.reporting.io.profiling_report_io import write_profiling_report
-from python.framework.reporting.builders.robustness_report_builder import build_robustness_report_from_batch
 from python.framework.reporting.io.robustness_report_io import write_robustness_report
-from python.framework.reporting.console.robustness_summary import RobustnessSummary
-from python.framework.reporting.builders.run_meta_report_builder import build_run_meta_report_from_batch
 from python.framework.reporting.io.run_meta_report_io import write_run_meta_report
-from python.framework.reporting.builders.run_unit import run_units_from_batch
-from python.framework.reporting.builders.scenario_details_report_builder import build_scenario_details_report_from_batch
 from python.framework.reporting.io.scenario_details_report_io import write_scenario_details_report
-from python.framework.reporting.builders.warnings_errors_report_builder import build_warnings_errors_report_from_batch
 from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
+from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_provenance_builder import build_run_provenance
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
+from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.run_results_types import SweepContext
-from python.configuration.app_config_manager import AppConfigManager
-import sys
-import io
-import re
+from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
+from python.framework.utils.console_renderer import ConsoleRenderer
 
 
 class BatchReportCoordinator:

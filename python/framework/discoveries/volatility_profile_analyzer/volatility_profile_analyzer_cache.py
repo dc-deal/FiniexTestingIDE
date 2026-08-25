@@ -32,17 +32,22 @@ import pyarrow.parquet as pq
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint, read_fingerprint_from_parquet
-from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import VolatilityProfileAnalyzer
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import (
+    VolatilityProfileAnalyzer,
+)
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.config_types.market_config_types import MarketType
 from python.framework.types.market_types.market_volatility_profile_types import (
-    VolatilityPeriod,
     SessionSummary,
     SymbolVolatilityProfile,
     TradingSession,
+    VolatilityPeriod,
     VolatilityRegime,
+)
+from python.framework.utils.config_fingerprint_utils import (
+    generate_config_fingerprint,
+    read_fingerprint_from_parquet,
 )
 
 vLog = get_global_logger()
@@ -63,9 +68,9 @@ class VolatilityProfileAnalyzerCache:
     Only caches default M5 timeframe; custom timeframes bypass cache.
     """
 
-    CACHE_PARENT_DIR = ".discovery_caches"
-    CACHE_SUB_DIR = "volatility_profile_cache"
-    GRANULARITY = "M5"
+    CACHE_PARENT_DIR = '.discovery_caches'
+    CACHE_SUB_DIR = 'volatility_profile_cache'
+    GRANULARITY = 'M5'
 
     def __init__(self, logger: AbstractLogger = vLog):
         """
@@ -90,7 +95,7 @@ class VolatilityProfileAnalyzerCache:
 
     def _get_cache_path(self, broker_type: str, symbol: str) -> Path:
         """Get cache file path for broker_type/symbol."""
-        return self.cache_dir / f"{broker_type}_{symbol}_volatility_profile.parquet"
+        return self.cache_dir / f'{broker_type}_{symbol}_volatility_profile.parquet'
 
     def _get_source_bar_mtime(self, broker_type: str, symbol: str) -> Optional[float]:
         """Get modification time of source M5 bar file."""
@@ -182,8 +187,8 @@ class VolatilityProfileAnalyzerCache:
         # Custom timeframe bypasses cache
         if timeframe and timeframe != self.GRANULARITY:
             self._logger.debug(
-                f"Custom timeframe {timeframe}, bypassing cache: "
-                f"{broker_type}/{symbol}")
+                f'Custom timeframe {timeframe}, bypassing cache: '
+                f'{broker_type}/{symbol}')
             return self._build_profile(
                 broker_type, symbol, timeframe, analyzer)
 
@@ -192,11 +197,11 @@ class VolatilityProfileAnalyzerCache:
             result = self._load_profile(broker_type, symbol)
             if result:
                 self._logger.debug(
-                    f"Cache hit: {broker_type}/{symbol} volatility profile")
+                    f'Cache hit: {broker_type}/{symbol} volatility profile')
                 return result
 
         # Generate fresh volatility profile
-        self._logger.debug(f"Profiling: {broker_type}/{symbol}")
+        self._logger.debug(f'Profiling: {broker_type}/{symbol}')
         result = self._build_profile(
             broker_type, symbol, timeframe, analyzer)
         if result:
@@ -228,7 +233,7 @@ class VolatilityProfileAnalyzerCache:
             return analyzer.build_profile(broker_type, symbol, timeframe)
         except Exception as e:
             self._logger.warning(
-                f"Volatility profiling failed for {broker_type}/{symbol}: {e}")
+                f'Volatility profiling failed for {broker_type}/{symbol}: {e}')
             return None
 
     # =========================================================================
@@ -315,11 +320,11 @@ class VolatilityProfileAnalyzerCache:
             })
 
             pq.write_table(table, cache_path)
-            self._logger.debug(f"Cached: {broker_type}/{symbol} volatility profile")
+            self._logger.debug(f'Cached: {broker_type}/{symbol} volatility profile')
 
         except Exception as e:
             self._logger.warning(
-                f"Failed to cache {broker_type}/{symbol} volatility profile: {e}")
+                f'Failed to cache {broker_type}/{symbol} volatility profile: {e}')
 
     def _load_profile(
         self,
@@ -408,7 +413,7 @@ class VolatilityProfileAnalyzerCache:
 
         except Exception as e:
             self._logger.warning(
-                f"Failed to load cache for {broker_type}/{symbol}: {e}")
+                f'Failed to load cache for {broker_type}/{symbol}: {e}')
             return None
 
     # =========================================================================
@@ -451,8 +456,8 @@ class VolatilityProfileAnalyzerCache:
 
                 except Exception as e:
                     self._logger.warning(
-                        f"Failed to build cache for "
-                        f"{broker_type}/{symbol}: {e}")
+                        f'Failed to build cache for '
+                        f'{broker_type}/{symbol}: {e}')
                     stats['failed'] += 1
 
         elapsed = time.time() - start_time
@@ -472,11 +477,11 @@ class VolatilityProfileAnalyzerCache:
         Returns:
             Number of files deleted
         """
-        cache_files = list(self.cache_dir.glob("*.parquet"))
+        cache_files = list(self.cache_dir.glob('*.parquet'))
         for cache_file in cache_files:
             cache_file.unlink()
         self._logger.info(
-            f"Cleared {len(cache_files)} volatility profile cache files")
+            f'Cleared {len(cache_files)} volatility profile cache files')
         return len(cache_files)
 
     def get_cache_status(self) -> Dict:
@@ -493,7 +498,7 @@ class VolatilityProfileAnalyzerCache:
         stale = 0
         missing = 0
 
-        cache_files = list(self.cache_dir.glob("*.parquet"))
+        cache_files = list(self.cache_dir.glob('*.parquet'))
         total_size_mb = sum(
             f.stat().st_size for f in cache_files) / (1024 * 1024)
 

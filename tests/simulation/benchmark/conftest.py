@@ -10,32 +10,31 @@ Provides:
 - Configuration loading
 """
 
-import sys
-import re
 import json
-import time
+import re
 import shutil
 import statistics
-import pytest
+import sys
+import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List
+
+import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.scenario.scenario_config_loader import ScenarioConfigLoader
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-
+from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
+from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from tests.simulation.benchmark.system_fingerprint import (
-    get_system_fingerprint,
+    SystemFingerprint,
     find_matching_system,
     get_git_commit,
-    SystemFingerprint
+    get_system_fingerprint,
 )
-
 
 # =============================================================================
 # BENCHMARK RUN RESULT
@@ -77,8 +76,8 @@ def is_debugger_attached() -> bool:
 # PATHS
 # =============================================================================
 
-BENCHMARK_CONFIG_DIR = Path(__file__).parent / "config"
-BENCHMARK_REPORTS_DIR = Path(__file__).parent / "reports"
+BENCHMARK_CONFIG_DIR = Path(__file__).parent / 'config'
+BENCHMARK_REPORTS_DIR = Path(__file__).parent / 'reports'
 
 
 # =============================================================================
@@ -105,7 +104,7 @@ def pytest_addoption(parser):
 # CONFIGURATION FIXTURES
 # =============================================================================
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def benchmark_config() -> Dict[str, Any]:
     """
     Load benchmark configuration.
@@ -113,12 +112,12 @@ def benchmark_config() -> Dict[str, Any]:
     Returns:
         Parsed benchmark_config.json
     """
-    config_path = BENCHMARK_CONFIG_DIR / "benchmark_config.json"
+    config_path = BENCHMARK_CONFIG_DIR / 'benchmark_config.json'
     with open(config_path, 'r') as f:
         return json.load(f)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def reference_systems() -> Dict[str, Any]:
     """
     Load reference systems configuration.
@@ -126,7 +125,7 @@ def reference_systems() -> Dict[str, Any]:
     Returns:
         Parsed reference_systems.json
     """
-    config_path = BENCHMARK_CONFIG_DIR / "reference_systems.json"
+    config_path = BENCHMARK_CONFIG_DIR / 'reference_systems.json'
     with open(config_path, 'r') as f:
         return json.load(f)
 
@@ -135,7 +134,7 @@ def reference_systems() -> Dict[str, Any]:
 # SYSTEM VALIDATION FIXTURES
 # =============================================================================
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def system_fingerprint() -> SystemFingerprint:
     """
     Get current system fingerprint.
@@ -146,7 +145,7 @@ def system_fingerprint() -> SystemFingerprint:
     return get_system_fingerprint()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def debug_mode_detected() -> bool:
     """
     Check if debugger is attached.
@@ -160,7 +159,7 @@ def debug_mode_detected() -> bool:
     return is_debugger_attached()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def validated_system(
     system_fingerprint: SystemFingerprint,
     reference_systems: Dict[str, Any]
@@ -193,7 +192,7 @@ def validated_system(
     return system_id
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def baseline_metrics(
     validated_system: str,
     reference_systems: Dict[str, Any]
@@ -208,15 +207,15 @@ def baseline_metrics(
     Returns:
         Baseline metrics dict
     """
-    system_config = reference_systems["systems"][validated_system]
-    return system_config["baseline"]["metrics"]
+    system_config = reference_systems['systems'][validated_system]
+    return system_config['baseline']['metrics']
 
 
 # =============================================================================
 # BENCHMARK EXECUTION FIXTURE
 # =============================================================================
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def benchmark_execution_runs(
     validated_system: str,
     benchmark_config: Dict[str, Any]
@@ -240,7 +239,7 @@ def benchmark_execution_runs(
 
     for i in range(num_runs):
         print(f"\n{'='*60}")
-        print(f"🔄 Benchmark Run {i + 1}/{num_runs}")
+        print(f'🔄 Benchmark Run {i + 1}/{num_runs}')
         print(f"{'='*60}")
 
         config_loader = ScenarioConfigLoader()
@@ -269,12 +268,12 @@ def benchmark_execution_runs(
             run_index=i + 1
         ))
 
-        print(f"✅ Run {i + 1} complete — tickrun: {summary.batch_tickrun_time:.1f}s, warmup: {summary.batch_warmup_time:.1f}s")
+        print(f'✅ Run {i + 1} complete — tickrun: {summary.batch_tickrun_time:.1f}s, warmup: {summary.batch_warmup_time:.1f}s')
 
     return results
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def benchmark_metrics(
     benchmark_execution_runs: List[BenchmarkRunResult]
 ) -> Dict[str, Any]:
@@ -328,7 +327,7 @@ def benchmark_metrics(
 # REPORT GENERATION
 # =============================================================================
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope='session')
 def benchmark_report(
     request,
     validated_system: str,
@@ -391,8 +390,8 @@ def benchmark_report(
             # Better than baseline
             status = 'PASSED'
             warnings.append(
-                f"Performance {abs_deviation:.1f}% BETTER than baseline for {metric_name}. "
-                f"Consider updating baseline if code was optimized."
+                f'Performance {abs_deviation:.1f}% BETTER than baseline for {metric_name}. '
+                f'Consider updating baseline if code was optimized.'
             )
         else:
             # Worse than baseline — regression

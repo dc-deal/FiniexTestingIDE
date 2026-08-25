@@ -17,8 +17,12 @@ from python.framework.batch.data_preparation_coordinator import (
 )
 from python.framework.batch.requirements_collector import RequirementsCollector
 from python.framework.data_preparation.broker_data_preparator import BrokerDataPreparator
-from python.framework.discoveries.data_coverage.data_coverage_report_manager import DataCoverageReportManager
-from python.framework.discoveries.signal_coverage.signal_coverage_report_manager import SignalCoverageReportManager
+from python.framework.discoveries.data_coverage.data_coverage_report_manager import (
+    DataCoverageReportManager,
+)
+from python.framework.discoveries.signal_coverage.signal_coverage_report_manager import (
+    SignalCoverageReportManager,
+)
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.batch_execution_types import WarmupPhaseEntry
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
@@ -92,7 +96,7 @@ class MountPreparer:
         Returns:
             (broker_configs, broker_preparator, the 'Config Validation' warmup-phase timing)
         """
-        self._logger.info("🔍 Phase 0: Validating configuration...")
+        self._logger.info('🔍 Phase 0: Validating configuration...')
         _phase_t = time.time()
 
         # Load broker configs first — sets scenario.broker_type, needed by validators.
@@ -179,7 +183,7 @@ class MountPreparer:
         # ========================================================================
         # PHASE 1: INDEX & COVERAGE SETUP
         # ========================================================================
-        self._logger.info("📊 Phase 1: Index & coverage setup...")
+        self._logger.info('📊 Phase 1: Index & coverage setup...')
         _phase_t = time.time()
 
         data_coordinator = DataPreparationCoordinator(
@@ -213,7 +217,7 @@ class MountPreparer:
         # ========================================================================
         # PHASE 2: AVAILABILITY VALIDATION
         # ========================================================================
-        self._logger.info("🔍 Phase 2: Validating data availability...")
+        self._logger.info('🔍 Phase 2: Validating data availability...')
         _phase_t = time.time()
 
         # Validate that all scenarios have data available
@@ -226,7 +230,7 @@ class MountPreparer:
         # ========================================================================
         # PHASE 3: REQUIREMENTS COLLECTION
         # ========================================================================
-        self._logger.info("📋 Phase 3: Collecting data requirements...")
+        self._logger.info('📋 Phase 3: Collecting data requirements...')
         _phase_t = time.time()
 
         # Collect requirements from valid scenarios only
@@ -243,7 +247,7 @@ class MountPreparer:
         # ========================================================================
         # PHASE 4: DATA LOADING
         # ========================================================================
-        self._logger.info("📦 Phase 4: Loading data...")
+        self._logger.info('📦 Phase 4: Loading data...')
 
         # Prepare data only for scenarios in requirements_map
         scenario_packages, clipping_stats_map, load_timings = data_coordinator.prepare(
@@ -258,7 +262,7 @@ class MountPreparer:
         # ========================================================================
         # PHASE 5: QUALITY VALIDATION
         # ========================================================================
-        self._logger.info("🔬 Phase 5: Validating data quality...")
+        self._logger.info('🔬 Phase 5: Validating data quality...')
         _phase_t = time.time()
 
         self._broadcast(ScenarioStatus.WARMUP_COVERAGE)
@@ -276,8 +280,8 @@ class MountPreparer:
         valid_scenario_count = len(self._valid(scenarios))
 
         self._logger.info(
-            f"✅ Continuing with {valid_scenario_count}/{scenario_count} "
-            f"invalid scenario(s) ({total_invalid} filtered out)"
+            f'✅ Continuing with {valid_scenario_count}/{scenario_count} '
+            f'invalid scenario(s) ({total_invalid} filtered out)'
         )
 
         # Data identity — fingerprint each loaded scenario's data (broker / symbol / window /

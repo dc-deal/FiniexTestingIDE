@@ -11,14 +11,21 @@ import io
 import re
 from contextlib import redirect_stdout
 
-from python.framework.reporting.console.performance_summary import PerformanceSummary
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.builders.worker_decision_report_builder import (
-    build_worker_decision_report)
+    build_worker_decision_report,
+)
+from python.framework.reporting.console.performance_summary import PerformanceSummary
 from python.framework.types.api.report_types import (
-    WorkerDecisionReport, WorkerDecisionUnitRow, WorkerStatRow)
+    WorkerDecisionReport,
+    WorkerDecisionUnitRow,
+    WorkerStatRow,
+)
 from python.framework.types.performance_types.performance_stats_types import (
-    DecisionLogicStats, WorkerCoordinatorPerformanceStats, WorkerPerformanceStats)
+    DecisionLogicStats,
+    WorkerCoordinatorPerformanceStats,
+    WorkerPerformanceStats,
+)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 

@@ -94,17 +94,22 @@ Data Flow:
 
 from typing import Any, Dict, List, Optional, Set
 
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.worker_types import WorkerRequirement, WorkerResult
-from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.trading_env_types.order_types import OrderResult, OrderType, OrderDirection, OrderSide
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
+from python.framework.types.trading_env_types.order_types import (
+    OrderDirection,
+    OrderResult,
+    OrderSide,
+    OrderType,
+)
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
 class BacktestingMarginStress(AbstractDecisionLogic):
@@ -190,12 +195,12 @@ class BacktestingMarginStress(AbstractDecisionLogic):
         self.warmup_checked = False
 
         self.logger.info(
-            f"BacktestingMarginStress initialized: "
-            f"{len(self.trade_sequence)} trades, "
-            f"{len(self.close_events)} close events, "
-            f"{len(self.retry_events)} retry events, "
-            f"{len(self.edge_case_orders)} edge cases, "
-            f"lot_size={self.default_lot_size}"
+            f'BacktestingMarginStress initialized: '
+            f'{len(self.trade_sequence)} trades, '
+            f'{len(self.close_events)} close events, '
+            f'{len(self.retry_events)} retry events, '
+            f'{len(self.edge_case_orders)} edge cases, '
+            f'lot_size={self.default_lot_size}'
         )
 
     # ============================================
@@ -208,29 +213,29 @@ class BacktestingMarginStress(AbstractDecisionLogic):
             'trade_sequence': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of trade specs with optional expect_rejection flag"
+                description='List of trade specs with optional expect_rejection flag'
             ),
             'close_events': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of explicit close commands by sequence_index"
+                description='List of explicit close commands by sequence_index'
             ),
             'retry_events': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of retry orders after margin recovery"
+                description='List of retry orders after margin recovery'
             ),
             'edge_case_orders': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of edge-case orders for rejection testing"
+                description='List of edge-case orders for rejection testing'
             ),
             'lot_size': InputParamDef(
                 param_type=float,
                 default=1.0,
                 min_val=0.0,
                 max_val=200.0,
-                description="Default lot size"
+                description='Default lot size'
             ),
         }
 
@@ -301,7 +306,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
 
     def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         return {
-            "backtesting_worker": WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
+            'backtesting_worker': WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
         }
 
     def on_market_data_stale(self, status: MarketDataStatus) -> None:
@@ -361,7 +366,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                         'hold_ticks': hold_ticks,
                         'expect_rejection': expect_rejection,
                         'event_type': 'trade_sequence',
-                        'reason': f"Margin stress open {direction} at tick {self.tick_count}",
+                        'reason': f'Margin stress open {direction} at tick {self.tick_count}',
                         'price': tick.mid,
                     },
                 )
@@ -381,8 +386,8 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                 hold_ticks = spec.get('hold_ticks', 2000)
 
                 self.logger.info(
-                    f"Margin recovery retry at tick {self.tick_count}: "
-                    f"{direction} {lot_size} lots (retry #{idx})"
+                    f'Margin recovery retry at tick {self.tick_count}: '
+                    f'{direction} {lot_size} lots (retry #{idx})'
                 )
 
                 return Decision(
@@ -393,7 +398,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                         'expect_rejection': False,
                         'event_type': 'retry',
                         'retry_index': idx,
-                        'reason': f"Margin recovery retry at tick {self.tick_count}",
+                        'reason': f'Margin recovery retry at tick {self.tick_count}',
                         'price': tick.mid,
                     },
                 )
@@ -414,7 +419,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                             'edge_type': edge_type,
                             'position_id': spec.get('position_id', 'FAKE_POS_999'),
                             'edge_index': idx,
-                            'reason': f"Edge case: close_nonexistent at tick {self.tick_count}",
+                            'reason': f'Edge case: close_nonexistent at tick {self.tick_count}',
                             'price': tick.mid,
                         },
                     )
@@ -429,8 +434,8 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                     )
 
                     self.logger.info(
-                        f"Edge case order at tick {self.tick_count}: "
-                        f"{edge_type} lots={lot_size}"
+                        f'Edge case order at tick {self.tick_count}: '
+                        f'{edge_type} lots={lot_size}'
                     )
 
                     return Decision(
@@ -441,7 +446,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                             'edge_type': edge_type,
                             'edge_index': idx,
                             'expect_rejection': True,
-                            'reason': f"Edge case: {edge_type} at tick {self.tick_count}",
+                            'reason': f'Edge case: {edge_type} at tick {self.tick_count}',
                             'price': tick.mid,
                         },
                     )
@@ -462,7 +467,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
     ) -> Optional[OrderResult]:
         if not self.trading_api:
             self.logger.warning(
-                "No trading_api available - skipping execution")
+                'No trading_api available - skipping execution')
             return None
 
         # ============================================
@@ -569,7 +574,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
 
                 if expect_rejection:
                     self.logger.warning(
-                        f"Expected rejection but order succeeded at tick {self.tick_count}"
+                        f'Expected rejection but order succeeded at tick {self.tick_count}'
                     )
 
             elif order_result and order_result.is_rejected:
@@ -640,8 +645,8 @@ class BacktestingMarginStress(AbstractDecisionLogic):
 
             if not closed:
                 self.logger.warning(
-                    f"Could not close {order_id} at tick {self.tick_count} "
-                    f"(trade #{seq_idx} - position not found or pending close)"
+                    f'Could not close {order_id} at tick {self.tick_count} '
+                    f'(trade #{seq_idx} - position not found or pending close)'
                 )
 
             del self._active_trades[order_id]
@@ -657,8 +662,8 @@ class BacktestingMarginStress(AbstractDecisionLogic):
 
                 if not order_id:
                     self.logger.warning(
-                        f"Close event at tick {self.tick_count}: "
-                        f"no position for sequence #{seq_idx}"
+                        f'Close event at tick {self.tick_count}: '
+                        f'no position for sequence #{seq_idx}'
                     )
                     continue
 
@@ -678,8 +683,8 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                         })
 
                         self.logger.info(
-                            f"Explicit close at tick {self.tick_count}: "
-                            f"{order_id} (trade #{seq_idx})"
+                            f'Explicit close at tick {self.tick_count}: '
+                            f'{order_id} (trade #{seq_idx})'
                         )
                         closed = True
                         break
@@ -695,7 +700,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
         worker_result = worker_results.get('backtesting_worker')
 
         if not worker_result:
-            self.warmup_errors.append("Worker result not found")
+            self.warmup_errors.append('Worker result not found')
             return
 
         warmup_status = worker_result.get_signal('warmup_status')
@@ -722,13 +727,13 @@ class BacktestingMarginStress(AbstractDecisionLogic):
         )
 
         self.logger.debug(
-            f"MarginStress Metadata: "
-            f"expected_trades={len(self.expected_trades)}, "
-            f"rejections={len(self._rejection_events)}, "
-            f"close_events={len(self._close_events_log)}, "
-            f"retries={len(self._retry_results)}, "
-            f"edge_cases={len(self._edge_case_results)}, "
-            f"ticks={self.tick_count}"
+            f'MarginStress Metadata: '
+            f'expected_trades={len(self.expected_trades)}, '
+            f'rejections={len(self._rejection_events)}, '
+            f'close_events={len(self._close_events_log)}, '
+            f'retries={len(self._retry_results)}, '
+            f'edge_cases={len(self._edge_case_results)}, '
+            f'ticks={self.tick_count}'
         )
 
         return base_stats

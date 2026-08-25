@@ -15,7 +15,9 @@ import traceback
 from typing import Dict, List, Optional
 
 from python.configuration.market_config_manager import MarketConfigManager
-from python.framework.data_preparation.aggregate_scenario_data_requirements import AggregateScenarioDataRequirements
+from python.framework.data_preparation.aggregate_scenario_data_requirements import (
+    AggregateScenarioDataRequirements,
+)
 from python.framework.exceptions.persistence_errors import StatePersistenceError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.worker_factory import WorkerFactory
@@ -109,7 +111,7 @@ class RequirementsCollector:
         Returns:
             RequirementsMap ready for Phase 4 data loading
         """
-        self._logger.info("📋 Phase 3: Collecting data requirements...")
+        self._logger.info('📋 Phase 3: Collecting data requirements...')
 
         for idx, scenario in enumerate(scenarios):
             # === STEP 1: Market compatibility ===
@@ -120,7 +122,7 @@ class RequirementsCollector:
             )
             if compat_errors:
                 for error in compat_errors:
-                    self._logger.error(f"❌ {scenario.name}: {error}")
+                    self._logger.error(f'❌ {scenario.name}: {error}')
                 scenario.validation_result.append(ValidationResult(
                     is_valid=False,
                     scenario_name=scenario.name,
@@ -135,7 +137,7 @@ class RequirementsCollector:
             # here so a broken decision logic surfaces once — not as N failed runs.
             state_error = self._state_snapshot_preflight(scenario)
             if state_error:
-                self._logger.error(f"❌ {scenario.name}: {state_error}")
+                self._logger.error(f'❌ {scenario.name}: {state_error}')
                 scenario.validation_result.append(ValidationResult(
                     is_valid=False,
                     scenario_name=scenario.name,
@@ -151,7 +153,7 @@ class RequirementsCollector:
             # user_algos/). A violation excludes the scenario, batch continues.
             clock_error = self._algo_clock_preflight(scenario)
             if clock_error:
-                self._logger.error(f"❌ {scenario.name}: {clock_error}")
+                self._logger.error(f'❌ {scenario.name}: {clock_error}')
                 scenario.validation_result.append(ValidationResult(
                     is_valid=False,
                     scenario_name=scenario.name,
@@ -166,7 +168,7 @@ class RequirementsCollector:
             # subprocess (the orchestrator enforces the same check at construction).
             signal_error = self._worker_signal_preflight(scenario)
             if signal_error:
-                self._logger.error(f"❌ {scenario.name}: {signal_error}")
+                self._logger.error(f'❌ {scenario.name}: {signal_error}')
                 scenario.validation_result.append(ValidationResult(
                     is_valid=False,
                     scenario_name=scenario.name,
@@ -183,7 +185,7 @@ class RequirementsCollector:
                 )
             except Exception as e:
                 # Config error - don't proceed to availability check
-                error_formatted = f"❌ {scenario.name}: Error - {e} \n{traceback.format_exc()}"
+                error_formatted = f'❌ {scenario.name}: Error - {e} \n{traceback.format_exc()}'
                 self._logger.error(error_formatted)
 
                 validation_result = ValidationResult(
@@ -289,7 +291,7 @@ class RequirementsCollector:
         if not logic_type:
             return None
 
-        cache_key = f"{logic_type}|{json.dumps(logic_config, sort_keys=True, default=str)}"
+        cache_key = f'{logic_type}|{json.dumps(logic_config, sort_keys=True, default=str)}'
         if cache_key in self._state_preflight_cache:
             return self._state_preflight_cache[cache_key]
 
@@ -343,7 +345,7 @@ class RequirementsCollector:
         if not logic_type:
             return None
 
-        cache_key = f"{logic_type}|{json.dumps(logic_config, sort_keys=True, default=str)}"
+        cache_key = f'{logic_type}|{json.dumps(logic_config, sort_keys=True, default=str)}'
         if cache_key in self._signal_preflight_cache:
             return self._signal_preflight_cache[cache_key]
 

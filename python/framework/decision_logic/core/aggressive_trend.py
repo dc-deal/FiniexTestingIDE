@@ -44,23 +44,26 @@ can use the same workers but with completely different strategies.
 import traceback
 from typing import Any, Dict, List, Optional
 
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.decision_logic.abstract_decision_logic import \
-    AbstractDecisionLogic
-from python.framework.types.market_types.market_data_types import Bar, TickData
-from python.framework.types.decision_logic_types import AwarenessLevel, Decision, DecisionLogicAction
+from python.framework.types.component_metadata_types import ComponentMetadata
+from python.framework.types.decision_logic_types import (
+    AwarenessLevel,
+    Decision,
+    DecisionLogicAction,
+)
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.component_metadata_types import ComponentMetadata
-from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
+    OrderDirection,
+    OrderResult,
+    OrderSide,
     OrderStatus,
     OrderType,
-    OrderDirection,
-    OrderSide,
-    OrderResult,
 )
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
 class AggressiveTrend(AbstractDecisionLogic):
@@ -110,10 +113,10 @@ class AggressiveTrend(AbstractDecisionLogic):
         self.lot_size = self.params.get('lot_size')
 
         self.logger.debug(
-            f"AggressiveTrend initialized: "
-            f"RSI({self.rsi_buy}/{self.rsi_sell}), "
-            f"Bollinger extremes({self.bollinger_extremes}), "
-            f"Lots={self.lot_size}, MinMargin={self.min_free_margin}"
+            f'AggressiveTrend initialized: '
+            f'RSI({self.rsi_buy}/{self.rsi_sell}), '
+            f'Bollinger extremes({self.bollinger_extremes}), '
+            f'Lots={self.lot_size}, MinMargin={self.min_free_margin}'
         )
 
     # ============================================
@@ -126,31 +129,31 @@ class AggressiveTrend(AbstractDecisionLogic):
         return {
             'rsi_buy_threshold': InputParamDef(
                 param_type=float, default=35, min_val=1, max_val=49,
-                description="RSI threshold for buy signal (aggressive, higher than consensus)",
+                description='RSI threshold for buy signal (aggressive, higher than consensus)',
                 display=True, display_label='rsi_b',
             ),
             'rsi_sell_threshold': InputParamDef(
                 param_type=float, default=65, min_val=51, max_val=99,
-                description="RSI threshold for sell signal (aggressive, lower than consensus)",
+                description='RSI threshold for sell signal (aggressive, lower than consensus)',
                 display=True, display_label='rsi_s',
             ),
             'bollinger_extremes': InputParamDef(
                 param_type=float, default=0.25, min_val=0.01, max_val=0.5,
-                description="Bollinger distance from center to trigger signal",
+                description='Bollinger distance from center to trigger signal',
                 display=True, display_label='env_x',
             ),
             'min_confidence': InputParamDef(
                 param_type=float, default=0.4, min_val=0.0, max_val=1.0,
-                description="Minimum confidence to generate trading signal",
+                description='Minimum confidence to generate trading signal',
                 display=True, display_label='min_conf',
             ),
             'min_free_margin': InputParamDef(
                 param_type=float, default=1000, min_val=0,
-                description="Minimum free margin required before opening trade"
+                description='Minimum free margin required before opening trade'
             ),
             'lot_size': InputParamDef(
                 param_type=float, default=0.1, min_val=0.0, max_val=100.0,
-                description="Fixed lot size for market orders"
+                description='Fixed lot size for market orders'
             ),
         }
 
@@ -200,8 +203,8 @@ class AggressiveTrend(AbstractDecisionLogic):
             status: Session-level market-data health snapshot
         """
         self.logger.warning(
-            f"🔌 Market data stale ({status.seconds_since_last_tick:.0f}s "
-            f"since last tick) — holding until ticks resume."
+            f'🔌 Market data stale ({status.seconds_since_last_tick:.0f}s '
+            f'since last tick) — holding until ticks resume.'
         )
         self.emit_event(
             '🔌 market data stale — holding until ticks resume',
@@ -247,7 +250,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         # Check if trading API is available
         if not self.trading_api:
             self.logger.warning(
-                "Trading API not available - cannot execute decision")
+                'Trading API not available - cannot execute decision')
             return None
 
         if decision.action == DecisionLogicAction.FLAT:
@@ -282,13 +285,13 @@ class AggressiveTrend(AbstractDecisionLogic):
 
             # Opposite direction? Close old position (signal reversal)
             self.emit_event(
-                f"Signal reversal: {current_position.direction} → {new_direction}",
+                f'Signal reversal: {current_position.direction} → {new_direction}',
                 AwarenessLevel.NOTICE,
                 'signal_reversal',
             )
             self.logger.info(
-                f"   Closing {current_position.direction} position "
-                f"(ID: {current_position.position_id})"
+                f'   Closing {current_position.direction} position '
+                f'(ID: {current_position.position_id})'
             )
             self.trading_api.close_position(current_position.position_id)
             # This is it for this tick, we'll wait until the position gets closed properly
@@ -313,8 +316,8 @@ class AggressiveTrend(AbstractDecisionLogic):
 
         if account.free_margin < self.min_free_margin:
             self.logger.info(
-                f"Insufficient free margin: {account.free_margin:.2f} "
-                f"< {self.min_free_margin} - skipping trade"
+                f'Insufficient free margin: {account.free_margin:.2f} '
+                f'< {self.min_free_margin} - skipping trade'
             )
             return None
 
@@ -331,7 +334,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             # Log order submission status
             if order_result.status == OrderStatus.PENDING:
                 self.emit_event(
-                    f"Order submitted: {new_side} {self.lot_size} lots",
+                    f'Order submitted: {new_side} {self.lot_size} lots',
                     AwarenessLevel.INFO,
                     'order_submitted',
                 )
@@ -343,9 +346,9 @@ class AggressiveTrend(AbstractDecisionLogic):
 
             return order_result
 
-        except Exception as e:
+        except Exception:
             self.logger.error(
-                f"❌ Order execution failed: \n{traceback.format_exc()}")
+                f'❌ Order execution failed: \n{traceback.format_exc()}')
             return None
 
     # ============================================
@@ -365,8 +368,8 @@ class AggressiveTrend(AbstractDecisionLogic):
             Dict[instance_name, WorkerRequirement]
         """
         return {
-            "rsi_fast": WorkerRequirement.of('CORE/rsi', 'rsi_value'),
-            "bollinger_main": WorkerRequirement.of('CORE/bollinger', 'position'),
+            'rsi_fast': WorkerRequirement.of('CORE/rsi', 'rsi_value'),
+            'bollinger_main': WorkerRequirement.of('CORE/bollinger', 'position'),
         }
 
     def compute_tick(
@@ -388,8 +391,8 @@ class AggressiveTrend(AbstractDecisionLogic):
             Decision object with action, confidence, and reason
         """
         # Extract worker results
-        rsi_result = worker_results.get("rsi_fast")
-        bollinger_result = worker_results.get("bollinger_main")
+        rsi_result = worker_results.get('rsi_fast')
+        bollinger_result = worker_results.get('bollinger_main')
 
         if not rsi_result or not bollinger_result:
             return Decision(
@@ -421,7 +424,7 @@ class AggressiveTrend(AbstractDecisionLogic):
                 )
 
                 self.notify_awareness(
-                    f"BUY mode — RSI {rsi_value:.1f}, env {bollinger_position:.2f}",
+                    f'BUY mode — RSI {rsi_value:.1f}, env {bollinger_position:.2f}',
                     AwarenessLevel.INFO,
                     'buy_mode'
                 )
@@ -438,7 +441,7 @@ class AggressiveTrend(AbstractDecisionLogic):
                 )
             else:
                 self.notify_awareness(
-                    f"BUY signal weak — conf {confidence:.2f} < {self.min_confidence}",
+                    f'BUY signal weak — conf {confidence:.2f} < {self.min_confidence}',
                     AwarenessLevel.NOTICE,
                     'low_confidence'
                 )
@@ -459,7 +462,7 @@ class AggressiveTrend(AbstractDecisionLogic):
                 )
 
                 self.notify_awareness(
-                    f"SELL mode — RSI {rsi_value:.1f}, env {bollinger_position:.2f}",
+                    f'SELL mode — RSI {rsi_value:.1f}, env {bollinger_position:.2f}',
                     AwarenessLevel.INFO,
                     'sell_mode'
                 )
@@ -477,7 +480,7 @@ class AggressiveTrend(AbstractDecisionLogic):
 
         # No signal
         self.notify_awareness(
-            f"No edge — RSI {rsi_value:.1f}, env {bollinger_position:.2f}",
+            f'No edge — RSI {rsi_value:.1f}, env {bollinger_position:.2f}',
             AwarenessLevel.INFO,
             'no_edge'
         )
@@ -583,12 +586,12 @@ class AggressiveTrend(AbstractDecisionLogic):
         reasons = []
 
         if rsi_triggered:
-            reasons.append(f"RSI={rsi_value:.1f}")
+            reasons.append(f'RSI={rsi_value:.1f}')
 
         if bollinger_triggered:
-            reasons.append(f"Bollinger={bollinger_position:.2f}")
+            reasons.append(f'Bollinger={bollinger_position:.2f}')
 
-        return " OR ".join(reasons) + " (aggressive)"
+        return ' OR '.join(reasons) + ' (aggressive)'
 
     def _build_sell_reason(
         self,
@@ -601,9 +604,9 @@ class AggressiveTrend(AbstractDecisionLogic):
         reasons = []
 
         if rsi_triggered:
-            reasons.append(f"RSI={rsi_value:.1f}")
+            reasons.append(f'RSI={rsi_value:.1f}')
 
         if bollinger_triggered:
-            reasons.append(f"Bollinger={bollinger_position:.2f}")
+            reasons.append(f'Bollinger={bollinger_position:.2f}')
 
-        return " OR ".join(reasons) + " (aggressive)"
+        return ' OR '.join(reasons) + ' (aggressive)'

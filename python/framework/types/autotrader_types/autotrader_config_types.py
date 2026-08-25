@@ -17,7 +17,9 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ReconciliationDefaults,
     StatePersistenceDefaults,
 )
-from python.framework.types.config_types.scenario_settings_config_types import ScenarioSettingsConfig
+from python.framework.types.config_types.scenario_settings_config_types import (
+    ScenarioSettingsConfig,
+)
 
 
 @dataclass

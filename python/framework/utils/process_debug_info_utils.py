@@ -1,13 +1,12 @@
 from typing import Any, Dict, Tuple
-from python.framework.logging.scenario_logger import ScenarioLogger
+
 from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.console.broker_info_renderer import BrokerInfoRenderer
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.log_level import LogLevel
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.process_data_types import (
-    ProcessScenarioConfig,
-    TickRangeStats)
+from python.framework.types.process_data_types import ProcessScenarioConfig, TickRangeStats
 
 
 def get_tick_range_stats(
@@ -20,10 +19,10 @@ def get_tick_range_stats(
     """
 
     # === DEBUG: TICK RANGE INFO ===
-    logger.debug(f"🔍 Tick loop range info")
-    logger.debug(f"  Total ticks: {len(ticks)}")
-    logger.debug(f"  TradeSimulator ID: {id(trade_simulator)}")
-    logger.debug(f"  Portfolio ID: {id(trade_simulator.portfolio)}")
+    logger.debug('🔍 Tick loop range info')
+    logger.debug(f'  Total ticks: {len(ticks)}')
+    logger.debug(f'  TradeSimulator ID: {id(trade_simulator)}')
+    logger.debug(f'  Portfolio ID: {id(trade_simulator.portfolio)}')
 
     # Extract tick time range
     first_tick_time = None
@@ -43,9 +42,9 @@ def get_tick_range_stats(
                 last_tick_time - first_tick_time).total_seconds()
 
         logger.debug(
-            f"  First tick: {first_tick.timestamp} | {first_tick.symbol} | bid={first_tick.bid:.5f}")
+            f'  First tick: {first_tick.timestamp} | {first_tick.symbol} | bid={first_tick.bid:.5f}')
         logger.debug(
-            f"  Last tick:  {last_tick.timestamp} | {last_tick.symbol} | bid={last_tick.bid:.5f}")
+            f'  Last tick:  {last_tick.timestamp} | {last_tick.symbol} | bid={last_tick.bid:.5f}')
 
     return TickRangeStats(
         tick_count=tick_count,
@@ -69,19 +68,19 @@ def debug_warmup_bars_check(warmup_bars: Dict[str, Tuple[Any, ...]],
         bar_history = bar_rendering_controller.get_bar_history(
             config.symbol, timeframe)
         logger.debug(
-            f"📊 Bar History for {timeframe}: {len(bar_history)} bars"
+            f'📊 Bar History for {timeframe}: {len(bar_history)} bars'
         )
         if len(bar_history) > 0:
             first_bar = bar_history[0]
             last_bar = bar_history[-1]
             logger.debug(
-                f"  First: {first_bar.timestamp} (open={first_bar.open})"
+                f'  First: {first_bar.timestamp} (open={first_bar.open})'
             )
             logger.debug(
-                f"  Last:  {last_bar.timestamp} (open={last_bar.open})"
+                f'  Last:  {last_bar.timestamp} (open={last_bar.open})'
             )
         else:
-            logger.debug(f"  ❌ EMPTY BAR HISTORY!")
+            logger.debug('  ❌ EMPTY BAR HISTORY!')
 
 
 def log_trade_simulator_config(logger: ScenarioLogger, config: ProcessScenarioConfig, trade_simulator: AbstractTradeExecutor):
@@ -93,8 +92,8 @@ def log_trade_simulator_config(logger: ScenarioLogger, config: ProcessScenarioCo
     broker_info_text = BrokerInfoRenderer.render_detailed(
         broker_spec=broker_spec,
         symbol_spec=symbol_spec,
-        indent=""
+        indent=''
     )
 
-    logger.info("\n" + broker_info_text)
-    logger.debug("✅ Broker configuration logged")
+    logger.info('\n' + broker_info_text)
+    logger.debug('✅ Broker configuration logged')

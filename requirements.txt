@@ -46,8 +46,9 @@ httpx>=0.27.0
 #   release-time import-order and quote sweep. NOTE: its default quote style is DOUBLE,
 #   the opposite of §5 — it must be configured, never run bare.
 # vulture — dead code across module boundaries (§19): a getter nobody calls is invisible
-#   to pyflakes, which only sees module-local disuse. Needs a whitelist (FastAPI routes and
-#   pytest fixtures are called by their frameworks, not by name).
+#   to pyflakes, which only sees module-local disuse. Configured in vulture.toml (FastAPI
+#   routes and pytest fixtures are called by their frameworks, not by name) — run it as
+#   `python -m vulture --config vulture.toml`, never bare.
 pyflakes>=3.4.0
 ruff>=0.16.0
 vulture>=2.14

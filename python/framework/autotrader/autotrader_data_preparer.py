@@ -13,7 +13,9 @@ from python.framework.batch.mount_preparer import MountPreparer
 from python.framework.batch.requirements_collector import RequirementsCollector
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.autotrader_types.autotrader_session_data_types import PreparedSessionData
+from python.framework.types.autotrader_types.autotrader_session_data_types import (
+    PreparedSessionData,
+)
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.utils.time_utils import parse_datetime
 

@@ -15,7 +15,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrderAction, PendingOrderOutcome
+from python.framework.types.trading_env_types.latency_simulator_types import (
+    PendingOrderAction,
+    PendingOrderOutcome,
+)
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
 

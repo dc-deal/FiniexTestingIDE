@@ -30,8 +30,8 @@ class OptimizationCli:
             spec_file: Sweep spec filename or path
         """
         sweep_id = OptimizationRunner().run(spec_file)
-        print(f"\nSweep id: {sweep_id}")
-        print(f"Report:   python python/cli/optimization_cli.py report {sweep_id}")
+        print(f'\nSweep id: {sweep_id}')
+        print(f'Report:   python python/cli/optimization_cli.py report {sweep_id}')
 
     def cmd_report(
         self,
@@ -118,10 +118,10 @@ def main():
                 args.sweep_id, args.objective, args.minimize, args.currency, args.top)
 
     except KeyboardInterrupt:
-        print("\n\n👋 Interrupted by user")
+        print('\n\n👋 Interrupted by user')
         sys.exit(0)
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f'\n❌ Error: {e}')
         traceback.print_exc()
         sys.exit(1)
 

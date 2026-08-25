@@ -2,7 +2,10 @@ from multiprocessing import Queue
 from typing import Optional
 
 from python.framework.types.live_types.live_scenario_stats_types import LiveStatusFrame
-from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig, ScenarioStatus
+from python.framework.types.live_types.live_stats_config_types import (
+    LiveStatsExportConfig,
+    ScenarioStatus,
+)
 from python.framework.types.process_data_types import ProcessScenarioConfig
 
 

@@ -67,9 +67,9 @@ class WindowMaterializer:
             Scenario name string
         """
         if window_set.strategy == GenerationStrategy.BLOCKS:
-            return f"{window_set.symbol}_{window_set.strategy.value}_{position:02d}"
+            return f'{window_set.symbol}_{window_set.strategy.value}_{position:02d}'
         mode_short = 'vol' if window_set.mode == 'volatility_split' else 'cont'
-        return f"{window_set.symbol}_{mode_short}_{window.block_index:02d}"
+        return f'{window_set.symbol}_{mode_short}_{window.block_index:02d}'
 
     def to_scenario_dicts(
         self,

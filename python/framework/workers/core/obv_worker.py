@@ -13,15 +13,12 @@ primary_activity_metric is not 'volume' (e.g. forex) are rejected before
 any worker is instantiated.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 
-from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.market_types.market_data_types import Bar, TickData
-from python.framework.types.market_types.market_types import TradingContext
-from python.framework.types.config_types.market_config_types import MarketType
 from python.framework.types.component_metadata_types import ComponentMetadata
+from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
@@ -236,7 +233,7 @@ class ObvWorker(AbstractIndicatorWorker):
             "bullish", "bearish", or "neutral"
         """
         if len(closes) < lookback + 1:
-            return "neutral"
+            return 'neutral'
 
         # Calculate OBV at start and end of lookback period
         start_idx = -(lookback + 1)
@@ -251,8 +248,8 @@ class ObvWorker(AbstractIndicatorWorker):
             0.5 if np.any(volumes[-lookback:]) else 0
 
         if diff > threshold:
-            return "bullish"
+            return 'bullish'
         elif diff < -threshold:
-            return "bearish"
+            return 'bearish'
         else:
-            return "neutral"
+            return 'neutral'

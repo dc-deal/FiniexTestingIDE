@@ -10,11 +10,14 @@ Provides:
 """
 
 import platform
-import psutil
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
 
-from python.framework.utils.git_info_utils import get_git_commit  # noqa: F401 — re-exported for benchmark conftest
+import psutil
+
+from python.framework.utils.git_info_utils import (
+    get_git_commit,  # noqa: F401 — re-exported for benchmark conftest
+)
 
 
 @dataclass
@@ -39,22 +42,22 @@ class SystemFingerprint:
         Returns:
             Tuple of (matches: bool, reason: Optional[str])
         """
-        hardware = reference.get("hardware", {})
+        hardware = reference.get('hardware', {})
 
         # CPU model must match exactly
-        ref_cpu = hardware.get("cpu_model", "")
+        ref_cpu = hardware.get('cpu_model', '')
         if ref_cpu not in self.cpu_model and self.cpu_model not in ref_cpu:
             return False, f"CPU mismatch: '{self.cpu_model}' != '{ref_cpu}'"
 
         # CPU cores must match
-        ref_cores = hardware.get("cpu_cores", 0)
+        ref_cores = hardware.get('cpu_cores', 0)
         if self.cpu_cores != ref_cores:
-            return False, f"Core count mismatch: {self.cpu_cores} != {ref_cores}"
+            return False, f'Core count mismatch: {self.cpu_cores} != {ref_cores}'
 
         # RAM must meet minimum
-        ref_ram_min = hardware.get("ram_minimum_gb", 0)
+        ref_ram_min = hardware.get('ram_minimum_gb', 0)
         if self.ram_total_gb < ref_ram_min:
-            return False, f"Insufficient RAM: {self.ram_total_gb:.1f}GB < {ref_ram_min}GB minimum"
+            return False, f'Insufficient RAM: {self.ram_total_gb:.1f}GB < {ref_ram_min}GB minimum'
 
         return True, None
 
@@ -78,7 +81,7 @@ def get_system_fingerprint() -> SystemFingerprint:
     ram_available_gb = mem.available / (1024 ** 3)
 
     # Platform
-    plat = f"{platform.system()} {platform.release()}"
+    plat = f'{platform.system()} {platform.release()}'
 
     return SystemFingerprint(
         cpu_model=cpu_model,
@@ -97,20 +100,20 @@ def _get_cpu_model() -> str:
     """
     # Try platform.processor() first
     cpu = platform.processor()
-    if cpu and cpu != "":
+    if cpu and cpu != '':
         return cpu
 
     # Try reading from /proc/cpuinfo on Linux
     try:
-        with open("/proc/cpuinfo", "r") as f:
+        with open('/proc/cpuinfo', 'r') as f:
             for line in f:
-                if line.startswith("model name"):
-                    return line.split(":")[1].strip()
+                if line.startswith('model name'):
+                    return line.split(':')[1].strip()
     except (FileNotFoundError, PermissionError):
         pass
 
     # Fallback
-    return "Unknown CPU"
+    return 'Unknown CPU'
 
 
 def find_matching_system(
@@ -127,10 +130,10 @@ def find_matching_system(
     Returns:
         Tuple of (system_id, None) if found, or (None, error_message) if not
     """
-    systems = reference_systems.get("systems", {})
+    systems = reference_systems.get('systems', {})
 
     if not systems:
-        return None, "No systems registered in reference_systems.json"
+        return None, 'No systems registered in reference_systems.json'
 
     rejection_reasons = []
 
@@ -139,17 +142,17 @@ def find_matching_system(
         if matches:
             return system_id, None
         else:
-            rejection_reasons.append(f"  - {system_id}: {reason}")
+            rejection_reasons.append(f'  - {system_id}: {reason}')
 
     error_msg = (
-        f"Current system not registered.\n"
-        f"Detected: {fingerprint.cpu_model} ({fingerprint.cpu_cores} cores, "
-        f"{fingerprint.ram_total_gb:.1f}GB RAM)\n"
-        f"\nRejection reasons:\n" + "\n".join(rejection_reasons) +
-        f"\n\nTo register this system:\n"
-        f"1. Run the benchmark scenario manually\n"
-        f"2. Add your system to tests/simulation/benchmark/config/reference_systems.json\n"
-        f"3. Include your hardware specs and measured baseline values"
+        f'Current system not registered.\n'
+        f'Detected: {fingerprint.cpu_model} ({fingerprint.cpu_cores} cores, '
+        f'{fingerprint.ram_total_gb:.1f}GB RAM)\n'
+        f'\nRejection reasons:\n' + '\n'.join(rejection_reasons) +
+        '\n\nTo register this system:\n'
+        '1. Run the benchmark scenario manually\n'
+        '2. Add your system to tests/simulation/benchmark/config/reference_systems.json\n'
+        '3. Include your hardware specs and measured baseline values'
     )
 
     return None, error_msg

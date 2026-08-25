@@ -16,7 +16,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from python.framework.types.autotrader_types.autotrader_display_types import (
-    SignalTransportEvent, SignalTransportStats)
+    SignalTransportEvent,
+    SignalTransportStats,
+)
 from python.framework.types.decision_logic_types import AwarenessLevel
 from python.framework.types.signal_data_types import SignalHealthStatus
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay

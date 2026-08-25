@@ -10,14 +10,14 @@ Validates:
 - Default injection for optional params
 """
 
-import pytest
 from unittest.mock import MagicMock
 
-from python.framework.factory.worker_factory import WorkerFactory
+import pytest
+
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.types.config_types.market_config_types import MarketType
 from python.framework.types.market_types.market_types import TradingContext
-
 
 # ============================================
 # Fixtures
@@ -68,41 +68,41 @@ class TestWorkerFactoryValidConfigs:
     def test_create_rsi_worker(self, strict_worker_factory):
         """RSI worker with valid periods config."""
         worker = strict_worker_factory.create_worker(
-            instance_name="rsi_test",
-            worker_type="CORE/rsi",
-            worker_config={"periods": {"M5": 14}},
+            instance_name='rsi_test',
+            worker_type='CORE/rsi',
+            worker_config={'periods': {'M5': 14}},
         )
         assert worker is not None
-        assert worker.name == "rsi_test"
+        assert worker.name == 'rsi_test'
 
     def test_create_bollinger_worker(self, strict_worker_factory):
         """Bollinger worker with valid deviation."""
         worker = strict_worker_factory.create_worker(
-            instance_name="bollinger_test",
-            worker_type="CORE/bollinger",
-            worker_config={"periods": {"M5": 20}, "deviation": 2.0},
+            instance_name='bollinger_test',
+            worker_type='CORE/bollinger',
+            worker_config={'periods': {'M5': 20}, 'deviation': 2.0},
         )
         assert worker is not None
 
     def test_create_bollinger_worker_default_deviation(self, strict_worker_factory):
         """Bollinger worker without deviation uses default 2.0."""
         worker = strict_worker_factory.create_worker(
-            instance_name="bollinger_default",
-            worker_type="CORE/bollinger",
-            worker_config={"periods": {"M5": 20}},
+            instance_name='bollinger_default',
+            worker_type='CORE/bollinger',
+            worker_config={'periods': {'M5': 20}},
         )
         assert worker is not None
 
     def test_create_macd_worker(self, strict_worker_factory):
         """MACD worker with all required params."""
         worker = strict_worker_factory.create_worker(
-            instance_name="macd_test",
-            worker_type="CORE/macd",
+            instance_name='macd_test',
+            worker_type='CORE/macd',
             worker_config={
-                "periods": {"M5": 26},
-                "fast_period": 12,
-                "slow_period": 26,
-                "signal_period": 9,
+                'periods': {'M5': 26},
+                'fast_period': 12,
+                'slow_period': 26,
+                'signal_period': 9,
             },
         )
         assert worker is not None
@@ -110,18 +110,18 @@ class TestWorkerFactoryValidConfigs:
     def test_create_heavy_rsi_worker(self, strict_worker_factory):
         """HeavyRSI worker with optional artificial_load_ms."""
         worker = strict_worker_factory.create_worker(
-            instance_name="heavy_test",
-            worker_type="CORE/heavy_rsi",
-            worker_config={"periods": {"M5": 14}, "artificial_load_ms": 10.0},
+            instance_name='heavy_test',
+            worker_type='CORE/heavy_rsi',
+            worker_config={'periods': {'M5': 14}, 'artificial_load_ms': 10.0},
         )
         assert worker is not None
 
     def test_create_obv_worker(self, strict_worker_factory):
         """OBV worker with valid periods."""
         worker = strict_worker_factory.create_worker(
-            instance_name="obv_test",
-            worker_type="CORE/obv",
-            worker_config={"periods": {"M5": 20}},
+            instance_name='obv_test',
+            worker_type='CORE/obv',
+            worker_config={'periods': {'M5': 20}},
         )
         assert worker is not None
 
@@ -135,14 +135,14 @@ class TestWorkerFactoryMissingRequired:
 
     def test_macd_missing_fast_period(self, strict_worker_factory):
         """MACD without fast_period must raise."""
-        with pytest.raises(ValueError, match="fast_period"):
+        with pytest.raises(ValueError, match='fast_period'):
             strict_worker_factory.create_worker(
-                instance_name="macd_bad",
-                worker_type="CORE/macd",
+                instance_name='macd_bad',
+                worker_type='CORE/macd',
                 worker_config={
-                    "periods": {"M5": 26},
-                    "slow_period": 26,
-                    "signal_period": 9,
+                    'periods': {'M5': 26},
+                    'slow_period': 26,
+                    'signal_period': 9,
                     # fast_period missing
                 },
             )
@@ -151,9 +151,9 @@ class TestWorkerFactoryMissingRequired:
         """MACD without any algorithm params must raise."""
         with pytest.raises(ValueError):
             strict_worker_factory.create_worker(
-                instance_name="macd_empty",
-                worker_type="CORE/macd",
-                worker_config={"periods": {"M5": 26}},
+                instance_name='macd_empty',
+                worker_type='CORE/macd',
+                worker_config={'periods': {'M5': 26}},
             )
 
 
@@ -166,43 +166,43 @@ class TestWorkerFactoryBoundaryStrict:
 
     def test_bollinger_deviation_too_low(self, strict_worker_factory):
         """deviation=0.02 must be rejected (the original bug)."""
-        with pytest.raises(ValueError, match="below minimum"):
+        with pytest.raises(ValueError, match='below minimum'):
             strict_worker_factory.create_worker(
-                instance_name="bollinger_bug",
-                worker_type="CORE/bollinger",
-                worker_config={"periods": {"M5": 20}, "deviation": 0.02},
+                instance_name='bollinger_bug',
+                worker_type='CORE/bollinger',
+                worker_config={'periods': {'M5': 20}, 'deviation': 0.02},
             )
 
     def test_bollinger_deviation_too_high(self, strict_worker_factory):
         """deviation=50.0 must be rejected."""
-        with pytest.raises(ValueError, match="above maximum"):
+        with pytest.raises(ValueError, match='above maximum'):
             strict_worker_factory.create_worker(
-                instance_name="bollinger_high",
-                worker_type="CORE/bollinger",
-                worker_config={"periods": {"M5": 20}, "deviation": 50.0},
+                instance_name='bollinger_high',
+                worker_type='CORE/bollinger',
+                worker_config={'periods': {'M5': 20}, 'deviation': 50.0},
             )
 
     def test_macd_fast_period_zero(self, strict_worker_factory):
         """fast_period=0 below min_val=1 must be rejected."""
-        with pytest.raises(ValueError, match="below minimum"):
+        with pytest.raises(ValueError, match='below minimum'):
             strict_worker_factory.create_worker(
-                instance_name="macd_zero",
-                worker_type="CORE/macd",
+                instance_name='macd_zero',
+                worker_type='CORE/macd',
                 worker_config={
-                    "periods": {"M5": 26},
-                    "fast_period": 0,
-                    "slow_period": 26,
-                    "signal_period": 9,
+                    'periods': {'M5': 26},
+                    'fast_period': 0,
+                    'slow_period': 26,
+                    'signal_period': 9,
                 },
             )
 
     def test_heavy_rsi_negative_load(self, strict_worker_factory):
         """artificial_load_ms=-1 below min_val=0 must be rejected."""
-        with pytest.raises(ValueError, match="below minimum"):
+        with pytest.raises(ValueError, match='below minimum'):
             strict_worker_factory.create_worker(
-                instance_name="heavy_neg",
-                worker_type="CORE/heavy_rsi",
-                worker_config={"periods": {"M5": 14}, "artificial_load_ms": -1.0},
+                instance_name='heavy_neg',
+                worker_type='CORE/heavy_rsi',
+                worker_config={'periods': {'M5': 14}, 'artificial_load_ms': -1.0},
             )
 
 
@@ -216,15 +216,15 @@ class TestWorkerFactoryBoundaryNonStrict:
     def test_bollinger_deviation_too_low_warns(self, lenient_worker_factory, mock_logger):
         """deviation=0.02 creates worker but logs warning."""
         worker = lenient_worker_factory.create_worker(
-            instance_name="bollinger_warn",
-            worker_type="CORE/bollinger",
-            worker_config={"periods": {"M5": 20}, "deviation": 0.02},
+            instance_name='bollinger_warn',
+            worker_type='CORE/bollinger',
+            worker_config={'periods': {'M5': 20}, 'deviation': 0.02},
         )
         assert worker is not None
         # Check that warning was logged
         mock_logger.warning.assert_called()
         warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
-        assert any("below minimum" in w for w in warning_calls)
+        assert any('below minimum' in w for w in warning_calls)
 
 
 # ============================================
@@ -237,25 +237,25 @@ class TestDecisionLogicFactoryValidConfigs:
     def test_create_simple_consensus(self, strict_logic_factory, mock_logger):
         """SimpleConsensus with valid thresholds."""
         logic = strict_logic_factory.create_logic(
-            logic_type="CORE/simple_consensus",
+            logic_type='CORE/simple_consensus',
             logger=mock_logger,
-            logic_config={"rsi_oversold": 30, "rsi_overbought": 70, "lot_size": 0.1},
+            logic_config={'rsi_oversold': 30, 'rsi_overbought': 70, 'lot_size': 0.1},
         )
         assert logic is not None
 
     def test_create_aggressive_trend(self, strict_logic_factory, mock_logger):
         """AggressiveTrend with valid config."""
         logic = strict_logic_factory.create_logic(
-            logic_type="CORE/aggressive_trend",
+            logic_type='CORE/aggressive_trend',
             logger=mock_logger,
-            logic_config={"rsi_buy_threshold": 35, "rsi_sell_threshold": 65},
+            logic_config={'rsi_buy_threshold': 35, 'rsi_sell_threshold': 65},
         )
         assert logic is not None
 
     def test_create_simple_consensus_defaults_only(self, strict_logic_factory, mock_logger):
         """SimpleConsensus with empty config uses all defaults."""
         logic = strict_logic_factory.create_logic(
-            logic_type="CORE/simple_consensus",
+            logic_type='CORE/simple_consensus',
             logger=mock_logger,
             logic_config={},
         )
@@ -264,13 +264,13 @@ class TestDecisionLogicFactoryValidConfigs:
     def test_create_backtesting_deterministic(self, strict_logic_factory, mock_logger):
         """BacktestingDeterministic with trade sequence."""
         logic = strict_logic_factory.create_logic(
-            logic_type="CORE/backtesting/backtesting_deterministic",
+            logic_type='CORE/backtesting/backtesting_deterministic',
             logger=mock_logger,
             logic_config={
-                "trade_sequence": [
-                    {"tick_number": 10, "direction": "LONG", "hold_ticks": 100, "lot_size": 0.01}
+                'trade_sequence': [
+                    {'tick_number': 10, 'direction': 'LONG', 'hold_ticks': 100, 'lot_size': 0.01}
                 ],
-                "lot_size": 0.1,
+                'lot_size': 0.1,
             },
         )
         assert logic is not None
@@ -285,11 +285,11 @@ class TestDecisionLogicFactoryBoundaryStrict:
 
     def test_consensus_rsi_oversold_too_high(self, strict_logic_factory, mock_logger):
         """rsi_oversold=60 above max_val=49 must be rejected."""
-        with pytest.raises(ValueError, match="above maximum"):
+        with pytest.raises(ValueError, match='above maximum'):
             strict_logic_factory.create_logic(
-                logic_type="CORE/simple_consensus",
+                logic_type='CORE/simple_consensus',
                 logger=mock_logger,
-                logic_config={"rsi_oversold": 60},
+                logic_config={'rsi_oversold': 60},
             )
 
     def test_consensus_lot_size_below_broker_min(self, strict_logic_factory, mock_logger):
@@ -300,21 +300,21 @@ class TestDecisionLogicFactoryBoundaryStrict:
             symbol='BTCUSD',
             volume_min=0.00005,
         )
-        with pytest.raises(ValueError, match="below minimum"):
+        with pytest.raises(ValueError, match='below minimum'):
             strict_logic_factory.create_logic(
-                logic_type="CORE/simple_consensus",
+                logic_type='CORE/simple_consensus',
                 logger=mock_logger,
-                logic_config={"lot_size": 0.00001},
+                logic_config={'lot_size': 0.00001},
                 trading_context=context,
             )
 
     def test_consensus_min_confidence_above_one(self, strict_logic_factory, mock_logger):
         """min_confidence=1.5 above max_val=1.0 must be rejected."""
-        with pytest.raises(ValueError, match="above maximum"):
+        with pytest.raises(ValueError, match='above maximum'):
             strict_logic_factory.create_logic(
-                logic_type="CORE/simple_consensus",
+                logic_type='CORE/simple_consensus',
                 logger=mock_logger,
-                logic_config={"min_confidence": 1.5},
+                logic_config={'min_confidence': 1.5},
             )
 
 
@@ -328,9 +328,9 @@ class TestDecisionLogicFactoryBoundaryNonStrict:
     def test_consensus_oversold_too_high_warns(self, lenient_logic_factory, mock_logger):
         """rsi_oversold=60 creates logic but logs warning."""
         logic = lenient_logic_factory.create_logic(
-            logic_type="CORE/simple_consensus",
+            logic_type='CORE/simple_consensus',
             logger=mock_logger,
-            logic_config={"rsi_oversold": 60},
+            logic_config={'rsi_oversold': 60},
         )
         assert logic is not None
         mock_logger.warning.assert_called()

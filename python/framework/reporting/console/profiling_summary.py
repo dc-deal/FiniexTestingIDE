@@ -7,9 +7,14 @@ inter-tick distribution, clipping, and the run-level aggregate (budget recommend
 bottleneck frequency, cross-scenario averages) are all read from the model — no re-derivation.
 """
 
-from python.framework.reporting.console.abstract_batch_summary_section import AbstractBatchSummarySection
+from python.framework.reporting.console.abstract_batch_summary_section import (
+    AbstractBatchSummarySection,
+)
 from python.framework.types.api.report_types import (
-    InterTickStatsRow, ProfilingReport, ProfilingUnitRow)
+    InterTickStatsRow,
+    ProfilingReport,
+    ProfilingUnitRow,
+)
 from python.framework.types.scenario_types.scenario_set_performance_types import EXPECTED_OPERATIONS
 from python.framework.utils.console_renderer import ConsoleRenderer
 
@@ -58,14 +63,14 @@ class ProfilingSummary(AbstractBatchSummarySection):
         self._render_section_header(renderer)
 
         if not self._report.units:
-            print("No profiling data available")
+            print('No profiling data available')
             return
 
         for idx, unit in enumerate(self._report.units, 1):
             # Separator between scenarios
             if idx > 1:
                 print()
-                renderer.print_separator(width=120, char="·")
+                renderer.print_separator(width=120, char='·')
                 print()
 
             self._render_scenario_profile(unit, renderer)
@@ -83,12 +88,12 @@ class ProfilingSummary(AbstractBatchSummarySection):
             return
 
         if not self._report.units:
-            print("No aggregated profiling data available")
+            print('No aggregated profiling data available')
             return
 
         print()
         renderer.section_separator()
-        renderer.print_bold("⚡ AGGREGATED PROFILING (ALL SCENARIOS)")
+        renderer.print_bold('⚡ AGGREGATED PROFILING (ALL SCENARIOS)')
         renderer.section_separator()
 
         self._render_aggregated_details(renderer, compact=compact, threshold=threshold)
@@ -139,16 +144,16 @@ class ProfilingSummary(AbstractBatchSummarySection):
 
         for idx, phase in enumerate(phases):
             pct = phase.duration_s / total_warmup * 100
-            label = f"Phase {idx}  {phase.name:<{name_width}}"
-            value = f"{phase.duration_s:>7.2f}s  {pct:>5.1f}%"
+            label = f'Phase {idx}  {phase.name:<{name_width}}'
+            value = f'{phase.duration_s:>7.2f}s  {pct:>5.1f}%'
             if phase.name == slowest_name:
-                print(renderer.yellow(f"  {label}  {value}  ← slowest"))
+                print(renderer.yellow(f'  {label}  {value}  ← slowest'))
             else:
-                print(f"  {label}  {value}")
+                print(f'  {label}  {value}')
 
         renderer.print_separator(width=68)
         total_label = f"{'Total Warmup':<{name_width + 8}}"
-        print(f"  {total_label}  {total_warmup:>7.2f}s  100.0%")
+        print(f'  {total_label}  {total_warmup:>7.2f}s  100.0%')
         print()
 
     def _render_scenario_profile(self, unit: ProfilingUnitRow, renderer: ConsoleRenderer):
@@ -178,13 +183,13 @@ class ProfilingSummary(AbstractBatchSummarySection):
 
         # Operations table
         if not unit.operations:
-            print("  No data")
+            print('  No data')
             return
 
         # Header
         header = f"{'Operation':<22} {'Total':<15} {'Avg':<15} {'Calls':<10} {'%':<10}"
         print(renderer.bold(header))
-        print("-" * 75)
+        print('-' * 75)
 
         # Rows
         for op in unit.operations:
@@ -207,13 +212,13 @@ class ProfilingSummary(AbstractBatchSummarySection):
                 else:
                     def color_func(x): return x
 
-            op_name = color_func(f"{op.operation:<22}")
-            total = f"{op.total_time_ms:>10.2f}ms"
-            avg = f"{op.avg_time_ms:>10.3f}ms"
-            calls = f"{op.call_count:>8,}"
-            pct = color_func(f"{op.pct:>6.1f}%")
+            op_name = color_func(f'{op.operation:<22}')
+            total = f'{op.total_time_ms:>10.2f}ms'
+            avg = f'{op.avg_time_ms:>10.3f}ms'
+            calls = f'{op.call_count:>8,}'
+            pct = color_func(f'{op.pct:>6.1f}%')
 
-            print(f"{op_name} {total:<15} {avg:<15} {calls:<10} {pct:<10}")
+            print(f'{op_name} {total:<15} {avg:<15} {calls:<10} {pct:<10}')
 
         # Bottleneck
         if unit.bottleneck_operation:
@@ -222,8 +227,8 @@ class ProfilingSummary(AbstractBatchSummarySection):
             is_expected_bottleneck = unit.bottleneck_operation in EXPECTED_OPERATIONS
             icon = renderer.green(
                 '✅') if is_expected_bottleneck else renderer.red('🔥')
-            print(f"  {icon} {renderer.bold(unit.bottleneck_operation)} "
-                  f"({unit.bottleneck_pct:.1f}%)")
+            print(f'  {icon} {renderer.bold(unit.bottleneck_operation)} '
+                  f'({unit.bottleneck_pct:.1f}%)')
 
         # Inter-tick interval stats
         if unit.inter_tick:
@@ -243,15 +248,15 @@ class ProfilingSummary(AbstractBatchSummarySection):
         """
         print()
         print(renderer.bold('Inter-Tick Intervals (market-side time between consecutive ticks):'))
-        print(f"  Min: {stats.min_ms:.1f}ms  |  "
-              f"P5 (5th pctl): {stats.p5_ms:.1f}ms  |  "
-              f"Median: {stats.median_ms:.1f}ms  |  "
-              f"Mean: {stats.mean_ms:.1f}ms  |  "
-              f"P95 (95th pctl): {stats.p95_ms:.1f}ms  |  "
-              f"Max: {stats.max_ms:.1f}ms")
-        gaps_info = f", gaps removed: {stats.gaps_removed}, threshold: {stats.threshold_s:.0f}s" \
+        print(f'  Min: {stats.min_ms:.1f}ms  |  '
+              f'P5 (5th pctl): {stats.p5_ms:.1f}ms  |  '
+              f'Median: {stats.median_ms:.1f}ms  |  '
+              f'Mean: {stats.mean_ms:.1f}ms  |  '
+              f'P95 (95th pctl): {stats.p95_ms:.1f}ms  |  '
+              f'Max: {stats.max_ms:.1f}ms')
+        gaps_info = f', gaps removed: {stats.gaps_removed}, threshold: {stats.threshold_s:.0f}s' \
             if stats.gaps_removed > 0 else ''
-        print(f"  Intervals: {stats.interval_count:,}{gaps_info}")
+        print(f'  Intervals: {stats.interval_count:,}{gaps_info}')
         print(renderer.gray(
             '  Note: P5 = fastest 5% of tick arrivals. '
             'If avg processing > P5, the algorithm can\'t keep up with peak tick rate.'))
@@ -307,13 +312,13 @@ class ProfilingSummary(AbstractBatchSummarySection):
             visible = warnings[:threshold] if compact and len(warnings) > threshold else warnings
             for unit in visible:
                 print(renderer.red(
-                    f"  ⚠️  BUDGET WARNING: avg tick processing ({unit.avg_per_tick_ms:.3f}ms) "
-                    f"exceeds fastest 5% tick interval ({unit.inter_tick.p5_ms:.1f}ms) "
-                    f"in {unit.name} — risk of clipping in live"))
+                    f'  ⚠️  BUDGET WARNING: avg tick processing ({unit.avg_per_tick_ms:.3f}ms) '
+                    f'exceeds fastest 5% tick interval ({unit.inter_tick.p5_ms:.1f}ms) '
+                    f'in {unit.name} — risk of clipping in live'))
             if compact and len(warnings) > threshold:
                 remaining = len(warnings) - threshold
                 print(renderer.red(
-                    f"  ⚠️  +{remaining} more scenarios exceed budget — see log for full list"))
+                    f'  ⚠️  +{remaining} more scenarios exceed budget — see log for full list'))
             print()
 
         if has_p5:
@@ -349,8 +354,8 @@ class ProfilingSummary(AbstractBatchSummarySection):
             return
 
         print(f"  {renderer.bold('💡 Tick Processing Budget Recommendation:')} ")
-        print(f"     P95 processing time: {agg.p95_processing_ms:.3f}ms")
-        print(f"     Suggested budget: {agg.suggested_budget_ms:.3f}ms (P95 + 10% safety margin)")
+        print(f'     P95 processing time: {agg.p95_processing_ms:.3f}ms')
+        print(f'     Suggested budget: {agg.suggested_budget_ms:.3f}ms (P95 + 10% safety margin)')
         if not agg.budget_active:
             print(renderer.gray(
                 '     Set execution_config.tick_processing_budget_ms in scenario config '
@@ -379,21 +384,21 @@ class ProfilingSummary(AbstractBatchSummarySection):
             max_budget = max(agg.clipping_budgets)
             if max_budget < 1.0:
                 print(renderer.yellow(
-                    f"  ⚠️  Tick Processing Budget Active ({budget_str}) — "
-                    f"no ticks clipped, but budget < 1.0ms has no effect with integer-ms timestamps"))
+                    f'  ⚠️  Tick Processing Budget Active ({budget_str}) — '
+                    f'no ticks clipped, but budget < 1.0ms has no effect with integer-ms timestamps'))
                 print(renderer.gray(
                     '     collected_msc has millisecond granularity — minimum effective budget is 1.0ms'))
             else:
                 print(renderer.green(
-                    f"  ✅ Tick Processing Budget Active ({budget_str}) — "
-                    f"no ticks clipped ({total_ticks:,} ticks, {len(agg.clipping_budgets)} budget(s))"))
+                    f'  ✅ Tick Processing Budget Active ({budget_str}) — '
+                    f'no ticks clipped ({total_ticks:,} ticks, {len(agg.clipping_budgets)} budget(s))'))
             print()
         else:
             overall_rate = total_clipped / total_ticks * 100
             print(f"  {renderer.bold('✂️  Tick Processing Budget Active:')}")
-            print(f"     Budget: {budget_str}")
-            print(f"     Total: {total_kept:,} / {total_ticks:,} ticks kept  |  "
-                  f"Clipped: {total_clipped:,} ({overall_rate:.1f}%)")
+            print(f'     Budget: {budget_str}')
+            print(f'     Total: {total_kept:,} / {total_ticks:,} ticks kept  |  '
+                  f'Clipped: {total_clipped:,} ({overall_rate:.1f}%)')
             print()
 
         # Check if budget is too high (> 2× P95 processing time)
@@ -401,18 +406,18 @@ class ProfilingSummary(AbstractBatchSummarySection):
             max_budget = max(agg.clipping_budgets)
             if max_budget > agg.p95_processing_ms * 2:
                 print(renderer.yellow(
-                    f"  ⚠️  Budget ({max_budget}ms) exceeds 2× P95 processing time ({agg.p95_processing_ms:.3f}ms) "
-                    f"— ticks may be clipped unnecessarily, reducing simulation accuracy"))
+                    f'  ⚠️  Budget ({max_budget}ms) exceeds 2× P95 processing time ({agg.p95_processing_ms:.3f}ms) '
+                    f'— ticks may be clipped unnecessarily, reducing simulation accuracy'))
                 print()
 
     def _render_cross_scenario_averages(self, renderer: ConsoleRenderer):
         """Render average operation times across all scenarios (from the model aggregate)."""
-        print(renderer.bold("Avg Operation Times:"))
+        print(renderer.bold('Avg Operation Times:'))
         print()
 
         header = f"{'Operation':<25} {'Avg/Call':<15}"
         print(renderer.bold(header))
-        print("-" * 42)
+        print('-' * 42)
 
         for op in self._report.aggregate.avg_operation_times:
             # Color
@@ -423,9 +428,9 @@ class ProfilingSummary(AbstractBatchSummarySection):
             else:
                 def color_func(x): return x
 
-            op_name = color_func(f"{op.operation:<25}")
-            time_str = color_func(f"{op.avg_time_ms:>12.3f}ms")
-            print(f"{op_name} {time_str:<15}")
+            op_name = color_func(f'{op.operation:<25}')
+            time_str = color_func(f'{op.avg_time_ms:>12.3f}ms')
+            print(f'{op_name} {time_str:<15}')
 
     def _render_bottleneck_details(self, renderer: ConsoleRenderer):
         """
@@ -435,22 +440,22 @@ class ProfilingSummary(AbstractBatchSummarySection):
         """
         bottlenecks = self._report.aggregate.bottlenecks
         if not bottlenecks:
-            print("  No data")
+            print('  No data')
             return
 
         header = f"{'Operation':<25} {'Scenarios':<15} {'%':<10} {'Status':<15}"
         print(renderer.bold(header))
-        print("-" * 68)
+        print('-' * 68)
 
         for row in bottlenecks:
             color_func, status = self._bottleneck_label(row.status, row.pct, renderer)
 
-            op_name = color_func(f"{row.operation:<25}")
-            count_str = f"{row.scenario_count}/{row.total_scenarios}"
+            op_name = color_func(f'{row.operation:<25}')
+            count_str = f'{row.scenario_count}/{row.total_scenarios}'
             pct_str = color_func(
-                f"{row.pct:>6.1f}%") if row.scenario_count > 0 else f"{row.pct:>6.1f}%"
+                f'{row.pct:>6.1f}%') if row.scenario_count > 0 else f'{row.pct:>6.1f}%'
 
-            print(f"{op_name} {count_str:<15} {pct_str:<10} {status:<15}")
+            print(f'{op_name} {count_str:<15} {pct_str:<10} {status:<15}')
 
     @staticmethod
     def _bottleneck_label(status: str, pct: float, renderer: ConsoleRenderer):

@@ -164,14 +164,14 @@ class AbstractLogger(ABC):
         """
 
         print(f"\n{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
-        print(f"{ColorCodes.RED}{ColorCodes.BOLD}❌ VALIDATION ERROR{ColorCodes.RESET}")
+        print(f'{ColorCodes.RED}{ColorCodes.BOLD}❌ VALIDATION ERROR{ColorCodes.RESET}')
         print(f"{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
-        print(f"\n{ColorCodes.RED}{message}{ColorCodes.RESET}")
+        print(f'\n{ColorCodes.RED}{message}{ColorCodes.RESET}')
 
         if context:
-            print(f"\n{ColorCodes.YELLOW}Context:{ColorCodes.RESET}")
+            print(f'\n{ColorCodes.YELLOW}Context:{ColorCodes.RESET}')
             for key, value in context.items():
-                print(f"  {key}: {value}")
+                print(f'  {key}: {value}')
 
         print(f"\n{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}\n")
         sys.exit(1)
@@ -195,12 +195,12 @@ class AbstractLogger(ABC):
 
         print(f"\n{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
         print(
-            f"{ColorCodes.RED}{ColorCodes.BOLD}⚙️ CONFIGURATION ERROR{ColorCodes.RESET}")
+            f'{ColorCodes.RED}{ColorCodes.BOLD}⚙️ CONFIGURATION ERROR{ColorCodes.RESET}')
         print(f"{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
-        print(f"\n{ColorCodes.RED}{message}{ColorCodes.RESET}")
+        print(f'\n{ColorCodes.RED}{message}{ColorCodes.RESET}')
 
         if file_path:
-            print(f"\n{ColorCodes.YELLOW}File: {file_path}{ColorCodes.RESET}")
+            print(f'\n{ColorCodes.YELLOW}File: {file_path}{ColorCodes.RESET}')
 
         print(f"\n{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}\n")
         sys.exit(1)
@@ -223,14 +223,14 @@ class AbstractLogger(ABC):
         """
 
         print(f"\n{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
-        print(f"{ColorCodes.RED}{ColorCodes.BOLD}💥 CRITICAL ERROR{ColorCodes.RESET}")
+        print(f'{ColorCodes.RED}{ColorCodes.BOLD}💥 CRITICAL ERROR{ColorCodes.RESET}')
         print(f"{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
-        print(f"\n{ColorCodes.RED}{message}{ColorCodes.RESET}")
+        print(f'\n{ColorCodes.RED}{message}{ColorCodes.RESET}')
 
         if exception:
-            print(f"\n{ColorCodes.YELLOW}Exception:{ColorCodes.RESET}")
-            print(f"{ColorCodes.RED}{str(exception)}{ColorCodes.RESET}")
-            print(f"\n{ColorCodes.YELLOW}Stack Trace:{ColorCodes.RESET}")
+            print(f'\n{ColorCodes.YELLOW}Exception:{ColorCodes.RESET}')
+            print(f'{ColorCodes.RED}{str(exception)}{ColorCodes.RESET}')
+            print(f'\n{ColorCodes.YELLOW}Stack Trace:{ColorCodes.RESET}')
             traceback.print_exc()
 
         print(f"\n{ColorCodes.RED}{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}\n")
@@ -279,7 +279,7 @@ class AbstractLogger(ABC):
         Replace the current console buffer with a provided list.
         """
         if not isinstance(buffer, list):
-            raise ValueError("Expected a list of (level, line) tuples.")
+            raise ValueError('Expected a list of (level, line) tuples.')
         self.console_buffer = [(str(level), str(line))
                                for level, line in buffer]
 
@@ -291,7 +291,7 @@ class AbstractLogger(ABC):
         Can be used in the parent process after collecting logs from workers.
         """
         if not buffer:
-            print("(empty log buffer)")
+            print('(empty log buffer)')
             return
         print(f"\n{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
         if scenario_name:
@@ -346,4 +346,4 @@ class AbstractLogger(ABC):
         color = self._get_color_for_level(level)
         reset = ColorCodes.RESET
 
-        return f"{timestamp} {color}{level:8}{reset} | {message}"
+        return f'{timestamp} {color}{level:8}{reset} | {message}'

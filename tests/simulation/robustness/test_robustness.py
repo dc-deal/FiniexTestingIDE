@@ -6,20 +6,27 @@ Multi-window + IS/OOS validation, sim-only. Covers: the time-ordered role policy
 DERIVE builder (distribution / IS-OOS / WFE / regime / disposition) against a REAL
 BatchExecutionSummary, and the PostRunValidator verdict (OVERFIT / drift / low-N / trust gate).
 """
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from python.framework.reporting.builders.robustness_report_builder import build_robustness_report_from_batch
+from python.framework.reporting.builders.robustness_report_builder import (
+    build_robustness_report_from_batch,
+)
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.config_types.robustness_config_types import (
-    RobustnessConfig, RobustnessMetric, RobustnessRole)
-from python.framework.types.process_data_types import (
-    BlockBoundaryReport, ProcessResult, ProcessTickLoopResult)
+    RobustnessConfig,
+    RobustnessMetric,
+    RobustnessRole,
+)
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.process_data_types import (
+    BlockBoundaryReport,
+    ProcessResult,
+    ProcessTickLoopResult,
+)
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.validators.post_run_validator import PostRunValidator

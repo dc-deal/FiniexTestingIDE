@@ -7,6 +7,7 @@ Usage:
     python python/cli/signal_index_cli.py status
     python python/cli/signal_index_cli.py rebuild
     python python/cli/signal_index_cli.py inspect DATA_SENTIMENT_TYPE SYMBOL
+    python python/cli/signal_index_cli.py connect-check
 
 Paths are driven by configs/import_config.json → 'signal_paths' (with user_configs override):
 raw JSONL under data/raw/signals/<pipeline_id>/, processed parquet + index under
@@ -24,12 +25,20 @@ import traceback
 import pandas as pd
 
 from python.configuration.import_config_manager import ImportConfigManager
-from python.data_management.importers.signal_importer import SignalDataImporter
+from python.configuration.sentiment_config_manager import SentimentConfigManager
+from python.data_management.importers.signal_data_importer import SignalDataImporter
 from python.data_management.index.signal_index_manager import SignalIndexManager
-from python.framework.types.signal_data_types import (
-    SIGNAL_ENVELOPE_SYMBOL, SIGNAL_RUNTIME_COLUMNS, SignalParquetColumn)
-
+from python.framework.signal_data.signal_connect_check import (
+    print_connect_check,
+    run_connect_check,
+)
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.signal_data_types import (
+    SIGNAL_ENVELOPE_SYMBOL,
+    SIGNAL_RUNTIME_COLUMNS,
+    SignalParquetColumn,
+)
+
 vLog = get_global_logger()
 
 
@@ -58,14 +67,14 @@ class SignalIndexCli:
         finished_dir = self._import_config.get_signal_data_finished_path() \
             if self._import_config.get_move_processed_files() else None
 
-        print("\n" + "=" * 80)
-        print("📡 Signal Data Import")
-        print("=" * 80)
-        print(f"Source:         {source_dir}")
-        print(f"Target:         {target_dir}")
+        print('\n' + '=' * 80)
+        print('📡 Signal Data Import')
+        print('=' * 80)
+        print(f'Source:         {source_dir}')
+        print(f'Target:         {target_dir}')
         print(f"Finished:       {finished_dir or 'DISABLED (files stay in source)'}")
         print(f"Override Mode:  {'ENABLED' if override else 'DISABLED'}")
-        print("=" * 80)
+        print('=' * 80)
 
         importer = SignalDataImporter(
             source_dir=source_dir, target_dir=target_dir, override=override,
@@ -86,6 +95,17 @@ class SignalIndexCli:
         manager.build_index(force_rebuild=True)
         manager.print_summary()
 
+    def cmd_connect_check(self):
+        """Probe the configured producer: reachable, and which credential answered."""
+        manager = SentimentConfigManager()
+        config = manager.get_config()
+        result = run_connect_check(
+            producer=manager.resolve_active_producer(),
+            pipeline_id=config.poll.pipeline_id,
+            timeout_s=config.poll.request_timeout_s)
+        print_connect_check(result)
+        return result
+
     def cmd_inspect(self, data_sentiment_type: str, symbol: str):
         """
         Inspect one signal source/symbol: coverage, parquet structure, quality, sample.
@@ -99,11 +119,11 @@ class SignalIndexCli:
         manager.build_index()
 
         coverage = manager.get_symbol_file_coverage(data_sentiment_type, symbol)
-        print("\n" + "=" * 80)
-        print(f"📡 Inspect Sentiment: {data_sentiment_type} / {symbol}")
-        print("=" * 80)
+        print('\n' + '=' * 80)
+        print(f'📡 Inspect Sentiment: {data_sentiment_type} / {symbol}')
+        print('=' * 80)
         if not coverage:
-            print("   (no data for this source/symbol — import it first)")
+            print('   (no data for this source/symbol — import it first)')
             return
 
         print(f"Files:   {coverage['num_files']}")
@@ -117,27 +137,27 @@ class SignalIndexCli:
         df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
 
         # Column manifest — runtime projection vs. traceability scalar, with dtype.
-        print("\nParquet columns (lean projection):")
+        print('\nParquet columns (lean projection):')
         for col in SignalParquetColumn:
             tag = 'runtime' if col.value in SIGNAL_RUNTIME_COLUMNS else 'traceability'
             dtype = df[col.value].dtype if col.value in df.columns else '—'
-            print(f"   {col.value:16s} {str(dtype):8s} [{tag}]")
+            print(f'   {col.value:16s} {str(dtype):8s} [{tag}]')
 
         # Row composition — envelope sentinels ('*') vs. the symbol's own rows.
         sentinels = int(
             (df[SignalParquetColumn.SYMBOL.value] == SIGNAL_ENVELOPE_SYMBOL).sum())
         sym_rows = df[df[SignalParquetColumn.SYMBOL.value] == symbol]
-        print("\nRow composition:")
+        print('\nRow composition:')
         print(f"   Envelope sentinels ('*'): {sentinels:,}")
-        print(f"   {symbol} rows:            {len(sym_rows):,}")
+        print(f'   {symbol} rows:            {len(sym_rows):,}')
 
         # Signal-quality picture — basis distribution + breaking count (the Fehlerbild lens).
-        print(f"\n{symbol} basis distribution:")
+        print(f'\n{symbol} basis distribution:')
         for basis, count in sym_rows[SignalParquetColumn.BASIS.value].value_counts().items():
             label = basis if basis else '(absent/synthesized)'
-            print(f"   {label:24s} {count:,}")
+            print(f'   {label:24s} {count:,}')
         breaking = int(sym_rows[SignalParquetColumn.IS_BREAKING.value].sum())
-        print(f"   is_breaking=True:        {breaking:,}")
+        print(f'   is_breaking=True:        {breaking:,}')
 
         # Sample rows — including the new fields (basis, prompt provenance).
         cols = [
@@ -147,9 +167,9 @@ class SignalIndexCli:
             SignalParquetColumn.BASIS.value, SignalParquetColumn.STATUS.value,
             SignalParquetColumn.PROMPT_VERSION.value, SignalParquetColumn.PROMPT_HASH.value,
         ]
-        print("\nSample rows:")
+        print('\nSample rows:')
         print(sym_rows[cols].head(5).to_string(index=False))
-        print("=" * 80)
+        print('=' * 80)
 
 
 def main():
@@ -180,6 +200,13 @@ def main():
     subparsers.add_parser('rebuild', help='Force a full signal index rebuild')
 
     # ─────────────────────────────────────────────────────────────────────────
+    # CONNECT-CHECK command
+    # ─────────────────────────────────────────────────────────────────────────
+    subparsers.add_parser(
+        'connect-check',
+        help='Probe the configured producer (free routes only, never POST /run)')
+
+    # ─────────────────────────────────────────────────────────────────────────
     # INSPECT command
     # ─────────────────────────────────────────────────────────────────────────
     inspect_parser = subparsers.add_parser(
@@ -203,16 +230,19 @@ def main():
             cli.cmd_status()
         elif args.command == 'rebuild':
             cli.cmd_rebuild()
+        elif args.command == 'connect-check':
+            if not cli.cmd_connect_check().is_ok():
+                sys.exit(1)
         elif args.command == 'inspect':
             cli.cmd_inspect(
                 data_sentiment_type=args.data_sentiment_type,
                 symbol=args.symbol)
 
     except KeyboardInterrupt:
-        print("\n\n👋 Interrupted by user")
+        print('\n\n👋 Interrupted by user')
         sys.exit(0)
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f'\n❌ Error: {e}')
         traceback.print_exc()
         sys.exit(1)
 

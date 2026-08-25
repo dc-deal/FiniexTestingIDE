@@ -9,7 +9,7 @@ Uses pending_stats_validation_test.json scenario config:
 
 from tests.shared.shared_batch_health import TestBatchHealth
 from tests.shared.shared_pending_stats import (
+    TestForceClosedDetection,
     TestPendingStatsBaseline,
     TestSyntheticCloseNotCounted,
-    TestForceClosedDetection,
 )

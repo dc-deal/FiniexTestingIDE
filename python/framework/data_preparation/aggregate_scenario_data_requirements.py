@@ -9,17 +9,15 @@ UTC-FIX:
 - Prevents timezone comparison errors in data loading
 """
 
-from datetime import timezone
 from typing import Dict
-from dateutil import parser
 
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.process_data_types import (
-    RequirementsMap,
-    TickRequirement,
     BarRequirement,
+    RequirementsMap,
     SignalRequirement,
+    TickRequirement,
 )
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.worker_types import WorkerType
@@ -86,9 +84,9 @@ class AggregateScenarioDataRequirements:
             start_time=start_time,
             end_time=end_time,
             max_ticks=scenario.max_ticks,
-            start_readable=start_time.strftime("%Y-%m-%d %H:%M:%S"),
+            start_readable=start_time.strftime('%Y-%m-%d %H:%M:%S'),
             end_readable=end_time.strftime(
-                "%Y-%m-%d %H:%M:%S") if end_time else ""
+                '%Y-%m-%d %H:%M:%S') if end_time else ''
         )
         self.requirements.add_tick_requirement(tick_req)
 
@@ -98,8 +96,8 @@ class AggregateScenarioDataRequirements:
 
         warmup_by_timeframe = {}
 
-        worker_instances = scenario.strategy_config.get("worker_instances", {})
-        workers_config = scenario.strategy_config.get("workers", {})
+        worker_instances = scenario.strategy_config.get('worker_instances', {})
+        workers_config = scenario.strategy_config.get('workers', {})
 
         for instance_name, worker_type in worker_instances.items():
             # Get config for this worker instance
@@ -108,7 +106,7 @@ class AggregateScenarioDataRequirements:
             strict = True
             if scenario.execution_config:
                 strict = scenario.execution_config.get(
-                    "strict_parameter_validation", True
+                    'strict_parameter_validation', True
                 )
 
             # Resolve worker class (from registry) — unpack (class, source_path) tuple
@@ -123,7 +121,7 @@ class AggregateScenarioDataRequirements:
                 worker_config, strict=strict
             )
             for w in warnings:
-                self._logger.warning(f"⚠️ {w}")
+                self._logger.warning(f'⚠️ {w}')
 
             # SIGNAL workers contribute a signal-data requirement (no warmup/bars).
             if worker_class.get_worker_type() == WorkerType.SIGNAL:
@@ -143,9 +141,9 @@ class AggregateScenarioDataRequirements:
             requirements = worker_class.calculate_requirements(worker_config)
 
             self._logger.debug(
-                f"[Requirements] Scenario {scenario_index + 1}: "
-                f"{scenario.data_broker_type}/{scenario.symbol}, {len(warmup_by_timeframe)} timeframes, "
-                f"warmup_by_timeframe={warmup_by_timeframe}"
+                f'[Requirements] Scenario {scenario_index + 1}: '
+                f'{scenario.data_broker_type}/{scenario.symbol}, {len(warmup_by_timeframe)} timeframes, '
+                f'warmup_by_timeframe={warmup_by_timeframe}'
             )
 
             # Merge with other workers (max per timeframe)
@@ -155,9 +153,9 @@ class AggregateScenarioDataRequirements:
                 )
 
         self._logger.debug(
-            f"[Requirements] Scenario {scenario_index + 1}: "
-            f"{scenario.data_broker_type}/{scenario.symbol}, {len(warmup_by_timeframe)} timeframes, "
-            f"warmup_by_timeframe={warmup_by_timeframe}"
+            f'[Requirements] Scenario {scenario_index + 1}: '
+            f'{scenario.data_broker_type}/{scenario.symbol}, {len(warmup_by_timeframe)} timeframes, '
+            f'warmup_by_timeframe={warmup_by_timeframe}'
         )
 
         # Convert to BarRequirements for aggregation
@@ -169,7 +167,7 @@ class AggregateScenarioDataRequirements:
                 timeframe=timeframe,
                 warmup_count=warmup_count,
                 start_time=start_time,  # Already UTC-aware
-                start_readable=start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                start_readable=start_time.strftime('%Y-%m-%d %H:%M:%S'),
             )
             self.requirements.add_bar_requirement(bar_req)
 
@@ -189,16 +187,16 @@ class AggregateScenarioDataRequirements:
             Deduplicated RequirementsMap
         """
         self._logger.info(
-            f"📊 Requirements collected: "
-            f"{len(self.requirements.tick_requirements)} tick reqs, "
-            f"{len(self.requirements.bar_requirements)} bar reqs "
-            f"from {self._scenario_count} scenarios"
+            f'📊 Requirements collected: '
+            f'{len(self.requirements.tick_requirements)} tick reqs, '
+            f'{len(self.requirements.bar_requirements)} bar reqs '
+            f'from {self._scenario_count} scenarios'
         )
 
         self._logger.info(
-            f"✅ After deduplication: "
-            f"{len(self.requirements.tick_requirements)} tick loads, "
-            f"{len(self.requirements.bar_requirements)} bar loads"
+            f'✅ After deduplication: '
+            f'{len(self.requirements.tick_requirements)} tick loads, '
+            f'{len(self.requirements.bar_requirements)} bar loads'
         )
 
         return self.requirements

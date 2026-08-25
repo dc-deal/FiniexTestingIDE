@@ -81,9 +81,9 @@ class DecisionLogicAction(StrEnum):
     - REDUCE: Reduce position size
     - CLOSE: Explicit close signal
     """
-    BUY = "BUY"
-    SELL = "SELL"
-    FLAT = "FLAT"
+    BUY = 'BUY'
+    SELL = 'SELL'
+    FLAT = 'FLAT'
 
 
 @dataclass

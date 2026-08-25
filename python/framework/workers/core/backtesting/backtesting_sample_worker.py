@@ -34,7 +34,6 @@ Data Flow:
 
 from typing import Any, Dict, List, Optional
 
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
@@ -70,8 +69,6 @@ class BacktestingSampleWorker(AbstractIndicatorWorker):
             logger=logger, trading_context=trading_context
         )
 
-        params = parameters or {}
-
         # Extract snapshot check configurations
         self.snapshot_checks = self.params.get('bar_snapshot_checks')
 
@@ -98,7 +95,7 @@ class BacktestingSampleWorker(AbstractIndicatorWorker):
             'bar_snapshot_checks': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of bar snapshot capture configs (timeframe, bar_index, check_at_tick)"
+                description='List of bar snapshot capture configs (timeframe, bar_index, check_at_tick)'
             ),
         }
 
@@ -261,7 +258,7 @@ class BacktestingSampleWorker(AbstractIndicatorWorker):
                 'expected': expected_count,
                 'actual': actual_count,
                 'error': None if valid else (
-                    f"Expected {expected_count} warmup bars, got {actual_count}"
+                    f'Expected {expected_count} warmup bars, got {actual_count}'
                 )
             }
 
@@ -301,17 +298,17 @@ class BacktestingSampleWorker(AbstractIndicatorWorker):
 
         if bar is not None:
             # Create unique key for this snapshot
-            key = f"{timeframe}_bar{bar_index}_tick{self.tick_count}"
+            key = f'{timeframe}_bar{bar_index}_tick{self.tick_count}'
 
             # Serialize bar to dict using Bar.to_dict()
             self.snapshots[key] = bar.to_dict()
 
             self.logger.debug(
-                f"📸 Captured snapshot: {key} | "
-                f"close={bar.close:.5f} | ticks={bar.tick_count}"
+                f'📸 Captured snapshot: {key} | '
+                f'close={bar.close:.5f} | ticks={bar.tick_count}'
             )
         else:
             self.logger.warning(
-                f"⚠️ Cannot capture snapshot at tick {self.tick_count}: "
-                f"bar not found (timeframe={timeframe}, index={bar_index})"
+                f'⚠️ Cannot capture snapshot at tick {self.tick_count}: '
+                f'bar not found (timeframe={timeframe}, index={bar_index})'
             )

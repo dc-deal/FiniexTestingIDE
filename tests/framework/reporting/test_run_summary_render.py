@@ -12,8 +12,14 @@ from contextlib import redirect_stdout
 
 from python.framework.reporting.console.sim_executive_summary import SimExecutiveSummary
 from python.framework.types.api.report_types import (
-    AggregatedPortfolioReport, ProfilingReport, RunMetaReport, RunSummary, RunSummaryCurrency,
-    ScenarioDetailsReport, WarningsErrorsReport)
+    AggregatedPortfolioReport,
+    ProfilingReport,
+    RunMetaReport,
+    RunSummary,
+    RunSummaryCurrency,
+    ScenarioDetailsReport,
+    WarningsErrorsReport,
+)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 

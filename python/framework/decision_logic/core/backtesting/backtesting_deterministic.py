@@ -87,17 +87,17 @@ Data Flow:
 
 from typing import Any, Dict, List, Optional
 
-from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
-from python.framework.types.worker_types import WorkerRequirement, WorkerResult
-from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType, OrderDirection
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
+from python.framework.types.trading_env_types.order_types import OrderResult, OrderSide, OrderType
+from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
 class BacktestingDeterministic(AbstractDecisionLogic):
@@ -185,9 +185,9 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         self.warmup_checked = False
 
         self.logger.debug(
-            f"BacktestingDeterministic initialized: "
-            f"{len(self.trade_sequence)} trades in sequence, "
-            f"lot_size={self.default_lot_size}"
+            f'BacktestingDeterministic initialized: '
+            f'{len(self.trade_sequence)} trades in sequence, '
+            f'lot_size={self.default_lot_size}'
         )
 
     # ============================================
@@ -201,39 +201,39 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             'trade_sequence': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of trade specs: tick_number, direction, hold_ticks, lot_size"
+                description='List of trade specs: tick_number, direction, hold_ticks, lot_size'
             ),
             'lot_size': InputParamDef(
                 param_type=float,
                 default=0.1,
                 min_val=0.0,
                 max_val=100.0,
-                description="Default lot size for trades without explicit lot_size"
+                description='Default lot size for trades without explicit lot_size'
             ),
             'modify_sequence': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of SL/TP modification specs: tick_number, stop_loss, take_profit"
+                description='List of SL/TP modification specs: tick_number, stop_loss, take_profit'
             ),
             'modify_limit_sequence': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of pending limit order modification specs: tick_number, price, stop_loss, take_profit"
+                description='List of pending limit order modification specs: tick_number, price, stop_loss, take_profit'
             ),
             'modify_stop_sequence': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of pending stop order modification specs: tick_number, stop_price, price, stop_loss, take_profit"
+                description='List of pending stop order modification specs: tick_number, stop_price, price, stop_loss, take_profit'
             ),
             'cancel_limit_sequence': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of limit order cancellation specs: tick_number"
+                description='List of limit order cancellation specs: tick_number'
             ),
             'cancel_stop_sequence': InputParamDef(
                 param_type=list,
                 default=[],
-                description="List of stop order cancellation specs: tick_number"
+                description='List of stop order cancellation specs: tick_number'
             ),
         }
 
@@ -324,7 +324,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             Dict with worker instance mapping
         """
         return {
-            "backtesting_worker": WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
+            'backtesting_worker': WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
         }
 
     def on_market_data_stale(self, status: MarketDataStatus) -> None:
@@ -377,7 +377,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             return Decision(
                 action=DecisionLogicAction.FLAT,
                 outputs={
-                    'reason': f"Close trade at tick {self.tick_count}",
+                    'reason': f'Close trade at tick {self.tick_count}',
                     'price': tick.mid,
                 },
             )
@@ -428,8 +428,8 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                     })
 
                     self.logger.info(
-                        f"🎯 Trade signal at tick {self.tick_count}: "
-                        f"{direction} {lot_size} lots, hold {hold_ticks} ticks"
+                        f'🎯 Trade signal at tick {self.tick_count}: '
+                        f'{direction} {lot_size} lots, hold {hold_ticks} ticks'
                     )
 
                 return Decision(
@@ -443,7 +443,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                         'stop_price': spec.get('stop_price'),
                         'stop_loss': spec.get('stop_loss'),
                         'take_profit': spec.get('take_profit'),
-                        'reason': f"Open {direction} at tick {self.tick_count}",
+                        'reason': f'Open {direction} at tick {self.tick_count}',
                         'price': tick.mid,
                     },
                 )
@@ -481,7 +481,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         """
         if not self.trading_api:
             self.logger.warning(
-                "No trading_api available - skipping execution")
+                'No trading_api available - skipping execution')
             return None
 
         # Process any pending modifications (positions + limit/stop orders)
@@ -521,7 +521,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                     stop_price=stop_price,
                     stop_loss=stop_loss,
                     take_profit=take_profit,
-                    comment=f"Backtest LONG at tick {self.tick_count}"
+                    comment=f'Backtest LONG at tick {self.tick_count}'
                 )
                 if (order_response.is_rejected == True):
                     self.logger.error(order_response.rejection_message)
@@ -547,7 +547,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                     stop_price=stop_price,
                     stop_loss=stop_loss,
                     take_profit=take_profit,
-                    comment=f"Backtest SHORT at tick {self.tick_count}"
+                    comment=f'Backtest SHORT at tick {self.tick_count}'
                 )
                 if (order_response.is_rejected == True):
                     self.logger.error(order_response.rejection_message)
@@ -585,7 +585,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 open_positions = self.trading_api.get_open_positions()
                 if not open_positions:
                     self.logger.warning(
-                        f"Modify at tick {self.tick_count}: no open positions")
+                        f'Modify at tick {self.tick_count}: no open positions')
                     return
 
                 position = open_positions[0]
@@ -618,8 +618,8 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             if self.tick_count == spec['tick_number']:
                 if not self._pending_limit_order_id:
                     self.logger.warning(
-                        f"Modify limit at tick {self.tick_count}: "
-                        f"no pending limit order tracked")
+                        f'Modify limit at tick {self.tick_count}: '
+                        f'no pending limit order tracked')
                     return
 
                 kwargs: Dict[str, Any] = {}
@@ -653,8 +653,8 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             if self.tick_count == spec['tick_number']:
                 if not self._pending_stop_order_id:
                     self.logger.warning(
-                        f"Modify stop at tick {self.tick_count}: "
-                        f"no pending stop order tracked")
+                        f'Modify stop at tick {self.tick_count}: '
+                        f'no pending stop order tracked')
                     return
 
                 kwargs: Dict[str, Any] = {}
@@ -690,8 +690,8 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             if self.tick_count == spec['tick_number']:
                 if not self._pending_limit_order_id:
                     self.logger.warning(
-                        f"Cancel limit at tick {self.tick_count}: "
-                        f"no pending limit order tracked")
+                        f'Cancel limit at tick {self.tick_count}: '
+                        f'no pending limit order tracked')
                     return
 
                 result = self.trading_api.cancel_limit_order(
@@ -717,8 +717,8 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             if self.tick_count == spec['tick_number']:
                 if not self._pending_stop_order_id:
                     self.logger.warning(
-                        f"Cancel stop at tick {self.tick_count}: "
-                        f"no pending stop order tracked")
+                        f'Cancel stop at tick {self.tick_count}: '
+                        f'no pending stop order tracked')
                     return
 
                 result = self.trading_api.cancel_stop_order(
@@ -748,10 +748,10 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
         if not worker_result:
             self.logger.warning(
-                "❌ BacktestingSampleWorker result not found - "
-                "warmup validation skipped"
+                '❌ BacktestingSampleWorker result not found - '
+                'warmup validation skipped'
             )
-            self.warmup_errors.append("Worker result not found")
+            self.warmup_errors.append('Worker result not found')
             return
 
         # Extract warmup status
@@ -761,7 +761,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             if not status.get('valid', True):
                 error_msg = f"{timeframe}: {status.get('error', 'Unknown error')}"
                 self.warmup_errors.append(error_msg)
-                self.logger.warning(f"❌ Warmup error: {error_msg}")
+                self.logger.warning(f'❌ Warmup error: {error_msg}')
             else:
                 self.logger.debug(
                     f"✅ Warmup valid: {timeframe} = {status['actual']} bars"
@@ -772,7 +772,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
         if self.bar_snapshots:
             self.logger.debug(
-                f"📸 Received {len(self.bar_snapshots)} bar snapshots from worker"
+                f'📸 Received {len(self.bar_snapshots)} bar snapshots from worker'
             )
 
     # ============================================
@@ -804,11 +804,11 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         )
 
         self.logger.debug(
-            f"📊 BacktestingMetadata: "
-            f"errors={len(self.warmup_errors)}, "
-            f"snapshots={len(self.bar_snapshots)}, "
-            f"expected_trades={len(self.expected_trades)}, "
-            f"ticks={self.tick_count}"
+            f'📊 BacktestingMetadata: '
+            f'errors={len(self.warmup_errors)}, '
+            f'snapshots={len(self.bar_snapshots)}, '
+            f'expected_trades={len(self.expected_trades)}, '
+            f'ticks={self.tick_count}'
         )
 
         return base_stats

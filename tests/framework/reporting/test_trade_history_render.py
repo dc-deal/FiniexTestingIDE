@@ -12,8 +12,13 @@ from contextlib import redirect_stdout
 
 from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
 from python.framework.types.api.report_types import (
-    ExecutionRow, OrderHistoryReport, TradeAnalytics, TradeHistoryReport, TradeHistoryRow,
-    TradeScenarioTotals)
+    ExecutionRow,
+    OrderHistoryReport,
+    TradeAnalytics,
+    TradeHistoryReport,
+    TradeHistoryRow,
+    TradeScenarioTotals,
+)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 

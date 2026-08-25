@@ -34,7 +34,6 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
 )
 
-
 # =============================================================================
 # Pipeline-specific setup helpers
 # =============================================================================

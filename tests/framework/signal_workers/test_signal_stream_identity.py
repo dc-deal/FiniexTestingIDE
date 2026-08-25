@@ -10,8 +10,7 @@ test group pins.
 from conftest import SYMBOL, make_provider, snapshot, utc
 
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
-from python.framework.types.signal_data_types import (
-    SentimentResult, SignalSeries, SignalSnapshot)
+from python.framework.types.signal_data_types import SentimentResult, SignalSeries, SignalSnapshot
 
 
 def stream_snapshot(

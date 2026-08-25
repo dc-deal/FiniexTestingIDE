@@ -4,16 +4,22 @@ Phase 1: Coordinates tick, bar, and broker data preparation
 
 Extracted from BatchOrchestrator to separate data preparation logic.
 """
+from typing import Any, Dict, List, Optional, Protocol, Tuple
+
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
-from python.framework.trading_env.broker_config import BrokerType
-from python.framework.types.process_data_types import ClippingStats, DataLoadTimings, ProcessDataPackage, RequirementsMap
-from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
 from python.framework.logging.abstract_logger import AbstractLogger
-from typing import Any, Dict, List, Optional, Protocol, Tuple
+from python.framework.trading_env.broker_config import BrokerType
+from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
+from python.framework.types.process_data_types import (
+    ClippingStats,
+    DataLoadTimings,
+    ProcessDataPackage,
+    RequirementsMap,
+)
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 
 
 class StatusBroadcaster(Protocol):
@@ -80,7 +86,7 @@ class DataPreparationCoordinator:
             - Dict mapping scenario_index → ClippingStats
             - DataLoadTimings with per-sub-phase durations
         """
-        self._logger.info("📄 Phase 1: Preparing shared data...")
+        self._logger.info('📄 Phase 1: Preparing shared data...')
 
         # Broadcast status: Loading ticks
         if status_broadcaster:
@@ -97,7 +103,7 @@ class DataPreparationCoordinator:
         # Log summary
         total_packages = len(scenario_packages)
         self._logger.info(
-            f"✅ Data prepared: {total_packages} scenario-specific packages"
+            f'✅ Data prepared: {total_packages} scenario-specific packages'
         )
 
         return scenario_packages, clipping_stats_map, load_timings

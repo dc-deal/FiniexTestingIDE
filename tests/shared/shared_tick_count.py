@@ -6,8 +6,8 @@ Used by: baseline, multi_position, margin_validation
 Import these classes into suite-specific test_tick_count.py files.
 """
 
-import pytest
 from typing import Dict
+
 
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.process_data_types import ProcessTickLoopResult
@@ -26,7 +26,7 @@ class TestTickCount:
         actual_ticks = backtesting_metadata.tick_count
 
         assert actual_ticks == expected_ticks, (
-            f"Expected {expected_ticks} ticks, got {actual_ticks}"
+            f'Expected {expected_ticks} ticks, got {actual_ticks}'
         )
 
     def test_decision_count_matches_ticks(
@@ -39,7 +39,7 @@ class TestTickCount:
         tick_count = backtesting_metadata.tick_count
 
         assert decision_count == tick_count, (
-            f"Decision count {decision_count} != tick count {tick_count}"
+            f'Decision count {decision_count} != tick count {tick_count}'
         )
 
     def test_worker_call_count_matches_ticks(
@@ -51,10 +51,10 @@ class TestTickCount:
         worker_stats = tick_loop_results.worker_statistics[0]
 
         assert worker_stats.worker_call_count == backtesting_metadata.tick_count, (
-            f"Worker calls {worker_stats.worker_call_count} != "
-            f"ticks {backtesting_metadata.tick_count}"
+            f'Worker calls {worker_stats.worker_call_count} != '
+            f'ticks {backtesting_metadata.tick_count}'
         )
 
     def test_tick_count_positive(self, backtesting_metadata: BacktestingMetadata):
         """Tick count should be positive."""
-        assert backtesting_metadata.tick_count > 0, "Tick count should be positive"
+        assert backtesting_metadata.tick_count > 0, 'Tick count should be positive'
