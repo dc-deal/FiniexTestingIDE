@@ -21,6 +21,7 @@ import requests
 from python.configuration.autotrader.abstract_broker_config_fetcher import (
     AbstractBrokerConfigFetcher,
 )
+from python.configuration.credential_guard import assert_real_credential
 from python.framework.logging.scenario_logger import ScenarioLogger
 
 
@@ -488,6 +489,8 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
                 f"  {default_path} (default)\n"
                 f"Create one with {{'api_key': '...', 'api_secret': '...'}}"
             )
+
+        assert_real_credential(cred_path, 'Fetching the Kraken broker config')
 
         with open(cred_path, 'r') as f:
             creds = json.load(f)

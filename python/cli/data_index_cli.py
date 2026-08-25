@@ -16,8 +16,8 @@ import sys
 import traceback
 
 from python.configuration.import_config_manager import ImportConfigManager
-from python.data_management.importers.tick_data_reporter import run_summary_report
 from python.data_management.importers.tick_data_importer import TickDataImporter
+from python.data_management.importers.tick_data_reporter import run_summary_report
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.data_inspector import DataInspector
 from python.data_management.index.tick_index_manager import TickIndexManager

@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from python.configuration.credential_guard import assert_real_credential
 from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
@@ -1403,6 +1404,8 @@ class KrakenAdapter(AbstractAdapter):
                 f"  {default_path} (default)\n"
                 f"Create one with {{'api_key': '...', 'api_secret': '...'}}"
             )
+
+        assert_real_credential(cred_path, 'Enabling live Kraken execution')
 
         with open(cred_path, 'r') as f:
             creds = json.load(f)

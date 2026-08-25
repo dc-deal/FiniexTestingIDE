@@ -11,7 +11,6 @@ Covers:
 
 from unittest.mock import MagicMock
 
-
 from python.framework.types.scenario_types.scenario_set_types import (
     BrokerScenarioInfo,
     SingleScenario,

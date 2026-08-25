@@ -16,7 +16,6 @@ from python.framework.types.signal_data_types import (
 )
 
 
-
 def load_signal_series(
     path: Path,
     signal_kind: str,

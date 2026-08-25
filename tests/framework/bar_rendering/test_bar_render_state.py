@@ -13,7 +13,6 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 from unittest.mock import MagicMock
 
-
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.types.market_types.market_data_types import BarRenderState, TickData
 

@@ -2,18 +2,17 @@
 FiniexTestingIDE - Parity Test Fixtures
 
 Shared helpers for dual-pipeline parity tests (simulation vs. AutoTrader).
-Generates deterministic synthetic tick data and converts it into the
-input format each pipeline expects.
+Generates deterministic synthetic tick data; each pipeline's parity test builds
+its own input from it.
 
 Synthetic tick generation uses a seeded RNG — identical output on every call,
 no real market data committed to the repo.
 """
 
 import dataclasses
-import queue
 import random
 from datetime import datetime, timezone
-from typing import List, Tuple
+from typing import List
 
 from python.framework.types.market_types.market_data_types import TickData
 
@@ -177,38 +176,6 @@ def make_flat_btcusd_ticks(count: int = 1000) -> List[TickData]:
             collected_msc=time_msc,
         ))
     return ticks
-
-
-def to_simulation_input(ticks: List[TickData]) -> Tuple[TickData, ...]:
-    """
-    Convert tick list to simulation input format.
-
-    Args:
-        ticks: Tick list
-
-    Returns:
-        Immutable tuple as expected by execute_tick_loop()
-    """
-    return tuple(ticks)
-
-
-def to_autotrader_queue(ticks: List[TickData]) -> 'queue.Queue[TickData]':
-    """
-    Convert tick list to a pre-filled Queue with a None sentinel.
-
-    The sentinel signals AutotraderTickLoop.run() that the source is exhausted.
-
-    Args:
-        ticks: Tick list to enqueue
-
-    Returns:
-        Queue pre-filled with all ticks + None sentinel
-    """
-    q: queue.Queue = queue.Queue()
-    for tick in ticks:
-        q.put(tick)
-    q.put(None)
-    return q
 
 
 def flag_clipped_ticks(ticks: List[TickData], every_n: int = 10) -> List[TickData]:

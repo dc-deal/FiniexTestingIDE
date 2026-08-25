@@ -16,7 +16,6 @@ Test Groups:
 
 from typing import Dict, List
 
-
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
