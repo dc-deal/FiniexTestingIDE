@@ -3,7 +3,6 @@ FiniexTestingIDE Data Quality Exceptions
 Custom exceptions for data validation and quality issues
 """
 
-from typing import List
 
 from python.framework.exceptions.finiex_error import FiniexError
 from python.framework.reporting.duplicate_report import DuplicateReport
@@ -52,18 +51,3 @@ class TickFileValidationException(DataQualityException):
         super().__init__(f'\n\n{result.get_full_report()}')
 
 
-class InvalidDataModeException(DataQualityException):
-    """
-    Raised when an invalid data_mode is specified
-
-    Valid data_modes are:
-    - "raw": Keep all duplicates (maximum realism)
-    - "realistic": Remove duplicates (normal testing)
-    - "clean": Remove duplicates (clean testing)
-    """
-
-    def __init__(self, invalid_mode: str, valid_modes: List[str]):
-        super().__init__(
-            f"Invalid data_mode: '{invalid_mode}'. "
-            f"Must be one of: {', '.join(valid_modes)}"
-        )
