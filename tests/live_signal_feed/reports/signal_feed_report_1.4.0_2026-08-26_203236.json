@@ -1,26 +1,40 @@
 {
   "record_kind": "certificate",
   "release_version": "1.4.0",
-  "git_commit": "5cf6b1c",
-  "timestamp": "2026-08-25T17:28:53.362695+00:00",
-  "valid_until": "2026-11-23T17:28:53.362695+00:00",
-  "comment": "Release-gate certificate for 1.4.0. Interim pull transport; the push transport (#468) is not yet shipped, so a stream-carrying release needs its own certificate.",
+  "app_version": "1.4.0",
+  "timestamp": "2026-08-26T20:32:36.510398+00:00",
+  "valid_until": "2026-11-24T20:32:36.510398+00:00",
+  "git_commit": "b143732",
+  "git_branch": "dev-v-1-4",
+  "git_dirty": false,
+  "uncommitted_count": 0,
+  "comment": "re-cut on the shared CertificateIdentity",
+  "isolation_active": false,
+  "workspace_overrides": {
+    "files_present": [
+      "app_config.json",
+      "market_config.json",
+      "sentiment_config.json"
+    ],
+    "unnamed_files": 0,
+    "applied": true
+  },
   "overall_status": "PASSED",
   "build": {
     "producer": {
       "offered": true,
       "version": "0.3.3",
-      "commit": "52a9219",
-      "committed_at": "2026-08-25T16:16:48+00:00",
+      "commit": "ae28a18",
+      "committed_at": "2026-08-26T12:27:59+00:00",
       "dirty": false,
-      "started_at": "2026-08-25T16:28:23.271067+00:00",
+      "started_at": "2026-08-26T12:28:45.353316+00:00",
       "detail": ""
     },
     "consumer": {
       "branch": "dev-v-1-4",
-      "commit": "5cf6b1c",
-      "committed_at": "2026-08-25T17:08:10+00:00",
-      "message": "certificate rag run",
+      "commit": "b143732",
+      "committed_at": "2026-08-26T20:30:58+00:00",
+      "message": "certificate tests refactored",
       "dirty": false,
       "uncommitted_count": 0
     }
@@ -38,8 +52,8 @@
     "pipeline_id": "crypto_sentiment"
   },
   "series": {
-    "seq_first": 506,
-    "seq_last": 506,
+    "seq_first": 681,
+    "seq_last": 681,
     "stream_epochs": [
       1
     ],
@@ -47,7 +61,7 @@
     "observation_gap_s": 15.0,
     "cadence_seconds_reported": 600.0,
     "cadence_minutes_configured": 10.0,
-    "previous_certificate": "tests/live_signal_feed/reports/signal_feed_report_dev_2026-08-25_165910.json"
+    "previous_certificate": "tests/live_signal_feed/reports/signal_feed_report_1.4.0_2026-08-25_172853.json"
   },
   "provenance": {
     "schema_version": "2.0",
@@ -56,10 +70,10 @@
     "prompt_version": "4",
     "prompt_id": "sentiment-crypto",
     "prompt_hash": "c45e07e1b260",
-    "config_fingerprint": "3cce880a58d4",
+    "config_fingerprint": "9458492ce234",
     "row_count": 9,
-    "frame_bytes": 43441,
-    "envelope_age_at_fetch_s": 512.979,
+    "frame_bytes": 42076,
+    "envelope_age_at_fetch_s": 137.548,
     "unread_fields": [
       "available_msc_max_correction_ms",
       "available_msc_resyncs",
@@ -116,7 +130,7 @@
     {
       "name": "producer_build_is_reproducible",
       "ok": true,
-      "detail": "0.3.3 @ 52a9219, built clean"
+      "detail": "0.3.3 @ ae28a18, built clean"
     },
     {
       "name": "consumer_build_is_committed",
@@ -311,12 +325,12 @@
     {
       "name": "no_evidence_after_available_msc",
       "ok": true,
-      "detail": "newest evidence sits before availability (1787678417560)"
+      "detail": "newest evidence sits before availability (1787776216252)"
     },
     {
       "name": "episode_id_is_opaque_when_populated",
       "ok": true,
-      "detail": "2 populated id(s), e.g. 'crypto_sentiment:Bitcoin BTC:2026-08-25T15:40:15Z'"
+      "detail": "3 populated id(s), e.g. 'crypto_sentiment:Bitcoin BTC:2026-08-26T09:10:17Z'"
     },
     {
       "name": "episode_start_implies_an_id",
@@ -336,12 +350,12 @@
     {
       "name": "resolution_key_is_available_msc",
       "ok": true,
-      "detail": "resolves at 2026-08-25T17:20:17.560000+00:00"
+      "detail": "resolves at 2026-08-26T20:30:16.252000+00:00"
     },
     {
       "name": "order_key_is_well_formed",
       "ok": true,
-      "detail": "(epoch, seq) = (1, 506)"
+      "detail": "(epoch, seq) = (1, 681)"
     },
     {
       "name": "no_look_ahead_before_availability",
@@ -516,12 +530,12 @@
     {
       "name": "no_evidence_after_available_msc",
       "ok": true,
-      "detail": "newest evidence sits before availability (1787678417560)"
+      "detail": "newest evidence sits before availability (1787776216252)"
     },
     {
       "name": "episode_id_is_opaque_when_populated",
       "ok": true,
-      "detail": "2 populated id(s), e.g. 'crypto_sentiment:Bitcoin BTC:2026-08-25T15:40:15Z'"
+      "detail": "3 populated id(s), e.g. 'crypto_sentiment:Bitcoin BTC:2026-08-26T09:10:17Z'"
     },
     {
       "name": "episode_start_implies_an_id",
@@ -541,12 +555,12 @@
     {
       "name": "resolution_key_is_available_msc",
       "ok": true,
-      "detail": "resolves at 2026-08-25T17:20:17.560000+00:00"
+      "detail": "resolves at 2026-08-26T20:30:16.252000+00:00"
     },
     {
       "name": "order_key_is_well_formed",
       "ok": true,
-      "detail": "(epoch, seq) = (1, 506)"
+      "detail": "(epoch, seq) = (1, 681)"
     },
     {
       "name": "no_look_ahead_before_availability",
@@ -556,7 +570,7 @@
     {
       "name": "seq_never_steps_backwards",
       "ok": true,
-      "detail": "observed [506, 506]"
+      "detail": "observed [681, 681]"
     },
     {
       "name": "stream_epoch_stable_within_run",
@@ -571,12 +585,12 @@
     {
       "name": "journal_matches_previous_certificate",
       "ok": true,
-      "detail": "138c68e48b15 vs 138c68e48b15 in the certificate of 2026-08-25T16:59:10.582044+00:00"
+      "detail": "138c68e48b15 vs 138c68e48b15 in the certificate of 2026-08-25T17:28:53.362695+00:00"
     },
     {
       "name": "seq_did_not_rewind_since_last_certificate",
       "ok": true,
-      "detail": "seq 503 \u2192 506 since 2026-08-25T16:59:10.582044+00:00, same producer process throughout"
+      "detail": "seq 506 \u2192 681 since 2026-08-25T17:28:53.362695+00:00, across a producer RESTART \u2014 the one moment a sequence counter can be re-minted"
     }
   ],
   "checks_passed": 97,

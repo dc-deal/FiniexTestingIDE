@@ -5,8 +5,9 @@ The suite had no such test: the certificate was written, committed, and never re
 A stale artifact from an earlier release therefore satisfied nobody's assertion, which is
 the same gap the benchmark and signal-feed certificates already close for themselves.
 
-Reads committed artifacts only. Deliberately NOT marked `live_adapter`, so it runs in the
-daily suite while the order-placing tests stay opt-in.
+Reads committed artifacts only — no broker contact, no cost. It nevertheless carries the
+`live_adapter` mark, because `tests/conftest.py` assigns marks BY PATH; the release checklist
+therefore runs it as its own step, after the generating run has written the artifact.
 """
 
 import json
@@ -45,13 +46,29 @@ def _load(path: Path) -> Dict[str, Any]:
 
 
 @pytest.fixture(scope='module')
-def certificate() -> Dict[str, Any]:
+def certificate(request) -> Dict[str, Any]:
     """
     The latest committed certificate.
 
+    Skips when the order-placing tests ran in THIS session: their certificate is written in
+    `pytest_sessionfinish`, so at this point the newest artifact on disk is the previous
+    run's. Validating it here would judge the wrong artifact — and, worse, count its own
+    failures into the certificate being written moments later. The release checklist runs
+    the two steps as separate invocations for exactly this reason.
+
+    `tests/conftest.py` marks by path, so this file carries the `live_adapter` mark whether
+    or not it wants it; the guard below is what keeps it out of the generating run.
+
     Returns:
-        The parsed body; skips the module when the suite has never been run
+        The parsed body of the latest certificate
     """
+    collector = getattr(request.config, '_live_adapter_results', None)
+    if collector is not None and collector.tests_run:
+        pytest.skip(
+            'The adapter tests ran in this session — their certificate does not exist yet. '
+            'Validate it separately: '
+            'pytest tests/live_adapters/test_live_adapter_certificate.py -v')
+
     latest = _find_latest_report()
     if latest is None:
         pytest.skip(

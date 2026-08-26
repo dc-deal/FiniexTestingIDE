@@ -123,6 +123,12 @@ def pytest_sessionfinish(session, exitstatus):
     if results.skipped == total:
         return
 
+    # Skip report when no adapter was built at all. A validation-only invocation runs tests
+    # in this directory and would otherwise write a certificate for a session that never
+    # contacted the broker — an artifact asserting something nobody measured.
+    if not results.observed_phases:
+        return
+
     _write_report(
         release_version=session.config.getoption('release_version', default='dev'),
         comment=session.config.getoption('comment', default=None),
