@@ -28,15 +28,16 @@ from python.framework.validators.signal_feed_contract_validator import (
     SignalFeedContractValidator,
 )
 
-SAMPLE = Path('tests/fixtures/signals/signal_stream_frames_reissue5.sse')
+SAMPLE = Path('tests/fixtures/signals/signal_stream_frames_reissue6.sse')
 
 # The receipt stamp the transport supplies. Absent on the wire by contract, so a fixed
 # value here is not a simplification — it is what the consumer does.
 RECEIPT_MSC = 1787311900000
 
 # A populated id as the producer publishes it: free text in the middle segment, with
-# spaces, a slash and further colons. Pinned here rather than taken from the sample,
-# because reissue 5 predates a populated id entirely.
+# spaces, a slash and further colons. Reissue 6 carries this exact string, but it stays
+# pinned: the shape is the contract, and a constant keeps the negative cases below meaningful
+# even against a future sample that happens not to contain a populated id.
 PRODUCTION_EPISODE_ID = (
     'forex_macro_sentiment:US Dollar Canadian Dollar USD/CAD Bank of Canada '
     'BOC:2026-08-23T20:20:14Z')
@@ -259,11 +260,17 @@ class TestEpisodeOpacity:
 
     def test_an_absent_id_is_reported_as_unexercised(self, envelope):
         """
-        Reissue 5 carries no populated id, and the check says that instead of passing.
+        An envelope with no populated id must SAY the check went unexercised, not pass.
 
         A loop over an empty set is an assertion that cannot fail; naming it keeps the
-        certificate honest about what it did NOT verify.
+        certificate honest about what it did NOT verify. The absent case is constructed here
+        rather than inherited from the sample: reissue 5 happened to carry no populated id
+        and reissue 6 carries two, so a test resting on that property tests the fixture
+        rather than the validator.
         """
+        for row in envelope['result']:
+            row['breaking_episode_id'] = None
+            row['breaking_episode_start'] = False
         checks = SignalFeedContractValidator().validate_envelope(observe(envelope))
         opacity = next(c for c in checks
                        if c.name == 'episode_id_is_opaque_when_populated')

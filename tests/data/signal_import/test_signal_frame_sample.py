@@ -18,7 +18,7 @@ import pytest
 
 from python.framework.types.signal_data_types import SignalSnapshot
 
-SAMPLE = Path('tests/fixtures/signals/signal_stream_frames_reissue5.sse')
+SAMPLE = Path('tests/fixtures/signals/signal_stream_frames_reissue6.sse')
 
 
 def signal_frames() -> list:
@@ -57,7 +57,7 @@ class TestFrameSample:
             SignalSnapshot.model_validate({**frame, 'collected_msc': 1756000000000})
 
     @pytest.mark.parametrize('field,kind', [
-        ('breaking_episode_id', str),
+        ('breaking_episode_id', (str, type(None))),
         ('breaking_episode_start', bool),
     ])
     def test_the_episode_fields_keep_their_shape(self, field, kind):
@@ -67,25 +67,31 @@ class TestFrameSample:
         `breaking_episode_start` is a FLAG, not a timestamp — the producer's episode start
         instant lives inside the opaque id, and typing this as a datetime is exactly the
         mistake this file exists to catch.
+
+        The id is `str` **or `None`** on the wire: null means 'no episode', and the empty
+        string is not a permitted stand-in for it. Our model normalizes null to `''` so
+        consumers ask one question — that normalization is asserted where it belongs, on the
+        model, not here on the wire.
         """
         rows = [row for frame in signal_frames() for row in frame.get('result', [])]
         assert rows, 'no per-symbol rows in the sample'
+        expected = kind if isinstance(kind, tuple) else (kind,)
+        names = ' | '.join(k.__name__ for k in expected)
         for row in rows:
             assert field in row, f'{field} missing from a sample row'
-            assert isinstance(row[field], kind), (
-                f'{field} is {type(row[field]).__name__}, expected {kind.__name__}')
+            assert isinstance(row[field], expected), (
+                f'{field} is {type(row[field]).__name__}, expected {names}')
 
     def test_the_sample_id_is_opaque_when_populated(self):
         """
         The opacity rule against whatever the sample actually carries.
 
-        Reissue 5 predates a populated id, so this SKIPS rather than passing vacuously — a
-        loop over an empty set is an assertion that cannot fail, and a green test that proves
-        nothing is worse than an absent one. Reissue 6 carries an opener and this starts
-        asserting on its own. The rule itself is pinned unconditionally in
-        TestIdOpacity below, against the id the producer published.
+        Reissue 6 carries two populated ids, so this asserts. It keeps the skip branch on
+        purpose: reissue 5 had none, the loop over an empty set was an assertion that could
+        not fail, and a sample that once again lacks one must say so rather than pass
+        silently. The rule itself is pinned unconditionally in TestIdOpacity below.
         """
-        ids = {row.get('breaking_episode_id', '')
+        ids = {row.get('breaking_episode_id') or ''
                for frame in signal_frames() for row in frame.get('result', [])} - {''}
         if not ids:
             pytest.skip('the committed sample carries no populated episode id yet '

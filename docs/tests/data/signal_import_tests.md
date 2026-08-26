@@ -76,13 +76,24 @@ the transport supplies it — it is absent on the wire by contract); both episod
 shape, the flag as a `bool` and the id as a `str`; and a populated id carries more colons than its
 three segments, which is the documentation-by-assertion of why the contract calls it **opaque**.
 
-A reissued sample therefore checks itself. The producer's reissue 6 will carry an opener, a
-continuation and a hold-band pass — the three shapes a consumer can get wrong.
+A reissued sample therefore checks itself, and **it did**: installing reissue 6
+(`signal_stream_frames_reissue6.sse`, 2026-08-26) turned three assertions red at once, all of them
+ours. They had encoded reissue 5's `''` as the wire's empty form; reissue 6 uses `null`, which is
+what production emits. The wire form is `str | None` — the empty string is **not** a permitted
+stand-in — and the normalization to `''` is asserted on the model, not on the wire.
+
+Reissue 6 carries what was asked for: an opener, a continuation and a hold-band pass on USDJPY,
+plus two things nobody planned — **USDCAD inside a *different* episode in all three frames**, which
+makes it the first artifact showing an episode id is a property of a ROW rather than an envelope, and
+six `null` ids beside a populated one in every frame. Its ids are production-shaped (four colons,
+spaces, a slash, 91–95 characters), so the sample now exercises the form `TestIdOpacity` previously
+had to pin by hand.
 
 **The opacity rule is pinned apart from the sample, and the reason is a mistake worth keeping
 visible.** The first version asserted it by looping over the sample's populated ids — of which
-reissue 5 has none, so the loop body ran zero times and the test passed while proving nothing. It now
-**skips** with a reason when the sample carries no id, and `TestIdOpacity` pins the rule
+reissue 5 had none, so the loop body ran zero times and the test passed while proving nothing. The
+skip branch stays even though **reissue 6 carries two populated ids and the check now runs**: a
+sample that once again lacks one must say so rather than pass silently. `TestIdOpacity` pins the rule
 unconditionally against the two forms the producer published:
 
 | Form | Example | Why both |
