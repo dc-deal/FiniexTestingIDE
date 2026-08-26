@@ -230,14 +230,18 @@ class TestBenchmarkCertificate:
         required_fields = [
             'timestamp',
             'valid_until',
+            'app_version',
             'system_id',
             'scenario',
             'runs',
             'debug_mode_detected',
+            'config_provenance',
             'overall_status',
             'metrics',
             'raw_measurements',
-            'artifacts'
+            'breakdown',
+            'artifacts',
+            'warnings'
         ]
 
         missing = [f for f in required_fields if f not in report]
@@ -399,6 +403,90 @@ class TestStabilityCalibration:
             assert spread > limit, (
                 f'runs {runs} span only {spread:.1f}%, which the {limit}% limit accepts — but '
                 f'the release document records this measurement as unusable')
+
+
+class TestConfigProvenance:
+    """
+    The certificate must name the configuration it measured, and name it safely.
+
+    Two independent paths can change what a benchmark run measures without touching a line of
+    code: the content-merge cascade (user_configs/app_config.json reaching process fan-out or
+    log volume) and the scenario-set file-replace, which config isolation does not gate at all.
+    Neither used to leave a trace in the artifact, so a measurement taken on a personal
+    configuration was indistinguishable from one taken on the committed one.
+
+    The second half of the rule is privacy: this artifact is committed to a public repository,
+    so the listing of what exists in the private workspace carries names and counts — never
+    key paths, never values.
+    """
+
+    def _provenance(self) -> Dict[str, Any]:
+        latest_report = _find_latest_report()
+        if latest_report is None:
+            pytest.skip('No report found - see test_report_exists')
+        provenance = _load_report(latest_report).get('config_provenance')
+        if provenance is None:
+            pytest.skip('Report predates config_provenance - see test_report_integrity')
+        return provenance
+
+    def test_the_certificate_records_the_configuration_it_measured(self):
+        """
+        Every contracted parameter is recorded, and each one held during the run.
+
+        A recorded mismatch is not a test failure here — the report itself is already FAILED in
+        that case. What this asserts is that the comparison HAPPENED and left both halves in
+        the artifact, so a later reader can see what the number was measured under.
+        """
+        required = self._provenance().get('required_effective', {})
+
+        assert required, (
+            'The certificate records no configuration contract. Without it the throughput '
+            'number cannot be attributed to the code rather than to a local setting.')
+
+        deviations = [
+            f"{path}: measured under {entry['effective']!r}, baseline is {entry['expected']!r}"
+            for path, entry in required.items()
+            if entry['effective'] != entry['expected']
+        ]
+        assert not deviations, (
+            f'The certified run did not match the baseline configuration: {deviations}. '
+            f'Re-run with the committed configuration, or re-measure the baseline '
+            f'deliberately and update benchmark_config.json::config_contract.')
+
+    def test_the_measured_workload_is_the_committed_one(self):
+        """
+        The scenario set came from configs/, not from the private workspace.
+
+        This is the path config isolation does NOT cover: `ScenarioConfigLoader._resolve_path`
+        prefers user_configs/ and the user algo dirs even in an isolated run.
+        """
+        provenance = self._provenance()
+
+        assert provenance.get('scenario_set_origin') == 'base', (
+            f"The certified run loaded its scenario set from "
+            f"'{provenance.get('scenario_set_origin')}' "
+            f"({provenance.get('scenario_set_path')}) — that is not the committed workload.")
+
+    def test_the_workspace_listing_carries_names_only(self):
+        """
+        The privacy invariant: what the certificate says about user_configs/ is names + a count.
+
+        Pinned as a SHAPE assertion rather than a value scan, because the failure this guards
+        against is a well-meant extension — adding the overridden key paths, or their values,
+        to make the artifact more informative. That would publish the private workspace with
+        every release.
+        """
+        overrides = self._provenance().get('workspace_overrides', {})
+
+        assert set(overrides) == {'files_present', 'unnamed_files', 'applied'}, (
+            f'workspace_overrides carries unexpected keys: {sorted(overrides)}. Only names, a '
+            f'count and the applied flag may be published — no key paths, no values.')
+
+        committed = {path.name for path in (Path(__file__).parents[3] / 'configs').glob('*.json')}
+        leaked = [name for name in overrides['files_present'] if name not in committed]
+        assert not leaked, (
+            f'The certificate names workspace files with no committed counterpart: {leaked}. '
+            f'Those must be counted in unnamed_files instead.')
 
 
 def _spread_percent(values: list) -> Optional[float]:
