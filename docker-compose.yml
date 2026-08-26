@@ -5,10 +5,18 @@ services:
     volumes:
       - .:/app # Dein Code
       - ./data:/app/data # Daten-Ordner
+      # Named volume for the home directory. Everything under /root that is not
+      # separately mounted — shell history, editor server state, per-user tool
+      # config — lives in the container layer and is lost when it is recreated.
+      - devhome:/root
       # Git Konfiguration vom Host übernehmen
       - ~/.gitconfig:/root/.gitconfig:ro
       - ~/.ssh:/root/.ssh:ro # SSH Keys für Git
       - ~/.claude:/root/.claude # developer tool state — survives container rebuilds
+      # Cross-project exchange folder (local development only, empty by default).
+      # Real path comes from FINIEX_BUS_PATH in .env; without it a tracked empty
+      # stub is mounted, so a fresh clone needs no host folder.
+      - ${FINIEX_BUS_PATH:-./.devcontainer/bus_placeholder}:/bus
     environment:
       - PYTHONPATH=/app
     stdin_open: true # Für interaktive Shell
@@ -18,3 +26,6 @@ services:
         # Container am Leben halten
         tail -f /dev/null
       "
+
+volumes:
+  devhome:

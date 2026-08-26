@@ -199,6 +199,9 @@ user_algos/
 # Docker Compose user overrides (external volumes, ports, etc.)
 docker-compose.override.yml
 
+# Local tool server registration (machine-specific paths)
+.mcp.json
+
 # Claude Code
 CLAUDE.md
 
