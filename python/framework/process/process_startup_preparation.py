@@ -2,6 +2,7 @@
 
 from typing import Dict, Tuple
 
+from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
@@ -9,6 +10,7 @@ from python.framework.factory.trade_simulator_factory import prepare_trade_execu
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
+from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.market_types.market_data_types import TickData
@@ -102,6 +104,14 @@ def process_startup_preparation(
     # series in the data package. No-op when there is no SIGNAL worker.
     # Planned stale windows (#436 stress) are already carved out of the series
     # at preparation time (StaleDataSlicer) — nothing stress-specific here.
+    # The simulation has exactly one possible answer — it mounts, it never connects — but it
+    # states it rather than leaving it implied. An absent resolution that everyone reads as
+    # "mounted" is the encoding that let the live path drift away from this one.
+    signal_source = SignalSourceResolver.resolve(
+        workers=workers,
+        package=shared_data,
+        sentiment_config=SentimentConfigManager().get_config())
+
     inject_signal_providers(workers, shared_data, scenario_logger)
 
     # === PHASE 5: Create Decision Logic (with context) ===
@@ -122,7 +132,8 @@ def process_startup_preparation(
         workers=workers,
         parallel_workers=config.parallel_workers,
         parallel_threshold_ms=config.parallel_threshold,
-        worker_decision_tracking=config.worker_decision_tracking
+        worker_decision_tracking=config.worker_decision_tracking,
+        signal_source=signal_source
     )
     worker_coordinator.initialize()
 

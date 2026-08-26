@@ -329,6 +329,52 @@ class SignalSeriesKind(str, Enum):
     FEED = 'feed'
 
 
+class SignalSourceMode(str, Enum):
+    """
+    What feeds a session's SIGNAL workers — resolved once, then followed everywhere.
+
+    Three states, and the order they are asked in matters: a profile without a SIGNAL
+    worker needs no source at all, so the installation-wide transport settings do not
+    apply to it. Only a session that HAS such a worker and NO mounted series needs a
+    live transport.
+
+    The enum exists because this question used to be answered separately at each site
+    that cared, and the answers disagreed: one place aborted a session that needed no
+    source, another opened a live connection into a session that already had a mounted one.
+    """
+    NONE = 'none'
+    MOUNTED = 'mounted'
+    LIVE = 'live'
+
+
+class SignalTransportKind(str, Enum):
+    """
+    Which live transport carries the envelopes.
+
+    LIVE is deliberately not a synonym for polling: the push stream is a second transport
+    over the same inbox, so the mode says THAT a transport is needed and this says WHICH.
+    """
+    POLL = 'poll'
+    STREAM = 'stream'
+
+
+@dataclass
+class SignalSourceResolution:
+    """
+    The resolved answer, carried instead of re-derived.
+
+    `signal_kind` and `transport` are set for LIVE only — the mounted case resolves per
+    worker against the package, and the NONE case has nothing to resolve. `reason` is the
+    one line written to the session log, so an operator reading the log sees which branch
+    was taken and why.
+    """
+    mode: SignalSourceMode
+    worker_count: int
+    reason: str
+    signal_kind: Optional[str] = None
+    transport: Optional[SignalTransportKind] = None
+
+
 @dataclass
 class SignalObservedSeries:
     """

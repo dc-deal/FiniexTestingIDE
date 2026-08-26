@@ -255,6 +255,26 @@ through it; a delay past the whole archive goes blind rather than failing; and t
 reads the **same** as-of moment as the resolution — a disagreement there produces results that are
 correct individually and wrong in sequence.
 
+### test_signal_source_resolver.py (#141 Part 2a)
+
+Which source feeds a session's SIGNAL workers, resolved once by `SignalSourceResolver`. Three
+answers, asked in one order — no SIGNAL worker → `NONE` (the installation-wide transport setting
+does not apply to this profile); a prepared package → `MOUNTED` (its **presence** decides, never its
+contents); otherwise → `LIVE` with the transport named.
+
+Pinned: `MOUNTED` outranks an enabled transport; two signal kinds against one live transport is an
+error (#258); `stream.enabled` is answered with a clear "#468, not built" rather than silently
+becoming a no-op that would leave the workers empty with nothing to fill them.
+
+Two regression cases carry their own class, because both were invisible to this suite before —
+pytest sets `FINIEX_CONFIG_ISOLATION`, so the workspace override that enables the transport was
+never seen, and the CLI path was the one that broke:
+
+- a profile **without** a SIGNAL worker must not be aborted by the installation-wide switch (it
+  aborted 20 of 24 profiles, including four live trading profiles and both field-study release gates)
+- a **mounted** session must not open a live transport (it mounted the archive *and* polled the
+  production producer, folding live envelopes into a replay whose purpose is determinism)
+
 ---
 
 ## Fixtures

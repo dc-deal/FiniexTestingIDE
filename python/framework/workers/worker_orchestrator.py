@@ -32,6 +32,7 @@ from python.framework.types.signal_data_types import (
     SignalResolution,
     SignalResolutionStats,
     SignalSnapshot,
+    SignalSourceResolution,
 )
 from python.framework.types.worker_types import (
     SUBSCRIBE_ALL,
@@ -64,7 +65,8 @@ class WorkerOrchestrator:
         strategy_config: Dict[str, Any],
         parallel_workers: bool = None,
         parallel_threshold_ms: float = 1.0,
-        worker_decision_tracking: bool = True
+        worker_decision_tracking: bool = True,
+        signal_source: SignalSourceResolution = None
     ):
         """
         Initialize coordinator with injected workers and decision logic.
@@ -77,6 +79,9 @@ class WorkerOrchestrator:
             worker_decision_tracking: Create per-worker / decision performance trackers (Layer A).
                                       When False, no trackers are created and all .record() sites
                                       become no-ops via existing null-guards.
+            signal_source: What feeds this session's SIGNAL workers, resolved at startup.
+                           Carried here rather than re-derived so the transport setup and the
+                           inbox drain follow the same answer the provider wiring used.
         """
         # ============================================
         # Injected dependencies
@@ -103,6 +108,8 @@ class WorkerOrchestrator:
 
         self.is_initialized = False
         self._worker_results: Dict[str, WorkerResult] = {}
+
+        self._signal_source = signal_source
 
         # Signal-outage edge detection (#434): SIGNAL workers + last stale state
         self._signal_workers: Dict[str, AbstractSignalWorker] = {
@@ -584,6 +591,15 @@ class WorkerOrchestrator:
             origin=DisturbanceOrigin.LIVE_REAL,
             symbol=worker.get_symbol() or '',
         )
+
+    def get_signal_source(self) -> SignalSourceResolution:
+        """
+        What feeds this session's SIGNAL workers, as resolved at startup.
+
+        Returns:
+            The resolution passed in at construction; None when the caller did not resolve one
+        """
+        return self._signal_source
 
     def get_signal_workers(self) -> Dict[str, AbstractSignalWorker]:
         """

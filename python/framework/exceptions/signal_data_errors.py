@@ -27,6 +27,20 @@ class SignalSchemaError(FiniexError, ValueError):
     pass
 
 
+class SignalSourceUnresolvedError(FiniexError, ValueError):
+    """
+    A session has SIGNAL workers but no source that could feed them.
+
+    Either the profile declares no mounted series and no live transport is enabled, or an
+    enabled transport cannot serve the session (several signal kinds against one live
+    source, #258; a transport that is configured but not built yet, #468).
+
+    A configuration error, never a fallback: a session told to decide on signals must not
+    silently proceed on whatever the archive happened to hold.
+    """
+    pass
+
+
 class SignalDataUnavailableError(FiniexError, ValueError):
     """
     A scenario declares a SIGNAL source (#429) with no data covering its range.
