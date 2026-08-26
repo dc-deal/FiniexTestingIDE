@@ -9,7 +9,7 @@ must access timeframe-related information exclusively through this unit.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List
+from typing import Dict, List
 
 from python.framework.exceptions.timeframe_errors import (
     TimeframeConfigError,
@@ -161,24 +161,6 @@ class TimeframeConfig:
             Pandas rule string.
         """
         return cls.get(timeframe).resample_rule
-
-    @classmethod
-    def validate_many(cls, timeframes: Iterable[str]) -> List[str]:
-        """
-        Validate iterable of timeframe strings.
-
-        Args:
-            timeframes: Iterable of timeframe names.
-
-        Returns:
-            List of validated timeframe names (original order).
-        """
-        validated: List[str] = []
-        for tf in timeframes:
-            if tf not in cls._OBJECTS:
-                raise UnsupportedTimeframeError(tf)
-            validated.append(tf)
-        return validated
 
     @classmethod
     def sorted(cls) -> List[str]:

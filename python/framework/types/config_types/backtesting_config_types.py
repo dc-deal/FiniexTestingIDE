@@ -69,7 +69,6 @@ class DataValidationConfig(BaseModel):
 class BacktestingPaths(BaseModel):
     """Filesystem paths used exclusively by the backtesting pipeline."""
     scenario_sets: str = 'configs/scenario_sets'
-    brokers: str = 'configs/brokers'
     generator_template: str = 'configs/generator/template_scenario_set_header.json'
     generator_output: str = 'configs/scenario_sets'
 

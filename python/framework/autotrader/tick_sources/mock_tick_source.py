@@ -110,15 +110,6 @@ class MockTickSource(AbstractTickSource):
         """Check if all ticks have been emitted."""
         return self._exhausted
 
-    def get_tick_count(self) -> int:
-        """
-        Return total number of ticks to replay.
-
-        Returns:
-            Total tick count
-        """
-        return len(self._ticks)
-
     def get_ticks_emitted(self) -> int:
         """
         Return number of ticks emitted so far.

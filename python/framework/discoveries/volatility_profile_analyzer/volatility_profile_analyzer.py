@@ -298,6 +298,9 @@ class VolatilityProfileAnalyzer:
 
         return periods
 
+    # get_high_volatility_periods / get_index_entry are unreferenced until #31
+    # (algo diagnostics) consumes them — finished analysis waiting for its reader,
+    # not dead code. Recorded here so a dead-code sweep does not re-derive it.
     def get_high_volatility_periods(
         self,
         broker_type: str,

@@ -743,26 +743,6 @@ class BacktestingMarginStress(AbstractDecisionLogic):
     # ============================================
 
     @property
-    def rejection_events(self) -> List[Dict[str, Any]]:
-        """All recorded rejection events."""
-        return self._rejection_events
-
-    @property
-    def close_events_log(self) -> List[Dict[str, Any]]:
-        """All recorded close events."""
-        return self._close_events_log
-
-    @property
-    def retry_results(self) -> List[Dict[str, Any]]:
-        """All recorded retry results."""
-        return self._retry_results
-
-    @property
-    def edge_case_results(self) -> List[Dict[str, Any]]:
-        """All recorded edge case results."""
-        return self._edge_case_results
-
-    @property
     def position_map(self) -> Dict[int, str]:
         """Sequence index → order_id mapping."""
         return self._position_map

@@ -8,7 +8,7 @@ This provider abstracts the difference for consistent reporting.
 
 """
 
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.config_types.market_config_types import MarketType
@@ -163,27 +163,6 @@ class ActivityVolumeProvider:
         else:
             return 'tick_count'
 
-    def get_activity_summary(
-        self,
-        data: Dict,
-        market_type: Union[MarketType, str]
-    ) -> Tuple[str, float, float]:
-        """
-        Get complete activity summary for display.
-
-        Args:
-            data: Dict with activity data
-            market_type: MarketType enum or string
-
-        Returns:
-            Tuple of (label, total_value, avg_value)
-        """
-        label = self.get_metric_label(market_type)
-        total = self.get_total_activity_value(data, market_type)
-        avg = self.get_avg_activity_value(data, market_type)
-
-        return (label, total, avg)
-
     def format_activity_value(
         self,
         value: float,
@@ -210,19 +189,6 @@ class ActivityVolumeProvider:
         else:
             # Ticks: show as integer with thousands separator
             return f'{int(value):,}'
-
-    def is_volume_based(self, market_type: Union[MarketType, str]) -> bool:
-        """
-        Check if market type uses trade volume.
-
-        Args:
-            market_type: MarketType enum or string
-
-        Returns:
-            True if volume-based, False if tick-based
-        """
-        return self._is_volume_based(market_type)
-
 
 # Singleton instance for convenience
 _provider_instance: Optional[ActivityVolumeProvider] = None

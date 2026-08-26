@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
-from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.broker_config import BrokerType
@@ -56,9 +55,6 @@ class DataPreparationCoordinator:
         self._logger = logger
         self._data_preparator = SharedDataPreparator(logger)
         self._app_config = app_config
-
-    def get_tick_index_manager(self) -> TickIndexManager:
-        return self._data_preparator.tick_index_manager
 
     def get_signal_index_manager(self) -> SignalIndexManager:
         return self._data_preparator.signal_index_manager

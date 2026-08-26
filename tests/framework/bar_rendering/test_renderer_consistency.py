@@ -94,7 +94,7 @@ def _render_with_vectorized(
     Returns:
         List of dicts with normalized bar data for comparison
     """
-    renderer = VectorizedBarRenderer(symbol=symbol, broker_type='kraken_spot')
+    renderer = VectorizedBarRenderer(symbol=symbol)
     df = ticks_to_dataframe(ticks)
     all_bars = renderer.render_all_timeframes(df)
     bars_df = all_bars[timeframe]
@@ -307,7 +307,7 @@ class TestRendererConsistency:
         ticks = generate_ticks(count=10000, interval_seconds=3)
         symbol = ticks[0].symbol
 
-        renderer_vec = VectorizedBarRenderer(symbol=symbol, broker_type='kraken_spot')
+        renderer_vec = VectorizedBarRenderer(symbol=symbol)
         df = ticks_to_dataframe(ticks)
         all_vec_bars = renderer_vec.render_all_timeframes(df)
 

@@ -161,7 +161,7 @@ class TestVolumeChain:
         assert 'real_volume' not in normalized_df.columns
 
         # Render bars (renders all timeframes, we check M5)
-        renderer = VectorizedBarRenderer('BTCUSD', 'kraken_spot')
+        renderer = VectorizedBarRenderer('BTCUSD')
         bar_dfs = renderer.render_all_timeframes(normalized_df)
 
         assert 'M5' in bar_dfs

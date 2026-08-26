@@ -145,18 +145,6 @@ class BarRenderingController:
         """
         return self.bar_renderer.get_current_bar(symbol, timeframe)
 
-    def get_warmup_quality_metrics(self) -> Dict:
-        """
-        Get quality metrics for warmup bars.
-
-        Quality metrics for warmup bars.
-        Used for debugging and validation.
-
-        Returns:
-            Dict[timeframe, quality_stats] with bar type breakdowns
-        """
-        return self._warmup_quality_metrics
-
     def get_all_bar_history(self, symbol: str) -> Dict[str, List[Bar]]:
         """
         Get all loaded warmup bars per timeframe.

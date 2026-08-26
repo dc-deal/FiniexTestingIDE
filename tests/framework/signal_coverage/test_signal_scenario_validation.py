@@ -259,7 +259,6 @@ class TestAvailabilityWiring:
         manager = DataCoverageReportManager(
             logger=MagicMock(),
             scenarios=[scenario],
-            tick_index_manager=MagicMock(),
             app_config=app_config,
             signal_coverage_reports={(SOURCE, SYMBOL): report} if report else {},
         )

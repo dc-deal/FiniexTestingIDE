@@ -36,7 +36,6 @@ class VectorizedBarRenderer:
     def __init__(
         self,
         symbol: str,
-        broker_type: str,
         log_buffer: Optional[list[str]] = None
     ):
         """
@@ -44,11 +43,9 @@ class VectorizedBarRenderer:
 
         Args:
             symbol: Trading symbol (e.g., 'EURUSD')
-            broker_type: Broker type identifier (e.g., 'mt5', 'kraken_spot')
             log_buffer: Optional buffer for log messages (parallel rendering)
         """
         self.symbol = symbol
-        self._broker_type = broker_type
         self._log_buffer = log_buffer
         # Pandas resample() rules for each timeframe
         self._resample_rules = {

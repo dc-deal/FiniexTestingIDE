@@ -57,7 +57,7 @@ class VolatilitySplit(AbstractProfileSplitter):
         all_windows = []
         block_index = 0
 
-        for region_idx, region in enumerate(regions):
+        for region in regions:
             region_start = region['start']
             region_end = region['end']
 

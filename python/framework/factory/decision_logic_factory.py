@@ -346,11 +346,3 @@ class DecisionLogicFactory:
             return logic_type.split('/', 1)[1]
         return Path(logic_type).stem
 
-    def get_registered_logics(self) -> list:
-        """
-        Get list of all registered decision logic types.
-
-        Returns:
-            List of logic type strings
-        """
-        return list(self._registry.keys())

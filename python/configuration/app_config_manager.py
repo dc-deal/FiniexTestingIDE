@@ -123,15 +123,6 @@ class AppConfigManager:
         logging_config = self.get_console_logging_config_object()
         return logging_config.scenario_write_system_info
 
-    def get_monitoring_config(self) -> Dict[str, Any]:
-        """
-        Get monitoring configuration.
-
-        Returns:
-            Monitoring config dict
-        """
-        return self._app_config.backtesting.monitoring.model_dump()
-
     def get_event_tape_size(self) -> int:
         """
         Get event tape ring buffer size for strategy events.
@@ -204,17 +195,6 @@ class AppConfigManager:
         """
         return self._app_config.backtesting.execution.default_scenario_execution_config.performance_tracking.worker_decision_tracking
 
-    def get_autotrader_worker_decision_tracking(self) -> bool:
-        """
-        Get default per-worker / decision tracking setting (Layer A) for AutoTrader.
-
-        AutoTrader has no Layer-B equivalent, so only Layer A is exposed.
-
-        Returns:
-            True if per-component performance trackers are created by default
-        """
-        return self._app_config.autotrader.execution.performance_tracking.worker_decision_tracking
-
     def should_warn_on_override(self) -> bool:
         """
         Check if parameter override warnings are enabled.
@@ -231,19 +211,6 @@ class AppConfigManager:
     # ============================================
     # Log Level Methods (Validated)
     # ============================================
-
-    def get_console_log_level(self) -> str:
-        """
-        Get console log level (validated).
-
-        Returns:
-            Validated log level string (DEBUG, INFO, WARNING, ERROR)
-
-        Raises:
-            ValueError: If log level is invalid (no fallback to defaults)
-        """
-        logging_config = self.get_console_logging_config_object()
-        return logging_config.global_log_level
 
     def get_version(self) -> str:
         """
@@ -283,15 +250,6 @@ class AppConfigManager:
     def get_trade_history_max(self) -> int:
         """Get max trade history entries (0=unlimited)."""
         return self._app_config.history.trade_history_max
-
-    def get_data_validation_config(self) -> Dict[str, Any]:
-        """
-        Get data validation configuration.
-
-        Returns:
-            Data validation config dict
-        """
-        return self._app_config.backtesting.data_validation.model_dump()
 
     def get_warmup_quality_mode(self) -> str:
         """
@@ -365,18 +323,6 @@ class AppConfigManager:
             Path string for user scenario sets directory
         """
         return 'user_configs/scenario_sets'
-
-    def get_brokers_path(self) -> str:
-        """
-        Get brokers config path from config.
-
-        Returns:
-            Path string for brokers config directory
-
-        Raises:
-            ValueError: If path not configured
-        """
-        return self._app_config.backtesting.paths.brokers
 
     def get_generator_template_path(self) -> str:
         """

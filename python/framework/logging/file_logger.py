@@ -53,7 +53,6 @@ class FileLogger:
         """
         self.file_path = file_path
         self.log_level = log_level
-        self._append_mode = append_mode
         self._tick_loop_started = False
         self._current_tick = None
         self._tick_loop_count = 1

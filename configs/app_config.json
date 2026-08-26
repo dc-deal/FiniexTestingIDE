@@ -142,7 +142,6 @@
         },
         "paths": {
             "scenario_sets": "configs/scenario_sets",
-            "brokers": "configs/brokers",
             "generator_template": "configs/generator/template_scenario_set_header.json",
             "generator_output": "configs/scenario_sets"
         },

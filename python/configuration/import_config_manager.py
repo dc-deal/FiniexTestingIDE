@@ -5,7 +5,7 @@ High-level API for import pipeline configuration.
 Provides typed accessors for offset registry, paths, and processing settings.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from python.configuration.import_config_loader import ImportConfigFileLoader
 
@@ -69,22 +69,6 @@ class ImportConfigManager:
         registry = self.get_offset_registry()
         entry = registry.get(broker_type, {})
         return entry.get('default_offset_hours', 0)
-
-    def get_offset_description(self, broker_type: str) -> Optional[str]:
-        """
-        Get human-readable offset description for a broker_type.
-
-        Args:
-            broker_type: Normalized broker type identifier
-
-        Returns:
-            Description string, or None if not configured
-        """
-        registry = self.get_offset_registry()
-        entry = registry.get(broker_type)
-        if entry is None:
-            return None
-        return entry.get('description')
 
     # ============================================
     # Paths — Production

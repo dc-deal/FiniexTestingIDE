@@ -28,7 +28,6 @@ from python.framework.types.autotrader_types.field_study_types import (
     PhaseAction,
     PhaseActionKind,
     PhaseContext,
-    PhaseResult,
     PhaseSide,
     PhaseType,
 )
@@ -727,12 +726,3 @@ class LiveFieldStudy(AbstractDecisionLogic):
         """Ordered phase ids in the configured sequence (for the recorder header)."""
         return [p.phase_id for p in self._phases]
 
-    def get_realized_cost(self) -> float:
-        """Accumulated realized cost (sum of fill commissions) so far."""
-        return self._realized_cost
-
-    def get_phase_results(self) -> List[PhaseResult]:
-        """Completed phase results (for the recorder / certificate / tests)."""
-        if self._machine is None:
-            return []
-        return self._machine.get_results()

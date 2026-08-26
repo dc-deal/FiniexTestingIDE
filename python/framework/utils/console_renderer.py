@@ -124,24 +124,3 @@ class ConsoleRenderer:
         """
         return len(self.strip_ansi(text))
 
-    def pad_line(self, text: str, width: int) -> str:
-        """
-        Pad line to exact visual width.
-
-        Args:
-            text: String to pad (may contain ANSI codes)
-            width: Target visual width
-
-        Returns:
-            Padded string with exact visual width
-        """
-        visual_len = self.visual_length(text)
-
-        if visual_len > width:
-            # Truncate if too long (preserve ANSI codes at start)
-            stripped = self.strip_ansi(text)
-            return text[:len(text) - len(stripped) + width]
-
-        # Add padding
-        padding = ' ' * (width - visual_len)
-        return text + padding

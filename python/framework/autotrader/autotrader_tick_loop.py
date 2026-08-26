@@ -222,10 +222,6 @@ class AutotraderTickLoop:
         """Signal the tick loop to stop. Thread-safe."""
         self._running = False
 
-    def is_running(self) -> bool:
-        """Check if the tick loop is currently running."""
-        return self._running
-
     def run(self) -> Tuple[int, int]:
         """
         Execute the tick processing loop.
