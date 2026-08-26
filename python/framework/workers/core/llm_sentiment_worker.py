@@ -72,6 +72,27 @@ class LlmSentimentWorker(AbstractSignalWorker):
                     'overtaking pass all report none — none of them witnessed a transition.'),
                 category='INFO',
             ),
+            'breaking_episode_id': OutputParamDef(
+                param_type=str,
+                description=(
+                    "The producer's breaking-EPISODE identity, empty outside an episode. "
+                    'OPAQUE — compare it for equality, never split or parse it: the middle '
+                    'segment is free-text pipeline config and the string carries further '
+                    'colons, spaces and slashes. It is set on every pass INSIDE the episode, '
+                    'including hold-band passes where is_breaking is false, which is why the '
+                    'producer advises gating on it rather than on the flag.'),
+                category='INFO',
+            ),
+            'breaking_episode_edge': OutputParamDef(
+                param_type=str, choices=('opened', 'changed', 'closed', 'none'),
+                description=(
+                    'Transition of the episode identity against the previously served '
+                    'envelope. Carries the case is_breaking cannot: `changed` is one story '
+                    'replaced by another with no quiet pass between, which the flag reports '
+                    'as no change at all. Derived here, like breaking_edge, so simulation '
+                    'and live cannot drift apart.'),
+                category='INFO',
+            ),
             'reasoning': OutputParamDef(
                 param_type=str,
                 description='Model reasoning for the sentiment (transparency)',
@@ -111,6 +132,8 @@ class LlmSentimentWorker(AbstractSignalWorker):
                 'urgency': 0.0,
                 'is_breaking': False,
                 'breaking_edge': self._derive_edge(None).value,
+                'breaking_episode_id': '',
+                'breaking_episode_edge': self._derive_episode_edge(None).value,
                 'reasoning': 'No signal data',
                 'evidence_regressed': False,
             })
@@ -125,6 +148,9 @@ class LlmSentimentWorker(AbstractSignalWorker):
             'urgency': float(result.urgency),
             'is_breaking': is_breaking,
             'breaking_edge': self._derive_edge(is_breaking).value,
+            'breaking_episode_id': result.breaking_episode_id,
+            'breaking_episode_edge': self._derive_episode_edge(
+                result.breaking_episode_id).value,
             'reasoning': result.reasoning,
             'evidence_regressed': self.get_evidence_regressed(),
         })

@@ -113,9 +113,9 @@ Main benchmark tests comparing measured performance against baseline. Only runs 
 
 ---
 
-### test_benchmark_certificate.py (4 Tests)
+### test_benchmark_certificate.py (13 Tests)
 
-CI-friendly tests that validate benchmark certificates without running the actual benchmark.
+CI-friendly tests that validate benchmark certificates without running the actual benchmark. They read the committed artifacts only, so they cost nothing and run in the daily suite.
 
 #### TestBenchmarkCertificate
 
@@ -124,7 +124,52 @@ CI-friendly tests that validate benchmark certificates without running the actua
 | `test_report_exists` | A benchmark report must exist in `reports/` directory. SKIPS if not found (allows local full-suite runs). |
 | `test_report_not_expired` | Report must not be expired (90-day validity). FAILS if `valid_until` is in the past. |
 | `test_report_passed` | Report `overall_status` must be "PASSED". Also checks `debug_mode_detected` flag. |
-| `test_report_integrity` | Report must have all required fields: timestamp, valid_until, system_id, scenario, debug_mode_detected, overall_status, metrics. |
+| `test_report_integrity` | Report must carry all required fields — including `app_version`, `config_provenance`, `breakdown` and `warnings`. |
+
+#### TestBreakdownShape
+
+The per-stage breakdown records the SHAPE it was measured in (the sorted section names). Comparing two reports means comparing those name sets first: the operation names are free strings with no enum behind them, and `worker_decision` has already absorbed another operation once. A rename is an addition plus a removal — never a changed value.
+
+| Test | Description |
+|------|-------------|
+| `test_the_comparison_detects_an_added_section` | A new operation shows up as `+name`. |
+| `test_the_comparison_detects_a_rename_as_both_halves` | A rename reports both halves, never one changed number. |
+| `test_identical_shapes_compare_clean` | Matching shapes produce an empty difference. |
+| `test_committed_reports_agree_on_their_shape` | Runs over the committed reports; SKIPS while fewer than two carry a breakdown. |
+
+#### TestStabilityCalibration
+
+Pins the stability threshold against the artifacts it was derived from — tightening it would retroactively invalidate a committed certificate, loosening it would let an unusable measurement through.
+
+| Test | Description |
+|------|-------------|
+| `test_every_committed_report_passes_the_limit` | No already-committed certificate may fail the limit. |
+| `test_the_known_unusable_measurements_are_refused` | The two measurements recorded as unusable must be caught by it. |
+
+#### TestConfigProvenance
+
+| Test | Description |
+|------|-------------|
+| `test_the_certificate_records_the_configuration_it_measured` | The contract comparison happened and both halves (expected/effective) are in the artifact. |
+| `test_the_measured_workload_is_the_committed_one` | `scenario_set_origin` is `base` — the scenario set came from `configs/`, not from the private workspace. |
+| `test_the_workspace_listing_carries_names_only` | Privacy invariant: `workspace_overrides` publishes names and a count, never key paths or values. |
+
+---
+
+## Validity Guards
+
+Six conditions set the report to `FAILED` before any tolerance is read. Each exists because a benchmark that cannot answer looks exactly like one that answered "fine".
+
+| Guard | Condition | Why |
+|---|---|---|
+| Debugger | A debugger is attached | Every timing is meaningless under tracing |
+| Version match | `--release-version` differs from `configs/app_config.json::version` | Otherwise a certificate can name a release it was not taken from. `dev` declares nothing and is exempt |
+| Dirty tree | A declared release is certified from uncommitted work | The recorded commit does not contain the code that produced the artifact. Shared with all four certificates; `dev` is exempt |
+| Config contract | An effective config value differs from `config_contract.required_effective` | The reference baseline was measured under those values; a deviation is a result of the configuration, not of the code |
+| Workload origin | The scenario set was resolved from `user_configs/` or a user algo dir | That path is **not** gated by `FINIEX_CONFIG_ISOLATION`, so a same-named private file silently replaces the workload |
+| Stability | The three raw throughput runs span more than `stability.max_spread_percent` | A median over runs that disagree is not a measurement |
+
+A sixth condition warns without failing: config isolation off while override files exist. The contract pins the values that move the number, so the run stays certifiable — but the artifact says that it ran on a personal configuration.
 
 ---
 
@@ -145,6 +190,18 @@ Global benchmark settings including tolerances and validity.
   },
   "certificate": {
     "validity_days": 90
+  },
+  "stability": {
+    "max_spread_percent": 15.0
+  },
+  "ceilings": {
+    "summary_generation_time_s": { "max_seconds": 10.0 }
+  },
+  "config_contract": {
+    "required_effective": {
+      "backtesting.execution.max_parallel_scenarios": 99,
+      "console_logging.scenario.enabled": false
+    }
   }
 }
 ```
@@ -156,6 +213,20 @@ Global benchmark settings including tolerances and validity.
 | tickrun_time_s tolerance | ±20% | CPU-bound tick processing duration |
 | warmup_time_s tolerance | ±30% | IO-bound (disk, WSL bridge), higher variance expected |
 | validity_days | 90 | Forces quarterly re-validation |
+| max_spread_percent | 15% | Calibrated from the committed history — worst historical spread 13.0%, while measurements known to be unusable spanned 20–34% |
+| summary_generation_time_s ceiling | 10s | A ceiling, not a tolerance: the metric has no per-system baseline. It exists so the next growth of that size cannot hide in an untoleranced INFO metric |
+
+### config_contract
+
+Dotted paths into the **effective** (merged) app config — the configuration the reference baseline was measured under. The full list covers three families, and only those three, because they are what moves a CPU-bound throughput number:
+
+| Family | Paths | Effect when changed |
+|---|---|---|
+| Process fan-out | `parallel_scenarios`, `max_parallel_scenarios` | How many of the 40 scenarios run at once |
+| Profiling overhead | `tick_loop_profiling`, `worker_decision_tracking`, `parallel_workers`, `adaptive_parallelization` | Per-tick measurement cost; `tick_loop_profiling` also feeds the breakdown |
+| Log volume | `console_logging.scenario.enabled`, `file_logging.log_level`, `file_logging.scenario.enabled` | I/O during 40 parallel scenarios |
+
+Changing a value here re-defines what the reference means — **re-measure the baseline in the same step**.
 
 ### reference_systems.json
 
@@ -354,6 +425,15 @@ Reports are saved as JSON with full audit trail in `tests/simulation/benchmark/r
   "scenario": "backtesting/backtesting_loadtest_40_scenarios.json",
   "runs": 3,
   "debug_mode_detected": false,
+  "isolation_active": true,
+  "workspace_overrides": {"files_present": ["app_config.json"], "unnamed_files": 0, "applied": false},
+  "config_provenance": {
+    "scenario_set_origin": "base",
+    "scenario_set_path": "configs/scenario_sets/backtesting/backtesting_loadtest_40_scenarios.json",
+    "required_effective": {
+      "backtesting.execution.max_parallel_scenarios": {"expected": 99, "effective": 99}
+    }
+  },
   "overall_status": "PASSED",
   "metrics": [
     {"name": "ticks_per_second", "measured": 90024.88, "reference": 90000, "deviation_percent": 0.03, "tolerance_percent": 20.0, "status": "PASSED"},
@@ -380,8 +460,11 @@ Reports are saved as JSON with full audit trail in `tests/simulation/benchmark/r
 **Notes:**
 - All measured values are **medians** across 3 runs
 - `raw_measurements` contains the individual run values for traceability
+- `breakdown` carries the per-stage medians plus the `shape` they were measured in — read the shape before comparing any value across reports
+- `record_kind` / `app_version` / `git_*` / `valid_until` / `isolation_active` / `workspace_overrides` come from the **shared** `CertificateIdentity` that all four release certificates carry — see [Release Certificates](../../architecture/release_certificates.md)
+- `config_provenance` holds what this certificate EXERCISED: the workload it measured and the config contract it was measured under. `workspace_overrides` (in the identity) lists **names and a count only** — the report is committed to the public repository, so it must never carry what `user_configs/` contains
 - `artifacts` lists all log files copied to `reports/logs/run_N/`
-- If `debug_mode_detected` is `true`, the report is automatically `FAILED` regardless of metric results
+- If `debug_mode_detected` is `true`, the report is automatically `FAILED` regardless of metric results — see **Validity Guards** for the other four conditions
 
 ---
 

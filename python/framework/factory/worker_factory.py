@@ -112,29 +112,6 @@ class WorkerFactory:
         for key in stale_keys:
             del sys.modules[key]
 
-    def register_worker(
-        self,
-        worker_type: str,
-        worker_class: Type[AbstractWorker]
-    ):
-        """
-        Manually register a worker class.
-
-        Args:
-            worker_type: Key for the registry (e.g. "CORE/my_worker" or a file path)
-            worker_class: Worker class (must inherit from AbstractWorker)
-
-        Raises:
-            ValueError: If worker_class doesn't inherit from AbstractWorker
-        """
-        if not issubclass(worker_class, AbstractWorker):
-            raise ValueError(
-                f'Worker class {worker_class.__name__} must inherit from AbstractWorker'
-            )
-        self._registry[worker_type] = (worker_class, None)
-        self._logger.debug(
-            f'Registered worker: {worker_type} → {worker_class.__name__}')
-
     def create_worker(
         self,
         instance_name: str,

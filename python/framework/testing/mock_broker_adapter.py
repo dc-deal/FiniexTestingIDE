@@ -697,28 +697,6 @@ class MockBrokerAdapter(AbstractAdapter):
         """
         self._mode = mode
 
-    def set_slippage(self, points: float) -> None:
-        """
-        Set fill price offset for slippage simulation.
-
-        Args:
-            points: Price offset applied to fills (positive = worse price)
-        """
-        self._slippage_points = points
-
-    def set_trades_per_fill(self, n: int) -> None:
-        """
-        Configure how many synthetic BrokerTrade records to emit per fill (#326).
-
-        Args:
-            n: Number of trades to split each fill into. 1 = single full trade,
-               > 1 = N trades with even volume and small price offsets (used by
-               partial-fill regression tests).
-        """
-        if n < 1:
-            raise ValueError(f'trades_per_fill must be >= 1, got {n}')
-        self._trades_per_fill = n
-
     def _record_mock_trades(
         self,
         broker_ref: str,

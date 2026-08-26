@@ -85,11 +85,3 @@ class StressTestRejection:
 
         return rejection
 
-    def get_rejection_count(self) -> int:
-        """
-        Get total number of stress test rejections.
-
-        Returns:
-            Number of orders rejected by this stress test
-        """
-        return self._rejection_count

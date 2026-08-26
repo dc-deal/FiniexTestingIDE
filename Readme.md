@@ -4,24 +4,25 @@
 
 > ⚠️ **No financial advice.** This software is for educational and research purposes only.
 
-> **Version:** 1.3.1
+> **Version:** 1.4.0
 > **Status:** Alpha
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
 
 ---
 
-## What's New in 1.3.1
+## What's New in 1.4.0
 
-- **Reference Strategy — Full Order Surface** — A didactic CORE reference strategy (a multi-timeframe trend gate plus a channel entry) exercises the complete order surface end-to-end: resting limit and stop entries, stop-loss/take-profit, an always-on trailing stop, a partial-close ladder, and multi-position stacking. A teaching example — not a profitable strategy — it proves the framework carries a full-featured strategy build from backtest to report.
-- **Unified Reporting Pipeline** — One result model feeds console, file, CSV, and the API identically, across both the backtesting and live pipelines. End-of-run reports are derived once, off the hot loop.
-- **Trade Analytics — Excursion & Expectancy** — Every position records its maximum adverse and favorable excursion (MAE/MFE); the report adds R-multiple and expectancy — the standard stop/target-calibration and profitability metrics.
-- **Robustness Validation — In-Sample / Out-of-Sample** — Run one constant strategy across many time windows and read the performance distribution plus an IS/OOS degradation (walk-forward efficiency) verdict — the built-in overfit guard.
-- **Parameter Sweep** — Run a scenario set across a grid of strategy parameters, collect a result per combination, and rank by a configurable objective, with a run-results ledger and per-parameter sensitivity.
-- **Honest-Backtest Tooling** — Overnight swap/funding cost for positions held overnight, and broker-derived instrument precision (pip size) so excursion metrics read in exact per-instrument units.
-- **Restart-Safe Algo Memory** — Opt-in snapshot/restore hooks let a live bot recover its own state across a restart.
+- **SIGNAL Workers — External Data as a First-Class Input** — A new worker type reads recorded, model-produced signals (LLM sentiment) the same way an indicator reads price. Archived per source and resolved by timestamp with a strict no-look-ahead merge key, so a backtest can never see a signal before it existed.
+- **Live Signal Transport** — A live session starts with an empty provider that a transport fills as envelopes arrive, drained on both the tick and heartbeat paths. The same worker reads a mounted archive or a live feed without knowing which it got.
+- **Mandatory Staleness Contracts** — Every decision logic must answer what it does when an input goes quiet — for signals and for market data. Not knowing is a state, and a strategy that cannot describe its own blindness is not testable.
+- **Signal Reporting — Offered vs. Decided-On** — Reports separate what the archive *could* have offered from what the strategy *actually decided on*, and record when disturbances happened as observed spans. Two different questions; a report that merges them answers neither.
+- **Run-Outcome Contract & Exit Codes** — A run's outcome is a single canonical value on the report model, and the CLI exit code reflects it. Automation no longer sees green on a failed run.
+- **Compute Only What Is Consumed** — A decision declares the worker outputs it reads, so a worker skips computing the rest; a worker reads only the bar window it needs. Bit-identical results, less work per tick.
+- **Unified Release Certificates** — All four release gates (benchmark, live adapter, field study, signal feed) share one identity: the declared release is checked against the version the tree carries, a declared release from uncommitted work is refused, and each certificate records the configuration it actually ran under.
 
 ### Previous Releases
 
+- **1.3.1** — Production-bot case study, unified reporting pipeline, trade analytics (MAE/MFE, R-multiple, expectancy), robustness validation (IS/OOS), parameter sweep, honest-backtest tooling (swap cost, broker-derived precision), restart-safe algo memory
 - **1.3.0** — Live acceptance certificate (Field Study), reconciliation foundation, decision event channel, timer-driven loop clock & cadence, order-lifecycle hardening, audit telemetry + API performance monitor
 - **1.2.3** — Live execution architecture refactor (symmetric sim/live pipelines, async HTTP dispatch), async modify/cancel/position-modify, broker trade record model (order ↔ executions pairing)
 - **1.2.2** — FiniexAutoTrader Live Trading Pipeline, Live Console UI, Spot Trading Model, Order Guard, AwarenessChannel, REST API Foundation, Dual-Pipeline Parity Tests, User Algo Workspace
@@ -47,6 +48,7 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 - ✅ Validated accuracy — comprehensive integration, black-box, and white-box test suites
 - ✅ Validated performance — standardized benchmark certificate with regression detection
 - ✅ Validated live execution — real-money end-to-end acceptance certificate (Field Study)
+- ✅ External signal input — recorded, model-produced data (LLM sentiment) as a worker input, live or from an archive
 
 ---
 
@@ -87,6 +89,13 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 - **Stop Orders** - Breakout entry with market fill (STOP) or limit conversion (STOP_LIMIT)
 - **Multi-Broker Fees** - Spread-based (MT5) and maker/taker (Kraken, maker fee for limit fills)
 - **Mock Testing** - MockBrokerAdapter for deterministic pipeline verification
+
+### Signal Data (External / Model-Produced Input)
+- **SIGNAL Worker Type** - Reads recorded, model-produced signals (LLM sentiment) as a first-class worker input, in both the backtesting and live pipelines
+- **No-Look-Ahead Merge** - Snapshots resolve by their receive timestamp, so a backtest cannot see a signal before it existed
+- **Live Transport** - A live session starts empty and is filled by an arriving feed; the worker cannot tell a mounted archive from a live one
+- **Staleness Contracts** - Every decision logic must declare its reaction when a signal or the market data goes quiet
+- **Coverage & Decision Reporting** - What the archive could offer, what the strategy decided on, and when disturbances happened — reported separately
 
 ### Analysis Tools
 - **Discovery System** - Unified analysis with Parquet-based caching (auto-invalidation on data change)
@@ -225,11 +234,16 @@ Individual suites can be run separately: `pytest tests/<suite>/ -v`
 
 Configuration: `configs/test_config.json` (excluded suites, fail-fast behavior). Each test suite has its own documentation in [`docs/tests/`](docs/tests/).
 
-**Benchmark Certificate:** Each release includes a benchmark report validating throughput performance against registered system baselines (3-run median, tolerance-based regression detection). The certificate is verified automatically in CI. See [`docs/tests/simulation/benchmark_tests.md`](docs/tests/simulation/benchmark_tests.md) for details.
+**Release Certificates.** Every release is gated by four independent certificates, each written as a machine-checkable artifact with a 90-day validity and verified by its own test:
 
-**Live Adapter Certificate:** Each release includes a live adapter report validating the full Kraken API contract — dry-run order validation, limit order lifecycle (place → modify → cancel), and market order round-trip (buy + sell with real fills). Requires a Kraken account with API key; no funds consumed beyond minimal trading fees. See [`docs/tests/live_adapters/kraken_adapter_integration_tests.md`](docs/tests/live_adapters/kraken_adapter_integration_tests.md) for details.
+| Certificate | Validates |
+|---|---|
+| **Benchmark** | Throughput against registered system baselines (3-run median, stability and configuration guards) |
+| **Live Adapter** | The broker API contract — order placement, limit lifecycle, and a real market round-trip |
+| **Live Field Study** | The full live execution stack on a real account: every order type, modify/cancel, rejection battery, partial close, idle heartbeat |
+| **Signal Feed** | The external signal producer's contract against its running production instance |
 
-**Live Field Study Certificate:** The live-acceptance gate — a deterministic, operator-driven end-to-end run against real Kraken Spot that drives the full live pipeline through every order type, the modify/cancel paths, a rejection battery, deterministic partial-close, and idle-heartbeat phases, while the Reconciler observes the broker-truth plane. Every step is captured as machine-analyzable JSONL and distilled into a PASS/FAIL certificate (90-day validity). Required for every minor release; runs on a real account at the broker's minimum lot size (a few cents in fees). See [`docs/tests/live_field_study/field_study_guide.md`](docs/tests/live_field_study/field_study_guide.md) for details.
+All four share one identity: the declared release is checked against the version the repository carries, and a certificate is refused if it would be taken from uncommitted work. Details in [`docs/architecture/release_certificates.md`](docs/architecture/release_certificates.md).
 
 ---
 
@@ -243,6 +257,7 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 
 - **No native OCO/Iceberg/trailing-stop order types** - Market, Limit, Stop, and Stop-Limit are supported; extended order types are planned. Strategy-level trailing (moving a position's stop as price advances) is supported and demonstrated by the reference strategy.
 - **No Broker-Side Partial-Fill Detection on Live** - A live order is treated as pending until fully filled; a broker-reported *partial* fill (one order, multiple executions) is not yet surfaced as its own state. Partial position close (closing a fraction of an open position) is supported in both backtesting and live.
+- **Live signals arrive by polling** - The live signal transport pulls the producer's latest envelope on an interval; a push stream is the next step. A snapshot superseded between two polls is not recovered, and an envelope is up to one poll interval old.
 - **FiniexViewer in progress** - HTTP API available; browser UI in active development (see [FiniexViewer Setup](docs/user_guides/finiexviewer_setup.md))
 
 > **Note on Multiple Positions:** Full multi-position support is implemented and validated by integration tests, and the reference strategy (`CORE/trend_channel_reference`) actively stacks several positions on a symbol. Holding multiple *symbols* against one shared capital pool — portfolio backtesting — is the next core-engine milestone. See `configs/scenario_sets/backtesting/multi_position_test.json` for a reference on how to build multi-position scenarios.
@@ -262,7 +277,8 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 - Live execution refactor with async dispatch and broker trade record model (V1.2.3)
 - Live acceptance certificate (Field Study), reconciliation foundation, decision event channel, timer-driven loop cadence (V1.3.0)
 - Production-bot case study, restart-safe algo memory, unified reporting, trade analytics, robustness validation, and parameter sweep (V1.3.1)
-- Next: state recovery, push-based execution stream, and SIGNAL workers — external / LLM-sentiment data as a worker input (V1.4)
+- The SIGNAL chain — external, model-produced data as a first-class worker input, with mandatory staleness contracts and a live transport (V1.4)
+- Next: unattended live operation — everything a strategy needs to run thirty days on a real account without a human watching: state recovery, alerting, reconciliation resolution, paper trading as a first-class mode, and the signal push stream (V1.5)
 
 For the full vision, detailed roadmap, and feature path see **[Issue #138 — Vision & Roadmap](https://github.com/dc-deal/FiniexTestingIDE/issues/138)**.
 

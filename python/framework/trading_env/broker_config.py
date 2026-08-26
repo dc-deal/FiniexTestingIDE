@@ -63,11 +63,6 @@ class BrokerConfig:
         """8-char SHA256 hash of the symbols block. Empty string if not available."""
         return self.adapter.broker_config.get('_config_meta', {}).get('symbols_hash') or ''
 
-    def load_all_symbol_specs(self):
-        """
-            init all symbols broker delivers in symbols list.
-        """
-
     @staticmethod
     def _detect_broker_type(config: Dict[str, Any], path: Path) -> BrokerType:
         """
@@ -150,10 +145,6 @@ class BrokerConfig:
         """Get broker company name (e.g., 'IC Markets')"""
         return self._broker_name
 
-    def get_broker_type_str(self) -> str:
-        """Get broker type as string (e.g., 'mt5')"""
-        return self.broker_type.value
-
     def get_order_capabilities(self) -> OrderCapabilities:
         """Get broker order capabilities"""
         return self._capabilities
@@ -208,26 +199,6 @@ class BrokerConfig:
             print(f"Leverage: 1:{spec.leverage}")
         """
         return self.adapter.get_broker_specification()
-
-    def get_min_lot_size(self, symbol: str) -> float:
-        """Get minimum lot size for symbol"""
-        symbol_spec = self.get_symbol_specification(symbol)
-        return symbol_spec.volume_min
-
-    def get_max_lot_size(self, symbol: str) -> float:
-        """Get maximum lot size for symbol"""
-        symbol_spec = self.get_symbol_specification(symbol)
-        return symbol_spec.volume_max
-
-    def get_lot_step(self, symbol: str) -> float:
-        """Get lot step increment for symbol"""
-        symbol_spec = self.get_symbol_specification(symbol)
-        return symbol_spec.volume_step
-
-    def get_tick_size(self, symbol: str) -> float:
-        """Get minimum price movement for symbol"""
-        symbol_spec = self.get_symbol_specification(symbol)
-        return symbol_spec.tick_size
 
     def is_symbol_tradeable(self, symbol: str) -> bool:
         """Check if symbol is currently tradeable"""

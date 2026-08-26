@@ -9,7 +9,6 @@ and the flush_decision_diagnostics helper used by both pipelines.
 import csv
 from unittest.mock import MagicMock
 
-
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.reporting.diagnostics_csv_sink import (
     DiagnosticsCsvSink,

@@ -130,6 +130,17 @@ real server.
   resolve as if it were sentiment. A *normal* `status: error` (an LLM timeout) **is** data and is
   kept.
 - **Auth** — the header is sent only when a token is configured.
+- **A grown shape** — an envelope carrying fields we do not declare is accepted and enqueued,
+  and its unread field names are announced **once per distinct set** at NOTICE level. Pinned
+  because the producer's minor bump says the shape grew without saying what grew, and our models
+  discard the undeclared silently. The second poll of the same shape must stay quiet, or a grown
+  envelope logs on every beat for the life of the session.
+- **Contract violation** — an envelope the producer served and our schema cannot read is
+  classified apart from a transport fault: state `contract`, its own counter, `transport_errors`
+  untouched, nothing reaching the inbox, and a session-logger error naming the offending field.
+  The first version of this loop counted it as a transport error and retried forever, so a
+  mismatch on our side presented as the producer's outage — the same misattribution the `401`
+  rule forbids. It happened for real when the producer added the episode fields additively.
 - **Lifecycle** — an unreachable producer never raises into the loop; stop is idempotent.
 - **Transport state** — the state must describe the transport *now*, not at the last arrival.
   The producer's beat is far longer than the poll interval, so most polls legitimately return an
@@ -218,6 +229,21 @@ older evidence did not witness what came after it, so it must not flip the edge)
 pins that the suppressed envelope is **not remembered**, or the next correctly ordered one would
 compare against a view already discarded.
 
+The file also pins the **episode edge** — `opened` / `changed` / `closed` / `none`, derived here from
+the producer's identity label with the same three restraints as the boolean edge. The case that earns
+it its own type is `changed`: one story replaced by another with no quiet pass between, which
+`breaking_edge` reports as `none` because the flag never moved. Its mirror is also pinned — a
+hold-band pass keeps the id (`none`) while the flag drops (`exited`). Plus the plainest one, easy to
+forget: the id must actually *reach* the decision as an output, or no logic can gate on it.
+
+And the producer's **episode identity** on the wire (their #65, live 2026-08-24):
+`breaking_episode_start` is a **flag**, not a timestamp, and `breaking_episode_id` is set on every
+pass the producer counts as inside the episode — including hold-band passes where `is_breaking` is
+`false`. Use the id for identity, `is_breaking` for "this pass crossed the threshold". Pinned
+because the field arrived with **no `schema_version` change**, so nothing in the envelope announced
+it; our first declaration had the wrong type and every live envelope was rejected. The archive era
+parses with empty defaults, which is what keeps historical replay working.
+
 ### test_signal_delay_lever.py (#141 Part 2a)
 
 `signal_delay_minutes` resolves as-of `now − delay` while measuring staleness against the **real**
@@ -228,6 +254,26 @@ Pinned: the default is `0` and changes nothing; the delay shifts the series rath
 through it; a delay past the whole archive goes blind rather than failing; and the refresh trigger
 reads the **same** as-of moment as the resolution — a disagreement there produces results that are
 correct individually and wrong in sequence.
+
+### test_signal_source_resolver.py (#141 Part 2a)
+
+Which source feeds a session's SIGNAL workers, resolved once by `SignalSourceResolver`. Three
+answers, asked in one order — no SIGNAL worker → `NONE` (the installation-wide transport setting
+does not apply to this profile); a prepared package → `MOUNTED` (its **presence** decides, never its
+contents); otherwise → `LIVE` with the transport named.
+
+Pinned: `MOUNTED` outranks an enabled transport; two signal kinds against one live transport is an
+error (#258); `stream.enabled` is answered with a clear "#468, not built" rather than silently
+becoming a no-op that would leave the workers empty with nothing to fill them.
+
+Two regression cases carry their own class, because both were invisible to this suite before —
+pytest sets `FINIEX_CONFIG_ISOLATION`, so the workspace override that enables the transport was
+never seen, and the CLI path was the one that broke:
+
+- a profile **without** a SIGNAL worker must not be aborted by the installation-wide switch (it
+  aborted 20 of 24 profiles, including four live trading profiles and both field-study release gates)
+- a **mounted** session must not open a live transport (it mounted the archive *and* polled the
+  production producer, folding live envelopes into a replay whose purpose is determinism)
 
 ---
 

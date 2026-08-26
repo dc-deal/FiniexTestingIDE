@@ -93,29 +93,6 @@ class DiscoveryCacheManager:
             'volatility_profile': self._volatility_profile_cache.get_cache_status(),
         }
 
-    def clear_all(self) -> Dict[str, int]:
-        """
-        Clear all discovery caches.
-
-        Returns:
-            Dict mapping cache name to number of files deleted
-        """
-        results: Dict[str, int] = {}
-
-        results['coverage'] = self._data_coverage_cache.clear_cache()
-        results['extreme_moves'] = self._discovery_cache.clear_cache()
-        results['volatility_profile'] = self._volatility_profile_cache.clear_cache()
-
-        total = sum(results.values())
-        self._logger.info(
-            f"All caches cleared: {total} files deleted "
-            f"(coverage: {results['coverage']}, "
-            f"extreme_moves: {results['extreme_moves']}, "
-            f"volatility_profile: {results['volatility_profile']})"
-        )
-
-        return results
-
     def get_fingerprints(self, broker_type: str, symbol: str) -> Dict[str, Optional[str]]:
         """
         Get config fingerprints from all cached discoveries for a symbol.

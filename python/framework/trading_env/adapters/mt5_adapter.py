@@ -441,6 +441,8 @@ class Mt5Adapter(AbstractAdapter):
     # ============================================
     # MT5-Specific Features
     # ============================================
+    # Unreferenced until #209 (MT5 live adapter) ships — finished work waiting for its
+    # consumer, not dead code. Recorded here so a dead-code sweep does not re-derive it.
 
     def get_commission_per_lot(self, symbol: str) -> float:
         """

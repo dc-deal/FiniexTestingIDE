@@ -1,6 +1,6 @@
 # Signal Import Tests
 
-**Suite:** `tests/data/signal_import/` · **Mark:** `data` · **Issue:** #429
+**Suite:** `tests/data/signal_import/` · **Mark:** `data` · **Issue:** #429, #466
 
 Validates the signal data source pipeline — JSONL import → columnar parquet → index → projected
 reader — and, the key guarantee, **bit-identical parity with the v0 JSONL path** on the consumed
@@ -55,6 +55,94 @@ The producer spent a **major** version on an otherwise additive field group for 
 `trigger_reason` left `metadata` — precisely because this reader gates on the major, so a minor
 would not have fired the branch the fallback lives behind. An unknown major is refused rather than
 guessed at: it may carry a changed `result` structure.
+
+From the producer's #65 note onward the rule is stated on their side too — **MINOR for an additive
+field, MAJOR for a breaking one** — so pinning the major is the supported way to stay readable while
+the shape grows. The supported set now lives in `signal_data_types.py` and is shared with the live
+transport, which gates on it as well: two copies would have let the archive path and the live path
+disagree about what we can read.
+
+### test_signal_frame_sample.py
+
+The producer's committed stream-frame sample parsed through the **production model**, not by eye.
+
+It exists because reading it by eye already cost us once: reissue 5 carried
+`breaking_episode_start: false` on 2026-08-21, three days before the field went live, while our
+declaration typed it as a timestamp. Every live envelope was then rejected and the rejection was
+misfiled as the producer's outage. Nothing had ever run the sample through the reader.
+
+Pinned: every `signal` frame validates as a `SignalSnapshot` (with `collected_msc` supplied the way
+the transport supplies it — it is absent on the wire by contract); both episode fields keep their
+shape, the flag as a `bool` and the id as a `str`; and a populated id carries more colons than its
+three segments, which is the documentation-by-assertion of why the contract calls it **opaque**.
+
+A reissued sample therefore checks itself, and **it did**: installing reissue 6
+(`signal_stream_frames_reissue6.sse`, 2026-08-26) turned three assertions red at once, all of them
+ours. They had encoded reissue 5's `''` as the wire's empty form; reissue 6 uses `null`, which is
+what production emits. The wire form is `str | None` — the empty string is **not** a permitted
+stand-in — and the normalization to `''` is asserted on the model, not on the wire.
+
+Reissue 6 carries what was asked for: an opener, a continuation and a hold-band pass on USDJPY,
+plus two things nobody planned — **USDCAD inside a *different* episode in all three frames**, which
+makes it the first artifact showing an episode id is a property of a ROW rather than an envelope, and
+six `null` ids beside a populated one in every frame. Its ids are production-shaped (four colons,
+spaces, a slash, 91–95 characters), so the sample now exercises the form `TestIdOpacity` previously
+had to pin by hand.
+
+**The opacity rule is pinned apart from the sample, and the reason is a mistake worth keeping
+visible.** The first version asserted it by looping over the sample's populated ids — of which
+reissue 5 had none, so the loop body ran zero times and the test passed while proving nothing. The
+skip branch stays even though **reissue 6 carries two populated ids and the check now runs**: a
+sample that once again lacks one must say so rather than pass silently. `TestIdOpacity` pins the rule
+unconditionally against the two forms the producer published:
+
+| Form | Example | Why both |
+|---|---|---|
+| production | `forex_macro_sentiment:US Dollar Canadian Dollar USD/CAD Bank of Canada BOC:…` | the episode key is the retrieval query — free text with spaces and a slash |
+| mock | `crypto_sentiment_mock:BTC:…` | the mock keys on the base currency: same contract, no spaces, no slash |
+
+Pinned: splitting on `:` yields more parts than the contract's three segments (both forms); the
+production form is not path-safe while the mock form is; and the production form is more than twice
+the mock's length and past 64 characters. That last pair exists so nobody calibrates escaping or
+column width on the mock and calls it covered — the narrow form is the easy case.
+
+### test_signal_feed_contract_validator.py (#466)
+
+The **netless half of the release-gate certificate**. The certificate itself runs against the live
+producer, which makes it expensive to develop and impossible to put in the daily suite — but its
+assertions are pure functions over an envelope, so they belong here.
+
+Two halves, and the second is the point:
+
+| Half | What it does |
+|---|---|
+| positive | every `signal` frame of the frozen sample passes the whole check list, with nothing mocked. A reissue that changes the contract turns this red — which is the signal the frozen sample exists to give |
+| negative | **deliberately broken copies** must fail the RIGHT check: a flag typed as a timestamp, `is_breaking: 1`, `urgency: "0.8"`, `confidence: true`, `trigger_reason` demoted into `metadata`, `collected_msc` on the wire, evidence stamped after availability, an evidence stamp that disagrees with its sources, a stamp on a row with no sources, an unsupported schema major, an absent contracted field, a cleanly splittable episode id, an opener that names no episode |
+
+A validator that has only ever seen a correct envelope is an assertion nobody has watched fail —
+which is the shape of every mismatch this project has had with the producer. Each negative case above
+is one of those mistakes, pinned so it cannot come back silently.
+
+**Two tiers, and why they are separate.** `validate_wire_shape()` reads the RAW payload;
+`validate_envelope()` adds our reader's own guarantees. A wrongly typed flag makes the model raise,
+so the reader tier reports "refused" — and on its own that is precisely the report we already lived
+through, our schema reading as their outage. The wire tier runs over the same payload regardless and
+names the field, which turns "something is wrong" into a diagnosis. One test asserts both halves at
+once for exactly that case.
+
+Also pinned here, needing no producer at all: the **rewind comparison across two certificates** — a
+lower `seq` on the same journal is a rewind, a different journal is a finding, the first certificate
+establishes the binding, and the detail names whether the producer **restarted** between the two
+(the one moment a counter gets re-minted). Plus **build provenance** in both directions: their
+unpublished build is *not asserted* (their route sits behind a switch), a dirty build of theirs
+fails, and our own uncommitted tree is recorded during a rehearsal but fails a **declared** release.
+Full operator guide:
+[Live Signal Feed Certificate](../live_signal_feed/signal_feed_certificate_guide.md).
+
+**One guard on the positive half.** `evidence_matches_max_fetched_at` can only fail on rows carrying
+both a stamp and sources, so the suite asserts the sample's own coverage of that case. Otherwise a
+future sample without it would make the check report success while comparing nothing — the same
+zero-iteration trap as the opacity rule above.
 
 ---
 

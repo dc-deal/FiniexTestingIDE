@@ -10,7 +10,6 @@ Tests:
 
 from typing import Dict
 
-
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 
 

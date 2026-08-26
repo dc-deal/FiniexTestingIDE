@@ -61,7 +61,6 @@ class AbstractPendingOrderManager(ABC):
     def __init__(self, logger: AbstractLogger):
         self.logger = logger
         self._pending_orders: Dict[str, PendingOrder] = {}
-        self._fill_counter = 0
         self._pending_stats: PendingOrderStats = PendingOrderStats()
 
     # ============================================

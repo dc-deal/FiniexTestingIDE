@@ -193,7 +193,6 @@ class MountPreparer:
         )
 
         # Build tick index and generate coverage reports
-        tick_index_manager = data_coordinator.get_tick_index_manager()
 
         # Signal coverage (#429 sources) — the sibling report the validator reads
         # alongside the tick one. Empty when no scenario binds a signal source.
@@ -207,7 +206,6 @@ class MountPreparer:
         coverage_report_manager = DataCoverageReportManager(
             logger=self._logger,
             scenarios=self._valid(scenarios),
-            tick_index_manager=tick_index_manager,
             app_config=self._app_config,
             signal_coverage_reports=signal_coverage_manager.get_reports(),
         )

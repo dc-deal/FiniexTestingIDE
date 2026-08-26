@@ -3,7 +3,6 @@ FiniexTestingIDE - Coverage Report Manager
 Generates coverage reports for data quality validation
 
 Responsibilities:
-- Load tick index for symbols
 - Generate DataCoverageReport instances
 - Cache reports for batch validation
 - Phase 0.5: Gap analysis preparation
@@ -13,7 +12,6 @@ Responsibilities:
 from typing import Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
     DataCoverageReportCache,
@@ -38,7 +36,6 @@ class DataCoverageReportManager:
     def __init__(self,
                  logger: AbstractLogger,
                  scenarios: List[SingleScenario],
-                 tick_index_manager: TickIndexManager,
                  app_config: AppConfigManager,
                  use_cache: bool = True,
                  signal_coverage_reports: Dict[Tuple[str, str], SignalCoverageReport] = None):
@@ -48,7 +45,6 @@ class DataCoverageReportManager:
         Args:
             logger: Logger instance
             scenarios: List of scenarios
-            tick_index_manager: Tick index manager
             app_config: App configuration
             use_cache: Use cache for coverage reports (default: True)
             signal_coverage_reports: Signal coverage reports keyed by
@@ -57,11 +53,9 @@ class DataCoverageReportManager:
         """
         self._logger = logger
         self._scenarios = scenarios
-        self._tick_index_manager = tick_index_manager
         self._data_coverage_reports: Dict[str, DataCoverageReport] = {}
         self._signal_coverage_reports = signal_coverage_reports or {}
         self._app_config = app_config
-        self._use_cache = use_cache
 
         # Initialize cache if enabled
         self._cache: Optional[DataCoverageReportCache] = None

@@ -79,6 +79,10 @@ def pytest_collection_modifyitems(items):
         if '/tests/live_field_study/' in path:
             item.add_marker(pytest.mark.live_field_study)
 
+        # Live Signal Feed (excluded from normal runner — operator-driven live release gate)
+        if '/tests/live_signal_feed/' in path:
+            item.add_marker(pytest.mark.live_signal_feed)
+
         # Integration: full-pipeline end-to-end runs
         if '/integration/' in path:
             item.add_marker(pytest.mark.integration)

@@ -14,7 +14,7 @@ from python.framework.types.parameter_types import (
     OutputParamDef,
     ValidatedParameters,
 )
-from python.framework.types.worker_types import WorkerResult, WorkerState, WorkerType
+from python.framework.types.worker_types import WorkerState, WorkerType
 from python.framework.validators.parameter_validator import validate_parameters
 from python.framework.workers.worker_performance_tracker import WorkerPerformanceTracker
 
@@ -60,7 +60,6 @@ class AbstractWorker(ABC):
 
         self.name = name
         self.state = WorkerState.IDLE
-        self._last_result = None
         self._trading_context = trading_context
 
         # Loggers
@@ -83,10 +82,6 @@ class AbstractWorker(ABC):
         # Consumed-output set, injected by the orchestrator from the decision
         # logic's declaration. None = no declaration = compute every output.
         self._requested_outputs: Optional[Set[str]] = None
-
-    def get_last_result(self) -> WorkerResult:
-        """Get last computation result"""
-        return self._last_result
 
     def set_requested_outputs(self, keys: Set[str]) -> None:
         """

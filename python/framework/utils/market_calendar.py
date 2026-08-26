@@ -34,16 +34,6 @@ class MarketCalendar:
     ])
 
     @staticmethod
-    def get_weekend_closure_description() -> str:
-        """
-        Get human-readable description of expected weekend closure window.
-
-        Returns:
-            Formatted multi-line string describing market closure timing
-        """
-        return MarketCalendar.WEEKEND_CLOSURE.get_description()
-
-    @staticmethod
     def is_market_open(timestamp: datetime) -> bool:
         """
         Check if market is open at given timestamp.
@@ -93,29 +83,6 @@ class MarketCalendar:
         return weekend_days > 0, weekend_days
 
     @staticmethod
-    def validate_timeframe_for_weekends(timeframe: str) -> None:
-        """
-        Validate that timeframe is supported for weekend-aware operations.
-
-        Daily and higher timeframes require special weekend handling.
-
-        Args:
-            timeframe: Timeframe string (e.g., 'M5', 'H1', 'D1')
-
-        Raises:
-            NotImplementedError: If timeframe requires weekend logic not yet implemented
-        """
-        daily_and_higher = ['D1', 'W1', 'MN']
-
-        if timeframe in daily_and_higher:
-            raise NotImplementedError(
-                f"❌ Timeframe '{timeframe}' not yet supported!\n"
-                f"   Reason: Requires advanced weekend gap handling\n"
-                f"   Daily and higher timeframes span multiple weeks\n"
-                f"   → Use intraday timeframes (M1-H4) for now"
-            )
-
-    @staticmethod
     def get_trading_days(start: datetime, end: datetime) -> int:
         """
         Count trading days (Mon-Fri) between two timestamps.
@@ -140,26 +107,6 @@ class MarketCalendar:
             current += timedelta(days=1)
 
         return trading_days
-
-    @staticmethod
-    def get_previous_trading_day(timestamp: datetime) -> datetime:
-        """
-        Get the previous trading day from given timestamp.
-        Useful for finding Friday when starting on weekend.
-
-        Args:
-            timestamp: Reference timestamp
-
-        Returns:
-            Datetime of previous trading day
-        """
-        current = timestamp - timedelta(days=1)
-
-        # Go back until we hit a weekday
-        while current.weekday() >= 5:  # Skip weekends
-            current -= timedelta(days=1)
-
-        return current
 
     @staticmethod
     def iter_swap_rollovers(
@@ -359,32 +306,6 @@ class MarketCalendar:
             'end_is_weekend': end_weekday >= 5,
             'weekend_percentage': round(weekend_percentage, 2)
         }
-
-    @staticmethod
-    def gap_contains_weekend(start: datetime, end: datetime) -> bool:
-        """
-        Check if time gap contains any weekend days (Saturday or Sunday).
-
-        Uses calendar-based detection independent of gap pattern.
-        Useful for detecting weekends in data outages that don't follow
-        typical Friday evening → Monday morning pattern.
-
-        Args:
-            start: Gap start timestamp
-            end: Gap end timestamp
-
-        Returns:
-            True if gap contains at least one Saturday or Sunday
-        """
-        current = start.date()
-        end_date = end.date()
-
-        while current <= end_date:
-            if current.weekday() in [5, 6]:  # Saturday=5, Sunday=6
-                return True
-            current += timedelta(days=1)
-
-        return False
 
     @staticmethod
     def is_market_holiday(date: datetime) -> bool:

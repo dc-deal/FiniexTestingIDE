@@ -33,5 +33,29 @@
             "2. Algorithm regression in worker/decision logic",
             "3. Memory pressure causing swapping"
         ]
+    },
+    "stability": {
+        "max_spread_percent": 15.0,
+        "description": "Maximum spread across the raw runs of ticks_per_second. Above this the instrument cannot resolve a code regression, so the median means nothing. Calibrated from the committed reports: worst historical spread 13.0% (1.2.1); the invalid 2026-08-24 runs were 20.2% and 34.4%."
+    },
+    "ceilings": {
+        "summary_generation_time_s": {
+            "max_seconds": 10.0,
+            "description": "Report DERIVE + PERSIST across the scenario set, once per batch. Was 0.12s through 1.2.x and is ~3.4s since the unified reporting pipeline (#391-#403) \u2014 accepted cost. The ceiling exists so the NEXT growth of that size cannot hide in an untoleranced INFO metric."
+        }
+    },
+    "config_contract": {
+        "description": "The configuration the reference baseline was measured under. Deliberately minimal \u2014 only the three families that move a CPU-bound throughput number: process fan-out, profiling overhead, and log volume. Each entry is a dotted path into the EFFECTIVE (merged) app config, so a user_configs/app_config.json override that reaches one of them is caught rather than measured. Changing a value here is a deliberate act: it re-defines what the reference means, so re-measure the baseline in the same step.",
+        "required_effective": {
+            "backtesting.execution.parallel_scenarios": true,
+            "backtesting.execution.max_parallel_scenarios": 99,
+            "backtesting.execution.default_scenario_execution_config.parallel_workers": false,
+            "backtesting.execution.default_scenario_execution_config.adaptive_parallelization": true,
+            "backtesting.execution.default_scenario_execution_config.performance_tracking.tick_loop_profiling": true,
+            "backtesting.execution.default_scenario_execution_config.performance_tracking.worker_decision_tracking": false,
+            "console_logging.scenario.enabled": false,
+            "file_logging.log_level": "DEBUG",
+            "file_logging.scenario.enabled": true
+        }
     }
 }

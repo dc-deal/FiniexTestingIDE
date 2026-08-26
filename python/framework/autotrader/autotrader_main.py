@@ -32,6 +32,7 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
 from python.framework.exceptions.live_execution_errors import DryRunConflictError
+from python.framework.exceptions.signal_data_errors import SignalSourceUnresolvedError
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
@@ -53,7 +54,10 @@ from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
-from python.framework.types.signal_data_types import SignalObservedSeries
+from python.framework.types.signal_data_types import (
+    SignalObservedSeries,
+    SignalSourceMode,
+)
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
@@ -663,27 +667,24 @@ class AutotraderMain:
 
         A configuration error here ABORTS the session (§35): a bot told to trade on live
         sentiment must not silently fall back to whatever the archive happened to hold.
+
+        The mode is NOT decided here. It was resolved once at startup and is followed:
+        a profile with no SIGNAL worker starts nothing (the transport setting is
+        installation-wide and does not apply to it), and a mock session that mounted its
+        series starts nothing either — opening a connection there would mix live envelopes
+        into a replay that is only reproducible because nothing arrives from outside.
         """
-        poll_config = SentimentConfigManager().get_config().poll
-        if not poll_config.enabled:
+        signal_source = self._worker_orchestrator.get_signal_source()
+        if signal_source is None:
+            raise SignalSourceUnresolvedError(
+                'The pipeline was built without resolving a signal source — the transport '
+                'cannot decide on its own what this session reads.')
+        if signal_source.mode is not SignalSourceMode.LIVE:
             return
 
-        signal_kinds = {
-            worker.get_consumed_signal_kind()
-            for worker in self._worker_orchestrator.get_signal_workers().values()
-        }
-        if not signal_kinds:
-            raise ValueError(
-                'Signal transport is enabled but no SIGNAL worker consumes a source — '
-                'either add one to worker_instances or disable poll in sentiment_config.json.'
-            )
-        if len(signal_kinds) > 1:
-            raise ValueError(
-                f'Signal transport serves one source, but the workers consume '
-                f'{sorted(signal_kinds)}. Multi-source binding is #258.'
-            )
+        poll_config = SentimentConfigManager().get_config().poll
         if not poll_config.pipeline_id:
-            raise ValueError(
+            raise SignalSourceUnresolvedError(
                 'Signal transport is enabled but poll.pipeline_id is empty — '
                 'name the producer pipeline in sentiment_config.json.')
 
@@ -725,7 +726,7 @@ class AutotraderMain:
         self._signal_transport = SignalPollSource(
             config=poll_config,
             producer=producer,
-            signal_kind=signal_kinds.pop(),
+            signal_kind=signal_source.signal_kind,
             inbox=self._signal_inbox,
             logger=self._session_logger,
             health_probe=health_probe,

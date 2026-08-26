@@ -79,7 +79,6 @@ from python.framework.types.trading_env_types.order_types import (
     ModificationResult,
     OpenOrderRequest,
     OrderAction,
-    OrderCapabilities,
     OrderDirection,
     OrderResult,
     OrderSide,
@@ -1487,10 +1486,6 @@ class AbstractTradeExecutor(ABC):
         """Get broker name."""
         return self.broker.get_broker_name()
 
-    def get_broker_capabilities(self) -> OrderCapabilities:
-        """Get broker order capabilities."""
-        return self.broker.get_order_capabilities()
-
     def get_symbol_spec(self, symbol: str) -> SymbolSpecification:
         """Get symbol specifications."""
         return self.broker.get_symbol_specification(symbol)
@@ -1498,10 +1493,6 @@ class AbstractTradeExecutor(ABC):
     # ============================================
     # Lifecycle
     # ============================================
-
-    def get_tick_counter(self) -> int:
-        """Get current tick counter."""
-        return self._tick_counter
 
     def reset(self) -> None:
         """Reset executor to initial state."""

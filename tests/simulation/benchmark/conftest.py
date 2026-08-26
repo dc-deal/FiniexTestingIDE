@@ -17,9 +17,9 @@ import statistics
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -27,12 +27,17 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.reporting.certificates.certificate_config_utils import (
+    compare_config_contract,
+)
+from python.framework.reporting.certificates.certificate_identity_builder import (
+    build_certificate_identity,
+)
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from tests.simulation.benchmark.system_fingerprint import (
     SystemFingerprint,
     find_matching_system,
-    get_git_commit,
     get_system_fingerprint,
 )
 
@@ -47,11 +52,119 @@ class BenchmarkRunResult:
     summary_generation_time: float
     log_dir: Path
     run_index: int
+    scenario_config_path: Path
 
 
 # =============================================================================
 # DEBUG MODE DETECTION
 # =============================================================================
+
+def _read_persisted_profiling(log_dir: Path) -> Dict[str, Any]:
+    """
+    Read one run's persisted profiling section.
+
+    Reads the ARTIFACT rather than re-aggregating: the reporting pipeline already derives this
+    once and persists it, and re-deriving it here would be a second computation that can drift
+    from the one the operator reads in the summary.
+
+    Args:
+        log_dir: The run's log directory
+
+    Returns:
+        The parsed profiling section, or an empty dict when the run did not write one
+    """
+    path = Path(log_dir) / 'io' / 'profiling.json'
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding='utf-8'))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _median_by_key(per_run: List[Dict[str, float]]) -> Dict[str, float]:
+    """
+    Median per key across runs, over the keys every run reported.
+
+    Intersecting rather than unioning is deliberate: a key that only some runs produced has no
+    median worth printing, and silently filling it from fewer samples is how a breakdown starts
+    lying about its own basis.
+
+    Args:
+        per_run: One mapping per run
+
+    Returns:
+        Median value per shared key
+    """
+    if not per_run:
+        return {}
+    shared = set(per_run[0])
+    for mapping in per_run[1:]:
+        shared &= set(mapping)
+    return {key: statistics.median([mapping[key] for mapping in per_run])
+            for key in sorted(shared)}
+
+
+def _spread_percent(values: List[float]) -> Optional[float]:
+    """
+    Spread of a run series, as a percentage of its smallest value.
+
+    Args:
+        values: The raw measurements of one metric
+
+    Returns:
+        The spread, or None when there is nothing to compare (fewer than two runs)
+    """
+    usable = [v for v in values if isinstance(v, (int, float)) and v > 0]
+    if len(usable) < 2:
+        return None
+    return (max(usable) - min(usable)) / min(usable) * 100.0
+
+
+def _scenario_set_origin(config_path: Path, app_config: AppConfigManager) -> str:
+    """
+    Classify which resolution root produced the scenario set that was measured.
+
+    `ScenarioConfigLoader._resolve_path` prefers user_configs/ and then the user algo dirs over
+    configs/ — and unlike the content-merge loaders that preference is NOT gated by config
+    isolation. A same-named file in the private workspace therefore replaces the benchmark
+    workload even in an isolated run, which is why the certificate has to name the root it read.
+
+    Args:
+        config_path: The path the run actually loaded
+        app_config: Manager providing the configured roots
+
+    Returns:
+        'base', 'user_configs', 'user_algo_dir' or 'unknown'
+    """
+    resolved = Path(config_path).resolve()
+    if resolved.is_relative_to(Path(app_config.get_user_scenario_sets_path()).resolve()):
+        return 'user_configs'
+    if resolved.is_relative_to(Path(app_config.get_scenario_sets_path()).resolve()):
+        return 'base'
+    for algo_dir in app_config.get_user_algo_dirs():
+        algo_path = Path(algo_dir)
+        if algo_path.exists() and resolved.is_relative_to(algo_path.resolve()):
+            return 'user_algo_dir'
+    return 'unknown'
+
+
+def _repo_relative(path: Path) -> str:
+    """
+    Path as written in the repository, so the artifact stays machine-independent.
+
+    Args:
+        path: Absolute or relative path
+
+    Returns:
+        Path relative to the working directory when it lies inside it, else the path as given
+    """
+    resolved = Path(path).resolve()
+    root = Path.cwd().resolve()
+    if resolved.is_relative_to(root):
+        return resolved.relative_to(root).as_posix()
+    return resolved.as_posix()
+
 
 def is_debugger_attached() -> bool:
     """
@@ -265,7 +378,8 @@ def benchmark_execution_runs(
             summary=summary,
             summary_generation_time=summary_generation_time,
             log_dir=log_dir,
-            run_index=i + 1
+            run_index=i + 1,
+            scenario_config_path=scenario_set.config_path
         ))
 
         print(f'✅ Run {i + 1} complete — tickrun: {summary.batch_tickrun_time:.1f}s, warmup: {summary.batch_warmup_time:.1f}s')
@@ -306,11 +420,25 @@ def benchmark_metrics(
         if r.summary.batch_tickrun_time > 0
     ]
 
+    # Per-stage breakdown, read from each run's persisted profiling artifact. INFO only: it
+    # exists so a future drift has an ADDRESS, not so a pipeline change can turn a release red.
+    profilings = [_read_persisted_profiling(r.log_dir) for r in runs]
+    operations = _median_by_key([
+        {row['operation']: row.get('avg_time_ms', 0.0)
+         for row in (prof.get('aggregate') or {}).get('avg_operation_times', [])}
+        for prof in profilings])
+    warmup_phases = _median_by_key([
+        {row['name']: row.get('duration_s', 0.0)
+         for row in prof.get('warmup_phases', [])}
+        for prof in profilings])
+
     return {
         'ticks_per_second': statistics.median(tps_values),
         'tickrun_time_s': statistics.median(tickrun_times),
         'warmup_time_s': statistics.median(warmup_times),
         'summary_generation_time_s': statistics.median(summary_times),
+        'operation_avg_ms': operations,
+        'warmup_phase_s': warmup_phases,
         'total_ticks': total_ticks,
         'scenarios_count': len(runs[0].summary.process_result_list),
         'runs': len(runs),
@@ -346,11 +474,14 @@ def benchmark_report(
     Returns:
         Complete benchmark report dict
     """
-    release_version = request.config.getoption('release_version')
-    tester_comment = request.config.getoption('comment')
-    now = datetime.now(timezone.utc)
-    validity_days = benchmark_config['certificate']['validity_days']
-    valid_until = now + timedelta(days=validity_days)
+    # The shared identity: declared version beside the version the TREE says, git state,
+    # validity window, and the environment the measurement was taken in. All four
+    # certificates build it the same way (certificate_identity_builder).
+    identity = build_certificate_identity(
+        release_version=request.config.getoption('release_version'),
+        comment=request.config.getoption('comment'),
+        validity_days=benchmark_config['certificate']['validity_days'])
+    app_config_manager = AppConfigManager()
 
     tolerances = benchmark_config['tolerances']
 
@@ -359,6 +490,13 @@ def benchmark_report(
     warnings: List[str] = []
     overall_status = 'PASSED'
 
+    # A DECLARED release must match the tree, and must not come from uncommitted work.
+    # Both rules live on the identity, so all four certificates enforce them identically.
+    for identity_warning in (identity.version_mismatch(), identity.dirty_tree_warning()):
+        if identity_warning:
+            overall_status = 'FAILED'
+            warnings.append(identity_warning)
+
     # Check debug mode FIRST - invalidates entire benchmark
     if debug_mode_detected:
         overall_status = 'FAILED'
@@ -366,6 +504,60 @@ def benchmark_report(
             'DEBUGGER DETECTED: Benchmark results are INVALID. '
             'Run without debugger for valid measurements.'
         )
+
+    # Configuration provenance BEFORE stability: a measurement is only comparable to the
+    # reference baseline when the same configuration produced it, and two independent paths can
+    # change that silently. The content-merge cascade (user_configs/app_config.json — process
+    # fan-out, log volume) is gated by config isolation, but only by a setdefault that any
+    # command line can switch off; the scenario-set file-replace is not gated at all.
+    required_effective, contract_warnings = compare_config_contract(
+        app_config_manager.get_config(),
+        benchmark_config.get('config_contract', {}).get('required_effective', {}))
+    if contract_warnings:
+        overall_status = 'FAILED'
+        warnings.extend(contract_warnings)
+
+    scenario_origin = _scenario_set_origin(
+        benchmark_execution_runs[0].scenario_config_path, app_config_manager)
+    if scenario_origin != 'base':
+        overall_status = 'FAILED'
+        warnings.append(
+            f"WORKLOAD REPLACED: the scenario set was read from '{scenario_origin}', not from "
+            f'configs/. A same-named file in the private workspace wins over the committed one '
+            f'and config isolation does not gate that path — this run measured a different '
+            f'workload than the reference.')
+
+    if identity.workspace_overrides.applied:
+        overrides = identity.workspace_overrides
+        warnings.append(
+            f'WORKSPACE CONFIG APPLIED: config isolation is off and '
+            f'{len(overrides.files_present) + overrides.unnamed_files} override file(s) exist, '
+            f'so this measurement ran on a personal configuration. The contract above pins the '
+            f'values that move the number; anything else differed unrecorded.')
+
+    # Stability BEFORE tolerance: a median computed from runs that disagree is not a
+    # measurement, so believing or disbelieving it is equally unfounded. Same lesson as the
+    # F401 sweep — an instrument that could not answer produces a clean-looking result.
+    raw = benchmark_metrics.get('raw_measurements', {})
+    throughput_runs = raw.get('ticks_per_second') or []
+    max_spread = benchmark_config.get('stability', {}).get('max_spread_percent', 15.0)
+    spread = _spread_percent(throughput_runs)
+    if spread is not None:
+        stable = spread <= max_spread
+        if not stable:
+            overall_status = 'FAILED'
+            warnings.append(
+                f'UNSTABLE MEASUREMENT: the {len(throughput_runs)} raw throughput runs span '
+                f'{spread:.1f}% (limit {max_spread:.1f}%). The median is not a measurement of '
+                f'the code. Re-run on an idle machine before reading any deviation below.')
+        metrics_list.append({
+            'name': 'throughput_spread_percent',
+            'measured': round(spread, 1),
+            'reference': None,
+            'deviation_percent': None,
+            'tolerance_percent': max_spread,
+            'status': 'PASSED' if stable else 'FAILED'
+        })
 
     for metric_name in ['ticks_per_second', 'tickrun_time_s', 'warmup_time_s']:
         measured = benchmark_metrics.get(metric_name, 0)
@@ -407,15 +599,50 @@ def benchmark_report(
             'status': status
         })
 
-    # Add summary generation time as INFO metric
+    # Summary generation: a CEILING, not a tolerance. It has no per-system baseline, and the
+    # point is not a performance target — it is that an untoleranced INFO metric grew 28x
+    # (0.12s -> 3.4s) without anyone noticing.
+    summary_seconds = benchmark_metrics.get('summary_generation_time_s', 0)
+    summary_ceiling = (benchmark_config.get('ceilings', {})
+                       .get('summary_generation_time_s', {}).get('max_seconds'))
+    summary_status = 'INFO'
+    if summary_ceiling is not None:
+        summary_status = 'PASSED' if summary_seconds <= summary_ceiling else 'FAILED'
+        if summary_status == 'FAILED':
+            overall_status = 'FAILED'
+            warnings.append(
+                f'Report generation took {summary_seconds:.2f}s, above the {summary_ceiling:.1f}s '
+                f'ceiling. Once per batch, not in the tick loop — so this is a reporting-pipeline '
+                f'cost, not a throughput regression. Raise the ceiling deliberately or find it.')
     metrics_list.append({
         'name': 'summary_generation_time_s',
-        'measured': round(benchmark_metrics.get('summary_generation_time_s', 0), 2),
+        'measured': round(summary_seconds, 2),
         'reference': None,
         'deviation_percent': None,
-        'tolerance_percent': None,
-        'status': 'INFO'
+        'tolerance_percent': summary_ceiling,
+        'status': summary_status
     })
+
+    # The two anchors. Chosen because their MEANING survives a refactor and each dominates
+    # its phase: worker_decision is ~79% of tick cost, tick-parquet loading ~81% of warmup.
+    # Recorded, never gated — a pipeline change must not turn a release red.
+    operations = benchmark_metrics.get('operation_avg_ms', {})
+    warmup_phases = benchmark_metrics.get('warmup_phase_s', {})
+    for label, value in (
+        ('worker_decision_avg_ms', operations.get('worker_decision')),
+        ('warmup_ticks_parquet_s', next(
+            (v for k, v in warmup_phases.items() if 'Ticks' in k), None)),
+    ):
+        if value is None:
+            continue
+        metrics_list.append({
+            'name': label,
+            'measured': round(value, 4),
+            'reference': None,
+            'deviation_percent': None,
+            'tolerance_percent': None,
+            'status': 'INFO'
+        })
 
     # Add informational metrics (no tolerance check)
     for metric_name in ['total_ticks', 'scenarios_count']:
@@ -434,10 +661,7 @@ def benchmark_report(
     artifacts = _copy_benchmark_logs(benchmark_execution_runs)
 
     report = {
-        'release_version': release_version,
-        'timestamp': now.isoformat(),
-        'valid_until': valid_until.isoformat(),
-        'git_commit': get_git_commit(),
+        **identity.to_dict(),
         'system_id': validated_system,
         'system_details': {
             'cpu_model': system_fingerprint.cpu_model,
@@ -447,11 +671,34 @@ def benchmark_report(
         },
         'scenario': benchmark_config['scenario'],
         'runs': benchmark_metrics.get('runs', 1),
-        'comment': tester_comment,
         'debug_mode_detected': debug_mode_detected,
+        # What this certificate EXERCISED. The environment it was taken in (isolation,
+        # workspace overrides) is part of the shared identity above, because it means the same
+        # thing for all four certificates; a workload and a config contract do not.
+        'config_provenance': {
+            'scenario_set_origin': scenario_origin,
+            'scenario_set_path': _repo_relative(
+                benchmark_execution_runs[0].scenario_config_path),
+            'required_effective': required_effective,
+        },
         'overall_status': overall_status,
         'metrics': metrics_list,
         'raw_measurements': benchmark_metrics.get('raw_measurements', {}),
+        # The breakdown, with the SHAPE it was measured in. The shape is not decoration: the
+        # operation names are free strings, and `worker_decision` has already absorbed another
+        # operation once (see process_tick_loop.py). A comparison across reports must check the
+        # name sets FIRST and report +new / -gone, because diffing values across two different
+        # definitions produces a number that looks like a regression and is not.
+        'breakdown': {
+            'operation_avg_ms': {k: round(v, 4) for k, v in
+                                 benchmark_metrics.get('operation_avg_ms', {}).items()},
+            'warmup_phase_s': {k: round(v, 4) for k, v in
+                               benchmark_metrics.get('warmup_phase_s', {}).items()},
+            'shape': {
+                'operations': sorted(benchmark_metrics.get('operation_avg_ms', {})),
+                'warmup_phases': sorted(benchmark_metrics.get('warmup_phase_s', {})),
+            },
+        },
         'artifacts': artifacts,
         'warnings': warnings
     }

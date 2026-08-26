@@ -349,6 +349,8 @@ class SignalDataImporter:
             row[SignalParquetColumn.REASONING.value] = ''
             row[SignalParquetColumn.URGENCY.value] = 0.0
             row[SignalParquetColumn.IS_BREAKING.value] = False
+            row[SignalParquetColumn.BREAKING_EPISODE_ID.value] = ''
+            row[SignalParquetColumn.BREAKING_EPISODE_START.value] = False
             row[SignalParquetColumn.BASIS.value] = ''
             row[SignalParquetColumn.EVIDENCE_AS_OF.value] = None
         else:
@@ -358,6 +360,8 @@ class SignalDataImporter:
             row[SignalParquetColumn.REASONING.value] = result.reasoning
             row[SignalParquetColumn.URGENCY.value] = result.urgency
             row[SignalParquetColumn.IS_BREAKING.value] = result.is_breaking
+            row[SignalParquetColumn.BREAKING_EPISODE_ID.value] = result.breaking_episode_id
+            row[SignalParquetColumn.BREAKING_EPISODE_START.value] = result.breaking_episode_start
             row[SignalParquetColumn.BASIS.value] = result.basis
             row[SignalParquetColumn.EVIDENCE_AS_OF.value] = _epoch_ms(
                 result.evidence_as_of)

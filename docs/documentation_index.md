@@ -53,6 +53,7 @@
 | [Swap / Overnight-Funding Cost Model](trading_realism/swap_cost_model.md) | Overnight swap accrual — signed debit/credit, triple-swap (T+2), DST-aware rollover, MarketClock awareness, per-trade reporting (#365) |
 | [Live Telemetry Stream](architecture/live_telemetry_architecture.md) | The throttled live feed behind the console dashboards (LiveCoreSnapshot + frames), both pipelines, JSON groundwork for the viewer push (#400) — distinct from the report pipeline |
 | [Warnings & Errors Tiers](architecture/warnings_errors_tiers.md) | Tier taxonomy (errors / Tier-1 major → validators / Tier-2 log) + the "no decisions in reports" principle; pre-run vs post-run validators, sim/live channels (#395) |
+| [Release Certificates](architecture/release_certificates.md) | The four release-gate certificates (benchmark, live adapter, field study, signal feed), their shared CertificateIdentity, the version/dirty-tree guards and the observed-not-re-read rule |
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
 | [Order Guard](architecture/order_guard_architecture.md) | Pre-validation guard (SHORT+SPOT, rejection cooldown, async callback) |
 | [Performance Tracking Layers](architecture/performance_tracking_layers.md) | Two-layer model (per-component + tick-loop profiler), defaults, graceful degradation, why no context-manager wrappers in the tick loop |
@@ -95,8 +96,9 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Bar Parity Tests](tests/parity/bar_parity_tests.md) | Cross-pipeline parity: simulation vs. AutoTrader bar identity |
 | [Heartbeat Ghost-Pass Parity](tests/parity/heartbeat_ghost_tests.md) | Sim ghost-pass between ticks + weekend-gap gate (#360 Stage 2) |
 | [AutoTrader Integration](tests/autotrader/integration_tests.md) | End-to-end mock session validation |
-| [Kraken Adapter Live Integration](tests/live_adapters/kraken_adapter_integration_tests.md) | Dry-run order lifecycle against real Kraken API — real account required, release-gate |
+| [Kraken Adapter Live Integration](tests/live_adapters/kraken_adapter_integration_tests.md) | Full order lifecycle against the real Kraken API — validate-only, real limit orders and a real fill round trip; funded account required, release-gate |
 | [Live Field Study](tests/live_field_study/field_study_guide.md) | End-to-end live acceptance test + PASS/FAIL certificate — operator-driven, release-gate (#332) |
+| [Live Signal Feed Certificate](tests/live_signal_feed/signal_feed_certificate_guide.md) | Producer contract proof + PASS/FAIL certificate — operator-driven, release-gate (#466) |
 | [Safety Circuit Breaker](tests/autotrader/safety_tests.md) | Equity-based safety, phantom drawdown fix, config split |
 | [Live Executor](tests/autotrader/live_executor_tests.md) | LiveTradeExecutor pipeline |
 | [Loop Cadence](tests/autotrader/loop_cadence_tests.md) | Clock injection, heartbeat re-poll, decision ghost-pass (#360) |

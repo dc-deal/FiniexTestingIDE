@@ -46,11 +46,3 @@ class SeededProbabilityFilter:
         rng = self._rng.random()
         return rng < self._probability
 
-    def get_probability(self) -> float:
-        """
-        Get configured probability.
-
-        Returns:
-            Probability value (0.0-1.0)
-        """
-        return self._probability

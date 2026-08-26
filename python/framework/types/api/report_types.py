@@ -360,6 +360,7 @@ class RunResultRow(BaseModel):
     sweep_objective: str | None = None           # the sweep spec's objective (report defaults to it)
     sweep_maximize: bool | None = None           # the sweep spec's rank direction
     scenario_set_name: str = ''
+    app_version: str = ''                        # program version; '' = fragment predates the field
     git_commit: str | None = None
     git_branch: str | None = None
     git_dirty: bool = False
@@ -676,8 +677,9 @@ class SignalSourceRow(BaseModel):
     data_origin: str = ''                   # 'live' / 'synthetic' / 'mixed' / '' = unknown
     config_fingerprint: str = ''            # producer input-config hash; '' = pre-contract
     prompt_version: str = ''                # producer prompt generation; 'mixed' means the
-    #                                         run spans a prompt change, i.e. TWO series —
-    #                                         scores are not comparable across that boundary.
+    #                                         run spans a prompt change — more than one series,
+    #                                         and scores are not comparable across the boundary.
+    #                                         The archive spans v1/v2/v3/v4 from 2026-08-23 on.
     #                                         '' = not recorded (archive projection omits it)
     cadence_seconds: float = 0.0            # measured median snapshot distance
     snapshot_count: int = 0

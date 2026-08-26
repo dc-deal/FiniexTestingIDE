@@ -533,7 +533,7 @@ Stress testing configuration cascades individually, allowing injection testing o
 }
 ```
 
-See [stress_test.md](../stress_test.md) for full documentation.
+See [stress_test.md](stress_test.md) for full documentation.
 
 ---
 

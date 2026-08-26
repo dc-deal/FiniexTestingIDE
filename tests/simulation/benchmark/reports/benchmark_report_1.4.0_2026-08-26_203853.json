@@ -1,0 +1,242 @@
+{
+  "record_kind": "certificate",
+  "release_version": "1.4.0",
+  "app_version": "1.4.0",
+  "timestamp": "2026-08-26T20:38:53.443780+00:00",
+  "valid_until": "2026-11-24T20:38:53.443780+00:00",
+  "git_commit": "b985a2d",
+  "git_branch": "dev-v-1-4",
+  "git_dirty": false,
+  "uncommitted_count": 0,
+  "comment": "re-cut on the shared CertificateIdentity; idle-gated, no concurrent session activity",
+  "isolation_active": true,
+  "workspace_overrides": {
+    "files_present": [
+      "app_config.json",
+      "market_config.json",
+      "sentiment_config.json"
+    ],
+    "unnamed_files": 0,
+    "applied": false
+  },
+  "system_id": "ryzen_7_8845hs_16core",
+  "system_details": {
+    "cpu_model": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
+    "cpu_cores": 16,
+    "ram_total_gb": 30.3,
+    "platform": "Linux 6.6.87.2-microsoft-standard-WSL2"
+  },
+  "scenario": "backtesting/backtesting_loadtest_40_scenarios.json",
+  "runs": 3,
+  "debug_mode_detected": false,
+  "config_provenance": {
+    "scenario_set_origin": "base",
+    "scenario_set_path": "configs/scenario_sets/backtesting/backtesting_loadtest_40_scenarios.json",
+    "required_effective": {
+      "backtesting.execution.parallel_scenarios": {
+        "expected": true,
+        "effective": true
+      },
+      "backtesting.execution.max_parallel_scenarios": {
+        "expected": 99,
+        "effective": 99
+      },
+      "backtesting.execution.default_scenario_execution_config.parallel_workers": {
+        "expected": false,
+        "effective": false
+      },
+      "backtesting.execution.default_scenario_execution_config.adaptive_parallelization": {
+        "expected": true,
+        "effective": true
+      },
+      "backtesting.execution.default_scenario_execution_config.performance_tracking.tick_loop_profiling": {
+        "expected": true,
+        "effective": true
+      },
+      "backtesting.execution.default_scenario_execution_config.performance_tracking.worker_decision_tracking": {
+        "expected": false,
+        "effective": false
+      },
+      "console_logging.scenario.enabled": {
+        "expected": false,
+        "effective": false
+      },
+      "file_logging.log_level": {
+        "expected": "DEBUG",
+        "effective": "DEBUG"
+      },
+      "file_logging.scenario.enabled": {
+        "expected": true,
+        "effective": true
+      }
+    }
+  },
+  "overall_status": "PASSED",
+  "metrics": [
+    {
+      "name": "throughput_spread_percent",
+      "measured": 5.2,
+      "reference": null,
+      "deviation_percent": null,
+      "tolerance_percent": 15.0,
+      "status": "PASSED"
+    },
+    {
+      "name": "ticks_per_second",
+      "measured": 85230.18,
+      "reference": 90000,
+      "deviation_percent": -5.3,
+      "tolerance_percent": 20.0,
+      "status": "PASSED"
+    },
+    {
+      "name": "tickrun_time_s",
+      "measured": 17.56,
+      "reference": 17.0,
+      "deviation_percent": 3.27,
+      "tolerance_percent": 20.0,
+      "status": "PASSED"
+    },
+    {
+      "name": "warmup_time_s",
+      "measured": 6.7,
+      "reference": 6.5,
+      "deviation_percent": 3.11,
+      "tolerance_percent": 30.0,
+      "status": "PASSED"
+    },
+    {
+      "name": "summary_generation_time_s",
+      "measured": 2.68,
+      "reference": null,
+      "deviation_percent": null,
+      "tolerance_percent": 10.0,
+      "status": "PASSED"
+    },
+    {
+      "name": "worker_decision_avg_ms",
+      "measured": 0.1994,
+      "reference": null,
+      "deviation_percent": null,
+      "tolerance_percent": null,
+      "status": "INFO"
+    },
+    {
+      "name": "warmup_ticks_parquet_s",
+      "measured": 5.6497,
+      "reference": null,
+      "deviation_percent": null,
+      "tolerance_percent": null,
+      "status": "INFO"
+    },
+    {
+      "name": "total_ticks",
+      "measured": 1496267,
+      "reference": 1496267,
+      "deviation_percent": null,
+      "tolerance_percent": null,
+      "status": "INFO"
+    },
+    {
+      "name": "scenarios_count",
+      "measured": 40,
+      "reference": 40,
+      "deviation_percent": null,
+      "tolerance_percent": null,
+      "status": "INFO"
+    }
+  ],
+  "raw_measurements": {
+    "ticks_per_second": [
+      82058.51,
+      86340.97,
+      85230.18
+    ],
+    "tickrun_time_s": [
+      18.23,
+      17.33,
+      17.56
+    ],
+    "warmup_time_s": [
+      6.88,
+      6.7,
+      6.56
+    ],
+    "summary_generation_time_s": [
+      2.64,
+      2.68,
+      2.72
+    ]
+  },
+  "breakdown": {
+    "operation_avg_ms": {
+      "bar_rendering": 0.0294,
+      "live_update": 0.0037,
+      "order_execution": 0.0029,
+      "trade_simulator": 0.0129,
+      "worker_decision": 0.1994
+    },
+    "warmup_phase_s": {
+      "Availability Check": 0.0005,
+      "Config Validation": 0.019,
+      "Data Loading \u2192 Bars (parquet)": 0.174,
+      "Data Loading \u2192 Packaging": 0.3256,
+      "Data Loading \u2192 Ticks (parquet)": 5.6497,
+      "Index & Coverage": 0.4726,
+      "Quality Validation": 0.0123,
+      "Requirements": 0.0437
+    },
+    "shape": {
+      "operations": [
+        "bar_rendering",
+        "live_update",
+        "order_execution",
+        "trade_simulator",
+        "worker_decision"
+      ],
+      "warmup_phases": [
+        "Availability Check",
+        "Config Validation",
+        "Data Loading \u2192 Bars (parquet)",
+        "Data Loading \u2192 Packaging",
+        "Data Loading \u2192 Ticks (parquet)",
+        "Index & Coverage",
+        "Quality Validation",
+        "Requirements"
+      ]
+    }
+  },
+  "artifacts": [
+    {
+      "source": "/app/logs/scenario_sets/backtesting_loadtest_40_scenarios/20260826_203727/scenario_summary.log",
+      "destination": "/app/tests/simulation/benchmark/reports/logs/run_1/scenario_summary.log",
+      "copied_at": "2026-08-26T20:38:55.939200+00:00"
+    },
+    {
+      "source": "/app/logs/scenario_sets/backtesting_loadtest_40_scenarios/20260826_203727/scenario_global_log.log",
+      "destination": "/app/tests/simulation/benchmark/reports/logs/run_1/scenario_global_log.log",
+      "copied_at": "2026-08-26T20:38:55.967360+00:00"
+    },
+    {
+      "source": "/app/logs/scenario_sets/backtesting_loadtest_40_scenarios/20260826_203756/scenario_summary.log",
+      "destination": "/app/tests/simulation/benchmark/reports/logs/run_2/scenario_summary.log",
+      "copied_at": "2026-08-26T20:38:56.000181+00:00"
+    },
+    {
+      "source": "/app/logs/scenario_sets/backtesting_loadtest_40_scenarios/20260826_203756/scenario_global_log.log",
+      "destination": "/app/tests/simulation/benchmark/reports/logs/run_2/scenario_global_log.log",
+      "copied_at": "2026-08-26T20:38:56.027985+00:00"
+    },
+    {
+      "source": "/app/logs/scenario_sets/backtesting_loadtest_40_scenarios/20260826_203825/scenario_summary.log",
+      "destination": "/app/tests/simulation/benchmark/reports/logs/run_3/scenario_summary.log",
+      "copied_at": "2026-08-26T20:38:56.060675+00:00"
+    },
+    {
+      "source": "/app/logs/scenario_sets/backtesting_loadtest_40_scenarios/20260826_203825/scenario_global_log.log",
+      "destination": "/app/tests/simulation/benchmark/reports/logs/run_3/scenario_global_log.log",
+      "copied_at": "2026-08-26T20:38:56.089569+00:00"
+    }
+  ],
+  "warnings": []
+}

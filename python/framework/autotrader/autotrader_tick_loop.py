@@ -108,7 +108,8 @@ class AutotraderTickLoop:
         self._bar_controller = bar_controller
         self._worker_orchestrator = worker_orchestrator
         # #141 Part 2a: filled by a live signal transport on its own thread, drained here
-        # once per pass. None in a mock session — then every drain below is a no-op and the
+        # once per pass. Present ONLY when the startup resolved a LIVE signal source — a
+        # mounted (mock / simulation) session has none, so every drain below is a no-op and the
         # loop behaves exactly as before.
         self._signal_inbox = signal_inbox
         # Display only — the loop never calls it. It is handed to the exporter so the
@@ -221,10 +222,6 @@ class AutotraderTickLoop:
     def stop(self) -> None:
         """Signal the tick loop to stop. Thread-safe."""
         self._running = False
-
-    def is_running(self) -> bool:
-        """Check if the tick loop is currently running."""
-        return self._running
 
     def run(self) -> Tuple[int, int]:
         """
@@ -503,7 +500,8 @@ class AutotraderTickLoop:
         HEARTBEAT nothing else would run, so the workers are refreshed and the shared signal
         pass fires the stale edge and the outage episode at the arrival moment.
 
-        A mock session has no inbox, so this returns immediately and the loop is unchanged.
+        A session that mounted its series has no inbox, so this returns immediately and the
+        loop is unchanged — which is what keeps a replay reproducible.
 
         Args:
             off_tick: True on the heartbeat path (refresh + signal pass), False on a tick

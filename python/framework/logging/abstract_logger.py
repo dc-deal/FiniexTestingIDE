@@ -59,7 +59,6 @@ class AbstractLogger(ABC):
         # Will be set by subclasses (GlobalLogger vs ScenarioLogger)
         # Setup config from parent (uses global file logging config)
         self.file_logging_enabled = self._file_logging_config.global_enabled
-        self.file_log_level = self._file_logging_config.global_log_level
 
         self.console_buffer: List[Tuple[str, str]] = []
 
@@ -273,15 +272,6 @@ class AbstractLogger(ABC):
             for level, line in self.console_buffer
             if level == LogLevel.WARNING
         ]
-
-    def set_buffer(self, buffer: list[tuple[str, str]]):
-        """
-        Replace the current console buffer with a provided list.
-        """
-        if not isinstance(buffer, list):
-            raise ValueError('Expected a list of (level, line) tuples.')
-        self.console_buffer = [(str(level), str(line))
-                               for level, line in buffer]
 
     @staticmethod
     def print_buffer(buffer: list[tuple[str, str]], scenario_name: str = None):

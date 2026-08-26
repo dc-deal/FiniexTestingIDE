@@ -41,6 +41,40 @@ def _optional_int(row, column: str) -> Optional[int]:
     return int(value)
 
 
+def _optional_str(row, column: str) -> str:
+    """
+    Read a nullable text column off a row.
+
+    Args:
+        row: A DataFrame row (itertuples)
+        column: Column name
+
+    Returns:
+        The value as str, or '' when absent / null (a file written before the column existed)
+    """
+    value = getattr(row, column, None)
+    if value is None or pd.isna(value):
+        return ''
+    return str(value)
+
+
+def _optional_flag(row, column: str) -> bool:
+    """
+    Read a nullable boolean column off a row.
+
+    Args:
+        row: A DataFrame row (itertuples)
+        column: Column name
+
+    Returns:
+        The value as bool, or False when absent / null (a file written before the column existed)
+    """
+    value = getattr(row, column, None)
+    if value is None or pd.isna(value):
+        return False
+    return bool(value)
+
+
 def load_signal_series_from_parquet(
     paths: List[Path],
     signal_kind: str,
@@ -109,6 +143,10 @@ def load_signal_series_from_parquet(
                 reasoning=getattr(row, SignalParquetColumn.REASONING.value),
                 urgency=getattr(row, SignalParquetColumn.URGENCY.value),
                 is_breaking=bool(getattr(row, SignalParquetColumn.IS_BREAKING.value)),
+                breaking_episode_id=_optional_str(
+                    row, SignalParquetColumn.BREAKING_EPISODE_ID.value),
+                breaking_episode_start=_optional_flag(
+                    row, SignalParquetColumn.BREAKING_EPISODE_START.value),
                 basis=getattr(row, SignalParquetColumn.BASIS.value),
                 evidence_as_of=_optional_int(
                     row, SignalParquetColumn.EVIDENCE_AS_OF.value),

@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.bootstrap_logger import get_global_logger
@@ -73,6 +74,7 @@ def build_run_provenance(
         run_id=run_dir.name,
         run_timestamp=scenario_set.run_timestamp,
         scenario_set_name=scenario_set.scenario_set_name,
+        app_version=AppConfigManager().get_version(),
         git_commit=git.commit if git else None,
         git_branch=git.branch if git else None,
         git_dirty=git.dirty if git else False,
@@ -125,6 +127,7 @@ def build_run_provenance_from_session(
         run_id=run_dir.name,
         run_timestamp=run_timestamp,
         scenario_set_name=config.name or config.symbol,
+        app_version=AppConfigManager().get_version(),
         git_commit=git.commit if git else None,
         git_branch=git.branch if git else None,
         git_dirty=git.dirty if git else False,

@@ -1,35 +1,47 @@
 """
 FiniexTestingIDE - Live Adapter Tests Configuration
 
-Provides --release-version CLI option and post-session report generation.
-On success, writes a JSON receipt to tests/live_adapters/reports/ that documents
-which adapter tests passed for a given release version.
+Provides the --release-version / --comment options and post-session certificate generation.
+Writes a JSON certificate to tests/live_adapters/reports/ documenting which adapter tests
+passed for a given release, validated afterwards by test_live_adapter_certificate.py.
+
+The certificate records what the fixtures OBSERVED, never what a config file declares. The
+distinction is not academic: this suite's two decisive tests set `dry_run = False` on their
+own adapter and place real orders, while `configs/broker_settings/kraken_spot.json` says
+`true` — a certificate that re-read the file understated exactly what it existed to prove.
 
 Usage:
     pytest tests/live_adapters/ -v -m live_adapter --release-version 1.2.2
 """
 
 import json
-from datetime import datetime, timezone
+import re
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
 
-
-from python.framework.utils.git_info_utils import get_git_commit
+from python.framework.reporting.certificates.certificate_identity_builder import (
+    build_certificate_identity,
+)
+from python.framework.types.certificate_types import CertificateStatus
 
 _REPORTS_DIR = Path('tests/live_adapters/reports')
-_BROKER_SETTINGS_PATH = Path('configs/broker_settings/kraken_spot.json')
-_REPORT_FIELDS_FROM_TRANSPORT = ('api_base_url', 'rate_limit_interval_s', 'request_timeout_s', 'poll_interval_ms')
 
 
 class _ResultCollector:
-    """Tracks per-test outcomes and names during the session."""
+    """
+    Tracks per-test outcomes and what the adapter fixtures actually ran against.
+
+    The observed settings are registered BY the fixtures (see record_observed_adapter) rather
+    than read back from configuration at write time, because the fixtures are the only place
+    that knows the values the adapter was really built with.
+    """
 
     def __init__(self):
         self.passed: int = 0
         self.failed: int = 0
         self.skipped: int = 0
         self.tests_run: List[str] = []
+        self.observed_phases: List[Dict[str, Any]] = []
 
     def pytest_runtest_logreport(self, report):
         if report.when != 'call':
@@ -44,6 +56,38 @@ class _ResultCollector:
         elif report.skipped:
             self.skipped += 1
 
+    def record_phase(self, phase: str, dry_run: bool, api_base_url: str) -> None:
+        """
+        Register one adapter configuration a fixture actually built.
+
+        Args:
+            phase: What this adapter is used for ('validate_only' / 'real_orders')
+            dry_run: The value set on the adapter, NOT the value in the config file
+            api_base_url: The endpoint the adapter talked to
+        """
+        if any(entry['phase'] == phase for entry in self.observed_phases):
+            return
+        self.observed_phases.append({
+            'phase': phase,
+            'dry_run': dry_run,
+            'api_base_url': api_base_url,
+        })
+
+
+def record_observed_adapter(request, phase: str, dry_run: bool, api_base_url: str) -> None:
+    """
+    Report an adapter's effective settings from the fixture that built it.
+
+    Args:
+        request: The pytest request, carrying the session's collector
+        phase: What this adapter is used for ('validate_only' / 'real_orders')
+        dry_run: The value the fixture set on the adapter
+        api_base_url: The endpoint the adapter talked to
+    """
+    collector = getattr(request.config, '_live_adapter_results', None)
+    if collector is not None:
+        collector.record_phase(phase=phase, dry_run=dry_run, api_base_url=api_base_url)
+
 
 def pytest_configure(config):
     config._live_adapter_results = _ResultCollector()
@@ -51,17 +95,23 @@ def pytest_configure(config):
 
 
 def pytest_addoption(parser):
-    """Add --release-version option for report generation."""
+    """Add the certificate options for report generation."""
     parser.addoption(
         '--release-version',
         action='store',
         default='dev',
-        help='Release version for live adapter report (e.g. 1.2.2). Defaults to "dev".',
+        help='Release version for the live adapter certificate (e.g. 1.2.2). Defaults to "dev".',
+    )
+    parser.addoption(
+        '--comment',
+        action='store',
+        default=None,
+        help='Optional tester comment stored in the certificate.',
     )
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """Write release receipt after session completes."""
+    """Write the release certificate after the session completes."""
     results = session.config._live_adapter_results
     total = results.passed + results.failed + results.skipped
 
@@ -73,61 +123,67 @@ def pytest_sessionfinish(session, exitstatus):
     if results.skipped == total:
         return
 
-    release_version = session.config.getoption('release_version', default='dev')
-    _write_report(release_version, results.passed, results.failed, results.skipped, results.tests_run)
+    # Skip report when no adapter was built at all. A validation-only invocation runs tests
+    # in this directory and would otherwise write a certificate for a session that never
+    # contacted the broker — an artifact asserting something nobody measured.
+    if not results.observed_phases:
+        return
+
+    _write_report(
+        release_version=session.config.getoption('release_version', default='dev'),
+        comment=session.config.getoption('comment', default=None),
+        results=results,
+    )
 
 
-def _write_report(
-    release_version: str,
-    passed: int,
-    failed: int,
-    skipped: int,
-    tests_run: List[str],
-) -> None:
+def _write_report(release_version: str, comment: str, results: _ResultCollector) -> None:
     """
-    Write a JSON release receipt for this live adapter test run.
+    Write the JSON certificate for this live adapter test run.
 
     Args:
         release_version: Version string (e.g. '1.2.2' or 'dev')
-        passed: Tests that passed
-        failed: Tests that failed
-        skipped: Tests that were skipped
-        tests_run: Ordered list of test function names that were executed
+        comment: Optional operator note
+        results: The session's collected outcomes and observed adapter settings
     """
-    timestamp = datetime.now(timezone.utc)
-    timestamp_str = timestamp.strftime('%Y-%m-%dT%H:%M:%S+00:00')
-    filename_ts = timestamp.strftime('%Y-%m-%d_%H%M%S')
+    identity = build_certificate_identity(
+        release_version=release_version, comment=comment)
 
-    broker_settings_snapshot: dict = {}
-    if _BROKER_SETTINGS_PATH.exists():
-        try:
-            with open(_BROKER_SETTINGS_PATH, 'r') as f:
-                raw = json.load(f)
-            transport = raw.get('broker_transport', {})
-            broker_settings_snapshot = {'dry_run': raw.get('dry_run')} if 'dry_run' in raw else {}
-            broker_settings_snapshot.update(
-                {k: transport[k] for k in _REPORT_FIELDS_FROM_TRANSPORT if k in transport}
-            )
-        except Exception:
-            pass
+    warnings: List[str] = []
+    status = CertificateStatus.PASSED if results.failed == 0 else CertificateStatus.FAILED
+    for identity_warning in (identity.version_mismatch(), identity.dirty_tree_warning()):
+        if identity_warning:
+            status = CertificateStatus.FAILED
+            warnings.append(identity_warning)
+
+    # A certificate that recorded no real order proved only that the API accepts syntax.
+    # Saying so out loud is cheaper than a reader assuming it either way.
+    if not any(entry['dry_run'] is False for entry in results.observed_phases):
+        warnings.append(
+            'NO REAL ORDER: every adapter in this run was built with dry_run=True, so the '
+            'certificate covers API acceptance only — not order execution.')
 
     report = {
-        'release_version': release_version,
-        'git_commit': get_git_commit(),
-        'timestamp': timestamp_str,
-        'result': 'passed' if failed == 0 else 'failed',
-        'tests_passed': passed,
-        'tests_failed': failed,
-        'tests_skipped': skipped,
-        'tests_run': tests_run,
-        'broker_settings': broker_settings_snapshot,
+        **identity.to_dict(),
+        'overall_status': status.value,
+        'tests_passed': results.passed,
+        'tests_failed': results.failed,
+        'tests_skipped': results.skipped,
+        'tests_run': results.tests_run,
+        # What the fixtures actually built, per phase. Registered by them at construction;
+        # never re-read from configs/broker_settings/ at write time.
+        'observed': {'phases': results.observed_phases},
+        'warnings': warnings,
     }
 
     _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    filename = f'live_adapter_report_{release_version}_{filename_ts}.json'
+    version_tag = re.sub(r'[^a-zA-Z0-9._-]', '_', release_version)
+    filename = (f'live_adapter_report_{version_tag}_'
+                f"{identity.timestamp.strftime('%Y-%m-%d_%H%M%S')}.json")
     report_path = _REPORTS_DIR / filename
 
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2)
 
-    print(f'\nLive adapter report: {report_path}')
+    print(f'\nLive adapter certificate: {report_path}  [{status.value}]')
+    for warning in warnings:
+        print(f'  ⚠️  {warning}')

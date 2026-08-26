@@ -101,7 +101,7 @@ def _render_symbol_worker(
 
         # === 3. RENDER BARS ===
         log_buffer.append('  ├─ Rendering bars...')
-        renderer = VectorizedBarRenderer(symbol, broker_type, log_buffer=log_buffer)
+        renderer = VectorizedBarRenderer(symbol, log_buffer=log_buffer)
         all_bars = renderer.render_all_timeframes(ticks_df)
 
         # === 4. WRITE BAR FILES ===
@@ -516,33 +516,6 @@ class BarImporter:
                         f'   Removed empty directory: {symbol_dir.name}')
         else:
             vLog.info('   No bars directory found - nothing to clean')
-
-    def render_bars_for_symbol(
-        self,
-        symbol: str,
-        broker_type: str
-    ):
-        """
-        Render bars for a single symbol (convenience method).
-
-        Args:
-            symbol: Trading symbol (e.g., 'EURUSD')
-            broker_type: Broker type identifier - REQUIRED
-        """
-        result = _render_symbol_worker(
-            symbol, broker_type, str(self.data_dir), self.VERSION
-        )
-
-        # Flush log buffer
-        for line in result.log_buffer:
-            vLog.info(line)
-
-        if result.success:
-            self.processed_symbols += 1
-            self.total_bars_rendered += result.bars_rendered
-        else:
-            vLog.error(result.error_message)
-            self.errors.append(result.error_message)
 
     def update_bar_index(self):
         """

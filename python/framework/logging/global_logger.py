@@ -41,9 +41,6 @@ class GlobalLogger(AbstractLogger):
         """
         super().__init__(name=name)
 
-        # report mode for forcing console print regardless of log level
-        self.report_mode = False
-
         # Create file logger if enabled
         if self.file_logging_enabled:
             log_file_path = self._file_logging_config.global_log_path

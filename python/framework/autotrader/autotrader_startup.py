@@ -23,6 +23,7 @@ from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_startup_preparation import inject_signal_providers
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
+from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
@@ -30,7 +31,7 @@ from python.framework.types.autotrader_types.display_label_cache import DisplayL
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
-from python.framework.types.signal_data_types import SignalSeries
+from python.framework.types.signal_data_types import SignalSeries, SignalSourceMode
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
@@ -250,22 +251,21 @@ def setup_pipeline(
     # The empty case is not a degenerate mount: a live session legitimately starts knowing
     # nothing, and its first decision waits for the first arrival (the worker reports BLIND
     # until then, which the staleness contract already handles).
-    signal_workers = [w for w in workers if isinstance(w, AbstractSignalWorker)]
-    if package is not None:
+    # The mode is resolved ONCE here and carried on the orchestrator, because every later
+    # site that acts on it (the transport setup, the inbox drain) used to derive it again
+    # and disagreed with this one.
+    signal_source = SignalSourceResolver.resolve(
+        workers=workers,
+        package=package,
+        sentiment_config=SentimentConfigManager().get_config())
+
+    if signal_source.mode is SignalSourceMode.MOUNTED:
         inject_signal_providers(workers, package, logger)
-    elif signal_workers and SentimentConfigManager().get_config().poll.enabled:
-        for worker in signal_workers:
+    elif signal_source.mode is SignalSourceMode.LIVE:
+        for worker in [w for w in workers if isinstance(w, AbstractSignalWorker)]:
             worker.set_signal_provider(SignalDataProvider(
                 SignalSeries(signal_kind=worker.get_consumed_signal_kind(), snapshots=[])))
-        logger.info(
-            f'📡 {len(signal_workers)} SIGNAL worker(s) start empty — the live transport fills them')
-    elif signal_workers:
-        names = ', '.join(f"'{w.name}'" for w in signal_workers)
-        raise ValueError(
-            f"Configuration error: SIGNAL worker(s) {names} have no source. Either give the "
-            f"profile '{config.name}' a mock 'scenario_settings' with a 'data_sentiment_type', "
-            f"or enable a live transport in sentiment_config.json."
-        )
+    logger.info(f'📡 {signal_source.reason}')
 
     # === Phase 7: DecisionLogic ===
     decision_logic = decision_logic_factory.create_logic(
@@ -286,6 +286,7 @@ def setup_pipeline(
         workers=workers,
         parallel_workers=config.execution.parallel_workers,
         worker_decision_tracking=config.execution.performance_tracking.worker_decision_tracking,
+        signal_source=signal_source,
     )
     worker_orchestrator.initialize()
     logger.debug(f'✅ Orchestrator initialized: {len(workers)} workers')

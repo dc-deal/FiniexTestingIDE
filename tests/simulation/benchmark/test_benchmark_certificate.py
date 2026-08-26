@@ -230,14 +230,20 @@ class TestBenchmarkCertificate:
         required_fields = [
             'timestamp',
             'valid_until',
+            'app_version',
+            'isolation_active',
+            'workspace_overrides',
             'system_id',
             'scenario',
             'runs',
             'debug_mode_detected',
+            'config_provenance',
             'overall_status',
             'metrics',
             'raw_measurements',
-            'artifacts'
+            'breakdown',
+            'artifacts',
+            'warnings'
         ]
 
         missing = [f for f in required_fields if f not in report]
@@ -260,6 +266,254 @@ class TestBenchmarkCertificate:
 
         print('\n✅ Report integrity verified')
         print(f'   {len(metrics)} metrics recorded')
+
+
+def compare_breakdown_shape(older: Dict[str, Any], newer: Dict[str, Any]) -> Dict[str, list]:
+    """
+    Set difference between two reports' breakdown shapes.
+
+    The comparison that must happen BEFORE any value is diffed. The operation names are free
+    strings in `profile_times[...]`, with no enum to stop a rename, and `worker_decision` has
+    already absorbed another operation once — so two reports can carry the same key meaning two
+    different things. A set difference cannot catch a silent redefinition, but it does catch
+    every added, removed and renamed section, which is what makes the remaining values
+    comparable at all.
+
+    Args:
+        older: The earlier report
+        newer: The later report
+
+    Returns:
+        Mapping of section to its added / removed names; empty when the shapes match
+    """
+    diff: Dict[str, list] = {}
+    for section in ('operations', 'warmup_phases'):
+        before = set((older.get('breakdown') or {}).get('shape', {}).get(section, []))
+        after = set((newer.get('breakdown') or {}).get('shape', {}).get(section, []))
+        added, gone = sorted(after - before), sorted(before - after)
+        if added or gone:
+            diff[section] = [f'+{name}' for name in added] + [f'-{name}' for name in gone]
+    return diff
+
+
+class TestBreakdownShape:
+    """
+    The shape rule: compare the section NAMES before comparing their values.
+
+    Pinned here because the pitfall is not hypothetical. `process_tick_loop.py` carries the
+    comment "'worker_decision' now also covers the (tiny) bar-history" — the meaning of the
+    largest operation has already been extended once, and nothing typed stopped it.
+    """
+
+    def test_the_comparison_detects_an_added_section(self):
+        older = {'breakdown': {'shape': {'operations': ['a', 'b'], 'warmup_phases': []}}}
+        newer = {'breakdown': {'shape': {'operations': ['a', 'b', 'c'], 'warmup_phases': []}}}
+        assert compare_breakdown_shape(older, newer) == {'operations': ['+c']}
+
+    def test_the_comparison_detects_a_rename_as_both_halves(self):
+        """
+        A rename is an addition and a removal — never a value change.
+
+        Reporting it as one changed number is exactly the failure this guard exists for.
+        """
+        older = {'breakdown': {'shape': {'operations': ['worker_decision'], 'warmup_phases': []}}}
+        newer = {'breakdown': {'shape': {'operations': ['decision_worker'], 'warmup_phases': []}}}
+        assert compare_breakdown_shape(older, newer) == {
+            'operations': ['+decision_worker', '-worker_decision']}
+
+    def test_identical_shapes_compare_clean(self):
+        same = {'breakdown': {'shape': {'operations': ['a'], 'warmup_phases': ['p']}}}
+        assert compare_breakdown_shape(same, same) == {}
+
+    def test_committed_reports_agree_on_their_shape(self):
+        """
+        Runs over the committed artifacts — and says so when there is nothing to compare.
+
+        The breakdown is new, so no committed report carries one yet. A loop over an empty set
+        would pass while proving nothing, so this SKIPS with a reason and starts asserting by
+        itself once two certificates have been taken with it.
+        """
+        reports = []
+        for path in sorted(BENCHMARK_REPORTS_DIR.glob('benchmark_report_*.json')):
+            data = json.loads(path.read_text(encoding='utf-8'))
+            if data.get('breakdown'):
+                reports.append((path.name, data))
+        if len(reports) < 2:
+            pytest.skip(
+                f'{len(reports)} committed report(s) carry a breakdown — at least two are '
+                f'needed before shapes can be compared')
+        for (older_name, older), (newer_name, newer) in zip(reports, reports[1:]):
+            diff = compare_breakdown_shape(older, newer)
+            assert not diff, (
+                f'breakdown shape changed between {older_name} and {newer_name}: {diff}. '
+                f'The values of the remaining sections are still comparable; the changed ones '
+                f'are not, and must not be read as a regression.')
+
+
+class TestStabilityCalibration:
+    """
+    Pins the stability threshold against the reports it was calibrated on.
+
+    The threshold decides whether a measurement may be believed at all, so a number picked by
+    feel would be the weakest link in the chain. It was derived from the committed history:
+    the worst spread there is 13.0% (1.2.1), and the two runs of 2026-08-24 that the release
+    document declares unusable were 20.2% and 34.4%. The tests below keep both ends honest —
+    tightening the limit would retroactively invalidate a committed certificate, loosening it
+    past ~20% would let an unusable measurement through.
+
+    Runs without a benchmark: it reads the committed artifacts only.
+    """
+
+    # The two triples recorded in INTERNAL_release_todo_1_4.md as unusable measurements.
+    UNUSABLE_RUNS = ((60314.0, 53649.0, 44881.0), (66618.0, 58008.0, 55410.0))
+
+    def _limit(self) -> float:
+        config = json.loads(
+            (Path(__file__).parent / 'config' / 'benchmark_config.json')
+            .read_text(encoding='utf-8'))
+        return config['stability']['max_spread_percent']
+
+    def test_every_committed_report_passes_the_limit(self):
+        """
+        A threshold that would fail an artifact we already shipped is the wrong threshold.
+
+        This is what refuted the 10% first proposed: 1.2.1 spans 13.0%, and its certificate is
+        committed and green.
+        """
+        limit = self._limit()
+        too_wide = []
+        for path in sorted(BENCHMARK_REPORTS_DIR.glob('benchmark_report_*.json')):
+            runs = (json.loads(path.read_text(encoding='utf-8'))
+                    .get('raw_measurements', {}).get('ticks_per_second') or [])
+            spread = _spread_percent(runs)
+            if spread is not None and spread > limit:
+                too_wide.append(f'{path.name}: {spread:.1f}%')
+        assert not too_wide, (
+            f'the {limit}% stability limit would fail already-committed certificates: '
+            f'{too_wide}')
+
+    def test_the_known_unusable_measurements_are_refused(self):
+        """
+        The other end: the limit must actually catch what it was written for.
+
+        Both triples decline monotonically across their three runs — the signature the release
+        document reads as throttling rather than a code change.
+        """
+        limit = self._limit()
+        for runs in self.UNUSABLE_RUNS:
+            spread = _spread_percent(list(runs))
+            assert spread > limit, (
+                f'runs {runs} span only {spread:.1f}%, which the {limit}% limit accepts — but '
+                f'the release document records this measurement as unusable')
+
+
+class TestConfigProvenance:
+    """
+    The certificate must name the configuration it measured, and name it safely.
+
+    Two independent paths can change what a benchmark run measures without touching a line of
+    code: the content-merge cascade (user_configs/app_config.json reaching process fan-out or
+    log volume) and the scenario-set file-replace, which config isolation does not gate at all.
+    Neither used to leave a trace in the artifact, so a measurement taken on a personal
+    configuration was indistinguishable from one taken on the committed one.
+
+    The second half of the rule is privacy: this artifact is committed to a public repository,
+    so the listing of what exists in the private workspace carries names and counts — never
+    key paths, never values.
+    """
+
+    def _provenance(self) -> Dict[str, Any]:
+        latest_report = _find_latest_report()
+        if latest_report is None:
+            pytest.skip('No report found - see test_report_exists')
+        provenance = _load_report(latest_report).get('config_provenance')
+        if provenance is None:
+            pytest.skip('Report predates config_provenance - see test_report_integrity')
+        return provenance
+
+    def test_the_certificate_records_the_configuration_it_measured(self):
+        """
+        Every contracted parameter is recorded, and each one held during the run.
+
+        A recorded mismatch is not a test failure here — the report itself is already FAILED in
+        that case. What this asserts is that the comparison HAPPENED and left both halves in
+        the artifact, so a later reader can see what the number was measured under.
+        """
+        required = self._provenance().get('required_effective', {})
+
+        assert required, (
+            'The certificate records no configuration contract. Without it the throughput '
+            'number cannot be attributed to the code rather than to a local setting.')
+
+        deviations = [
+            f"{path}: measured under {entry['effective']!r}, baseline is {entry['expected']!r}"
+            for path, entry in required.items()
+            if entry['effective'] != entry['expected']
+        ]
+        assert not deviations, (
+            f'The certified run did not match the baseline configuration: {deviations}. '
+            f'Re-run with the committed configuration, or re-measure the baseline '
+            f'deliberately and update benchmark_config.json::config_contract.')
+
+    def test_the_measured_workload_is_the_committed_one(self):
+        """
+        The scenario set came from configs/, not from the private workspace.
+
+        This is the path config isolation does NOT cover: `ScenarioConfigLoader._resolve_path`
+        prefers user_configs/ and the user algo dirs even in an isolated run.
+        """
+        provenance = self._provenance()
+
+        assert provenance.get('scenario_set_origin') == 'base', (
+            f"The certified run loaded its scenario set from "
+            f"'{provenance.get('scenario_set_origin')}' "
+            f"({provenance.get('scenario_set_path')}) — that is not the committed workload.")
+
+    def test_the_workspace_listing_carries_names_only(self):
+        """
+        The privacy invariant: what the certificate says about user_configs/ is names + a count.
+
+        Pinned as a SHAPE assertion rather than a value scan, because the failure this guards
+        against is a well-meant extension — adding the overridden key paths, or their values,
+        to make the artifact more informative. That would publish the private workspace with
+        every release.
+        """
+        latest_report = _find_latest_report()
+        if latest_report is None:
+            pytest.skip('No report found - see test_report_exists')
+        # Shared identity, not benchmark-specific provenance: the same block, with the same
+        # privacy rule, is published by all four release-gate certificates.
+        overrides = _load_report(latest_report).get('workspace_overrides', {})
+
+        assert set(overrides) == {'files_present', 'unnamed_files', 'applied'}, (
+            f'workspace_overrides carries unexpected keys: {sorted(overrides)}. Only names, a '
+            f'count and the applied flag may be published — no key paths, no values.')
+
+        committed = {path.name for path in (Path(__file__).parents[3] / 'configs').glob('*.json')}
+        leaked = [name for name in overrides['files_present'] if name not in committed]
+        assert not leaked, (
+            f'The certificate names workspace files with no committed counterpart: {leaked}. '
+            f'Those must be counted in unnamed_files instead.')
+
+
+def _spread_percent(values: list) -> Optional[float]:
+    """
+    Spread of a run series as a percentage of its smallest value.
+
+    Mirrors the helper in conftest.py deliberately: this test must be able to judge the
+    committed artifacts without importing the benchmark fixtures, which pull in a full
+    simulation stack.
+
+    Args:
+        values: Raw measurements of one metric
+
+    Returns:
+        The spread, or None when there is nothing to compare
+    """
+    usable = [v for v in values if isinstance(v, (int, float)) and v > 0]
+    if len(usable) < 2:
+        return None
+    return (max(usable) - min(usable)) / min(usable) * 100.0
 
 
 def _format_failed_metrics(report: Dict[str, Any]) -> str:

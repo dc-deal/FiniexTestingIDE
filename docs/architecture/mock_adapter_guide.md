@@ -239,7 +239,7 @@ python/framework/
     live_types/
       live_execution_types.py    ← BrokerResponse, BrokerOrderStatus, TimeoutConfig
   exceptions/
-    live_execution_errors.py     ← BrokerConnectionError, OrderTimeoutError
+    live_execution_errors.py     ← DryRunConflictError
   factory/
     live_trade_executor_factory.py ← build_live_executor()
 ```

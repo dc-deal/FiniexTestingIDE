@@ -691,10 +691,6 @@ class TradeSimulator(AbstractTradeExecutor):
                 f'🔄 Stop-Limit order {pending.pending_order_id} '
                 f'stop triggered — now limit order at {limit_price:.5f}')
 
-    def get_active_limit_order_count(self) -> int:
-        """Get number of active limit orders waiting for price trigger."""
-        return len(self._active_limit_orders)
-
     def cancel_limit_order(self, order_id: str) -> bool:
         """
         Schedule cancellation of an active limit order (async pattern, #318).
@@ -883,10 +879,6 @@ class TradeSimulator(AbstractTradeExecutor):
     # ============================================
     # Stop Order Helpers
     # ============================================
-
-    def get_active_stop_order_count(self) -> int:
-        """Get number of active stop orders waiting for trigger price."""
-        return len(self._active_stop_orders)
 
     def cancel_stop_order(self, order_id: str) -> bool:
         """

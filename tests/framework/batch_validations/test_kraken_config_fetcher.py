@@ -17,7 +17,6 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-
 from python.configuration.autotrader.kraken_config_fetcher import (
     KrakenConfigFetcher,
     _merge_with_cache,

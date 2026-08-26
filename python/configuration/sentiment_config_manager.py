@@ -51,18 +51,6 @@ class SentimentConfigManager:
         """The merged, typed configuration."""
         return self._config
 
-    def get_source_config(self, pipeline_id: str):
-        """
-        Registered facts for one signal source.
-
-        Args:
-            pipeline_id: The source's id (= a scenario's data_sentiment_type)
-
-        Returns:
-            Its SentimentSourceConfig, or None when the source is not registered
-        """
-        return self._config.get_source(pipeline_id)
-
     def resolve_active_producer(self) -> ActiveProducer:
         """
         The producer endpoint this run talks to, with its credential already resolved.

@@ -8,7 +8,6 @@ Import these classes into suite-specific test_tick_count.py files.
 
 from typing import Dict
 
-
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.process_data_types import ProcessTickLoopResult
 

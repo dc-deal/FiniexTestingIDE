@@ -17,7 +17,6 @@ and trade-record parity; this file covers the modify/cancel API contract.
 
 from datetime import datetime, timezone
 
-
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution

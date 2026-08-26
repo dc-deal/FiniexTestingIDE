@@ -394,29 +394,6 @@ class ExtremeMoveScanner:
     # CONSOLE OUTPUT
     # =========================================================================
 
-    def scan_and_print(
-        self,
-        broker_type: str,
-        symbol: str,
-        timeframe: Optional[str] = None,
-        top_n: int = 10
-    ) -> ExtremeMoveResult:
-        """
-        Scan for extreme moves and print formatted report.
-
-        Args:
-            broker_type: Broker type identifier
-            symbol: Trading symbol
-            timeframe: Timeframe override
-            top_n: Number of top results per direction
-
-        Returns:
-            ExtremeMoveResult
-        """
-        result = self.scan(broker_type, symbol, timeframe)
-        self.print_result(result, top_n)
-        return result
-
     @staticmethod
     def print_result(result: ExtremeMoveResult, top_n: int = 10) -> None:
         """

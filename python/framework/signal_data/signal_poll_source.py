@@ -19,6 +19,8 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Deque, Optional, Tuple
 
+from pydantic import ValidationError
+
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.signal_data.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.signal_inbox import SignalInbox
@@ -32,7 +34,13 @@ from python.framework.types.config_types.sentiment_config_types import (
     SentimentPollConfig,
 )
 from python.framework.types.decision_logic_types import AwarenessLevel
-from python.framework.types.signal_data_types import SignalHealthStatus, SignalSnapshot
+from python.framework.types.signal_data_types import (
+    SUPPORTED_SCHEMA_MAJORS,
+    SentimentResult,
+    SignalHealthStatus,
+    SignalSnapshot,
+    schema_major,
+)
 
 # The producer serves /latest from its store and never runs a pass for it. When the store
 # cannot answer, it says so in the contract's error envelope instead of degrading to a
@@ -103,6 +111,10 @@ class SignalPollSource:
         self._enqueued = 0
         self._degraded = 0
         self._transport_errors = 0
+        self._contract_errors = 0
+        # Field names the producer sent that we do not read, announced once per distinct set
+        # so a grown shape is a single notice rather than one per poll.
+        self._announced_unknown: set = set()
         # Operator view (#141 Part 2a Phase 3b). A dead feed and a quiet market look
         # identical on screen without this: the signal VALUES keep displaying their last
         # known state either way, so only the transport can say whether anything still
@@ -175,6 +187,7 @@ class SignalPollSource:
                 envelopes_received=self._enqueued,
                 degraded_responses=self._degraded,
                 transport_errors=self._transport_errors,
+                contract_errors=self._contract_errors,
                 tape=list(self._tape),
                 total_events=self._total_events,
                 health=health,
@@ -205,6 +218,8 @@ class SignalPollSource:
                     self._handle_unauthorized(error.code)
                     return
                 self._record_transport_failure(error)
+            except ValidationError as error:
+                self._handle_contract_violation(error)
             except Exception as error:   # noqa: BLE001 — a transport fault never stops the loop
                 self._record_transport_failure(error)
             self._stop.wait(wait_s)
@@ -222,6 +237,85 @@ class SignalPollSource:
         self._record(f'transport failed: {type(error).__name__}',
                      AwarenessLevel.ALERT)
         self._logger.warning(f'📡 Signal poll failed: {error}')
+
+    def _announce_unread_fields(self, payload: dict, version: str) -> None:
+        """
+        Name the fields the producer sent that we do not read — once per distinct set.
+
+        Their versioning rule (MINOR for an additive field) tells us the shape GREW; it does
+        not tell us what grew, and our models discard what they do not declare, so without
+        this the new field is invisible until something depends on it. This is deliberately
+        a NOTICE and nothing more: the values are still discarded, nothing is stored on the
+        snapshot and nothing reaches the parquet — the projection stays lean on purpose, and
+        a diagnosis does not need the data, only its name.
+
+        Computed here rather than in the model for the same reason: the transport is the one
+        place that holds the raw payload and the parsed object at once, so no per-row field
+        has to exist to carry the answer.
+
+        Args:
+            payload: The envelope as it arrived
+            version: The schema version it declared
+        """
+        unread = set(payload) - set(SignalSnapshot.model_fields)
+        for row in (payload.get('result') or []):
+            if isinstance(row, dict):
+                unread |= {f'result.{key}'
+                           for key in set(row) - set(SentimentResult.model_fields)}
+        unread -= self._announced_unknown
+        if not unread:
+            return
+        self._announced_unknown |= unread
+        named = ', '.join(sorted(unread))
+        self._record(f'unread fields: {named}', AwarenessLevel.NOTICE)
+        self._logger.warning(
+            f'📡 Producer envelope (schema {version}) carries fields we do not read: '
+            f'{named}. Not an error — the shape grew and we ignore the new parts. Read it '
+            f'as a prompt to decide whether they belong in our contract.')
+
+    def _handle_contract_violation(self, error: ValidationError) -> None:
+        """
+        Report an envelope we cannot read — and never call it a transport fault.
+
+        The producer answered; our reader could not parse what it said. Counted as a
+        transport error this blames their infrastructure for our schema being out of date,
+        and it is silent: the loop retries forever against a mismatch retrying cannot fix,
+        while the staleness contract declares the feed blind for the wrong reason. That is
+        the same misattribution the credential rule (401) exists to prevent. It happened
+        for real when the producer added `breaking_episode_id` / `breaking_episode_start`
+        additively, with no schema_version change, and our declaration had the wrong type.
+
+        Polling CONTINUES, unlike the credential case: one malformed pass must not end a
+        session, and a producer-side fix should be picked up without a restart. What
+        changes is that the operator is told which field disagreed, and the error enters
+        the session pot — so the run grades FINISHED_WITH_ERRORS (#372) instead of
+        finishing clean on a feed that delivered nothing.
+
+        Args:
+            error: The validation failure, whose first error names the offending field
+        """
+        first = (error.errors() or [{}])[0]
+        location = '.'.join(str(part) for part in first.get('loc', ())) or 'envelope'
+        self._report_contract_violation(
+            location, str(first.get('msg', 'validation failed')))
+
+    def _report_contract_violation(self, location: str, detail: str) -> None:
+        """
+        Record one contract violation, whatever noticed it.
+
+        Args:
+            location: Field path that disagreed, as the operator would look it up
+            detail: What was wrong with it
+        """
+        with self._stats_lock:
+            self._contract_errors += 1
+            self._state = 'contract'
+        self._record(f'envelope unreadable: {location}', AwarenessLevel.ALERT)
+        self._logger.error(
+            f'📡 Producer envelope failed OUR schema at `{location}`: {detail}. '
+            f'This is NOT a producer outage — they answered, we could not read it. '
+            f'Polling continues, but nothing is reaching the decision path until it is '
+            f'fixed.')
 
     def _handle_unauthorized(self, status_code: int) -> None:
         """
@@ -282,6 +376,20 @@ class SignalPollSource:
         received = datetime.now(timezone.utc)
         snapshot = SignalSnapshot.model_validate(
             {**payload, 'collected_msc': int(received.timestamp() * 1000)})
+
+        # The archive path has always gated on the major; the live path did not, so a
+        # breaking bump would have been mis-read rather than refused — the mirror image of
+        # accepting nothing at all. The producer bumps the MINOR for an additive field, so a
+        # minor we have not seen is readable by construction and passes here.
+        if schema_major(snapshot.schema_version) not in SUPPORTED_SCHEMA_MAJORS:
+            supported = ', '.join(f'{m}.x' for m in sorted(SUPPORTED_SCHEMA_MAJORS))
+            self._report_contract_violation(
+                'schema_version',
+                f'{snapshot.schema_version} is a major this reader does not support '
+                f'(supports {supported})')
+            return False
+
+        self._announce_unread_fields(payload, snapshot.schema_version)
 
         identity = (snapshot.stream_epoch, snapshot.seq)
         if identity == self._last_identity:

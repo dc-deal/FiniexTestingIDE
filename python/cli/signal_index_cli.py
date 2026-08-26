@@ -28,11 +28,11 @@ from python.configuration.import_config_manager import ImportConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.data_management.importers.signal_data_importer import SignalDataImporter
 from python.data_management.index.signal_index_manager import SignalIndexManager
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.signal_data.signal_connect_check import (
     print_connect_check,
     run_connect_check,
 )
-from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.signal_data_types import (
     SIGNAL_ENVELOPE_SYMBOL,
     SIGNAL_RUNTIME_COLUMNS,

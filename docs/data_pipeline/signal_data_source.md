@@ -122,6 +122,25 @@ credential's source file:
 📡 Producer endpoint ← production (https://finiex-rag.duckdns.org) · credential user_configs/credentials/rag_credentials.json
 ```
 
+### The producer's routes
+
+Four routes exist; three are free reads and one spends money. The split is theirs, and it is
+what lets a release gate certify the feed without buying a single LLM call.
+
+| Route | Token | Gives | Notes |
+|---|---|---|---|
+| `GET /v1/health` | no | `journal_id`, `environment`, engine version, per-worker cadence, budget + stall state | their one always-open route, rate-limited |
+| `GET /v1/build` | no | `version`, `commit`, `committed_at`, `dirty`, `started_at` | **open by their default, behind a `build_info_public` switch.** Their repository is public, so a commit hash discloses nothing not already on GitHub; behind a private repository the same field would fingerprint known defects — hence the switch. Treat absence as a policy answer, never as a fault |
+| `GET /v1/pipelines` | yes | registered sources: symbols, `outcome_type`, `trigger_type`, `cadence_seconds` | |
+| `GET /v1/pipelines/{id}/latest` | yes | one envelope | |
+| `POST /v1/pipelines/{id}/run` | — | **spends** on their LLM provider | **does not exist in production** (404). Never call it |
+
+**`version` is not a build identity.** Measured 2026-08-25: they deployed a new commit at 16:28
+while `version` stayed `0.3.3`, so two reads twenty minutes apart came from different code and
+looked identical. `commit` binds, `version` does not — the same relationship `journal_id` has to
+the environment name. `started_at` changing between two observations means the process restarted,
+which is the one moment a sequence counter can be re-minted.
+
 ### Connect check — reachability and credential, before a session needs them
 
 `connect-check` probes the configured producer and answers three questions a live session
@@ -143,6 +162,12 @@ failure modes: health failing is the *address*, `/latest` failing alone is the *
    ✅ Reachable and authenticated.
 ```
 
+It **shows** these facts; it does not assert them and writes no artifact. Asserting them, plus the
+whole envelope contract, is the release gate: see
+[Live Signal Feed Certificate](../tests/live_signal_feed/signal_feed_certificate_guide.md) (#466).
+Both share one HTTP read (`signal_http_reader.py`), so the "401 is a credential condition, never
+their outage" rule exists in exactly one place.
+
 It prints the credential's **source file**, never the token, and says so explicitly when the file
 is empty — with a tracked empty default and a gitignored override, "configured" and "empty" are
 otherwise indistinguishable. Exit code is non-zero on failure, so it works as a pre-flight.
@@ -151,6 +176,55 @@ otherwise indistinguishable. Exit code is non-zero on failure, so it works as a 
 never as unreachability — the same distinction the running poll source now makes, where it also
 **stops polling**: retrying cannot fix a token, and the staleness contract then declares the feed
 blind, which is a state the decision logic is required to handle.
+
+**An unreadable envelope is not an outage either.** The producer answered; our schema could not
+read what it said. The poll source classifies that separately — state `contract`, its own
+`contract_errors` counter, and a session-logger error naming the field that disagreed:
+
+```
+📡 Producer envelope failed OUR schema at `available_msc`: Input should be a valid datetime.
+   This is NOT a producer outage — they answered, we could not read it.
+```
+
+Three properties, each with a reason:
+
+- **It is not counted as a transport error.** Blaming their infrastructure for our own schema
+  sends the diagnosis to the wrong system — the same misattribution the `401` rule prevents.
+  It happened for real when the producer added `breaking_episode_id` / `breaking_episode_start`
+  additively, with no `schema_version` change, and our declared type was wrong: every envelope
+  was rejected, silently, as *their* fault.
+- **Polling continues**, unlike the credential case. One malformed pass must not end a session,
+  and a producer-side fix should be picked up without a restart.
+- **The error goes to the session logger**, so it enters the §35 error pot — which means the run
+  grades `finished_with_errors` and exits `3` (#372) instead of finishing clean on a feed that
+  delivered nothing.
+
+An additive field with no version bump is invisible to a consumer until something breaks; this is
+what makes the break diagnosable instead of silent.
+
+**The version signal, from the producer's #65 note onward:** they bump the **MINOR** for an additive
+field and the **MAJOR** for a breaking one. So we **pin the major and let the minor pass** — a minor
+we have not seen means the shape grew and is readable by construction. Both paths now gate on it
+from one shared list (`SUPPORTED_SCHEMA_MAJORS`, `signal_data_types.py`): the archive reader always
+did, and the live transport now does too, routing an unsupported major through the same contract
+report above. Before that, a breaking bump would have been *mis-read* rather than refused — the
+mirror image of rejecting a readable envelope, and the quieter of the two failures.
+
+**A grown shape is named, once.** A minor bump says the shape grew; it does not say *what* grew, and
+our models discard whatever they do not declare, so a new field would otherwise stay invisible until
+something depended on it. The transport therefore diffs the arriving payload against the declared
+field names and announces the difference — once per distinct set, at NOTICE level:
+
+```
+📡 Producer envelope (schema 2.1) carries fields we do not read: result.half_life_minutes,
+   sentiment_regime. Not an error — the shape grew and we ignore the new parts.
+```
+
+Three deliberate properties: the values stay **discarded** (the projection is lean by design — a
+diagnosis needs the field's name, not its content); **nothing is stored** on the snapshot or in the
+parquet, so no per-row field exists to carry the answer; and it is computed **in the transport**, the
+one place holding the raw payload and the parsed object at the same time. Once per set, because a
+grown shape would otherwise log on every poll for the life of the session.
 
 
 ## Scenario usage
@@ -414,7 +488,9 @@ These two are the most misread fields in the archive.
 | `confidence` | 0.0 … 1.0. A `no_data` HOLD carries `0.0` by contract |
 | `urgency` | 0.0 … 1.0, how time-critical the producer judged the story |
 | `is_breaking` | an urgent story drove this symbol's signal. **A content flag, not a scheduling marker** — a normal grid pass carries it too. Real rate: ~6 % of result rows (crypto), ~3 % (forex) |
-| `reasoning` | the producer's one-line justification. Human-readable only; nothing keys on it |
+| `reasoning` | the producer's one-line justification. Nothing keys on it **here** — but see below: on their side it is the *measured* substrate, not decoration |
+| `breaking_episode_id` | the story's identity — see below. **Opaque**, empty outside an episode |
+| `breaking_episode_start` | a **flag**: true only on the pass that opened the episode |
 
 ### The breaking EDGE — derived here, never imported
 
@@ -437,6 +513,75 @@ reason:
 | the first envelope of a session | a session that boots into an active story has witnessed no entry; reporting one makes every restart look like a fresh event |
 | a gap | nothing resolved means the state is **unknown**, not `false`. Reading it as `false` would emit an exit going in and an entry coming out |
 | an overtaking pass (`evidence_regressed`) | an envelope resting on older evidence did not witness what came after it, so letting it flip the edge turns the producer's commit order into a transition that never happened |
+
+### `reasoning` vs. `breaking_reason` — measured substrate vs. display half
+
+Two text fields arrive per row and they are **not** interchangeable. The distinction is the
+producer's and it is worth keeping, because the names do not carry it:
+
+| Field | What it is | Use it for |
+|---|---|---|
+| `reasoning` | the **measured** substrate — their story clustering runs on it, and that threshold was calibrated over 1,455 real texts | grouping, comparing, clustering: the field with ground under it |
+| `breaking_reason` | the **display** half — a headline of at most 25 words, event first, written only where urgency is high *and* the articles name a concrete event. No calibration behind it | putting in front of a person |
+
+So `reasoning` is the one to compute on and `breaking_reason` the one to show. Its **coverage is not
+guaranteed by design**: absent on plenty of high-urgency rows, because "no nameable event" is a
+normal outcome and is explicitly not allowed to move the scores. A report built on it has holes, and
+the holes are not errors.
+
+**We do not consume `breaking_reason` today** (2026-08-25) — it is on the wire and in the archive,
+undeclared, so the transport announces it once as an unread field and the value is discarded. A
+breaking headline in an operator's run report is a real use and worth having eventually; the reason
+to wait is that its population rate is the least stable thing in the feed right now — the v3 → v4
+prompt change moves the condition deliberately, and the after-figure is not measured yet. Typing a
+field against a presence rate nobody can quote is how a fixture stops matching production.
+
+### The breaking EPISODE — the identity to gate on
+
+`is_breaking` and `breaking_edge` answer *"did this pass cross the threshold"*. Neither answers
+*"is this the same story as before"*, and that is the question a strategy actually has. The
+producer's own measurement settles which unit to react to:
+
+| Gate on | Transitions per episode | Transitions per story (crypto) |
+|---|---|---|
+| raw `is_breaking` edge | 19–21 | ~25–28 |
+| **episode** | 1 | 1.33 |
+
+So `breaking_episode_id` is the identity, and the worker exposes two outputs over it:
+
+| Output | Meaning |
+|---|---|
+| `breaking_episode_id` | the producer's label, passed through unchanged |
+| `breaking_episode_edge` | `opened` / `changed` / `closed` / `none`, derived here like `breaking_edge` |
+
+`changed` is the reason a separate edge exists: one story replaced by another with no quiet pass
+between reports **`none` on `breaking_edge`** — correctly, since the flag never moved — while the
+identity says a different story began. The same three restraints apply as for the boolean edge
+(first envelope, gap, overtaking pass all report `none`).
+
+**The id does NOT track `is_breaking`.** The producer sets it on every pass it counts as inside the
+episode: the opener, a hold-band pass where `is_breaking` is `false`, and a dip that arrives before
+the gap elapses. An episode outlives its own boolean — that hysteresis is why an id present only on
+breaking rows would have holes and would flicker as often as the raw edge.
+
+**Treat the id as opaque.** It reads `<pipeline_id>:<query>:<start>` and is meant to be legible in a
+log line, but the middle segment is free-text pipeline config and the string carries further colons,
+spaces and slashes. Never split it, never derive the symbol or the start instant from it — what it
+guarantees is byte equality: same story, same value. Length is bounded by their query text (70–100
+characters today), so store it as variable-length text and encode it if it ever reaches a URL path
+or a filename.
+
+**Availability.** Both fields are on the wire from 2026-08-24 onward and are **absent from
+everything archived before that** — the parquet columns exist but read as `''` / `false`, which is
+the pre-field era's meaning. Consequence worth stating plainly: an episode-gated strategy cannot be
+backtested on the pre-2026-08-24 archive at all, only on data carrying the fields.
+
+**Restart stability, with its condition.** The id survives the *producer's* restart — they replay
+persisted envelopes through the same episode rule and adopt the id they find rather than minting a
+new one. The guarantee is conditional and the condition matters to us: the replay window
+(`breaking.episode_seed_hours`, 72 h today) must contain at least one recorded **breaking** pass of
+the still-open episode. The opener itself may fall outside it. The producer treats that setting as
+contract-relevant and will announce a change. Longest hold-band tail they have measured: 33 h.
 
 ### Sweeping the delay — `signal_delay_minutes`
 

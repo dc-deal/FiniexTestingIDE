@@ -260,11 +260,3 @@ class ScenarioLogger(AbstractLogger):
             self.file_logger.close()
         self.file_logger = new_file_logger
 
-    def get_elapsed_time_seconds(self) -> float:
-        """
-        Get elapsed time since scenario start in seconds.
-
-        Returns:
-            Elapsed time in seconds
-        """
-        return (datetime.now(timezone.utc) - self.start_time).total_seconds()
