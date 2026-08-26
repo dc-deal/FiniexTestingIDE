@@ -48,7 +48,7 @@ class TestEnvironmentCheck:
     all timing measurements.
     """
 
-    def test_no_debugger_attached(self, request):
+    def test_no_debugger_attached(self):
         """
         Benchmark must run WITHOUT debugger attached.
 
@@ -62,10 +62,6 @@ class TestEnvironmentCheck:
         3. Run again WITHOUT debugger for valid measurements
         """
         debugger_active = is_debugger_attached()
-
-        # Store result for report generation (via fixture)
-        # This will be picked up by the benchmark_report fixture
-        request.config._debug_mode_detected = debugger_active
 
         if debugger_active:
             # Determine which debugger

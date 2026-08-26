@@ -360,6 +360,7 @@ class RunResultRow(BaseModel):
     sweep_objective: str | None = None           # the sweep spec's objective (report defaults to it)
     sweep_maximize: bool | None = None           # the sweep spec's rank direction
     scenario_set_name: str = ''
+    app_version: str = ''                        # program version; '' = fragment predates the field
     git_commit: str | None = None
     git_branch: str | None = None
     git_dirty: bool = False

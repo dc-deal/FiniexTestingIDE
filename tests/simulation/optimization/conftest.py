@@ -47,7 +47,7 @@ def make_provenance():
         return RunProvenance(
             param_hash=param_hash, status=status, error=error, run_id=run_id,
             run_timestamp=run_timestamp or datetime(2026, 1, 1, tzinfo=timezone.utc),
-            scenario_set_name=scenario_set_name, git_commit='abc1234',
+            scenario_set_name=scenario_set_name, app_version='1.3.1', git_commit='abc1234',
             git_branch='main', git_dirty=False,
             decision_logic_type='CORE/aggressive_trend', decision_version='1.0.0',
             worker_versions={'rsi_fast': '1.0.0'}, config_snapshot='{}',

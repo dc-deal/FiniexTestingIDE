@@ -30,6 +30,10 @@ class RunProvenance:
     run_id: str                     # run-timestamp dir name (join key → full run io/)
     run_timestamp: datetime         # UTC
     scenario_set_name: str
+    # The program version that produced the run. Git identity says WHICH CODE; this says
+    # which RELEASE it was, and a run artifact could not answer that at all before — the
+    # field existed in app_config and was read by the HTTP API alone.
+    app_version: str
     git_commit: Optional[str]
     git_branch: Optional[str]
     git_dirty: bool

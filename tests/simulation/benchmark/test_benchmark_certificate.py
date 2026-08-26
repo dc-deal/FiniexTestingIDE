@@ -262,6 +262,165 @@ class TestBenchmarkCertificate:
         print(f'   {len(metrics)} metrics recorded')
 
 
+def compare_breakdown_shape(older: Dict[str, Any], newer: Dict[str, Any]) -> Dict[str, list]:
+    """
+    Set difference between two reports' breakdown shapes.
+
+    The comparison that must happen BEFORE any value is diffed. The operation names are free
+    strings in `profile_times[...]`, with no enum to stop a rename, and `worker_decision` has
+    already absorbed another operation once — so two reports can carry the same key meaning two
+    different things. A set difference cannot catch a silent redefinition, but it does catch
+    every added, removed and renamed section, which is what makes the remaining values
+    comparable at all.
+
+    Args:
+        older: The earlier report
+        newer: The later report
+
+    Returns:
+        Mapping of section to its added / removed names; empty when the shapes match
+    """
+    diff: Dict[str, list] = {}
+    for section in ('operations', 'warmup_phases'):
+        before = set((older.get('breakdown') or {}).get('shape', {}).get(section, []))
+        after = set((newer.get('breakdown') or {}).get('shape', {}).get(section, []))
+        added, gone = sorted(after - before), sorted(before - after)
+        if added or gone:
+            diff[section] = [f'+{name}' for name in added] + [f'-{name}' for name in gone]
+    return diff
+
+
+class TestBreakdownShape:
+    """
+    The shape rule: compare the section NAMES before comparing their values.
+
+    Pinned here because the pitfall is not hypothetical. `process_tick_loop.py` carries the
+    comment "'worker_decision' now also covers the (tiny) bar-history" — the meaning of the
+    largest operation has already been extended once, and nothing typed stopped it.
+    """
+
+    def test_the_comparison_detects_an_added_section(self):
+        older = {'breakdown': {'shape': {'operations': ['a', 'b'], 'warmup_phases': []}}}
+        newer = {'breakdown': {'shape': {'operations': ['a', 'b', 'c'], 'warmup_phases': []}}}
+        assert compare_breakdown_shape(older, newer) == {'operations': ['+c']}
+
+    def test_the_comparison_detects_a_rename_as_both_halves(self):
+        """
+        A rename is an addition and a removal — never a value change.
+
+        Reporting it as one changed number is exactly the failure this guard exists for.
+        """
+        older = {'breakdown': {'shape': {'operations': ['worker_decision'], 'warmup_phases': []}}}
+        newer = {'breakdown': {'shape': {'operations': ['decision_worker'], 'warmup_phases': []}}}
+        assert compare_breakdown_shape(older, newer) == {
+            'operations': ['+decision_worker', '-worker_decision']}
+
+    def test_identical_shapes_compare_clean(self):
+        same = {'breakdown': {'shape': {'operations': ['a'], 'warmup_phases': ['p']}}}
+        assert compare_breakdown_shape(same, same) == {}
+
+    def test_committed_reports_agree_on_their_shape(self):
+        """
+        Runs over the committed artifacts — and says so when there is nothing to compare.
+
+        The breakdown is new, so no committed report carries one yet. A loop over an empty set
+        would pass while proving nothing, so this SKIPS with a reason and starts asserting by
+        itself once two certificates have been taken with it.
+        """
+        reports = []
+        for path in sorted(BENCHMARK_REPORTS_DIR.glob('benchmark_report_*.json')):
+            data = json.loads(path.read_text(encoding='utf-8'))
+            if data.get('breakdown'):
+                reports.append((path.name, data))
+        if len(reports) < 2:
+            pytest.skip(
+                f'{len(reports)} committed report(s) carry a breakdown — at least two are '
+                f'needed before shapes can be compared')
+        for (older_name, older), (newer_name, newer) in zip(reports, reports[1:]):
+            diff = compare_breakdown_shape(older, newer)
+            assert not diff, (
+                f'breakdown shape changed between {older_name} and {newer_name}: {diff}. '
+                f'The values of the remaining sections are still comparable; the changed ones '
+                f'are not, and must not be read as a regression.')
+
+
+class TestStabilityCalibration:
+    """
+    Pins the stability threshold against the reports it was calibrated on.
+
+    The threshold decides whether a measurement may be believed at all, so a number picked by
+    feel would be the weakest link in the chain. It was derived from the committed history:
+    the worst spread there is 13.0% (1.2.1), and the two runs of 2026-08-24 that the release
+    document declares unusable were 20.2% and 34.4%. The tests below keep both ends honest —
+    tightening the limit would retroactively invalidate a committed certificate, loosening it
+    past ~20% would let an unusable measurement through.
+
+    Runs without a benchmark: it reads the committed artifacts only.
+    """
+
+    # The two triples recorded in INTERNAL_release_todo_1_4.md as unusable measurements.
+    UNUSABLE_RUNS = ((60314.0, 53649.0, 44881.0), (66618.0, 58008.0, 55410.0))
+
+    def _limit(self) -> float:
+        config = json.loads(
+            (Path(__file__).parent / 'config' / 'benchmark_config.json')
+            .read_text(encoding='utf-8'))
+        return config['stability']['max_spread_percent']
+
+    def test_every_committed_report_passes_the_limit(self):
+        """
+        A threshold that would fail an artifact we already shipped is the wrong threshold.
+
+        This is what refuted the 10% first proposed: 1.2.1 spans 13.0%, and its certificate is
+        committed and green.
+        """
+        limit = self._limit()
+        too_wide = []
+        for path in sorted(BENCHMARK_REPORTS_DIR.glob('benchmark_report_*.json')):
+            runs = (json.loads(path.read_text(encoding='utf-8'))
+                    .get('raw_measurements', {}).get('ticks_per_second') or [])
+            spread = _spread_percent(runs)
+            if spread is not None and spread > limit:
+                too_wide.append(f'{path.name}: {spread:.1f}%')
+        assert not too_wide, (
+            f'the {limit}% stability limit would fail already-committed certificates: '
+            f'{too_wide}')
+
+    def test_the_known_unusable_measurements_are_refused(self):
+        """
+        The other end: the limit must actually catch what it was written for.
+
+        Both triples decline monotonically across their three runs — the signature the release
+        document reads as throttling rather than a code change.
+        """
+        limit = self._limit()
+        for runs in self.UNUSABLE_RUNS:
+            spread = _spread_percent(list(runs))
+            assert spread > limit, (
+                f'runs {runs} span only {spread:.1f}%, which the {limit}% limit accepts — but '
+                f'the release document records this measurement as unusable')
+
+
+def _spread_percent(values: list) -> Optional[float]:
+    """
+    Spread of a run series as a percentage of its smallest value.
+
+    Mirrors the helper in conftest.py deliberately: this test must be able to judge the
+    committed artifacts without importing the benchmark fixtures, which pull in a full
+    simulation stack.
+
+    Args:
+        values: Raw measurements of one metric
+
+    Returns:
+        The spread, or None when there is nothing to compare
+    """
+    usable = [v for v in values if isinstance(v, (int, float)) and v > 0]
+    if len(usable) < 2:
+        return None
+    return (max(usable) - min(usable)) / min(usable) * 100.0
+
+
 def _format_failed_metrics(report: Dict[str, Any]) -> str:
     """Format failed metrics for error message."""
     metrics = report.get('metrics', [])
