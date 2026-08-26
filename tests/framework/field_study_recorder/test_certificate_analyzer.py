@@ -11,14 +11,14 @@ from pathlib import Path
 
 import pytest
 
-from python.framework.reporting.field_study_certificate import FieldStudyCertificate
+from python.framework.reporting.certificates.field_study_certificate import FieldStudyCertificate
 
 _FIXTURES = Path('tests/fixtures/field_study')
 
 
 def test_pass_run_certifies_passed(tmp_path):
     cert_path = FieldStudyCertificate.generate(
-        str(_FIXTURES / 'pass_run.jsonl'), release_version='test', reports_dir=str(tmp_path)
+        str(_FIXTURES / 'pass_run.jsonl'), release_version='dev', reports_dir=str(tmp_path)
     )
     cert = json.loads(cert_path.read_text())
     assert cert['overall_status'] == 'PASSED'
@@ -30,8 +30,15 @@ def test_pass_run_certifies_passed(tmp_path):
 
 
 def test_fail_run_certifies_failed(tmp_path):
+    """
+    The analyzer's own verdict, not an identity guard's.
+
+    'dev' marks a rehearsal and is exempt from the version / dirty-tree guards, so a FAILED
+    here can only come from the run analysis. With a declared release the certificate would
+    fail on identity too, and this test would pass while proving nothing.
+    """
     cert_path = FieldStudyCertificate.generate(
-        str(_FIXTURES / 'fail_run.jsonl'), release_version='test', reports_dir=str(tmp_path)
+        str(_FIXTURES / 'fail_run.jsonl'), release_version='dev', reports_dir=str(tmp_path)
     )
     cert = json.loads(cert_path.read_text())
     assert cert['overall_status'] == 'FAILED'

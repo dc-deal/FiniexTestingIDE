@@ -231,6 +231,8 @@ class TestBenchmarkCertificate:
             'timestamp',
             'valid_until',
             'app_version',
+            'isolation_active',
+            'workspace_overrides',
             'system_id',
             'scenario',
             'runs',
@@ -476,7 +478,12 @@ class TestConfigProvenance:
         to make the artifact more informative. That would publish the private workspace with
         every release.
         """
-        overrides = self._provenance().get('workspace_overrides', {})
+        latest_report = _find_latest_report()
+        if latest_report is None:
+            pytest.skip('No report found - see test_report_exists')
+        # Shared identity, not benchmark-specific provenance: the same block, with the same
+        # privacy rule, is published by all four release-gate certificates.
+        overrides = _load_report(latest_report).get('workspace_overrides', {})
 
         assert set(overrides) == {'files_present', 'unnamed_files', 'applied'}, (
             f'workspace_overrides carries unexpected keys: {sorted(overrides)}. Only names, a '

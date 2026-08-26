@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from python.framework.reporting.signal_feed_certificate import SignalFeedCertificate
+from python.framework.reporting.certificates.signal_feed_certificate import SignalFeedCertificate
 from tests.live_signal_feed.conftest import probe_planned
 
 
@@ -99,7 +99,8 @@ class TestSignalFeedCertificate:
         """Every section a later release compares against is present."""
         data = _committed(request)
         required = [
-            'release_version', 'git_commit', 'timestamp', 'valid_until',
+            'release_version', 'app_version', 'git_commit', 'git_dirty', 'timestamp',
+            'valid_until', 'isolation_active', 'workspace_overrides',
             'overall_status', 'producer', 'series', 'provenance', 'cost', 'checks',
         ]
         missing = [field for field in required if field not in data]

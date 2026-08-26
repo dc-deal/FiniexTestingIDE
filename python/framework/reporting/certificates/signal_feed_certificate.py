@@ -19,7 +19,7 @@ Stages, kept apart on purpose: the observer READS, the validator JUDGES, this un
 
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -33,7 +33,10 @@ from python.framework.types.signal_certificate_types import (
     FeedProbeResult,
     SignalFeedAssessment,
 )
-from python.framework.utils.git_info_utils import get_git_commit, get_git_info
+from python.framework.reporting.certificates.certificate_identity_builder import (
+    build_certificate_identity,
+)
+from python.framework.utils.git_info_utils import get_git_info
 from python.framework.validators.signal_feed_contract_validator import (
     SignalFeedContractValidator,
 )
@@ -150,23 +153,25 @@ class SignalFeedCertificate:
         Returns:
             Path to the written certificate
         """
-        now = datetime.now(timezone.utc)
+        identity = build_certificate_identity(
+            release_version=release_version, comment=comment,
+            validity_days=VALIDITY_DAYS)
+        warnings = [w for w in (identity.version_mismatch(),
+                                identity.dirty_tree_warning()) if w]
+        status = 'PASSED' if assessment.is_passed() and not warnings else 'FAILED'
         certificate = {
-            'record_kind': 'certificate',
-            'release_version': release_version,
-            'git_commit': get_git_commit() or 'unknown',
-            'timestamp': now.isoformat(),
-            'valid_until': (now + timedelta(days=VALIDITY_DAYS)).isoformat(),
-            'comment': comment,
-            'overall_status': 'PASSED' if assessment.is_passed() else 'FAILED',
+            **identity.to_dict(),
+            'overall_status': status,
             **SignalFeedCertificate._body(assessment),
         }
+        if warnings:
+            certificate['identity_warnings'] = warnings
 
         reports_path = Path(reports_dir)
         reports_path.mkdir(parents=True, exist_ok=True)
         version_tag = re.sub(r'[^a-zA-Z0-9._-]', '_', release_version)
         filename = (f'{REPORT_PREFIX}_{version_tag}_'
-                    f"{now.strftime('%Y-%m-%d_%H%M%S')}.json")
+                    f"{identity.timestamp.strftime('%Y-%m-%d_%H%M%S')}.json")
         out_path = reports_path / filename
         with open(out_path, 'w', encoding='utf-8') as handle:
             json.dump(certificate, handle, indent=2)

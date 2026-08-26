@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import record_observed_adapter
+
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
@@ -30,7 +32,7 @@ _CREDENTIALS_PATH = Path('user_configs/credentials/kraken_credentials.json')
 
 
 @pytest.fixture(scope='module')
-def live_adapter():
+def live_adapter(request):
     """
     KrakenAdapter loaded from tracked broker settings with dry_run=True enforced.
 
@@ -57,6 +59,12 @@ def live_adapter():
         dry_run=broker_settings['dry_run'],
         transport=BrokerTransportConfig(**broker_settings['broker_transport']),
     )
+    # The certificate records what was BUILT here, not what the settings file says.
+    record_observed_adapter(
+        request,
+        phase='validate_only',
+        dry_run=broker_settings['dry_run'],
+        api_base_url=broker_settings['broker_transport']['api_base_url'])
     return adapter
 
 

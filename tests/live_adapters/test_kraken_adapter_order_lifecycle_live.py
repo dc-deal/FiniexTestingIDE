@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import record_observed_adapter
+
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
@@ -33,7 +35,7 @@ _CREDENTIALS_PATH = Path('user_configs/credentials/kraken_credentials.json')
 
 
 @pytest.fixture(scope='module')
-def live_adapter_real():
+def live_adapter_real(request):
     """
     KrakenAdapter with dry_run=False — places real orders against the Kraken API.
 
@@ -59,6 +61,12 @@ def live_adapter_real():
         dry_run=broker_settings['dry_run'],
         transport=BrokerTransportConfig(**broker_settings['broker_transport']),
     )
+    # The certificate records what was BUILT here, not what the settings file says.
+    record_observed_adapter(
+        request,
+        phase='real_orders',
+        dry_run=broker_settings['dry_run'],
+        api_base_url=broker_settings['broker_transport']['api_base_url'])
     return adapter
 
 

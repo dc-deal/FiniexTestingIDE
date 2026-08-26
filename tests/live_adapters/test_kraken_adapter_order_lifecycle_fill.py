@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import record_observed_adapter
+
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
@@ -39,7 +41,7 @@ _POLL_MAX = 10  # max query_order_sync attempts before giving up
 
 
 @pytest.fixture(scope='module')
-def live_adapter_fill():
+def live_adapter_fill(request):
     """
     KrakenAdapter with dry_run=False for fill validation.
 
@@ -64,6 +66,12 @@ def live_adapter_fill():
         dry_run=broker_settings['dry_run'],
         transport=BrokerTransportConfig(**broker_settings['broker_transport']),
     )
+    # The certificate records what was BUILT here, not what the settings file says.
+    record_observed_adapter(
+        request,
+        phase='real_orders',
+        dry_run=broker_settings['dry_run'],
+        api_base_url=broker_settings['broker_transport']['api_base_url'])
     return adapter
 
 

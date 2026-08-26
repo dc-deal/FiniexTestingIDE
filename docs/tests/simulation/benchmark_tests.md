@@ -158,12 +158,13 @@ Pins the stability threshold against the artifacts it was derived from — tight
 
 ## Validity Guards
 
-Five conditions set the report to `FAILED` before any tolerance is read. Each exists because a benchmark that cannot answer looks exactly like one that answered "fine".
+Six conditions set the report to `FAILED` before any tolerance is read. Each exists because a benchmark that cannot answer looks exactly like one that answered "fine".
 
 | Guard | Condition | Why |
 |---|---|---|
 | Debugger | A debugger is attached | Every timing is meaningless under tracing |
 | Version match | `--release-version` differs from `configs/app_config.json::version` | Otherwise a certificate can name a release it was not taken from. `dev` declares nothing and is exempt |
+| Dirty tree | A declared release is certified from uncommitted work | The recorded commit does not contain the code that produced the artifact. Shared with all four certificates; `dev` is exempt |
 | Config contract | An effective config value differs from `config_contract.required_effective` | The reference baseline was measured under those values; a deviation is a result of the configuration, not of the code |
 | Workload origin | The scenario set was resolved from `user_configs/` or a user algo dir | That path is **not** gated by `FINIEX_CONFIG_ISOLATION`, so a same-named private file silently replaces the workload |
 | Stability | The three raw throughput runs span more than `stability.max_spread_percent` | A median over runs that disagree is not a measurement |
@@ -424,14 +425,14 @@ Reports are saved as JSON with full audit trail in `tests/simulation/benchmark/r
   "scenario": "backtesting/backtesting_loadtest_40_scenarios.json",
   "runs": 3,
   "debug_mode_detected": false,
+  "isolation_active": true,
+  "workspace_overrides": {"files_present": ["app_config.json"], "unnamed_files": 0, "applied": false},
   "config_provenance": {
-    "isolation_active": true,
     "scenario_set_origin": "base",
     "scenario_set_path": "configs/scenario_sets/backtesting/backtesting_loadtest_40_scenarios.json",
     "required_effective": {
       "backtesting.execution.max_parallel_scenarios": {"expected": 99, "effective": 99}
-    },
-    "workspace_overrides": {"files_present": ["app_config.json"], "unnamed_files": 0, "applied": false}
+    }
   },
   "overall_status": "PASSED",
   "metrics": [
@@ -460,7 +461,8 @@ Reports are saved as JSON with full audit trail in `tests/simulation/benchmark/r
 - All measured values are **medians** across 3 runs
 - `raw_measurements` contains the individual run values for traceability
 - `breakdown` carries the per-stage medians plus the `shape` they were measured in — read the shape before comparing any value across reports
-- `config_provenance` records the configuration the run actually saw. `workspace_overrides` lists **names and a count only** — the report is committed to the public repository, so it must never carry what `user_configs/` contains
+- `record_kind` / `app_version` / `git_*` / `valid_until` / `isolation_active` / `workspace_overrides` come from the **shared** `CertificateIdentity` that all four release certificates carry — see [Release Certificates](../../architecture/release_certificates.md)
+- `config_provenance` holds what this certificate EXERCISED: the workload it measured and the config contract it was measured under. `workspace_overrides` (in the identity) lists **names and a count only** — the report is committed to the public repository, so it must never carry what `user_configs/` contains
 - `artifacts` lists all log files copied to `reports/logs/run_N/`
 - If `debug_mode_detected` is `true`, the report is automatically `FAILED` regardless of metric results — see **Validity Guards** for the other four conditions
 

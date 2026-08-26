@@ -17,9 +17,9 @@ import statistics
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -27,13 +27,17 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.reporting.certificates.certificate_config_utils import (
+    compare_config_contract,
+)
+from python.framework.reporting.certificates.certificate_identity_builder import (
+    build_certificate_identity,
+)
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
-from python.framework.utils.config_merge_utils import is_config_isolation_active
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from tests.simulation.benchmark.system_fingerprint import (
     SystemFingerprint,
     find_matching_system,
-    get_git_commit,
     get_system_fingerprint,
 )
 
@@ -117,29 +121,6 @@ def _spread_percent(values: List[float]) -> Optional[float]:
     return (max(usable) - min(usable)) / min(usable) * 100.0
 
 
-def _effective_config_value(config: Dict[str, Any], dotted_path: str) -> Any:
-    """
-    Read one value out of the merged app configuration by dotted path.
-
-    Reads the EFFECTIVE config — the one the run actually saw, after the user_configs/ cascade
-    — because what a base file declares and what a run measured are two different facts, and
-    only the second one belongs in a certificate.
-
-    Args:
-        config: The merged app config
-        dotted_path: Key path, e.g. 'backtesting.execution.max_parallel_scenarios'
-
-    Returns:
-        The value, or None when the path does not exist
-    """
-    node: Any = config
-    for key in dotted_path.split('.'):
-        if not isinstance(node, dict) or key not in node:
-            return None
-        node = node[key]
-    return node
-
-
 def _scenario_set_origin(config_path: Path, app_config: AppConfigManager) -> str:
     """
     Classify which resolution root produced the scenario set that was measured.
@@ -183,28 +164,6 @@ def _repo_relative(path: Path) -> str:
     if resolved.is_relative_to(root):
         return resolved.relative_to(root).as_posix()
     return resolved.as_posix()
-
-
-def _workspace_override_files() -> Tuple[List[str], int]:
-    """
-    Which content-merge override files exist in the private workspace.
-
-    Names only, never values, and only names that already exist in configs/. The benchmark
-    report is a COMMITTED release artifact, so anything it lists enters the public repository;
-    a file whose name has no committed counterpart is counted rather than named, so the listing
-    itself cannot disclose what the private workspace contains.
-
-    Returns:
-        Tuple of (override names that mirror a committed config, count of further files)
-    """
-    user_dir = Path('user_configs')
-    if not user_dir.is_dir():
-        return [], 0
-
-    committed = {path.name for path in Path('configs').glob('*.json')}
-    present = [path.name for path in user_dir.glob('*.json')]
-    named = sorted(name for name in present if name in committed)
-    return named, len(present) - len(named)
 
 
 def is_debugger_attached() -> bool:
@@ -515,17 +474,14 @@ def benchmark_report(
     Returns:
         Complete benchmark report dict
     """
-    release_version = request.config.getoption('release_version')
-    tester_comment = request.config.getoption('comment')
-    # The version the TREE says, beside the one the operator typed. `--release-version` is a
-    # label; app_config is a measurement. Recording only the label is how a certificate ends
-    # up naming a release it was not taken from — the same distinction as a producer's commit
-    # against its version string.
+    # The shared identity: declared version beside the version the TREE says, git state,
+    # validity window, and the environment the measurement was taken in. All four
+    # certificates build it the same way (certificate_identity_builder).
+    identity = build_certificate_identity(
+        release_version=request.config.getoption('release_version'),
+        comment=request.config.getoption('comment'),
+        validity_days=benchmark_config['certificate']['validity_days'])
     app_config_manager = AppConfigManager()
-    app_version = app_config_manager.get_version()
-    now = datetime.now(timezone.utc)
-    validity_days = benchmark_config['certificate']['validity_days']
-    valid_until = now + timedelta(days=validity_days)
 
     tolerances = benchmark_config['tolerances']
 
@@ -534,13 +490,12 @@ def benchmark_report(
     warnings: List[str] = []
     overall_status = 'PASSED'
 
-    # A DECLARED release must match the tree. 'dev' declares nothing, so it is exempt.
-    if release_version != 'dev' and release_version != app_version:
-        overall_status = 'FAILED'
-        warnings.append(
-            f"VERSION MISMATCH: certifying '{release_version}' from a tree that says "
-            f"'{app_version}' (configs/app_config.json). Bump the version before taking the "
-            f'certificate, or the artifact names a release it did not measure.')
+    # A DECLARED release must match the tree, and must not come from uncommitted work.
+    # Both rules live on the identity, so all four certificates enforce them identically.
+    for identity_warning in (identity.version_mismatch(), identity.dirty_tree_warning()):
+        if identity_warning:
+            overall_status = 'FAILED'
+            warnings.append(identity_warning)
 
     # Check debug mode FIRST - invalidates entire benchmark
     if debug_mode_detected:
@@ -555,18 +510,12 @@ def benchmark_report(
     # change that silently. The content-merge cascade (user_configs/app_config.json — process
     # fan-out, log volume) is gated by config isolation, but only by a setdefault that any
     # command line can switch off; the scenario-set file-replace is not gated at all.
-    effective_config = app_config_manager.get_config()
-    contract = benchmark_config.get('config_contract', {}).get('required_effective', {})
-    required_effective: Dict[str, Any] = {}
-    for dotted_path, expected in contract.items():
-        effective = _effective_config_value(effective_config, dotted_path)
-        required_effective[dotted_path] = {'expected': expected, 'effective': effective}
-        if effective != expected:
-            overall_status = 'FAILED'
-            warnings.append(
-                f'CONFIG CONTRACT: {dotted_path} is {effective!r}, but the reference baseline '
-                f'was measured at {expected!r}. The deviations below are a result of the '
-                f'configuration, not of the code.')
+    required_effective, contract_warnings = compare_config_contract(
+        app_config_manager.get_config(),
+        benchmark_config.get('config_contract', {}).get('required_effective', {}))
+    if contract_warnings:
+        overall_status = 'FAILED'
+        warnings.extend(contract_warnings)
 
     scenario_origin = _scenario_set_origin(
         benchmark_execution_runs[0].scenario_config_path, app_config_manager)
@@ -578,16 +527,13 @@ def benchmark_report(
             f'and config isolation does not gate that path — this run measured a different '
             f'workload than the reference.')
 
-    isolation_active = is_config_isolation_active()
-    override_names, unnamed_override_count = _workspace_override_files()
-    overrides_applied = (not isolation_active
-                         and bool(override_names or unnamed_override_count))
-    if overrides_applied:
+    if identity.workspace_overrides.applied:
+        overrides = identity.workspace_overrides
         warnings.append(
             f'WORKSPACE CONFIG APPLIED: config isolation is off and '
-            f'{len(override_names) + unnamed_override_count} override file(s) exist, so this '
-            f'measurement ran on a personal configuration. The contract above pins the values '
-            f'that move the number; anything else differed unrecorded.')
+            f'{len(overrides.files_present) + overrides.unnamed_files} override file(s) exist, '
+            f'so this measurement ran on a personal configuration. The contract above pins the '
+            f'values that move the number; anything else differed unrecorded.')
 
     # Stability BEFORE tolerance: a median computed from runs that disagree is not a
     # measurement, so believing or disbelieving it is equally unfounded. Same lesson as the
@@ -715,11 +661,7 @@ def benchmark_report(
     artifacts = _copy_benchmark_logs(benchmark_execution_runs)
 
     report = {
-        'release_version': release_version,
-        'app_version': app_version,
-        'timestamp': now.isoformat(),
-        'valid_until': valid_until.isoformat(),
-        'git_commit': get_git_commit(),
+        **identity.to_dict(),
         'system_id': validated_system,
         'system_details': {
             'cpu_model': system_fingerprint.cpu_model,
@@ -729,24 +671,15 @@ def benchmark_report(
         },
         'scenario': benchmark_config['scenario'],
         'runs': benchmark_metrics.get('runs', 1),
-        'comment': tester_comment,
         'debug_mode_detected': debug_mode_detected,
-        # Which configuration produced the measurement. `required_effective` is the part that
-        # is asserted — the values the reference baseline was taken under, each read back from
-        # the merged config the run actually saw. `workspace_overrides` is context only, and
-        # names WITHOUT values by construction: this artifact is committed, so it must never
-        # carry what the private workspace contains.
+        # What this certificate EXERCISED. The environment it was taken in (isolation,
+        # workspace overrides) is part of the shared identity above, because it means the same
+        # thing for all four certificates; a workload and a config contract do not.
         'config_provenance': {
-            'isolation_active': isolation_active,
             'scenario_set_origin': scenario_origin,
             'scenario_set_path': _repo_relative(
                 benchmark_execution_runs[0].scenario_config_path),
             'required_effective': required_effective,
-            'workspace_overrides': {
-                'files_present': override_names,
-                'unnamed_files': unnamed_override_count,
-                'applied': overrides_applied
-            }
         },
         'overall_status': overall_status,
         'metrics': metrics_list,

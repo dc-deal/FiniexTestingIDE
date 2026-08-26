@@ -21,11 +21,12 @@ reconciliation alert count.
 
 import json
 import re
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from python.framework.utils.git_info_utils import get_git_commit
+from python.framework.reporting.certificates.certificate_identity_builder import (
+    build_certificate_identity,
+)
 
 # Default home for committed certificates — sibling of tests/live_adapters/reports
 # and tests/simulation/benchmark/reports (release-gate suites).
@@ -165,22 +166,28 @@ class FieldStudyCertificate:
         """
         analysis = FieldStudyCertificate.analyze(jsonl_path)
 
-        now = datetime.now(timezone.utc)
+        identity = build_certificate_identity(
+            release_version=release_version, comment=comment,
+            validity_days=VALIDITY_DAYS)
+        warnings = [w for w in (identity.version_mismatch(),
+                                identity.dirty_tree_warning()) if w]
         certificate = {
-            'record_kind': 'certificate',
-            'release_version': release_version,
-            'git_commit': get_git_commit() or 'unknown',
-            'timestamp': now.isoformat(),
-            'valid_until': (now + timedelta(days=VALIDITY_DAYS)).isoformat(),
-            'comment': comment,
+            **identity.to_dict(),
             'source_jsonl': str(jsonl_path),
             **analysis,
         }
+        # A real-money certificate that names the wrong release, or comes from uncommitted
+        # work, is worse than none: the run cost money and the artifact cannot be tied to
+        # the code that earned it.
+        if warnings:
+            certificate['overall_status'] = 'FAILED'
+            certificate['warnings'] = warnings + certificate.get('warnings', [])
 
         reports_path = Path(reports_dir)
         reports_path.mkdir(parents=True, exist_ok=True)
         version_tag = re.sub(r'[^a-zA-Z0-9._-]', '_', release_version)
-        filename = f"field_study_report_{version_tag}_{now.strftime('%Y-%m-%d_%H%M%S')}.json"
+        filename = (f'field_study_report_{version_tag}_'
+                    f"{identity.timestamp.strftime('%Y-%m-%d_%H%M%S')}.json")
         out_path = reports_path / filename
         with open(out_path, 'w', encoding='utf-8') as f:
             json.dump(certificate, f, indent=2)

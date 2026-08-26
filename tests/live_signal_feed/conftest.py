@@ -21,7 +21,7 @@ failure mode this whole gate exists to prevent. It therefore fails loudly instea
 import pytest
 
 from python.configuration.sentiment_config_manager import SentimentConfigManager
-from python.framework.reporting.signal_feed_certificate import (
+from python.framework.reporting.certificates.signal_feed_certificate import (
     DEFAULT_REPORTS_DIR,
     SignalFeedCertificate,
 )

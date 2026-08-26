@@ -36,6 +36,7 @@ top, and the account-protection guards are certified separately (#358) — also 
 
 ```
 tests/live_adapters/
+├── test_live_adapter_certificate.py             # Validates the committed certificate (no broker contact)
 ├── test_kraken_adapter_order_lifecycle_dry.py    # AddOrder dry-run (validate=true), no funds
 ├── test_kraken_adapter_order_lifecycle_live.py   # Full lifecycle, real orders, no fills
 └── test_kraken_adapter_order_lifecycle_fill.py   # Fill validation, real MARKET execution
@@ -225,3 +226,36 @@ no changes needed there when adding new adapter test files.
 - `configs/brokers/kraken/kraken_spot_broker_config.json` — symbol specs
 - `configs/market_config.json` — connection settings for `kraken_spot` (override via `user_configs/market_config.json`)
 - Issue #304 — when `dry_run` is retired, fixture key changes to `'paper_mode': True`
+
+---
+
+## The Certificate
+
+A run writes a PASS/FAIL certificate to `reports/`, validated afterwards by
+`test_live_adapter_certificate.py` — which reads the committed artifact and contacts no broker.
+Before that test existed the certificate was written, committed, and never read again, so a
+stale artifact from an earlier release satisfied nobody's assertion.
+
+It carries the shared `CertificateIdentity` (declared release beside the version the tree says,
+git state including `dirty`, validity window, isolation flag, workspace overrides) — see
+[Release Certificates](../../architecture/release_certificates.md).
+
+**What it records is what the fixtures BUILT, not what a config file declares:**
+
+```json
+"observed": {
+  "phases": [
+    {"phase": "validate_only", "dry_run": true,  "api_base_url": "https://api.kraken.com"},
+    {"phase": "real_orders",   "dry_run": false, "api_base_url": "https://api.kraken.com"}
+  ]
+}
+```
+
+The distinction was a real defect: `configs/broker_settings/kraken_spot.json` says
+`dry_run: true`, while `_fill` and `_live` set it to `False` on their own adapter and place real
+orders. The certificate used to re-read that file and therefore published `dry_run: true` —
+understating exactly what it existed to prove. The fixtures now report their effective settings
+via `record_observed_adapter()` at construction.
+
+If a run happens to contain no real-order phase, the certificate says so explicitly
+(`NO REAL ORDER` warning) rather than reading as a full proof.

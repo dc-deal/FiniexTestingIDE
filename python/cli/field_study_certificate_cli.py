@@ -11,7 +11,7 @@ Usage:
 
 import argparse
 
-from python.framework.reporting.field_study_certificate import (
+from python.framework.reporting.certificates.field_study_certificate import (
     DEFAULT_REPORTS_DIR,
     FieldStudyCertificate,
 )
