@@ -337,6 +337,49 @@ short < 30min, moderate < 1h, large above. Weekends are never an expected closur
 producing engine runs 24/7 regardless of the traded market, so a weekend hole is a real outage.
 Full detail: [Discovery System](../discovery_system.md).
 
+## Episode identity backfill (2026-08-27) — a reconstruction, not a recovery
+
+The archived range **2026-07-16 → 2026-08-26** was re-exported by the producer to carry
+`breaking_episode_id` and `breaking_episode_start`, and re-imported here with `--override`. This
+is the one **deliberate exception** to the rule that a closed archive day re-exports
+byte-identically. Only days before ~2026-08-24 changed; everything after already carried the
+fields.
+
+**Why it matters for a backtest, and it is not cosmetic.** Three read-time policy changes landed
+inside that window on the producer side: hysteresis (08-17), the episode gap 45 → 150 min (08-18),
+and — the consequential one — the episode key moving from the base currency to the retrieval query
+(08-18). Before that change `USDJPY` / `USDCAD` / `USDCHF` shared a single `USD` key, so one
+symbol's story held another symbol's episode open. The replay uses today's grouping and splits them
+correctly.
+
+**Consequence: FX episodes before 2026-08-18 come out BETTER than what was served live at the
+time, and therefore differ from it.** A diff against anything captured off the live wire in that
+window will disagree for FX, wholesale and correctly. That is the right answer for a backtest — a
+strategy is tested against the engine that will run, not the one that ran — but a comparison
+against an old live capture is not a regression signal in that range.
+
+**Verified after import**, independently re-counted rather than taken on trust: 12,243 populated
+ids (9,506 crypto + 2,737 forex), 71 distinct episodes (55 + 16), every episode with exactly one
+opener, 0 empty strings, 0 unparseable lines, `schema_version` 1.0 and 2.0 both present.
+
+Two properties of this data worth knowing before gating a strategy on episodes:
+
+- **48,488 of 65,380 result rows carry no `breaking_episode_id` key at all** (rows outside any
+  episode in pre-2026-08-24 envelopes). A reader that restores columns sees `null`; the live wire
+  always has the key present. Deliberately not filled with explicit nulls — an absent key means
+  the same thing, and rewriting an immutable archive for a cosmetic difference is the worse trade.
+- **One episode runs 5.4 days** (`crypto_sentiment`, BTC, 2026-08-18 04:50 → 08-23 14:20, 807
+  passes). Not an artefact: a symbol parked at the exit gate never releases its episode. An
+  episode-gated strategy will meet episodes of that length in this data.
+
+The range spans at least **10 configuration generations** and both schema majors — see
+[Envelope fields](#envelope-fields--what-each-one-actually-means) on `config_fingerprint`, which is
+the field to gate on when comparing two archive days. It is the SUPERSET stamp; `prompt_hash` /
+`prompt_version` is the narrower one. Every prompt bump moves both; a feed or retrieval change
+moves only the config fingerprint.
+
+---
+
 ## Source vs. decision basis — two planes, two questions
 
 The coverage report above describes the **source**: what the archive could offer. It cannot say
