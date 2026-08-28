@@ -22,6 +22,8 @@ from python.framework.types.api.report_types import (
     PendingOrdersReport,
     PortfolioReport,
     ProfilingReport,
+    RunInfo,
+    RunListResponse,
     RunSummary,
     ScenarioDetailsReport,
     SignalReport,
@@ -31,6 +33,18 @@ from python.framework.types.api.report_types import (
 )
 
 router = APIRouter()
+
+
+@router.get('/reports/runs', response_model=RunListResponse)
+def list_runs() -> RunListResponse:
+    """
+    Index of runs carrying persisted report artifacts, newest first.
+
+    Returns:
+        The RunListResponse (empty list when no run has been persisted yet)
+    """
+    runs: list[RunInfo] = ReportStore().list_runs()
+    return RunListResponse(runs=runs, count=len(runs))
 
 
 @router.get('/reports/runs/{run_id}/trade-history', response_model=TradeHistoryReport)

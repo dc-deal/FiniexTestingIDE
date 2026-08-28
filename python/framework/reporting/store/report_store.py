@@ -9,7 +9,7 @@ report artifacts live in the run's `io/` subfolder (`IO_SUBDIR`).
 
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from python.framework.reporting.io.aggregated_portfolio_report_io import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
@@ -69,6 +69,7 @@ from python.framework.types.api.report_types import (
     PendingOrdersReport,
     PortfolioReport,
     ProfilingReport,
+    RunInfo,
     RunSummary,
     ScenarioDetailsReport,
     SignalReport,
@@ -90,13 +91,19 @@ class ReportStore:
     def __init__(self, logs_root: Path = Path('logs')):
         self._logs_root = Path(logs_root)
 
-    def list_runs(self) -> List[str]:
-        """Run ids (run-timestamp dirs) carrying a trade-history artifact, newest first."""
-        run_ids = set()
+    def list_runs(self) -> List[RunInfo]:
+        """Runs carrying a trade-history artifact, newest first.
+
+        Returns:
+            One identity row per run — id, log group, and the owning set / profile name
+        """
+        runs: Dict[str, RunInfo] = {}
         for group in self._GROUPS:
             for artifact in (self._logs_root / group).glob(f'*/*/{IO_SUBDIR}/{TRADE_HISTORY_ARTIFACT}'):
-                run_ids.add(artifact.parent.parent.name)
-        return sorted(run_ids, reverse=True)
+                run_dir = artifact.parent.parent
+                runs.setdefault(run_dir.name, RunInfo(
+                    run_id=run_dir.name, group=group, name=run_dir.parent.name))
+        return sorted(runs.values(), key=lambda run: run.run_id, reverse=True)
 
     def get_trade_history(
         self,

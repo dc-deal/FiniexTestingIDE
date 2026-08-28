@@ -22,7 +22,9 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestBars` | `test_invalid_timeframe_returns_400` | 400 + `error: invalid_timeframe` |
 | `TestBars` | `test_from_after_to_returns_400` | 400 + `error: invalid_range` |
 | `TestBars` | `test_unknown_broker_returns_404` | 404 + `error: not_found` |
+| `TestReportRuns` | `test_list_runs` | Run index: `count`, newest-first order, `group` + `name` per row |
+| `TestReportRuns` | `test_no_persisted_run_is_not_an_error` | Empty store returns `200` with an empty index, not 404 |
 
 ## Mocking Strategy
 
-`BarsIndexManager` and `MarketConfigManager` are patched at their import location in each router module. `pd.read_parquet` is patched for the bars test to return a minimal in-memory DataFrame. No filesystem access occurs during the test run.
+`BarsIndexManager`, `MarketConfigManager` and `ReportStore` are patched at their import location in each router module. `pd.read_parquet` is patched for the bars test to return a minimal in-memory DataFrame. No filesystem access occurs during the test run.

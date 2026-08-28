@@ -74,6 +74,7 @@ For production use, restrict `allow_origins` to the actual deployment domain. No
 | GET | `/api/v1/brokers/{broker}/symbols` | Symbols for a broker with `market_type` |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/coverage` | Available date range and timeframes |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/bars` | OHLCV bars (query: `timeframe`, `from`, `to`) |
+| GET | `/api/v1/reports/runs` | Index of runs carrying report artifacts, newest first (`run_id` + log group + set / profile name) — the entry point the routes below are addressed by |
 | GET | `/api/v1/reports/runs/{run_id}/trade-history` | Trade-history report (query: `symbol`, `close_reason`, `start`, `end`) |
 | GET | `/api/v1/reports/runs/{run_id}/order-history` | Order-history report (query: `symbol`, `status`) |
 | GET | `/api/v1/reports/runs/{run_id}/portfolio` | Portfolio report (per-unit full projection + per-currency aggregates) |
@@ -82,7 +83,12 @@ For production use, restrict `allow_origins` to the actual deployment domain. No
 | GET | `/api/v1/reports/runs/{run_id}/scenario-details` | Scenario-details report (per-scenario execution + signal metadata, sim-only) |
 | GET | `/api/v1/reports/runs/{run_id}/run-summary` | Run-summary (cross-section KPIs: per-currency + global order counts) |
 | GET | `/api/v1/reports/runs/{run_id}/signal` | Signal-configuration report (per-source provenance + the run's decision basis: fresh / stale / blind ticks) |
-| GET | `/api/v1/reports/runs/{run_id}/execution-stats` | Execution-stats report (per-unit order counts + summed totals) |
+| GET | `/api/v1/reports/runs/{run_id}/worker-decision` | Worker/decision report (per-unit component stats) |
+| GET | `/api/v1/reports/runs/{run_id}/profiling` | Profiling report (per-operation timings + inter-tick stats) |
+| GET | `/api/v1/reports/runs/{run_id}/aggregated-portfolio` | Aggregated-portfolio report (cross-unit, per-currency) |
+| GET | `/api/v1/reports/runs/{run_id}/warnings-errors` | Warnings/errors report (the run's tiered advisory + error pot) |
+| GET | `/api/v1/reports/runs/{run_id}/broker` | Broker report (broker + symbol specifications the run executed against) |
+| GET | `/api/v1/reports/runs/{run_id}/feed-stability` | Feed-stability report (disturbance episodes as observed spans) |
 
 ### Timeframes Endpoint Details
 
@@ -105,7 +111,13 @@ re-derive anything: `ReportStore` resolves a run by `run_id` under the logs tree
 report artifacts), reads the `trade_history.json` / `order_history.json` / `portfolio.json`
 artifact, and applies the section's filters
 server-side so the frontend renders rather than derives. A run without the requested artifact
-returns `404 run_not_found`. The model definitions live in `framework/types/api/report_types.py`;
+returns `404 run_not_found`.
+
+`GET /api/v1/reports/runs` is the index the `{run_id}` routes are addressed by: a consumer
+discovers runs there rather than guessing timestamp directory names. Each row carries the log
+group (`scenario_sets` = simulation, `autotrader` = live) and the owning set / profile name, so
+a run picker needs no follow-up request per run. A run appears once it has a trade-history
+artifact; an empty index is a normal `200`, never a 404. The model definitions live in `framework/types/api/report_types.py`;
 the pipeline is documented in [reporting_pipeline.md](reporting_pipeline.md).
 
 ### Error Responses

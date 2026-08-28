@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.types.api.report_types import RunInfo
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -243,3 +244,35 @@ class TestBars:
             )
         assert r.status_code == 404
         assert r.json()['error'] == 'not_found'
+
+
+# ---------------------------------------------------------------------------
+# Report runs (run index)
+# ---------------------------------------------------------------------------
+
+class TestReportRuns:
+
+    def test_list_runs(self, client):
+        store = MagicMock()
+        store.list_runs.return_value = [
+            RunInfo(run_id='20260615_130000', group='autotrader', name='my_profile'),
+            RunInfo(run_id='20260615_120000', group='scenario_sets', name='my_set'),
+        ]
+        with patch('python.api.endpoints.reports_router.ReportStore', return_value=store):
+            r = client.get('/api/v1/reports/runs')
+        assert r.status_code == 200
+        data = r.json()
+        assert data['count'] == 2
+        assert [run['run_id'] for run in data['runs']] == [
+            '20260615_130000', '20260615_120000']
+        assert data['runs'][0]['group'] == 'autotrader'
+        assert data['runs'][0]['name'] == 'my_profile'
+
+    def test_no_persisted_run_is_not_an_error(self, client):
+        """An empty store is a legitimate empty index, never a 404."""
+        store = MagicMock()
+        store.list_runs.return_value = []
+        with patch('python.api.endpoints.reports_router.ReportStore', return_value=store):
+            r = client.get('/api/v1/reports/runs')
+        assert r.status_code == 200
+        assert r.json() == {'runs': [], 'count': 0}

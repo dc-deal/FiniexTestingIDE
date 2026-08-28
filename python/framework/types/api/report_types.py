@@ -297,6 +297,19 @@ class ScenarioDetailsReport(BaseModel):
     units: list[ScenarioDetailsRow]
 
 
+class RunInfo(BaseModel):
+    """One discoverable run in the report store — identity only, no report content."""
+    run_id: str
+    group: str              # 'scenario_sets' (sim) | 'autotrader' (live)
+    name: str               # scenario-set name (sim) | profile name (live)
+
+
+class RunListResponse(BaseModel):
+    """The run index every other report route is addressed by (#391)."""
+    runs: list[RunInfo]
+    count: int
+
+
 class RunSummaryCurrency(BaseModel):
     """
     Run-wide KPIs for ONE account currency (#390 prework). Composed once from the per-section
