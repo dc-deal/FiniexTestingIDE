@@ -33,6 +33,7 @@ python python/cli/signal_index_cli.py status                # coverage per sourc
 python python/cli/signal_index_cli.py rebuild               # force index rebuild
 python python/cli/signal_index_cli.py inspect crypto_sentiment BTCUSD
 python python/cli/signal_index_cli.py connect-check              # is the producer reachable, and which one
+python python/cli/signal_index_cli.py stream-probe [--seconds N] # open the push stream briefly and print what arrived
 ```
 
 The importer (`SignalDataImporter`) explodes each envelope into **one parquet row per
@@ -95,6 +96,7 @@ is packed, while it still sits in the inbox.
 ```json
 "producer": {
   "active": "dev",
+  "request_timeout_s": 20.0,
   "endpoints": {
     "dev":        { "base_url": "http://host.docker.internal:8100",
                     "credentials_file": "rag_credentials_dev.json" },
@@ -107,12 +109,16 @@ is packed, while it still sits in the inbox.
 Switching is one word in `user_configs/sentiment_config.json`:
 `{"producer": {"active": "production"}}`.
 
+`request_timeout_s` sits on the producer rather than on a transport, because the readers that need
+it are transport-independent: the connect check and the certificate observer run whether or not a
+session is streaming.
+
 **The address and the credential belong to the endpoint, not to the transport, and they switch
 together.** That pairing is the point: a production token against a development address answers
-`401`, and a `401` stops the poll loop — so a switch that moved only the address would present as
-a feed outage diagnosed at the wrong system. It also removes a second hazard: `poll` and `stream`
-used to carry an address each, so they could name different producers, and the identity probe
-would then answer about an engine that is not the one delivering.
+`401`, and a `401` stops the stream — so a switch that moved only the address would present as
+a feed outage diagnosed at the wrong system. It also removes a second hazard: the transports used
+to carry an address each, so they could name different producers, and the identity probe would
+then answer about an engine that is not the one delivering.
 
 An `active` naming an unregistered endpoint is a **hard error** listing the known names, never a
 fallback to the previous one. The session log states which endpoint answered, next to the
@@ -124,15 +130,16 @@ credential's source file:
 
 ### The producer's routes
 
-Four routes exist; three are free reads and one spends money. The split is theirs, and it is
+Five routes exist; four are free reads and one spends money. The split is theirs, and it is
 what lets a release gate certify the feed without buying a single LLM call.
 
 | Route | Token | Gives | Notes |
 |---|---|---|---|
 | `GET /v1/health` | no | `journal_id`, `environment`, engine version, per-worker cadence, budget + stall state | their one always-open route, rate-limited |
 | `GET /v1/build` | no | `version`, `commit`, `committed_at`, `dirty`, `started_at` | **open by their default, behind a `build_info_public` switch.** Their repository is public, so a commit hash discloses nothing not already on GitHub; behind a private repository the same field would fingerprint known defects — hence the switch. Treat absence as a policy answer, never as a fault |
-| `GET /v1/pipelines` | yes | registered sources: symbols, `outcome_type`, `trigger_type`, `cadence_seconds` | |
-| `GET /v1/pipelines/{id}/latest` | yes | one envelope | |
+| `GET /v1/pipelines` | yes | registered sources (`outcome_type`, `trigger_type`, `cadence_seconds`) **plus the engine-wide `stream` block**: `heartbeat_seconds`, `replay_window_hours` | spends nothing — it reads an in-memory registry |
+| `GET /v1/pipelines/{id}/latest` | yes | one envelope | fed the interim pull path; today the connect check's credential proof |
+| `GET /v1/stream/{id}` | yes | the push stream: `signal` / `heartbeat` / `control` frames (#468) | the pipeline is a PATH segment, not a query parameter |
 | `POST /v1/pipelines/{id}/run` | — | **spends** on their LLM provider | **does not exist in production** (404). Never call it |
 
 **`version` is not a build identity.** Measured 2026-08-25: they deployed a new commit at 16:28
@@ -147,8 +154,8 @@ which is the one moment a sequence counter can be re-minted.
 answers only expensively: is the address reachable, **which** producer answered, and was our
 credential accepted.
 
-It probes **only the two free routes** — `/v1/health` and `/v1/pipelines/{id}/latest` — and never
-the paid run route, so the check itself can never cost money. `/v1/health` is probed **without** a
+It probes **only free routes** — `/v1/health`, `/v1/pipelines` and `/v1/pipelines/{id}/latest` —
+and never the paid run route, so the check itself can never cost money. `/v1/health` is probed **without** a
 token (the producer documents it as the one no-token route), which is what separates the two
 failure modes: health failing is the *address*, `/latest` failing alone is the *credential*.
 
@@ -158,6 +165,7 @@ failure modes: health failing is the *address*, `/latest` failing alone is the *
    Address:    https://finiex-rag.duckdns.org
    Credential: user_configs/credentials/rag_credentials.json
    ✅ GET /v1/health                              journal 138c68e48b15 (production) · engine 0.3.3
+   ✅ GET /v1/pipelines                           crypto_sentiment (600s) · keep-alive 20s · replay window 24h
    ✅ GET /v1/pipelines/crypto_sentiment/latest   seq 331 · epoch 1 · schema 2.0 · origin live
    ✅ Reachable and authenticated.
 ```
@@ -173,12 +181,12 @@ is empty — with a tracked empty default and a gitignored override, "configured
 otherwise indistinguishable. Exit code is non-zero on failure, so it works as a pre-flight.
 
 **A rejected credential is not an outage.** `401` / `403` are reported as a credential problem and
-never as unreachability — the same distinction the running poll source now makes, where it also
-**stops polling**: retrying cannot fix a token, and the staleness contract then declares the feed
+never as unreachability — the same distinction the running transport makes, where it also **stops
+reconnecting**: retrying cannot fix a token, and the staleness contract then declares the feed
 blind, which is a state the decision logic is required to handle.
 
 **An unreadable envelope is not an outage either.** The producer answered; our schema could not
-read what it said. The poll source classifies that separately — state `contract`, its own
+read what it said. The transport classifies that separately — state `contract`, its own
 `contract_errors` counter, and a session-logger error naming the field that disagreed:
 
 ```
@@ -193,8 +201,8 @@ Three properties, each with a reason:
   It happened for real when the producer added `breaking_episode_id` / `breaking_episode_start`
   additively, with no `schema_version` change, and our declared type was wrong: every envelope
   was rejected, silently, as *their* fault.
-- **Polling continues**, unlike the credential case. One malformed pass must not end a session,
-  and a producer-side fix should be picked up without a restart.
+- **The connection stays open**, unlike the credential case. One malformed pass must not end a
+  session, and a producer-side fix should be picked up without a restart.
 - **The error goes to the session logger**, so it enters the §35 error pot — which means the run
   grades `finished_with_errors` and exits `3` (#372) instead of finishing clean on a feed that
   delivered nothing.
@@ -224,7 +232,183 @@ Three deliberate properties: the values stay **discarded** (the projection is le
 diagnosis needs the field's name, not its content); **nothing is stored** on the snapshot or in the
 parquet, so no per-row field exists to carry the answer; and it is computed **in the transport**, the
 one place holding the raw payload and the parsed object at the same time. Once per set, because a
-grown shape would otherwise log on every poll for the life of the session.
+grown shape would otherwise log on every arrival for the life of the session.
+
+
+### The push stream — one connection, the producer's full cadence (#468)
+
+**The stream is the only live transport.** The interim pull path — a 60 s poll against `/latest`,
+always declared the throwaway half — was removed on 2026-08-28, once the stream had carried a real
+session. What it cost is why: the whole penalty fell on the **out-of-band** passes, where a
+scheduled envelope seen 30 s late is meaningless against a ten-minute grid but a breaking one seen
+30 s late is 30 s of the move. `/latest` also cannot serve an envelope that was **superseded between
+two polls** — an out-of-band pass followed by a scheduled one was unrecoverable there, and
+`?since=<seq>` is exactly what fixes it. The route itself remains in use as the connect check's
+credential proof, because `/v1/health` is open and only a gated route can prove a token answers.
+
+One connection per pipeline carrying the producer's **full** cadence — not a breaking-only channel.
+Three properties decided that cross-repo: a breaking-only channel is edge-triggered *into* the state
+and never reports the all-clear; a quiet one is indistinguishable from a frozen producer; and with
+the cadence on the wire, **silence longer than the producer's own interval is itself the staleness
+signal**.
+
+```
+GET /v1/stream/{pipeline_id}?history=N            the pipeline is a PATH segment
+GET /v1/stream/{pipeline_id}?since=<seq>&epoch=<n>
+
+history and since are mutually exclusive          -> 400
+since without epoch, epoch without since          -> 400
+unknown pipeline_id                               -> 404
+event: signal | heartbeat | control               one `data:` line, no `id:`, no `cursor:` line
+```
+
+The pipeline travels in the path because the producer's authorization derives the grant from the
+matched route's first path parameter. A query-parameter form would be *authenticated but ungated* —
+reachable with any valid token, including one entitled to nothing.
+
+**Two rewind diagnoses, two responses, and they must not collapse into one branch:**
+
+| Code | Means | Response |
+|---|---|---|
+| `live` | replay or snapshot done; everything after is live | state `live` |
+| `replay_truncated` | our cursor was older than the replay window | accept the hole: the cursor jumps to just before the oldest they hold, so the next arrival is contiguous and no replay is requested for envelopes they already refused |
+| `epoch_changed` | the **producer** rewound (restore, PITR, promotion) | move the cursor to just before the new epoch's head and let the reconnect the loop performs anyway do the work. Terminal on both paths — they emit it and close — which is why there is ONE resync path (the connect) and no second handler inside the live loop |
+| `cursor_ahead` | **somebody else** did, most likely our own store was restored | operator alert, **never** a silent resume. Resuming would paper over exactly the thing worth seeing |
+| `auth_revoked` | the token was revoked mid-stream | stop. Retrying cannot fix a token, and `401` on reconnect is treated identically |
+
+The producer's rule for the whole family, which settles it in one sentence rather than three
+decisions: **a control code that says your cursor is UNUSABLE is terminal** — they emit it and
+close, on connect and mid-stream alike. `replay_truncated` is deliberately not one of them: it says
+the cursor is *older than what will be replayed*, which is recoverable, so the marker precedes the
+replay and the connection continues.
+
+**`stream_epoch: 0` means "not known yet", never generation zero.** The sequencer holds no counter
+row for that stream. Adopt the first real epoch that arrives; never read `0 → N` as a series change,
+and never take 0 as a cursor — `?epoch=0` describes no series. The producer shipped the mirror image
+of this and caught it in test: comparing a first envelope's real epoch against 0 emitted
+`epoch_changed` and closed every consumer attached to a newly added pipeline.
+
+`auth_revoked` is **specified but not yet reachable**: their token registry is loaded at boot, so a
+revocation today means a restart, and a restart closes every connection anyway. The handler stays —
+until the config-reload work lands, a dead credential arrives as the `401` on reconnect, which gets
+the same treatment.
+
+A `404` and a `400` stop the transport too. They are refusals of the REQUEST, not outages: a client
+that cannot tell "does not exist" from "exists but idle" waits forever on a misspelled pipeline id
+while the panel shows a healthy-looking reconnect loop.
+
+**The watchdog is a CONNECTION watchdog and never a freshness claim.** The keep-alive proves the
+socket is alive; a stalled `seq` proves the producer is not, and only the second is the staleness
+contract's business. It is the SOCKET's own timeout — the interval the producer *serves* times a
+local multiple (`stream.heartbeat_timeout_multiple`, default 3) — so silence past the promised
+keep-alive surfaces where the read happens instead of needing a second thread to notice it.
+
+A single line is bounded too, which is an unattended-month concern rather than a grammar one: the
+decoder holds a line until its newline arrives, so a producer emitting bytes without one would grow
+that buffer until the process died. Past the bound the line is refused as a contract violation and
+the decoder resets.
+
+> Deliberately one timeout and not a short polling one. A shorter read timeout is a trap worth
+> recording: CPython marks a socket file object **permanently** timed out after its first expiry,
+> so the *second* read raises a plain `OSError` rather than `TimeoutError` and a perfectly healthy
+> connection is torn down one poll after the last frame. The transport then degrades into a
+> reconnect loop — worse than the pull path it replaces — while the panel reports transport faults
+> against the producer. A session end stays responsive by a different means: it **shuts the socket
+> down**, which makes a blocked read return at once, where closing alone would not.
+>
+> The CONNECT gets its own, shorter budget for the same reason turned inside out: until it
+> returns there is no socket to shut down, so that phase cannot be interrupted at all. Bounding it
+> at the watchdog meant a session end could hold for a minute against an unreachable producer —
+> measured 58 s at the served 20 s keep-alive, 9 s once the budget was separated.
+
+**A replay has two bounds, and the second is a volume bound.** `replay_window_hours` bounds *age* —
+but a window that holds nothing clamps nothing, so a cursor far in the past replayed a whole tail in
+one burst. `max_replay_frames` (their default 200, ≈7.7 MB at the measured frame size) bounds
+*volume*. Whichever bites harder is reported through the same `replay_truncated` marker with
+`oldest_available_seq` naming where the replay actually starts, so there is no second code and no
+branch on our side. On a cadence faster than M10 the volume bound can bite first.
+
+**Frame size, measured rather than quoted.** A production frame is **38.3 kB** (`crypto_sentiment`,
+9 rows / 87 source refs) or **36.9 kB** (`forex_macro_sentiment`), which is ≈**5.5 MB per day per
+stream** at the M10 cadence. The producer's contract text previously said ~13.5 kB and ~1.02 MB/day;
+those figures understate by ~2.8x per frame and ~5.4x per day and were corrected on 2026-08-27. Size
+the inbox, the replay buffer and archive growth against the measured numbers.
+
+**The cursor is the last CONTIGUOUS position, not the highest seen.** An envelope arriving past a
+hole is still enqueued — withholding a valid envelope helps nobody, and the provider deduplicates by
+`(stream_epoch, seq)` — while the cursor stays behind the hole so a reconnect asks for it. The same
+hole is asked for **once**: a second encounter means the producer cannot fill it, and reconnecting
+forever against an unfillable hole turns a reported gap into an outage of our own making. What a
+hole costs is that the series does not advance across it, which #434 / #436 already describe.
+
+### Boot: mount, then bridge
+
+```
+mount archive slice ──► last (epoch, seq) ──► ?since=&epoch= ──► bounded replay ──► control/live
+        │                                                                                │
+        └─ no cursor (pre-stream archive, first session) ──► ?history=1 ──────────────────┘
+```
+
+Without this a live session starts **BLIND**: its SIGNAL workers hold nothing and the first decision
+waits out a full producer cadence. On a thirty-day unattended run that is every restart. The bridge
+mounts the archive slice and takes its newest `(stream_epoch, seq)` as the connect cursor, so the
+opening state is **STALE** instead — knowing something old is a strictly better input to a staleness
+contract than knowing nothing, because "old" is a fact a decision logic can act on.
+
+The slice is bounded by the producer's own `replay_window_hours`, so the mounted archive and the
+bounded replay meet rather than overlap. The index deliberately also returns the carrier of the last
+snapshot at or before the window's start, which is what keeps an archive older than the window from
+mounting as nothing. Such a cursor is **flagged at boot** — the replay will be truncated and the
+operator hears it before it happens rather than as a surprise. The archive is read **once**; from the
+first frame on, the stream is the only thing that extends the series.
+
+**The first session cannot use `?since`** — our archive predates the stream contract and carries no
+position. A property to state, not a bug to work around.
+
+**The bridge rests on a producer-side guarantee, and it is worth naming because it is invisible from
+here.** Taking the archive's last `(stream_epoch, seq)` as the connect cursor assumes the archive's
+numbering *is* the stream's numbering. On the producer's side both paths read one column and neither
+re-validates, so that was true by construction — but by construction is not by assertion, and three
+plausible changes there (a re-validation on either path, a model default applied on one only, a field
+added to the exporter's line) would have broken it with every existing test staying green. Since
+2026-08-27 they pin it directly: frame == archive line minus `collected_msc` and
+`collected_msc_timebase`, with those two as the only permitted difference in either direction, on a
+deliberately rich envelope. If that ever changes, the bridge would connect with a cursor from a
+different series and nothing here would say so.
+
+### What is configured, and what is served
+
+`stream` carries only what is genuinely transport behaviour:
+
+```json
+"stream": {
+  "enabled": false,
+  "pipeline_id": "",
+  "heartbeat_timeout_multiple": 3.0,
+  "reconnect_backoff_initial_s": 5.0,
+  "reconnect_backoff_max_s": 60.0
+}
+```
+
+`heartbeat_seconds` and `replay_window_hours` are **not here**. The producer serves both on
+`GET /v1/pipelines`, at response level because they are properties of the engine rather than of a
+stream, and both are mandatory: a session that cannot read them refuses to start rather than guessing
+a keep-alive interval, which would be a watchdog that fires on a healthy feed. `cadence_seconds` sits
+on the pipeline row for the same reason it is seconds and not an `M10` token — a staleness threshold
+is computed from the number.
+
+Their in-band `retry:` is read and reported, never obeyed: it is a default for a client with no
+policy of its own, and ours governs.
+
+### Looking at the stream by hand
+
+```bash
+python python/cli/signal_index_cli.py stream-probe --seconds 25
+```
+
+Opens the stream exactly as a session would, holds it, and prints the transport tape plus what
+reached the inbox. Deliberately **cursor-less** — a probe claims no position, because one that
+advanced a session's cursor would consume envelopes the session it was meant to diagnose still needs.
 
 
 ## Scenario usage
@@ -337,6 +521,49 @@ short < 30min, moderate < 1h, large above. Weekends are never an expected closur
 producing engine runs 24/7 regardless of the traded market, so a weekend hole is a real outage.
 Full detail: [Discovery System](../discovery_system.md).
 
+## Episode identity backfill (2026-08-27) — a reconstruction, not a recovery
+
+The archived range **2026-07-16 → 2026-08-26** was re-exported by the producer to carry
+`breaking_episode_id` and `breaking_episode_start`, and re-imported here with `--override`. This
+is the one **deliberate exception** to the rule that a closed archive day re-exports
+byte-identically. Only days before ~2026-08-24 changed; everything after already carried the
+fields.
+
+**Why it matters for a backtest, and it is not cosmetic.** Three read-time policy changes landed
+inside that window on the producer side: hysteresis (08-17), the episode gap 45 → 150 min (08-18),
+and — the consequential one — the episode key moving from the base currency to the retrieval query
+(08-18). Before that change `USDJPY` / `USDCAD` / `USDCHF` shared a single `USD` key, so one
+symbol's story held another symbol's episode open. The replay uses today's grouping and splits them
+correctly.
+
+**Consequence: FX episodes before 2026-08-18 come out BETTER than what was served live at the
+time, and therefore differ from it.** A diff against anything captured off the live wire in that
+window will disagree for FX, wholesale and correctly. That is the right answer for a backtest — a
+strategy is tested against the engine that will run, not the one that ran — but a comparison
+against an old live capture is not a regression signal in that range.
+
+**Verified after import**, independently re-counted rather than taken on trust: 12,243 populated
+ids (9,506 crypto + 2,737 forex), 71 distinct episodes (55 + 16), every episode with exactly one
+opener, 0 empty strings, 0 unparseable lines, `schema_version` 1.0 and 2.0 both present.
+
+Two properties of this data worth knowing before gating a strategy on episodes:
+
+- **48,488 of 65,380 result rows carry no `breaking_episode_id` key at all** (rows outside any
+  episode in pre-2026-08-24 envelopes). A reader that restores columns sees `null`; the live wire
+  always has the key present. Deliberately not filled with explicit nulls — an absent key means
+  the same thing, and rewriting an immutable archive for a cosmetic difference is the worse trade.
+- **One episode runs 5.4 days** (`crypto_sentiment`, BTC, 2026-08-18 04:50 → 08-23 14:20, 807
+  passes). Not an artefact: a symbol parked at the exit gate never releases its episode. An
+  episode-gated strategy will meet episodes of that length in this data.
+
+The range spans at least **10 configuration generations** and both schema majors — see
+[Envelope fields](#envelope-fields--what-each-one-actually-means) on `config_fingerprint`, which is
+the field to gate on when comparing two archive days. It is the SUPERSET stamp; `prompt_hash` /
+`prompt_version` is the narrower one. Every prompt bump moves both; a feed or retrieval change
+moves only the config fingerprint.
+
+---
+
 ## Source vs. decision basis — two planes, two questions
 
 The coverage report above describes the **source**: what the archive could offer. It cannot say
@@ -440,6 +667,35 @@ parity test guards this).
 
 Several fields read as self-explanatory and are not. This is the reference; the traps below were
 each found the hard way against the real archive.
+
+### What we consume, and why the list is shorter than the wire
+
+> **The live envelope model and the parquet projection are ONE contract. A field is consumed in
+> BOTH or in NEITHER.** The one exception is producer or transport HEALTH, and it never rides on the
+> runtime envelope — it lives on the transport plane, where a worker cannot reach it.
+
+This is not thrift. A field readable in a live session but absent from the archive means a
+**backtest stops predicting the live run**, which is the framework's central claim rather than a
+preference. And "we only look at it, we do not decide on it" does not save it: once a field sits on
+the runtime snapshot it is in reach of the decision logic whether that was intended or not.
+**Presence is reach.**
+
+So the producer's wire is deliberately wider than our models, and the transport says so out loud —
+it names every unread field once per distinct set, at NOTICE level, because their MINOR bump says
+the shape GREW without saying WHAT grew. Measured against the dev engine on 2026-08-27, five fields
+arrive that we do not declare:
+
+| Field | Why not |
+|---|---|
+| `result.base_currency` / `result.quote_currency` | base and quote are resolved authoritatively from the broker's symbol specification (#265); a string-derived split is a hard error. Taking the producer's would be a second answer to a question already answered |
+| `available_msc_resyncs` / `available_msc_max_correction_ms` | health, so they would clear the exception — but they describe something we handle and can measure better ourselves. Our resolution gate already clamps a stamp that steps backwards; what was missing was our own COUNT, and that is derived from observed state rather than taken as a foreign declaration |
+| `result.breaking_reason` | the display half, deliberately not consumed (see below) |
+
+**Prefer deriving over consuming.** Where a fact about our own processing is on offer as an upstream
+field, count it ourselves: the number is then identical in simulation and live over the same
+archive, it needs no parquet column and no re-import, and it does not depend on the producer
+continuing to send it. A cross-check against an upstream field belongs at **import** time — validate
+and refuse — not in the runtime path, where it needs no field at all.
 
 ### Time
 

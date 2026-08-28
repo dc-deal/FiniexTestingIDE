@@ -95,7 +95,7 @@ class SentimentProducerEndpoint(BaseModel):
     One reachable producer instance: where it is and which credential opens it.
 
     The two fields belong together and must switch together. A production token against
-    a development address is a 401, and a 401 now stops the poll loop — so splitting them
+    a development address is a 401, and a 401 now stops the stream — so splitting them
     across two settings turns a one-word environment switch into a silent feed outage
     diagnosed at the wrong system.
     """
@@ -118,6 +118,10 @@ class SentimentProducerConfig(BaseModel):
 
     active: str = 'dev'
     endpoints: Dict[str, SentimentProducerEndpoint] = Field(default_factory=dict)
+    # How long one read of a producer route may take. It sits on the PRODUCER and not on
+    # a transport because the readers that need it are transport-independent: the connect
+    # check and the certificate observer run whether or not a session is streaming.
+    request_timeout_s: float = 20.0
 
     def get_active_endpoint(self) -> SentimentProducerEndpoint:
         """
@@ -141,35 +145,24 @@ class SentimentStreamConfig(BaseModel):
 
     Live-only. A simulation never opens a connection, and an AutoTrader mock session
     mounts its series from the archive instead, so this block is simply unused there.
+
+    Unknown keys are REFUSED. Two fields left this block when the producer began serving
+    them (`heartbeat_timeout_s`, `replay_window_hours`), and a workspace override still
+    carrying one would otherwise be dropped in silence — the operator would be configuring
+    a watchdog that no longer reads what they wrote.
     """
+    model_config = ConfigDict(extra='forbid')
+
     enabled: bool = False
     pipeline_id: str = ''
-    # Producer-side replay bound. Ours only needs to know it so a truncated recovery is
-    # reported as such rather than mistaken for a short history.
-    replay_window_hours: float = 24.0
     # A connection watchdog, never a freshness claim: the producer's keep-alive proves the
-    # socket is alive, while a stalled seq proves the producer is not.
-    heartbeat_timeout_s: float = 60.0
+    # socket is alive, while a stalled seq proves the producer is not. A MULTIPLE rather
+    # than a duration, because the interval it multiplies is served by the producer on
+    # /v1/pipelines — a local copy of their number reports a feed outage that never
+    # happened on the day they change it. The replay window is served the same way.
+    heartbeat_timeout_multiple: float = 3.0
     reconnect_backoff_initial_s: float = 5.0
     reconnect_backoff_max_s: float = 60.0
-
-
-class SentimentPollConfig(BaseModel):
-    """
-    The interim pull path, used while the producer's stream does not exist yet.
-
-    Deliberately the throwaway half: a poll returns an envelope up to a full producer
-    interval old (measured against the live engine: 101.8 s), which is precisely what the
-    stream removes. Everything behind the inbox is the permanent path.
-    """
-    enabled: bool = False
-    pipeline_id: str = ''
-    interval_s: float = 60.0
-    request_timeout_s: float = 20.0
-    # Back-off applied when the producer reports it could not serve from its store. A GET
-    # never spends on the producer side, but a store that cannot answer is a condition to
-    # wait out rather than to hammer.
-    degraded_backoff_s: float = 300.0
 
 
 class SentimentHealthConfig(BaseModel):
@@ -192,10 +185,19 @@ class SentimentHealthConfig(BaseModel):
 
 
 class SentimentConfig(BaseModel):
-    """Root of sentiment_config.json."""
+    """
+    Root of sentiment_config.json.
+
+    Unknown keys are REFUSED for the same reason the stream block refuses them: the whole
+    `poll` block left this file when the push transport took over, and a workspace
+    override still carrying one would be dropped in silence — an operator would be
+    enabling a transport that no longer exists and reading a healthy log for a session
+    that never opened a connection.
+    """
+    model_config = ConfigDict(extra='forbid')
+
     producer: SentimentProducerConfig = Field(default_factory=SentimentProducerConfig)
     stream: SentimentStreamConfig = Field(default_factory=SentimentStreamConfig)
-    poll: SentimentPollConfig = Field(default_factory=SentimentPollConfig)
     health: SentimentHealthConfig = Field(default_factory=SentimentHealthConfig)
     sources: Dict[str, SentimentSourceConfig] = Field(default_factory=dict)
 

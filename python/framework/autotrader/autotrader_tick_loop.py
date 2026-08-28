@@ -30,8 +30,10 @@ from python.framework.process.tick_pipeline_core import (
     run_ghost_pass,
 )
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
-from python.framework.signal_data.signal_inbox import SignalInbox
-from python.framework.signal_data.signal_poll_source import SignalPollSource
+from python.framework.signal_data.transport.abstract_signal_transport import (
+    AbstractSignalTransport,
+)
+from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
@@ -99,7 +101,7 @@ class AutotraderTickLoop:
         api_monitor: Optional[ApiPerfMonitor] = None,
         state_store: Optional[AlgoStateStore] = None,
         signal_inbox: Optional[SignalInbox] = None,
-        signal_transport: Optional[SignalPollSource] = None,
+        signal_transport: Optional[AbstractSignalTransport] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue

@@ -5,7 +5,7 @@ Pipeline object creation for live AutoTrader sessions.
 Mirrors process_startup_preparation.py for backtesting.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -16,13 +16,16 @@ from python.framework.autotrader.autotrader_warmup_preparator import AutotraderW
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.exceptions.signal_data_errors import SignalSourceUnresolvedError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_startup_preparation import inject_signal_providers
+from python.framework.signal_data.transport.signal_boot_bridge import SignalBootBridge
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
+from python.framework.signal_data.producer.signal_pipelines_reader import fetch_pipeline_registry
 from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
@@ -31,7 +34,14 @@ from python.framework.types.autotrader_types.display_label_cache import DisplayL
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
-from python.framework.types.signal_data_types import SignalSeries, SignalSourceMode
+from python.framework.types.signal_data_types import (
+    SignalBootMount,
+    SignalLiveBoot,
+    SignalSeries,
+    SignalSourceMode,
+    SignalSourceResolution,
+    SignalTransportKind,
+)
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
@@ -128,6 +138,87 @@ def create_session_file_logger(run_dir: Path, date_suffix: str, log_level) -> Fi
         file_path=session_logs_dir,
         log_level=log_level
     )
+
+
+def prepare_live_signal_boot(
+    config: AutoTraderConfig,
+    signal_source: SignalSourceResolution,
+    logger: ScenarioLogger,
+) -> SignalLiveBoot:
+    """
+    Establish what a live session knows before it opens a connection (#468).
+
+    Two things happen here and both happen exactly once. The producer's registry is read,
+    which is where the keep-alive interval and the replay window come from — served rather
+    than configured, so a change on their side cannot reach us as a phantom outage. And the
+    archive slice is mounted, which is what turns a restart's opening state from BLIND into
+    STALE.
+
+    A configuration problem ABORTS the session (§35): a bot told to trade on live sentiment
+    must not quietly proceed on whatever happened to be on disk. An EMPTY archive does not —
+    starting blind is a legitimate state that the staleness contract already describes.
+
+    Args:
+        config: The session's profile
+        signal_source: The resolved live source, naming the transport
+        logger: Session logger
+
+    Returns:
+        The mounted slice, its cursor, and the served stream values where they apply
+    """
+    sentiment = SentimentConfigManager().get_config()
+    empty = SignalBootMount(
+        series=SignalSeries(signal_kind=signal_source.signal_kind, snapshots=[]),
+        reason='live poll transport — no boot mount')
+
+    if signal_source.transport is not SignalTransportKind.STREAM:
+        return SignalLiveBoot(mount=empty)
+
+    pipeline_id = sentiment.stream.pipeline_id
+    if not pipeline_id:
+        raise SignalSourceUnresolvedError(
+            'The signal stream is enabled but stream.pipeline_id is empty — name the '
+            'producer pipeline in sentiment_config.json.')
+
+    producer = SentimentConfigManager().resolve_active_producer()
+    registry = fetch_pipeline_registry(producer)
+    if not registry.ok:
+        raise SignalSourceUnresolvedError(
+            f'The signal stream is enabled but the producer registry could not be read '
+            f'from {producer.describe()}: {registry.detail}. The session would connect '
+            f'without knowing the keep-alive interval its watchdog measures against.')
+    if pipeline_id not in registry.pipelines:
+        known = ', '.join(sorted(registry.pipelines)) or '(none registered)'
+        raise SignalSourceUnresolvedError(
+            f"stream.pipeline_id '{pipeline_id}' is not registered with producer "
+            f'{producer.name}. Known pipelines: {known}.')
+    if registry.stream is None:
+        raise SignalSourceUnresolvedError(
+            f'Producer {producer.name} does not serve heartbeat_seconds and '
+            f'replay_window_hours on /v1/pipelines. The stream reads both rather than '
+            f'configuring them, and guessing a keep-alive interval is a watchdog that '
+            f'fires on a healthy feed.')
+
+    settings = registry.stream
+    # The one wall-clock observation this makes, and it is a SETUP question — how far back
+    # to read the archive — never an event stamp (§9).
+    now = datetime.now(timezone.utc)
+    mount = SignalBootBridge.mount(
+        pipeline_id=pipeline_id,
+        symbol=config.symbol,
+        signal_kind=signal_source.signal_kind,
+        replay_window_hours=settings.replay_window_hours,
+        now=now,
+        logger=logger)
+
+    logger.info(f'📡 Signal boot bridge: {mount.reason}')
+    if mount.beyond_replay_window:
+        logger.warning(
+            f"📡 The mounted cursor is older than the producer's replay window "
+            f'({settings.replay_window_hours:.0f}h), so the connect replay will be '
+            f'truncated and the gap between archive and stream stays unfilled. The '
+            f'staleness contract covers it; a fresher signal import would close it.')
+    return SignalLiveBoot(mount=mount, stream_settings=settings)
 
 
 def setup_pipeline(
@@ -259,12 +350,17 @@ def setup_pipeline(
         package=package,
         sentiment_config=SentimentConfigManager().get_config())
 
+    live_boot = None
     if signal_source.mode is SignalSourceMode.MOUNTED:
         inject_signal_providers(workers, package, logger)
     elif signal_source.mode is SignalSourceMode.LIVE:
+        live_boot = prepare_live_signal_boot(config, signal_source, logger)
+        # ONE provider per source, shared by every worker reading it. Not one each: the
+        # arrival merge extends one provider per signal kind, so per-worker providers would
+        # leave every worker after the first permanently blind.
+        provider = SignalDataProvider(live_boot.mount.series)
         for worker in [w for w in workers if isinstance(w, AbstractSignalWorker)]:
-            worker.set_signal_provider(SignalDataProvider(
-                SignalSeries(signal_kind=worker.get_consumed_signal_kind(), snapshots=[])))
+            worker.set_signal_provider(provider)
     logger.info(f'📡 {signal_source.reason}')
 
     # === Phase 7: DecisionLogic ===
@@ -287,6 +383,7 @@ def setup_pipeline(
         parallel_workers=config.execution.parallel_workers,
         worker_decision_tracking=config.execution.performance_tracking.worker_decision_tracking,
         signal_source=signal_source,
+        signal_boot=live_boot,
     )
     worker_orchestrator.initialize()
     logger.debug(f'✅ Orchestrator initialized: {len(workers)} workers')

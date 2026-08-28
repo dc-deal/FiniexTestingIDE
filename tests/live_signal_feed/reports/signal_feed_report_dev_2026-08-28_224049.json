@@ -1,0 +1,803 @@
+{
+  "record_kind": "certificate",
+  "release_version": "dev",
+  "app_version": "1.4.0",
+  "timestamp": "2026-08-28T22:40:49.207491+00:00",
+  "valid_until": "2026-11-26T22:40:49.207491+00:00",
+  "git_commit": "8c0e254",
+  "git_branch": "dev-v-1-4",
+  "git_dirty": true,
+  "uncommitted_count": 2,
+  "comment": "first certificate over the push transport, taken after the interim poll path was removed",
+  "isolation_active": false,
+  "workspace_overrides": {
+    "files_present": [
+      "app_config.json",
+      "market_config.json",
+      "sentiment_config.json"
+    ],
+    "unnamed_files": 0,
+    "applied": true
+  },
+  "overall_status": "PASSED",
+  "build": {
+    "producer": {
+      "offered": true,
+      "version": "0.3.3",
+      "commit": "7d18c9f",
+      "committed_at": "2026-08-28T22:37:36+00:00",
+      "dirty": false,
+      "started_at": "2026-08-28T22:39:59.926120+00:00",
+      "detail": ""
+    },
+    "consumer": {
+      "branch": "dev-v-1-4",
+      "commit": "8c0e254",
+      "committed_at": "2026-08-28T19:26:09+00:00",
+      "message": "rework signal polling",
+      "dirty": true,
+      "uncommitted_count": 2
+    }
+  },
+  "producer": {
+    "endpoint_aimed_at": "production",
+    "base_url": "https://finiex-rag.duckdns.org",
+    "credential_source": "user_configs/credentials/rag_credentials.json",
+    "credential_configured": true,
+    "journal_id": "138c68e48b15",
+    "journal_environment": "production",
+    "engine_version": "0.3.3",
+    "pass_timeout_s": 300,
+    "budget_suspended": false,
+    "pipeline_id": "crypto_sentiment"
+  },
+  "series": {
+    "seq_first": 1001,
+    "seq_last": 1003,
+    "stream_epochs": [
+      1
+    ],
+    "observation_count": 3,
+    "stream_seconds_held": 25.0,
+    "cadence_seconds_reported": 600.0,
+    "cadence_minutes_configured": 10.0,
+    "previous_certificate": "tests/live_signal_feed/reports/signal_feed_report_dev_2026-08-28_223939.json"
+  },
+  "provenance": {
+    "schema_version": "2.0",
+    "data_origin": "live",
+    "trigger_reason": "boot",
+    "prompt_version": "4",
+    "prompt_id": "sentiment-crypto",
+    "prompt_hash": "c45e07e1b260",
+    "config_fingerprint": "afe4ac5a3331",
+    "row_count": 9,
+    "frame_bytes": 42523,
+    "envelope_age_at_fetch_s": 5.158,
+    "unread_fields": [
+      "available_msc_max_correction_ms",
+      "available_msc_resyncs",
+      "result.base_currency",
+      "result.breaking_reason",
+      "result.quote_currency"
+    ],
+    "unknown_vocabulary": [],
+    "rows_without_evidence": 0
+  },
+  "cost": {
+    "spent": "nothing",
+    "transport": "stream",
+    "routes_used": [
+      [
+        "GET",
+        "/v1/health"
+      ],
+      [
+        "GET",
+        "/v1/build"
+      ],
+      [
+        "GET",
+        "/v1/pipelines"
+      ],
+      [
+        "GET",
+        "/v1/stream/crypto_sentiment"
+      ]
+    ]
+  },
+  "checks": [
+    {
+      "name": "health_route_answers",
+      "ok": true,
+      "detail": "GET /v1/health answered without a token, so the address is right"
+    },
+    {
+      "name": "credential_accepted",
+      "ok": true,
+      "detail": "the producer accepted the token from user_configs/credentials/rag_credentials.json"
+    },
+    {
+      "name": "latest_route_answers",
+      "ok": true,
+      "detail": "3 envelope(s) read"
+    },
+    {
+      "name": "run_touched_only_free_routes",
+      "ok": true,
+      "detail": "GET /v1/health \u00b7 GET /v1/build \u00b7 GET /v1/pipelines \u00b7 GET /v1/stream/crypto_sentiment"
+    },
+    {
+      "name": "producer_build_is_reproducible",
+      "ok": true,
+      "detail": "0.3.3 @ 7d18c9f, built clean"
+    },
+    {
+      "name": "consumer_build_is_committed",
+      "ok": true,
+      "detail": "2 uncommitted file(s) in our tree \u2014 recorded, not asserted: no release version was declared, so this run is a rehearsal"
+    },
+    {
+      "name": "producer_named_a_journal",
+      "ok": true,
+      "detail": "journal 138c68e48b15"
+    },
+    {
+      "name": "journal_is_not_a_development_instance",
+      "ok": true,
+      "detail": "the producer calls this journal 'production'"
+    },
+    {
+      "name": "endpoint_aimed_at_production",
+      "ok": true,
+      "detail": "aimed at the 'production' endpoint"
+    },
+    {
+      "name": "data_origin_is_live",
+      "ok": true,
+      "detail": "origins observed: ['live']"
+    },
+    {
+      "name": "schema_major_supported",
+      "ok": true,
+      "detail": "schema 2.0 (supported majors: 1.x, 2.x)"
+    },
+    {
+      "name": "trigger_reason_at_top_level",
+      "ok": true,
+      "detail": "trigger_reason='scheduled' at the top level"
+    },
+    {
+      "name": "collected_msc_absent_on_wire",
+      "ok": true,
+      "detail": "absent, as contracted \u2014 the consumer stamps receipt"
+    },
+    {
+      "name": "envelope_field_schema_version",
+      "ok": true,
+      "detail": "schema_version: str"
+    },
+    {
+      "name": "envelope_field_pipeline_id",
+      "ok": true,
+      "detail": "pipeline_id: str"
+    },
+    {
+      "name": "envelope_field_outcome_type",
+      "ok": true,
+      "detail": "outcome_type: str"
+    },
+    {
+      "name": "envelope_field_seq",
+      "ok": true,
+      "detail": "seq: int"
+    },
+    {
+      "name": "envelope_field_stream_epoch",
+      "ok": true,
+      "detail": "stream_epoch: int"
+    },
+    {
+      "name": "envelope_field_trigger_reason",
+      "ok": true,
+      "detail": "trigger_reason: str"
+    },
+    {
+      "name": "envelope_field_prompt_version",
+      "ok": true,
+      "detail": "prompt_version: str"
+    },
+    {
+      "name": "envelope_field_prompt_id",
+      "ok": true,
+      "detail": "prompt_id: str"
+    },
+    {
+      "name": "envelope_field_prompt_hash",
+      "ok": true,
+      "detail": "prompt_hash: str"
+    },
+    {
+      "name": "envelope_field_data_origin",
+      "ok": true,
+      "detail": "data_origin: str"
+    },
+    {
+      "name": "envelope_field_config_fingerprint",
+      "ok": true,
+      "detail": "config_fingerprint: str"
+    },
+    {
+      "name": "envelope_field_timestamp",
+      "ok": true,
+      "detail": "timestamp: str"
+    },
+    {
+      "name": "envelope_field_available_msc",
+      "ok": true,
+      "detail": "available_msc: int"
+    },
+    {
+      "name": "envelope_field_status",
+      "ok": true,
+      "detail": "status: str"
+    },
+    {
+      "name": "envelope_field_result",
+      "ok": true,
+      "detail": "result: list"
+    },
+    {
+      "name": "envelope_field_metadata",
+      "ok": true,
+      "detail": "metadata: dict"
+    },
+    {
+      "name": "row_field_symbol",
+      "ok": true,
+      "detail": "symbol present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_signal",
+      "ok": true,
+      "detail": "signal present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_sentiment_score",
+      "ok": true,
+      "detail": "sentiment_score present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_confidence",
+      "ok": true,
+      "detail": "confidence present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_reasoning",
+      "ok": true,
+      "detail": "reasoning present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_urgency",
+      "ok": true,
+      "detail": "urgency present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_is_breaking",
+      "ok": true,
+      "detail": "is_breaking present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_basis",
+      "ok": true,
+      "detail": "basis present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_evidence_as_of",
+      "ok": true,
+      "detail": "evidence_as_of present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_breaking_episode_id",
+      "ok": true,
+      "detail": "breaking_episode_id present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_breaking_episode_start",
+      "ok": true,
+      "detail": "breaking_episode_start present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_sources",
+      "ok": true,
+      "detail": "sources present and typed across 9 rows"
+    },
+    {
+      "name": "evidence_matches_max_fetched_at",
+      "ok": true,
+      "detail": "9 rows agree to the millisecond"
+    },
+    {
+      "name": "evidence_present_exactly_with_evidence",
+      "ok": true,
+      "detail": "every row agrees"
+    },
+    {
+      "name": "no_evidence_after_available_msc",
+      "ok": true,
+      "detail": "newest evidence sits before availability (1787955616417)"
+    },
+    {
+      "name": "episode_id_is_opaque_when_populated",
+      "ok": true,
+      "detail": "5 populated id(s), e.g. 'crypto_sentiment:Bitcoin BTC:2026-08-28T08:25:17Z'"
+    },
+    {
+      "name": "episode_start_implies_an_id",
+      "ok": true,
+      "detail": "0 opener(s), each carrying an id"
+    },
+    {
+      "name": "envelope_parses_through_production_reader",
+      "ok": true,
+      "detail": "parsed through SignalSnapshot with no test-only shim"
+    },
+    {
+      "name": "closed_vocabulary_values_tolerated",
+      "ok": true,
+      "detail": "an unknown signal / basis / status / data_origin still parses"
+    },
+    {
+      "name": "resolution_key_is_available_msc",
+      "ok": true,
+      "detail": "resolves at 2026-08-28T22:20:16.417000+00:00"
+    },
+    {
+      "name": "order_key_is_well_formed",
+      "ok": true,
+      "detail": "(epoch, seq) = (1, 1001)"
+    },
+    {
+      "name": "no_look_ahead_before_availability",
+      "ok": true,
+      "detail": "nothing resolves one second before the availability stamp"
+    },
+    {
+      "name": "schema_major_supported",
+      "ok": true,
+      "detail": "schema 2.0 (supported majors: 1.x, 2.x)"
+    },
+    {
+      "name": "trigger_reason_at_top_level",
+      "ok": true,
+      "detail": "trigger_reason='scheduled' at the top level"
+    },
+    {
+      "name": "collected_msc_absent_on_wire",
+      "ok": true,
+      "detail": "absent, as contracted \u2014 the consumer stamps receipt"
+    },
+    {
+      "name": "envelope_field_schema_version",
+      "ok": true,
+      "detail": "schema_version: str"
+    },
+    {
+      "name": "envelope_field_pipeline_id",
+      "ok": true,
+      "detail": "pipeline_id: str"
+    },
+    {
+      "name": "envelope_field_outcome_type",
+      "ok": true,
+      "detail": "outcome_type: str"
+    },
+    {
+      "name": "envelope_field_seq",
+      "ok": true,
+      "detail": "seq: int"
+    },
+    {
+      "name": "envelope_field_stream_epoch",
+      "ok": true,
+      "detail": "stream_epoch: int"
+    },
+    {
+      "name": "envelope_field_trigger_reason",
+      "ok": true,
+      "detail": "trigger_reason: str"
+    },
+    {
+      "name": "envelope_field_prompt_version",
+      "ok": true,
+      "detail": "prompt_version: str"
+    },
+    {
+      "name": "envelope_field_prompt_id",
+      "ok": true,
+      "detail": "prompt_id: str"
+    },
+    {
+      "name": "envelope_field_prompt_hash",
+      "ok": true,
+      "detail": "prompt_hash: str"
+    },
+    {
+      "name": "envelope_field_data_origin",
+      "ok": true,
+      "detail": "data_origin: str"
+    },
+    {
+      "name": "envelope_field_config_fingerprint",
+      "ok": true,
+      "detail": "config_fingerprint: str"
+    },
+    {
+      "name": "envelope_field_timestamp",
+      "ok": true,
+      "detail": "timestamp: str"
+    },
+    {
+      "name": "envelope_field_available_msc",
+      "ok": true,
+      "detail": "available_msc: int"
+    },
+    {
+      "name": "envelope_field_status",
+      "ok": true,
+      "detail": "status: str"
+    },
+    {
+      "name": "envelope_field_result",
+      "ok": true,
+      "detail": "result: list"
+    },
+    {
+      "name": "envelope_field_metadata",
+      "ok": true,
+      "detail": "metadata: dict"
+    },
+    {
+      "name": "row_field_symbol",
+      "ok": true,
+      "detail": "symbol present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_signal",
+      "ok": true,
+      "detail": "signal present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_sentiment_score",
+      "ok": true,
+      "detail": "sentiment_score present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_confidence",
+      "ok": true,
+      "detail": "confidence present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_reasoning",
+      "ok": true,
+      "detail": "reasoning present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_urgency",
+      "ok": true,
+      "detail": "urgency present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_is_breaking",
+      "ok": true,
+      "detail": "is_breaking present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_basis",
+      "ok": true,
+      "detail": "basis present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_evidence_as_of",
+      "ok": true,
+      "detail": "evidence_as_of present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_breaking_episode_id",
+      "ok": true,
+      "detail": "breaking_episode_id present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_breaking_episode_start",
+      "ok": true,
+      "detail": "breaking_episode_start present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_sources",
+      "ok": true,
+      "detail": "sources present and typed across 9 rows"
+    },
+    {
+      "name": "evidence_matches_max_fetched_at",
+      "ok": true,
+      "detail": "9 rows agree to the millisecond"
+    },
+    {
+      "name": "evidence_present_exactly_with_evidence",
+      "ok": true,
+      "detail": "every row agrees"
+    },
+    {
+      "name": "no_evidence_after_available_msc",
+      "ok": true,
+      "detail": "newest evidence sits before availability (1787956212479)"
+    },
+    {
+      "name": "episode_id_is_opaque_when_populated",
+      "ok": true,
+      "detail": "5 populated id(s), e.g. 'crypto_sentiment:Bitcoin BTC:2026-08-28T08:25:17Z'"
+    },
+    {
+      "name": "episode_start_implies_an_id",
+      "ok": true,
+      "detail": "0 opener(s), each carrying an id"
+    },
+    {
+      "name": "envelope_parses_through_production_reader",
+      "ok": true,
+      "detail": "parsed through SignalSnapshot with no test-only shim"
+    },
+    {
+      "name": "closed_vocabulary_values_tolerated",
+      "ok": true,
+      "detail": "an unknown signal / basis / status / data_origin still parses"
+    },
+    {
+      "name": "resolution_key_is_available_msc",
+      "ok": true,
+      "detail": "resolves at 2026-08-28T22:30:12.479000+00:00"
+    },
+    {
+      "name": "order_key_is_well_formed",
+      "ok": true,
+      "detail": "(epoch, seq) = (1, 1002)"
+    },
+    {
+      "name": "no_look_ahead_before_availability",
+      "ok": true,
+      "detail": "nothing resolves one second before the availability stamp"
+    },
+    {
+      "name": "schema_major_supported",
+      "ok": true,
+      "detail": "schema 2.0 (supported majors: 1.x, 2.x)"
+    },
+    {
+      "name": "trigger_reason_at_top_level",
+      "ok": true,
+      "detail": "trigger_reason='boot' at the top level"
+    },
+    {
+      "name": "collected_msc_absent_on_wire",
+      "ok": true,
+      "detail": "absent, as contracted \u2014 the consumer stamps receipt"
+    },
+    {
+      "name": "envelope_field_schema_version",
+      "ok": true,
+      "detail": "schema_version: str"
+    },
+    {
+      "name": "envelope_field_pipeline_id",
+      "ok": true,
+      "detail": "pipeline_id: str"
+    },
+    {
+      "name": "envelope_field_outcome_type",
+      "ok": true,
+      "detail": "outcome_type: str"
+    },
+    {
+      "name": "envelope_field_seq",
+      "ok": true,
+      "detail": "seq: int"
+    },
+    {
+      "name": "envelope_field_stream_epoch",
+      "ok": true,
+      "detail": "stream_epoch: int"
+    },
+    {
+      "name": "envelope_field_trigger_reason",
+      "ok": true,
+      "detail": "trigger_reason: str"
+    },
+    {
+      "name": "envelope_field_prompt_version",
+      "ok": true,
+      "detail": "prompt_version: str"
+    },
+    {
+      "name": "envelope_field_prompt_id",
+      "ok": true,
+      "detail": "prompt_id: str"
+    },
+    {
+      "name": "envelope_field_prompt_hash",
+      "ok": true,
+      "detail": "prompt_hash: str"
+    },
+    {
+      "name": "envelope_field_data_origin",
+      "ok": true,
+      "detail": "data_origin: str"
+    },
+    {
+      "name": "envelope_field_config_fingerprint",
+      "ok": true,
+      "detail": "config_fingerprint: str"
+    },
+    {
+      "name": "envelope_field_timestamp",
+      "ok": true,
+      "detail": "timestamp: str"
+    },
+    {
+      "name": "envelope_field_available_msc",
+      "ok": true,
+      "detail": "available_msc: int"
+    },
+    {
+      "name": "envelope_field_status",
+      "ok": true,
+      "detail": "status: str"
+    },
+    {
+      "name": "envelope_field_result",
+      "ok": true,
+      "detail": "result: list"
+    },
+    {
+      "name": "envelope_field_metadata",
+      "ok": true,
+      "detail": "metadata: dict"
+    },
+    {
+      "name": "row_field_symbol",
+      "ok": true,
+      "detail": "symbol present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_signal",
+      "ok": true,
+      "detail": "signal present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_sentiment_score",
+      "ok": true,
+      "detail": "sentiment_score present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_confidence",
+      "ok": true,
+      "detail": "confidence present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_reasoning",
+      "ok": true,
+      "detail": "reasoning present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_urgency",
+      "ok": true,
+      "detail": "urgency present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_is_breaking",
+      "ok": true,
+      "detail": "is_breaking present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_basis",
+      "ok": true,
+      "detail": "basis present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_evidence_as_of",
+      "ok": true,
+      "detail": "evidence_as_of present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_breaking_episode_id",
+      "ok": true,
+      "detail": "breaking_episode_id present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_breaking_episode_start",
+      "ok": true,
+      "detail": "breaking_episode_start present and typed across 9 rows"
+    },
+    {
+      "name": "row_field_sources",
+      "ok": true,
+      "detail": "sources present and typed across 9 rows"
+    },
+    {
+      "name": "evidence_matches_max_fetched_at",
+      "ok": true,
+      "detail": "9 rows agree to the millisecond"
+    },
+    {
+      "name": "evidence_present_exactly_with_evidence",
+      "ok": true,
+      "detail": "every row agrees"
+    },
+    {
+      "name": "no_evidence_after_available_msc",
+      "ok": true,
+      "detail": "newest evidence sits before availability (1787956817119)"
+    },
+    {
+      "name": "episode_id_is_opaque_when_populated",
+      "ok": true,
+      "detail": "5 populated id(s), e.g. 'crypto_sentiment:Bitcoin BTC:2026-08-28T08:25:17Z'"
+    },
+    {
+      "name": "episode_start_implies_an_id",
+      "ok": true,
+      "detail": "0 opener(s), each carrying an id"
+    },
+    {
+      "name": "envelope_parses_through_production_reader",
+      "ok": true,
+      "detail": "parsed through SignalSnapshot with no test-only shim"
+    },
+    {
+      "name": "closed_vocabulary_values_tolerated",
+      "ok": true,
+      "detail": "an unknown signal / basis / status / data_origin still parses"
+    },
+    {
+      "name": "resolution_key_is_available_msc",
+      "ok": true,
+      "detail": "resolves at 2026-08-28T22:40:17.119000+00:00"
+    },
+    {
+      "name": "order_key_is_well_formed",
+      "ok": true,
+      "detail": "(epoch, seq) = (1, 1003)"
+    },
+    {
+      "name": "no_look_ahead_before_availability",
+      "ok": true,
+      "detail": "nothing resolves one second before the availability stamp"
+    },
+    {
+      "name": "seq_never_steps_backwards",
+      "ok": true,
+      "detail": "observed [1001, 1002, 1003]"
+    },
+    {
+      "name": "stream_epoch_stable_within_run",
+      "ok": true,
+      "detail": "epoch 1"
+    },
+    {
+      "name": "producer_cadence_matches_registered",
+      "ok": true,
+      "detail": "producer reports 600s, registered 600s"
+    },
+    {
+      "name": "journal_matches_previous_certificate",
+      "ok": true,
+      "detail": "138c68e48b15 vs 138c68e48b15 in the certificate of 2026-08-28T22:39:39.535811+00:00"
+    },
+    {
+      "name": "seq_did_not_rewind_since_last_certificate",
+      "ok": true,
+      "detail": "seq 1002 \u2192 1003 since 2026-08-28T22:39:39.535811+00:00, across a producer RESTART \u2014 the one moment a sequence counter can be re-minted"
+    }
+  ],
+  "checks_passed": 138,
+  "checks_failed": 0
+}

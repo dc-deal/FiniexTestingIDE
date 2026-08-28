@@ -29,6 +29,7 @@ from python.framework.types.performance_types.performance_stats_types import (
     WorkerPerformanceStats,
 )
 from python.framework.types.signal_data_types import (
+    SignalLiveBoot,
     SignalResolution,
     SignalResolutionStats,
     SignalSnapshot,
@@ -66,7 +67,8 @@ class WorkerOrchestrator:
         parallel_workers: bool = None,
         parallel_threshold_ms: float = 1.0,
         worker_decision_tracking: bool = True,
-        signal_source: SignalSourceResolution = None
+        signal_source: SignalSourceResolution = None,
+        signal_boot: SignalLiveBoot = None
     ):
         """
         Initialize coordinator with injected workers and decision logic.
@@ -82,6 +84,9 @@ class WorkerOrchestrator:
             signal_source: What feeds this session's SIGNAL workers, resolved at startup.
                            Carried here rather than re-derived so the transport setup and the
                            inbox drain follow the same answer the provider wiring used.
+            signal_boot: What a LIVE session established before connecting — the mounted
+                         archive slice, its cursor and the values the producer serves.
+                         Carried for the same reason: the archive is read once, at boot.
         """
         # ============================================
         # Injected dependencies
@@ -110,6 +115,7 @@ class WorkerOrchestrator:
         self._worker_results: Dict[str, WorkerResult] = {}
 
         self._signal_source = signal_source
+        self._signal_boot = signal_boot
 
         # Signal-outage edge detection (#434): SIGNAL workers + last stale state
         self._signal_workers: Dict[str, AbstractSignalWorker] = {
@@ -601,6 +607,16 @@ class WorkerOrchestrator:
         """
         return self._signal_source
 
+    def get_signal_boot(self) -> Optional[SignalLiveBoot]:
+        """
+        What a live session established before opening its connection.
+
+        Returns:
+            The boot result passed in at construction; None for a mounted session, which
+            opens no connection and therefore needs no cursor
+        """
+        return self._signal_boot
+
     def get_signal_workers(self) -> Dict[str, AbstractSignalWorker]:
         """
         The SIGNAL workers this orchestrator drives, by instance name.
@@ -1014,9 +1030,21 @@ class WorkerOrchestrator:
         One capture, two transports: the sim tick loop and the live session both
         read it here, so neither pipeline builds its own counter.
 
+        The clamp counters are read from each worker's PROVIDER at collection time rather
+        than counted per tick: they describe the series as it stands, and a re-index walks
+        the whole series again, so a running tally would report how often the series was
+        rebuilt instead of how often the producer's clock stepped backwards.
+
         Returns:
             List of SignalResolutionStats (one per SIGNAL worker; empty when none)
         """
+        for name, stats in self._signal_resolution_stats.items():
+            worker = self._signal_workers.get(name)
+            provider = worker.get_signal_provider() if worker is not None else None
+            if provider is None:
+                continue
+            stats.availability_clamps = provider.get_availability_clamps()
+            stats.max_clamp_correction_ms = provider.get_max_clamp_correction_ms()
         return list(self._signal_resolution_stats.values())
 
     def get_signal_episodes(

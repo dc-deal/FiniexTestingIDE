@@ -57,19 +57,17 @@ def mounted_package() -> MagicMock:
     return MagicMock(spec=ProcessDataPackage)
 
 
-def config(poll: bool = False, stream: bool = False) -> SentimentConfig:
+def config(stream: bool = False) -> SentimentConfig:
     """
-    A sentiment config with the transports switched as asked.
+    A sentiment config with the transport switched as asked.
 
     Args:
-        poll: Enable the interim pull transport
-        stream: Enable the push transport (#468, not built)
+        stream: Enable the push transport (#468)
 
     Returns:
         A SentimentConfig carrying defaults everywhere else
     """
     return SentimentConfig(
-        poll={'enabled': poll, 'pipeline_id': 'crypto_sentiment' if poll else ''},
         stream={'enabled': stream, 'pipeline_id': 'crypto_sentiment' if stream else ''})
 
 
@@ -86,7 +84,7 @@ class TestNoSignalWorker:
         resolution = SignalSourceResolver.resolve(
             workers=[plain_worker(), plain_worker('bollinger')],
             package=None,
-            sentiment_config=config(poll=True))
+            sentiment_config=config(stream=True))
 
         assert resolution.mode is SignalSourceMode.NONE
         assert resolution.worker_count == 0
@@ -94,7 +92,7 @@ class TestNoSignalWorker:
 
     def test_no_worker_at_all_resolves_to_none(self):
         resolution = SignalSourceResolver.resolve(
-            workers=[], package=None, sentiment_config=config(poll=True))
+            workers=[], package=None, sentiment_config=config(stream=True))
         assert resolution.mode is SignalSourceMode.NONE
 
 
@@ -107,11 +105,11 @@ class TestMountedSource:
     problem rather than quietly become a live connection.
     """
 
-    def test_package_resolves_to_mounted_even_with_poll_enabled(self):
+    def test_package_resolves_to_mounted_even_with_a_transport_enabled(self):
         resolution = SignalSourceResolver.resolve(
             workers=[signal_worker(), plain_worker()],
             package=mounted_package(),
-            sentiment_config=config(poll=True))
+            sentiment_config=config(stream=True))
 
         assert resolution.mode is SignalSourceMode.MOUNTED
         assert resolution.worker_count == 1
@@ -128,14 +126,6 @@ class TestMountedSource:
 class TestLiveSource:
     """Third question: no package and a SIGNAL worker means a transport must fill it."""
 
-    def test_poll_enabled_resolves_to_live_poll(self):
-        resolution = SignalSourceResolver.resolve(
-            workers=[signal_worker()], package=None, sentiment_config=config(poll=True))
-
-        assert resolution.mode is SignalSourceMode.LIVE
-        assert resolution.transport is SignalTransportKind.POLL
-        assert resolution.signal_kind == 'llm_sentiment'
-
     def test_no_transport_enabled_is_an_error(self):
         """The genuinely dangerous case: a worker that will never receive anything."""
         with pytest.raises(SignalSourceUnresolvedError, match='no source'):
@@ -148,18 +138,18 @@ class TestLiveSource:
                 workers=[signal_worker('crypto', 'llm_sentiment'),
                          signal_worker('macro', 'forex_macro_sentiment')],
                 package=None,
-                sentiment_config=config(poll=True))
+                sentiment_config=config(stream=True))
 
-    def test_stream_is_answered_rather_than_silently_ignored(self):
+    def test_the_stream_resolves_to_the_push_transport(self):
         """
-        `stream.enabled` has no transport behind it yet (#468).
-
-        Treating it as "not poll, so nothing" would leave the workers empty with nothing
-        to fill them — a session that decides on BLIND forever and never says why.
+        `stream.enabled` names the push transport (#468) — the only one there is since the
+        interim pull path was removed on 2026-08-28.
         """
-        with pytest.raises(SignalSourceUnresolvedError, match='#468'):
-            SignalSourceResolver.resolve(
-                workers=[signal_worker()], package=None, sentiment_config=config(stream=True))
+        resolution = SignalSourceResolver.resolve(
+            workers=[signal_worker()], package=None, sentiment_config=config(stream=True))
+        assert resolution.mode is SignalSourceMode.LIVE
+        assert resolution.transport is SignalTransportKind.STREAM
+        assert resolution.signal_kind == 'llm_sentiment' 
 
 
 class TestRegressionsThatMotivatedTheResolver:
@@ -173,14 +163,15 @@ class TestRegressionsThatMotivatedTheResolver:
 
     def test_a_non_signal_profile_is_not_aborted_by_an_installation_wide_switch(self):
         """
-        Was: every profile without a SIGNAL worker failed startup while poll was enabled —
-        20 of 24 profiles, including four live trading profiles, both field-study release
-        gates, and mock tests with no broker connection at all.
+        Was: every profile without a SIGNAL worker failed startup while a live transport
+        was enabled (the interim poll, at the time) — 20 of 24 profiles, including four
+        live trading profiles, both field-study release gates, and mock tests with no
+        broker connection at all.
         """
         resolution = SignalSourceResolver.resolve(
             workers=[plain_worker('rsi'), plain_worker('bollinger'), plain_worker('obv')],
             package=None,
-            sentiment_config=config(poll=True))
+            sentiment_config=config(stream=True))
 
         assert resolution.mode is SignalSourceMode.NONE
         assert resolution.transport is None, (
@@ -189,13 +180,13 @@ class TestRegressionsThatMotivatedTheResolver:
     def test_a_mock_session_does_not_reach_for_the_live_producer(self):
         """
         Was: a mock session with a SIGNAL worker mounted its archive series AND opened a
-        live poll against the production producer, folding live envelopes into a replay
-        whose whole purpose is determinism.
+        live connection against the production producer, folding live envelopes into a
+        replay whose whole purpose is determinism.
         """
         resolution = SignalSourceResolver.resolve(
             workers=[signal_worker()],
             package=mounted_package(),
-            sentiment_config=config(poll=True))
+            sentiment_config=config(stream=True))
 
         assert resolution.mode is SignalSourceMode.MOUNTED
         assert resolution.transport is None, (

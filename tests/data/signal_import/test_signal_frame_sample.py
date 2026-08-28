@@ -18,7 +18,7 @@ import pytest
 
 from python.framework.types.signal_data_types import SignalSnapshot
 
-SAMPLE = Path('tests/fixtures/signals/signal_stream_frames_reissue6.sse')
+SAMPLE = Path('tests/fixtures/signals/signal_stream_frames_reissue7.sse')
 
 
 def signal_frames() -> list:

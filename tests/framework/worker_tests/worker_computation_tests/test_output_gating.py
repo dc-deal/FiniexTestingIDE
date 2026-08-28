@@ -5,7 +5,7 @@ requirement keeps compute-all, so existing strategies stay bit-identical.
 """
 
 import pytest
-from conftest import make_bars, make_tick
+from tests.framework.worker_tests.worker_computation_tests.conftest import make_bars, make_tick
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend

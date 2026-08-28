@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import record_observed_adapter
+from tests.live_adapters.conftest import record_observed_adapter
 
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter

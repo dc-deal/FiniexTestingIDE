@@ -13,7 +13,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from python.framework.types.signal_data_types import SignalSnapshot
+from python.framework.types.signal_data_types import (
+    SignalSnapshot,
+    SignalTransportKind,
+)
 
 
 @dataclass
@@ -193,6 +196,7 @@ class FeedProbeResult:
         build: What /v1/build reported about the running code
         observations: The envelopes read, in read order
         routes_used: Every route the run called
+        transport: The transport that performed these reads — recorded, never declared
         transport_failures: Reads that did not come back, as failed checks
         unparsed_envelopes: Payloads our reader REFUSED, kept raw. The shape checks still
             run over these, because 'the reader refused it' without naming the field that
@@ -203,6 +207,13 @@ class FeedProbeResult:
     credential_source: str
     credential_configured: bool
     pipeline_id: str
+    # Which transport actually did the reading. Required and without a default on purpose:
+    # this used to be a module CONSTANT written straight into the artifact, so a certificate
+    # taken over the stream would have claimed 'poll' — the same defect as an adapter
+    # certificate that re-read a config file instead of recording what its run did. A
+    # default here would be the same mistake wearing a type annotation, so the observer that
+    # performed the reads has to say what it is.
+    transport: SignalTransportKind
     identity: Optional[ProducerIdentity] = None
     build: ProducerBuild = field(default_factory=ProducerBuild)
     observations: List[FeedObservation] = field(default_factory=list)
@@ -239,7 +250,7 @@ class SignalFeedAssessment:
         unknown_vocabulary: Closed-vocabulary values we do not know yet
         rows_without_evidence: Rows resting on no evidence at all
         cadence_minutes_configured: What we have registered for this source
-        observation_gap_s: Pause the run left between consecutive reads
+        stream_seconds_held: How long the run held the stream open
         previous_certificate: Artifact this run was compared against, None for the first
     """
     probe: FeedProbeResult
@@ -248,7 +259,7 @@ class SignalFeedAssessment:
     unknown_vocabulary: List[str] = field(default_factory=list)
     rows_without_evidence: int = 0
     cadence_minutes_configured: Optional[float] = None
-    observation_gap_s: float = 0.0
+    stream_seconds_held: float = 0.0
     previous_certificate: Optional[str] = None
 
     def is_passed(self) -> bool:

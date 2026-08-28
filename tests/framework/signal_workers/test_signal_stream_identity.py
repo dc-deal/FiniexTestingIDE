@@ -7,7 +7,7 @@ documented fallback and the legacy behaviour must stay bit-identical — that is
 test group pins.
 """
 
-from conftest import SYMBOL, make_provider, snapshot, utc
+from tests.framework.signal_workers.conftest import SYMBOL, make_provider, snapshot, utc
 
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.types.signal_data_types import SentimentResult, SignalSeries, SignalSnapshot
@@ -75,6 +75,53 @@ class TestResolutionGate:
                             available_msc=utc(2026, 8, 20, 12, 0, 3)),
         )
         assert provider.nearest(utc(2026, 8, 20, 12, 0, 4), SYMBOL) is None
+
+    def test_the_clamp_is_counted_and_not_only_applied(self):
+        """
+        Silently holding the line meant we could never afterwards say whether a producer
+        clock had ever stepped backwards — the correction was invisible in exactly the runs
+        where knowing it would matter.
+
+        Derived here rather than read from the producer's own `available_msc_resyncs`: the
+        same number then comes out of simulation and live over the same archive, needs no
+        parquet column, and does not depend on the producer continuing to send it (§41).
+        """
+        provider = make_provider(
+            stream_snapshot(utc(2026, 8, 20, 12, 0), seq=4,
+                            available_msc=utc(2026, 8, 20, 12, 0, 5)),
+            stream_snapshot(utc(2026, 8, 20, 12, 0), seq=5,
+                            available_msc=utc(2026, 8, 20, 12, 0, 3)),
+        )
+        assert provider.get_availability_clamps() == 1
+        assert provider.get_max_clamp_correction_ms() == 2000.0, (
+            'the count alone cannot be read — two milliseconds is jitter, four hours is a story')
+
+    def test_a_well_ordered_series_reports_no_clamp(self):
+        """Noise in the quiet case is how a number stops being read."""
+        provider = make_provider(
+            stream_snapshot(utc(2026, 8, 20, 12, 0), seq=4,
+                            available_msc=utc(2026, 8, 20, 12, 0, 1)),
+            stream_snapshot(utc(2026, 8, 20, 12, 0), seq=5,
+                            available_msc=utc(2026, 8, 20, 12, 0, 3)),
+        )
+        assert provider.get_availability_clamps() == 0
+        assert provider.get_max_clamp_correction_ms() == 0.0
+
+    def test_the_count_describes_the_series_not_the_rebuilds(self):
+        """
+        `extend()` re-indexes the whole series, so an accumulating tally would grow on every
+        live arrival and describe how often we rebuilt rather than what the producer did.
+        """
+        provider = make_provider(
+            stream_snapshot(utc(2026, 8, 20, 12, 0), seq=4,
+                            available_msc=utc(2026, 8, 20, 12, 0, 5)),
+            stream_snapshot(utc(2026, 8, 20, 12, 0), seq=5,
+                            available_msc=utc(2026, 8, 20, 12, 0, 3)),
+        )
+        assert provider.get_availability_clamps() == 1
+        provider.extend([stream_snapshot(utc(2026, 8, 20, 12, 1), seq=6,
+                                         available_msc=utc(2026, 8, 20, 12, 1))])
+        assert provider.get_availability_clamps() == 1, 'still one clamp, not two'
 
 
 class TestOrdering:

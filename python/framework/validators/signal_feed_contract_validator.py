@@ -184,12 +184,19 @@ class SignalFeedContractValidator:
             if sequences[i] is not None and sequences[i - 1] is not None
             and sequences[i] < sequences[i - 1]
         ]
+        # A single position cannot show that a series MOVED. The comparison loop below runs
+        # zero times on one observation, so the check would pass while proving nothing —
+        # the same shape as a loop over an empty set that once passed here for months. A
+        # release gate that cannot evaluate an assertion must say so, not report success.
+        comparable = len([s for s in sequences if s is not None]) >= 2
         checks = [
             FeedCheck(
                 'seq_never_steps_backwards',
-                not backwards,
-                f'observed {sequences}' if not backwards
-                else f'seq stepped backwards: {backwards}'),
+                comparable and not backwards,
+                f'observed {sequences}' if comparable and not backwards
+                else (f'seq stepped backwards: {backwards}' if backwards
+                      else f'not evaluable — {len(sequences)} observation(s) carrying a '
+                           f'position; two are the minimum that can show a series moved')),
             FeedCheck(
                 'stream_epoch_stable_within_run',
                 len(epochs) == 1,

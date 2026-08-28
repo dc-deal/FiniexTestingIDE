@@ -842,10 +842,15 @@ class AutoTraderLiveDisplay:
             # useful than rendering an idle connection that was never meant to run.
             return ['', '[dim]Signal Feed:    mounted (no transport)[/dim]']
 
-        # 'unauthorized' and 'contract' are dead-feed states too — left on the default
-        # 'dim' they under-signalled exactly the silence this panel exists to surface.
-        colors = {'live': 'green', 'degraded': 'yellow', 'error': 'red',
-                  'unauthorized': 'red', 'contract': 'red'}
+        # Every dead-feed state is red. Left on the default 'dim' they under-signalled
+        # exactly the silence this panel exists to surface — and the two the stream added
+        # are the hardest of them: 'cursor_ahead' says our own store was restored and a
+        # human must decide, 'misconfigured' says the request itself is wrong and no
+        # amount of waiting will fix it. Both stop the feed for the rest of the session.
+        colors = {'live': 'green', 'replay': 'yellow', 'connecting': 'yellow',
+                  'degraded': 'yellow', 'error': 'red', 'unauthorized': 'red',
+                  'contract': 'red', 'cursor_ahead': 'bold red',
+                  'misconfigured': 'bold red'}
         color = colors.get(transport.state, 'dim')
         marker = '●' if transport.state == 'live' else '◌'
         position = (f'epoch {transport.stream_epoch}  seq {transport.last_seq}'
@@ -863,10 +868,16 @@ class AutoTraderLiveDisplay:
         ]
         lines.extend(self._build_journal_lines(transport.health))
         lines.append(f'Last Envelope:  {age_str}')
-        if transport.degraded_responses or transport.transport_errors:
+        # contract_errors belongs here too: the stream never sets degraded_responses (that
+        # is a pull-path answer), so gating the line on the pull counters alone hid the
+        # one failure the operator can act on — the producer answered and we could not
+        # read it.
+        if (transport.degraded_responses or transport.transport_errors
+                or transport.contract_errors):
             lines.append(
                 f'[yellow]Feed Issues:    {transport.degraded_responses} degraded · '
-                f'{transport.transport_errors} errors[/yellow]')
+                f'{transport.transport_errors} transport · '
+                f'{transport.contract_errors} contract[/yellow]')
 
         if transport.tape:
             lines.append('Feed Tape:')

@@ -85,8 +85,12 @@ def _index_resolution_stats(
     binding is #258, which is where this key gains the source dimension.
 
     A unit may run several SIGNAL workers on that one source (e.g. different staleness
-    thresholds); their counters are summed, because the report's granularity is the
+    thresholds); their TICK counters are summed, because the report's granularity is the
     scenario's use of a source, not the worker instance.
+
+    The clamp counters are the exception and merge by MAX. They describe the SERIES, and
+    those workers share ONE provider — so summing them would multiply a single producer
+    clock correction by the number of workers that happened to read it.
 
     Args:
         units: The run's units
@@ -107,11 +111,18 @@ def _index_resolution_stats(
                     fresh_ticks=stats.fresh_ticks,
                     stale_ticks=stats.stale_ticks,
                     blind_ticks=stats.blind_ticks,
+                    availability_clamps=stats.availability_clamps,
+                    max_clamp_correction_ms=stats.max_clamp_correction_ms,
                 )
                 continue
             merged.fresh_ticks += stats.fresh_ticks
             merged.stale_ticks += stats.stale_ticks
             merged.blind_ticks += stats.blind_ticks
+            # MAX, not +=: one series, one clamp count, however many workers read it.
+            merged.availability_clamps = max(
+                merged.availability_clamps, stats.availability_clamps)
+            merged.max_clamp_correction_ms = max(
+                merged.max_clamp_correction_ms, stats.max_clamp_correction_ms)
     return index
 
 
@@ -222,6 +233,8 @@ def _to_feed_usage_row(
     """
     symbol = observed.symbol or unit.symbol
     stats = stats_index.get((unit.name, symbol))
+    clamps = stats.availability_clamps if stats else 0
+    worst_clamp_ms = stats.max_clamp_correction_ms if stats else 0.0
     fresh = stats.fresh_ticks if stats else 0
     stale = stats.stale_ticks if stats else 0
     blind = stats.blind_ticks if stats else 0
@@ -237,6 +250,8 @@ def _to_feed_usage_row(
         stale_ticks=stale,
         blind_ticks=blind,
         fresh_ratio=(fresh / total) if total else 0.0,
+        availability_clamps=clamps,
+        max_clamp_correction_ms=worst_clamp_ms,
     )
 
 
@@ -273,6 +288,8 @@ def _to_usage_row(
         SignalUsageRow (counters stay zero when the scenario produced no run unit)
     """
     stats = stats_index.get((usage.scenario_name, usage.symbol))
+    clamps = stats.availability_clamps if stats else 0
+    worst_clamp_ms = stats.max_clamp_correction_ms if stats else 0.0
     fresh = stats.fresh_ticks if stats else 0
     stale = stats.stale_ticks if stats else 0
     blind = stats.blind_ticks if stats else 0
@@ -298,6 +315,8 @@ def _to_usage_row(
         stale_ticks=stale,
         blind_ticks=blind,
         fresh_ratio=(fresh / total) if total else 0.0,
+        availability_clamps=clamps,
+        max_clamp_correction_ms=worst_clamp_ms,
     )
 
 

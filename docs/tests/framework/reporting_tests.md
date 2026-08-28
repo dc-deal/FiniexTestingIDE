@@ -30,7 +30,7 @@ Two rules the suite exists to defend:
 | **Signal** | `test_signal_report` | see below |
 | **Feed stability** | `test_feed_stability_report` | disturbance episodes across both staleness domains (#451) — every boundary derived from observed state, a stress config contributing only its label |
 | **Diagnostics** | `test_profiling_report` · `test_worker_decision_report` · `test_block_splitting_report` · `test_scenario_details_report` · `test_broker_report` | per-worker timing, decision breakdown, window splitting, broker facts |
-| **Store & warnings** | `test_report_store` (26) · `test_warnings_errors_report` | the cross-run ledger; the tiered warning model (#395) |
+| **Store & warnings** | `test_report_store` (28) · `test_warnings_errors_report` | the cross-run ledger; the tiered warning model (#395) |
 
 ## `test_signal_report.py` — two planes, and what each may claim
 

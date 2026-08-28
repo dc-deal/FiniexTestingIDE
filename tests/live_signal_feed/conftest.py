@@ -21,11 +21,14 @@ failure mode this whole gate exists to prevent. It therefore fails loudly instea
 import pytest
 
 from python.configuration.sentiment_config_manager import SentimentConfigManager
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.reporting.certificates.signal_feed_certificate import (
     DEFAULT_REPORTS_DIR,
     SignalFeedCertificate,
 )
-from python.framework.signal_data.signal_feed_observer import SignalFeedObserver
+from python.framework.signal_data.producer.signal_feed_stream_observer import (
+    SignalFeedStreamObserver,
+)
 from python.framework.types.signal_certificate_types import SignalFeedAssessment
 from python.framework.utils.config_merge_utils import is_config_isolation_active
 
@@ -51,12 +54,10 @@ def pytest_addoption(parser):
         '--reports-dir', action='store', default=DEFAULT_REPORTS_DIR,
         help='Where certificates are written and where the previous one is read from')
     parser.addoption(
-        '--observations', action='store', type=int, default=2,
-        help='Envelopes to read. Two is the minimum that can say anything about a series.')
-    parser.addoption(
-        '--observation-gap-s', action='store', type=float, default=15.0,
-        help='Pause between reads. A gap longer than the producer cadence additionally '
-             'samples the cadence itself; the default only proves the series held.')
+        '--stream-seconds', action='store', type=float, default=25.0,
+        help='How long the stream is held open. The default crosses one keep-alive at the '
+             'producer 20s beat, so the observation covers a quiet stretch and not only '
+             'the connect snapshot.')
 
 
 def pytest_collection_modifyitems(config, items):
@@ -102,27 +103,26 @@ def assessment(request) -> SignalFeedAssessment:
     manager = SentimentConfigManager()
     config = manager.get_config()
     producer = manager.resolve_active_producer()
-    pipeline_id = config.poll.pipeline_id
+
+    pipeline_id = config.stream.pipeline_id
     if not pipeline_id:
         pytest.fail(
-            'sentiment_config.json names no poll.pipeline_id, so there is no source to '
-            'certify. Set it in the user override.')
+            'sentiment_config.json names no stream.pipeline_id, so there is no source '
+            'to certify. Set it in the user override.')
 
     source = config.get_source(pipeline_id)
-    gap_seconds = request.config.getoption('observation_gap_s')
-    probe = SignalFeedObserver(
+    stream_seconds = request.config.getoption('stream_seconds')
+    probe = SignalFeedStreamObserver(
         producer=producer,
-        pipeline_id=pipeline_id,
-        timeout_s=config.poll.request_timeout_s,
-    ).observe(
-        observation_count=request.config.getoption('observations'),
-        gap_seconds=gap_seconds)
+        stream_config=config.stream,
+        logger=get_global_logger(),
+    ).observe(seconds=stream_seconds)
 
     result = SignalFeedCertificate.assess(
         probe=probe,
         cadence_minutes_configured=source.cadence_minutes if source else None,
         release_version=release_version,
-        observation_gap_s=gap_seconds,
+        stream_seconds_held=stream_seconds,
         reports_dir=request.config.getoption('reports_dir'))
     setattr(request.config, _ASSESSMENT_ATTRIBUTE, result)
     return result

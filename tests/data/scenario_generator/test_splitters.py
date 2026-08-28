@@ -8,7 +8,7 @@ point, and the profile-driven splitters (volatility_split / continuous) with moc
 from unittest.mock import MagicMock, patch
 
 import pytest
-from conftest import make_continuous_periods, mock_coverage_report, utc
+from tests.data.scenario_generator.conftest import make_continuous_periods, mock_coverage_report, utc
 
 from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,

@@ -33,10 +33,10 @@ was profitable.
 
 | Piece | Location |
 |---|---|
-| Producer reads (the two free GETs) | `python/framework/signal_data/signal_feed_observer.py` |
-| Shared HTTP read + 401 classification | `python/framework/signal_data/signal_http_reader.py` |
+| Producer reads + the held stream | `python/framework/signal_data/producer/signal_feed_stream_observer.py` |
+| Shared HTTP read + 401 classification | `python/framework/signal_data/producer/signal_http_reader.py` |
 | The assertions | `python/framework/validators/signal_feed_contract_validator.py` |
-| Certificate, PASS/FAIL, rewind chain | `python/framework/reporting/signal_feed_certificate.py` |
+| Certificate, PASS/FAIL, rewind chain | `python/framework/reporting/certificates/signal_feed_certificate.py` |
 | Types | `python/framework/types/signal_certificate_types.py` |
 | Suite | `tests/live_signal_feed/` (incl. `test_signal_feed_gate.py`, the catch-all) |
 | Netless assertion tests (daily suite) | `tests/data/signal_import/test_signal_feed_contract_validator.py` |
@@ -54,8 +54,8 @@ gains a transport section instead of being rewritten.
 1. **The PRODUCTION producer must answer**, not the development instance. Check first:
    `python python/cli/signal_index_cli.py connect-check`
 2. A real token in `user_configs/credentials/rag_credentials.json`.
-3. `user_configs/sentiment_config.json` sets `producer.active: production` and
-   `poll.pipeline_id`.
+3. `user_configs/sentiment_config.json` sets `producer.active: production`,
+   `stream.enabled: true` and `stream.pipeline_id`.
 4. `FINIEX_CONFIG_ISOLATION=0` — see the warning below. The launch entry sets it.
 
 > **Why config isolation must be off.** `tests/conftest.py` switches off user-workspace
@@ -105,8 +105,7 @@ run while appearing to describe this one.
 |---|---|---|
 | `--release-version` | `dev` | Version this certificate covers |
 | `--comment` | `''` | Free-text note recorded in the artifact |
-| `--observations` | `2` | Envelopes read. Two is the minimum that can say anything about a series |
-| `--observation-gap-s` | `15.0` | Pause between reads. A gap longer than the producer's cadence additionally samples the cadence itself |
+| `--stream-seconds` | `25.0` | How long the stream is held open. The default crosses one keep-alive at the producer's 20 s beat, so the observation covers a quiet stretch and not only the connect snapshot |
 | `--reports-dir` | `tests/live_signal_feed/reports` | Where the certificate is written and the previous one read from |
 
 ---

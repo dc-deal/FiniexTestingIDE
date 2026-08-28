@@ -12,10 +12,10 @@ from types import SimpleNamespace
 from typing import Any, Dict, List
 
 import pytest
-from conftest import SYMBOL, make_provider, make_tick, snapshot, utc
+from tests.framework.signal_workers.conftest import SYMBOL, make_provider, make_tick, snapshot, utc
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
-from python.framework.signal_data.signal_inbox import SignalInbox
+from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.types.worker_types import WorkerRequirement

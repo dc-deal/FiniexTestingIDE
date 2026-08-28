@@ -73,7 +73,7 @@
 |----------|-------------|
 | [TickCollector Guide](data_pipeline/tick_collector_guide.md) | MQL5 data collection, JSON schema, error classification |
 | [Data Import Pipeline](data_pipeline/data_import_pipeline.md) | JSON→Parquet conversion, UTC normalization, bar rendering |
-| [Signal Data Source](data_pipeline/signal_data_source.md) | Sentiment/signal source: JSONL→Parquet import, index, `data_sentiment_type` resolution |
+| [Signal Data Source](data_pipeline/signal_data_source.md) | Sentiment/signal source: JSONL→Parquet import, index, `data_sentiment_type` resolution, the live SSE stream transport |
 | [Batch Preparation](data_pipeline/batch_preparation_system.md) | 7-phase orchestration system |
 | [Duplicate Detection](data_pipeline/duplicate_detection_usage.md) | Artificial duplicate detection, data integrity protection |
 
@@ -139,7 +139,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
 | [Live Telemetry Tests](tests/framework/live_telemetry_tests.md) | Frame serialization + the signal-transport block in the operator's CONNECTION panel |
 | [Reporting Pipeline Tests](tests/framework/reporting_tests.md) | Unified reporting (#391–#403): builders, IO/store, console renderers — including the two signal planes and what a live run may not claim |
-| [Signal Worker Tests](tests/framework/signal_workers_tests.md) | SIGNAL worker type (#141): types, provider, llm_sentiment, hybrid decision, orchestrator dispatch |
+| [Signal Worker Tests](tests/framework/signal_workers_tests.md) | SIGNAL worker type (#141): types, provider, llm_sentiment, hybrid decision, orchestrator dispatch, live transports (#468) |
 | [Signal Coverage Tests](tests/framework/signal_coverage_tests.md) | Signal-series gap detection + scenario signal-window validation |
 | [Data Coverage Tests](tests/framework/data_coverage_tests.md) | Data format version spans — which collector schema produced which archive window |
 | [Normalizer Tests](tests/framework/normalizer_tests.md) | Central rescale/clamp/normalize apparatus |

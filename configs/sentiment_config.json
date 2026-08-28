@@ -1,6 +1,7 @@
 {
   "producer": {
     "active": "dev",
+    "request_timeout_s": 20.0,
     "endpoints": {
       "dev": {
         "base_url": "http://host.docker.internal:8100",
@@ -15,17 +16,9 @@
   "stream": {
     "enabled": false,
     "pipeline_id": "",
-    "replay_window_hours": 24.0,
-    "heartbeat_timeout_s": 60.0,
+    "heartbeat_timeout_multiple": 3.0,
     "reconnect_backoff_initial_s": 5.0,
     "reconnect_backoff_max_s": 60.0
-  },
-  "poll": {
-    "enabled": false,
-    "pipeline_id": "",
-    "interval_s": 60.0,
-    "request_timeout_s": 20.0,
-    "degraded_backoff_s": 300.0
   },
   "health": {
     "enabled": true,

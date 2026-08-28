@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from python.configuration.market_config_manager import MarketConfigManager
-from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.autotrader.autotrader_data_preparer import prepare_mock_session_data
 from python.framework.autotrader.autotrader_startup import (
     create_autotrader_loggers,
@@ -32,16 +31,17 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
 from python.framework.exceptions.live_execution_errors import DryRunConflictError
-from python.framework.exceptions.signal_data_errors import SignalSourceUnresolvedError
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
-from python.framework.signal_data.signal_health_probe import SignalHealthProbe
-from python.framework.signal_data.signal_inbox import SignalInbox
+from python.framework.signal_data.transport.abstract_signal_transport import (
+    AbstractSignalTransport,
+)
+from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
-from python.framework.signal_data.signal_poll_source import SignalPollSource
+from python.framework.signal_data.transport.signal_transport_setup import setup_signal_transport
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
@@ -56,7 +56,6 @@ from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.framework.types.signal_data_types import (
     SignalObservedSeries,
-    SignalSourceMode,
 )
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.framework.validators.algo_clock_validator import validate_algo_clock
@@ -111,7 +110,7 @@ class AutotraderMain:
         # in a mock session, which mounts its series from the archive instead — then every
         # inbox drain in the loop is a no-op and the session behaves exactly as before.
         self._signal_inbox: Optional[SignalInbox] = None
-        self._signal_transport: Optional[SignalPollSource] = None
+        self._signal_transport: Optional[AbstractSignalTransport] = None
         self._tick_thread = None
         self._tick_loop: Optional[AutotraderTickLoop] = None
 
@@ -655,7 +654,7 @@ class AutotraderMain:
 
     def _setup_signal_transport(self) -> None:
         """
-        Build and start the live signal transport, when one is configured (#141 Part 2a).
+        Start the live signal transport, when this session runs one (#141 Part 2a, #468).
 
         Opt-in and silent by default: a session whose SIGNAL workers read the mounted
         archive (simulation parity, mock replay) configures no transport, so nothing is
@@ -663,75 +662,21 @@ class AutotraderMain:
 
         The transport feeds the SignalDataProvider through the inbox — it never touches a
         worker. That is what lets the same worker read a mounted series and a live one
-        without knowing which it got.
-
-        A configuration error here ABORTS the session (§35): a bot told to trade on live
-        sentiment must not silently fall back to whatever the archive happened to hold.
-
-        The mode is NOT decided here. It was resolved once at startup and is followed:
-        a profile with no SIGNAL worker starts nothing (the transport setting is
-        installation-wide and does not apply to it), and a mock session that mounted its
-        series starts nothing either — opening a connection there would mix live envelopes
-        into a replay that is only reproducible because nothing arrives from outside.
+        without knowing which it got. How it is assembled lives in
+        `signal_data/signal_transport_setup.py`; what this session owns is the lifecycle.
         """
-        signal_source = self._worker_orchestrator.get_signal_source()
-        if signal_source is None:
-            raise SignalSourceUnresolvedError(
-                'The pipeline was built without resolving a signal source — the transport '
-                'cannot decide on its own what this session reads.')
-        if signal_source.mode is not SignalSourceMode.LIVE:
+        setup = setup_signal_transport(
+            symbol=self._config.symbol,
+            signal_source=self._worker_orchestrator.get_signal_source(),
+            signal_boot=self._worker_orchestrator.get_signal_boot(),
+            logger=self._session_logger,
+        )
+        if setup is None:
             return
 
-        poll_config = SentimentConfigManager().get_config().poll
-        if not poll_config.pipeline_id:
-            raise SignalSourceUnresolvedError(
-                'Signal transport is enabled but poll.pipeline_id is empty — '
-                'name the producer pipeline in sentiment_config.json.')
-
-        producer = SentimentConfigManager().resolve_active_producer()
-        # Announce which endpoint and which file answered. With several registered
-        # endpoints and a tracked empty credential default, "I thought I was on dev" and
-        # "the token is configured" are otherwise both unverifiable from the log — and an
-        # empty token now means 401 on every route except /v1/health.
-        self._session_logger.info(f'📡 Producer endpoint ← {producer.describe()}')
-        if not producer.credential.is_configured():
-            self._session_logger.warning(
-                '📡 No producer token configured — requests go out without an '
-                'Authorization header. Every route except /v1/health will answer 401. '
-                'Place the token in user_configs/credentials/ for endpoint '
-                f"'{producer.name}'.")
-        api_token = producer.credential.token
-
-        # The probe borrows the transport's address on purpose: the question it answers
-        # is which journal these envelopes come from, so asking a second address could
-        # answer about an engine that is not the one delivering.
-        health_config = SentimentConfigManager().get_config().health
-        health_probe = (
-            SignalHealthProbe(
-                config=health_config,
-                base_url=producer.base_url,
-                logger=self._session_logger,
-                api_token=api_token,
-                pipeline_id=poll_config.pipeline_id,
-                source=SentimentConfigManager().get_config().get_source(
-                    poll_config.pipeline_id),
-            )
-            if health_config.enabled else None
-        )
-
-        self._signal_observed = SignalObservedAccumulator(
-            source=poll_config.pipeline_id, symbol=self._config.symbol)
-
-        self._signal_inbox = SignalInbox()
-        self._signal_transport = SignalPollSource(
-            config=poll_config,
-            producer=producer,
-            signal_kind=signal_source.signal_kind,
-            inbox=self._signal_inbox,
-            logger=self._session_logger,
-            health_probe=health_probe,
-            observed=self._signal_observed,
-        )
+        self._signal_inbox = setup.inbox
+        self._signal_transport = setup.transport
+        self._signal_observed = setup.observed
         self._signal_transport.start()
         self._print_startup_phase('Signal transport running')
 

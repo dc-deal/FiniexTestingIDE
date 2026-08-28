@@ -1,7 +1,7 @@
 """Signal types, JSONL loader, and provider lookup tests (#141)."""
 
 import pytest
-from conftest import FIXTURE_JSONL, SYMBOL, error_snapshot, make_provider, snapshot, utc
+from tests.framework.signal_workers.conftest import FIXTURE_JSONL, SYMBOL, error_snapshot, make_provider, snapshot, utc
 
 from python.framework.exceptions.signal_data_errors import SignalSchemaError
 from python.framework.signal_data.signal_jsonl_loader import load_signal_series

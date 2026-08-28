@@ -16,7 +16,7 @@ test-only switch.
 
 from types import SimpleNamespace
 
-from conftest import SYMBOL, make_provider, snapshot, utc
+from tests.framework.signal_workers.conftest import SYMBOL, make_provider, snapshot, utc
 
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker

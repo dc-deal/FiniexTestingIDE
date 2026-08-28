@@ -3,9 +3,9 @@ FiniexTestingIDE - Signal Connect Check
 One-shot reachability and credential probe against the producer (#98 connect contract).
 
 Answers the question a live session cannot answer cheaply: does this address, with this
-token, actually reach the producer — and WHICH producer. It performs exactly the two reads
-the contract declares free (`/v1/health`, `/v1/pipelines/{id}/latest`) and never the paid
-run route, so the check itself can never cost money.
+token, actually reach the producer — and WHICH producer. It performs exactly the free reads
+the contract declares free (`/v1/health`, `/v1/pipelines`, `/v1/pipelines/{id}/latest`)
+and never the paid run route, so the check itself can never cost money.
 
 The credential distinction is the point: the producer's contract states that 401 is not a
 transport failure. A check that reports "unreachable" for a rejected token sends the
@@ -14,7 +14,16 @@ operator looking at the wrong system.
 
 from typing import Any, Dict, Optional
 
-from python.framework.signal_data.signal_http_reader import fetch_json
+from python.framework.signal_data.producer.signal_http_reader import fetch_json
+from python.framework.signal_data.producer.signal_pipelines_reader import (
+    PIPELINES_ROUTE,
+    describe_registry,
+    fetch_pipeline_registry,
+)
+from python.framework.signal_data.producer.signal_producer_reads import (
+    HEALTH_ROUTE,
+    LATEST_ROUTE_TEMPLATE,
+)
 from python.framework.types.config_types.sentiment_config_types import ActiveProducer
 from python.framework.types.signal_data_types import (
     ConnectCheckResult,
@@ -56,7 +65,7 @@ def run_connect_check(
     timeout_s: float = 10.0,
 ) -> ConnectCheckResult:
     """
-    Probe the producer's two free routes and report what answered.
+    Probe the producer's free routes and report what answered.
 
     Args:
         producer: Active endpoint with its resolved credential
@@ -86,15 +95,57 @@ def run_connect_check(
                 f"origin {payload.get('data_origin')}")
 
     # /v1/health is the one documented no-token route, so it is probed without one:
-    # a failure here is the address, a failure on /latest alone is the credential.
-    _probe('GET /v1/health', f'{root}/v1/health', '', timeout_s, result, describe_health)
+    # a failure here is the address, a failure on a gated route alone is the credential.
+    _probe(f'GET {HEALTH_ROUTE}', f'{root}{HEALTH_ROUTE}', '', timeout_s, result,
+           describe_health)
+
+    _check_registry(producer, pipeline_id, timeout_s, result)
 
     if pipeline_id:
-        _probe(f'GET /v1/pipelines/{pipeline_id}/latest',
-               f'{root}/v1/pipelines/{pipeline_id}/latest',
-               token, timeout_s, result, describe_latest)
+        latest = LATEST_ROUTE_TEMPLATE.format(pipeline_id=pipeline_id)
+        _probe(f'GET {latest}', f'{root}{latest}', token, timeout_s, result,
+               describe_latest)
 
     return result
+
+
+def _check_registry(
+    producer: ActiveProducer,
+    pipeline_id: str,
+    timeout_s: float,
+    result: ConnectCheckResult,
+) -> None:
+    """
+    Read the pipeline registry and confirm the configured pipeline is in it.
+
+    Worth its own step because it answers before a session what the stream would otherwise
+    answer as a 404 mid-run: a misspelled pipeline id. It also reports whether the engine
+    yet serves the keep-alive interval and replay window the push transport reads instead
+    of configuring.
+
+    Args:
+        producer: Active endpoint with its resolved credential
+        pipeline_id: Source the session is configured for; empty skips the membership check
+        timeout_s: Request timeout
+        result: Result being accumulated
+    """
+    registry = fetch_pipeline_registry(producer, timeout_s)
+    if not registry.ok:
+        if registry.credential_rejected:
+            result.credential_rejected = True
+        result.steps.append(
+            ConnectCheckStep(f'GET {PIPELINES_ROUTE}', False, registry.detail))
+        return
+
+    summary = describe_registry(registry)
+    if pipeline_id and pipeline_id not in registry.pipelines:
+        known = ', '.join(sorted(registry.pipelines)) or '(none registered)'
+        result.steps.append(ConnectCheckStep(
+            f'GET {PIPELINES_ROUTE}', False,
+            f"'{pipeline_id}' is not registered with this producer. Known: {known}"))
+        return
+
+    result.steps.append(ConnectCheckStep(f'GET {PIPELINES_ROUTE}', True, summary))
 
 
 def print_connect_check(result: ConnectCheckResult) -> None:

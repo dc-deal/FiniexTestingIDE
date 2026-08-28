@@ -122,7 +122,21 @@ class TestListRuns:
     def test_lists_both_groups_newest_first(self, tmp_path):
         _write_run(tmp_path, 'scenario_sets', 'my_set', '20260615_120000')
         _write_run(tmp_path, 'autotrader', 'my_profile', '20260615_130000')
-        assert ReportStore(tmp_path).list_runs() == ['20260615_130000', '20260615_120000']
+        assert [run.run_id for run in ReportStore(tmp_path).list_runs()] == [
+            '20260615_130000', '20260615_120000']
+
+    def test_carries_group_and_owner_name(self, tmp_path):
+        """The listing is the viewer's run picker — id alone cannot tell sim from live."""
+        _write_run(tmp_path, 'scenario_sets', 'my_set', '20260615_120000')
+        _write_run(tmp_path, 'autotrader', 'my_profile', '20260615_130000')
+        runs = {run.run_id: run for run in ReportStore(tmp_path).list_runs()}
+        assert (runs['20260615_120000'].group, runs['20260615_120000'].name) == (
+            'scenario_sets', 'my_set')
+        assert (runs['20260615_130000'].group, runs['20260615_130000'].name) == (
+            'autotrader', 'my_profile')
+
+    def test_empty_logs_tree_lists_nothing(self, tmp_path):
+        assert ReportStore(tmp_path).list_runs() == []
 
 
 class TestCsv:

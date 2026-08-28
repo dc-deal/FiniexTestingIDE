@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.signal_data.signal_health_probe import SignalHealthProbe
+from python.framework.signal_data.producer.signal_health_probe import SignalHealthProbe
 from python.framework.types.config_types.sentiment_config_types import (
     SentimentHealthConfig,
     SentimentSourceConfig,

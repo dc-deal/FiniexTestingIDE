@@ -15,7 +15,7 @@ Two things decide whether this works, and both are counter-intuitive enough to p
    and live would disagree — measured on the same week: 237 against 17.
 """
 
-from conftest import SYMBOL, make_provider, utc
+from tests.framework.signal_workers.conftest import SYMBOL, make_provider, utc
 
 from python.framework.types.signal_data_types import SentimentResult, SignalSnapshot
 

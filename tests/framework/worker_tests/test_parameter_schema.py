@@ -12,7 +12,7 @@ Tests (parametrized over all CORE components):
 """
 
 import pytest
-from conftest import (
+from tests.framework.worker_tests.conftest import (
     ALL_COMPONENTS,
     ALL_WORKERS,
 )

@@ -77,22 +77,33 @@ shape, the flag as a `bool` and the id as a `str`; and a populated id carries mo
 three segments, which is the documentation-by-assertion of why the contract calls it **opaque**.
 
 A reissued sample therefore checks itself, and **it did**: installing reissue 6
-(`signal_stream_frames_reissue6.sse`, 2026-08-26) turned three assertions red at once, all of them
-ours. They had encoded reissue 5's `''` as the wire's empty form; reissue 6 uses `null`, which is
-what production emits. The wire form is `str | None` — the empty string is **not** a permitted
-stand-in — and the normalization to `''` is asserted on the model, not on the wire.
+(2026-08-26) turned three assertions red at once, all of them ours. They had encoded reissue 5's
+`''` as the wire's empty form; reissue 6 uses `null`, which is what production emits. The wire form
+is `str | None` — the empty string is **not** a permitted stand-in — and the normalization to `''`
+is asserted on the model, not on the wire.
 
-Reissue 6 carries what was asked for: an opener, a continuation and a hold-band pass on USDJPY,
-plus two things nobody planned — **USDCAD inside a *different* episode in all three frames**, which
-makes it the first artifact showing an episode id is a property of a ROW rather than an envelope, and
-six `null` ids beside a populated one in every frame. Its ids are production-shaped (four colons,
-spaces, a slash, 91–95 characters), so the sample now exercises the form `TestIdOpacity` previously
-had to pin by hand.
+**The committed sample is now `signal_stream_frames_reissue7.sse` (2026-08-27), and it landed
+green** — no assertion moved. That is the payoff of a deliberate pass made just before it arrived:
+several checks had been pinning the file's INVENTORY (exact frame counts, an ordered list of control
+codes, a specific `seq`) rather than the contract, and those would have gone red for the wrong
+reason. A red for the wrong reason trains people to update the number instead of reading it. Frames
+are now found by the property under test and the recovery frames assert the relations a handler
+reads, so a reissue turns this suite red only when the CONTRACT moved.
+
+Reissue 7 is also the first sample rendered by the same module that serves the live wire, rather
+than by the generator's own private frame function — which is how two earlier reissues came to
+disagree with the contract they demonstrate. It carries what was asked for: an opener, a
+continuation and a hold-band pass on USDJPY, all five control codes including `epoch_changed`, and a
+terminating blank line at the file's end that a spec-conforming parser needs to dispatch the last
+frame. Plus two things nobody planned — **USDCAD inside a *different* episode in all three frames**,
+which makes it the first artifact showing an episode id is a property of a ROW rather than an
+envelope, and that second episode is three days old and still open beside the fresh one, which is
+the shape an episode-gated decision meets in production and a hand-built fixture never contains.
 
 **The opacity rule is pinned apart from the sample, and the reason is a mistake worth keeping
 visible.** The first version asserted it by looping over the sample's populated ids — of which
 reissue 5 had none, so the loop body ran zero times and the test passed while proving nothing. The
-skip branch stays even though **reissue 6 carries two populated ids and the check now runs**: a
+skip branch stays even though **the sample carries populated ids and the check now runs**: a
 sample that once again lacks one must say so rather than pass silently. `TestIdOpacity` pins the rule
 unconditionally against the two forms the producer published:
 

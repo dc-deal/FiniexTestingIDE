@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 from unittest.mock import MagicMock
 
 import pytest
-from conftest import SYMBOL, make_provider, make_tick, snapshot, utc
+from tests.framework.signal_workers.conftest import SYMBOL, make_provider, make_tick, snapshot, utc
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference

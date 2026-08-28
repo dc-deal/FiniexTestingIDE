@@ -39,6 +39,8 @@ class SignalDataProvider:
         self._snapshots: List[SignalSnapshot] = []
         self._gate_keys: List[datetime] = []
         self._seen: Set[Tuple[int, int]] = set()
+        self._availability_clamps = 0
+        self._max_clamp_correction_ms = 0.0
         self._reindex(series.snapshots)
 
     def get_signal_kind(self) -> str:
@@ -99,14 +101,56 @@ class SignalDataProvider:
         """
         ordered = sorted(snapshots, key=lambda s: s.get_order_key())
         gate_keys: List[datetime] = []
+        clamps = 0
+        worst_ms = 0.0
         for snapshot in ordered:
             key = snapshot.get_resolution_key()
             if gate_keys and key < gate_keys[-1]:
+                # Counted, not just corrected. Silently holding the line meant we could
+                # never afterwards say whether a producer clock had ever stepped backwards
+                # at all — the correction was invisible in exactly the runs where knowing
+                # it would matter. Recomputed rather than accumulated, because a re-index
+                # walks the whole series again: this is a property of the series as it
+                # stands, not a running tally of how often it was rebuilt.
+                clamps += 1
+                worst_ms = max(worst_ms, (gate_keys[-1] - key).total_seconds() * 1000.0)
                 key = gate_keys[-1]
             gate_keys.append(key)
         self._snapshots = ordered
         self._gate_keys = gate_keys
+        self._availability_clamps = clamps
+        self._max_clamp_correction_ms = worst_ms
         self._seen = {self._identity(s) for s in ordered}
+
+    def get_availability_clamps(self) -> int:
+        """
+        How many snapshots in this series had their visibility instant held back.
+
+        A producer-side clock correction can move an availability stamp BACKWARDS, and the
+        resolution gate refuses to let that make a snapshot visible earlier than the one
+        before it — the only direction that would be look-ahead. This is how often that
+        refusal was needed.
+
+        Derived here rather than read from the producer's own counter on purpose: the same
+        number then comes out of simulation and live over the same archive, it needs no
+        parquet column, and it does not depend on the producer continuing to send it.
+
+        Returns:
+            The number of clamped snapshots in the current series
+        """
+        return self._availability_clamps
+
+    def get_max_clamp_correction_ms(self) -> float:
+        """
+        The largest backwards step the gate absorbed, in milliseconds.
+
+        The count alone cannot be read: one clamp of two milliseconds is jitter, one of
+        four hours is a story. This is what separates them.
+
+        Returns:
+            The largest correction, or 0.0 when nothing was clamped
+        """
+        return self._max_clamp_correction_ms
 
     def nearest(self, timestamp: datetime, symbol: str) -> Optional[ResolvedSignal]:
         """

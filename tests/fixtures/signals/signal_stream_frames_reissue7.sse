@@ -1,8 +1,22 @@
-: FiniexRAGEngine - GET /v1/stream - sample frames (ISSUE_9)   [reissue 6, 2026-08-25]
+: FiniexRAGEngine - GET /v1/stream - sample frames (ISSUE_9)   [reissue 7, 2026-08-27]
 :
 : THREE PASSES OF ONE BREAKING EPISODE on one stream (`forex_macro_sentiment`), placed 20 min apart,
-: taken from the outcomes journal and rendered against the specified frame format. NOT recorded
-: from a running stream - none exists yet.
+: taken from the outcomes journal and rendered against the specified frame format.
+:
+: REISSUE 7 - the stream EXISTS now: `GET /v1/stream/{pipeline_id}` is served, and these frames are
+: rendered by the SAME module the live wire uses (`core/outcome/stream_frames.py`). Reissues 1-6 were
+: rendered by this script's own private frame function, which is how two of them came to disagree
+: with the contract they demonstrate. That cannot recur; what this file shows and what a socket
+: delivers now come from one place. Five changes:
+:   * `epoch_changed` is present (5c) - the one code that had no example, and the only one whose
+:     payload a reader would otherwise have to invent;
+:   * `cursor_ahead` (5b) states that it is TERMINAL, which the contract text implied and never said;
+:   * `auth_revoked` (5d) says it is not reachable yet and why, rather than looking implemented;
+:   * the connect line is DERIVED from the frames instead of a hardcoded literal - reissue 6 named
+:     `crypto_sentiment` while every frame was `forex_macro_sentiment`, and the consumer found it;
+:   * the file ENDS with a terminating blank line. Reissue 6 did not, so a conforming parser dropped
+:     its last frame - the cold-start heartbeat, the one case section 6 exists to demonstrate. Also
+:     the consumer's find. The generator now refuses to write a sample that ends without it.
 :
 : REISSUE 6 - the passes are CURATED rather than consecutive, at the consumer's request: an opener
 : (`breaking_episode_start: true`), a continuation carrying the same id, and a hold-band pass where
@@ -43,10 +57,12 @@
 : `timestamp` -> `available_msc` -> `fetched_at` -> `evidence_as_of` keep exactly the relationships
 : that were measured.
 :
-: NOT INJECTED any more - see REISSUE 5 above. The only fields this script writes are
-: `breaking_episode_id` / `breaking_episode_start`, and only where the source envelope predates
-: ISSUE_65: those rows carry no episode identity and are filled in empty. Both fields are always
-: PRESENT on a row the engine produces today.
+: NOTHING IS INJECTED. Not one contract field is written by this script - the only edits are the
+: uniform time translation and the `seq` renumbering, both described above. The previous reissue
+: claimed it filled `breaking_episode_id` / `breaking_episode_start` on rows predating ISSUE_65;
+: that code could never run, because the contract check demands both keys on every row and runs
+: first. The selection now requires NATIVE episode identity on every row of every chosen envelope,
+: so a pre-ISSUE_65 pass is skipped rather than patched.
 :
 : Note what carries a value, because it is not "the breaking rows". The id is set on every pass
 : INSIDE an episode - the opening pass, a pass in the hold band (`is_breaking` false, urgency at or
@@ -57,7 +73,7 @@
 :
 : Frames: one `data:` line of compact JSON, no `id:` line, named events throughout.
 
-: --- 1. connect: GET /v1/stream?pipeline=crypto_sentiment  (history defaults to 1) ---
+: --- 1. connect: GET /v1/stream/forex_macro_sentiment  (history defaults to 1) ---
 
 retry: 5000
 
@@ -96,12 +112,28 @@ data: {"stream_epoch":1,"seq":1043,"available_msc":1787705420265,"now_msc":17877
 event: control
 data: {"code":"replay_truncated","stream_epoch":1,"requested_since":900,"oldest_available_seq":1038,"window_hours":24}
 
-: 5b  &since=9001 - ahead of our head (consumer-side store restore)
+: 5b  &since=9001 - ahead of our head (consumer-side store restore). TERMINAL: the
+:      server emits this and closes. Same remedy as 5c below - reconnect - but the
+:      diagnosis differs and so should the operator alert: cursor_ahead means the
+:      CONSUMER rewound, epoch_changed means WE did.
 
 event: control
 data: {"code":"cursor_ahead","stream_epoch":1,"requested_since":9001,"head_seq":1043}
 
-: 5c  token revoked mid-stream; the server closes after this frame
+: 5c  &epoch=7 against a series now on epoch 1 - the cursor addresses numbers that
+:      mean something else now. TERMINAL on the connect path AND mid-stream: after a
+:      rewind our own high-water mark points at a series that no longer
+:      exists, so its state is suspect too. `stream_epoch` is the NEW epoch (the rule
+:      has no per-frame exception); `previous_epoch` is the one the recipient was on.
+:      A consumer therefore has exactly ONE resync path, the connect path.
+
+event: control
+data: {"code":"epoch_changed","stream_epoch":1756290421,"previous_epoch":1,"head_seq":1043}
+
+: 5d  token revoked mid-stream; the server closes after this frame. NOT reachable yet:
+:      the token registry is read at boot, so revocation means a restart - and a
+:      restart closes every connection anyway. Specified, and fired by the config
+:      reload (ISSUE_115).
 
 event: control
 data: {"code":"auth_revoked","stream_epoch":1,"detail":"token expired"}
@@ -118,3 +150,4 @@ data: {"code":"live","stream_epoch":1,"head_seq":0}
 
 event: heartbeat
 data: {"stream_epoch":1,"seq":0,"now_msc":1787705462148}
+

@@ -7,10 +7,10 @@ schema, a pipeline_id and a seq range, so every measurement taken this way looks
 same whether it came from a development instance or from the series a release is
 certified against. The producer answers the question on /v1/health and nowhere else.
 
-Runs on its own thread rather than inside the transport's poll loop: its cadence is
-half an hour against the transport's minute, and folding it in would make it inherit
-the transport's back-off — a producer whose store is briefly unavailable would also
-stop being asked who it is.
+Runs on its own thread rather than inside the transport's read loop: its cadence is half
+an hour against a connection that may sit quiet for the producer's whole beat, and folding
+it in would make it inherit the transport's back-off — a producer whose store is briefly
+unavailable would also stop being asked who it is.
 """
 
 import json
@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.signal_data.producer.signal_producer_reads import read_cadence
 from python.framework.types.config_types.sentiment_config_types import (
     SentimentHealthConfig,
     SentimentSourceConfig,
@@ -171,6 +172,11 @@ class SignalHealthProbe:
         """
         How often the producer evaluates the source we consume.
 
+        Delegated so the live probe and the certificate observer cannot disagree about what
+        a health document means — the same reason the identity read is shared. A second
+        reading of an agreed contract is the mistake this project has now paid for three
+        times.
+
         Args:
             payload: The decoded health document
 
@@ -179,12 +185,7 @@ class SignalHealthProbe:
         """
         if not self._pipeline_id:
             return None
-        wanted = f'eval:{self._pipeline_id}'
-        for worker in payload.get('workers') or []:
-            if worker.get('name') == wanted:
-                interval = worker.get('interval_seconds')
-                return float(interval) if interval is not None else None
-        return None
+        return read_cadence(payload, self._pipeline_id)
 
     def _check_cadence(self, cadence: Optional[float]) -> None:
         """
