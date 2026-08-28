@@ -2,8 +2,8 @@
 FiniexTestingIDE - Signal Feed Stream Observer (#468, #466)
 
 The certificate's reader over the push transport. Runs UNMOCKED against a local producer
-that serves the same four routes the real one does, the way the poll suite runs against a
-real socket — patching the reads would skip exactly what breaks against a real server.
+that serves the same four routes the real one does, over a real socket — patching the
+reads would skip exactly what breaks against a real server.
 
 What is pinned is what a certificate must be able to say afterwards. Two of those are the
 defects this observer exists to remove:

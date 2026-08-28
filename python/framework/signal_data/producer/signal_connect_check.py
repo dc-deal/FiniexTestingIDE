@@ -20,6 +20,10 @@ from python.framework.signal_data.producer.signal_pipelines_reader import (
     describe_registry,
     fetch_pipeline_registry,
 )
+from python.framework.signal_data.producer.signal_producer_reads import (
+    HEALTH_ROUTE,
+    LATEST_ROUTE_TEMPLATE,
+)
 from python.framework.types.config_types.sentiment_config_types import ActiveProducer
 from python.framework.types.signal_data_types import (
     ConnectCheckResult,
@@ -92,14 +96,15 @@ def run_connect_check(
 
     # /v1/health is the one documented no-token route, so it is probed without one:
     # a failure here is the address, a failure on a gated route alone is the credential.
-    _probe('GET /v1/health', f'{root}/v1/health', '', timeout_s, result, describe_health)
+    _probe(f'GET {HEALTH_ROUTE}', f'{root}{HEALTH_ROUTE}', '', timeout_s, result,
+           describe_health)
 
     _check_registry(producer, pipeline_id, timeout_s, result)
 
     if pipeline_id:
-        _probe(f'GET /v1/pipelines/{pipeline_id}/latest',
-               f'{root}/v1/pipelines/{pipeline_id}/latest',
-               token, timeout_s, result, describe_latest)
+        latest = LATEST_ROUTE_TEMPLATE.format(pipeline_id=pipeline_id)
+        _probe(f'GET {latest}', f'{root}{latest}', token, timeout_s, result,
+               describe_latest)
 
     return result
 

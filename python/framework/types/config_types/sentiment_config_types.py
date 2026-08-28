@@ -95,7 +95,7 @@ class SentimentProducerEndpoint(BaseModel):
     One reachable producer instance: where it is and which credential opens it.
 
     The two fields belong together and must switch together. A production token against
-    a development address is a 401, and a 401 now stops the poll loop — so splitting them
+    a development address is a 401, and a 401 now stops the stream — so splitting them
     across two settings turns a one-word environment switch into a silent feed outage
     diagnosed at the wrong system.
     """
@@ -118,6 +118,10 @@ class SentimentProducerConfig(BaseModel):
 
     active: str = 'dev'
     endpoints: Dict[str, SentimentProducerEndpoint] = Field(default_factory=dict)
+    # How long one read of a producer route may take. It sits on the PRODUCER and not on
+    # a transport because the readers that need it are transport-independent: the connect
+    # check and the certificate observer run whether or not a session is streaming.
+    request_timeout_s: float = 20.0
 
     def get_active_endpoint(self) -> SentimentProducerEndpoint:
         """
@@ -161,26 +165,6 @@ class SentimentStreamConfig(BaseModel):
     reconnect_backoff_max_s: float = 60.0
 
 
-class SentimentPollConfig(BaseModel):
-    """
-    The interim pull path, superseded by the push stream (#468) and kept until it has
-    carried a session.
-
-    Deliberately the throwaway half: a poll returns an envelope up to a full producer
-    interval old (measured against the live engine: 101.8 s), which is precisely what the
-    stream removes. Everything behind the inbox is the permanent path. Where both are
-    enabled the stream wins — two transports filling one inbox is not a fallback.
-    """
-    enabled: bool = False
-    pipeline_id: str = ''
-    interval_s: float = 60.0
-    request_timeout_s: float = 20.0
-    # Back-off applied when the producer reports it could not serve from its store. A GET
-    # never spends on the producer side, but a store that cannot answer is a condition to
-    # wait out rather than to hammer.
-    degraded_backoff_s: float = 300.0
-
-
 class SentimentHealthConfig(BaseModel):
     """
     How often the producer engine is asked who it is.
@@ -201,10 +185,19 @@ class SentimentHealthConfig(BaseModel):
 
 
 class SentimentConfig(BaseModel):
-    """Root of sentiment_config.json."""
+    """
+    Root of sentiment_config.json.
+
+    Unknown keys are REFUSED for the same reason the stream block refuses them: the whole
+    `poll` block left this file when the push transport took over, and a workspace
+    override still carrying one would be dropped in silence — an operator would be
+    enabling a transport that no longer exists and reading a healthy log for a session
+    that never opened a connection.
+    """
+    model_config = ConfigDict(extra='forbid')
+
     producer: SentimentProducerConfig = Field(default_factory=SentimentProducerConfig)
     stream: SentimentStreamConfig = Field(default_factory=SentimentStreamConfig)
-    poll: SentimentPollConfig = Field(default_factory=SentimentPollConfig)
     health: SentimentHealthConfig = Field(default_factory=SentimentHealthConfig)
     sources: Dict[str, SentimentSourceConfig] = Field(default_factory=dict)
 

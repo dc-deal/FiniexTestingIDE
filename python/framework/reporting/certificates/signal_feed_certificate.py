@@ -23,9 +23,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from python.framework.signal_data.producer.signal_feed_observer import (
-    LATEST_ROUTE_TEMPLATE,
-)
 from python.framework.signal_data.producer.signal_feed_stream_observer import (
     STREAM_ROUTE_TEMPLATE,
 )
@@ -33,6 +30,7 @@ from python.framework.signal_data.producer.signal_pipelines_reader import PIPELI
 from python.framework.signal_data.producer.signal_producer_reads import (
     BUILD_ROUTE,
     HEALTH_ROUTE,
+    LATEST_ROUTE_TEMPLATE,
 )
 from python.framework.types.signal_certificate_types import (
     FeedCheck,
@@ -64,7 +62,7 @@ class SignalFeedCertificate:
         probe: FeedProbeResult,
         cadence_minutes_configured: Optional[float],
         release_version: str = 'dev',
-        observation_gap_s: float = 0.0,
+        stream_seconds_held: float = 0.0,
         reports_dir: str = DEFAULT_REPORTS_DIR,
     ) -> SignalFeedAssessment:
         """
@@ -75,7 +73,7 @@ class SignalFeedCertificate:
             cadence_minutes_configured: What we have registered for this source
             release_version: Version being certified; the default marks a rehearsal, in
                 which an uncommitted tree of ours is recorded rather than failed
-            observation_gap_s: Pause the run left between consecutive reads
+            stream_seconds_held: How long the run held the stream open
             reports_dir: Directory holding earlier certificates
 
         Returns:
@@ -85,7 +83,7 @@ class SignalFeedCertificate:
         assessment = SignalFeedAssessment(
             probe=probe,
             cadence_minutes_configured=cadence_minutes_configured,
-            observation_gap_s=observation_gap_s)
+            stream_seconds_held=stream_seconds_held)
 
         # Transport comes first: a read that never arrived cannot be judged for shape, and
         # the certificate must say WHICH of the two failed — the address or the credential.
@@ -296,7 +294,7 @@ class SignalFeedCertificate:
                 'seq_last': seq_last,
                 'stream_epochs': epochs,
                 'observation_count': len(probe.observations),
-                'observation_gap_s': assessment.observation_gap_s,
+                'stream_seconds_held': assessment.stream_seconds_held,
                 'cadence_seconds_reported': (
                     identity.cadence_seconds if identity else None),
                 'cadence_minutes_configured': assessment.cadence_minutes_configured,

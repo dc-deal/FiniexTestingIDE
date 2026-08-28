@@ -293,7 +293,7 @@ class MockStreamServer:
 
                 # The three routes a certificate run reads before it opens the stream.
                 # Served here rather than mocked so the observer runs unmocked end to end,
-                # the way the poll suite runs against a real socket.
+                # against a real socket rather than a stubbed reader.
                 if parsed.path == '/v1/health':
                     return self._json(server.get_health())
                 if parsed.path == '/v1/build':

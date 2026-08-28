@@ -3,8 +3,8 @@ FiniexTestingIDE - Producer Identity and Build Reads
 The two token-free reads every certificate run makes, wherever its envelopes come from.
 
 Shared rather than copied because they answer a question about the PRODUCER, not about the
-transport: which journal is being written into, and which build is running. A poll
-observation and a stream observation must not be able to disagree about that — two copies
+transport: which journal is being written into, and which build is running. Two observers
+must not be able to disagree about that — two copies
 of "what a health document means" is two places for the reading to drift, and this project
 has now paid for a second derivation of an agreed contract three times.
 
@@ -28,6 +28,9 @@ from python.framework.types.signal_certificate_types import (
 
 HEALTH_ROUTE = '/v1/health'
 BUILD_ROUTE = '/v1/build'
+# Token-gated, and that is what it is for here: /v1/health is open, so only a gated route
+# can prove the credential itself answers.
+LATEST_ROUTE_TEMPLATE = '/v1/pipelines/{pipeline_id}/latest'
 
 # What the producer calls a journal whose name its own mapping could not resolve.
 UNRESOLVED_JOURNAL_NAME = 'unknown'

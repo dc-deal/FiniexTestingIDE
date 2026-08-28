@@ -25,7 +25,6 @@ from python.framework.signal_data.transport.abstract_signal_transport import (
 from python.framework.signal_data.producer.signal_health_probe import SignalHealthProbe
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
-from python.framework.signal_data.transport.signal_poll_source import SignalPollSource
 from python.framework.signal_data.transport.signal_stream_source import SignalStreamSource
 from python.framework.types.config_types.sentiment_config_types import (
     ActiveProducer,
@@ -35,7 +34,6 @@ from python.framework.types.signal_data_types import (
     SignalLiveBoot,
     SignalSourceMode,
     SignalSourceResolution,
-    SignalTransportKind,
 )
 
 
@@ -83,7 +81,7 @@ def setup_signal_transport(
         symbol: The session's trading symbol, for the observed-series scope
         signal_source: What feeds this session's SIGNAL workers, resolved at startup
         signal_boot: What the boot bridge established — the cursor and the producer's
-            served stream values; required for the push transport, unused by the poll path
+            served stream values
         logger: Session logger — operator-relevant failures belong here (§35)
 
     Returns:
@@ -97,14 +95,11 @@ def setup_signal_transport(
         return None
 
     sentiment_config = SentimentConfigManager().get_config()
-    is_stream = signal_source.transport is SignalTransportKind.STREAM
-    transport_config = sentiment_config.stream if is_stream else sentiment_config.poll
-    pipeline_id = transport_config.pipeline_id
+    pipeline_id = sentiment_config.stream.pipeline_id
     if not pipeline_id:
-        named = 'stream' if is_stream else 'poll'
         raise SignalSourceUnresolvedError(
-            f'Signal transport is enabled but {named}.pipeline_id is empty — '
-            f'name the producer pipeline in sentiment_config.json.')
+            'Signal transport is enabled but stream.pipeline_id is empty — '
+            'name the producer pipeline in sentiment_config.json.')
 
     producer = SentimentConfigManager().resolve_active_producer()
     # Announce which endpoint and which file answered. With several registered endpoints
@@ -137,21 +132,10 @@ def setup_signal_transport(
     observed = SignalObservedAccumulator(source=pipeline_id, symbol=symbol)
     inbox = SignalInbox()
 
-    if is_stream:
-        transport = _build_stream_source(
-            stream_config=sentiment_config.stream, producer=producer,
-            signal_source=signal_source, signal_boot=signal_boot, inbox=inbox,
-            observed=observed, health_probe=health_probe, logger=logger)
-    else:
-        transport = SignalPollSource(
-            config=sentiment_config.poll,
-            producer=producer,
-            signal_kind=signal_source.signal_kind,
-            inbox=inbox,
-            logger=logger,
-            health_probe=health_probe,
-            observed=observed,
-        )
+    transport = _build_stream_source(
+        stream_config=sentiment_config.stream, producer=producer,
+        signal_source=signal_source, signal_boot=signal_boot, inbox=inbox,
+        observed=observed, health_probe=health_probe, logger=logger)
     return SignalTransportSetup(inbox=inbox, transport=transport, observed=observed)
 
 

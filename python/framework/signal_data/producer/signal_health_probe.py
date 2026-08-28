@@ -7,10 +7,10 @@ schema, a pipeline_id and a seq range, so every measurement taken this way looks
 same whether it came from a development instance or from the series a release is
 certified against. The producer answers the question on /v1/health and nowhere else.
 
-Runs on its own thread rather than inside the transport's poll loop: its cadence is
-half an hour against the transport's minute, and folding it in would make it inherit
-the transport's back-off — a producer whose store is briefly unavailable would also
-stop being asked who it is.
+Runs on its own thread rather than inside the transport's read loop: its cadence is half
+an hour against a connection that may sit quiet for the producer's whole beat, and folding
+it in would make it inherit the transport's back-off — a producer whose store is briefly
+unavailable would also stop being asked who it is.
 """
 
 import json

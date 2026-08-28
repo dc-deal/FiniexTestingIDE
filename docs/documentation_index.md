@@ -73,7 +73,7 @@
 |----------|-------------|
 | [TickCollector Guide](data_pipeline/tick_collector_guide.md) | MQL5 data collection, JSON schema, error classification |
 | [Data Import Pipeline](data_pipeline/data_import_pipeline.md) | JSON→Parquet conversion, UTC normalization, bar rendering |
-| [Signal Data Source](data_pipeline/signal_data_source.md) | Sentiment/signal source: JSONL→Parquet import, index, `data_sentiment_type` resolution, live transports (poll + SSE stream) |
+| [Signal Data Source](data_pipeline/signal_data_source.md) | Sentiment/signal source: JSONL→Parquet import, index, `data_sentiment_type` resolution, the live SSE stream transport |
 | [Batch Preparation](data_pipeline/batch_preparation_system.md) | 7-phase orchestration system |
 | [Duplicate Detection](data_pipeline/duplicate_detection_usage.md) | Artificial duplicate detection, data integrity protection |
 

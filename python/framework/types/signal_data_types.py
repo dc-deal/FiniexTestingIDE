@@ -364,10 +364,10 @@ class SignalTransportKind(str, Enum):
     """
     Which live transport carries the envelopes.
 
-    LIVE is deliberately not a synonym for polling: the push stream is a second transport
-    over the same inbox, so the mode says THAT a transport is needed and this says WHICH.
+    Separate from the source MODE on purpose: the mode says THAT a transport is needed,
+    this says WHICH. One member today — certificates written before 2026-08-28 record
+    `poll`, the interim pull path, and they read back as plain strings.
     """
-    POLL = 'poll'
     STREAM = 'stream'
 
 

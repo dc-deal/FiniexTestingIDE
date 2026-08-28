@@ -7,10 +7,11 @@ the system happens through the SignalInbox, which it fills from its own thread a
 the loop drains once per pass — so the session needs to start it, stop it, and be able to
 render what it is doing. It never needs to know HOW envelopes arrive.
 
-That is the whole reason two transports can coexist while the push stream replaces the
-interim pull path: the tick loop and the session were typed against the concrete poll
-source, which made the second transport a change to both. They are typed against this
-instead, and the eventual deletion of the poll source touches neither.
+That is the whole reason the push stream could replace the interim pull path without
+touching either: the tick loop and the session had been typed against the concrete poll
+source, which made a second transport a change to both. They are typed against this
+instead, so the stream arrived and the pull path was deleted (2026-08-28) with neither
+noticing. One implementation today; the ABC is what kept the swap cheap.
 """
 
 from abc import ABC, abstractmethod

@@ -96,6 +96,7 @@ is packed, while it still sits in the inbox.
 ```json
 "producer": {
   "active": "dev",
+  "request_timeout_s": 20.0,
   "endpoints": {
     "dev":        { "base_url": "http://host.docker.internal:8100",
                     "credentials_file": "rag_credentials_dev.json" },
@@ -108,12 +109,16 @@ is packed, while it still sits in the inbox.
 Switching is one word in `user_configs/sentiment_config.json`:
 `{"producer": {"active": "production"}}`.
 
+`request_timeout_s` sits on the producer rather than on a transport, because the readers that need
+it are transport-independent: the connect check and the certificate observer run whether or not a
+session is streaming.
+
 **The address and the credential belong to the endpoint, not to the transport, and they switch
 together.** That pairing is the point: a production token against a development address answers
-`401`, and a `401` stops the poll loop — so a switch that moved only the address would present as
-a feed outage diagnosed at the wrong system. It also removes a second hazard: `poll` and `stream`
-used to carry an address each, so they could name different producers, and the identity probe
-would then answer about an engine that is not the one delivering.
+`401`, and a `401` stops the stream — so a switch that moved only the address would present as
+a feed outage diagnosed at the wrong system. It also removes a second hazard: the transports used
+to carry an address each, so they could name different producers, and the identity probe would
+then answer about an engine that is not the one delivering.
 
 An `active` naming an unregistered endpoint is a **hard error** listing the known names, never a
 fallback to the previous one. The session log states which endpoint answered, next to the
@@ -133,7 +138,7 @@ what lets a release gate certify the feed without buying a single LLM call.
 | `GET /v1/health` | no | `journal_id`, `environment`, engine version, per-worker cadence, budget + stall state | their one always-open route, rate-limited |
 | `GET /v1/build` | no | `version`, `commit`, `committed_at`, `dirty`, `started_at` | **open by their default, behind a `build_info_public` switch.** Their repository is public, so a commit hash discloses nothing not already on GitHub; behind a private repository the same field would fingerprint known defects — hence the switch. Treat absence as a policy answer, never as a fault |
 | `GET /v1/pipelines` | yes | registered sources (`outcome_type`, `trigger_type`, `cadence_seconds`) **plus the engine-wide `stream` block**: `heartbeat_seconds`, `replay_window_hours` | spends nothing — it reads an in-memory registry |
-| `GET /v1/pipelines/{id}/latest` | yes | one envelope | the interim pull path |
+| `GET /v1/pipelines/{id}/latest` | yes | one envelope | fed the interim pull path; today the connect check's credential proof |
 | `GET /v1/stream/{id}` | yes | the push stream: `signal` / `heartbeat` / `control` frames (#468) | the pipeline is a PATH segment, not a query parameter |
 | `POST /v1/pipelines/{id}/run` | — | **spends** on their LLM provider | **does not exist in production** (404). Never call it |
 
@@ -176,12 +181,12 @@ is empty — with a tracked empty default and a gitignored override, "configured
 otherwise indistinguishable. Exit code is non-zero on failure, so it works as a pre-flight.
 
 **A rejected credential is not an outage.** `401` / `403` are reported as a credential problem and
-never as unreachability — the same distinction the running poll source now makes, where it also
-**stops polling**: retrying cannot fix a token, and the staleness contract then declares the feed
+never as unreachability — the same distinction the running transport makes, where it also **stops
+reconnecting**: retrying cannot fix a token, and the staleness contract then declares the feed
 blind, which is a state the decision logic is required to handle.
 
 **An unreadable envelope is not an outage either.** The producer answered; our schema could not
-read what it said. The poll source classifies that separately — state `contract`, its own
+read what it said. The transport classifies that separately — state `contract`, its own
 `contract_errors` counter, and a session-logger error naming the field that disagreed:
 
 ```
@@ -196,8 +201,8 @@ Three properties, each with a reason:
   It happened for real when the producer added `breaking_episode_id` / `breaking_episode_start`
   additively, with no `schema_version` change, and our declared type was wrong: every envelope
   was rejected, silently, as *their* fault.
-- **Polling continues**, unlike the credential case. One malformed pass must not end a session,
-  and a producer-side fix should be picked up without a restart.
+- **The connection stays open**, unlike the credential case. One malformed pass must not end a
+  session, and a producer-side fix should be picked up without a restart.
 - **The error goes to the session logger**, so it enters the §35 error pot — which means the run
   grades `finished_with_errors` and exits `3` (#372) instead of finishing clean on a feed that
   delivered nothing.
@@ -227,16 +232,19 @@ Three deliberate properties: the values stay **discarded** (the projection is le
 diagnosis needs the field's name, not its content); **nothing is stored** on the snapshot or in the
 parquet, so no per-row field exists to carry the answer; and it is computed **in the transport**, the
 one place holding the raw payload and the parsed object at the same time. Once per set, because a
-grown shape would otherwise log on every poll for the life of the session.
+grown shape would otherwise log on every arrival for the life of the session.
 
 
 ### The push stream — one connection, the producer's full cadence (#468)
 
-The pull path polls `/latest` every 60 s and is deliberately the throwaway half. Its whole cost
-falls on the **out-of-band** passes: a scheduled envelope seen 30 s late is meaningless against a
-ten-minute grid, a breaking one seen 30 s late is 30 s of the move. `/latest` also cannot serve an
-envelope that was **superseded between two polls** — an out-of-band pass followed by a scheduled one
-is unrecoverable there, and `?since=<seq>` is exactly what fixes it.
+**The stream is the only live transport.** The interim pull path — a 60 s poll against `/latest`,
+always declared the throwaway half — was removed on 2026-08-28, once the stream had carried a real
+session. What it cost is why: the whole penalty fell on the **out-of-band** passes, where a
+scheduled envelope seen 30 s late is meaningless against a ten-minute grid but a breaking one seen
+30 s late is 30 s of the move. `/latest` also cannot serve an envelope that was **superseded between
+two polls** — an out-of-band pass followed by a scheduled one was unrecoverable there, and
+`?since=<seq>` is exactly what fixes it. The route itself remains in use as the connect check's
+credential proof, because `/v1/health` is open and only a gated route can prove a token answers.
 
 One connection per pipeline carrying the producer's **full** cadence — not a breaking-only channel.
 Three properties decided that cross-repo: a breaking-only channel is edge-triggered *into* the state

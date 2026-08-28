@@ -7,10 +7,10 @@ archive to read, so the same facts have to be accumulated while they pass throug
 comes out is the identical dataclass, which is what lets one report shape serve both
 pipelines instead of the live path growing a second one.
 
-Fed by the transport rather than by the provider: when the SSE stream (#468) replaces the
-interim poller it feeds this same accumulator and nothing else moves, and the provider
-stays a pure resolver — which is what makes a SIGNAL worker indifferent to where its
-snapshots came from.
+Fed by the transport rather than by the provider: when the SSE stream (#468) replaced the
+interim poller it fed this same accumulator and nothing else moved, and the provider stays
+a pure resolver — which is what makes a SIGNAL worker indifferent to where its snapshots
+came from.
 """
 
 import threading

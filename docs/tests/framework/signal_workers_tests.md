@@ -15,10 +15,10 @@ fixtures via direct provider injection — no batch, no tick loop.
 - `CORE/llm_sentiment` worker (`AbstractSignalWorker`)
 - `CORE/hybrid_sentiment_reference` decision logic
 - `WorkerOrchestrator` SIGNAL dispatch + the per-tick resolution counters (#433)
-- The live transports: the interim poll source and the SSE stream (#468) with its frame decoder,
-  boot bridge and producer-registry reader
+- The live transport: the SSE stream (#468) with its frame decoder, boot bridge and
+  producer-registry reader
 
-**Total Tests:** 314
+**Total Tests:** 290
 
 ---
 
@@ -112,50 +112,10 @@ What the tests pin, and the second half matters as much as the first:
 - an empty drain does nothing at all — which is the simulation's and a mock session's case on
   every single pass, and is what keeps both bit-identical.
 
-### test_signal_poll_source.py (#141 Part 2a)
-
-The interim pull transport, superseded by the stream (#468) and kept until it has carried a
-session. Runs against a **local stub started inside the test** — never against a real producer: a suite that needs someone else's
-container running is a suite that fails for reasons unrelated to the code.
-
-Only the *responses* are scripted. The real transport makes a real HTTP request over a real socket,
-builds its own headers (the bearer assertion reads them **server-side**), decodes real JSON and
-validates through the production model. Patching the fetch would skip exactly what breaks against a
-real server.
-
-- **Arrival** — a new envelope is enqueued; receipt is stamped by us (`collected_msc` is absent on
-  the wire) while the gate stays the producer's `available_msc`.
-- **Restraint** — the producer republishes the same stored envelope until its next pass, so the
-  same `(epoch, seq)` is enqueued once, not on every poll.
-- **The degraded producer** — `status: error` + `VECTOR_STORE_ERROR` means "no envelope" and must
-  never be enqueued: it would place a degraded HOLD into the series that the provider would later
-  resolve as if it were sentiment. A *normal* `status: error` (an LLM timeout) **is** data and is
-  kept.
-- **Auth** — the header is sent only when a token is configured.
-- **A grown shape** — an envelope carrying fields we do not declare is accepted and enqueued,
-  and its unread field names are announced **once per distinct set** at NOTICE level. Pinned
-  because the producer's minor bump says the shape grew without saying what grew, and our models
-  discard the undeclared silently. The second poll of the same shape must stay quiet, or a grown
-  envelope logs on every beat for the life of the session.
-- **Contract violation** — an envelope the producer served and our schema cannot read is
-  classified apart from a transport fault: state `contract`, its own counter, `transport_errors`
-  untouched, nothing reaching the inbox, and a session-logger error naming the offending field.
-  The first version of this loop counted it as a transport error and retried forever, so a
-  mismatch on our side presented as the producer's outage — the same misattribution the `401`
-  rule forbids. It happened for real when the producer added the episode fields additively.
-- **Lifecycle** — an unreachable producer never raises into the loop; stop is idempotent.
-- **Transport state** — the state must describe the transport *now*, not at the last arrival.
-  The producer's beat is far longer than the poll interval, so most polls legitimately return an
-  already-seen envelope and leave through the early return. A state that recovered only on arrival
-  left a transient fault on the panel until the producer happened to publish again — **a healthy
-  feed reading as a broken one**, the exact misreading the panel exists to prevent.
-- **Health probe** — starts and stops with the transport it accompanies; its identity reaches both
-  the panel and the shared tape. Without a probe the identity is reported as unknown, never
-  fabricated.
-
 ### test_signal_health_probe.py (#141 Part 2a)
 
-Which producer journal a live session consumed from. Same local-stub discipline as the poll source.
+Which producer journal a live session consumed from. Same local-stub discipline as the
+transport suites.
 
 The probe exists because **nothing on an envelope says which store it came from**. Two producer
 instances share a schema, a `pipeline_id` and a `seq` range, so a measurement taken against a
@@ -409,9 +369,9 @@ truncated and the operator should hear it before it happens rather than as a sur
 
 ### test_signal_feed_stream_observer.py (#468, #466)
 
-The release certificate's reader over the push transport, run UNMOCKED against a local producer that
-serves the same four routes the real one does — the same discipline the poll suite uses, because
-patching the reads would skip exactly what breaks against a real server.
+The release certificate's reader over the push transport, run UNMOCKED against a local producer
+that serves the same four routes the real one does, over a real socket — patching the reads would
+skip exactly what breaks against a real server.
 
 Two of the assertions are the defects this observer exists to remove:
 

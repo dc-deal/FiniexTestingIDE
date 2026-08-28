@@ -108,10 +108,10 @@ class SignalSourceResolver:
         """
         Which live transport is enabled, if any.
 
-        The stream is checked first because it supersedes the poll where both are on: a
-        push connection delivers what `/latest` structurally cannot — an envelope that was
-        superseded between two polls is unrecoverable on the pull path, and a heartbeat is
-        what tells a dead socket apart from a quiet producer.
+        There is one, and the interim pull path it replaced is gone: a push connection
+        delivers what `/latest` structurally cannot — an envelope superseded between two
+        polls was unrecoverable on the pull path — and a heartbeat is what tells a dead
+        socket apart from a quiet producer.
 
         Args:
             sentiment_config: The installation's signal transport settings
@@ -121,6 +121,4 @@ class SignalSourceResolver:
         """
         if sentiment_config.stream.enabled:
             return SignalTransportKind.STREAM
-        if sentiment_config.poll.enabled:
-            return SignalTransportKind.POLL
         return None

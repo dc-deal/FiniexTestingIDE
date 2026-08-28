@@ -104,15 +104,10 @@ class SignalIndexCli:
         """Probe the configured producer: reachable, and which credential answered."""
         manager = SentimentConfigManager()
         config = manager.get_config()
-        # The pipeline comes from whichever transport is enabled. Reading poll's id on a
-        # stream-only installation would probe an empty name and report a healthy producer
-        # for a session that cannot start.
-        pipeline_id = (config.stream.pipeline_id if config.stream.enabled
-                       else config.poll.pipeline_id)
         result = run_connect_check(
             producer=manager.resolve_active_producer(),
-            pipeline_id=pipeline_id,
-            timeout_s=config.poll.request_timeout_s)
+            pipeline_id=config.stream.pipeline_id,
+            timeout_s=config.producer.request_timeout_s)
         print_connect_check(result)
         return result
 

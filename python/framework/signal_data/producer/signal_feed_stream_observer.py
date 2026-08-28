@@ -2,14 +2,15 @@
 FiniexTestingIDE - Signal Feed Stream Observer
 One certificate run's reads over the PUSH transport (#468, #466).
 
-Emits the same `FeedProbeResult` the poll observer emits, so every assertion above it
-applies untouched — that was the promise the poll observer's own docstring made, and this
-is it being kept. What changes is where the envelopes come from, and that difference is
-recorded in the result rather than declared by a constant.
+Emits the same `FeedProbeResult` the interim poll observer emitted, so every assertion
+above it applied untouched across the swap — that was the promise the observer split was
+made for, and it is what let the pull observer be deleted (2026-08-28) without a single
+assertion changing. Where the envelopes come from is recorded in the result rather than
+declared by a constant.
 
 The envelopes come from the REAL transport, not from a second SSE client written to watch
 the first. A stream frame arrives exactly once, so an observer cannot simply read again the
-way the poll observer reads `/latest` twice; the alternative would be a parallel client
+way the poll observer read `/latest` twice; the alternative would be a parallel client
 with its own frame parsing, reconnect and cursor — one more derivation of a contract this
 project has already derived twice too often. Instead the transport carries an optional
 frame recorder, which keeps each raw payload beside its parsed form. That matters because
@@ -67,7 +68,7 @@ class SignalFeedStreamObserver:
     Performs one certificate run's reads over the stream and returns them raw.
 
     Holds no verdicts and writes no artifact — the validator judges, the certificate
-    records. Identical in that respect to the poll observer, deliberately.
+    records.
     """
 
     def __init__(

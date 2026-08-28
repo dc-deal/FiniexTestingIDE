@@ -250,7 +250,7 @@ class SignalFeedAssessment:
         unknown_vocabulary: Closed-vocabulary values we do not know yet
         rows_without_evidence: Rows resting on no evidence at all
         cadence_minutes_configured: What we have registered for this source
-        observation_gap_s: Pause the run left between consecutive reads
+        stream_seconds_held: How long the run held the stream open
         previous_certificate: Artifact this run was compared against, None for the first
     """
     probe: FeedProbeResult
@@ -259,7 +259,7 @@ class SignalFeedAssessment:
     unknown_vocabulary: List[str] = field(default_factory=list)
     rows_without_evidence: int = 0
     cadence_minutes_configured: Optional[float] = None
-    observation_gap_s: float = 0.0
+    stream_seconds_held: float = 0.0
     previous_certificate: Optional[str] = None
 
     def is_passed(self) -> bool:
