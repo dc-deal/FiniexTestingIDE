@@ -660,6 +660,15 @@ class SignalUsageRow(BaseModel):
     stale_ticks: int = 0
     blind_ticks: int = 0            # nothing resolvable — NOT an archive gap (that is stale)
     fresh_ratio: float = 0.0        # fresh / total ticks; 0.0 when the run processed none
+    # How often this unit's resolution gate held a snapshot's visibility instant back
+    # because the producer's availability stamp stepped BACKWARDS, and the largest step it
+    # absorbed. A property of the SERIES this unit ordered, which is why it sits here and
+    # not on the source row: in simulation every scenario builds its own provider over its
+    # own window-trimmed slice, so a source-level number could not say WHICH window met the
+    # correction. Derived from our own gate rather than read from the producer's counter
+    # (§41), so simulation and live report the same number over the same archive.
+    availability_clamps: int = 0
+    max_clamp_correction_ms: float = 0.0
 
 
 class SignalSourceRow(BaseModel):

@@ -11,7 +11,7 @@ resolution is patched so the test stays free of broker-config data.
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-from conftest import utc
+from tests.data.scenario_generator.conftest import utc
 
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.market_types.market_volatility_profile_types import (

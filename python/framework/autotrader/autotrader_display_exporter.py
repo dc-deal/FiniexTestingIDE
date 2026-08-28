@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
-from python.framework.signal_data.signal_poll_source import SignalPollSource
+from python.framework.signal_data.transport.signal_poll_source import SignalPollSource
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.reconciler import Reconciler

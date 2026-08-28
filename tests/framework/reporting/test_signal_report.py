@@ -168,6 +168,54 @@ class TestRuntimePlane:
         row = report.units[0].usages[0]
         assert (row.fresh_ticks, row.stale_ticks) == (160, 40)
 
+    def test_several_workers_on_one_source_do_not_multiply_the_clamp(self, coverage):
+        """
+        The counters above SUM because they are per-tick and per-worker. The clamp counters
+        must NOT, and this is the case that decides it: several SIGNAL workers on one source
+        share exactly ONE SignalDataProvider — the live wiring enforces it, and the mounted
+        wiring has always built one provider per signal kind. So every worker reports the
+        SAME clamp, and summing would turn a single producer clock correction into as many
+        corrections as there are workers reading it.
+
+        Two workers, one series, one backwards step of 2 s. The report must say ONE.
+        """
+        unit = _unit('alpha', 100, 0, 0)
+        unit.signal_statistics[0].availability_clamps = 1
+        unit.signal_statistics[0].max_clamp_correction_ms = 2000.0
+        unit.signal_statistics.append(SignalResolutionStats(
+            worker_name='sentiment_slow', signal_kind='llm_sentiment', symbol=SYMBOL,
+            fresh_ticks=60, stale_ticks=40, blind_ticks=0,
+            availability_clamps=1, max_clamp_correction_ms=2000.0))
+
+        report = build_signal_report({(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [unit])
+        row = report.units[0].usages[0]
+        assert row.availability_clamps == 1, (
+            'one series, one clamp — however many workers read it')
+        assert row.max_clamp_correction_ms == 2000.0
+        assert (row.fresh_ticks, row.stale_ticks) == (160, 40), (
+            'the tick counters still sum; only the series facts merge by max')
+
+    def test_the_clamp_is_scoped_to_the_scenario_that_met_it(self, coverage):
+        """
+        Why the clamp lives on the USAGE row and not on the source row.
+
+        In simulation every scenario builds its own provider over its own window-trimmed
+        slice of the same archive, so a correction inside one window is invisible to
+        another. A source-level number could not say WHICH window met it — and a reader
+        would have to guess whether it was a sum, a max, or one scenario's figure.
+        """
+        met = _unit('met', 100, 0, 0)
+        met.signal_statistics[0].availability_clamps = 2
+        met.signal_statistics[0].max_clamp_correction_ms = 4500.0
+
+        report = build_signal_report(
+            {(SOURCE, SYMBOL): _info(coverage, 'met', 'missed')},
+            [met, _unit('missed', 100, 0, 0)])
+        rows = {usage.scenario: usage for usage in report.units[0].usages}
+        assert (rows['met'].availability_clamps, rows['met'].max_clamp_correction_ms) == (2, 4500.0)
+        assert (rows['missed'].availability_clamps,
+                rows['missed'].max_clamp_correction_ms) == (0, 0.0)
+
 
 class TestFreshRatioAggregate:
     """The run-wide ratio is the weakest channel, not the average."""
@@ -200,6 +248,27 @@ class TestRender:
         assert 'what the strategy actually decided on' in output
         assert '900 fresh · 100 stale · 0 blind' in output
         assert '90.0% fresh' in output
+
+    def test_a_clamp_is_shown_only_when_it_happened(self, coverage):
+        """
+        Two renders, one assertion each way. A line reading "0 clamps" on every run is
+        noise, and noise in the quiet case is how a report stops being read — the count
+        earns its place precisely because it is normally absent.
+        """
+        quiet = build_signal_report(
+            {(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [_unit('alpha', 900, 0, 0)])
+        assert 'availability clamp' not in self._render(quiet)
+
+        noisy_unit = _unit('alpha', 900, 0, 0)
+        noisy_unit.signal_statistics[0].availability_clamps = 3
+        noisy_unit.signal_statistics[0].max_clamp_correction_ms = 1500.0
+        noisy = build_signal_report(
+            {(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [noisy_unit])
+        output = self._render(noisy)
+        assert '3 availability clamp(s)' in output
+        assert '1,500 ms' in output
+        assert 'stepped backwards' in output, (
+            'the number alone does not say what happened; the line has to')
 
     def test_synthetic_origin_is_marked(self, coverage):
         report = build_signal_report(

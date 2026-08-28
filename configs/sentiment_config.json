@@ -15,8 +15,7 @@
   "stream": {
     "enabled": false,
     "pipeline_id": "",
-    "replay_window_hours": 24.0,
-    "heartbeat_timeout_s": 60.0,
+    "heartbeat_timeout_multiple": 3.0,
     "reconnect_backoff_initial_s": 5.0,
     "reconnect_backoff_max_s": 60.0
   },

@@ -133,6 +133,13 @@ class SignalSummary(AbstractBatchSummarySection):
               f'{self._date(usage.window_start)} → {window_end} · {extent}')
         print(f'{indent}       {usage.fresh_ticks:,} fresh · {usage.stale_ticks:,} stale · '
               f'{usage.blind_ticks:,} blind     ({usage.fresh_ratio * 100:.1f}% fresh)')
+        # Only when it happened. A line reading "0 clamps" on every run is noise, and noise
+        # in the quiet case is how a report stops being read — the count is worth printing
+        # precisely because it is normally absent.
+        if usage.availability_clamps:
+            print(f'{indent}       ⏱  {usage.availability_clamps:,} availability clamp(s) · '
+                  f'largest {usage.max_clamp_correction_ms:,.0f} ms — the producer\'s '
+                  f'stamp stepped backwards and the gate held the line')
 
     def _format_origin(self, origin: str) -> str:
         """Origin label — synthetic data is marked, absence means unknown."""

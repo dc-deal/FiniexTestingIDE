@@ -23,10 +23,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from python.framework.signal_data.signal_feed_observer import (
+from python.framework.signal_data.producer.signal_feed_observer import (
+    LATEST_ROUTE_TEMPLATE,
+)
+from python.framework.signal_data.producer.signal_feed_stream_observer import (
+    STREAM_ROUTE_TEMPLATE,
+)
+from python.framework.signal_data.producer.signal_pipelines_reader import PIPELINES_ROUTE
+from python.framework.signal_data.producer.signal_producer_reads import (
     BUILD_ROUTE,
     HEALTH_ROUTE,
-    LATEST_ROUTE_TEMPLATE,
 )
 from python.framework.types.signal_certificate_types import (
     FeedCheck,
@@ -48,9 +54,6 @@ DEFAULT_REPORTS_DIR = 'tests/live_signal_feed/reports'
 VALIDITY_DAYS = 90
 # Artifact name prefix, so the read-back test and the rewind comparison find each other.
 REPORT_PREFIX = 'signal_feed_report'
-# The transport this certificate was taken over. The stream (#468) adds the second value
-# and reuses every assertion above it.
-TRANSPORT_POLL = 'poll'
 
 
 class SignalFeedCertificate:
@@ -317,7 +320,10 @@ class SignalFeedCertificate:
             },
             'cost': {
                 'spent': 'nothing',
-                'transport': TRANSPORT_POLL,
+                # Recorded from the run, never declared: the observer that performed the
+                # reads carries it. This was a module constant until 2026-08-28, so a
+                # certificate taken over the stream would have claimed 'poll'.
+                'transport': probe.transport.value,
                 'routes_used': [[call.method, call.path] for call in probe.routes_used],
             },
             'checks': [
@@ -384,12 +390,19 @@ class SignalFeedCertificate:
             probe: What the run read
 
         Returns:
-            True when every recorded call was a GET on one of the two free routes
+            True when every recorded call was a GET on one of the free routes
         """
+        # All five are free. `/v1/pipelines` is recorded with the producer's own reason
+        # rather than ours: the only route in their engine that turns a request into spend
+        # is POST /v1/pipelines/{id}/run, and it is not registered in production — absent
+        # from the schema rather than one config edit from live. A certificate that says
+        # WHY a route is free outlives whoever checked.
         allowed = {
             HEALTH_ROUTE,
             BUILD_ROUTE,
+            PIPELINES_ROUTE,
             LATEST_ROUTE_TEMPLATE.format(pipeline_id=probe.pipeline_id),
+            STREAM_ROUTE_TEMPLATE.format(pipeline_id=probe.pipeline_id),
         }
         return bool(probe.routes_used) and all(
             call.method == 'GET' and call.path in allowed

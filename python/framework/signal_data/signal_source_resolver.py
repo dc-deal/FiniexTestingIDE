@@ -96,8 +96,8 @@ class SignalSourceResolver:
         return SignalSourceResolution(
             mode=SignalSourceMode.LIVE,
             worker_count=len(signal_workers),
-            reason=(f'{len(signal_workers)} SIGNAL worker(s) start empty — the live '
-                    f'{transport.value} transport fills them'),
+            reason=(f'{len(signal_workers)} SIGNAL worker(s) have no mounted scenario '
+                    f'series — the live {transport.value} transport feeds them'),
             signal_kind=signal_kinds.pop(),
             transport=transport)
 
@@ -109,9 +109,9 @@ class SignalSourceResolver:
         Which live transport is enabled, if any.
 
         The stream is checked first because it supersedes the poll where both are on: a
-        push connection delivers what `/latest` structurally cannot. It is not built yet
-        (#468), and an enabled-but-absent transport is answered rather than ignored — a
-        silent no-op would leave the workers empty with nothing to fill them.
+        push connection delivers what `/latest` structurally cannot — an envelope that was
+        superseded between two polls is unrecoverable on the pull path, and a heartbeat is
+        what tells a dead socket apart from a quiet producer.
 
         Args:
             sentiment_config: The installation's signal transport settings
@@ -120,9 +120,7 @@ class SignalSourceResolver:
             The enabled transport, or None when no live transport is configured
         """
         if sentiment_config.stream.enabled:
-            raise SignalSourceUnresolvedError(
-                'stream.enabled is set, but the push transport is #468 and not built yet. '
-                'Use poll.enabled for the interim pull path.')
+            return SignalTransportKind.STREAM
         if sentiment_config.poll.enabled:
             return SignalTransportKind.POLL
         return None

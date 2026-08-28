@@ -311,6 +311,19 @@ class SignalResolutionStats:
     # job; doing it early would make this run's ledger rows incomparable with every
     # earlier one.
     off_tick_arrivals: int = 0
+    # How often the resolution gate had to hold a snapshot's visibility instant back
+    # because the producer's availability stamp stepped BACKWARDS, plus the largest step
+    # it absorbed. Derived from our own gate rather than read from the producer's
+    # `available_msc_resyncs` (§41): the same number then comes out of simulation and live
+    # over the same archive, needs no parquet column and no re-import, and does not depend
+    # on the producer continuing to send it.
+    #
+    # A property of the SERIES, not of the worker — which is why the report merges these
+    # two by MAX while it sums the counters above. Several SIGNAL workers on one source
+    # share ONE provider, so they all report the same clamp; summing would multiply one
+    # producer clock correction by the number of workers reading it.
+    availability_clamps: int = 0
+    max_clamp_correction_ms: float = 0.0
 
 
 class SignalSeriesKind(str, Enum):
@@ -731,3 +744,255 @@ class ConnectCheckResult:
             True when no step failed
         """
         return all(step.ok for step in self.steps)
+
+
+@dataclass
+class ProducerStreamSettings:
+    """
+    The engine-wide stream values the producer SERVES on `GET /v1/pipelines` (#468).
+
+    Served rather than configured on purpose, and the reasoning is worth keeping: a
+    keep-alive interval copied into our configuration is a second answer to a question the
+    producer already answers, so the day they change it we report a feed outage that never
+    happened. They sit at RESPONSE level, not on a pipeline row, because they are properties
+    of the engine — a per-row copy would claim to be a per-stream property, and someone
+    eventually sets two of them differently.
+
+    Args:
+        heartbeat_seconds: How often the producer emits a keep-alive on every view
+        replay_window_hours: How far back `?since=` can reach before the answer is
+            `replay_truncated`
+    """
+    heartbeat_seconds: float
+    replay_window_hours: float
+
+
+@dataclass
+class ProducerPipelineInfo:
+    """
+    One registered pipeline as the producer lists it.
+
+    Projected to what a consumer reads. The route serves more (outcome_type, trigger_type,
+    symbols); nothing here acts on those, and a field carried "for later" is a field the
+    next dead-code sweep has to judge again.
+
+    Args:
+        pipeline_id: The source's id — the same string a scenario's data_sentiment_type uses
+        cadence_seconds: How often the producer evaluates it, in seconds. Deliberately
+            seconds rather than their 'M10' token, because a staleness threshold is
+            computed from the number
+    """
+    pipeline_id: str
+    cadence_seconds: Optional[float] = None
+
+
+@dataclass
+class ProducerPipelineRegistry:
+    """
+    What one read of `GET /v1/pipelines` established.
+
+    A result rather than an exception for the same reason ProducerRead is one: the caller
+    needs the DISTINCTION between "the producer refused our token" and "nothing answered",
+    because only one of them is their outage.
+
+    Args:
+        ok: Whether the route answered with a registry we could read
+        detail: One line describing what came back, or why nothing did
+        stream: The engine-wide stream values, when the producer serves them
+        pipelines: Registered pipelines by id
+        credential_rejected: The producer refused the credential (401 / 403)
+    """
+    ok: bool
+    detail: str = ''
+    stream: Optional['ProducerStreamSettings'] = None
+    pipelines: Dict[str, ProducerPipelineInfo] = field(default_factory=dict)
+    credential_rejected: bool = False
+
+
+@dataclass
+class SignalBootMount:
+    """
+    What the boot bridge established before a live session opened its stream (#468).
+
+    Args:
+        series: The archive slice the SIGNAL workers start from — possibly empty
+        cursor: Position the stream resumes from, or None when the archive carries none.
+            A pre-stream archive has no cursor at all, which is a property of the first
+            session and not a fault
+        reason: The one line written to the session log
+        beyond_replay_window: The cursor is older than the producer will replay, so a
+            truncated recovery is expected rather than surprising
+    """
+    series: 'SignalSeries'
+    cursor: Optional['SignalStreamCursor'] = None
+    reason: str = ''
+    beyond_replay_window: bool = False
+
+
+@dataclass
+class SignalLiveBoot:
+    """
+    Everything a live session established about its signal source before starting (#468).
+
+    Carried rather than re-derived, for the reason the resolver exists: the archive is read
+    ONCE at boot, and the values the producer serves are read once with it. A second site
+    deriving either would be a second answer that can disagree.
+
+    Args:
+        mount: The archive slice and the cursor taken from it
+        stream_settings: The engine-wide values the producer serves — present only for the
+            push transport, which is the one that reads them
+    """
+    mount: 'SignalBootMount'
+    stream_settings: Optional['ProducerStreamSettings'] = None
+
+
+@dataclass
+class StreamProbeResult:
+    """
+    What one stream probe established (#468).
+
+    Args:
+        ok: Whether the transport reached a healthy state
+        detail: Registry summary, or why the probe could not start
+        state: Transport state when the probe ended
+        seconds: How long the connection was held
+        connections: How many connections were opened in that time
+        arrivals: Envelopes that reached the inbox
+        cursor: Position the transport reached, empty when it claimed none
+        tape: The operator tape, newest last
+        contract_errors: Frames the producer sent that this reader could not read
+        transport_errors: Connection faults during the probe
+    """
+    ok: bool
+    detail: str = ''
+    state: str = ''
+    seconds: float = 0.0
+    connections: int = 0
+    arrivals: List['SignalSnapshot'] = field(default_factory=list)
+    cursor: str = ''
+    tape: List[str] = field(default_factory=list)
+    contract_errors: int = 0
+    transport_errors: int = 0
+
+
+class SignalStreamEventName(str, Enum):
+    """
+    The three named events the producer's stream emits (#468).
+
+    Named throughout — the stream never sends an unnamed frame — but the SSE default
+    ('message') is kept as a value so a frame that arrives without a name is carried to
+    the routing site and reported there rather than silently read as one of the three.
+    """
+    SIGNAL = 'signal'
+    HEARTBEAT = 'heartbeat'
+    CONTROL = 'control'
+    MESSAGE = 'message'
+
+
+class SignalStreamControlCode(str, Enum):
+    """
+    The five control codes, and the two rewind diagnoses must not collapse into one.
+
+    EPOCH_CHANGED means the PRODUCER rewound (restore, PITR, promotion); CURSOR_AHEAD
+    means someone else did, most likely our own store was restored. They read alike on the
+    wire and demand opposite responses: reconnect versus stop and alert a human. Both are
+    terminal frames — the server closes after emitting them.
+    """
+    LIVE = 'live'
+    REPLAY_TRUNCATED = 'replay_truncated'
+    CURSOR_AHEAD = 'cursor_ahead'
+    EPOCH_CHANGED = 'epoch_changed'
+    AUTH_REVOKED = 'auth_revoked'
+
+
+@dataclass
+class SignalStreamFrame:
+    """
+    One dispatched SSE frame, before anything interprets its payload.
+
+    Deliberately dumb and pre-JSON: the decoder's job ends at the blank line that
+    dispatches a frame, so a payload that does not parse is the routing site's problem to
+    report and not a reason for the decoder to have an opinion.
+
+    Args:
+        event: Event name as it arrived; 'message' when the frame carried no `event:` line
+        data: Payload lines joined by newline, exactly as the SSE grammar assembles them
+    """
+    event: str
+    data: str
+
+
+@dataclass
+class SignalStreamCursor:
+    """
+    The position a stream connection resumes from — `(stream_epoch, seq)`, never one alone.
+
+    The pair is the identity: a `seq` belongs to an epoch, and serving `since+1..` of a
+    series the consumer may not be on is worse than refusing, which is why the producer
+    answers 400 to either half supplied without the other.
+
+    Args:
+        epoch: Stream epoch the seq belongs to
+        seq: Last sequence number accepted from that epoch
+    """
+    epoch: int
+    seq: int
+
+    def describe(self) -> str:
+        """
+        One-line operator form.
+
+        Returns:
+            The pair as it is written in logs and on the tape
+        """
+        return f'epoch {self.epoch}, seq {self.seq}'
+
+
+class StreamControlFrame(BaseModel):
+    """
+    A `control` frame's payload (#468).
+
+    `code` stays a plain string rather than the enum: an unrecognized code is contract
+    GROWTH, which the producer ships as a MINOR, and a reader that raises on it turns an
+    additive change into an outage. The routing site resolves it and reports what it could
+    not place. Every other field is optional because each code carries its own subset.
+    """
+    model_config = ConfigDict(extra='ignore')
+
+    code: str
+    stream_epoch: Optional[int] = None
+    head_seq: Optional[int] = None
+    previous_epoch: Optional[int] = None
+    requested_since: Optional[int] = None
+    oldest_available_seq: Optional[int] = None
+    window_hours: Optional[float] = None
+    detail: str = ''
+
+    def resolve_code(self) -> Optional[SignalStreamControlCode]:
+        """
+        The declared code as one of the five, when it is one of them.
+
+        Returns:
+            The matching code, or None when the producer named one we do not know
+        """
+        try:
+            return SignalStreamControlCode(self.code)
+        except ValueError:
+            return None
+
+
+class StreamHeartbeatFrame(BaseModel):
+    """
+    A `heartbeat` frame's payload — proof the SOCKET is alive, never that data is fresh.
+
+    `now_msc` is the producer's own clock at emission, so a consumer can measure skew.
+    `available_msc` is absent on a stream that has never produced an envelope (`seq` 0),
+    which is why it is optional here while it is mandatory on an envelope.
+    """
+    model_config = ConfigDict(extra='ignore')
+
+    stream_epoch: Optional[int] = None
+    seq: Optional[int] = None
+    available_msc: Optional[int] = None
+    now_msc: Optional[int] = None

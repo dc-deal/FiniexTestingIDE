@@ -15,8 +15,10 @@ fixtures via direct provider injection — no batch, no tick loop.
 - `CORE/llm_sentiment` worker (`AbstractSignalWorker`)
 - `CORE/hybrid_sentiment_reference` decision logic
 - `WorkerOrchestrator` SIGNAL dispatch + the per-tick resolution counters (#433)
+- The live transports: the interim poll source and the SSE stream (#468) with its frame decoder,
+  boot bridge and producer-registry reader
 
-**Total Tests:** 53
+**Total Tests:** 314
 
 ---
 
@@ -112,8 +114,8 @@ What the tests pin, and the second half matters as much as the first:
 
 ### test_signal_poll_source.py (#141 Part 2a)
 
-The interim pull transport, used until the producer's stream exists. Runs against a **local stub
-started inside the test** — never against a real producer: a suite that needs someone else's
+The interim pull transport, superseded by the stream (#468) and kept until it has carried a
+session. Runs against a **local stub started inside the test** — never against a real producer: a suite that needs someone else's
 container running is a suite that fails for reasons unrelated to the code.
 
 Only the *responses* are scripted. The real transport makes a real HTTP request over a real socket,
@@ -263,8 +265,9 @@ does not apply to this profile); a prepared package → `MOUNTED` (its **presenc
 contents); otherwise → `LIVE` with the transport named.
 
 Pinned: `MOUNTED` outranks an enabled transport; two signal kinds against one live transport is an
-error (#258); `stream.enabled` is answered with a clear "#468, not built" rather than silently
-becoming a no-op that would leave the workers empty with nothing to fill them.
+error (#258); `stream.enabled` resolves to the push transport, and where both transports are on the
+stream wins — one connection delivers what `/latest` structurally cannot, and two transports filling
+one inbox is not a fallback, it is a duplicate.
 
 Two regression cases carry their own class, because both were invisible to this suite before —
 pytest sets `FINIEX_CONFIG_ISOLATION`, so the workspace override that enables the transport was
@@ -275,12 +278,210 @@ never seen, and the CLI path was the one that broke:
 - a **mounted** session must not open a live transport (it mounted the archive *and* polled the
   production producer, folding live envelopes into a replay whose purpose is determinism)
 
+### test_signal_sse_decoder.py (#468)
+
+The stream's frame parser, driven by the producer's **committed frame sample** rather than by
+hand-written strings. Reading that file by eye has already cost this project once: reissue 5 carried
+`breaking_episode_start` as a flag while our declaration typed it as a timestamp, every live envelope
+was rejected, and the rejection was misfiled as the producer's outage.
+
+Two halves, and the second is what a single well-formed file cannot give:
+
+- **The sample** — the whole documentation header is SSE comments and must dispatch nothing; every
+  frame carries a named event and every name is one the contract names; every payload is one line of
+  JSON; `retry: 5000` is read but never obeyed (settled cross-repo as a default for a client with no
+  policy of its own — ours governs).
+
+  These assertions are deliberately about the CONTRACT and not about the file's inventory. An
+  earlier version counted the frames exactly (3 signal / 2 heartbeat / 5 control), listed the control
+  codes in order, and pinned a heartbeat's `seq` — all of which pin which episode the producer
+  happened to draw from. A reissue would then go red for the wrong reason, and a red for the wrong
+  reason trains people to update the number instead of reading it. Frames are now found by the
+  property under test (the cold start by `head_seq == 0`, not by being last in the file), and the
+  recovery frames assert the RELATIONS a handler reads — `oldest_available_seq > requested_since`,
+  `requested_since > head_seq` — rather than the numbers a sample happens to show.
+- **The grammar** — a frame split across reads, a **multi-byte character** split across reads,
+  multiple `data:` lines, one leading space stripped and only one, a blank line that dispatches
+  nothing but still clears the pending event name, an `id:` line ignored entirely (honouring one
+  would make a conforming client send `Last-Event-ID`, a header the producer does not read), CRLF
+  equal to LF, and an unterminated frame **held rather than delivered** — a socket dying mid-frame
+  must not put half an envelope in the inbox.
+
+One more belongs to the unattended month rather than to the grammar: an unterminated line is
+**bounded**. The decoder holds a line until its newline arrives, so a producer emitting bytes
+without one would grow the buffer until the process dies — and it would die for a reason nothing in
+the logs explains. Past the bound the line is refused as a contract violation and the decoder resets,
+so the connection that follows starts clean rather than poisoned.
+
+The strongest of them re-decodes the whole sample at chunk sizes of 1, 7, 64 and 997 bytes and
+requires an identical frame sequence. A decoder that assumes one frame per chunk works until the
+first slow network and then stops working for reasons nobody can see.
+
+`epoch_changed` was **absent from reissue 6**, so its check skipped with a reason rather than
+passing silently — the mistake this suite's sibling made by looping over an empty set and proving
+nothing. **Reissue 7 carries it and the check now runs.** The skip branch stays: it is what made the
+gap visible for the days the frame did not exist, and a future reissue that drops the frame will say
+so again instead of passing over nothing.
+
+The sample's own missing final blank line was documented the same way and is likewise closed — the
+decoder stays strict (an unterminated frame at connection close is discarded on purpose, because a
+socket dying mid-frame must never deliver half an envelope), and the producer's generator now
+refuses to write a sample that does not end terminated.
+
+**Reissue 7 landed green — no assertion moved**, which was the point of a hardening pass made just
+before it arrived. Several checks had been pinning the file's INVENTORY rather than the contract, and
+those would have gone red for the wrong reason. See the contract-versus-inventory note above.
+
+### test_signal_stream_source.py (#468)
+
+The push transport, against a **local mock producer** that enforces the connect contract — bearer
+auth, an unknown pipeline as 404, `history` and `since` as mutually exclusive, `since` without
+`epoch` as 400. A mock that accepted everything could not catch the request being built wrong, which
+is the likeliest defect in a transport.
+
+What is pinned is mostly the edges, where a transport quietly does the wrong thing for weeks:
+
+- **The request** — the pipeline travels in the PATH, not the query. Their authorization derives the
+  grant from the route's first path parameter, so a query-parameter form would be authenticated but
+  ungated. A first session asks `?history=1` (the pre-stream archive carries no cursor); a resumed
+  one asks `?since=&epoch=`.
+- **The five control codes**, with the two rewind diagnoses routed **apart**: `epoch_changed` means
+  the producer rewound → reconnect at the new epoch's head; `cursor_ahead` means somebody else did,
+  most likely our own store was restored → stop and alert, never a silent resume. `auth_revoked`
+  stops without retrying. An unknown code or event name is contract GROWTH and must not become an
+  outage.
+- **Refusals are not outages** — 401/403, 404 (a misspelled pipeline id) and 400 all STOP. A client
+  that cannot tell "does not exist" from "exists but idle" waits forever on a typo while the panel
+  shows a healthy reconnect loop.
+- **Gap recovery** — the cursor is the last CONTIGUOUS position, not the highest seen. An envelope
+  arriving past a hole is still enqueued (withholding a valid envelope helps nobody) while the cursor
+  stays behind the hole so a reconnect can ask for it. The same boundary is asked for **once**: a
+  second encounter means the producer cannot fill it, and reconnecting forever against an unfillable
+  hole turns a reported gap into an outage of our own making.
+- **Deduplication** — the replay redelivers what was accepted past the hole. Harmless for the series,
+  which deduplicates by the same key, but a second count in the observed accumulator is a wrong
+  number in the run report.
+- **Resilience** — a silent socket past the watchdog is a CONNECTION fault; a closed connection
+  reconnects without losing the cursor; a 5xx backs off and retries; an unreadable envelope, an
+  unsupported schema major, undecodable JSON and a malformed **control or heartbeat** frame are all
+  contract errors that leave the connection **open**, because they are our schema disagreeing with
+  their answer and dropping the connection retries a mismatch retrying cannot fix.
+
+**A quiet stretch inside a connection has its own class, and it exists because this suite could not
+produce one.** Every other scripted reply writes its whole body at once and then holds or closes, so
+the read loop never had to survive a silence and come back — and it did not. The first version polled
+the socket with a one-second timeout, and CPython marks a socket file object PERMANENTLY timed out
+after its first expiry: the second read raises a plain `OSError` rather than `TimeoutError`, escapes
+the handler, and the healthy connection is torn down as a *transport fault*. In production the stream
+would have degraded into a reconnect loop — worse than the pull path it replaces — with the panel
+blaming the producer.
+
+The suite's own timings hid it. At `heartbeat_seconds` 0.4 and multiple 2.0 the watchdog is 0.8 s,
+BELOW the one-second poll: the single configuration in which a second read never happens. Production
+is the opposite. So the class scripts a mid-connection gap and asserts what a real feed looks like —
+**one** connection, both envelopes, zero transport errors — and its sibling asserts the other side of
+the boundary, that silence past the watchdog IS a fault. That second assertion was unreachable
+before: the OSError always arrived first, so the silence error could never fire at all.
+
+**Stopping while the producer hangs** has its own class for the same reason. A producer that accepts
+the connection and never sends a response head left `stop()` with nothing to shut down, because the
+socket handle was published only after the response was read — so a session end blocked for the whole
+watchdog, and in a live session that wait sits *ahead of closing open positions*. The test measures
+that `stop()` returns in under two seconds against a six-second watchdog.
+
+### test_signal_boot_bridge.py (#468)
+
+What a live session knows before its first envelope arrives. Without the bridge it knows nothing:
+the workers start empty and the first decision waits out a full producer cadence. On a thirty-day
+unattended run that is every restart, and a restart at 03:00 is exactly when nobody is watching.
+
+The distinction the file is built around is **BLIND versus STALE** — knowing something old is a
+strictly better input to a staleness contract than knowing nothing, because "old" is a fact a
+decision logic can act on.
+
+Pinned: an empty archive starts blind and SAYS so; the cursor is the newest position in the slice;
+a pre-stream archive yields no cursor at all (a property of the first session, not a bug); an archive
+spanning the contract boundary takes the newest **identity-bearing** row rather than the last row;
+both halves are required, because a seq belongs to an epoch and half a cursor earns a 400. The
+lookup window is the producer's own replay window, so the mounted slice and the bounded replay meet
+rather than overlap — and a cursor older than that window is flagged, because the replay will be
+truncated and the operator should hear it before it happens rather than as a surprise.
+
+### test_signal_feed_stream_observer.py (#468, #466)
+
+The release certificate's reader over the push transport, run UNMOCKED against a local producer that
+serves the same four routes the real one does — the same discipline the poll suite uses, because
+patching the reads would skip exactly what breaks against a real server.
+
+Two of the assertions are the defects this observer exists to remove:
+
+- **the transport is RECORDED from the run.** It was a module constant written straight into the
+  artifact, so a certificate taken over the stream would have claimed `poll` — the same defect class
+  as an adapter certificate that re-read a config file instead of recording what its run did;
+- **the raw envelope survives beside its parsed form.** Roughly two thirds of the certificate's
+  checks read the WIRE and not the model: a field's absence, its wire type and its location are all
+  unanswerable once a payload has become an object. `collected_msc` is the clearest case — never on
+  the wire, always on the model.
+
+Also pinned: the connect asks for **three** envelopes, because one position cannot show that a series
+moved and the validator's comparison loop would run zero times; all four free routes are recorded, so
+a later reader can see the run spent nothing; and every way the run can fail to proceed is a NAMED
+failure rather than a silence — a producer that does not serve the stream block, an unregistered
+pipeline, a rejected credential (reported as a credential condition, never as unreachability), a
+connection that opens and delivers nothing, and a frame our own reader refuses (counted apart from a
+transport fault, with the readable frames still counting — one bad envelope is not a dead feed).
+
+The mock producer gained a `held()` helper for a reason worth recording: a reply that closes after
+its body makes the transport reconnect and re-deliver the same snapshot, so a 0.6 s observation
+collected the same three envelopes sixteen times. That is a property of the test rig, not of the
+producer, and reading it as one would have hidden the real behaviour.
+
+### test_signal_stream_probe.py (#468)
+
+`signal_index_cli.py stream-probe` — the operator's window onto a transport that otherwise only
+shows itself inside a running session.
+
+What is pinned is not that it renders. It is that it **refuses to call a dead producer healthy**: a
+socket that opened and then delivered nothing leaves the transport in `connecting`, and counting
+that as success is precisely the failure a probe exists to expose (the CLI exits non-zero on it).
+Alongside, the three guards in front of the connection — an unreadable registry, a producer that
+does not yet serve the stream values, an unregistered pipeline id — each refusing with the same
+reason a session would give, before a socket is opened. And that the probe claims **no cursor**: one
+that advanced a session's position would consume envelopes the session it was meant to diagnose
+still needs.
+
+### test_signal_pipelines_reader.py (#468)
+
+Three numbers live on `GET /v1/pipelines` that we deliberately do **not** configure: the evaluation
+cadence, the keep-alive interval and the replay window. Each was a candidate for a constant on our
+side, and a local copy of somebody else's number reports a feed outage that never happened on the day
+they change it.
+
+The shape is engine-wide values in the response and per-stream values on the row — a per-row copy of
+an engine property claims to be per-stream, and someone eventually sets two of them differently.
+
+Pinned: both shapes read (the bare list from before the stream values joined it, and the envelope);
+a row without an id is skipped rather than keyed by nothing; **an absent value is reported as absent**
+— a partial `stream` block yields no settings at all, a missing cadence is `None` and never `0` (zero
+would divide, and a staleness threshold computed from it would be instant), and a boolean is not a
+number. A refused credential stays separable from an unreachable address, because only one of them is
+the producer's outage.
+
 ---
 
 ## Fixtures
 
 `tests/fixtures/signals/sentiment_sample.jsonl` — int-ms `collected_msc`, covering
 success / no-news / partial / error (empty result) / breaking paths.
+
+`tests/fixtures/signals/signal_stream_frames_reissue7.sse` — the producer's committed stream-frame
+sample, shared with the import suite's contract checks. The decoder suite parses it; the transport
+suite scripts its own frames, because what it exercises is connect, replay and control routing rather
+than the wire shape.
+
+The mock SSE producer is a **code-level** fixture in `conftest.py` (`MockStreamServer`,
+`MockStreamReply`): a script of replies, one per connection, so reconnect, gap replay and epoch
+change are expressible as tests rather than as timing luck.
 
 ---
 

@@ -19,7 +19,7 @@ Reference formula:
 """
 
 import pytest
-from conftest import make_bars, make_tick
+from tests.framework.worker_tests.worker_computation_tests.conftest import make_bars, make_tick
 
 from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.core.rsi_worker import RsiWorker

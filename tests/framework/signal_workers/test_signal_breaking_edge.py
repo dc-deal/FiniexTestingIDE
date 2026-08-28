@@ -17,7 +17,7 @@ reason, and each would produce a transition that never happened.
 
 from types import SimpleNamespace
 
-from conftest import SYMBOL, make_provider, snapshot, utc
+from tests.framework.signal_workers.conftest import SYMBOL, make_provider, snapshot, utc
 
 from python.framework.types.signal_data_types import SentimentResult, SignalSnapshot
 from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker

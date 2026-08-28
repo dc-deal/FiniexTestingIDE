@@ -163,8 +163,15 @@ class SignalTransportStats:
     Args:
         configured: False in a mounted session — then the panel says so instead of
             rendering an idle transport that was never meant to run
-        state: Transport condition — 'mounted' / 'live' / 'degraded' / 'error' /
-            'unauthorized' / 'contract'
+        state: Transport condition. Shared by both live transports, so it carries the
+            pull path's 'degraded' (the producer could not serve from its store) and the
+            stream's 'connecting' / 'replay' / 'cursor_ahead' / 'misconfigured' alongside
+            'mounted' / 'live' / 'error' / 'unauthorized' / 'contract'. Three of them are
+            TERMINAL — 'unauthorized', 'cursor_ahead' and 'misconfigured' end the feed for
+            the rest of the session, because no amount of retrying fixes a token, a
+            restored consumer store or a wrong request. 'error' and 'contract' are not:
+            the first retries, and the second keeps the connection open because the
+            producer answered and it is our reader that could not follow
         source: The signal source being consumed
         last_seq: Position of the newest envelope received ('' era: None)
         stream_epoch: Series generation of that envelope

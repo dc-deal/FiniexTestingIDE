@@ -11,7 +11,7 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-from conftest import make_gap, mock_coverage_report, utc
+from tests.data.scenario_generator.conftest import make_gap, mock_coverage_report, utc
 
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.market_types.market_volatility_profile_types import (

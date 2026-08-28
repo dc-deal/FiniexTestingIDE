@@ -1,6 +1,6 @@
 """HybridSentimentReference fusion + factory registration + #425 subscription (#141)."""
 
-from conftest import make_tick, utc
+from tests.framework.signal_workers.conftest import make_tick, utc
 
 from python.framework.decision_logic.core.hybrid_sentiment_reference import HybridSentimentReference
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory

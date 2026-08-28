@@ -7,7 +7,7 @@ Unit tests for the single home of the generator's cross-cutting plumbing: role a
 
 from datetime import datetime, timezone
 
-from conftest import utc
+from tests.data.scenario_generator.conftest import utc
 
 from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,

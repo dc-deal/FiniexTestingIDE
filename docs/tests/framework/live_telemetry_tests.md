@@ -35,14 +35,14 @@ merged into the existing feed line:
 A healthy transport with a stale signal is a quiet producer. A dead transport with a fresh signal is
 a session about to go blind without noticing.
 
-**Total Tests:** 21
+**Total Tests:** 24
 
 | Group | What it pins |
 |---|---|
 | mounted session | renders `mounted (no transport)` instead of an idle connection that was never meant to run; no session data renders nothing at all |
 | live transport | position (`epoch`/`seq`) and envelope age; `awaiting first envelope` before the first arrival, never a bare `None` |
 | the tape | newest first; hidden events are **counted**, not silently dropped |
-| trouble | degraded producer and transport errors are visible and counted; **a healthy transport shows no issue line** — noise in the quiet case is how a panel stops being read |
+| trouble | degraded producer, transport errors and **contract errors** are visible and counted apart — a transport error means nothing answered, a contract error means they answered and we could not read it, and the line used to be gated on the pull path's counters alone, which the stream never sets; the stream's terminal states (`cursor_ahead`, `misconfigured`) render red rather than dim, because both stop the feed and need a human; **a healthy transport shows no issue line** — noise in the quiet case is how a panel stops being read |
 | journal identity | the producer's `journal_id` is shown with its name beside it, never the name alone; an unresolved name is **not** an alarm while an unidentified journal is; a mid-session change is marked; no probe renders no line at all |
 | producer budget | a suspended producer is named with its reason; a healthy one adds no line at all |
 | age rendering | the unit scales with the magnitude (`42s` / `2m` / `2.0h`) |

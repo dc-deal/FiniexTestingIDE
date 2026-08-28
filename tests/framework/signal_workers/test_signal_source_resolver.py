@@ -63,7 +63,7 @@ def config(poll: bool = False, stream: bool = False) -> SentimentConfig:
 
     Args:
         poll: Enable the interim pull transport
-        stream: Enable the push transport (#468, not built)
+        stream: Enable the push transport (#468)
 
     Returns:
         A SentimentConfig carrying defaults everywhere else
@@ -150,16 +150,24 @@ class TestLiveSource:
                 package=None,
                 sentiment_config=config(poll=True))
 
-    def test_stream_is_answered_rather_than_silently_ignored(self):
+    def test_the_stream_resolves_to_the_push_transport(self):
         """
-        `stream.enabled` has no transport behind it yet (#468).
+        `stream.enabled` names the push transport (#468), built and no longer a no-op.
+        """
+        resolution = SignalSourceResolver.resolve(
+            workers=[signal_worker()], package=None, sentiment_config=config(stream=True))
+        assert resolution.mode is SignalSourceMode.LIVE
+        assert resolution.transport is SignalTransportKind.STREAM
 
-        Treating it as "not poll, so nothing" would leave the workers empty with nothing
-        to fill them — a session that decides on BLIND forever and never says why.
+    def test_the_stream_supersedes_the_poll_when_both_are_enabled(self):
         """
-        with pytest.raises(SignalSourceUnresolvedError, match='#468'):
-            SignalSourceResolver.resolve(
-                workers=[signal_worker()], package=None, sentiment_config=config(stream=True))
+        One connection delivers what `/latest` structurally cannot, so where both are on
+        the push path wins — never both transports filling one inbox.
+        """
+        resolution = SignalSourceResolver.resolve(
+            workers=[signal_worker()], package=None,
+            sentiment_config=config(poll=True, stream=True))
+        assert resolution.transport is SignalTransportKind.STREAM
 
 
 class TestRegressionsThatMotivatedTheResolver:

@@ -22,8 +22,12 @@ from typing import Deque, Optional, Tuple
 from pydantic import ValidationError
 
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.signal_data.signal_health_probe import SignalHealthProbe
-from python.framework.signal_data.signal_inbox import SignalInbox
+from python.framework.signal_data.transport.abstract_signal_transport import (
+    AbstractSignalTransport,
+)
+from python.framework.signal_data.transport.signal_field_watch import SignalFieldWatch
+from python.framework.signal_data.producer.signal_health_probe import SignalHealthProbe
+from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.types.autotrader_types.autotrader_display_types import (
     SignalTransportEvent,
@@ -36,7 +40,6 @@ from python.framework.types.config_types.sentiment_config_types import (
 from python.framework.types.decision_logic_types import AwarenessLevel
 from python.framework.types.signal_data_types import (
     SUPPORTED_SCHEMA_MAJORS,
-    SentimentResult,
     SignalHealthStatus,
     SignalSnapshot,
     schema_major,
@@ -57,7 +60,7 @@ CREDENTIAL_STATUS_CODES = (401, 403)
 TAPE_LENGTH = 8
 
 
-class SignalPollSource:
+class SignalPollSource(AbstractSignalTransport):
     """
     Polls one producer pipeline and deposits new envelopes in the inbox.
 
@@ -112,9 +115,7 @@ class SignalPollSource:
         self._degraded = 0
         self._transport_errors = 0
         self._contract_errors = 0
-        # Field names the producer sent that we do not read, announced once per distinct set
-        # so a grown shape is a single notice rather than one per poll.
-        self._announced_unknown: set = set()
+        self._field_watch = SignalFieldWatch()
         # Operator view (#141 Part 2a Phase 3b). A dead feed and a quiet market look
         # identical on screen without this: the signal VALUES keep displaying their last
         # known state either way, so only the transport can say whether anything still
@@ -242,31 +243,14 @@ class SignalPollSource:
         """
         Name the fields the producer sent that we do not read — once per distinct set.
 
-        Their versioning rule (MINOR for an additive field) tells us the shape GREW; it does
-        not tell us what grew, and our models discard what they do not declare, so without
-        this the new field is invisible until something depends on it. This is deliberately
-        a NOTICE and nothing more: the values are still discarded, nothing is stored on the
-        snapshot and nothing reaches the parquet — the projection stays lean on purpose, and
-        a diagnosis does not need the data, only its name.
-
-        Computed here rather than in the model for the same reason: the transport is the one
-        place that holds the raw payload and the parsed object at once, so no per-row field
-        has to exist to carry the answer.
-
         Args:
             payload: The envelope as it arrived
             version: The schema version it declared
         """
-        unread = set(payload) - set(SignalSnapshot.model_fields)
-        for row in (payload.get('result') or []):
-            if isinstance(row, dict):
-                unread |= {f'result.{key}'
-                           for key in set(row) - set(SentimentResult.model_fields)}
-        unread -= self._announced_unknown
+        unread = self._field_watch.take_new(payload)
         if not unread:
             return
-        self._announced_unknown |= unread
-        named = ', '.join(sorted(unread))
+        named = ', '.join(unread)
         self._record(f'unread fields: {named}', AwarenessLevel.NOTICE)
         self._logger.warning(
             f'📡 Producer envelope (schema {version}) carries fields we do not read: '
@@ -421,11 +405,10 @@ class SignalPollSource:
         """
         Read the producer's latest envelope.
 
+        A transport failure propagates to the run loop, which logs it and retries.
+
         Returns:
             The decoded envelope
-
-        Raises:
-            urllib.error.URLError: On a transport failure — the caller logs and retries
         """
         request = urllib.request.Request(self._url)
         if self._api_token:

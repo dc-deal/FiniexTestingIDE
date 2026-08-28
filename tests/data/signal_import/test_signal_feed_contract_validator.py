@@ -28,7 +28,7 @@ from python.framework.validators.signal_feed_contract_validator import (
     SignalFeedContractValidator,
 )
 
-SAMPLE = Path('tests/fixtures/signals/signal_stream_frames_reissue6.sse')
+SAMPLE = Path('tests/fixtures/signals/signal_stream_frames_reissue7.sse')
 
 # The receipt stamp the transport supplies. Absent on the wire by contract, so a fixed
 # value here is not a simplification — it is what the consumer does.

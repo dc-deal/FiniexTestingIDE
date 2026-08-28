@@ -14,9 +14,9 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import MagicMock
 
-from python.framework.signal_data.signal_health_probe import SignalHealthProbe
-from python.framework.signal_data.signal_inbox import SignalInbox
-from python.framework.signal_data.signal_poll_source import SignalPollSource
+from python.framework.signal_data.producer.signal_health_probe import SignalHealthProbe
+from python.framework.signal_data.transport.signal_inbox import SignalInbox
+from python.framework.signal_data.transport.signal_poll_source import SignalPollSource
 from python.framework.types.config_types.sentiment_config_types import (
     ActiveProducer,
     ResolvedCredential,

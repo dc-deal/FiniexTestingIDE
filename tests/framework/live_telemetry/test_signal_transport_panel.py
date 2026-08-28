@@ -99,7 +99,35 @@ class TestTrouble:
         out = render(SignalTransportStats(
             configured=True, state='error', transport_errors=2,
             last_envelope_at=now - timedelta(minutes=30)))
-        assert '2 errors' in out
+        assert '2 transport' in out
+
+    def test_contract_errors_are_counted_apart_from_transport_faults(self, now):
+        """
+        The two are different diagnoses and the line must keep them apart (#468).
+
+        A contract error means the producer answered and WE could not read it; a transport
+        error means nothing answered. The line used to be gated on the pull path's counters
+        alone, which the stream never sets — so the one failure an operator can actually
+        act on rendered as no failure at all.
+        """
+        out = render(SignalTransportStats(
+            configured=True, state='contract', contract_errors=3,
+            last_envelope_at=now - timedelta(minutes=12)))
+        assert 'Feed Issues' in out
+        assert '3 contract' in out
+
+    @pytest.mark.parametrize('state', ['cursor_ahead', 'misconfigured'])
+    def test_the_terminal_stream_states_are_not_rendered_dim(self, now, state):
+        """
+        Both stop the feed for the rest of the session and both need a human (#468):
+        `cursor_ahead` says our own store was restored, `misconfigured` says the request
+        itself is wrong. Left on the default 'dim' they under-signalled exactly the silence
+        this panel exists to surface — the same slip 'unauthorized' and 'contract' had.
+        """
+        out = render(SignalTransportStats(
+            configured=True, state=state, last_envelope_at=now - timedelta(minutes=4)))
+        assert 'red' in out
+        assert '[dim]Signal Feed' not in out
 
     def test_a_healthy_transport_shows_no_issue_line(self, now):
         """Noise in the quiet case is how a panel stops being read."""

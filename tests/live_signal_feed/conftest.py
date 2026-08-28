@@ -21,11 +21,15 @@ failure mode this whole gate exists to prevent. It therefore fails loudly instea
 import pytest
 
 from python.configuration.sentiment_config_manager import SentimentConfigManager
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.reporting.certificates.signal_feed_certificate import (
     DEFAULT_REPORTS_DIR,
     SignalFeedCertificate,
 )
-from python.framework.signal_data.signal_feed_observer import SignalFeedObserver
+from python.framework.signal_data.producer.signal_feed_observer import SignalFeedObserver
+from python.framework.signal_data.producer.signal_feed_stream_observer import (
+    SignalFeedStreamObserver,
+)
 from python.framework.types.signal_certificate_types import SignalFeedAssessment
 from python.framework.utils.config_merge_utils import is_config_isolation_active
 
@@ -57,6 +61,11 @@ def pytest_addoption(parser):
         '--observation-gap-s', action='store', type=float, default=15.0,
         help='Pause between reads. A gap longer than the producer cadence additionally '
              'samples the cadence itself; the default only proves the series held.')
+    parser.addoption(
+        '--stream-seconds', action='store', type=float, default=25.0,
+        help='How long the STREAM transport is held open when it is the enabled one. The '
+             'default crosses one keep-alive at the producer 20s beat, so the observation '
+             'covers a quiet stretch and not only the connect snapshot.')
 
 
 def pytest_collection_modifyitems(config, items):
@@ -102,21 +111,35 @@ def assessment(request) -> SignalFeedAssessment:
     manager = SentimentConfigManager()
     config = manager.get_config()
     producer = manager.resolve_active_producer()
-    pipeline_id = config.poll.pipeline_id
+
+    # WHICH transport certifies is decided the same way a session decides it, not by a
+    # constant here. Reading poll.pipeline_id unconditionally meant a stream-only
+    # installation could not take a certificate at all — the transport was wired into the
+    # test just as firmly as it used to be wired into the artifact.
+    use_stream = config.stream.enabled
+    pipeline_id = (config.stream.pipeline_id if use_stream else config.poll.pipeline_id)
     if not pipeline_id:
+        named = 'stream' if use_stream else 'poll'
         pytest.fail(
-            'sentiment_config.json names no poll.pipeline_id, so there is no source to '
-            'certify. Set it in the user override.')
+            f'sentiment_config.json names no {named}.pipeline_id, so there is no source '
+            f'to certify. Set it in the user override.')
 
     source = config.get_source(pipeline_id)
     gap_seconds = request.config.getoption('observation_gap_s')
-    probe = SignalFeedObserver(
-        producer=producer,
-        pipeline_id=pipeline_id,
-        timeout_s=config.poll.request_timeout_s,
-    ).observe(
-        observation_count=request.config.getoption('observations'),
-        gap_seconds=gap_seconds)
+    if use_stream:
+        probe = SignalFeedStreamObserver(
+            producer=producer,
+            stream_config=config.stream,
+            logger=get_global_logger(),
+        ).observe(seconds=request.config.getoption('stream_seconds'))
+    else:
+        probe = SignalFeedObserver(
+            producer=producer,
+            pipeline_id=pipeline_id,
+            timeout_s=config.poll.request_timeout_s,
+        ).observe(
+            observation_count=request.config.getoption('observations'),
+            gap_seconds=gap_seconds)
 
     result = SignalFeedCertificate.assess(
         probe=probe,

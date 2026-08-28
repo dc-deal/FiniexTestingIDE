@@ -10,7 +10,7 @@ Validates:
 """
 
 import pytest
-from conftest import ALL_DECISION_LOGICS, ALL_WORKERS
+from tests.framework.worker_tests.conftest import ALL_DECISION_LOGICS, ALL_WORKERS
 
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus

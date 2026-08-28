@@ -141,26 +141,35 @@ class SentimentStreamConfig(BaseModel):
 
     Live-only. A simulation never opens a connection, and an AutoTrader mock session
     mounts its series from the archive instead, so this block is simply unused there.
+
+    Unknown keys are REFUSED. Two fields left this block when the producer began serving
+    them (`heartbeat_timeout_s`, `replay_window_hours`), and a workspace override still
+    carrying one would otherwise be dropped in silence — the operator would be configuring
+    a watchdog that no longer reads what they wrote.
     """
+    model_config = ConfigDict(extra='forbid')
+
     enabled: bool = False
     pipeline_id: str = ''
-    # Producer-side replay bound. Ours only needs to know it so a truncated recovery is
-    # reported as such rather than mistaken for a short history.
-    replay_window_hours: float = 24.0
     # A connection watchdog, never a freshness claim: the producer's keep-alive proves the
-    # socket is alive, while a stalled seq proves the producer is not.
-    heartbeat_timeout_s: float = 60.0
+    # socket is alive, while a stalled seq proves the producer is not. A MULTIPLE rather
+    # than a duration, because the interval it multiplies is served by the producer on
+    # /v1/pipelines — a local copy of their number reports a feed outage that never
+    # happened on the day they change it. The replay window is served the same way.
+    heartbeat_timeout_multiple: float = 3.0
     reconnect_backoff_initial_s: float = 5.0
     reconnect_backoff_max_s: float = 60.0
 
 
 class SentimentPollConfig(BaseModel):
     """
-    The interim pull path, used while the producer's stream does not exist yet.
+    The interim pull path, superseded by the push stream (#468) and kept until it has
+    carried a session.
 
     Deliberately the throwaway half: a poll returns an envelope up to a full producer
     interval old (measured against the live engine: 101.8 s), which is precisely what the
-    stream removes. Everything behind the inbox is the permanent path.
+    stream removes. Everything behind the inbox is the permanent path. Where both are
+    enabled the stream wins — two transports filling one inbox is not a fallback.
     """
     enabled: bool = False
     pipeline_id: str = ''
