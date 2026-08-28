@@ -28,7 +28,7 @@ this doc covers only how the *data* is imported, indexed, and resolved.
 ## Import
 
 ```bash
-python python/cli/signal_index_cli.py import [--override]   # JSONL → parquet + rebuild index
+python python/cli/signal_index_cli.py import [--override] [--include-finished]  # JSONL → parquet + index
 python python/cli/signal_index_cli.py status                # coverage per source / symbol
 python python/cli/signal_index_cli.py rebuild               # force index rebuild
 python python/cli/signal_index_cli.py inspect crypto_sentiment BTCUSD
@@ -70,10 +70,20 @@ occupied. Removal is by `rmdir`, which refuses a non-empty directory — a folde
 anything (an unimported file, a failed import, a stray note) survives by construction. The inbox
 root itself is kept.
 
-`--override` reads the finished archive **in addition to** the raw inbox. Overriding means
-rebuilding what is already imported, and that is where those files live — without this, the flag
-would quietly do nothing once the inbox is empty. When the same relative path exists in both, the
-raw copy wins: a re-exported day supersedes its archived copy, and the move then replaces it.
+**Two flags, two acts.** `--override` replaces an existing parquet instead of skipping it — the
+same meaning the tick importer's flag of that name has, and nothing more. `--include-finished`
+additionally reads the finished archive, which is how an already-imported day is re-projected after
+a read-time policy change. When the same relative path exists in both roots, the raw copy wins: a
+re-exported day supersedes its archived copy, and the move then replaces it.
+
+They were ONE flag until 2026-08-28, and that is worth remembering rather than just fixing: a plain
+`--override` re-projected 408 days when the operator expected the two files sitting in the inbox.
+Nothing broke — the importer only rewrites parquet — but one word carried two contracts across two
+CLIs used interchangeably, and the surprise was the flag, not the data.
+
+An already-imported day without `--override` is a **warning and a skipped file**, not a run error —
+the tick importer grades its duplicates the same way, and re-running an import whose days are all
+archived is the normal case rather than a fault.
 
 > **The archive is not a by-product.** The parquet is a lean projection; an envelope's `sources`,
 > `metadata` and `errors` survive nowhere else. The archived JSONL is the audit source and must
@@ -85,7 +95,7 @@ the same convention the tick archives follow, and the loose folder is removed. T
 
 Tooling that rewrites raw envelopes — `python/experiments/restore_signal_envelope_field.py` — works
 on plain files, so an archived day must be unpacked first, stamped, and re-imported with
-`--override`. Read this as a cost, not an obstacle: it is the reason to stamp a day **before** it
+`--override --include-finished`. Read this as a cost, not an obstacle: it is the reason to stamp a day **before** it
 is packed, while it still sits in the inbox.
 
 
@@ -524,7 +534,8 @@ Full detail: [Discovery System](../discovery_system.md).
 ## Episode identity backfill (2026-08-27) — a reconstruction, not a recovery
 
 The archived range **2026-07-16 → 2026-08-26** was re-exported by the producer to carry
-`breaking_episode_id` and `breaking_episode_start`, and re-imported here with `--override`. This
+`breaking_episode_id` and `breaking_episode_start`, and re-imported here with the archive read in
+(`--override --include-finished`; one flag did both at the time). This
 is the one **deliberate exception** to the rule that a closed archive day re-exports
 byte-identically. Only days before ~2026-08-24 changed; everything after already carried the
 fields.

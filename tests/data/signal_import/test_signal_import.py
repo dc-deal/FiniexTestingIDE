@@ -287,10 +287,12 @@ class TestFinishedArchive:
         (raw / name).write_text(json.dumps(line))
         return tmp_path / 'raw', tmp_path / 'proc', tmp_path / 'finished'
 
-    def _importer(self, raw, proc, finished, override: bool = False):
+    def _importer(self, raw, proc, finished, override: bool = False,
+                  include_finished: bool = False):
         return SignalDataImporter(
             source_dir=str(raw), target_dir=str(proc), override=override,
-            finished_dir=str(finished) if finished else None)
+            finished_dir=str(finished) if finished else None,
+            include_finished=include_finished)
 
     def test_imported_file_moves_and_keeps_its_structure(self, tmp_path):
         raw, proc, finished = self._tree(tmp_path)
@@ -317,18 +319,61 @@ class TestFinishedArchive:
         assert again.processed_files == 0
         assert again.errors == []
 
-    def test_override_re_reads_the_finished_archive(self, tmp_path):
+    def test_include_finished_re_reads_the_archive(self, tmp_path):
         raw, proc, finished = self._tree(tmp_path)
         self._importer(raw, proc, finished).process_all_signals()
         (proc / 'sentiment_a' / 'day.parquet').unlink()
 
-        # 'override' means rebuilding what is already imported — which now lives in
-        # the archive, so that is where it must be read from.
-        rebuild = self._importer(raw, proc, finished, override=True)
+        # Re-projecting an already-imported day means reading it where it now lives.
+        rebuild = self._importer(raw, proc, finished, override=True,
+                                 include_finished=True)
         rebuild.process_all_signals()
         assert rebuild.processed_files == 1
         assert (proc / 'sentiment_a' / 'day.parquet').exists()
         assert (finished / 'sentiment_a' / 'day.jsonl').exists()
+
+    def test_override_alone_never_reaches_the_archive(self, tmp_path):
+        """
+        The tick-parity pin: one word, one contract.
+
+        The two acts were one flag until 2026-08-28, so a plain --override silently
+        re-projected every day ever imported while the tick importer's flag of the same
+        name only ever touched the inbox. Measured once for real: 408 files where two
+        were expected.
+        """
+        raw, proc, finished = self._tree(tmp_path)
+        self._importer(raw, proc, finished).process_all_signals()
+        (proc / 'sentiment_a' / 'day.parquet').unlink()
+
+        rebuild = self._importer(raw, proc, finished, override=True)
+        rebuild.process_all_signals()
+
+        assert rebuild.processed_files == 0
+        assert not (proc / 'sentiment_a' / 'day.parquet').exists()
+
+    def test_an_already_imported_day_is_a_warning_not_an_error(self, tmp_path):
+        """
+        Same grading as the tick importer's duplicate: warn, skip, keep the batch clean.
+
+        An error would put a healthy run into the §35 error pot, and re-importing an
+        inbox whose days are archived is the normal case rather than a fault.
+        """
+        raw, proc, finished = self._tree(tmp_path)
+        self._importer(raw, proc, finished).process_all_signals()
+
+        # Put the same day back in the inbox: the parquet exists, override is off.
+        (raw / 'sentiment_a').mkdir(parents=True, exist_ok=True)
+        line = {'collected_msc': BASE_MSC, 'schema_version': '1.0',
+                'pipeline_id': 'sentiment_a', 'status': 'success', 'result': []}
+        (raw / 'sentiment_a' / 'day.jsonl').write_text(json.dumps(line))
+
+        again = self._importer(raw, proc, finished)
+        again.process_all_signals()
+
+        assert again.errors == []
+        assert again.warnings
+        assert (raw / 'sentiment_a' / 'day.jsonl').exists(), (
+            'a skipped file must stay in the inbox, not be archived as if imported')
 
     def test_a_re_exported_day_supersedes_its_archived_copy(self, tmp_path):
         raw, proc, finished = self._tree(tmp_path)

@@ -94,3 +94,14 @@ class SignalStreamFrameTooLargeError(FiniexError, ValueError):
     they sent is not something this reader can be expected to hold.
     """
     pass
+
+
+class SignalAlreadyImportedError(FiniexError, ValueError):
+    """
+    A day's parquet already exists and the import was not told to replace it.
+
+    Its own class so the importer can treat it the way the tick importer treats its
+    duplicates — a WARNING and a skipped file, never a run error. A re-import of an inbox
+    whose days are already archived is the normal case, and reporting it as an error puts
+    a healthy run into the error pot (§35).
+    """

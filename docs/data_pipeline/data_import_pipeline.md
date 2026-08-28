@@ -201,7 +201,7 @@ The absolute minimum the importer accepts:
 | Missing `broker_type` and `data_collector` | Error collected, file skipped |
 | Unknown `broker_type` (not in market_config) | Error collected, file skipped |
 | Empty ticks array | File skipped silently (no error, no output) |
-| Duplicate file (same SHA-256 hash) | `ArtificialDuplicateException`, skipped (use `--override`) |
+| Already imported (same source file name in parquet metadata) | `ArtificialDuplicateException`, warning + skipped (use `--override`) |
 
 Full TypedDict definitions: `python/framework/types/import_schema_types.py`
 
@@ -513,7 +513,20 @@ These fields exist in Parquet but are **not** transported to subprocesses:
 
 ## Duplicate Detection
 
-The importer calculates a SHA-256 hash of each JSON file and compares against existing Parquet metadata. If a file was already imported, it raises `ArtificialDuplicateException` (skipped gracefully). Use `--override` to force re-import.
+The importer stores each source file's **name** in the parquet metadata (`source_file`) and, before
+writing, searches every collector directory for a parquet claiming the same name. On a match it
+raises `ArtificialDuplicateException` — a warning, the file is skipped, the batch continues. Use
+`--override` to delete the existing parquet and re-import.
+
+**It compares NAMES, not content.** This is worth stating plainly because the guarantee is narrower
+than it looks: a file renamed between two exports is imported twice, and a file whose name is reused
+with different content is refused as a duplicate. What the check actually protects against is the
+common case — the same export handed to the importer twice, possibly from a different collector
+directory, which is why the search is cross-collector.
+
+The signal importer has no equivalent check: it decides on the presence of the target parquet
+(`SignalAlreadyImportedError`, also a warning + skip), because a signal day's file name IS its date
+and the projection is per day.
 
 ---
 

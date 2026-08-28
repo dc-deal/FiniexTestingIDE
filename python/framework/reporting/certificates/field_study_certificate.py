@@ -168,7 +168,7 @@ class FieldStudyCertificate:
 
         identity = build_certificate_identity(
             release_version=release_version, comment=comment,
-            validity_days=VALIDITY_DAYS)
+            validity_days=VALIDITY_DAYS, reports_dir=reports_dir)
         warnings = [w for w in (identity.version_mismatch(),
                                 identity.dirty_tree_warning()) if w]
         certificate = {

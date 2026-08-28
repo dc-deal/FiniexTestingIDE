@@ -15,16 +15,25 @@ fields.
 | Reader projection | one snapshot per envelope for the projected symbol; audit-only `sources` dropped from the runtime series |
 | v0 parity | `SignalDataProvider` over the raw JSONL vs. over the parquet resolve identically across the range, for a symbol present in every envelope AND one absent in `partial`/`error` envelopes (defensive HOLD) |
 | Import guards | mixed `pipeline_id` in one file → `SignalSchemaError` |
-| Finished archive | imported JSONL moves to `data/finished/signals/` with its structure intact; no `finished_dir` → the file stays; a re-run without `--override` finds nothing and reports no error; `--override` reads the archive back; a re-exported day supersedes its archived copy; a failed import is not moved |
+| Finished archive | imported JSONL moves to `data/finished/signals/` with its structure intact; no `finished_dir` → the file stays; a re-run without `--override` finds nothing and reports no error; `--include-finished` reads the archive back while `--override` alone never does; an already-imported day is a warning and a skipped file, not a run error; a re-exported day supersedes its archived copy; a failed import is not moved |
 
 ### Why the archive tests matter
 
-Two of them guard decisions that are easy to undo by accident. `--override` reading the
-finished archive is what keeps the flag meaningful once the inbox is empty — without it,
-"rebuild everything" would silently rebuild nothing. And the move is deliberately **not**
-rebuilt from the resolved `pipeline_id` but kept relative to the root the file came from:
-a file in a folder that disagrees with its own `pipeline_id` is an anomaly (it has
-happened), and normalizing it on the way out would hide it.
+Three of them guard decisions that are easy to undo by accident.
+
+**The two flags must stay two.** Reading the finished archive and replacing an existing
+parquet were ONE flag until 2026-08-28, which made `--override` mean something different
+here than it means in the tick importer — measured once for real: 408 days re-projected
+where two were expected. Both directions are pinned, because collapsing them again would
+pass a test that only checked the archive was reachable.
+
+**An already-imported day is a warning.** The tick importer grades its duplicates that way,
+and re-running an import whose days are all archived is the normal case; an error there
+would put a healthy run into the §35 error pot.
+
+**The move keeps the root's relative path** and is deliberately not rebuilt from the
+resolved `pipeline_id`: a file in a folder that disagrees with its own `pipeline_id` is an
+anomaly (it has happened), and normalizing it on the way out would hide it.
 
 ### test_signal_stream_validation.py (#141 Part 2a)
 

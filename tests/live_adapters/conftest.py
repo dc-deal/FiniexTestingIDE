@@ -146,7 +146,8 @@ def _write_report(release_version: str, comment: str, results: _ResultCollector)
         results: The session's collected outcomes and observed adapter settings
     """
     identity = build_certificate_identity(
-        release_version=release_version, comment=comment)
+        release_version=release_version, comment=comment,
+        reports_dir=str(_REPORTS_DIR))
 
     warnings: List[str] = []
     status = CertificateStatus.PASSED if results.failed == 0 else CertificateStatus.FAILED
