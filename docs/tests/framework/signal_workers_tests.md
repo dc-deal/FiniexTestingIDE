@@ -18,7 +18,7 @@ fixtures via direct provider injection — no batch, no tick loop.
 - The live transport: the SSE stream (#468) with its frame decoder, boot bridge and
   producer-registry reader
 
-**Total Tests:** 290
+**Total Tests:** 301
 
 ---
 
@@ -366,6 +366,31 @@ both halves are required, because a seq belongs to an epoch and half a cursor ea
 lookup window is the producer's own replay window, so the mounted slice and the bounded replay meet
 rather than overlap — and a cursor older than that window is flagged, because the replay will be
 truncated and the operator should hear it before it happens rather than as a surprise.
+
+### test_signal_mock_producer.py (#468)
+
+The local stand-in producer, driven by the REAL transport over a real socket.
+
+It exists because of a gap that is structural rather than accidental: every mock session in
+this project mounts its signal series from the archive, so the resolver answers MOUNTED and
+**no connection is ever opened**. Everything behind the inbox is therefore richly covered by
+mock runs and everything in front of it is unreachable from one — including four of the five
+control codes, which a healthy producer will not emit on request.
+
+- **The stand-in speaks the contract** — a healthy stream goes live, delivers its snapshot and
+  does NOT reconnect; the registry carries both served stream values, without which a session
+  refuses to start.
+- **One test per control code**, because their responses differ on purpose: `epoch_changed`
+  reconnects and carries the NEW epoch into the cursor; `cursor_ahead` and `auth_revoked` are
+  terminal with one connection; `replay_truncated` continues, which is the whole reason it is
+  a separate code.
+- **A revoked token raises no transport error** — counting it as one sends the operator to the
+  wrong system.
+- **Parametrized over the whole enum**, so a sixth control code fails here until the stand-in
+  can produce it. A code nobody can emit is a code nobody will ever look at.
+
+Nothing is patched. If the stand-in stopped speaking the producer's frame grammar, the
+production reader would be the first thing to refuse it.
 
 ### test_signal_feed_stream_observer.py (#468, #466)
 

@@ -414,12 +414,33 @@ policy of its own, and ours governs.
 
 ```bash
 python python/cli/signal_index_cli.py stream-probe --seconds 25
+python python/cli/signal_index_cli.py stream-probe-mock --inject epoch_changed
 ```
 
 Opens the stream exactly as a session would, holds it, and prints the transport tape plus what
 reached the inbox. Deliberately **cursor-less** — a probe claims no position, because one that
 advanced a session's cursor would consume envelopes the session it was meant to diagnose still needs.
 
+**Why the second command exists, and it is not a convenience.** A mock AutoTrader session mounts its
+signal series from the archive (`scenario_settings.data_sentiment_type`), and the source resolver
+answers MOUNTED — *no live transport*. That is deliberate: a replay is reproducible precisely because
+nothing arrives from outside. The consequence is that **no mock run in this project ever opens a
+connection**, so everything BEHIND the inbox is richly covered by them and everything in FRONT of it
+is not reachable from a mock profile at all.
+
+`stream-probe-mock` closes exactly that gap and nothing else: it starts a local stand-in producer,
+serves the same four free routes, and drives the **unmodified** transport against it over a real
+socket. `--inject <code>` emits one of the five control codes once the stream is live — four of which
+a healthy producer will never produce on request. The stand-in lives in
+`signal_data/producer/signal_mock_producer.py`, is a diagnostic tool, and nothing in the runtime path
+imports it.
+
+| | mock AutoTrader session | `stream-probe-mock` | live session |
+|---|---|---|---|
+| Signal source | mounted archive | local stand-in over HTTP | the real producer |
+| Transport opened | no | yes, the real one | yes |
+| Control codes visible | never | all five, on request | only what the producer emits |
+| Broker / ticks | mock adapter + mock ticks | none — transport only | live |
 
 ## Scenario usage
 

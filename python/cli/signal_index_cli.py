@@ -23,6 +23,7 @@ existing parquet instead of skipping it — and nothing more.
 import argparse
 import sys
 import traceback
+from typing import Optional
 
 import pandas as pd
 
@@ -35,15 +36,22 @@ from python.framework.signal_data.producer.signal_connect_check import (
     print_connect_check,
     run_connect_check,
 )
+from python.framework.signal_data.producer.signal_mock_producer import SignalMockProducer
 from python.framework.signal_data.producer.signal_stream_probe import (
     DEFAULT_PROBE_SECONDS,
     print_stream_probe,
     run_stream_probe,
 )
+from python.framework.types.config_types.sentiment_config_types import (
+    ActiveProducer,
+    ResolvedCredential,
+    SentimentStreamConfig,
+)
 from python.framework.types.signal_data_types import (
     SIGNAL_ENVELOPE_SYMBOL,
     SIGNAL_RUNTIME_COLUMNS,
     SignalParquetColumn,
+    SignalStreamControlCode,
 )
 
 vLog = get_global_logger()
@@ -114,6 +122,34 @@ class SignalIndexCli:
             timeout_s=config.producer.request_timeout_s)
         print_connect_check(result)
         return result
+
+    def cmd_stream_probe_mock(self, seconds: float, inject: Optional[str]) -> None:
+        """
+        Hold a LOCAL stand-in producer's stream open and report what arrived.
+
+        The one thing a mock AutoTrader session cannot show: it mounts its series from the
+        archive and opens no connection, so the transport's control codes never appear.
+        Four of the five a healthy producer will not emit on request.
+
+        Args:
+            seconds: How long to hold the connection
+            inject: Control code the stand-in emits once the stream is live, or None
+        """
+        code = SignalStreamControlCode(inject) if inject else None
+        mock = SignalMockProducer(inject=code).start()
+        try:
+            producer = ActiveProducer(
+                name='mock', base_url=mock.get_base_url(),
+                credential=ResolvedCredential(token='mock-token', source='(built in)'))
+            result = run_stream_probe(
+                producer=producer,
+                stream_config=SentimentStreamConfig(
+                    enabled=True, pipeline_id=mock.get_pipeline_id()),
+                logger=vLog,
+                seconds=seconds)
+        finally:
+            mock.stop()
+        print_stream_probe(result)
 
     def cmd_stream_probe(self, seconds: float):
         """Hold the producer's stream open briefly and report what arrived."""
@@ -232,6 +268,16 @@ def main():
     # ─────────────────────────────────────────────────────────────────────────
     # STREAM-PROBE command
     # ─────────────────────────────────────────────────────────────────────────
+    mock_parser = subparsers.add_parser(
+        'stream-probe-mock',
+        help='Hold a LOCAL stand-in producer open — the only way to see the control codes')
+    mock_parser.add_argument(
+        '--seconds', type=float, default=DEFAULT_PROBE_SECONDS,
+        help='How long to hold the connection')
+    mock_parser.add_argument(
+        '--inject', choices=[code.value for code in SignalStreamControlCode], default=None,
+        help='Control code the stand-in emits once the stream is live')
+
     stream_parser = subparsers.add_parser(
         'stream-probe',
         help='Hold the producer stream open briefly and print what arrived (#468)')
@@ -267,6 +313,8 @@ def main():
         elif args.command == 'connect-check':
             if not cli.cmd_connect_check().is_ok():
                 sys.exit(1)
+        elif args.command == 'stream-probe-mock':
+            cli.cmd_stream_probe_mock(seconds=args.seconds, inject=args.inject)
         elif args.command == 'stream-probe':
             if not cli.cmd_stream_probe(seconds=args.seconds).ok:
                 sys.exit(1)
