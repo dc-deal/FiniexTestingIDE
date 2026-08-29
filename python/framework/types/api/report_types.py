@@ -80,9 +80,14 @@ class TradeAnalytics(BaseModel):
     currency: str = ''      # account currency this aggregate is over
     trade_count: int = 0    # trades in this currency group
     expectancy: float       # mean R over trades with a defined R
-    avg_win_r: float        # mean R of winners (R-defined)
-    avg_loss_r: float       # mean R of losers (R-defined)
+    # None = not measured (no R-defined winner / loser) — never 0.0, which a reader cannot
+    # tell from a measured zero. Gate on the counts, not on r_trade_count: a run can have
+    # R-defined trades and still no winner among them.
+    avg_win_r: float | None     # mean R of winners (R-defined)
+    avg_loss_r: float | None    # mean R of losers (R-defined)
     r_trade_count: int      # trades with a defined R (had a stop loss)
+    r_win_count: int = 0    # R-defined trades that won
+    r_loss_count: int = 0   # R-defined trades that lost
     avg_mae_winners: float  # mean MAE P&L on winners — SL too tight if large vs win size
     avg_mae_losers: float   # mean MAE P&L on losers
     avg_mfe_losers: float   # mean MFE P&L on losers — "left on the table" read
@@ -148,11 +153,12 @@ class PortfolioUnitRow(BaseModel):
     winning_trades: int
     losing_trades: int
     win_rate: float
-    profit_factor: float
+    profit_factor: float | None  # None = undefined (no losing trade)
     total_profit: float
     total_loss: float
     net_profit: float       # total_profit - total_loss
     max_drawdown: float
+    max_dd_pct: float = 0.0     # max_drawdown / max_equity — derived here, never in a renderer
     total_fees: float
     # Full projection — the per-scenario linear block renders purely from these (defaulted:
     # additive columns; the per-currency aggregated section stays on PortfolioAggregator).
@@ -166,6 +172,15 @@ class PortfolioUnitRow(BaseModel):
     current_balance: float = 0.0
     initial_balance: float = 0.0
     conversion_rate: float | None = None
+    # Currency split from the broker config (#265), stamped at capture — a renderer must
+    # never split the symbol string itself.
+    base_currency: str = ''
+    quote_currency: str = ''
+    # Spot dual-balance estimate — derived here, never in a renderer
+    spot_est_current: float = 0.0
+    spot_est_initial: float = 0.0
+    spot_est_pnl: float = 0.0
+    spot_est_pnl_pct: float = 0.0
     total_spread_cost: float = 0.0
     total_commission: float = 0.0
     total_swap: float = 0.0
@@ -186,7 +201,7 @@ class PortfolioAggregateRow(BaseModel):
     winning_trades: int
     losing_trades: int
     win_rate: float
-    profit_factor: float
+    profit_factor: float | None  # None = undefined (no losing trade)
     total_profit: float
     total_loss: float
     net_profit: float
@@ -318,7 +333,7 @@ class RunSummaryCurrency(BaseModel):
     """
     currency: str
     net_pnl: float          # ← PortfolioAggregateRow.net_profit
-    profit_factor: float    # ← PortfolioAggregateRow.profit_factor
+    profit_factor: float | None  # ← PortfolioAggregateRow (None = no losing trade)
     win_rate: float         # ← PortfolioAggregateRow.win_rate
     max_drawdown: float     # ← PortfolioAggregateRow.max_drawdown
     total_fees: float       # ← PortfolioAggregateRow.total_fees
@@ -326,9 +341,11 @@ class RunSummaryCurrency(BaseModel):
     winning_trades: int
     losing_trades: int
     expectancy: float       # ← TradeAnalytics.expectancy (mean R) — the sweep objective
-    avg_win_r: float        # ← TradeAnalytics.avg_win_r
-    avg_loss_r: float       # ← TradeAnalytics.avg_loss_r
+    avg_win_r: float | None     # ← TradeAnalytics (None = no R-defined winner)
+    avg_loss_r: float | None    # ← TradeAnalytics (None = no R-defined loser)
     r_trade_count: int      # ← TradeAnalytics.r_trade_count
+    r_win_count: int = 0
+    r_loss_count: int = 0
 
 
 class RunSummary(BaseModel):
@@ -387,15 +404,15 @@ class RunResultRow(BaseModel):
     # KPIs (the rankable objective fields)
     net_pnl: float = 0.0
     expectancy: float = 0.0
-    profit_factor: float = 0.0
+    profit_factor: float | None = None  # None = undefined (no losing trade)
     win_rate: float = 0.0
     max_drawdown: float = 0.0
     total_fees: float = 0.0
     total_trades: int = 0
     winning_trades: int = 0
     losing_trades: int = 0
-    avg_win_r: float = 0.0
-    avg_loss_r: float = 0.0
+    avg_win_r: float | None = None
+    avg_loss_r: float | None = None
     r_trade_count: int = 0
     orders_sent: int = 0
     orders_executed: int = 0
@@ -478,6 +495,9 @@ class WorkerStatRow(BaseModel):
     max_time_ms: float = 0.0
     compute_basis: str = 'live'     # #420 cadence basis (live / bar_close)
     last_compute_tick: int = -1     # #420 tick index of the last real compute (idle telemetry)
+    # Cadence, derived here so every surface reads the same figure
+    compute_ratio_pct: float = 0.0  # call_count / the unit's ticks_processed
+    ticks_idle: int = 0             # ticks since the last real compute
 
 
 class WorkerDecisionUnitRow(BaseModel):
@@ -504,6 +524,7 @@ class WorkerDecisionUnitRow(BaseModel):
     ticks_processed: int = 0
     parallel_workers: bool = False
     parallel_time_saved_ms: float = 0.0
+    parallel_avg_saved_per_tick_ms: float = 0.0     # parallel_time_saved_ms / ticks_processed
     # per-worker timing
     workers: list[WorkerStatRow] = []
 
@@ -876,6 +897,7 @@ class AggregatedPortfolioRow(BaseModel):
     orders_executed: int = 0
     orders_rejected: int = 0
     sl_tp_triggered: int = 0
+    execution_rate_pct: float = 0.0     # orders_executed / orders_sent
     # Pending
     pending_total_resolved: int = 0
     pending_total_filled: int = 0

@@ -37,13 +37,17 @@ def _to_unit_row(unit: RunUnit) -> WorkerDecisionUnitRow:
     """Map one RunUnit's worker + decision stats to a renderable row."""
     decision = unit.decision_statistics
     coordination = unit.coordination_statistics
+    ticks = coordination.ticks_processed if coordination else 0
     workers = [
         WorkerStatRow(
             worker_type=w.worker_type, worker_name=w.worker_name,
             call_count=w.worker_call_count, total_time_ms=w.worker_total_time_ms,
             avg_time_ms=w.worker_avg_time_ms, min_time_ms=w.worker_min_time_ms,
             max_time_ms=w.worker_max_time_ms,
-            compute_basis=w.worker_compute_basis, last_compute_tick=w.worker_last_compute_tick)
+            compute_basis=w.worker_compute_basis, last_compute_tick=w.worker_last_compute_tick,
+            compute_ratio_pct=(w.worker_call_count / ticks * 100) if ticks > 0 else 0.0,
+            ticks_idle=((ticks - w.worker_last_compute_tick)
+                        if ticks > 0 and w.worker_last_compute_tick >= 0 else 0))
         for w in unit.worker_statistics
     ]
     return WorkerDecisionUnitRow(
@@ -63,5 +67,7 @@ def _to_unit_row(unit: RunUnit) -> WorkerDecisionUnitRow:
         ticks_processed=coordination.ticks_processed if coordination else 0,
         parallel_workers=coordination.parallel_workers if coordination else False,
         parallel_time_saved_ms=coordination.parallel_time_saved_ms if coordination else 0.0,
+        parallel_avg_saved_per_tick_ms=(
+            coordination.parallel_time_saved_ms / ticks if coordination and ticks > 0 else 0.0),
         workers=workers,
     )

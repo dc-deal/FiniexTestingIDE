@@ -4,7 +4,7 @@ Types for currency-grouped portfolio aggregation
 """
 
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, Optional
 
 from python.framework.types.trading_env_types.broker_types import BrokerType
 
@@ -33,7 +33,9 @@ class BasePortfolioStats:
 
     # Calculated metrics
     win_rate: float
-    profit_factor: float
+    # None = undefined: no losing trade, so gross profit / gross loss has no value.
+    # NOT infinity — inf has no JSON form and Pydantic persists it as null (#391).
+    profit_factor: Optional[float]
 
     # Cost breakdown
     total_spread_cost: float
@@ -66,3 +68,7 @@ class PortfolioStats(BasePortfolioStats):
     initial_balances: Dict[str, float] = field(default_factory=dict)
     last_price: float = 0.0
     symbol: str = ''
+    # Authoritative currency split from the broker config (#265) — stamped at capture,
+    # never derived from the symbol string.
+    base_currency: str = ''
+    quote_currency: str = ''

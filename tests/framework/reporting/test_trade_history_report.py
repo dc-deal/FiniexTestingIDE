@@ -189,5 +189,29 @@ class TestAnalytics:
         assert round(a.total_fees, 2) == 3.2       # 0.8 × 4
         assert round(a.gross_pnl, 2) == 23.2       # net + fees
 
+    def test_r_subsets_carry_their_own_counts(self):
+        """r_trade_count cannot gate the averages — a run can have R-trades and no winner."""
+        trades = [
+            _trade(position_id='w1', net_pnl=20.0, initial_risk=10.0),   # R=2
+            _trade(position_id='l1', net_pnl=-10.0, initial_risk=10.0),  # R=-1
+            _trade(position_id='l2', net_pnl=-10.0, initial_risk=10.0),  # R=-1
+        ]
+        a = build_trade_history_report(_units(trades)).analytics[0]
+        assert (a.r_trade_count, a.r_win_count, a.r_loss_count) == (3, 1, 2)
+
+    def test_no_r_winner_leaves_avg_win_r_unmeasured(self):
+        """The archive case: one R-trade, and it lost. 0.0 would read as a measured zero."""
+        trades = [_trade(position_id='l1', net_pnl=-10.0, initial_risk=10.0)]   # R=-1
+        a = build_trade_history_report(_units(trades)).analytics[0]
+        assert a.r_trade_count == 1 and a.r_win_count == 0
+        assert a.avg_win_r is None
+        assert a.avg_loss_r == -1.0
+
+    def test_no_r_loser_leaves_avg_loss_r_unmeasured(self):
+        trades = [_trade(position_id='w1', net_pnl=20.0, initial_risk=10.0)]    # R=2
+        a = build_trade_history_report(_units(trades)).analytics[0]
+        assert a.avg_loss_r is None and a.r_loss_count == 0
+        assert a.avg_win_r == 2.0
+
     def test_empty_analytics(self):
         assert build_trade_history_report(_units([])).analytics == []   # no rows → no currency groups

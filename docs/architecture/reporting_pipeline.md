@@ -52,6 +52,44 @@ cross-run `run_results_ledger` + `run_provenance_builder`), and `console/` (PRES
 `framework/reporting/*` files are unrelated reporting utilities (diagnostics CSV, event-stream
 CSV, field-study, …).
 
+### Where a value is produced — source fields at the source, calculations in the builder
+
+A field the process already owns — a broker-config fact, an event stamp, an authoritative
+lookup — is stamped onto the record where it is known, resolved once from its owner. Everything
+DERIVED from those fields is computed in the section's builder, off the run. The reason is cost,
+not tidiness: work the run does not need must not run inside the run. The exception is a value
+the process itself consumes (a decision or an execution path reads it) — that one is computed
+where it is used, and the report treats it as a source field like any other. When in doubt, put
+it in the builder: moving a calculation out of the run is always safe, moving one in is not.
+
+Worked example (#265 + #391): a spot unit's estimated portfolio value needs the instrument's
+base / quote split. The split is a broker-config FACT, so `PortfolioManager`'s stats carry
+`base_currency` / `quote_currency`, stamped once per unit after the tick loop. The ESTIMATE over
+those balances is a calculation, so it lives in `portfolio_report_builder`. The renderer prints
+both and computes neither — and, critically, never splits the symbol string itself.
+
+### Aggregates are their own stage, and they serve both outputs
+
+A per-currency / per-worker roll-up is computed once in `report_aggregators`, lands on the model,
+and is then available to the aggregated block AND to every single-unit render — a per-scenario
+view may show the run's aggregate beside its own figures without recomputing it. A renderer that
+builds its own aggregate is the defect this rule prevents.
+
+### Undefined KPIs — `None`, never a sentinel
+
+A KPI that has no value carries `None`, and the field comment says what `None` means. It is
+never a stand-in number and never `float('inf')`: **infinity has no JSON representation**, and
+Pydantic serializes it to `null` on write while the reader declares a plain `float` — so the
+artifact cannot be read back. Measured 2026-08-29 on `profit_factor` (gross profit / gross loss,
+undefined when a run has no losing trade): 5 of 1083 persisted runs were unreadable, and three
+API routes answered 500 for them.
+
+The rule applies to the whole chain, not just the model — the value is minted as `None` at the
+producing site (`portfolio_manager`, `report_aggregators`), stays `None` through DERIVE, and the
+PRESENT layer renders it as `n/a` / `∞ (no losses)`. One spelling end to end; a translation at a
+boundary is how the two drift apart again. Same convention as `signal_fresh_ratio`, where `None`
+means no SIGNAL worker was involved and deliberately not `1.0`.
+
 ## Section map — shared vs pipeline-specific (#403)
 
 What each coordinator owns vs delegates. The DERIVE+PERSIST of the eight units-derived sections is
@@ -158,14 +196,14 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 |---|---|---|---|---|
 | Trade History (#389 analytics) | unified | ✅ | ✅ | offload the still-inline per-currency aggregates: trade-breakdown counts · duration · slippage distribution · rejection-by-reason |
 | Order History | unified | ✅ | ✅ | — |
-| Portfolio — per-scenario | unified | ✅ | ✅ (linear, boxes removed) | — |
+| Portfolio — per-scenario | unified | ✅ | ✅ (linear, boxes removed) | — `max_dd_pct` and the spot dual-balance estimate are derived in the builder; the renderer's `symbol[-3:]` currency split was replaced by the broker-config split stamped at capture (#265) |
 | Portfolio — aggregated (by currency) | sim | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (byte-identical; `PortfolioAggregator` retired) | — |
 | Pending Orders / Active | unified (sim-populated) | ✅ | ✅ | — |
 | Execution Stats — per-scenario | unified | ✅ | ✅ | — |
 | Execution — aggregated ORDER EXECUTION | sim | ✅ (in `AggregatedPortfolioReport`) | ✅ from the model | — (folded into the portfolio aggregate, #397) |
 | Scenario Details | **sim-only** | ✅ | ✅ (linear, incl. failed + `account_currency` hint) | — |
 | Run Summary (#390) | unified | ✅ | ✅ executive headline | — |
-| Worker / Decision (#398/#399) | unified | ✅ (`WorkerDecisionReport`) | ✅ — `performance_summary` (worker details / aggregated / bottleneck) + the breakdown both read the model (overhead Total from the profiling model, #399); the duplicate per-scenario worker list was removed | — |
+| Worker / Decision (#398/#399) | unified | ✅ (`WorkerDecisionReport`) | ✅ — `performance_summary` (worker details / aggregated / bottleneck) + the breakdown read the model (overhead Total from the profiling model, #399); the duplicate per-scenario worker list was removed. Per-worker cadence (`compute_ratio_pct`, `ticks_idle`) and `parallel_avg_saved_per_tick_ms` are derived in the builder | **still console-only:** the AGGREGATED STATS block and the bottleneck scan (slowest scenario / worst worker / worst decision logic) build their aggregates and pick their winners inside the renderer — a section migration, not a move |
 | Profiling — operations + inter-tick + clipping (#399) | **sim-only** | ✅ (`ProfilingReport`) | ✅ from the model | — |
 | Warmup phases (#399) | **sim-only** | ✅ (in `ProfilingReport`) | ✅ from the model (`ProfilingSummary.render_warmup`; `warmup_phase_summary` retired) | — |
 | Block-Splitting Disposition | **sim-only** (Profile Run) | ⏳ | ✅ inline | **separate follow-up** — generation-quality metric (`generator_profiles` + `block_boundary_report`), not runtime profiling |
@@ -174,7 +212,7 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 | Signal Configuration (#433) | unified | ✅ (`SignalReport`) | ✅ from the model (`SignalSummary`) | — Part C (fresh/stale/blind per tick) + Part A (the section) done; Part D moved to its own section below (#451) |
 | Feed Stability (#451) | unified | ✅ (`FeedStabilityReport`) | ✅ from the model (`FeedStabilitySummary`) | — the disturbance episodes of **both** staleness domains (tick stream #436 + every SIGNAL source #434) in one per-source table, plus the tick-domain fresh/stale counters and the `RunSummary` totals behind the executive line. Rendered only when the run saw an episode |
 | Warnings & Errors | unified | ✅ (`WarningsErrorsReport`) | ✅ from the model — tiered (errors / Tier-1 major / Tier-2 minor); executive failed-scenario headline reads the model outcome; warnings lifted into validators (`PostRunValidator`), the orchestrator keeps only a thin global-log line (#395) | **both pipelines render the shared `WarningsSummary`** (always shown — clean zero-state when none, #403 Phase 2); live messages get the logger prefix stripped in the builder |
-| Executive — detailed portfolio-performance block | **sim-only** | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (margin / spot / mixed preserved, byte-identical) | — (#397) |
+| Executive — detailed portfolio-performance block | **sim-only** | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (margin / spot / mixed preserved, byte-identical) | — (#397); the profit factor is read from the model instead of recomputed with a divergent formula, and the order execution rate is carried as `execution_rate_pct` |
 | Shutdown / Emergency / Session | **autotrader-only** | ✅ | ✅ `LiveSessionSummary` | the live closing block of the unified `RunConsoleRenderer` (#403 Phase 2): session stats + warnings/errors (session buffers, §35) + output locations; #389 analytics line model-sourced |
 | **Final:** directory consolidation | — | — | — | ✅ **#396 DONE** — `batch_reporting/` folded into `framework/reporting/` by stage: `run_reports/` (DERIVE) · `io/` (PERSIST) · `console/` (PRESENT) |
 | Shared coordinator + folder split | — | — | — | ✅ **#403 DONE** — the units-derived DERIVE+PERSIST core extracted into `SharedReportCoordinator` (both pipelines delegate, returning `UnifiedReports`); the home re-split into `builders/` (DERIVE) · `io/` (PERSIST writers) · `store/` (read-master + cross-run ledger + provenance). Live ledger append wired (5.a) |

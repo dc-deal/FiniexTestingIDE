@@ -158,10 +158,8 @@ class PerformanceSummary(AbstractBatchSummarySection):
                 # since the last compute (BAR_CLOSE serves a cached value in between).
                 total_ticks = unit.ticks_processed
                 if total_ticks > 0:
-                    pct = w.call_count / total_ticks * 100
-                    idle = (total_ticks - w.last_compute_tick) if w.last_compute_tick >= 0 else 0
                     cadence = (f'{w.compute_basis:9} {w.call_count:>5}/{total_ticks} '
-                               f'computes ({pct:4.0f}%, {idle} idle)')
+                               f'computes ({w.compute_ratio_pct:4.0f}%, {w.ticks_idle} idle)')
                 else:
                     cadence = f'{w.compute_basis:9} {w.call_count:>5} computes'
                 print(f"      {renderer.blue(f'{w.worker_name:15}->{w.worker_type:15}')}  "
@@ -173,7 +171,7 @@ class PerformanceSummary(AbstractBatchSummarySection):
         # Parallel efficiency
         if parallel_workers and ticks_processed > 0:
             parallel_time_saved_ms = unit.parallel_time_saved_ms
-            parallel_avg_saved_per_tick_ms = parallel_time_saved_ms / ticks_processed
+            parallel_avg_saved_per_tick_ms = unit.parallel_avg_saved_per_tick_ms
             status = self._get_parallel_status(parallel_time_saved_ms)
 
             print(f"\n{renderer.bold('   ⚡ PARALLEL EFFICIENCY:')}")

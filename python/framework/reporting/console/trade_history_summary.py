@@ -332,7 +332,9 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         print(
             f'      Expectancy: {a.expectancy:+.3f} R  |  '
             f'R-trades: {a.r_trade_count}/{a.trade_count} (with a stop loss)')
-        print(f'      Avg Win-R: {a.avg_win_r:+.3f}  |  Avg Loss-R: {a.avg_loss_r:+.3f}')
+        win_r = f'{a.avg_win_r:+.3f}' if a.avg_win_r is not None else 'n/a'
+        loss_r = f'{a.avg_loss_r:+.3f}' if a.avg_loss_r is not None else 'n/a'
+        print(f'      Avg Win-R: {win_r}  |  Avg Loss-R: {loss_r}')
         print(
             f'      Avg MAE — winners: {self._format_value(a.avg_mae_winners, renderer)} '
             f'| losers: {self._format_value(a.avg_mae_losers, renderer)} {currency}')

@@ -1171,7 +1171,7 @@ class PortfolioManager:
         if self._total_loss > 0:
             profit_factor = self._total_profit / self._total_loss
         else:
-            profit_factor = 0.0 if self._total_profit == 0 else float('inf')
+            profit_factor = 0.0 if self._total_profit == 0 else None
 
         return PortfolioStats(
             total_trades=self._total_trades,

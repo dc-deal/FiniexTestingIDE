@@ -84,8 +84,10 @@ class LiveSessionSummary:
 
         # Trade analytics (#389/#393) — model-sourced, one line per account currency.
         for a in (self._trade_report.analytics if self._trade_report else []):
+            win_r = f'{a.avg_win_r:+.2f}' if a.avg_win_r is not None else 'n/a'
+            loss_r = f'{a.avg_loss_r:+.2f}' if a.avg_loss_r is not None else 'n/a'
             print(f'  Analytics:      expectancy {a.expectancy:+.3f}R | '
-                  f'win-R {a.avg_win_r:+.2f} / loss-R {a.avg_loss_r:+.2f} | '
+                  f'win-R {win_r} / loss-R {loss_r} | '
                   f'R-trades {a.r_trade_count}/{a.trade_count} ({a.currency})')
 
         clipping = result.clipping_summary
