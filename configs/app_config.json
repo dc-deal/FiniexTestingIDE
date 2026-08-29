@@ -24,10 +24,14 @@
         "log_level": "DEBUG",
         "log_path": "logs/",
         "append_mode": true,
+        "run_logs": {
+            "autotrader": "logs/autotrader",
+            "single_runs": "logs/scenario_sets/single_runs",
+            "sweeps": "logs/scenario_sets/sweeps"
+        },
         "scenario": {
             "enabled": true,
             "log_level": null,
-            "log_root_path": "logs/scenario_sets",
             "file_name_prefix": "scenario"
         }
     },

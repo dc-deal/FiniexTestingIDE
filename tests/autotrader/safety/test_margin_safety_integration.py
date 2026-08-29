@@ -13,10 +13,10 @@ produces trades.
 Counterpart to test_safety_integration.py (spot mode).
 """
 
-import shutil
 
 import pytest
 
+from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.types.autotrader_types.autotrader_config_types import SafetyConfig
@@ -41,8 +41,7 @@ def _run_with_margin_safety(safety: SafetyConfig) -> AutoTraderResult:
     trader = AutotraderMain(config)
     result = trader.run()
     # Clean up log directory
-    if trader._run_dir and trader._run_dir.exists():
-        shutil.rmtree(trader._run_dir)
+    remove_run_dir(trader._run_dir)
     return result
 
 

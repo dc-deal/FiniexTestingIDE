@@ -10,10 +10,10 @@ Also exercises request_session_end end-to-end: the bot ends the session itself
 (no operator Ctrl+C), and a SESSION_END event is delivered before teardown.
 """
 
-import shutil
 
 import pytest
 
+from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 
@@ -32,8 +32,7 @@ def session():
     received = trader._decision_logic.get_received_event_log()
     run_dir = trader._run_dir
     yield result, received
-    if run_dir and run_dir.exists():
-        shutil.rmtree(run_dir)
+    remove_run_dir(run_dir)
 
 
 def test_session_completes_without_errors(session):

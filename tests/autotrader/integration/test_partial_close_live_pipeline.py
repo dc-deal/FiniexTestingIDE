@@ -11,10 +11,10 @@ logic + mock adapter) end-to-end and verifies:
 """
 
 import csv
-import shutil
 
 import pytest
 
+from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.event_stream_csv_writer import EVENT_FIELDS
@@ -31,8 +31,7 @@ def session_result():
     result = trader.run()
     run_dir = trader._run_dir
     yield result, run_dir
-    if run_dir and run_dir.exists():
-        shutil.rmtree(run_dir)
+    remove_run_dir(run_dir)
 
 
 class TestSessionCompletes:

@@ -7,6 +7,7 @@ surface. Pydantic (not @dataclass) because the API serializes it directly — sa
 exception as api_types.py.
 """
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, Optional
 
@@ -326,8 +327,16 @@ class ScenarioDetailsReport(BaseModel):
 class RunInfo(BaseModel):
     """One discoverable run in the report store — identity only, no report content."""
     run_id: str
-    group: str              # 'scenario_sets' (sim) | 'autotrader' (live)
+    # The run's CATEGORY, which is also where its logs live (file_logging.run_logs):
+    # 'single_runs' (a standalone sim run) | 'sweeps' (one combination of a parameter
+    # sweep, also listed ranked under /sweeps) | 'autotrader' (a live session).
+    group: str
     name: str               # scenario-set name (sim) | profile name (live)
+    # Whether this run persisted report artifacts. A run can exist as logs alone — a test
+    # session writes no reports — and such a run is listed rather than hidden, because an
+    # index that silently omits runs is its own surprise. False means every report route
+    # will answer 404 for this id.
+    has_reports: bool = False
 
 
 class RunListResponse(BaseModel):
@@ -431,6 +440,47 @@ class RunResultRow(BaseModel):
     sl_tp_triggered: int = 0
     # Weakest SIGNAL channel of the run (#433); None = no SIGNAL worker was involved
     signal_fresh_ratio: float | None = None
+
+
+class SweepSummary(BaseModel):
+    """
+    One sweep's at-a-glance line, derived from its ledger rows (#390).
+
+    A sweep is not a run — it is a family of them. The run index lists standalone runs; this is
+    the entry point for the other kind, and a consumer drills from here into the combinations.
+    """
+    sweep_id: str
+    started: Optional[datetime] = None   # earliest run start in the sweep (UTC)
+    duration_s: float = 0.0              # last - first run start (no per-run end in the ledger)
+    run_count: int = 0                   # distinct combinations (run_ids)
+    ok_count: int = 0
+    error_count: int = 0
+    decision_logic_type: str = ''
+    decision_version: str = ''
+    base_config: str = ''                # the swept scenario set (sweep tag stripped)
+    symbols: list[str] = []
+    objective: str = ''
+    maximize: bool = True
+
+
+class SweepListResponse(BaseModel):
+    """Every recorded sweep, newest first."""
+    sweeps: list[SweepSummary]
+    count: int
+
+
+class SweepDetailResponse(BaseModel):
+    """
+    One sweep's combinations, ranked by its own objective.
+
+    Ranked, not alphabetical: the question a sweep answers is which combination won, and each
+    row carries its `run_id` so a consumer can open that run through the report routes.
+    """
+    sweep_id: str
+    objective: str
+    maximize: bool
+    combinations: list[RunResultRow]
+    count: int
 
 
 class RunMetaReport(BaseModel):

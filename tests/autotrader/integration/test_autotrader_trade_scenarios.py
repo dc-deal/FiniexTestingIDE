@@ -8,10 +8,10 @@ Profile calibration (BTCUSD parquet, entry bid ~89308 at tick 10):
   - TP=89350: bid rises above that level at tick ~270
 """
 
-import shutil
 
 import pytest
 
+from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
@@ -30,8 +30,7 @@ def _make_session_fixture(profile: str):
         trader = AutotraderMain(config)
         result = trader.run()
         yield result
-        if trader._run_dir and trader._run_dir.exists():
-            shutil.rmtree(trader._run_dir)
+        remove_run_dir(trader._run_dir)
     return _fixture
 
 

@@ -27,6 +27,12 @@ from python.framework.reporting.io.trade_history_report_io import (
 )
 from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
+from python.framework.types.config_types.file_logging_config_types import RunLogPaths
+from python.framework.types.log_layout_types import (
+    AUTOTRADER_GROUP,
+    SINGLE_RUNS_GROUP,
+    SWEEPS_GROUP,
+)
 from python.framework.types.api.report_types import (
     ActiveOrderRow,
     AggregatedPortfolioCurrency,
@@ -82,61 +88,137 @@ def _report() -> TradeHistoryReport:
         trades=rows, count=len(rows), symbols=['EURUSD', 'GBPUSD'], analytics=[_ZERO_ANALYTICS])
 
 
-def _write_run(logs_root: Path, group: str, owner: str, run_id: str) -> None:
+def _run_logs(root: Path) -> RunLogPaths:
+    """The three category roots under a tmp logs tree — what ReportStore now reads."""
+    return RunLogPaths(
+        autotrader=root / 'autotrader',
+        single_runs=root / 'scenario_sets' / 'single_runs',
+        sweeps=root / 'scenario_sets' / 'sweeps')
+
+
+def _write_run(logs_root: Path, category: str, owner: str, run_id: str,
+               sweep_id: str = '') -> None:
+    """
+    Write one run's artifacts into its category.
+
+    Args:
+        logs_root: The logs tree root
+        category: 'single_runs', 'sweeps' or 'autotrader'
+        owner: The scenario set / profile name
+        run_id: The run's directory name
+        sweep_id: The owning sweep, for the sweeps category
+    """
+    roots = _run_logs(logs_root)
+    base = {AUTOTRADER_GROUP: roots.autotrader,
+            SINGLE_RUNS_GROUP: roots.single_runs,
+            SWEEPS_GROUP: roots.sweeps}[category]
+    if sweep_id:
+        base = base / sweep_id
     # Artifacts live in the run's io/ subfolder (#396 housekeeping)
-    io_dir = logs_root / group / owner / run_id / IO_SUBDIR
+    io_dir = base / owner / run_id / IO_SUBDIR
     io_dir.mkdir(parents=True)
     write_trade_history_report(_report(), io_dir)
 
 
+class TestTheThreeCategories:
+    """
+    A run belongs to exactly one category, and the category IS its `group`. The index lists
+    EVERY run of every category and says per row whether reports exist — an index that silently
+    omits runs is its own surprise, and `has_reports` lets a consumer decide what to show.
+
+    Swept runs were once invisible to the whole store: a fixed-depth lookup missed them, so a
+    parameter sweep's results could not be read over the API at all.
+    """
+
+    _SWEEP = 'sweep_20260829_184006'
+
+    def test_depth_alone_does_not_hide_a_run(self, tmp_path):
+        """The lookup must not assume a fixed depth under a category root."""
+        _write_run(tmp_path, SINGLE_RUNS_GROUP, 'my_set', '20260615_120000')
+        runs = ReportStore(_run_logs(tmp_path)).list_runs()
+        assert [r.run_id for r in runs] == ['20260615_120000']
+        assert runs[0].group == SINGLE_RUNS_GROUP and runs[0].name == 'my_set'
+
+    def test_a_sweep_combination_stays_addressable(self, tmp_path):
+        """Excluded from the INDEX, never from resolution — the index is a browse aid."""
+        _write_run(tmp_path, SWEEPS_GROUP, 'my_set__c000', '20260829_184007',
+                   sweep_id=self._SWEEP)
+        assert ReportStore(_run_logs(tmp_path)).get_trade_history('20260829_184007') is not None
+
+    def test_a_run_without_reports_is_listed_and_flagged(self, tmp_path):
+        """A test session writes logs and no artifacts — it exists, and the row says so."""
+        bare = _run_logs(tmp_path).autotrader / 'probe_test' / '20260829_213636'
+        (bare / 'session_logs').mkdir(parents=True)
+        _write_run(tmp_path, SINGLE_RUNS_GROUP, 'my_set', '20260615_120000')
+
+        runs = {r.run_id: r for r in ReportStore(_run_logs(tmp_path)).list_runs()}
+        assert set(runs) == {'20260829_213636', '20260615_120000'}
+        assert runs['20260829_213636'].has_reports is False
+        assert runs['20260615_120000'].has_reports is True
+
+    def test_all_three_categories_side_by_side(self, tmp_path):
+        _write_run(tmp_path, SINGLE_RUNS_GROUP, 'plain_set', '20260615_120000')
+        _write_run(tmp_path, SWEEPS_GROUP, 'my_set__c000', '20260829_184007',
+                   sweep_id=self._SWEEP)
+        _write_run(tmp_path, AUTOTRADER_GROUP, 'my_profile', '20260615_130000')
+        store = ReportStore(_run_logs(tmp_path))
+        runs = {r.run_id: r for r in store.list_runs()}
+        assert set(runs) == {'20260615_120000', '20260829_184007', '20260615_130000'}
+        assert runs['20260829_184007'].group == SWEEPS_GROUP
+        assert runs['20260615_120000'].group == SINGLE_RUNS_GROUP
+        assert runs['20260615_130000'].group == AUTOTRADER_GROUP
+        for run_id in runs:
+            assert store.get_trade_history(run_id) is not None
+
+
 class TestResolveRead:
     def test_reads_a_run(self, tmp_path):
-        _write_run(tmp_path, 'scenario_sets', 'my_set', '20260615_120000')
-        report = ReportStore(tmp_path).get_trade_history('20260615_120000')
+        _write_run(tmp_path, SINGLE_RUNS_GROUP, 'my_set', '20260615_120000')
+        report = ReportStore(_run_logs(tmp_path)).get_trade_history('20260615_120000')
         assert report is not None
         assert report.count == 3
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(tmp_path).get_trade_history('does_not_exist') is None
+        assert ReportStore(_run_logs(tmp_path)).get_trade_history('does_not_exist') is None
 
     def test_resolves_autotrader_run(self, tmp_path):
-        _write_run(tmp_path, 'autotrader', 'my_profile', '20260615_130000')
-        report = ReportStore(tmp_path).get_trade_history('20260615_130000')
+        _write_run(tmp_path, AUTOTRADER_GROUP, 'my_profile', '20260615_130000')
+        report = ReportStore(_run_logs(tmp_path)).get_trade_history('20260615_130000')
         assert report is not None and report.count == 3
 
 
 class TestFilter:
     def test_filter_by_symbol(self, tmp_path):
-        _write_run(tmp_path, 'scenario_sets', 'my_set', '20260615_120000')
-        report = ReportStore(tmp_path).get_trade_history('20260615_120000', symbol='GBPUSD')
+        _write_run(tmp_path, SINGLE_RUNS_GROUP, 'my_set', '20260615_120000')
+        report = ReportStore(_run_logs(tmp_path)).get_trade_history('20260615_120000', symbol='GBPUSD')
         assert report.count == 1 and report.trades[0].position_id == 'p2'
 
     def test_filter_by_close_reason(self, tmp_path):
-        _write_run(tmp_path, 'scenario_sets', 'my_set', '20260615_120000')
-        report = ReportStore(tmp_path).get_trade_history(
+        _write_run(tmp_path, SINGLE_RUNS_GROUP, 'my_set', '20260615_120000')
+        report = ReportStore(_run_logs(tmp_path)).get_trade_history(
             '20260615_120000', close_reason='sl_triggered')
         assert {r.position_id for r in report.trades} == {'p2', 'p3'}
 
 
 class TestListRuns:
     def test_lists_both_groups_newest_first(self, tmp_path):
-        _write_run(tmp_path, 'scenario_sets', 'my_set', '20260615_120000')
-        _write_run(tmp_path, 'autotrader', 'my_profile', '20260615_130000')
-        assert [run.run_id for run in ReportStore(tmp_path).list_runs()] == [
+        _write_run(tmp_path, SINGLE_RUNS_GROUP, 'my_set', '20260615_120000')
+        _write_run(tmp_path, AUTOTRADER_GROUP, 'my_profile', '20260615_130000')
+        assert [run.run_id for run in ReportStore(_run_logs(tmp_path)).list_runs()] == [
             '20260615_130000', '20260615_120000']
 
     def test_carries_group_and_owner_name(self, tmp_path):
         """The listing is the viewer's run picker — id alone cannot tell sim from live."""
-        _write_run(tmp_path, 'scenario_sets', 'my_set', '20260615_120000')
-        _write_run(tmp_path, 'autotrader', 'my_profile', '20260615_130000')
-        runs = {run.run_id: run for run in ReportStore(tmp_path).list_runs()}
+        _write_run(tmp_path, SINGLE_RUNS_GROUP, 'my_set', '20260615_120000')
+        _write_run(tmp_path, AUTOTRADER_GROUP, 'my_profile', '20260615_130000')
+        runs = {run.run_id: run for run in ReportStore(_run_logs(tmp_path)).list_runs()}
         assert (runs['20260615_120000'].group, runs['20260615_120000'].name) == (
-            'scenario_sets', 'my_set')
+            SINGLE_RUNS_GROUP, 'my_set')
         assert (runs['20260615_130000'].group, runs['20260615_130000'].name) == (
             'autotrader', 'my_profile')
 
     def test_empty_logs_tree_lists_nothing(self, tmp_path):
-        assert ReportStore(tmp_path).list_runs() == []
+        assert ReportStore(_run_logs(tmp_path)).list_runs() == []
 
 
 class TestCsv:
@@ -184,34 +266,34 @@ def _portfolio_report() -> PortfolioReport:
 
 class TestOrderHistory:
     def test_reads_and_filters(self, tmp_path):
-        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir = _run_logs(tmp_path).single_runs / 'my_set' / '20260615_120000'
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         write_order_history_report(_order_report(), run_dir / IO_SUBDIR)
 
-        full = ReportStore(tmp_path).get_order_history('20260615_120000')
+        full = ReportStore(_run_logs(tmp_path)).get_order_history('20260615_120000')
         assert full.count == 2
 
-        rejected = ReportStore(tmp_path).get_order_history(
+        rejected = ReportStore(_run_logs(tmp_path)).get_order_history(
             '20260615_120000', status='rejected')
         assert rejected.count == 1 and rejected.orders[0].order_id == 'o2'
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(tmp_path).get_order_history('nope') is None
+        assert ReportStore(_run_logs(tmp_path)).get_order_history('nope') is None
 
 
 class TestPortfolio:
     def test_reads_portfolio(self, tmp_path):
-        run_dir = tmp_path / 'autotrader' / 'my_profile' / '20260615_130000'
+        run_dir = _run_logs(tmp_path).autotrader / 'my_profile' / '20260615_130000'
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         write_portfolio_report(_portfolio_report(), run_dir / IO_SUBDIR)
 
-        report = ReportStore(tmp_path).get_portfolio('20260615_130000')
+        report = ReportStore(_run_logs(tmp_path)).get_portfolio('20260615_130000')
         assert report is not None
         assert len(report.units) == 1 and report.units[0].net_profit == 60.0
         assert report.aggregates[0].currency == 'USD'
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(tmp_path).get_portfolio('nope') is None
+        assert ReportStore(_run_logs(tmp_path)).get_portfolio('nope') is None
 
 
 def _execution_stats_report() -> ExecutionStatsReport:
@@ -225,17 +307,17 @@ def _execution_stats_report() -> ExecutionStatsReport:
 
 class TestExecutionStats:
     def test_reads_execution_stats(self, tmp_path):
-        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir = _run_logs(tmp_path).single_runs / 'my_set' / '20260615_120000'
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         write_execution_stats_report(_execution_stats_report(), run_dir / IO_SUBDIR)
 
-        report = ReportStore(tmp_path).get_execution_stats('20260615_120000')
+        report = ReportStore(_run_logs(tmp_path)).get_execution_stats('20260615_120000')
         assert report is not None
         assert report.units[0].sl_tp_triggered == 2
         assert report.totals.orders_executed == 4
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(tmp_path).get_execution_stats('nope') is None
+        assert ReportStore(_run_logs(tmp_path)).get_execution_stats('nope') is None
 
     def test_csv_header_and_rows(self, tmp_path):
         write_execution_stats_csv(_execution_stats_report(), tmp_path)
@@ -257,18 +339,18 @@ def _pending_orders_report() -> PendingOrdersReport:
 
 class TestPendingOrders:
     def test_reads_pending_orders(self, tmp_path):
-        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir = _run_logs(tmp_path).single_runs / 'my_set' / '20260615_120000'
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         write_pending_orders_report(_pending_orders_report(), run_dir / IO_SUBDIR)
 
-        report = ReportStore(tmp_path).get_pending_orders('20260615_120000')
+        report = ReportStore(_run_logs(tmp_path)).get_pending_orders('20260615_120000')
         assert report is not None
         u = report.units[0]
         assert u.total_resolved == 3 and u.avg_latency_ms == 42.0
         assert u.active_limit_orders[0].order_id == 'L1'
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(tmp_path).get_pending_orders('nope') is None
+        assert ReportStore(_run_logs(tmp_path)).get_pending_orders('nope') is None
 
 
 def _scenario_details_report() -> ScenarioDetailsReport:
@@ -284,17 +366,17 @@ def _scenario_details_report() -> ScenarioDetailsReport:
 
 class TestScenarioDetails:
     def test_reads_scenario_details(self, tmp_path):
-        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir = _run_logs(tmp_path).single_runs / 'my_set' / '20260615_120000'
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         write_scenario_details_report(_scenario_details_report(), run_dir / IO_SUBDIR)
 
-        report = ReportStore(tmp_path).get_scenario_details('20260615_120000')
+        report = ReportStore(_run_logs(tmp_path)).get_scenario_details('20260615_120000')
         assert report is not None
         assert [u.status for u in report.units] == ['success', 'failed']
         assert report.units[0].buy_signals == 296
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(tmp_path).get_scenario_details('nope') is None
+        assert ReportStore(_run_logs(tmp_path)).get_scenario_details('nope') is None
 
 
 def _run_summary() -> RunSummary:
@@ -308,17 +390,17 @@ def _run_summary() -> RunSummary:
 
 class TestRunSummary:
     def test_reads_run_summary(self, tmp_path):
-        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir = _run_logs(tmp_path).single_runs / 'my_set' / '20260615_120000'
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         write_run_summary(_run_summary(), run_dir / IO_SUBDIR)
 
-        rs = ReportStore(tmp_path).get_run_summary('20260615_120000')
+        rs = ReportStore(_run_logs(tmp_path)).get_run_summary('20260615_120000')
         assert rs is not None
         assert rs.currencies[0].expectancy == 0.5
         assert rs.orders_executed == 4 and rs.unit_count == 1
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(tmp_path).get_run_summary('nope') is None
+        assert ReportStore(_run_logs(tmp_path)).get_run_summary('nope') is None
 
 
 def _broker_report() -> BrokerReport:
@@ -337,18 +419,18 @@ def _warnings_errors_report() -> WarningsErrorsReport:
 
 class TestWarningsErrors:
     def test_reads_warnings_errors(self, tmp_path):
-        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir = _run_logs(tmp_path).single_runs / 'my_set' / '20260615_120000'
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         write_warnings_errors_report(_warnings_errors_report(), run_dir / IO_SUBDIR)
 
-        report = ReportStore(tmp_path).get_warnings_errors('20260615_120000')
+        report = ReportStore(_run_logs(tmp_path)).get_warnings_errors('20260615_120000')
         assert report is not None
         assert report.warnings[0].message == 'DEBUG MODE'
         assert report.errors[0].name == 'bad'
         assert report.outcome.failed_count == 1
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(tmp_path).get_warnings_errors('nope') is None
+        assert ReportStore(_run_logs(tmp_path)).get_warnings_errors('nope') is None
 
 
 def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
@@ -363,30 +445,30 @@ def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
 
 class TestAggregatedPortfolio:
     def test_reads_aggregated_portfolio(self, tmp_path):
-        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir = _run_logs(tmp_path).single_runs / 'my_set' / '20260615_120000'
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         write_aggregated_portfolio_report(_aggregated_portfolio_report(), run_dir / IO_SUBDIR)
 
-        report = ReportStore(tmp_path).get_aggregated_portfolio('20260615_120000')
+        report = ReportStore(_run_logs(tmp_path)).get_aggregated_portfolio('20260615_120000')
         assert report is not None
         cur = report.currencies[0]
         assert cur.currency == 'USD' and cur.combined.headline.total_trades == 4
         assert cur.combined.initial_balance == 2000.0
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(tmp_path).get_aggregated_portfolio('nope') is None
+        assert ReportStore(_run_logs(tmp_path)).get_aggregated_portfolio('nope') is None
 
 
 class TestBroker:
     def test_reads_broker(self, tmp_path):
-        run_dir = tmp_path / 'scenario_sets' / 'my_set' / '20260615_120000'
+        run_dir = _run_logs(tmp_path).single_runs / 'my_set' / '20260615_120000'
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         write_broker_report(_broker_report(), run_dir / IO_SUBDIR)
 
-        report = ReportStore(tmp_path).get_broker('20260615_120000')
+        report = ReportStore(_run_logs(tmp_path)).get_broker('20260615_120000')
         assert report is not None
         assert report.units[0].broker_type == 'kraken_spot'
         assert report.units[0].symbols[0].symbol == 'BTCUSD'
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(tmp_path).get_broker('nope') is None
+        assert ReportStore(_run_logs(tmp_path)).get_broker('nope') is None

@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.autotrader.autotrader_broker_config_setup import create_broker_config
@@ -75,7 +76,9 @@ def create_autotrader_loggers(
         (global_logger, session_logger, summary_logger, run_dir)
     """
     session_name = config.name or f'{config.symbol}_{config.adapter_type}'
-    log_root = Path('logs/autotrader')
+    # From config (file_logging.run_logs.autotrader) — the same source the API reads,
+    # so a moved log root cannot make a session invisible to the run index.
+    log_root = AppConfigManager().get_file_logging_config_object().run_logs.autotrader
 
     # Global logger — startup/shutdown/errors
     global_logger = ScenarioLogger(

@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
+from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.reporting.io.aggregated_portfolio_report_io import (
     write_aggregated_portfolio_report,
 )
@@ -216,10 +217,18 @@ def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
         combined=AggregatedPortfolioRow(headline=headline, initial_balance=1000.0))])
 
 
+
+def _run_logs(root: Path) -> RunLogPaths:
+    """The three category roots under a tmp logs tree — what ReportStore now reads."""
+    return RunLogPaths(
+        autotrader=root / 'autotrader',
+        single_runs=root / 'scenario_sets' / 'single_runs',
+        sweeps=root / 'scenario_sets' / 'sweeps')
+
 @pytest.fixture
 def client(tmp_path: Path):
     # Artifacts live in the run's io/ subfolder (#396 housekeeping)
-    io_dir = tmp_path / 'scenario_sets' / 'my_set' / _RUN / IO_SUBDIR
+    io_dir = _run_logs(tmp_path).single_runs / 'my_set' / _RUN / IO_SUBDIR
     io_dir.mkdir(parents=True)
     write_trade_history_report(_report(), io_dir)
     write_order_history_report(_order_report(), io_dir)
@@ -234,7 +243,7 @@ def client(tmp_path: Path):
     write_warnings_errors_report(_warnings_errors_report(), io_dir)
     write_aggregated_portfolio_report(_aggregated_portfolio_report(), io_dir)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
-    with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(tmp_path)):
+    with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(_run_logs(tmp_path))):
         yield TestClient(create_app())
 
 

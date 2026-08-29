@@ -153,7 +153,7 @@ def initialize_batch_and_run(
     app_config_loader: AppConfigManager,
     sweep_context: SweepContext = None,
     mount: Optional[MountPackage] = None,
-    run_group: Optional[str] = None,
+    sweep_id: Optional[str] = None,
 ) -> Optional[BatchExecutionSummary]:
     """
     Build the scenario set, run the batch (cold, or warm against a shared mount), and report.
@@ -164,14 +164,15 @@ def initialize_batch_and_run(
         sweep_context: Optional sweep tagging when run as a Parameter Optimization combination
         mount: Optional shared data mount (#419) — when given, the run reuses the loaded data
             instead of reloading; a data-identity mismatch falls back to a cold reload
-        run_group: Optional log-grouping dir (e.g. 'sweeps/<sweep_id>', #419)
+        sweep_id: The owning sweep's id when this run is one of its combinations (#419)
 
     Returns:
         The BatchExecutionSummary, or None if the run failed at startup
     """
     try:
         # ScenarioSet creates its own loggers internally
-        scenario_set = ScenarioSet(scenario_config_data, app_config_loader, run_group=run_group)
+        scenario_set = ScenarioSet(
+            scenario_config_data, app_config_loader, sweep_id=sweep_id)
 
         vLog.info('📊 Writing system & version information...')
         scenario_set.write_scenario_system_info_log()

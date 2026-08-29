@@ -4,6 +4,7 @@ Phase 2: Coordinates sequential and parallel scenario execution
 
 Extracted from BatchOrchestrator to separate execution logic.
 """
+from pathlib import Path
 import pickle
 import time
 import traceback
@@ -50,7 +51,7 @@ class ExecutionCoordinator:
         app_config: AppConfigManager,
         live_stats_config: LiveStatsExportConfig,
         logger: AbstractLogger,
-        run_group: str = None
+        log_root: Path = None
     ):
         """
         Initialize execution coordinator.
@@ -61,14 +62,14 @@ class ExecutionCoordinator:
             app_config: Application configuration manager
             live_stats_config: Live stats configuration
             logger: Logger instance for status messages
-            run_group: Optional grouping dir for the run logs (e.g. 'sweeps/<sweep_id>', #419)
+            log_root: The category root the run logs land under (file_logging.run_logs)
         """
         self._scenario_set_name = scenario_set_name
         self._run_timestamp = run_timestamp
         self._app_config = app_config
         self._live_stats_config = live_stats_config
         self._logger = logger
-        self._run_group = run_group
+        self._log_root = log_root
 
     def execute_sequential(
         self,
@@ -113,7 +114,7 @@ class ExecutionCoordinator:
                 scenario_set_name=self._scenario_set_name,
                 run_timestamp=self._run_timestamp,
                 live_stats_config=self._live_stats_config,
-                run_group=self._run_group
+                log_root=self._log_root
             )
 
             # === Use scenario-specific package ===
@@ -208,7 +209,8 @@ class ExecutionCoordinator:
                     scenario_index=idx,
                     scenario_set_name=self._scenario_set_name,
                     run_timestamp=self._run_timestamp,
-                    live_stats_config=self._live_stats_config
+                    live_stats_config=self._live_stats_config,
+                    log_root=self._log_root
                 )
 
                 # === Use scenario-specific package ===

@@ -216,7 +216,7 @@ class BatchOrchestrator:
             app_config=self._app_config_manager,
             live_stats_config=self._live_stats_config,
             logger=self._logger,
-            run_group=self._scenario_set.run_group
+            log_root=self._scenario_set.log_root
         )
 
         self._live_stats_coordinator = LiveStatsCoordinator(

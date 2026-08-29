@@ -10,10 +10,10 @@ the #434 signal-side hook on the first result — both staleness contracts in
 one session ("runs fine → silence → notified → recovered").
 """
 
-import shutil
 
 import pytest
 
+from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 
@@ -27,8 +27,7 @@ def outage_session():
     trader = AutotraderMain(config)
     result = trader.run()
     yield result
-    if trader._run_dir and trader._run_dir.exists():
-        shutil.rmtree(trader._run_dir)
+    remove_run_dir(trader._run_dir)
 
 
 def _count(result, needle: str) -> int:

@@ -7,11 +7,11 @@ Deterministic: same data + same config = same results.
 """
 
 import json
-import shutil
 from pathlib import Path
 
 import pytest
 
+from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.io.broker_report_io import read_broker_report
@@ -32,8 +32,7 @@ def mock_session():
     trader = AutotraderMain(config)
     result = trader.run()
     yield result, trader._run_dir
-    if trader._run_dir and trader._run_dir.exists():
-        shutil.rmtree(trader._run_dir)
+    remove_run_dir(trader._run_dir)
 
 
 class TestAutotraderMockSession:

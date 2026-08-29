@@ -13,6 +13,7 @@ Convention:
 """
 
 import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -33,6 +34,26 @@ from python.scenario.scenario_config_loader import ScenarioConfigLoader
 # =============================================================================
 # SCENARIO EXECUTION
 # =============================================================================
+
+def remove_run_dir(run_dir: Optional[Path]) -> None:
+    """
+    Delete a test run's log directory AND the owner folder it would otherwise leave behind.
+
+    Removing only the run directory leaves an empty `<profile>/` or `<set>/` shell in the logs
+    tree. A directory listing then shows runs that do not exist, and the shells accumulate with
+    every suite run.
+
+    Args:
+        run_dir: The run's log directory; None and already-removed paths are ignored
+    """
+    if not run_dir or not Path(run_dir).exists():
+        return
+    run_dir = Path(run_dir)
+    shutil.rmtree(run_dir)
+    owner = run_dir.parent
+    if owner.is_dir() and not any(owner.iterdir()):
+        owner.rmdir()
+
 
 def run_scenario(config_filename: str) -> BatchExecutionSummary:
     """

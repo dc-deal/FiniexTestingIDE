@@ -65,13 +65,11 @@ class OptimizationRunner:
 
         # All of this sweep's runs (the base mount build + every combination) nest under one
         # grouping dir so the log root stays tidy (#419).
-        run_group = f'sweeps/{sweep_id}'
-
         # Mount reuse (#419): load the data ONCE from the base and reuse it across every
         # combination (the grid varies only strategy_config → constant data identity).
         mount = None
         if self._app_config.get_optimization_mount_reuse_enabled():
-            base_set = ScenarioSet(base, self._app_config, run_group=run_group)
+            base_set = ScenarioSet(base, self._app_config, sweep_id=sweep_id)
             mount = BatchOrchestrator(base_set, self._app_config).build_mount()
             if not mount.scenario_packages:
                 # Data-level failure (invalid window / missing data) — invariant across every
@@ -93,7 +91,7 @@ class OptimizationRunner:
             vLog.info(f'  [{index + 1}/{len(combos)}] {combo}')
             summary = initialize_batch_and_run(
                 cfg, self._app_config, sweep_context=sweep_context, mount=mount,
-                run_group=run_group)
+                sweep_id=sweep_id)
             runs += 1
 
             # Fail-fast OOM-villain abort: if the FIRST executed combination crashed data-level
