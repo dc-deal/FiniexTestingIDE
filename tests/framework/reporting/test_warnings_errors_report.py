@@ -166,6 +166,28 @@ class TestBuildFromSession:
             'p', 'BTCUSD')
         assert pot.outcome.run_outcome == RunOutcome.FINISHED_WITH_ERRORS.value
 
+    def test_operator_stop_is_told_apart_from_a_crash(self):
+        """Ctrl+C also arrives as 'emergency', so the outcome carries the discriminator."""
+        interrupted = build_warnings_errors_report_from_session(
+            AutoTraderResult(shutdown_mode='emergency', operator_interrupted=True),
+            'p', 'BTCUSD')
+        assert interrupted.outcome.shutdown_mode == 'emergency'
+        assert interrupted.outcome.operator_interrupted is True
+        assert interrupted.outcome.run_outcome == RunOutcome.SUCCESS.value
+        assert interrupted.outcome.emergency_reason == ''
+
+        crashed = build_warnings_errors_report_from_session(
+            AutoTraderResult(shutdown_mode='emergency', emergency_reason='tick loop died'),
+            'p', 'BTCUSD')
+        assert crashed.outcome.operator_interrupted is False
+        assert crashed.outcome.run_outcome == RunOutcome.FAILED.value
+
+    def test_sim_outcome_leaves_the_live_only_fields_empty(self):
+        """shutdown_mode '' on a sim run means 'not applicable', not 'unknown'."""
+        report = build_warnings_errors_report_from_batch(_batch([], []))
+        assert report.outcome.shutdown_mode == ''
+        assert report.outcome.operator_interrupted is False
+
 
 class TestRender:
     def _render(self, report: WarningsErrorsReport) -> str:

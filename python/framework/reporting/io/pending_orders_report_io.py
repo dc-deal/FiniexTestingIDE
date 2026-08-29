@@ -26,10 +26,10 @@ def write_pending_orders_report(report: PendingOrdersReport, run_dir: Path) -> P
         Path of the written artifact
     """
     path = Path(run_dir) / PENDING_ORDERS_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_pending_orders_report(path: Path) -> PendingOrdersReport:
     """Read a persisted pending-orders report artifact."""
-    return PendingOrdersReport.model_validate_json(Path(path).read_text())
+    return PendingOrdersReport.model_validate_json(Path(path).read_bytes())

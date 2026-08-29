@@ -25,10 +25,10 @@ def write_worker_decision_report(report: WorkerDecisionReport, run_dir: Path) ->
         Path of the written artifact
     """
     path = Path(run_dir) / WORKER_DECISION_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_worker_decision_report(path: Path) -> WorkerDecisionReport:
     """Read a persisted worker/decision report artifact."""
-    return WorkerDecisionReport.model_validate_json(Path(path).read_text())
+    return WorkerDecisionReport.model_validate_json(Path(path).read_bytes())

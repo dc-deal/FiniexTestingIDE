@@ -25,10 +25,10 @@ def write_block_splitting_report(report: BlockSplittingReport, run_dir: Path) ->
         Path of the written artifact
     """
     path = Path(run_dir) / BLOCK_SPLITTING_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_block_splitting_report(path: Path) -> BlockSplittingReport:
     """Read a persisted block-splitting report artifact."""
-    return BlockSplittingReport.model_validate_json(Path(path).read_text())
+    return BlockSplittingReport.model_validate_json(Path(path).read_bytes())

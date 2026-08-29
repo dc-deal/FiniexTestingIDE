@@ -69,9 +69,26 @@ identity), so those combinations reload instead of reusing the mount (#419 cold 
 |---|---|
 | `base_scenario_set` | the scenario set the grid varies (resolved like any set: path → user algo dirs → `configs/scenario_sets/`) |
 | `grid` | dotted path → list of candidate values; expands to the Cartesian product |
-| `objective` | `RunSummary` currency KPI to rank by (default `expectancy`) |
+| `objective` | `RunSummary` currency KPI to rank by (default `expectancy`). Must be a KPI that is **always measured** — see below |
 | `objective_currency` | required only when a run produces more than one account currency |
 | `maximize` | rank direction (set `false` e.g. for `max_drawdown`) |
+
+**Not every KPI can be an objective.** A ranking needs a total order, and a KPI that may be
+undefined does not give one: the comparison against `None` raises, and there is no honest position
+in a best-first list for "not measured". `rank()` therefore rejects any `RunResultRow` field whose
+type admits `None` — today `profit_factor` (undefined without a losing trade), `avg_win_r` /
+`avg_loss_r` (empty R subset) and `signal_fresh_ratio` (no SIGNAL worker), plus the provenance
+fields. The exclusion is derived from the model, so a KPI widened to optional later is covered
+without a code change here. Rank by `expectancy` or `net_pnl` instead; the ledger still records
+`profit_factor` for every run, so it stays available as a *reported* figure — it just cannot order
+the list. See the `None`-never-a-sentinel rule in
+[Reporting Pipeline](reporting_pipeline.md).
+
+The rule cuts both ways, and this is the part to remember before widening a KPI: `expectancy` is
+the DEFAULT objective, so it has to stay always-measured. Widening it to optional would drop it
+out of the rankable set and break every sweep spec that names it — a change to the model, made
+for the model's own reasons, that lands as a failure in the optimizer. Check this list before
+making a ranking KPI optional.
 
 **Validation — structural fail-fast, parameter errors per-combination:** before any batch runs,
 `sweep_grid_validator.py` checks the grid **structurally only** — every dotted path must have a valid

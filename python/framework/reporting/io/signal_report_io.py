@@ -26,10 +26,10 @@ def write_signal_report(report: SignalReport, run_dir: Path) -> Path:
         Path of the written artifact
     """
     path = Path(run_dir) / SIGNAL_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_signal_report(path: Path) -> SignalReport:
     """Read a persisted signal report artifact."""
-    return SignalReport.model_validate_json(Path(path).read_text())
+    return SignalReport.model_validate_json(Path(path).read_bytes())

@@ -77,7 +77,8 @@ def build_warnings_errors_report_from_session(
         first_failure_name=name if result.emergency_reason else '',
         first_failure_error=result.emergency_reason or '',
         emergency_reason=result.emergency_reason or '',
-        shutdown_mode=result.shutdown_mode)
+        shutdown_mode=result.shutdown_mode,
+        operator_interrupted=result.operator_interrupted)
     return WarningsErrorsReport(warnings=warnings, errors=errors, outcome=outcome)
 
 

@@ -27,10 +27,10 @@ def write_portfolio_report(report: PortfolioReport, run_dir: Path) -> Path:
         Path of the written artifact
     """
     path = Path(run_dir) / PORTFOLIO_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_portfolio_report(path: Path) -> PortfolioReport:
     """Read a persisted portfolio report artifact."""
-    return PortfolioReport.model_validate_json(Path(path).read_text())
+    return PortfolioReport.model_validate_json(Path(path).read_bytes())

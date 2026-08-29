@@ -35,13 +35,13 @@ def write_trade_history_report(report: TradeHistoryReport, run_dir: Path) -> Pat
         Path of the written artifact
     """
     path = Path(run_dir) / TRADE_HISTORY_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_trade_history_report(path: Path) -> TradeHistoryReport:
     """Read a persisted trade-history report artifact."""
-    return TradeHistoryReport.model_validate_json(Path(path).read_text())
+    return TradeHistoryReport.model_validate_json(Path(path).read_bytes())
 
 
 def write_trade_history_csv(report: TradeHistoryReport, run_dir: Path) -> Path:
@@ -61,7 +61,7 @@ def write_trade_history_csv(report: TradeHistoryReport, run_dir: Path) -> Path:
     nested = {'entry_executions', 'exit_executions'}
     path = Path(run_dir) / TRADE_HISTORY_CSV
     columns = [k for k in TradeHistoryRow.model_fields if k not in nested]
-    with path.open('w', newline='') as handle:
+    with path.open('w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for row in report.trades:

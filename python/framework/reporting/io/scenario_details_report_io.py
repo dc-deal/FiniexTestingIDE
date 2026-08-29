@@ -25,10 +25,10 @@ def write_scenario_details_report(report: ScenarioDetailsReport, run_dir: Path) 
         Path of the written artifact
     """
     path = Path(run_dir) / SCENARIO_DETAILS_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_scenario_details_report(path: Path) -> ScenarioDetailsReport:
     """Read a persisted scenario-details report artifact."""
-    return ScenarioDetailsReport.model_validate_json(Path(path).read_text())
+    return ScenarioDetailsReport.model_validate_json(Path(path).read_bytes())

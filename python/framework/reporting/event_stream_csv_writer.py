@@ -186,7 +186,7 @@ class EventStreamWriter:
         sorted_events = sorted(self._events, key=_sort_key)
         out_path = self._run_dir / filename
         try:
-            with open(out_path, 'w', newline='') as f:
+            with open(out_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow(EVENT_FIELDS)
                 for event in sorted_events:

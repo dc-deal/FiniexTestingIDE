@@ -62,7 +62,10 @@ class LiveSessionSummary:
         print(f'  Duration:       {result.session_duration_s:.1f}s')
         print(f'  Ticks:          {result.ticks_processed:,}')
         print(f'  Clipped:        {result.ticks_clipped:,}')
-        print(f'  Shutdown:       {result.shutdown_mode}')
+        # A Ctrl+C also ends as 'emergency' — name it, so a deliberate stop does not
+        # read like a crash on the operator's own screen.
+        operator_stop = ' (operator stop)' if result.operator_interrupted else ''
+        print(f'  Shutdown:       {result.shutdown_mode}{operator_stop}')
         if result.shutdown_mode == 'emergency' and result.emergency_reason:
             print(renderer.red(f'  ❌ EMERGENCY CAUSE: {result.emergency_reason}'))
         outcome = (self._warnings_errors_report.outcome.run_outcome

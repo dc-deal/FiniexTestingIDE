@@ -115,7 +115,11 @@ rendered to console / file / API identically:
   `validation_errors`, `logged_errors`, `traceback`.
 - `outcome: WarningsErrorsOutcome` — `run_outcome` (the canonical grading, below) plus
   `failed_count` / `failed_unit_names` / `first_failure_*` (sim) and `emergency_reason` /
-  `shutdown_mode` (live). The Executive headline reads this — it does not re-scan.
+  `shutdown_mode` / `operator_interrupted` (live). The Executive headline reads this — it does
+  not re-scan. `operator_interrupted` rides along for the reason given above: `shutdown_mode`
+  alone cannot separate a Ctrl+C from a crash, so a surface that carried only the mode would
+  show 'emergency' beside a run graded `SUCCESS` and have no way to explain it. The live-only
+  fields are `''` / `False` on a sim run — that means *not applicable*, never *unknown*.
 
 `run_outcome` is stamped once at DERIVE from the pipeline's own result object
 (`BatchExecutionSummary.get_outcome()` / `AutoTraderResult.get_outcome()`), so the grading a

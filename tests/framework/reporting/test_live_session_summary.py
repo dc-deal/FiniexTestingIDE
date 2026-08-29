@@ -43,6 +43,16 @@ class TestLiveSessionSummary:
         out = _render(result)
         assert 'EMERGENCY CAUSE: broker down' in out
 
+    def test_operator_stop_is_named_as_one(self):
+        """Ctrl+C ends as 'emergency' too — the line says which of the two it was."""
+        out = _render(AutoTraderResult(shutdown_mode='emergency', operator_interrupted=True))
+        assert 'Shutdown:       emergency (operator stop)' in out
+        assert 'EMERGENCY CAUSE' not in out
+
+        crashed = _render(AutoTraderResult(
+            shutdown_mode='emergency', emergency_reason='broker down'))
+        assert 'Shutdown:       emergency\n' in crashed
+
     def test_warnings_not_in_closing_block(self):
         # Warnings/errors moved to the shared WarningsSummary section (#403 Phase 2 follow-up);
         # the closing block no longer lists them (only the prominent emergency cause stays).

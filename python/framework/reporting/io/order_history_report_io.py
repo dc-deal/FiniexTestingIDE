@@ -29,13 +29,13 @@ def write_order_history_report(report: OrderHistoryReport, run_dir: Path) -> Pat
         Path of the written artifact
     """
     path = Path(run_dir) / ORDER_HISTORY_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_order_history_report(path: Path) -> OrderHistoryReport:
     """Read a persisted order-history report artifact."""
-    return OrderHistoryReport.model_validate_json(Path(path).read_text())
+    return OrderHistoryReport.model_validate_json(Path(path).read_bytes())
 
 
 def write_order_history_csv(report: OrderHistoryReport, run_dir: Path) -> Path:
@@ -51,7 +51,7 @@ def write_order_history_csv(report: OrderHistoryReport, run_dir: Path) -> Path:
     """
     path = Path(run_dir) / ORDER_HISTORY_CSV
     columns = list(OrderHistoryRow.model_fields.keys())
-    with path.open('w', newline='') as handle:
+    with path.open('w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for row in report.orders:

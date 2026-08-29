@@ -28,13 +28,13 @@ def write_execution_stats_report(report: ExecutionStatsReport, run_dir: Path) ->
         Path of the written artifact
     """
     path = Path(run_dir) / EXECUTION_STATS_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_execution_stats_report(path: Path) -> ExecutionStatsReport:
     """Read a persisted execution-stats report artifact."""
-    return ExecutionStatsReport.model_validate_json(Path(path).read_text())
+    return ExecutionStatsReport.model_validate_json(Path(path).read_bytes())
 
 
 def write_execution_stats_csv(report: ExecutionStatsReport, run_dir: Path) -> Path:
@@ -50,7 +50,7 @@ def write_execution_stats_csv(report: ExecutionStatsReport, run_dir: Path) -> Pa
     """
     path = Path(run_dir) / EXECUTION_STATS_CSV
     columns = list(ExecutionStatsRow.model_fields)
-    with path.open('w', newline='') as handle:
+    with path.open('w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for row in report.units:

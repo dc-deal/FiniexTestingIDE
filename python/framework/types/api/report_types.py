@@ -827,7 +827,10 @@ class WarningsErrorsOutcome(BaseModel):
     first_failure_name: str = ''
     first_failure_error: str = ''
     emergency_reason: str = ''      # live villain
-    shutdown_mode: str = ''         # live outcome ('normal' | 'emergency')
+    shutdown_mode: str = ''         # live outcome ('normal' | 'emergency'); '' on sim (not applicable)
+    # An operator Ctrl+C also arrives as shutdown_mode='emergency', so the mode alone cannot
+    # separate a deliberate stop from a crash — this flag is the discriminator get_outcome() uses.
+    operator_interrupted: bool = False
 
 
 class WarningsErrorsReport(BaseModel):

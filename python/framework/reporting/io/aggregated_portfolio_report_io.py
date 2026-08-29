@@ -25,10 +25,10 @@ def write_aggregated_portfolio_report(report: AggregatedPortfolioReport, run_dir
         Path of the written artifact
     """
     path = Path(run_dir) / AGGREGATED_PORTFOLIO_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_aggregated_portfolio_report(path: Path) -> AggregatedPortfolioReport:
     """Read a persisted aggregated-portfolio report artifact."""
-    return AggregatedPortfolioReport.model_validate_json(Path(path).read_text())
+    return AggregatedPortfolioReport.model_validate_json(Path(path).read_bytes())

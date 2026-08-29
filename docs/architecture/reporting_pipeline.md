@@ -90,6 +90,34 @@ PRESENT layer renders it as `n/a` / `∞ (no losses)`. One spelling end to end; 
 boundary is how the two drift apart again. Same convention as `signal_fresh_ratio`, where `None`
 means no SIGNAL worker was involved and deliberately not `1.0`.
 
+### An ambiguous field ships with its discriminator
+
+If a reader cannot tell two different states apart from a field's value, the field that
+separates them belongs on the model beside it. The console may know the difference from an
+object the API never sees — that is exactly how a surface ends up displaying a state nobody
+is in. Measured 2026-08-29: `shutdown_mode` is `'emergency'` after an operator Ctrl+C *and*
+after a crash, so a run graded `SUCCESS` shipped `'emergency'` with nothing to explain it;
+`AutoTraderResult.operator_interrupted` had existed all along and simply never reached
+`WarningsErrorsOutcome`. See [Warnings & Errors — Tier Taxonomy](warnings_errors_tiers.md).
+
+A live-only field on a sim run is `''` / `False` and means **not applicable**, not *unknown* —
+the same distinction the `None` rule above makes, one level down.
+
+### Artifact encoding — UTF-8 always, the process locale never
+
+Report artifacts are JSON, and JSON is UTF-8 by RFC 8259. Every `*_report_io` writer names
+`encoding='utf-8'` explicitly, and every reader hands **bytes** to Pydantic
+(`model_validate_json(path.read_bytes())`) so the decode follows the spec rather than the
+platform. The CSV surfaces name their encoding for the same reason.
+
+This is not theoretical tidiness: a run is written by one process and read back by another,
+and the API server is the one component an operator may start outside the container. With a
+locale-dependent read, an artifact written as UTF-8 and read on a Windows host decodes as
+cp1252 — `—` becomes `â€"`, and `⚠️` **raises**, because UTF-8's `0x8F` has no cp1252 mapping
+at all. One artifact class corrupts quietly, the other 500s. Guarded by
+`tests/framework/reporting/test_report_io_encoding.py`, including a drift check that no IO
+unit reintroduces the platform default.
+
 ## Section map — shared vs pipeline-specific (#403)
 
 What each coordinator owns vs delegates. The DERIVE+PERSIST of the eight units-derived sections is

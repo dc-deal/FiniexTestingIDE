@@ -10,9 +10,18 @@ most). The sensitivity is OFAT — it ignores interactions and makes no signific
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, get_args
 
 from python.framework.types.api.report_types import RunResultRow
+
+# A KPI that may be undefined cannot order a ranking: the comparison against None
+# raises, and there is no honest position for 'not measured' in a best-first list.
+# Derived from the model, so a KPI widened to Optional later is covered without
+# touching this module. Today: profit_factor (no losing trade), avg_win_r /
+# avg_loss_r (empty R subset), signal_fresh_ratio (no SIGNAL worker).
+_UNRANKABLE_OBJECTIVES = frozenset(
+    name for name, field in RunResultRow.model_fields.items()
+    if type(None) in get_args(field.annotation))
 
 
 @dataclass
@@ -158,6 +167,10 @@ def _scope(
     if objective not in RunResultRow.model_fields:
         raise ValueError(
             f"Unknown objective '{objective}'. Available: {sorted(RunResultRow.model_fields)}")
+    if objective in _UNRANKABLE_OBJECTIVES:
+        raise ValueError(
+            f"Objective '{objective}' can be undefined for a run, so it cannot produce a "
+            f"total ranking. Use a KPI that is always measured, e.g. 'expectancy' or 'net_pnl'.")
     scoped = [r for r in rows if r.status == 'ok']
     if objective_currency is not None:
         scoped = [r for r in scoped if r.currency == objective_currency]
