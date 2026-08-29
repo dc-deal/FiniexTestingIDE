@@ -149,8 +149,7 @@ class RunConsoleRenderer:
             if summary_detail:
                 self._profiling_summary.render_per_scenario(renderer)
             if is_multi_unit:
-                self._profiling_summary.render_aggregated(
-                    renderer, compact=compact, threshold=self._threshold)
+                self._profiling_summary.render_aggregated(renderer)
                 self._profiling_summary.render_bottleneck_analysis(renderer)
 
         # Worker Decision Breakdown — the overhead/bottleneck "too high?" verdicts moved to the

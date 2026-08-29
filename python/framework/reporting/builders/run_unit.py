@@ -37,7 +37,9 @@ class RunUnit:
     """One run unit's report source (sim: a scenario; live: the session)."""
     name: str
     symbol: str
-    data_source: str = ''           # data broker type (sim: scenario; live: '')
+    data_source: str = ''           # broker key — sim: scenario.data_broker_type,
+                                    # live: config.broker_type. The key the data API is
+                                    # addressed by, so a consumer can link unit → chart.
     sentiment_source: str = ''      # sentiment feed label (#429 sim scenario / #431 live profile; '' if none)
     has_error: bool = False         # hybrid: partial data + error (sim) / emergency (live)
     trade_history: List[TradeRecord] = field(default_factory=list)
@@ -142,6 +144,7 @@ def _planned_outages(
 
 def run_units_from_session(
     session: AutoTraderResult, name: str, symbol: str,
+    data_source: str = '',
     sentiment_source: str = '',
     stress_test_config: Optional[Dict[str, Any]] = None) -> List[RunUnit]:
     """
@@ -151,6 +154,8 @@ def run_units_from_session(
         session: The collected session result
         name: Unit label (profile name / symbol)
         symbol: Traded symbol
+        data_source: The broker key the unit traded on — the same key the data API is addressed
+            by, so a consumer can link a unit to its chart
         sentiment_source: The session's sentiment feed label (#431; '' if none)
         stress_test_config: The mock session's stress config (#438) — the origin label
             source for #451; a real live session has none
@@ -161,6 +166,7 @@ def run_units_from_session(
     return [RunUnit(
         name=name,
         symbol=symbol,
+        data_source=data_source,
         sentiment_source=sentiment_source,
         has_error=session.emergency_reason is not None,
         trade_history=session.trade_history or [],

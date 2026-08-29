@@ -226,9 +226,12 @@ class ScenarioLogger(AbstractLogger):
             if self._use_global_log_level_for_console
             else self._console_logging_config.scenario_log_level
         )
-        for level, formatted_line in self.console_buffer:
-            if LogLevel.should_log(level, effective_level):
-                print(formatted_line)
+        # The filter is load-bearing: WARNING/ERROR are buffered even when the console
+        # threshold suppresses them, because the run report needs them. They are removed
+        # HERE, at display time, so the console output is unchanged by that wider capture.
+        for record in self.console_buffer:
+            if LogLevel.should_log(record.level, effective_level):
+                print(AbstractLogger.render_record(record, run_start=self.run_timestamp))
 
         # Clear buffer
         self.console_buffer.clear()

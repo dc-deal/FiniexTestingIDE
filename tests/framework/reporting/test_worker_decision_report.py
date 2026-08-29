@@ -138,6 +138,21 @@ class TestPerformanceRender:
         out = self._render('render_bottleneck_analysis')
         assert 'BOTTLENECK ANALYSIS' in out and 'SLOWEST WORKER' in out
 
+    def test_no_recommendation_is_made_here(self):
+        """Whether a component is too slow is a verdict — PostRunValidator decides it."""
+        out = self._render('render_bottleneck_analysis')
+        assert 'RECOMMENDATIONS' not in out
+        assert 'Optimize' not in out
+        assert 'Consider disabling' not in out
+        assert 'No major bottlenecks detected' not in out, \
+            'the clean-run line belongs to the section that owns the verdicts'
+
+    def test_the_measurements_stay(self):
+        """Only the judgement left — the numbers it was based on are still shown."""
+        out = self._render('render_bottleneck_analysis')
+        assert 'SLOWEST SCENARIO' in out and 'GBPUSD_w01' in out
+        assert 'bollinger_main' in out
+
     def test_layer_a_off_suppressed(self):
         # no workers anywhere → section suppressed
         summary = PerformanceSummary(WorkerDecisionReport(units=[

@@ -37,6 +37,9 @@ _RUN_SCOPE = 'run'
 _HIGH_OVERHEAD_RATIO = 0.5
 # Infra-bottleneck verdict threshold — share of scenarios where a non-hot-path op dominated.
 _BOTTLENECK_PCT = 15.0
+# Component-cost verdict threshold — a worker or decision logic averaging more than this
+# per call is worth optimizing (was an inline recommendation in the performance report).
+_SLOW_COMPONENT_MS = 1.0
 # Time-divergence threshold — a currency group spanning more days than this gets an advisory.
 _TIME_DIVERGENCE_DAYS = 30
 
@@ -63,6 +66,8 @@ class PostRunValidator:
         self._check_budget_too_high()
         self._check_coordination_overhead()
         self._check_bottlenecks()
+        self._check_slow_components()
+        self._check_parallel_penalty()
         self._check_multi_currency()
         self._check_time_divergence()
         self._check_robustness()
@@ -271,6 +276,52 @@ class PostRunValidator:
         """The operation with the largest total time (the scenario's bottleneck), or '' if none."""
         ops = {n: t for n, t in profiling_data.profile_times.items() if n != 'total_per_tick'}
         return max(ops, key=ops.get) if ops else ''
+
+    def _check_slow_components(self) -> None:
+        """Warn when a worker or decision logic averages more than the slow-component threshold."""
+        worker_times: dict = {}
+        logic_times: dict = {}
+        for result in self._batch.process_result_list:
+            tlr = result.tick_loop_results
+            if not tlr:
+                continue
+            for w in (tlr.worker_statistics or []):
+                worker_times.setdefault(w.worker_name, []).append(w.worker_avg_time_ms)
+            if tlr.decision_statistics and tlr.decision_statistics.decision_logic_name:
+                logic_times.setdefault(
+                    tlr.decision_statistics.decision_logic_name, []).append(
+                        tlr.decision_statistics.decision_avg_time_ms)
+
+        for label, times in (('worker', worker_times), ('decision logic', logic_times)):
+            if not times:
+                continue
+            # Mean per component across scenarios, then the worst of them — the same reading the
+            # performance report shows, so the advisory and the table cannot disagree.
+            name, avg = max(
+                ((n, sum(t) / len(t)) for n, t in times.items()), key=lambda pair: pair[1])
+            if avg <= _SLOW_COMPONENT_MS:
+                continue
+            self._add('slow_component', ValidationDomain.PERFORMANCE, (
+                f"Slowest {label} '{name}' averages {avg:.3f}ms per call "
+                f'(threshold {_SLOW_COMPONENT_MS:.1f}ms) — candidate for optimization'))
+
+    def _check_parallel_penalty(self) -> None:
+        """Warn when parallel worker execution COST time instead of saving it."""
+        penalised = [
+            (result.scenario_name, result.tick_loop_results.coordination_statistics)
+            for result in self._batch.process_result_list
+            if result.tick_loop_results
+            and result.tick_loop_results.coordination_statistics
+            and result.tick_loop_results.coordination_statistics.parallel_workers
+            and result.tick_loop_results.coordination_statistics.parallel_time_saved_ms < 0
+        ]
+        if not penalised:
+            return
+        name, stats = min(penalised, key=lambda pair: pair[1].parallel_time_saved_ms)
+        self._add('parallel_penalty', ValidationDomain.PERFORMANCE, (
+            f'Parallel worker execution lost {abs(stats.parallel_time_saved_ms):.1f}ms in '
+            f"'{name}'{f' (+{len(penalised) - 1} more)' if len(penalised) > 1 else ''} — "
+            f'consider disabling parallel workers for this workload'))
 
     def _check_multi_currency(self) -> None:
         """Advisory when a batch mixes account currencies (cross-currency P&L is not summed)."""

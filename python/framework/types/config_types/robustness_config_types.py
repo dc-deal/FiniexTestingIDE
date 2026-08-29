@@ -42,5 +42,7 @@ class RobustnessConfig(BaseModel):
     overfit_wfe_threshold: float = 0.5   # WFE below → OVERFIT advisory
     robust_wfe_threshold: float = 0.8    # WFE at/above → ROBUST
     # Block-splitting disposition above which the per-window numbers are artifacts → the
-    # verdict is suppressed (mirrors the block-splitting UNRELIABLE class, > 25%).
+    # verdict is suppressed. This is the ONE trust decision about block-splitting distortion;
+    # the report section shows a magnitude scale (GOOD/MODERATE/HIGH/SEVERE) that deliberately
+    # makes no trust claim, so the two cannot disagree when this value is tuned.
     disposition_trust_pct: float = 25.0

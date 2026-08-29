@@ -129,6 +129,11 @@ class AutotraderReportCoordinator:
         # Sentiment feed label (#438): the scenario's data_sentiment_type (mock; '' when none / live).
         units = run_units_from_session(
             result, name, self._config.symbol,
+            # The broker key, not the display name: it is what the data API is addressed by,
+            # so a report consumer can link this unit to its chart (sim has always carried it).
+            # `.value`, not str(): BrokerType is a plain Enum, so str() would yield
+            # 'BrokerType.KRAKEN_SPOT' instead of the addressable key 'kraken_spot'.
+            data_source=self._config.broker_type.value,
             sentiment_source=(
                 self._config.scenario_settings.data_sentiment_type
                 if self._config.scenario_settings else ''),

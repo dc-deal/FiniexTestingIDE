@@ -153,8 +153,13 @@ class PortfolioUnitRow(BaseModel):
     total_trades: int
     winning_trades: int
     losing_trades: int
+    # Ratio 0..1. A 0.0 with total_trades == 0 means NOT MEASURED — the discriminator is
+    # total_trades on this same row. Deliberately not widened to None: unlike the R fields,
+    # that discriminator is complete, and win_rate is a rankable sweep objective (#390).
     win_rate: float
-    profit_factor: float | None  # None = undefined (no losing trade)
+    # None = undefined: either the run had no losing trade, or it never traded at all.
+    # 0.0 therefore always means MEASURED and zero.
+    profit_factor: float | None
     total_profit: float
     total_loss: float
     net_profit: float       # total_profit - total_loss
@@ -201,8 +206,13 @@ class PortfolioAggregateRow(BaseModel):
     total_trades: int
     winning_trades: int
     losing_trades: int
+    # Ratio 0..1. A 0.0 with total_trades == 0 means NOT MEASURED — the discriminator is
+    # total_trades on this same row. Deliberately not widened to None: unlike the R fields,
+    # that discriminator is complete, and win_rate is a rankable sweep objective (#390).
     win_rate: float
-    profit_factor: float | None  # None = undefined (no losing trade)
+    # None = undefined: either the run had no losing trade, or it never traded at all.
+    # 0.0 therefore always means MEASURED and zero.
+    profit_factor: float | None
     total_profit: float
     total_loss: float
     net_profit: float
@@ -475,7 +485,7 @@ class BlockSplittingSymbolRow(BaseModel):
 class BlockSplittingReport(BaseModel):
     """
     Block-splitting disposition (Profile Runs, sim-only): per-symbol rows + the cross-symbol
-    aggregate (rendered only when more than one symbol). The GOOD/MODERATE/HIGH/UNRELIABLE label
+    aggregate (rendered only when more than one symbol). The GOOD/MODERATE/HIGH/SEVERE label
     is a display class applied by the presenter — only the facts + ratios live here.
     """
     symbols: list[BlockSplittingSymbolRow] = []
@@ -614,6 +624,10 @@ class ProfilingAggregate(BaseModel):
     p95_processing_ms: float = 0.0
     suggested_budget_ms: float = 0.0    # P95 + 10% margin
     budget_active: bool = False
+    # How many scenarios processed a tick slower than their own fastest 5% of tick intervals.
+    # A COUNT, not a verdict — whether that warrants a warning is decided by PostRunValidator
+    # (_check_budget). The console reads it only to know whether a budget hint is worth showing.
+    scenarios_over_p5: int = 0
     # Clipping roll-up (only meaningful when budget_active)
     clipping_total_ticks: int = 0
     clipping_total_kept: int = 0

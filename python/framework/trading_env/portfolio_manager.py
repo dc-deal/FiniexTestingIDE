@@ -1167,8 +1167,13 @@ class PortfolioManager:
         else:
             win_rate = 0.0
 
-        # Calculate profit factor
-        if self._total_loss > 0:
+        # Profit factor — gross profit / gross loss. Two DIFFERENT cases used to share the
+        # value 0.0, and only total_trades told them apart: a run that never traded (nothing
+        # measured) and a run whose trades all lost (measured, and it was zero). The first is
+        # None; None means undefined here exactly as it does for a run with no losing trade.
+        if self._total_trades == 0:
+            profit_factor = None
+        elif self._total_loss > 0:
             profit_factor = self._total_profit / self._total_loss
         else:
             profit_factor = 0.0 if self._total_profit == 0 else None

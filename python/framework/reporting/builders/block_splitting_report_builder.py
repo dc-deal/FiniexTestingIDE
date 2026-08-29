@@ -4,7 +4,7 @@ FiniexTestingIDE - Block Splitting Report Builder
 Aggregates the per-block `BlockBoundaryReport`s of a Profile Run into per-symbol disposition
 facts + ratios (the DERIVE stage of the block-splitting section). Reads the boundary reports
 straight from the source (`ProcessResult.tick_loop_results.block_boundary_report`); the
-GOOD/MODERATE/HIGH/UNRELIABLE label is a display class left to the presenter.
+GOOD/MODERATE/HIGH/SEVERE label is a display class left to the presenter.
 """
 from typing import List
 

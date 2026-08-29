@@ -400,8 +400,6 @@ class PerformanceSummary(AbstractBatchSummarySection):
             avg_str = renderer.red(f'{logic.avg_time:.3f}ms')
             print(f'      {renderer.red(logic.name)}  |  '
                   f'Avg: {avg_str} (across all scenarios)')
-            print(
-                f"      {renderer.yellow('→ Consider optimizing decision logic if > 1ms')}")
 
         # Worst parallel efficiency
         if bottlenecks.worst_parallel and bottlenecks.worst_parallel.time_saved < 0:
@@ -411,32 +409,12 @@ class PerformanceSummary(AbstractBatchSummarySection):
             print(f'      {renderer.red(parallel.name)}  |  '
                   f'Time saved: {time_saved_str}  |  '
                   f'Status: {parallel.status}')
-            print(
-                f"      {renderer.yellow('→ Parallel execution slower than sequential! Consider disabling.')}")
 
-        # Recommendations
-        print(f"\n{renderer.bold('   💡 RECOMMENDATIONS:')}")
-
-        has_issues: bool = False
-        if bottlenecks.slowest_worker and bottlenecks.slowest_worker.avg_time > 1.0:
-            worker_name = renderer.yellow(bottlenecks.slowest_worker.name)
-            print(f'      • Optimize {worker_name} worker (slowest component)')
-            has_issues = True
-
-        if bottlenecks.slowest_decision_logic and bottlenecks.slowest_decision_logic.avg_time > 1.0:
-            logic_name = renderer.yellow(
-                bottlenecks.slowest_decision_logic.name)
-            print(f'      • Optimize {logic_name} decision logic')
-            has_issues = True
-
-        if bottlenecks.worst_parallel and bottlenecks.worst_parallel.time_saved < 0:
-            print('      • Disable parallel workers for better performance')
-            has_issues = True
-
-        if not has_issues:
-            print(
-                f"      {renderer.green('✅ All components performing well! No major bottlenecks detected.')}")
-
+        # No recommendations here. Whether a component is too slow, or parallel execution is
+        # costing time, is a verdict — PostRunValidator decides it (_check_slow_components,
+        # _check_parallel_penalty) and the WARNINGS & ERRORS section renders it. This section
+        # shows the measurements, and the clean-run line belongs to the section that owns the
+        # verdicts, so it is not repeated here.
         print()
 
     def _get_parallel_status(self, time_saved_ms: float) -> str:

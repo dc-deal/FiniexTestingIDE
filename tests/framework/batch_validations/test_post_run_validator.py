@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats,
+    WorkerCoordinatorPerformanceStats,
     WorkerPerformanceStats,
 )
 from python.framework.types.process_data_types import (
@@ -56,6 +57,23 @@ def _result_prof(name, idx, profile_times, worker_ms=0.0, decision_ms=0.0) -> Pr
         decision_statistics=DecisionLogicStats(decision_total_time_ms=decision_ms),
         profiling_data=ProcessProfileData(profile_times=profile_times, profile_counts={}))
     return ProcessResult(success=True, scenario_name=name, scenario_index=idx, tick_loop_results=tlr)
+
+
+def _perf_result(name, idx, worker_name='rsi', worker_avg=0.1, logic_name='',
+                 logic_avg=0.0, parallel=False, saved_ms=0.0) -> ProcessResult:
+    """A result carrying only what the performance verdicts read."""
+    tlr = ProcessTickLoopResult(
+        worker_statistics=[WorkerPerformanceStats(
+            worker_type='CORE/x', worker_name=worker_name, worker_call_count=1,
+            worker_total_time_ms=worker_avg, worker_avg_time_ms=worker_avg,
+            worker_min_time_ms=0.0, worker_max_time_ms=worker_avg)],
+        decision_statistics=DecisionLogicStats(
+            decision_logic_name=logic_name, decision_avg_time_ms=logic_avg),
+        coordination_statistics=WorkerCoordinatorPerformanceStats(
+            parallel_workers=parallel, ticks_processed=100,
+            parallel_time_saved_ms=saved_ms))
+    return ProcessResult(success=True, scenario_name=name, scenario_index=idx,
+                         tick_loop_results=tlr)
 
 
 def _batch_results(results) -> BatchExecutionSummary:
@@ -144,3 +162,40 @@ def test_expected_bottleneck_no_warning():
     # worker_decision (hot path) is the dominant op → no advisory
     r = _result_prof('s1', 0, {'worker_decision': 80.0, 'live_update': 20.0, 'total_per_tick': 100.0})
     assert 'bottleneck' not in _warnings(_batch_results([r]))
+
+class TestThePerformanceVerdictsLiveHere:
+    """
+    The performance report used to print these as inline RECOMMENDATIONS, so the same judgement
+    sat in a renderer while its neighbours already lived in this validator. They are verdicts —
+    a threshold deciding whether an advisory fires — so they belong here.
+    """
+
+    def test_a_slow_worker_is_flagged(self):
+        out = _warnings(_batch_results([
+            _perf_result('s1', 0, worker_name='heavy', worker_avg=2.5),
+            _perf_result('s2', 1, worker_name='heavy', worker_avg=1.5)]))
+        assert 'slow_component' in out
+        assert 'heavy' in out['slow_component'] and '2.000ms' in out['slow_component']
+
+    def test_a_fast_worker_is_not(self):
+        assert 'slow_component' not in _warnings(_batch_results([
+            _perf_result('s1', 0, worker_avg=0.3)]))
+
+    def test_a_slow_decision_logic_is_flagged(self):
+        out = _warnings(_batch_results([
+            _perf_result('s1', 0, logic_name='tunnel', logic_avg=4.0)]))
+        assert 'slow_component' in out and 'tunnel' in out['slow_component']
+
+    def test_parallel_that_costs_time_is_flagged(self):
+        out = _warnings(_batch_results([
+            _perf_result('s1', 0, parallel=True, saved_ms=-12.5)]))
+        assert 'parallel_penalty' in out
+        assert '12.5ms' in out['parallel_penalty'] and 's1' in out['parallel_penalty']
+
+    def test_parallel_that_saves_time_is_not(self):
+        assert 'parallel_penalty' not in _warnings(_batch_results([
+            _perf_result('s1', 0, parallel=True, saved_ms=30.0)]))
+
+    def test_sequential_execution_is_never_flagged(self):
+        assert 'parallel_penalty' not in _warnings(_batch_results([
+            _perf_result('s1', 0, parallel=False, saved_ms=-99.0)]))
