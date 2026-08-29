@@ -18,15 +18,20 @@ from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_session,
 )
 from python.framework.reporting.console.warnings_summary import WarningsSummary
+from python.framework.reporting.io.warnings_errors_report_io import (
+    write_warnings_errors_report,
+)
 from python.framework.types.api.report_types import (
     UnitErrorRow,
     WarningRow,
     WarningsErrorsOutcome,
     WarningsErrorsReport,
+    WarningTier,
 )
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.log_level import LogLevel
+from python.framework.types.log_record_types import LogRecord
 from python.framework.types.process_data_types import LOGGED_ERRORS_TYPE, ProcessResult
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
@@ -47,6 +52,11 @@ def _scenario(name, idx, symbol, val_results=None) -> SingleScenario:
     for vr in (val_results or []):
         s.validation_result.append(vr)
     return s
+
+
+def _record(level, message: str) -> LogRecord:
+    """One buffered log entry as the loggers now produce it."""
+    return LogRecord(level=level, timestamp=_DT, scope='s1', message=message)
 
 
 def _result(name, idx, success=True, error_type='', error_message='', buffer=None) -> ProcessResult:
@@ -84,7 +94,8 @@ class TestBuildFromBatch:
         assert len(major) == 1 and 'account_currency' in major[0].message
 
     def test_minor_warning_summary_from_log_pot(self):
-        buffer = [(LogLevel.WARNING, 'w1'), (LogLevel.WARNING, 'w2'), (LogLevel.INFO, 'i1')]
+        buffer = [_record(LogLevel.WARNING, 'w1'), _record(LogLevel.WARNING, 'w2'),
+                  _record(LogLevel.INFO, 'i1')]
         report = build_warnings_errors_report_from_batch(
             _batch([_result('s1', 0, buffer=buffer)], [_scenario('s1', 0, 'BTCUSD')]))
         minor = [w for w in report.warnings if w.tier == 'minor']
@@ -96,7 +107,7 @@ class TestBuildFromBatch:
                 severity=Severity.ERROR, check='data_availability',
                 domain=ValidationDomain.DATA, message='start before data', scope='bad')])])
         result = _result('bad', 0, success=False, error_type='ValidationError',
-                         error_message='failed', buffer=[(LogLevel.ERROR, 'e1')])
+                         error_message='failed', buffer=[_record(LogLevel.ERROR, 'e1')])
         report = build_warnings_errors_report_from_batch(_batch([result], [scenario]))
         assert len(report.errors) == 1
         err = report.errors[0]
@@ -144,6 +155,37 @@ class TestBuildFromBatch:
             RunOutcome.FINISHED_WITH_ERRORS.value
 
 
+class TestNoRenderingReachesTheArtifact:
+    """
+    The buffer used to hold a rendered console line, ANSI codes included, and `_logged()` copied
+    it straight into `UnitErrorRow.logged_errors` — so the persisted JSON, which is the API's own
+    source, carried terminal escape sequences. Records carry the bare message, so it cannot.
+    """
+
+    _ANSI = re.compile(r'\x1b\[[0-9;]*m')
+
+    def test_a_logged_error_reaches_the_artifact_clean(self, tmp_path):
+        buffer = [_record(LogLevel.ERROR, 'Broker rejected order')]
+        report = build_warnings_errors_report_from_batch(_batch(
+            [_result('s1', 0, success=False, error_type='X', error_message='boom', buffer=buffer)],
+            [_scenario('s1', 0, 'BTCUSD')]))
+
+        assert report.errors[0].logged_errors == ['Broker rejected order']
+
+        path = write_warnings_errors_report(report, tmp_path)
+        raw = path.read_bytes()
+        assert b'\x1b[' not in raw, 'terminal escape codes must never reach the artifact'
+        assert not self._ANSI.search(raw.decode('utf-8'))
+
+    def test_the_message_needs_no_unpicking(self):
+        """No level column, no timestamp, no tick prefix — nothing left to split off."""
+        buffer = [_record(LogLevel.WARNING, 'signal feed stale')]
+        report = build_warnings_errors_report_from_batch(
+            _batch([_result('s1', 0, buffer=buffer)], [_scenario('s1', 0, 'BTCUSD')]))
+        pot = [w for w in report.warnings if w.tier == 'minor'][0]
+        assert ' | ' not in pot.message
+
+
 class TestOriginSurvivesToTheModel:
     """The finding's origin must reach WarningRow — it used to be dropped at the builder."""
 
@@ -172,13 +214,15 @@ class TestOriginSurvivesToTheModel:
         assert [w.message for w in major] == ['signal coverage partial']
         assert major[0].domain == 'data' and major[0].scope == 's1'
 
-    def test_a_log_pot_row_claims_no_origin(self):
-        """Tier 2 is an observation nobody attributed to a check — check/domain stay empty."""
-        buffer = [(LogLevel.WARNING, 'w1')]
+    def test_a_log_pot_row_claims_no_assertion(self):
+        """The channel is the TIER's answer; `check` means which assertion, and there is none."""
+        buffer = [_record(LogLevel.WARNING, 'w1')]
         report = build_warnings_errors_report_from_batch(
             _batch([_result('s1', 0, buffer=buffer)], [_scenario('s1', 0, 'BTCUSD')]))
-        minor = [w for w in report.warnings if w.tier == 'minor']
-        assert len(minor) == 1 and minor[0].check == '' and minor[0].domain == ''
+        minor = [w for w in report.warnings if w.tier == WarningTier.LOGGER_PRODUCED]
+        assert len(minor) == 1
+        assert minor[0].check == '', 'no assertion decided a log line'
+        assert minor[0].domain == '', 'a log line belongs to no validator domain'
 
 
 class TestBuildFromSession:

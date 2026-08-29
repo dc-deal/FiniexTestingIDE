@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.file_logger import FileLogger
 from python.framework.types.log_level import LogLevel
+from python.framework.types.log_record_types import LogRecord
 
 
 class GlobalLogger(AbstractLogger):
@@ -77,30 +78,30 @@ class GlobalLogger(AbstractLogger):
         """
         return datetime.now(timezone.utc) .strftime('%Y-%m-%d %H:%M:%S')
 
-    def _should_log_console(self, level: LogLevel) -> str:
+    def _should_log_console(self, level: LogLevel) -> bool:
         """
         check if console log is enabled for logger
         """
         return LogLevel.should_log(
             level, self._console_logging_config.global_log_level)
 
-    def _should_log_file(self, level: LogLevel) -> str:
+    def _should_log_file(self, level: LogLevel) -> bool:
         """
          check if file log is enabled for logger
         """
         return LogLevel.should_log(
             level, self._file_logging_config.global_log_level)
 
-    def _log_console_implementation(self, level: str, message: str, timestamp: str):
+    def _log_console_implementation(self, record: LogRecord):
         """
-          Format Message for Global Log
+        Print the record directly — the global log is not buffered.
+
         Args:
-            level: Log level (INFO, DEBUG, WARNING, ERROR)
-            message: Log message
+            record: The entry to print
         """
-        formatted_line = self._format_log_line(level, message, timestamp)
-        # Console output (direct print)
-        print(formatted_line)
+        # Render from the record's own instant — reading the clock a second time here would
+        # let the printed line and the record disagree.
+        print(AbstractLogger.render_record(record))
 
     def _write_to_file_implementation(self, level: str, message: str, timestamp: str):
         """

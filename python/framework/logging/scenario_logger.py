@@ -23,8 +23,8 @@ from typing import Optional
 from python.framework.logging.abstract_logger import AbstractLogger, ColorCodes
 from python.framework.logging.file_logger import FileLogger
 from python.framework.types.log_level import LogLevel
+from python.framework.types.log_record_types import LogRecord
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.utils.time_utils import format_timestamp
 
 
 class ScenarioLogger(AbstractLogger):
@@ -110,7 +110,7 @@ class ScenarioLogger(AbstractLogger):
         milliseconds = int((total_seconds - seconds) * 1000)
         return f'[{seconds:3d}s {milliseconds:3d}ms]'
 
-    def _should_log_console(self, level: LogLevel) -> str:
+    def _should_log_console(self, level: LogLevel) -> bool:
         """
         check if console log is enabled for logger
         """
@@ -121,7 +121,7 @@ class ScenarioLogger(AbstractLogger):
         )
         return LogLevel.should_log(level, effective_level)
 
-    def _should_log_file(self, level: LogLevel) -> str:
+    def _should_log_file(self, level: LogLevel) -> bool:
         """
          check if file log is enabled for logger
         """
@@ -158,35 +158,38 @@ class ScenarioLogger(AbstractLogger):
         self._current_tick = tick
         self._tick_loop_count = tick_count
 
-    def _log_console_implementation(self, level: str, message: str, timestamp: str):
+    def _tick_context(self) -> tuple[Optional[int], Optional[datetime]]:
         """
-            Format Message for Scenario Log.
+        The tick being processed, so a record can say WHEN in the run it happened.
 
-        Console: Buffered (flush at end)
-        File: Direct write (no buffer)
+        Returns:
+            (tick_index, tick_time) inside the tick loop, (None, None) outside it
+        """
+        if not self._tick_loop_started or self._current_tick is None:
+            return None, None
+        return self._tick_loop_count, self._current_tick.timestamp
+
+    def _log_console_implementation(self, record: LogRecord):
+        """
+        Buffer the record for the scenario log.
+
+        Console: Buffered (flush at end) — NO explicit print. Scenario buffers are printed
+        after the scenario run, so parallel scenarios do not interleave their output.
+        File: Direct write (no buffer), handled separately.
 
         Args:
-            level: Log level (INFO, DEBUG, WARNING, ERROR)
-            message: Log message
+            record: The entry to buffer
         """
-        if self._tick_loop_started:
-            tick_time = format_timestamp(self._current_tick.timestamp)
-            message = f'{self._tick_loop_count:5}| {tick_time} | {message}'
-        formatted_line = self._format_log_line(level, message, timestamp)
+        self.console_buffer.append(record)
 
-        # Console output (BUFFERED) - for scenario loggers.
-        # NO EXPLICIT CONSOLE PRINT. Scenario Buffers must be printet after scenario run.
-        self._add_to_console_buffer(level, formatted_line)
-
-    def _add_to_console_buffer(self, level: str, formatted_line: str):
+    def _capture_for_report(self, record: LogRecord) -> None:
         """
-        Add log line to console buffer.
+        Keep a WARNING/ERROR the console threshold suppressed — the run report still needs it.
 
         Args:
-            level: Log level
-            formatted_line: Pre-formatted log line with colors
+            record: The entry to keep
         """
-        self.console_buffer.append((level, formatted_line))
+        self.console_buffer.append(record)
 
     def _write_to_file_implementation(self, level: str, message: str, timestamp: str):
         """

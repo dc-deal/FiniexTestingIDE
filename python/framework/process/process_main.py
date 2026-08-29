@@ -12,6 +12,7 @@ from python.framework.process.process_tick_loop import execute_tick_loop
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
+from python.framework.types.log_level import LogLevel
 from python.framework.types.process_data_types import (
     LOGGED_ERRORS_TYPE,
     ProcessDataPackage,
@@ -108,8 +109,8 @@ def process_main(
         error_traceback = None
 
         # === Get Log Buffer ===
-        log_buffer = scenario_logger.get_buffer()
-        errors_in_buffer = scenario_logger.get_buffer_errors()
+        log_buffer = scenario_logger.get_records()
+        errors_in_buffer = scenario_logger.get_records(LogLevel.ERROR)
         scenario_logger.close()
 
         # === Tick loop Error Check ===
@@ -161,7 +162,7 @@ def process_main(
         log_buffer = None
         try:
             # try to fetch Log, if possible.
-            log_buffer = scenario_logger.get_buffer()
+            log_buffer = scenario_logger.get_records()
             send_status_update_process(live_queue, config,
                                        ScenarioStatus.FINISHED_WITH_ERROR)
         except:

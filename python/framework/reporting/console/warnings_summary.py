@@ -10,7 +10,12 @@ produced by a validator upstream; it only formats. See docs/architecture/warning
 from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
 )
-from python.framework.types.api.report_types import UnitErrorRow, WarningRow, WarningsErrorsReport
+from python.framework.types.api.report_types import (
+    UnitErrorRow,
+    WarningRow,
+    WarningsErrorsReport,
+    WarningTier,
+)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -47,12 +52,14 @@ class WarningsSummary(AbstractBatchSummarySection):
             blocks.append(self._build_errors_block(renderer))
 
         # Tier-1 major warnings (run-scoped first for prominence, e.g. debug-mode)
-        major = [w for w in self._report.warnings if w.tier == 'major']
+        major = [w for w in self._report.warnings
+                 if w.tier == WarningTier.VALIDATOR_PRODUCED]
         for warning in sorted(major, key=lambda w: w.scope != 'run'):
             blocks.append(self._format_major(warning, renderer))
 
         # Tier-2 minor warnings — summarized, low-key
-        for warning in (w for w in self._report.warnings if w.tier == 'minor'):
+        for warning in (w for w in self._report.warnings
+                        if w.tier == WarningTier.LOGGER_PRODUCED):
             blocks.append(renderer.gray(warning.message))
 
         self._render_section_header(renderer)

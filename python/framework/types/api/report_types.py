@@ -7,6 +7,7 @@ surface. Pydantic (not @dataclass) because the API serializes it directly — sa
 exception as api_types.py.
 """
 
+from enum import StrEnum
 from typing import Any, Optional
 
 from pydantic import BaseModel
@@ -797,13 +798,26 @@ class FeedStabilityReport(BaseModel):
     source_count: int = 0
 
 
+class WarningTier(StrEnum):
+    """
+    Which CHANNEL produced a warning row — the tier IS the origin question, answered once.
+
+    Named for what the value means rather than for its severity: 'major' / 'minor' read like
+    a severity and are not one. The VALUES stay as they are because they are the wire contract
+    the API and FiniexViewer already consume; only the names are ours to make honest.
+    """
+    VALIDATOR_PRODUCED = 'major'    # Tier 1 — a check decided it, so check/domain are filled
+    LOGGER_PRODUCED = 'minor'       # Tier 2 — the log pot: an observation nobody adjudicated
+
+
 class WarningRow(BaseModel):
     """One warning notice (#395). See docs/architecture/warnings_errors_tiers.md."""
-    tier: str = 'major'             # 'major' (Tier 1, validator-produced) | 'minor' (Tier 2, log pot)
+    tier: WarningTier = WarningTier.VALIDATOR_PRODUCED
     scope: str = 'run'              # 'run' (batch-global) | unit name (per-scenario / session)
     message: str = ''
-    # Origin — WHO decided this. `check` is the assertion's stable id, `domain` its area.
-    # Empty on a Tier-2 row: the log pot is an observation nobody attributed to a check.
+    # Origin — WHICH ASSERTION decided this. `check` is its stable id, `domain` its area. Both
+    # are empty on a LOGGER_PRODUCED row: no assertion decided it, and the channel is already
+    # named by `tier` — putting it here too would be the same value in two fields.
     check: str = ''
     domain: str = ''
 

@@ -20,6 +20,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 from python.framework.types.config_types.market_config_types import MarketType, TradingModel
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
+from python.framework.types.log_record_types import LogRecord
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats,
     WorkerCoordinatorPerformanceStats,
@@ -605,7 +606,7 @@ class ProcessResult:
     tick_loop_results: ProcessTickLoopResult = None
 
     # logger lines to print after scenario run.
-    scenario_logger_buffer: list[tuple[str, str]] = None
+    scenario_logger_buffer: list[LogRecord] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""

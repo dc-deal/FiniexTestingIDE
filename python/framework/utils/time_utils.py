@@ -57,6 +57,24 @@ def format_duration(seconds: float, show_milliseconds: bool = False) -> str:
         return f'{hours}h'
 
 
+def format_log_elapsed(seconds: float) -> str:
+    """
+    Format elapsed time as the log line's fixed-width bracket form.
+
+    Fixed width on purpose — the log's timestamp is a column, so it must not shift as the run
+    gets longer. Distinct from format_duration, which is variable width and made for prose.
+
+    Args:
+        seconds: Elapsed seconds since the run started
+
+    Returns:
+        The bracket form, e.g. "[  3s 417ms]"
+    """
+    whole_seconds = int(seconds)
+    milliseconds = int((seconds - whole_seconds) * 1000)
+    return f'[{whole_seconds:3d}s {milliseconds:3d}ms]'
+
+
 def format_seconds(seconds: float) -> str:
     """
     Format seconds in readable format.

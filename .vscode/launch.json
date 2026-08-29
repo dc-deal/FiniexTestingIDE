@@ -1933,6 +1933,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Logging (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/logging/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 25.5
+            }
+        },
+        {
             "name": "🧩 Pytest: Loop Cadence (All)",
             "type": "debugpy",
             "request": "launch",

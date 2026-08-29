@@ -48,6 +48,7 @@ from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.log_level import LogLevel
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.market_config_types import TradingModel
@@ -577,8 +578,8 @@ class AutotraderMain:
         session_duration = time.monotonic() - self._session_start
 
         # Collect warning/error counts + messages from session logger before closing
-        warnings = self._session_logger.get_buffer_warnings()
-        errors = self._session_logger.get_buffer_errors()
+        warnings = self._session_logger.get_records(LogLevel.WARNING)
+        errors = self._session_logger.get_records(LogLevel.ERROR)
 
         result = AutoTraderResult(
             session_duration_s=session_duration,
@@ -587,8 +588,8 @@ class AutotraderMain:
             shutdown_mode=self._shutdown_mode,
             operator_interrupted=self._first_interrupt_time > 0,
             emergency_reason=self._emergency_reason,
-            warning_messages=[line for _, line in warnings],
-            error_messages=[line for _, line in errors],
+            warning_messages=[record.message for record in warnings],
+            error_messages=[record.message for record in errors],
         )
 
         if self._executor:

@@ -45,6 +45,14 @@ Each scenario gets its own package (3-5 MB) instead of one global package (61 MB
 
 **The package dict is keyed by `SingleScenario.scenario_index`, never by a loop position.** The index is assigned once at config load (`scenario_config_loader.py`) and stays with the scenario; `SharedDataPreparator` fills the dict with it. Some consumers receive the COMPLETE scenario list (`ExecutionCoordinator`) and some receive the list FILTERED to the still-valid scenarios (`ScenarioDataValidator`, via `mount_preparer._valid()`), so a position matches the index only in the first case — and only until one scenario is excluded. Keying by position silently pairs a scenario with a neighbour's data. A missing package raises `ScenarioPackageMissingError`: after keying correctly, a hole can only mean the preparator and the consumer disagree about what was prepared, which is framework logic and not operator config (§33).
 
+**The scenario log buffer crosses as `list[LogRecord]`, not as rendered lines.** A record
+(`framework/types/log_record_types.py`) carries level, observation timestamp, scope, message and
+— inside the tick loop — the tick index and the tick's own time. Rendering (colours, the level
+column, the elapsed timestamp, the tick prefix) happens at the surface that prints it. A buffer
+of rendered lines forces every later consumer to take the fact apart again, and the run report is
+such a consumer: it used to recover the message with `split(' | ', 1)` and carried ANSI escape
+codes into the persisted JSON on the way.
+
 ## Channel B: Process Output (`ProcessResult`)
 
 Results returned from subprocesses after tick loop execution:

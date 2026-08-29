@@ -16,12 +16,28 @@ Subclasses must implement:
 import sys
 import traceback
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
 from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
 from python.framework.types.log_level import ColorCodes, LogLevel
+from python.framework.types.log_record_types import LogRecord
+from python.framework.utils.time_utils import format_log_elapsed, format_timestamp
+
+# The levels the run report reads. They are captured regardless of the CONSOLE threshold —
+# a display setting must not decide what the report gets to see.
+_REPORT_LEVELS = (LogLevel.WARNING, LogLevel.ERROR)
+
+# One palette for every rendering path.
+_LEVEL_COLORS = {
+    LogLevel.VERBOSE: ColorCodes.PURPLE,
+    LogLevel.DEBUG: ColorCodes.GRAY,
+    LogLevel.INFO: ColorCodes.BLUE,
+    LogLevel.WARNING: ColorCodes.YELLOW,
+    LogLevel.ERROR: ColorCodes.RED,
+}
 
 
 class AbstractLogger(ABC):
@@ -60,10 +76,12 @@ class AbstractLogger(ABC):
         # Setup config from parent (uses global file logging config)
         self.file_logging_enabled = self._file_logging_config.global_enabled
 
-        self.console_buffer: List[Tuple[str, str]] = []
+        # Buffered log entries as RECORDS, not rendered lines — rendering happens at the surface
+        # that prints them (print_buffer), so a later consumer never has to take a line apart.
+        self.console_buffer: List[LogRecord] = []
 
     @abstractmethod
-    def _log_console_implementation(self, level: str, message: str):
+    def _log_console_implementation(self, record: LogRecord):
         """
         Core logging method - must be implemented by subclasses.
 
@@ -104,14 +122,14 @@ class AbstractLogger(ABC):
         pass
 
     @abstractmethod
-    def _should_log_console(self, level: LogLevel) -> str:
+    def _should_log_console(self, level: LogLevel) -> bool:
         """
         check if console log is enabled for logger
         """
         pass
 
     @abstractmethod
-    def _should_log_file(self, level: LogLevel) -> str:
+    def _should_log_file(self, level: LogLevel) -> bool:
         """
          check if file log is enabled for logger
         """
@@ -239,46 +257,35 @@ class AbstractLogger(ABC):
     # Buffer Serialization / Cross-Process Support
     # ============================================
 
-    def get_buffer(self) -> list[tuple[str, str]]:
+    def get_records(self, level: Optional[LogLevel] = None) -> list[LogRecord]:
         """
-        Return a serializable copy of the console buffer.
+        Return the buffered records, optionally of one level only.
 
-        This makes it safe to pass across processes (e.g. via ProcessPoolExecutor).
-        """
-        # Ensure all entries are plain strings
-        return [(str(level), str(line)) for level, line in self.console_buffer]
+        Records are picklable dataclasses, so the result is safe to pass across processes.
 
-    def get_buffer_errors(self) -> list[tuple[str, str]]:
-        """
-        Return only ERROR entries from the console buffer.
+        Args:
+            level: Restrict to this level; None returns every buffered record
 
         Returns:
-            List of (level, line) tuples containing only ERROR entries
+            The buffered records, in the order they were logged
         """
-        return [
-            (level, line)
-            for level, line in self.console_buffer
-            if level == LogLevel.ERROR
-        ]
-
-    def get_buffer_warnings(self) -> list[tuple[str, str]]:
-        """
-        Return only WARNING entries from the console buffer.
-        Returns:
-            List of (level, line) tuples containing only ERROR entries
-        """
-        return [
-            (level, line)
-            for level, line in self.console_buffer
-            if level == LogLevel.WARNING
-        ]
+        if level is None:
+            return list(self.console_buffer)
+        return [record for record in self.console_buffer if record.level == level]
 
     @staticmethod
-    def print_buffer(buffer: list[tuple[str, str]], scenario_name: str = None):
+    def print_buffer(buffer: list[LogRecord], scenario_name: str = None,
+                     run_start: Optional[datetime] = None):
         """
-        Print a buffer that was obtained via get_buffer().
+        Print buffered records that were obtained via get_records().
 
-        Can be used in the parent process after collecting logs from workers.
+        Used in the parent process after collecting logs from workers, where no logger instance
+        exists — which is why the elapsed form needs run_start passed in.
+
+        Args:
+            buffer: The records to print
+            scenario_name: Name for the header; None prints a generic header
+            run_start: Run start for the elapsed timestamp form; None prints absolute UTC
         """
         if not buffer:
             print('(empty log buffer)')
@@ -291,9 +298,47 @@ class AbstractLogger(ABC):
             print(
                 f"{ColorCodes.BOLD}{' SCENARIO LOG BUFFER '.center(60)}{ColorCodes.RESET}")
         print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
-        for level, line in buffer:
-            print(line)
+        for record in buffer:
+            print(AbstractLogger.render_record(record, run_start))
         print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
+
+    @staticmethod
+    def render_record(record: LogRecord, run_start: Optional[datetime] = None) -> str:
+        """
+        Render one record the way the console shows it.
+
+        Args:
+            record: The record to render
+            run_start: Run start for the elapsed form; None renders the absolute UTC form
+
+        Returns:
+            The formatted line, colours included
+        """
+        timestamp = (format_log_elapsed((record.timestamp - run_start).total_seconds())
+                     if run_start else record.timestamp.strftime('%Y-%m-%d %H:%M:%S'))
+        message = record.message
+        if record.tick_index is not None:
+            # The tick prefix is presentation too — it is rebuilt here from the record's own
+            # fields, so the buffered message stays the bare fact the report reads.
+            message = (f'{record.tick_index:5}| '
+                       f'{format_timestamp(record.tick_time)} | {message}')
+        return AbstractLogger.format_line(timestamp, record.level, message)
+
+    @staticmethod
+    def format_line(timestamp: str, level: LogLevel, message: str) -> str:
+        """
+        The ONE console line formula — every rendering path goes through it.
+
+        Args:
+            timestamp: Already-rendered timestamp (elapsed or absolute)
+            level: The entry's level
+            message: The unrendered message
+
+        Returns:
+            The formatted line, colours included
+        """
+        color = _LEVEL_COLORS.get(level, ColorCodes.RESET)
+        return f'{timestamp} {color}{level:8}{ColorCodes.RESET} | {message}'
 
     # ============================================
     # Helper Methods
@@ -301,25 +346,46 @@ class AbstractLogger(ABC):
 
     def _get_color_for_level(self, level: str) -> str:
         """Get ANSI color code for log level"""
-        color_map = {
-            LogLevel.VERBOSE: ColorCodes.PURPLE,
-            LogLevel.DEBUG: ColorCodes.GRAY,
-            LogLevel.INFO: ColorCodes.BLUE,
-            LogLevel.WARNING: ColorCodes.YELLOW,
-            LogLevel.ERROR: ColorCodes.RED
-        }
-        return color_map.get(level, ColorCodes.RESET)
+        return _LEVEL_COLORS.get(level, ColorCodes.RESET)
 
     def _process_log(self, level: LogLevel, message: str):
         should_log_console = self._should_log_console(level)
         should_log_file = self._should_log_file(level)
         timestamp_implemenration = self._get_timestamp()
+        tick_index, tick_time = self._tick_context()
+        record = LogRecord(
+            level=level, timestamp=datetime.now(timezone.utc), scope=self.name,
+            message=message, tick_index=tick_index, tick_time=tick_time)
         if should_log_console:
-            self._log_console_implementation(
-                level, message, timestamp_implemenration)
+            self._log_console_implementation(record)
+        elif level in _REPORT_LEVELS:
+            # WARNING and ERROR are REPORT INPUT, not console output — a display threshold must
+            # not decide what the run report gets to see. Everything else follows the console
+            # setting, as before.
+            self._capture_for_report(record)
         if should_log_file:
             self._write_to_file_implementation(
                 level, message, timestamp_implemenration)
+
+    def _tick_context(self) -> tuple[Optional[int], Optional[datetime]]:
+        """
+        The tick being processed, when the logger is inside a tick loop.
+
+        Returns:
+            (tick_index, tick_time); (None, None) for a logger with no tick loop
+        """
+        return None, None
+
+    def _capture_for_report(self, record: LogRecord) -> None:
+        """
+        Keep a record the console did not show, because the run report still needs it.
+
+        Base: keep nothing — a logger that prints directly has no buffer to keep it in.
+
+        Args:
+            record: The record to keep
+        """
+        return
 
     def _format_log_line(self, level: str, message: str, timestamp: str) -> str:
         """

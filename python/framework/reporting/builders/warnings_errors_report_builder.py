@@ -19,6 +19,7 @@ from python.framework.types.api.report_types import (
     WarningRow,
     WarningsErrorsOutcome,
     WarningsErrorsReport,
+    WarningTier,
 )
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
@@ -57,10 +58,11 @@ def build_warnings_errors_report_from_session(
         WarningsErrorsReport — live has no validation channel: warnings are the session WARNING
         buffer (Tier 2), errors the session ERROR buffer + emergency_reason (the villain)
     """
-    # Tier-2 (minor) — the session WARNING buffer. Strip the logger prefix
-    # ('[  4s] WARNING | msg' → 'msg') so the model carries the clean fact, not the log line.
+    # Tier-2 — the session WARNING buffer. The message arrives unrendered from the LogRecord,
+    # so there is nothing to strip. check/domain stay empty: no assertion decided this, and the
+    # channel is already named by the tier.
     warnings = [
-        WarningRow(tier='minor', scope=name, message=(m.split(' | ', 1)[-1] if ' | ' in m else m))
+        WarningRow(tier=WarningTier.LOGGER_PRODUCED, scope=name, message=m)
         for m in result.warning_messages]
 
     # Errors — the session ERROR buffer (pot) + the emergency villain
@@ -99,8 +101,8 @@ def _warning_rows(result: ValidationResult, scope: str) -> list:
         One WarningRow per advisory finding, each carrying its origin
     """
     return [
-        WarningRow(tier='major', scope=finding.scope or scope, message=finding.message,
-                   check=finding.check, domain=finding.domain.value)
+        WarningRow(tier=WarningTier.VALIDATOR_PRODUCED, scope=finding.scope or scope,
+                   message=finding.message, check=finding.check, domain=finding.domain.value)
         for finding in result.findings if finding.severity is Severity.WARNING]
 
 
@@ -121,7 +123,7 @@ def _batch_warnings(batch: BatchExecutionSummary) -> list:
     pot_total, pot_units = _log_pot_summary(batch, LogLevel.WARNING)
     if pot_total > 0:
         warnings.append(WarningRow(
-            tier='minor', scope='run',
+            tier=WarningTier.LOGGER_PRODUCED, scope='run',
             message=(f'{pot_total} warning(s) in {pot_units} scenario log(s) '
                      f'— see scenario logs for details')))
     return warnings
@@ -164,10 +166,11 @@ def _batch_outcome(batch: BatchExecutionSummary) -> WarningsErrorsOutcome:
 
 
 def _logged(result: ProcessResult, level: LogLevel) -> list:
-    """Extract the buffered log lines of one level from a scenario's logger buffer."""
+    """The messages of one level from a scenario's logger buffer, unrendered."""
     if not result.scenario_logger_buffer:
         return []
-    return [line for lvl, line in result.scenario_logger_buffer if lvl == level]
+    return [record.message for record in result.scenario_logger_buffer
+            if record.level == level]
 
 
 def _log_pot_summary(batch: BatchExecutionSummary, level: LogLevel) -> tuple:

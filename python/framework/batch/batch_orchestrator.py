@@ -552,7 +552,8 @@ class BatchOrchestrator:
             for process_result in batch_execution_summary.process_result_list:
                 AbstractLogger.print_buffer(
                     process_result.scenario_logger_buffer,
-                    process_result.scenario_name
+                    process_result.scenario_name,
+                    run_start=self.logger_start_time_format
                 )
 
         # global log comes last.

@@ -105,6 +105,41 @@ Two properties worth stating, because both were bugs waiting to happen:
   is therefore explicit: only the SIGINT handler sets it. Inferring it from a missing reason would
   have let a safety-initiated shutdown report success.
 
+## The Tier-2 pot — what is captured, and what it claims
+
+The pot is the log channel: observations nobody adjudicated. Two rules govern it.
+
+**Capture is independent of display.** `LogLevel.WARNING` and `LogLevel.ERROR` are buffered
+regardless of the CONSOLE threshold (`AbstractLogger._process_log`), because they are report
+input. Before that rule, raising the console log level silently removed warnings from the run
+report — a display setting deciding what the report was allowed to see. Everything below those
+two levels still follows the console setting.
+
+**A pot row claims no assertion.** Tier-2 rows leave `check` and `domain` empty, and that is
+the honest answer: no assertion decided a log line, and it belongs to no validator area. The
+channel is already named — by the tier itself.
+
+`WarningTier` is an Enum for that reason: it is the ORIGIN question, answered once.
+
+```python
+class WarningTier(StrEnum):
+    VALIDATOR_PRODUCED = 'major'    # a check decided it, so check/domain are filled
+    LOGGER_PRODUCED = 'minor'       # the log pot: an observation nobody adjudicated
+```
+
+The member names say what the value means; `major` / `minor` read like a severity and are not
+one. The VALUES stay as they are because they are the wire contract the API and FiniexViewer
+already consume — renaming them would be a consumer-facing change, renaming the members is not.
+
+The general rule this follows, so it does not drift again: **a closed set is an Enum, an open
+set is a string.** `tier` (2 channels) and `domain` (10 areas) are closed. `check` is open —
+every new assertion adds an id, and an Enum would have to be extended by whoever adds one, which
+is exactly the step that gets forgotten. `scope` is open too (any scenario or profile name).
+
+The pot's messages are unrendered — the buffer carries `LogRecord`s, so nothing has to be
+stripped and no terminal escape code can reach the artifact. See
+[Batch Data Flow](batch_data_flow.md).
+
 ## The finding is the unit — `ValidationFinding`
 
 Every validator produces `ValidationFinding` (`framework/types/validation_types.py`), and
