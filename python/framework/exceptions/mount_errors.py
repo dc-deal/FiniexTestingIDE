@@ -15,3 +15,15 @@ class MountIdentityMismatchError(FiniexError):
     built the mount, so it never fires there.
     """
     pass
+
+
+class ScenarioPackageMissingError(FiniexError):
+    """
+    Raised when the mount holds no data package for a scenario that reached validation.
+
+    The package dict is keyed by the scenario's own index; a scenario either got a package
+    or was excluded before this point, so a hole means the preparator and the consumer
+    disagree about what was prepared. That is framework logic, not operator config (§33) —
+    it propagates rather than excluding a scenario and hiding the inconsistency.
+    """
+    pass

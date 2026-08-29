@@ -43,6 +43,8 @@ Data prepared in the main process and distributed to subprocesses via pickle ser
 
 Each scenario gets its own package (3-5 MB) instead of one global package (61 MB) — 5x pickle overhead reduction.
 
+**The package dict is keyed by `SingleScenario.scenario_index`, never by a loop position.** The index is assigned once at config load (`scenario_config_loader.py`) and stays with the scenario; `SharedDataPreparator` fills the dict with it. Some consumers receive the COMPLETE scenario list (`ExecutionCoordinator`) and some receive the list FILTERED to the still-valid scenarios (`ScenarioDataValidator`, via `mount_preparer._valid()`), so a position matches the index only in the first case — and only until one scenario is excluded. Keying by position silently pairs a scenario with a neighbour's data. A missing package raises `ScenarioPackageMissingError`: after keying correctly, a hole can only mean the preparator and the consumer disagree about what was prepared, which is framework logic and not operator config (§33).
+
 ## Channel B: Process Output (`ProcessResult`)
 
 Results returned from subprocesses after tick loop execution:

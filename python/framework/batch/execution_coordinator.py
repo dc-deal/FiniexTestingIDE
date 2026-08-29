@@ -117,7 +117,10 @@ class ExecutionCoordinator:
             )
 
             # === Use scenario-specific package ===
-            scenario_data = scenario_packages.get(idx)
+            # Keyed by the scenario's own index (assigned at config load), not by the loop
+            # position — they coincide here only because this list is the COMPLETE, ordered
+            # one. Same lookup: `scenario_data_validator.py`, `autotrader_data_preparer.py`.
+            scenario_data = scenario_packages.get(scenario.scenario_index)
             if scenario_data is None:
                 # Should never happen if validation passed
                 results[idx] = self._create_validation_failed_result(
@@ -209,7 +212,10 @@ class ExecutionCoordinator:
                 )
 
                 # === Use scenario-specific package ===
-                scenario_data = scenario_packages.get(idx)
+                # Keyed by the scenario's own index (assigned at config load), not by the loop
+                # position — they coincide here only because this list is the COMPLETE, ordered
+                # one. Same lookup: `scenario_data_validator.py`, `autotrader_data_preparer.py`.
+                scenario_data = scenario_packages.get(scenario.scenario_index)
                 if scenario_data is None:
                     results[idx] = self._create_validation_failed_result(
                         scenario, idx, live_queue,  f'❌ No data package for scenario {idx}: {scenario.name} - data packages: {len(scenario_packages)}')

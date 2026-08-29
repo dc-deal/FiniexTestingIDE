@@ -17,6 +17,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.exceptions.mount_errors import ScenarioPackageMissingError
 from python.framework.types.validation_types import (
     Severity,
     ValidationDomain,
@@ -376,21 +377,23 @@ class ScenarioDataValidator:
             scenario_packages: Dict mapping scenario index to its ProcessDataPackage
             requirements_map: Requirements map for warmup info
 
-        Returns:
-            Tuple of (valid_scenarios, invalid_scenarios_with_results)
+        Findings are appended to each scenario's validation_result (mutated in place).
         """
 
-        for idx, scenario in enumerate(scenarios):
-            # Get scenario-specific data package
-            scenario_package = scenario_packages.get(idx)
+        for scenario in scenarios:
+            # Key by the scenario's OWN index, never by the loop position. The index is assigned
+            # once at config load (`scenario_config_loader.py`) and is what fills the dict
+            # (`shared_data_preparator.py` — `scenario_packages[scenario.scenario_index]`). This
+            # method receives the FILTERED list (`mount_preparer.py` → `_valid(scenarios)`), so a
+            # position stops matching the index the moment one scenario was excluded. Same lookup:
+            # `execution_coordinator.py` and `autotrader_data_preparer.py`.
+            scenario_package = scenario_packages.get(scenario.scenario_index)
             if not scenario_package:
-                # Missing package - create error result
-                result = ValidationResult(scenario.name, [ValidationFinding(
-                    severity=Severity.ERROR, check='data_package_missing',
-                    domain=ValidationDomain.DATA,
-                    message=f'No data package found for scenario index {idx}',
-                    scope=scenario.name)])
-                continue
+                raise ScenarioPackageMissingError(
+                    f"No data package for scenario '{scenario.name}' "
+                    f'(index {scenario.scenario_index}, {len(scenario_packages)} package(s) '
+                    f'prepared) — the preparator and this validator disagree about what was '
+                    f'prepared')
 
             result = self._validate_single_scenario(
                 scenario, scenario_package, requirements_map
@@ -406,7 +409,7 @@ class ScenarioDataValidator:
                 # Log errors
                 for error in result.errors:
                     self._logger.error(f'❌ {scenario.name}: {error}')
-                    scenario.validation_result.append(result)
+                scenario.validation_result.append(result)
 
     def _validate_single_scenario(
         self,

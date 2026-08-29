@@ -170,11 +170,24 @@ collection of them, and `is_valid` / `errors` / `warnings` are **views** over th
 | `test_domain_is_a_closed_set` | `ValidationDomain` is an Enum — a free string would break filtering |
 | `test_a_rejected_scenario_stays_excluded` | The §33 execution gate reads the derived flag |
 
+### `test_scenario_package_index.py`
+
+The data-package lookup contract. Packages are keyed by `SingleScenario.scenario_index`; the
+quality validator receives the list FILTERED to still-valid scenarios, so a loop position stops
+matching the index as soon as one scenario is excluded.
+
+| Test | Description |
+|------|-------------|
+| `test_each_scenario_gets_its_own_package_after_an_exclusion` | s0 excluded → s1 must still get pkg1, not None, and s2 must not get s1's data |
+| `test_no_exclusion_is_unaffected` | The case where position and index coincide keeps working |
+| `test_it_raises_rather_than_skipping_silently` | A hole raises `ScenarioPackageMissingError` — it can no longer be explained by an exclusion (§33) |
+
 ## Files
 
 - `tests/framework/batch_validations/test_scenario_validator.py`
 - `tests/framework/batch_validations/test_post_run_validator.py`
 - `tests/framework/batch_validations/test_validation_types.py`
+- `tests/framework/batch_validations/test_scenario_package_index.py`
 - `tests/framework/batch_validations/test_broker_data_preparator.py`
 - `tests/framework/batch_validations/test_market_config_manager.py`
 - `tests/framework/batch_validations/test_broker_config_factory.py`

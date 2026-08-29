@@ -139,8 +139,7 @@ class DataCoverageReportManager:
         Args:
             scenarios: List of scenarios to validate
 
-        Returns:
-            Tuple of (valid_scenarios, invalid_scenarios_with_results)
+        Findings are appended to each scenario's validation_result (mutated in place).
         """
         self._logger.info('🔍 Phase 0.5: Validating data availability...')
 
@@ -244,8 +243,7 @@ class DataCoverageReportManager:
             scenario_packages: Dict mapping scenario index to its ProcessDataPackage
             requirements_map: Requirements map for warmup info
 
-        Returns:
-            Tuple of (valid_scenarios, invalid_scenarios_with_results)
+        Findings are appended to each scenario's validation_result (mutated in place).
         """
         self._logger.info('🔍 Phase 1.5: Validating data quality...')
 
