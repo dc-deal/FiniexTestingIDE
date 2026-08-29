@@ -4,20 +4,80 @@ Type definitions for scenario data validation
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, List
+
+
+class Severity(Enum):
+    """Severity of ONE finding — the finding's own, never its container's."""
+    ERROR = 'error'         # rejects the unit (§33: the scenario is excluded from execution)
+    WARNING = 'warning'     # advisory; the unit still runs
+
+
+class ValidationDomain(Enum):
+    """
+    The area a finding belongs to — a closed set, so a consumer can group and filter by it.
+
+    Deliberately an Enum and not a free string: 'profiling' / 'Profiling' / 'perf' would make
+    filtering worthless. The identity of the individual check (`ValidationFinding.check`) is an
+    open set and stays a string.
+    """
+    CONFIG = 'config'               # scenario config shape, balances, currencies
+    DATA = 'data'                   # availability, coverage, date logic, staleness
+    BROKER = 'broker'               # broker configuration and its capabilities
+    ALGO = 'algo'                   # worker compatibility, state snapshot, algo clock
+    EXECUTION = 'execution'         # the run itself
+    SETUP = 'setup'                 # how the run was configured (debug mode, stress test)
+    PROFILING = 'profiling'         # tick budget and clipping
+    PERFORMANCE = 'performance'     # worker / decision timing, coordination overhead
+    PORTFOLIO = 'portfolio'         # accounting, currencies
+    ROBUSTNESS = 'robustness'       # robustness / overfit assessment
+
+
+@dataclass
+class ValidationFinding:
+    """
+    One atomic finding — produced, carried, rendered and filtered as a single unit.
+
+    Args:
+        severity: Whether this finding rejects the unit or only advises about it
+        check: Stable identifier of the assertion that produced it, e.g. 'budget_too_high'
+        domain: The area it belongs to
+        message: Operator-readable text
+        scope: Which unit it concerns; '' means run-wide
+    """
+    severity: Severity
+    check: str
+    domain: ValidationDomain
+    message: str
+    scope: str = ''
 
 
 @dataclass
 class ValidationResult:
     """
-    Result of scenario validation.
+    A subject's validation findings.
 
-    Contains validation status, scenario name, and any errors/warnings.
+    `is_valid`, `errors` and `warnings` are VIEWS over `findings`, not stored state — a stored
+    flag can disagree with the list it summarizes, a derived one cannot.
     """
-    is_valid: bool
     scenario_name: str
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    findings: List[ValidationFinding] = field(default_factory=list)
+
+    @property
+    def is_valid(self) -> bool:
+        """True while no finding rejects the unit (the §33 execution gate reads this)."""
+        return not any(f.severity is Severity.ERROR for f in self.findings)
+
+    @property
+    def errors(self) -> List[str]:
+        """The rejecting findings' messages."""
+        return [f.message for f in self.findings if f.severity is Severity.ERROR]
+
+    @property
+    def warnings(self) -> List[str]:
+        """The advisory findings' messages."""
+        return [f.message for f in self.findings if f.severity is Severity.WARNING]
 
     def has_errors(self) -> bool:
         """Check if validation has errors."""

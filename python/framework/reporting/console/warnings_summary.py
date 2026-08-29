@@ -104,12 +104,30 @@ class WarningsSummary(AbstractBatchSummarySection):
     def _format_major(self, warning: WarningRow, renderer: ConsoleRenderer) -> str:
         """Format a Tier-1 major warning: run-scope is prominent (bold red head), per-scenario yellow."""
         msg_lines = warning.message.split('\n')
+        prefix = self._origin_prefix(warning)
         if warning.scope == 'run':
-            out = [renderer.red(renderer.bold(msg_lines[0]))]
+            out = [renderer.red(renderer.bold(f'{prefix}{msg_lines[0]}'))]
             out += [renderer.yellow(line) for line in msg_lines[1:]]
             return '\n'.join(out)
 
-        # Per-scenario major warning — prefix with the unit scope
-        head = renderer.yellow(f'[{warning.scope}] {msg_lines[0]}')
+        # Per-scenario major warning — prefix with the origin and the unit scope
+        head = renderer.yellow(f'{prefix}{msg_lines[0]}')
         rest = [renderer.yellow(line) for line in msg_lines[1:]]
         return '\n'.join([head] + rest)
+
+    @staticmethod
+    def _origin_prefix(warning: WarningRow) -> str:
+        """
+        The `[domain · scope]` head that says who raised this and about what.
+
+        Args:
+            warning: The row to label
+
+        Returns:
+            The prefix; the bare scope when the row carries no domain (pre-origin artifact)
+        """
+        if not warning.domain:
+            return '' if warning.scope == 'run' else f'[{warning.scope}] '
+        if warning.scope == 'run':
+            return f'[{warning.domain}] '
+        return f'[{warning.domain} · {warning.scope}] '

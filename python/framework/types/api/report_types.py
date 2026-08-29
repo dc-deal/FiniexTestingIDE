@@ -802,6 +802,10 @@ class WarningRow(BaseModel):
     tier: str = 'major'             # 'major' (Tier 1, validator-produced) | 'minor' (Tier 2, log pot)
     scope: str = 'run'              # 'run' (batch-global) | unit name (per-scenario / session)
     message: str = ''
+    # Origin — WHO decided this. `check` is the assertion's stable id, `domain` its area.
+    # Empty on a Tier-2 row: the log pot is an observation nobody attributed to a check.
+    check: str = ''
+    domain: str = ''
 
 
 class UnitErrorRow(BaseModel):

@@ -2,7 +2,8 @@
 Warnings & errors report builder (#391/#395) — the unified warnings/errors postprocessor.
 
 Reads the **already-decided** structured truth and maps it to `WarningsErrorsReport`:
-- Tier-1 major warnings ← `ValidationResult.warnings` (per-scenario + the batch-level channel);
+- Tier-1 major warnings ← the advisory `ValidationFinding`s of the per-scenario and
+  batch-level validation channels, each carrying its own origin (`check` / `domain`);
 - Tier-2 minor warnings ← the log WARNING pot (summarized);
 - errors ← `ValidationResult.errors` + the `ProcessResult` villain + the log ERROR pot;
 - outcome ← failed-scenario rollup (sim) / shutdown + emergency (live), plus the canonical
@@ -23,6 +24,7 @@ from python.framework.types.autotrader_types.autotrader_result_types import Auto
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.log_level import LogLevel
 from python.framework.types.process_data_types import ProcessResult
+from python.framework.types.validation_types import Severity, ValidationResult
 
 
 def build_warnings_errors_report_from_batch(batch: BatchExecutionSummary) -> WarningsErrorsReport:
@@ -82,22 +84,38 @@ def build_warnings_errors_report_from_session(
     return WarningsErrorsReport(warnings=warnings, errors=errors, outcome=outcome)
 
 
+def _warning_rows(result: ValidationResult, scope: str) -> list:
+    """
+    The advisory findings of one validation result as Tier-1 rows.
+
+    A finding carries its own severity, so a result holding errors AND advisories yields both
+    — the advisories are no longer dropped along with the rejection.
+
+    Args:
+        result: The validation result to read
+        scope: Fallback scope when the finding does not name one
+
+    Returns:
+        One WarningRow per advisory finding, each carrying its origin
+    """
+    return [
+        WarningRow(tier='major', scope=finding.scope or scope, message=finding.message,
+                   check=finding.check, domain=finding.domain.value)
+        for finding in result.findings if finding.severity is Severity.WARNING]
+
+
 def _batch_warnings(batch: BatchExecutionSummary) -> list:
     """Tier-1 major (validation channels) + a Tier-2 minor summary of the log WARNING pot."""
     warnings = []
 
-    # Tier 1 — run-scoped (batch-global) validation results, e.g. debug-mode (PostRunValidator)
+    # Tier 1 — run-scoped (batch-global) findings, e.g. debug-mode (PostRunValidator)
     for vr in batch.batch_validation_result:
-        for msg in vr.warnings:
-            warnings.append(WarningRow(tier='major', scope='run', message=msg))
+        warnings.extend(_warning_rows(vr, 'run'))
 
     # Tier 1 — per-scenario validation warnings (pre-run validators, e.g. account-currency advisory)
     for scenario in batch.single_scenario_list:
         for vr in scenario.validation_result:
-            if not vr.is_valid:
-                continue
-            for msg in vr.warnings:
-                warnings.append(WarningRow(tier='major', scope=scenario.name, message=msg))
+            warnings.extend(_warning_rows(vr, scenario.name))
 
     # Tier 2 — the log WARNING pot, summarized (ignorable; the raw lines stay in the scenario logs)
     pot_total, pot_units = _log_pot_summary(batch, LogLevel.WARNING)

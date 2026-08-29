@@ -22,7 +22,13 @@ from python.framework.types.live_types.live_stats_config_types import (
 )
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.validation_types import ValidationResult, get_validation_list_report
+from python.framework.types.validation_types import (
+    Severity,
+    ValidationDomain,
+    ValidationFinding,
+    ValidationResult,
+    get_validation_list_report,
+)
 from python.framework.utils.runtime_env_utils import is_debug_execution
 
 
@@ -310,12 +316,10 @@ class ExecutionCoordinator:
         # append an additional error, if nessecary (commonly used right before execution)
         if (additional_error_message is not None):
             self._logger.error(additional_error_message)
-            validation_error = ValidationResult(
-                is_valid=False,
-                scenario_name=scenario.name,
-                errors=[additional_error_message],
-                warnings=[]
-            )
+            validation_error = ValidationResult(scenario.name, [ValidationFinding(
+                severity=Severity.ERROR, check='scenario_execution',
+                domain=ValidationDomain.EXECUTION,
+                message=additional_error_message, scope=scenario.name)])
             scenario.validation_result.append(validation_error)
 
         validation_result = scenario.validation_result

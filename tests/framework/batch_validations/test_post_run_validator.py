@@ -67,7 +67,8 @@ def _batch_results(results) -> BatchExecutionSummary:
 def _warnings(batch) -> dict:
     """Run the validator and return {check_name: joined warning text}."""
     PostRunValidator(batch).validate()
-    return {vr.scenario_name: '\n'.join(vr.warnings) for vr in batch.batch_validation_result}
+    return {finding.check: finding.message
+            for vr in batch.batch_validation_result for finding in vr.findings}
 
 
 def test_debug_mode():

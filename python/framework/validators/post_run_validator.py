@@ -23,9 +23,16 @@ from python.framework.types.scenario_types.scenario_set_performance_types import
     ProfilingData,
 )
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
-from python.framework.types.validation_types import ValidationResult
+from python.framework.types.validation_types import (
+    Severity,
+    ValidationDomain,
+    ValidationFinding,
+    ValidationResult,
+)
 from python.framework.utils.version_utils import parse_version
 
+# Scope of a batch-global finding — it concerns the run, not one scenario.
+_RUN_SCOPE = 'run'
 # Overhead verdict threshold — coordination overhead as a share of computation time.
 _HIGH_OVERHEAD_RATIO = 0.5
 # Infra-bottleneck verdict threshold — share of scenarios where a non-hot-path op dominated.
@@ -60,16 +67,24 @@ class PostRunValidator:
         self._check_time_divergence()
         self._check_robustness()
 
-    def _add(self, check: str, message: str) -> None:
-        """Append a run-scoped advisory warning (is_valid=True) to the batch-level channel."""
-        self._batch.add_batch_validation_result(
-            ValidationResult(is_valid=True, scenario_name=check, warnings=[message]))
+    def _add(self, check: str, domain: ValidationDomain, message: str) -> None:
+        """
+        Append a run-scoped advisory finding to the batch-level channel.
+
+        Args:
+            check: Stable identifier of the assertion that produced the finding
+            domain: The area it belongs to
+            message: Operator-readable text
+        """
+        self._batch.add_batch_validation_result(ValidationResult(_RUN_SCOPE, [ValidationFinding(
+            severity=Severity.WARNING, check=check, domain=domain, message=message,
+            scope=_RUN_SCOPE)]))
 
     def _check_debug_mode(self) -> None:
         """Prominent notice when the batch ran in debug / serial mode (timings unreliable)."""
         if not self._batch.debug_execution:
             return
-        self._add('debug_mode', (
+        self._add('debug_mode', ValidationDomain.SETUP, (
             'DEBUG MODE — debugger attached / DEBUG_MODE set\n'
             '   Execution is SERIAL (single process) with trace overhead.\n'
             '   ⏱️  TIMINGS IN THIS REPORT ARE NOT REPRESENTATIVE — '
@@ -108,7 +123,7 @@ class PostRunValidator:
         for signature, scenario_names in config_groups.items():
             lines.append(f'  → {signature}')
             lines.append(f"    Scenarios ({len(scenario_names)}): {', '.join(scenario_names)}")
-        self._add('stress_test', '\n'.join(lines))
+        self._add('stress_test', ValidationDomain.SETUP, '\n'.join(lines))
 
     def _check_data_version(self) -> None:
         """
@@ -130,7 +145,7 @@ class PostRunValidator:
         if unknown_files == 0:
             return
 
-        self._add('data_version_unknown', (
+        self._add('data_version_unknown', ValidationDomain.DATA, (
             f'Data format version unknown for {unknown_files}/{total_files} file(s) — '
             f'the tick index carries no version for them\n'
             f'  → If the index predates the version field, rebuild it:\n'
@@ -156,7 +171,7 @@ class PostRunValidator:
 
         if warning_count == 0:
             return
-        self._add('budget', (
+        self._add('budget', ValidationDomain.PROFILING, (
             f'Tick processing budget: {warning_count} scenario(s) exceed P5 tick interval '
             f'— consider setting tick_processing_budget_ms (see Profiling Analysis)'))
 
@@ -175,7 +190,7 @@ class PostRunValidator:
 
         budget_values = sorted(set(c.budget_ms for c in ineffective))
         budget_str = ', '.join(f'{b}ms' for b in budget_values)
-        self._add('budget_granularity', (
+        self._add('budget_granularity', ValidationDomain.PROFILING, (
             f'Tick processing budget ({budget_str}) below data granularity — '
             f'no effect with integer-ms collected_msc (minimum effective: 1.0ms)'))
 
@@ -205,7 +220,7 @@ class PostRunValidator:
         max_budget = max(c.budget_ms for c in clipping_map.values())
         if max_budget <= p95_processing * 2:
             return
-        self._add('budget_too_high', (
+        self._add('budget_too_high', ValidationDomain.PROFILING, (
             f'Tick processing budget ({max_budget}ms) exceeds 2× P95 processing time '
             f'({p95_processing:.3f}ms) — ticks clipped unnecessarily, reducing simulation accuracy'))
 
@@ -224,7 +239,7 @@ class PostRunValidator:
             if computation > 0 and overhead / computation > _HIGH_OVERHEAD_RATIO:
                 high.append(result.scenario_name)
         if high:
-            self._add('coordination_overhead', (
+            self._add('coordination_overhead', ValidationDomain.PERFORMANCE, (
                 f"Coordination overhead exceeds {_HIGH_OVERHEAD_RATIO:.0%} of computation in "
                 f"{len(high)} scenario(s): {', '.join(high)} — see the worker decision breakdown"))
 
@@ -247,7 +262,7 @@ class PostRunValidator:
                 continue
             pct = freq[op] / scenarios * 100
             if pct >= _BOTTLENECK_PCT:
-                self._add('bottleneck', (
+                self._add('bottleneck', ValidationDomain.PERFORMANCE, (
                     f"Infrastructure operation '{op}' is the dominant cost in "
                     f"{freq[op]}/{scenarios} scenario(s) ({pct:.0f}%) — candidate for optimization"))
 
@@ -264,7 +279,7 @@ class PostRunValidator:
             for result in self._batch.process_result_list
             if result.tick_loop_results and result.tick_loop_results.portfolio_stats})
         if len(currencies) > 1:
-            self._add('multi_currency', (
+            self._add('multi_currency', ValidationDomain.PORTFOLIO, (
                 f"Multi-currency batch ({len(currencies)} currencies: {', '.join(currencies)}) — "
                 f"cross-currency aggregation is not performed; each currency group shows P&L in its "
                 f"own currency."))
@@ -284,7 +299,7 @@ class PostRunValidator:
             dates = groups[currency]
             span_days = (max(dates) - min(dates)).days
             if span_days > _TIME_DIVERGENCE_DAYS:
-                self._add('time_divergence', (
+                self._add('time_divergence', ValidationDomain.DATA, (
                     f'Time divergence: {currency} group scenarios span {span_days} days — aggregated '
                     f'P&L is statistical only, not portfolio-representative (market conditions / '
                     f'volatility / rates differ).'))
@@ -300,21 +315,21 @@ class PostRunValidator:
 
         # Parameter drift always invalidates the comparison (fair-test prerequisite).
         if not report.params_constant:
-            self._add('robustness_param_drift', (
+            self._add('robustness_param_drift', ValidationDomain.ROBUSTNESS, (
                 f"ROBUSTNESS: parameters differ across {len(report.drifting_windows)} window(s) "
                 f"({', '.join(report.drifting_windows)}) — the IS/OOS comparison + distribution "
                 f"are not a fair test (hold the strategy constant across windows)."))
 
         # Too few windows → the distribution is statistically weak.
         if report.distribution.window_count < config.min_windows:
-            self._add('robustness_low_windows', (
+            self._add('robustness_low_windows', ValidationDomain.ROBUSTNESS, (
                 f'ROBUSTNESS: only {report.distribution.window_count} window(s) '
                 f'(< {config.min_windows}) — the distribution is statistically weak; add more '
                 f'windows before trusting it.'))
 
         # Trust gate: block-splitting distortion makes the per-window numbers artifacts.
         if report.disposition_pct > config.disposition_trust_pct:
-            self._add('robustness_low_trust', (
+            self._add('robustness_low_trust', ValidationDomain.ROBUSTNESS, (
                 f'ROBUSTNESS: verdict suppressed — block-splitting distortion '
                 f'{report.disposition_pct:.1f}% exceeds {config.disposition_trust_pct:.0f}%; the '
                 f'per-window numbers are artifacts (use continuous mode / larger blocks).'))
@@ -326,7 +341,7 @@ class PostRunValidator:
         is_n = report.in_sample.window_count if report.in_sample else 0
         oos_n = report.out_of_sample.window_count if report.out_of_sample else 0
         if is_n < config.min_windows or oos_n < config.min_windows:
-            self._add('robustness_insufficient_buckets', (
+            self._add('robustness_insufficient_buckets', ValidationDomain.ROBUSTNESS, (
                 f'ROBUSTNESS: verdict suppressed — IS={is_n} / OOS={oos_n} window(s), one below '
                 f'the {config.min_windows}-window minimum; the Walk-Forward Efficiency rests on '
                 f'too few windows to trust (add windows / recover excluded scenarios).'))
@@ -335,7 +350,7 @@ class PostRunValidator:
         # The degradation verdict — only OVERFIT fires a warning (ROBUST is good news, no advisory).
         wfe = report.walk_forward_efficiency
         if wfe is not None and wfe < config.overfit_wfe_threshold:
-            self._add('robustness_overfit', (
+            self._add('robustness_overfit', ValidationDomain.ROBUSTNESS, (
                 f'ROBUSTNESS: OVERFIT — Walk-Forward Efficiency {wfe:.2f} (OOS/IS) below '
                 f'{config.overfit_wfe_threshold:.2f}; out-of-sample performance degrades sharply '
                 f'from in-sample (likely curve-fit to the IS windows).'))

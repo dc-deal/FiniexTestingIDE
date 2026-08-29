@@ -26,7 +26,12 @@ from python.framework.types.scenario_types.scenario_set_types import (
     BrokerScenarioInfo,
     SingleScenario,
 )
-from python.framework.types.validation_types import ValidationResult
+from python.framework.types.validation_types import (
+    Severity,
+    ValidationDomain,
+    ValidationFinding,
+    ValidationResult,
+)
 
 
 class ScenarioValidator:
@@ -149,16 +154,13 @@ class ScenarioValidator:
             try:
                 broker_info.broker_config.get_symbol_specification(scenario.symbol)
             except ValueError:
-                validation_result = ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=[
-                        f"Symbol '{scenario.symbol}' not found in broker configuration "
-                        f"for '{scenario.data_broker_type}'. "
-                        f"Check the 'symbols' section in the broker config."
-                    ],
-                    warnings=[]
-                )
+                validation_result = ValidationResult(scenario.name, [
+                    ValidationFinding(
+                        severity=Severity.ERROR, check='symbol_unknown',
+                        domain=ValidationDomain.BROKER,
+                        message=f"Symbol '{scenario.symbol}' not found in broker configuration "
+                            f"for '{scenario.data_broker_type}'. "
+                            f"Check the 'symbols' section in the broker config.", scope=scenario.name)])
                 scenario.validation_result.append(validation_result)
                 logger.error(
                     f"❌ {scenario.name}: Symbol '{scenario.symbol}' not registered "
@@ -198,16 +200,13 @@ class ScenarioValidator:
                 continue  # missing symbol — validate_scenario_symbols handles it
             if spec.swap_mode.is_implemented:
                 continue
-            validation_result = ValidationResult(
-                is_valid=False,
-                scenario_name=scenario.name,
-                errors=[
-                    f"Symbol '{scenario.symbol}' uses swap_mode "
-                    f"'{spec.swap_mode.value}' which the swap engine does not model. "
-                    f"Supported modes: 'points', 'none'."
-                ],
-                warnings=[]
-            )
+            validation_result = ValidationResult(scenario.name, [
+                ValidationFinding(
+                    severity=Severity.ERROR, check='swap_mode_unsupported',
+                    domain=ValidationDomain.BROKER,
+                    message=f"Symbol '{scenario.symbol}' uses swap_mode "
+                        f"'{spec.swap_mode.value}' which the swap engine does not model. "
+                        f"Supported modes: 'points', 'none'.", scope=scenario.name)])
             scenario.validation_result.append(validation_result)
             logger.error(
                 f"❌ {scenario.name}: swap_mode '{spec.swap_mode.value}' not modeled "
@@ -268,15 +267,13 @@ class ScenarioValidator:
                     f"💱 {scenario.name}: account_currency '{account_currency}' "
                     f"normalized to quote '{quote}' — spot settles in the quote currency"
                 )
-                scenario.validation_result.append(ValidationResult(
-                    is_valid=True,
-                    scenario_name=scenario.name,
-                    warnings=[
-                        f"account_currency '{account_currency}' normalized to quote "
-                        f"'{quote}' — spot settles in the quote currency, not the base "
-                        f"asset (base-denominated P&L would mix units)."
-                    ],
-                ))
+                scenario.validation_result.append(ValidationResult(scenario.name, [
+                    ValidationFinding(
+                        severity=Severity.WARNING, check='account_currency_normalized',
+                        domain=ValidationDomain.CONFIG,
+                        message=f"account_currency '{account_currency}' normalized to quote "
+                            f"'{quote}' — spot settles in the quote currency, not the base "
+                            f"asset (base-denominated P&L would mix units).", scope=scenario.name)]))
                 account_currency = quote
 
             logger.debug(
@@ -309,15 +306,12 @@ class ScenarioValidator:
             has_max_ticks = scenario.max_ticks is not None and scenario.max_ticks > 0
 
             if not has_end_date and not has_max_ticks:
-                validation_result = ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=[
-                        f"Scenario '{scenario.name}' has neither end_date nor max_ticks. "
-                        f"At least one is required to define the scenario boundary."
-                    ],
-                    warnings=[]
-                )
+                validation_result = ValidationResult(scenario.name, [
+                    ValidationFinding(
+                        severity=Severity.ERROR, check='scenario_boundary',
+                        domain=ValidationDomain.CONFIG,
+                        message=f"Scenario '{scenario.name}' has neither end_date nor max_ticks. "
+                            f"At least one is required to define the scenario boundary.", scope=scenario.name)])
                 scenario.validation_result.append(validation_result)
                 logger.error(
                     f'❌ {scenario.name}: No end_date and no max_ticks — '
@@ -373,13 +367,11 @@ class ScenarioValidator:
         # Check for missing names
         for idx, scenario in enumerate(scenarios):
             if not scenario.name or scenario.name.strip() == '':
-                validation_result = ValidationResult(
-                    is_valid=False,
-                    scenario_name=f'<unnamed_{idx}>',
-                    errors=[
-                        'Scenario has no name. Every scenario must have a unique name.'],
-                    warnings=[]
-                )
+                validation_result = ValidationResult(f'<unnamed_{idx}>', [
+                    ValidationFinding(
+                        severity=Severity.ERROR, check='scenario_name_missing',
+                        domain=ValidationDomain.CONFIG,
+                        message='Scenario has no name. Every scenario must have a unique name.', scope=f'<unnamed_{idx}>')])
                 scenario.validation_result.append(validation_result)
                 logger.error(f'❌ Scenario at index {idx}: Missing name')
 
@@ -395,13 +387,11 @@ class ScenarioValidator:
         for name, single_scenario_list in name_counts.items():
             if len(single_scenario_list) > 1:
                 for scenario in single_scenario_list:
-                    validation_result = ValidationResult(
-                        is_valid=False,
-                        scenario_name=scenario.name,
-                        errors=[
-                            f"Duplicate scenario name '{name}'. All scenario names must be unique."],
-                        warnings=[]
-                    )
+                    validation_result = ValidationResult(scenario.name, [
+                        ValidationFinding(
+                            severity=Severity.ERROR, check='scenario_name_duplicate',
+                            domain=ValidationDomain.CONFIG,
+                            message=f"Duplicate scenario name '{name}'. All scenario names must be unique.", scope=scenario.name)])
                     scenario.validation_result.append(validation_result)
                     logger.error(
                         f'❌ {scenario.name}: Duplicate name found ({len(single_scenario_list)} occurrences)')
@@ -435,15 +425,12 @@ class ScenarioValidator:
         if not balances:
             _, suggested = ScenarioValidator._get_symbol_currencies(
                 symbol, scenario.broker_type, broker_scenario_map)
-            validation_result = ValidationResult(
-                is_valid=False,
-                scenario_name=scenario.name,
-                errors=[
-                    f"'balances' required in trade_simulator_config. "
-                    f"Example: {{\"balances\": {{\"{suggested}\": 10000}}}}"
-                ],
-                warnings=[]
-            )
+            validation_result = ValidationResult(scenario.name, [
+                ValidationFinding(
+                    severity=Severity.ERROR, check='balances_missing',
+                    domain=ValidationDomain.CONFIG,
+                    message=f"'balances' required in trade_simulator_config. "
+                        f"Example: {{\"balances\": {{\"{suggested}\": 10000}}}}", scope=scenario.name)])
             scenario.validation_result.append(validation_result)
             logger.error(
                 f"❌ {scenario.name}: 'balances' missing in trade_simulator_config"
@@ -458,16 +445,13 @@ class ScenarioValidator:
 
         # Check at least one balance key matches base or quote
         if not balance_currencies & symbol_currencies:
-            validation_result = ValidationResult(
-                is_valid=False,
-                scenario_name=scenario.name,
-                errors=[
-                    f'No balance currency matches symbol {symbol}. '
-                    f'Symbol uses {base_currency} (base) and {quote_currency} (quote). '
-                    f'Balances contain: {list(balances.keys())}.'
-                ],
-                warnings=[]
-            )
+            validation_result = ValidationResult(scenario.name, [
+                ValidationFinding(
+                    severity=Severity.ERROR, check='balance_currency_mismatch',
+                    domain=ValidationDomain.CONFIG,
+                    message=f'No balance currency matches symbol {symbol}. '
+                        f'Symbol uses {base_currency} (base) and {quote_currency} (quote). '
+                        f'Balances contain: {list(balances.keys())}.', scope=scenario.name)])
             scenario.validation_result.append(validation_result)
             logger.error(
                 f"❌ {scenario.name}: Balance currencies {list(balances.keys())} "
@@ -482,16 +466,13 @@ class ScenarioValidator:
         # account_currency, 0.0)) and the scenario produces a no-op run.
         explicit = scenario.trade_simulator_config.get('account_currency', '')
         if explicit and explicit not in symbol_currencies:
-            validation_result = ValidationResult(
-                is_valid=False,
-                scenario_name=scenario.name,
-                errors=[
-                    f"account_currency '{explicit}' is neither base ({base_currency}) "
-                    f"nor quote ({quote_currency}) of symbol {symbol}. "
-                    f"Cross-currency settlement is not supported (V1)."
-                ],
-                warnings=[]
-            )
+            validation_result = ValidationResult(scenario.name, [
+                ValidationFinding(
+                    severity=Severity.ERROR, check='account_currency_invalid',
+                    domain=ValidationDomain.CONFIG,
+                    message=f"account_currency '{explicit}' is neither base ({base_currency}) "
+                        f"nor quote ({quote_currency}) of symbol {symbol}. "
+                        f"Cross-currency settlement is not supported (V1).", scope=scenario.name)])
             scenario.validation_result.append(validation_result)
             logger.error(
                 f"❌ {scenario.name}: account_currency '{explicit}' incompatible with "
@@ -555,12 +536,12 @@ class ScenarioValidator:
             errors = ScenarioValidator._collect_parameter_errors(
                 strategy, decision_factory, worker_factory)
             if errors:
-                scenario.validation_result.append(ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=errors,
-                    warnings=[],
-                ))
+                scenario.validation_result.append(ValidationResult(scenario.name, [
+                    ValidationFinding(
+                        severity=Severity.ERROR, check='parameter_validation',
+                        domain=ValidationDomain.CONFIG,
+                        message=_m, scope=scenario.name)
+                    for _m in errors]))
                 for error in errors:
                     logger.error(f'❌ {scenario.name}: {error}')
 

@@ -40,7 +40,12 @@ from python.framework.types.trading_env_types.stress_test_types import (
     StressTestConfig,
     StressTestStaleDataConfig,
 )
-from python.framework.types.validation_types import ValidationResult
+from python.framework.types.validation_types import (
+    Severity,
+    ValidationDomain,
+    ValidationFinding,
+    ValidationResult,
+)
 from python.framework.utils.process_serialization_utils import (
     serialize_ticks_for_transport,
     time_range_from_transport_ticks,
@@ -192,8 +197,10 @@ class SharedDataPreparator:
             if stale_error:
                 self._logger.error(f'❌ {scenario.name}: {stale_error}')
                 scenario.validation_result.append(ValidationResult(
-                    is_valid=False, scenario_name=scenario.name,
-                    errors=[stale_error], warnings=[]))
+                    scenario.name, [ValidationFinding(
+                        severity=Severity.ERROR, check='stale_data_stress_source',
+                        domain=ValidationDomain.DATA,
+                        message=stale_error, scope=scenario.name)]))
                 continue
 
             # Load SIGNAL data (#429). A config/data problem (source not imported, or the
@@ -205,8 +212,10 @@ class SharedDataPreparator:
             except SignalDataUnavailableError as e:
                 self._logger.error(f'❌ {scenario.name}: {e}')
                 scenario.validation_result.append(ValidationResult(
-                    is_valid=False, scenario_name=scenario.name,
-                    errors=[str(e)], warnings=[]))
+                    scenario.name, [ValidationFinding(
+                        severity=Severity.ERROR, check='signal_data_load',
+                        domain=ValidationDomain.DATA,
+                        message=str(e), scope=scenario.name)]))
                 continue
 
             # Create scenario-specific package
@@ -450,12 +459,10 @@ class SharedDataPreparator:
         if scenario_name not in all_ticks_dict:
             error_message = f"No tick data found for scenario '{scenario_name}' " + \
                 f'(available: {list(all_ticks_dict.keys())})'
-            validation_error = ValidationResult(
-                is_valid=False,
-                scenario_name=scenario.name,
-                errors=[error_message],
-                warnings=[]
-            )
+            validation_error = ValidationResult(scenario.name, [ValidationFinding(
+                severity=Severity.ERROR, check='tick_data_missing',
+                domain=ValidationDomain.DATA,
+                message=error_message, scope=scenario.name)])
             scenario.validation_result.append(validation_error)
             return None
 

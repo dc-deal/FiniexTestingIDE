@@ -105,12 +105,40 @@ Two properties worth stating, because both were bugs waiting to happen:
   is therefore explicit: only the SIGINT handler sets it. Inferring it from a missing reason would
   have let a safety-initiated shutdown report success.
 
+## The finding is the unit — `ValidationFinding`
+
+Every validator produces `ValidationFinding` (`framework/types/validation_types.py`), and
+`ValidationResult` is a typed collection of them. A finding carries its own `severity`
+(ERROR rejects the unit, WARNING advises), the `check` that decided it, the `domain` it belongs
+to, and the `scope` it concerns.
+
+`ValidationResult.is_valid` / `.errors` / `.warnings` are **views over `findings`**, not stored
+state. A stored flag can disagree with the list it summarizes; a derived one cannot. The §33
+execution gate (`SingleScenario.is_valid()`) reads the derived flag, so this is what decides
+whether a scenario runs.
+
+Two properties matter for anyone adding a validator:
+
+- **Severity belongs to the finding, not the container.** One result can therefore carry a
+  rejection *and* an advisory about the same subject, and both survive to the report. Before the
+  findings shape, an advisory sharing a container with an error was silently discarded.
+- **`check` is an open set, `domain` is a closed one.** `check` is a free string — every new
+  assertion brings a new id, exactly like `FeedCheck.name`. `domain` is `ValidationDomain`, an
+  Enum, because a free string would let `'profiling'` / `'Profiling'` / `'perf'` coexist and make
+  filtering worthless.
+
+`severity` and `tier` are orthogonal and must not be conflated: severity is the finding's own,
+tier says which channel it came from (validator → Tier 1, log pot → Tier 2).
+
 ## The model
 
 The unified section is `WarningsErrorsReport` (`framework/types/api/report_types.py`), derived once and
 rendered to console / file / API identically:
 
-- `warnings: list[WarningRow]` — `tier` ('major' | 'minor'), `scope` ('run' | unit name), `message`.
+- `warnings: list[WarningRow]` — `tier` ('major' | 'minor'), `scope` ('run' | unit name), `message`,
+  plus the origin: `check` (the assertion's stable id) and `domain` (its area). Both are empty on a
+  Tier-2 row and on artifacts written before the origin existed — the log pot is an observation
+  nobody attributed to a check, and a missing origin renders as the bare scope.
 - `errors: list[UnitErrorRow]` — per unit with any error: `error_type` / `error_message`,
   `validation_errors`, `logged_errors`, `traceback`.
 - `outcome: WarningsErrorsOutcome` — `run_outcome` (the canonical grading, below) plus

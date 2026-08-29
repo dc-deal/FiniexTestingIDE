@@ -92,7 +92,8 @@ def _batch(nets, roles=None, regimes=None, metric=RobustnessMetric.NET_PNL,
 def _verdicts(batch) -> dict:
     """Run the PostRunValidator and return {check_name: joined warning text}."""
     PostRunValidator(batch).validate()
-    return {vr.scenario_name: '\n'.join(vr.warnings) for vr in batch.batch_validation_result}
+    return {finding.check: finding.message
+            for vr in batch.batch_validation_result for finding in vr.findings}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

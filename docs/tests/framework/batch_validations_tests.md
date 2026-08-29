@@ -153,9 +153,28 @@ subprocess infrastructure required.
 `TestGetValidBrokerScenarioMap` sets `_broker_scenario_map` directly on the preparator
 after construction (white-box unit test setup — no `prepare()` call needed).
 
+### `test_validation_types.py`
+
+The atomic finding every validator produces. `ValidationFinding` carries its own `severity`,
+the `check` that decided it, its `domain` and its `scope`; `ValidationResult` is a typed
+collection of them, and `is_valid` / `errors` / `warnings` are **views** over that collection.
+
+| Test | Description |
+|------|-------------|
+| `test_no_findings_is_valid` | An empty result passes |
+| `test_an_advisory_alone_does_not_reject` | A WARNING never excludes a scenario |
+| `test_one_error_rejects` | An ERROR does |
+| `test_a_mixed_result_reports_both` | One result carries a rejection AND an advisory — severity belongs to the finding, not the container |
+| `test_views_follow_a_finding_added_later` | The derived flag cannot drift from the list it summarizes |
+| `test_check_and_domain_survive_on_the_finding` | Origin is carried, not reconstructed |
+| `test_domain_is_a_closed_set` | `ValidationDomain` is an Enum — a free string would break filtering |
+| `test_a_rejected_scenario_stays_excluded` | The §33 execution gate reads the derived flag |
+
 ## Files
 
 - `tests/framework/batch_validations/test_scenario_validator.py`
+- `tests/framework/batch_validations/test_post_run_validator.py`
+- `tests/framework/batch_validations/test_validation_types.py`
 - `tests/framework/batch_validations/test_broker_data_preparator.py`
 - `tests/framework/batch_validations/test_market_config_manager.py`
 - `tests/framework/batch_validations/test_broker_config_factory.py`

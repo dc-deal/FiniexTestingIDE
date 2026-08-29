@@ -30,7 +30,12 @@ from python.framework.types.log_level import LogLevel
 from python.framework.types.process_data_types import LOGGED_ERRORS_TYPE, ProcessResult
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.validation_types import ValidationResult
+from python.framework.types.validation_types import (
+    Severity,
+    ValidationDomain,
+    ValidationFinding,
+    ValidationResult,
+)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
@@ -60,15 +65,20 @@ def _batch(results, scenarios, batch_validation_result=None) -> BatchExecutionSu
 class TestBuildFromBatch:
     def test_run_scope_major_warning(self):
         batch = _batch([_result('s1', 0)], [_scenario('s1', 0, 'BTCUSD')],
-                       batch_validation_result=[ValidationResult(
-                           is_valid=True, scenario_name='debug_mode', warnings=['DEBUG MODE — ...'])])
+                       batch_validation_result=[ValidationResult('run', [ValidationFinding(
+                           severity=Severity.WARNING, check='debug_mode',
+                           domain=ValidationDomain.SETUP, message='DEBUG MODE — ...',
+                           scope='run')])])
         report = build_warnings_errors_report_from_batch(batch)
         major = [w for w in report.warnings if w.tier == 'major']
         assert any(w.scope == 'run' and 'DEBUG MODE' in w.message for w in major)
 
     def test_per_scenario_major_warning(self):
         scenario = _scenario('s1', 0, 'BTCUSD', val_results=[
-            ValidationResult(is_valid=True, scenario_name='s1', warnings=['account_currency normalized'])])
+            ValidationResult('s1', [ValidationFinding(
+                severity=Severity.WARNING, check='account_currency_normalized',
+                domain=ValidationDomain.CONFIG, message='account_currency normalized',
+                scope='s1')])])
         report = build_warnings_errors_report_from_batch(_batch([_result('s1', 0)], [scenario]))
         major = [w for w in report.warnings if w.tier == 'major' and w.scope == 's1']
         assert len(major) == 1 and 'account_currency' in major[0].message
@@ -82,7 +92,9 @@ class TestBuildFromBatch:
 
     def test_error_from_villain_and_validation(self):
         scenario = _scenario('bad', 0, 'BTCUSD', val_results=[
-            ValidationResult(is_valid=False, scenario_name='bad', errors=['start before data'])])
+            ValidationResult('bad', [ValidationFinding(
+                severity=Severity.ERROR, check='data_availability',
+                domain=ValidationDomain.DATA, message='start before data', scope='bad')])])
         result = _result('bad', 0, success=False, error_type='ValidationError',
                          error_message='failed', buffer=[(LogLevel.ERROR, 'e1')])
         report = build_warnings_errors_report_from_batch(_batch([result], [scenario]))
@@ -130,6 +142,43 @@ class TestBuildFromBatch:
             [_scenario('noisy', 0, 'BTCUSD')])
         assert build_warnings_errors_report_from_batch(pot).outcome.run_outcome == \
             RunOutcome.FINISHED_WITH_ERRORS.value
+
+
+class TestOriginSurvivesToTheModel:
+    """The finding's origin must reach WarningRow — it used to be dropped at the builder."""
+
+    def test_check_and_domain_reach_the_row(self):
+        batch = _batch([_result('s1', 0)], [_scenario('s1', 0, 'BTCUSD')],
+                       batch_validation_result=[ValidationResult('run', [ValidationFinding(
+                           severity=Severity.WARNING, check='budget_granularity',
+                           domain=ValidationDomain.PROFILING, message='budget below granularity',
+                           scope='run')])])
+        row = build_warnings_errors_report_from_batch(batch).warnings[0]
+        assert row.check == 'budget_granularity' and row.domain == 'profiling'
+        assert row.scope == 'run' and row.tier == 'major'
+
+    def test_an_advisory_is_kept_when_the_same_result_also_rejects(self):
+        """A mixed result yields both — the advisory is no longer discarded with the rejection."""
+        scenario = _scenario('s1', 0, 'BTCUSD', val_results=[ValidationResult('s1', [
+            ValidationFinding(
+                severity=Severity.ERROR, check='signal_availability',
+                domain=ValidationDomain.DATA, message='signal source missing', scope='s1'),
+            ValidationFinding(
+                severity=Severity.WARNING, check='signal_availability',
+                domain=ValidationDomain.DATA, message='signal coverage partial', scope='s1'),
+        ])])
+        report = build_warnings_errors_report_from_batch(_batch([_result('s1', 0)], [scenario]))
+        major = [w for w in report.warnings if w.tier == 'major']
+        assert [w.message for w in major] == ['signal coverage partial']
+        assert major[0].domain == 'data' and major[0].scope == 's1'
+
+    def test_a_log_pot_row_claims_no_origin(self):
+        """Tier 2 is an observation nobody attributed to a check — check/domain stay empty."""
+        buffer = [(LogLevel.WARNING, 'w1')]
+        report = build_warnings_errors_report_from_batch(
+            _batch([_result('s1', 0, buffer=buffer)], [_scenario('s1', 0, 'BTCUSD')]))
+        minor = [w for w in report.warnings if w.tier == 'minor']
+        assert len(minor) == 1 and minor[0].check == '' and minor[0].domain == ''
 
 
 class TestBuildFromSession:
