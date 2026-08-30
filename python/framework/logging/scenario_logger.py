@@ -46,7 +46,8 @@ class ScenarioLogger(AbstractLogger):
                  file_name_prefix_override: Optional[str] = None,
                  use_global_log_level_for_console: bool = False,
                  use_scenario_logs_subdir: bool = False,
-                 event_time_column: bool = False
+                 event_time_column: bool = False,
+                 flat_log_filename: Optional[str] = None
                  ):
         """
         Initialize scenario logger.
@@ -62,6 +63,11 @@ class ScenarioLogger(AbstractLogger):
                 the event-time column. True for the per-scenario logs and the live session log;
                 false for the run-level logs (global, summary, system info), which describe the
                 run from outside rather than from a moment inside it
+            flat_log_filename: Write this ONE file directly into log_root_override instead of
+                opening a <owner>/<run_timestamp>/ run directory. For output that describes
+                something other than a run — today the shared data load a sweep performs once
+                for all its combinations. Without it, work that is not a run leaves a directory
+                shaped like one, and the API's run index has no way to tell the two apart
         """
         super().__init__(name=scenario_name, event_time_column=event_time_column)
 
@@ -81,16 +87,25 @@ class ScenarioLogger(AbstractLogger):
             log_root = (log_root_override if log_root_override
                         else self._file_logging_config.run_logs.single_runs)
             prefix = file_name_prefix_override if file_name_prefix_override else self._file_logging_config.scenario_file_name_prefix
-            self.run_dir = log_root / scenario_set_name / run_timestamp_str
-            self.run_dir.mkdir(parents=True, exist_ok=True)
 
-            # Per-scenario files go into scenario_logs/ subdir (backtesting only)
-            log_dir = self.run_dir / 'scenario_logs' if use_scenario_logs_subdir else self.run_dir
-            if use_scenario_logs_subdir:
-                log_dir.mkdir(exist_ok=True)
+            if flat_log_filename:
+                # One file, straight into the given root. No run directory is opened, because
+                # what is being logged here is not a run.
+                log_dir = log_root
+                log_dir.mkdir(parents=True, exist_ok=True)
+                log_filename = flat_log_filename
+            else:
+                self.run_dir = log_root / scenario_set_name / run_timestamp_str
+                self.run_dir.mkdir(parents=True, exist_ok=True)
+
+                # Per-scenario files go into scenario_logs/ subdir (backtesting only)
+                log_dir = self.run_dir / 'scenario_logs' if use_scenario_logs_subdir else self.run_dir
+                if use_scenario_logs_subdir:
+                    log_dir.mkdir(exist_ok=True)
+                log_filename = prefix + '_' + scenario_name + '.log'
 
             self.file_logger = FileLogger(
-                log_filename=prefix+'_'+scenario_name+'.log',
+                log_filename=log_filename,
                 file_path=log_dir,
                 log_level=self._file_logging_config.scenario_log_level
             )

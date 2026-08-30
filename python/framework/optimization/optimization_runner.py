@@ -69,7 +69,10 @@ class OptimizationRunner:
         # combination (the grid varies only strategy_config → constant data identity).
         mount = None
         if self._app_config.get_optimization_mount_reuse_enabled():
-            base_set = ScenarioSet(base, self._app_config, sweep_id=sweep_id)
+            # mount_only: this set builds the shared data, it does not run. Its record
+            # goes flat into the sweep directory instead of leaving a run-shaped one.
+            base_set = ScenarioSet(base, self._app_config, sweep_id=sweep_id,
+                                   mount_only=True)
             mount = BatchOrchestrator(base_set, self._app_config).build_mount()
             if not mount.scenario_packages:
                 # Data-level failure (invalid window / missing data) — invariant across every

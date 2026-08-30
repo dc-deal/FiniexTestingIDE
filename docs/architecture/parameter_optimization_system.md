@@ -108,6 +108,27 @@ each grid value is written into every scenario's `strategy_config` (in-memory, n
 is never mutated). The scenario set name is tagged per combination (`__<sweep_id>_c<idx>`) so each
 combination gets a unique run directory.
 
+**What a sweep directory holds.** One directory per combination, and the sweep's own two
+artifacts — nothing else:
+
+```
+runs/sweeps/<sweep_id>/
+├── mount_build.log                     the shared data load, performed ONCE
+├── ranked.csv                          the ranking, written by `report <sweep_id>`
+├── <set>__<sweep_id>_c000/<run_ts>/    one combination
+├── <set>__<sweep_id>_c001/<run_ts>/
+└── …
+```
+
+`mount_build.log` is where the #419 mount build writes: the data window, the tick count, the
+warmup bars and the broker configuration every combination then reuses. It is sweep-level output
+and lives at sweep level — deliberately, because it used to be written through a `ScenarioSet`
+built only to produce the mount, and constructing one opens a run directory as a side effect. That
+left a directory shaped like a run in which no run had happened, indistinguishable in the API's
+index from a legitimate log-only session. `ScenarioSet(..., mount_only=True)` writes the record
+flat and opens no run directory; the count of child directories is pinned by
+`tests/simulation/optimization/test_sweep_directory_shape.py`.
+
 ---
 
 ## The Run Results Ledger (`data/run_results/`)

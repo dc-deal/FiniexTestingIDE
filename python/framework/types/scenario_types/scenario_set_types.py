@@ -23,6 +23,7 @@ from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,
     RobustnessRole,
 )
+from python.framework.types.log_layout_types import MOUNT_BUILD_LOG
 from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.types.validation_types import ValidationResult
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
@@ -173,7 +174,18 @@ class ScenarioSet:
     """Self-contained scenario set with its own logging infrastructure"""
 
     def __init__(self, scenario_config: LoadedScenarioConfig, app_config: AppConfigManager,
-                 sweep_id: Optional[str] = None):
+                 sweep_id: Optional[str] = None, mount_only: bool = False):
+        """
+        Args:
+            scenario_config: The loaded scenario set
+            app_config: Application configuration
+            sweep_id: When given, this set's runs nest under that sweep's directory
+            mount_only: This set exists solely to BUILD A DATA MOUNT (#419), not to run. It
+                writes its one log flat into the sweep directory as mount_build.log and opens
+                no run directory — a shared data load is not a run, and a directory shaped like
+                one is indistinguishable from a real run in the API's index. No summary logger
+                either: there is no batch report to summarise
+        """
 
         self.scenario_set_name = scenario_config.scenario_set_name
         self._scenarios = scenario_config.scenarios
@@ -198,9 +210,12 @@ class ScenarioSet:
             scenario_name='global_log',
             run_timestamp=self._run_timestamp,
             log_root_override=self._log_root,
-            use_global_log_level_for_console=True
+            use_global_log_level_for_console=True,
+            flat_log_filename=MOUNT_BUILD_LOG if mount_only else None
         )
-        self.printed_summary_logger = ScenarioLogger(
+        # A mount build produces no batch report, so a summary logger would only ever write its
+        # own header — which is exactly what it used to do.
+        self.printed_summary_logger = None if mount_only else ScenarioLogger(
             scenario_set_name=self.scenario_set_name,
             scenario_name='summary',
             run_timestamp=self._run_timestamp,

@@ -112,10 +112,14 @@ class ReportStore:
         }
 
     def list_runs(self) -> List[RunInfo]:
-        """Runs carrying a trade-history artifact, newest first.
+        """Every run in the tree, all three categories, newest first.
+
+        Not only runs carrying artifacts: `has_reports` says which do, and a caller that wants
+        the narrower set filters on it. An index that silently omitted a category would be its
+        own surprise.
 
         Returns:
-            One identity row per run — id, log group, and the owning set / profile name
+            One identity row per run — id, category group, owning set / profile, has_reports
         """
         runs: Dict[str, RunInfo] = {}
         for group, root in self._roots.items():
