@@ -320,9 +320,7 @@ class AutotraderTickLoop:
             if current_msc > 0:
                 prev_msc = current_msc
 
-            # Set logger tick context
             ticks_processed += 1
-            self._logger.set_current_tick(ticks_processed, tick)
 
             # #141 Part 2a: fold in whatever the signal transport received since the last
             # pass, BEFORE the workers run — the existing should_refresh picks a new snapshot
@@ -829,9 +827,8 @@ class AutotraderTickLoop:
 
         if self._current_log_date is None:
             # First tick — set initial date and ensure file matches tick date
-            log_level = self._logger.file_logger.log_level if self._logger.file_logger else 'INFO'
             new_file_logger = create_session_file_logger(
-                self._run_dir, tick_date, log_level
+                self._run_dir, tick_date
             )
             self._logger.swap_file_logger(new_file_logger)
             self._current_log_date = tick_date
@@ -843,9 +840,8 @@ class AutotraderTickLoop:
             self._logger.info(
                 f'📅 Date change detected: {self._current_log_date} → {tick_date} — rotating session log'
             )
-            log_level = self._logger.file_logger.log_level if self._logger.file_logger else 'INFO'
             new_file_logger = create_session_file_logger(
-                self._run_dir, tick_date, log_level
+                self._run_dir, tick_date
             )
             self._logger.swap_file_logger(new_file_logger)
             self._current_log_date = tick_date

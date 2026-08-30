@@ -9,22 +9,23 @@ Provides:
 - Abstract _log() method for different implementations
 
 Subclasses must implement:
-- _log(level, message) - Core logging logic
-- _get_timestamp() - Timestamp format (datetime vs elapsed time)
+- _log_console_implementation(record) - Console strategy (buffer vs direct print)
+- _write_to_file_implementation(record) - File sink
+- _render_timestamp(record) - Timestamp column (elapsed vs absolute)
 """
 
 import sys
 import traceback
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.config_types.console_logging_config_types import ConsoleLoggingConfig
 from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
 from python.framework.types.log_level import ColorCodes, LogLevel
 from python.framework.types.log_record_types import LogRecord
-from python.framework.utils.time_utils import format_log_elapsed, format_timestamp
+from python.framework.utils.time_utils import format_log_elapsed, format_log_event_time
 
 # The levels the run report reads. They are captured regardless of the CONSOLE threshold —
 # a display setting must not decide what the report gets to see.
@@ -51,18 +52,27 @@ class AbstractLogger(ABC):
     - Color-coded console output
 
     Subclasses implement:
-    - _log(level, message) - Different buffering/output strategies
-    - _get_timestamp() - Different timestamp formats
+    - _log_console_implementation(record) - Different buffering/output strategies
+    - _render_timestamp(record) - Different timestamp formats
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, event_time_column: bool = False):
         """
         Initialize abstract logger.
 
         Args:
             name: Logger name/identifier
+            event_time_column: Whether this log lies on the run's own time axis and therefore
+                renders the event-time column. A ROLE decided at construction — separate from
+                whether a clock is attached yet, because "this log has no time axis" and "the
+                clock has not started" are different facts that would otherwise both read as
+                an absent time
         """
         self.name = name
+        self._event_time_column = event_time_column
+        # The canonical clock, attached once the executor exists (attach_clock). Until then a
+        # line on a time-axis log renders the filler — never a wall-clock substitute (§9).
+        self._clock_fn: Optional[Callable[[], Optional[datetime]]] = None
 
         # Load config objects
         app_config = AppConfigManager()
@@ -96,25 +106,29 @@ class AbstractLogger(ABC):
         pass
 
     @abstractmethod
-    def _write_to_file_implementation(self, level: str, message: str, timestamp: str):
+    def _write_to_file_implementation(self, record: LogRecord):
         """
-        Write to global log file.
+        Write the record to this logger's file sink.
 
         Args:
-            level: Log level
-            message: Log message (plain text, no colors)
-            timestamp: DateTime timestamp
+            record: The entry to write
         """
         pass
 
     @abstractmethod
-    def _get_timestamp(self) -> str:
+    def _render_timestamp(self, record: LogRecord) -> str:
         """
-        Get timestamp string for log entry.
+        Render the record's OBSERVATION timestamp as this logger's column.
 
         Different implementations:
         - GlobalLogger: DateTime string (e.g., "2025-10-22 14:30:45")
         - ScenarioLogger: Elapsed time (e.g., "[ 3s 417ms]")
+
+        Taken from the record rather than read fresh: one clock read per log call, so the file
+        line and the console line can never disagree about when the entry was observed.
+
+        Args:
+            record: The entry whose timestamp to render
 
         Returns:
             Formatted timestamp string
@@ -275,17 +289,26 @@ class AbstractLogger(ABC):
 
     @staticmethod
     def print_buffer(buffer: list[LogRecord], scenario_name: str = None,
-                     run_start: Optional[datetime] = None):
+                     run_start: Optional[datetime] = None,
+                     effective_level: Optional[LogLevel] = None,
+                     event_column: bool = False):
         """
         Print buffered records that were obtained via get_records().
 
         Used in the parent process after collecting logs from workers, where no logger instance
-        exists — which is why the elapsed form needs run_start passed in.
+        exists — which is why the elapsed form and the console threshold need passing in.
+
+        The level filter is load-bearing, exactly as it is in ScenarioLogger.flush_buffer:
+        WARNING and ERROR are buffered past the console threshold because the run report needs
+        them, and they are removed again HERE, at display time. Without it, raising the console
+        threshold stops hiding warnings on this surface.
 
         Args:
             buffer: The records to print
             scenario_name: Name for the header; None prints a generic header
             run_start: Run start for the elapsed timestamp form; None prints absolute UTC
+            effective_level: Console threshold to apply; None prints every record
+            event_column: Whether these records come from a log on the run's own time axis
         """
         if not buffer:
             print('(empty log buffer)')
@@ -299,63 +322,105 @@ class AbstractLogger(ABC):
                 f"{ColorCodes.BOLD}{' SCENARIO LOG BUFFER '.center(60)}{ColorCodes.RESET}")
         print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
         for record in buffer:
-            print(AbstractLogger.render_record(record, run_start))
+            if effective_level is not None and not LogLevel.should_log(record.level, effective_level):
+                continue
+            print(AbstractLogger.render_record(record, run_start, event_column))
         print(f"{ColorCodes.BOLD}{'='*60}{ColorCodes.RESET}")
 
     @staticmethod
-    def render_record(record: LogRecord, run_start: Optional[datetime] = None) -> str:
+    def render_record(record: LogRecord, run_start: Optional[datetime] = None,
+                      event_column: bool = False, colored: bool = True) -> str:
         """
-        Render one record the way the console shows it.
+        Render one record the way a surface shows it.
 
         Args:
             record: The record to render
             run_start: Run start for the elapsed form; None renders the absolute UTC form
+            event_column: Whether to render the run's own time as its own column
+            colored: ANSI colours — the console wants them, a log file does not
 
         Returns:
-            The formatted line, colours included
+            The formatted line
         """
         timestamp = (format_log_elapsed((record.timestamp - run_start).total_seconds())
                      if run_start else record.timestamp.strftime('%Y-%m-%d %H:%M:%S'))
-        message = record.message
-        if record.tick_index is not None:
-            # The tick prefix is presentation too — it is rebuilt here from the record's own
-            # fields, so the buffered message stays the bare fact the report reads.
-            message = (f'{record.tick_index:5}| '
-                       f'{format_timestamp(record.tick_time)} | {message}')
-        return AbstractLogger.format_line(timestamp, record.level, message)
+        return AbstractLogger.format_line(
+            timestamp, record.level, record.message,
+            event_time=record.event_time, event_column=event_column, colored=colored)
 
     @staticmethod
-    def format_line(timestamp: str, level: LogLevel, message: str) -> str:
+    def format_line(timestamp: str, level: LogLevel, message: str,
+                    event_time: Optional[datetime] = None, event_column: bool = False,
+                    colored: bool = True) -> str:
         """
-        The ONE console line formula — every rendering path goes through it.
+        The ONE line formula — console and file both go through it.
+
+        Two time columns, two questions: the timestamp is OBSERVATION time (how far into the
+        run we were), the event column is EVENT time (what time it was in the market). §9's
+        ts_init / ts_event pair, rendered.
 
         Args:
-            timestamp: Already-rendered timestamp (elapsed or absolute)
+            timestamp: Already-rendered observation timestamp (elapsed or absolute)
             level: The entry's level
             message: The unrendered message
+            event_time: The run's own time, or None while no clock is attached
+            event_column: Whether to render the event-time column at all
+            colored: ANSI colours — the console wants them, a log file does not
 
         Returns:
-            The formatted line, colours included
+            The formatted line
         """
-        color = _LEVEL_COLORS.get(level, ColorCodes.RESET)
-        return f'{timestamp} {color}{level:8}{ColorCodes.RESET} | {message}'
+        color = _LEVEL_COLORS.get(level, ColorCodes.RESET) if colored else ''
+        reset = ColorCodes.RESET if colored else ''
+        line = f'{timestamp} {color}{level:8}{reset} | '
+        if event_column:
+            line += f'{format_log_event_time(event_time)} | '
+        return line + message
 
     # ============================================
     # Helper Methods
     # ============================================
 
-    def _get_color_for_level(self, level: str) -> str:
-        """Get ANSI color code for log level"""
-        return _LEVEL_COLORS.get(level, ColorCodes.RESET)
+    def attach_clock(self, clock_fn: Callable[[], Optional[datetime]]) -> None:
+        """
+        Attach the canonical clock, once the executor that owns it exists.
+
+        Not a constructor argument, and it cannot be one: the logger is passed INTO the
+        executor's construction in both pipelines, so it necessarily exists first. Everything
+        logged before this point renders the filler — correct, because before the executor
+        there is no run time a line could speak about.
+
+        Args:
+            clock_fn: Returns the run's current time, or None while the clock is unset
+        """
+        self._clock_fn = clock_fn
+
+    def _event_time(self) -> Optional[datetime]:
+        """
+        The run's own time right now, pulled from the canonical clock.
+
+        Pulled rather than pushed: a pull covers every kind of pass that advances the clock —
+        tick, heartbeat, and the timer/resolution events #375 adds — without a call site per
+        kind. The pushed variant is what left the live session log without a time column for
+        as long as it has existed.
+
+        Returns:
+            The current run time, or None while no clock is attached
+        """
+        return self._clock_fn() if self._clock_fn is not None else None
 
     def _process_log(self, level: LogLevel, message: str):
         should_log_console = self._should_log_console(level)
         should_log_file = self._should_log_file(level)
-        timestamp_implemenration = self._get_timestamp()
-        tick_index, tick_time = self._tick_context()
+        # Early exit (§16): building the record costs a clock read and an allocation, and a
+        # suppressed verbose() inside the tick loop would pay for both and throw it away.
+        if not (should_log_console or should_log_file or level in _REPORT_LEVELS):
+            return
+        # ONE clock read per log call. The file path renders its timestamp from this record
+        # too, so the two surfaces cannot disagree about when the entry was observed.
         record = LogRecord(
             level=level, timestamp=datetime.now(timezone.utc), scope=self.name,
-            message=message, tick_index=tick_index, tick_time=tick_time)
+            message=message, event_time=self._event_time())
         if should_log_console:
             self._log_console_implementation(record)
         elif level in _REPORT_LEVELS:
@@ -364,17 +429,7 @@ class AbstractLogger(ABC):
             # setting, as before.
             self._capture_for_report(record)
         if should_log_file:
-            self._write_to_file_implementation(
-                level, message, timestamp_implemenration)
-
-    def _tick_context(self) -> tuple[Optional[int], Optional[datetime]]:
-        """
-        The tick being processed, when the logger is inside a tick loop.
-
-        Returns:
-            (tick_index, tick_time); (None, None) for a logger with no tick loop
-        """
-        return None, None
+            self._write_to_file_implementation(record)
 
     def _capture_for_report(self, record: LogRecord) -> None:
         """
@@ -386,20 +441,3 @@ class AbstractLogger(ABC):
             record: The record to keep
         """
         return
-
-    def _format_log_line(self, level: str, message: str, timestamp: str) -> str:
-        """
-        Format a log line with color and timestamp.
-
-        Args:
-            level: Log level
-            message: Log message
-            timestamp: Timestamp string (format depends on subclass)
-
-        Returns:
-            Formatted log line
-        """
-        color = self._get_color_for_level(level)
-        reset = ColorCodes.RESET
-
-        return f'{timestamp} {color}{level:8}{reset} | {message}'

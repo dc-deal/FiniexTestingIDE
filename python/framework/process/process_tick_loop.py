@@ -205,12 +205,9 @@ def execute_tick_loop(
                 f'🔄 Starting tick loop ({live_setup.tick_count:,} ticks)')
 
         # === TICK LOOP ===
-        # from now on, log shows ticks.
-        scenario_logger.set_tick_loop_started(True)
-
+        # The log's event-time column needs no per-tick feeding: the logger pulls the canonical
+        # clock, which on_tick and the ghost pass both advance.
         for tick_idx, tick in enumerate(ticks):
-            scenario_logger.set_current_tick(
-                tick_idx + 1, tick)
             if profiling_enabled: tick_start = time.perf_counter()
             current_tick = tick
             current_index = tick_idx
@@ -355,7 +352,6 @@ def execute_tick_loop(
             ))
             decision_event_dispatcher.drain()
 
-        scenario_logger.set_tick_loop_started(False)
         if has_clipping:
             scenario_logger.info(
                 f'✅ Tick loop completed: {live_setup.tick_count:,} ticks '

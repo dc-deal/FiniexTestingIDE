@@ -173,7 +173,6 @@ class BatchOrchestrator:
         self._parallel_scenarios = app_config_manager.get_default_parallel_scenarios()
 
         # Start global log
-        self._logger.reset_start_time()
         self._logger.info(
             '🚀 Starting Scenario ' +
             self._scenario_set.scenario_set_name +
@@ -553,7 +552,11 @@ class BatchOrchestrator:
                 AbstractLogger.print_buffer(
                     process_result.scenario_logger_buffer,
                     process_result.scenario_name,
-                    run_start=self.logger_start_time_format
+                    run_start=self.logger_start_time_format,
+                    effective_level=self._app_config_manager
+                    .get_console_logging_config_object().scenario_log_level,
+                    # Scenario buffers come from per-scenario logs, which carry the axis.
+                    event_column=True
                 )
 
         # global log comes last.

@@ -14,8 +14,6 @@ Usage:
     logger.info("Application started")
 """
 
-from datetime import datetime, timezone
-
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.file_logger import FileLogger
 from python.framework.types.log_level import LogLevel
@@ -69,14 +67,17 @@ class GlobalLogger(AbstractLogger):
         else:
             print('ℹ️  Global Log: Disabled')
 
-    def _get_timestamp(self) -> str:
+    def _render_timestamp(self, record: LogRecord) -> str:
         """
-        Get DateTime timestamp.
+        Render the record's observation time as an absolute DateTime.
+
+        Args:
+            record: The entry whose timestamp to render
 
         Returns:
             DateTime string (e.g., "2025-10-22 14:30:45")
         """
-        return datetime.now(timezone.utc) .strftime('%Y-%m-%d %H:%M:%S')
+        return record.timestamp.strftime('%Y-%m-%d %H:%M:%S')
 
     def _should_log_console(self, level: LogLevel) -> bool:
         """
@@ -103,15 +104,15 @@ class GlobalLogger(AbstractLogger):
         # let the printed line and the record disagree.
         print(AbstractLogger.render_record(record))
 
-    def _write_to_file_implementation(self, level: str, message: str, timestamp: str):
+    def _write_to_file_implementation(self, record: LogRecord):
         """
         Write to global log file.
 
+        The global log carries no event-time column — this logger never gets a clock.
+
         Args:
-            level: Log level
-            message: Log message (plain text, no colors)
-            timestamp: DateTime timestamp
+            record: The entry to write
         """
         if self.file_logger is not None:
             # Write to file (plain text format with DateTime)
-            self.file_logger.write_log(level, message, timestamp)
+            self.file_logger.write_log(record, self._render_timestamp(record))

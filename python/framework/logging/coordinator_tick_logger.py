@@ -32,7 +32,7 @@ class CoordinatorTickLogger:
             logger: ScenarioLogger instance from DecisionLogic
         """
         self.logger = logger
-        self.should_log = self.logger.should_logLevel(LogLevel.VERBOSE)
+        self.should_log = self.logger.should_log_level(LogLevel.VERBOSE)
 
         # Cache for bar history (timeframe -> list of bars)
         # Used to detect changes and avoid redundant logging

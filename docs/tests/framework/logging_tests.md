@@ -1,6 +1,7 @@
 # Logging Test Suite
 
-Pins the contract of the log buffer: it carries **records**, not rendered lines.
+Pins two contracts: the log buffer carries **records**, not rendered lines — and the run's own
+time is a **column** derived from the canonical clock, not a tick counter baked into the message.
 
 ## What this suite is for
 
@@ -15,21 +16,34 @@ three out:
 | Consumers had to take the line apart again (`split(' | ', 1)`) to recover the message | `TestTheRecordCarriesTheFact` |
 | The buffer filled only when the CONSOLE threshold passed, so a display setting decided what the run report saw | `TestADisplaySettingCannotHideAReportInput` |
 
-The fourth thing it pins is that the change was **invisible on screen**: rendering moved out of
-the capture path, so the printed line must be character-identical to what the old formula
-produced.
+The record then replaced its tick fields with one `event_time`. A tick index counts one of three
+pass kinds — a heartbeat or ghost interval advances the clock with no tick, and #375 adds timer
+and resolution events beside it — so the index described one kind and mislabelled the other two.
+
+**What guards the rendering is no longer "identical to the past".** The line changed on purpose.
+The guard is now `TestOneFormulaForBothSurfaces`: console and file go through one formula and may
+differ **only in colour**. That is the guard that catches the drift the file half carried — it
+rendered its own literal, so a change to one silently desynchronised the scenario log file from
+the scenario console output.
 
 ## Layout
 
 | Class | What it pins |
 |---|---|
-| `TestTheRecordCarriesTheFact` | the message is bare (no colour, no level, no timestamp); observation time (`timestamp`) and event time (`tick_time`) are separate fields per §9; no tick fields outside the tick loop; a record survives `pickle` — it crosses the process boundary on `ProcessResult` |
-| `TestRenderingMovedButDidNotChange` | `render_record()` output is character-identical to the pre-refactor formula, which the test **reproduces in code** rather than as an expected string — including the millisecond truncation and the fixed-width elapsed column; the tick prefix is rebuilt from the record's own fields |
-| `TestADisplaySettingCannotHideAReportInput` | with the console gate closed, WARNING and ERROR are still captured; INFO and DEBUG are not; `get_records(level)` filters |
+| `TestTheRecordCarriesTheFact` | the message is bare (no colour, no level, no timestamp); observation time (`timestamp`) and event time (`event_time`) are separate fields per §9; no event time without a clock; a record survives `pickle` — it crosses the process boundary on `ProcessResult` |
+| `TestOneFormulaForBothSurfaces` | the file line is the console line with the ANSI codes stripped, with and without the column; a log without the column renders exactly the pre-column line, so `global.log` and the run-level logs are provably untouched |
+| `TestTheColumnIsARole` | the column is absent when the role was not declared, and holds a fixed-width filler when the role is declared but no clock has been attached — the two states a record alone cannot tell apart; the filler is never a wall-clock substitute (§9) |
+| `TestADisplaySettingCannotHideAReportInput` | with the console gate closed, WARNING and ERROR are still captured; INFO and DEBUG are not; `get_records(level)` filters; **both** display surfaces re-apply the threshold — `flush_buffer` and `print_buffer` |
+| `TestTheClockIsPulledNotPushed` | a logger with no clock records no event time; an attached clock stamps every later record. The pull is one attachment instead of a call site per pass kind — the pushed variant is what left the live session log without a time column for as long as it existed |
 
-`TestRenderingMovedButDidNotChange._as_before` is worth knowing about: it holds the OLD formula
-verbatim. A hand-written expected string would have been wrong — the original truncates
-milliseconds (`3.417s` renders as `416ms`), and only comparing against the formula catches that.
+Two details worth knowing about:
+
+- **The filler must match the stamp's width.** `format_log_event_time(None)` is padded to
+  `EVENT_TIME_WIDTH`, so the column does not shift when the run enters its tick loop — the same
+  reason `format_log_elapsed` is fixed width.
+- **`print_buffer` is the second display surface.** `flush_buffer` filtered the console threshold
+  and `print_buffer` did not, so a warning the threshold suppressed still reached the console
+  through the batch flush. Both are pinned now.
 
 ## Running
 
@@ -43,6 +57,7 @@ VS Code: **"🧩 Pytest: Logging (All)"** launch configuration.
 
 - The capture rule and what a Tier-2 row may claim (`WarningTier.LOGGER_PRODUCED`):
   [Warnings & Errors — Tier Taxonomy](../../architecture/warnings_errors_tiers.md)
-- What crosses the process boundary: [Batch Data Flow](../../architecture/batch_data_flow.md)
+- What crosses the process boundary, and where the clock is attached:
+  [Batch Data Flow](../../architecture/batch_data_flow.md)
 - The artifact-side proof lives with the artifacts:
   [Reporting Pipeline Tests](reporting_tests.md)

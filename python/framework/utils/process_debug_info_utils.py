@@ -61,7 +61,7 @@ def debug_warmup_bars_check(warmup_bars: Dict[str, Tuple[Any, ...]],
     """
     Check: Wurden die Bars korrekt deserialisiert?
     """
-    if not logger.should_logLevel(LogLevel.DEBUG):
+    if not logger.should_log_level(LogLevel.DEBUG):
         return
 
     for timeframe in warmup_bars.keys():

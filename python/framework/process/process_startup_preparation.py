@@ -76,6 +76,11 @@ def process_startup_preparation(
         shared_data=shared_data
     )
 
+    # The log's event-time column pulls from the canonical clock. It can only be attached HERE:
+    # the logger goes INTO the executor's construction above, so it necessarily exists first.
+    # Lines logged before this point render the filler — there is no run time yet to state.
+    scenario_logger.attach_clock(trade_simulator.get_current_time_if_set)
+
     # === PHASE 3: Create Trading Context ===
     adapter = trade_simulator.broker.adapter
     volume_min = adapter.get_symbol_specification(config.symbol).volume_min

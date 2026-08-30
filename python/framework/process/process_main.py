@@ -55,7 +55,10 @@ def process_main(
                 config.scenario_index, config.name),
             run_timestamp=config.run_timestamp,
             log_root_override=config.log_root,
-            use_scenario_logs_subdir=True
+            use_scenario_logs_subdir=True,
+            # This log IS the run's tick-by-tick record, so every line carries the run's own
+            # time. The clock itself is attached once the executor exists (startup preparation).
+            event_time_column=True
         )
         scenario_logger.info(f'⏱️  Process started at {start_time}')
 
@@ -148,8 +151,6 @@ def process_main(
             error_message=error_message,
             traceback=error_traceback
         )
-        scenario_logger.debug(
-            f'🕐 {config.name} returning at {time.time()}')
         return result
 
     except Exception as e:

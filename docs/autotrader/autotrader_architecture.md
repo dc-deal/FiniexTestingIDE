@@ -705,6 +705,31 @@ logs/autotrader/btcusd_mock/20260328_105127/
                                   See trade_execution_visibility.md for schema.
 ```
 
+### The event-time column — and why a mock session shows two dates
+
+The session log carries **two** times per line: the elapsed bracket is OBSERVATION time (how far
+into the session we were), the column after the level is EVENT time — the canonical clock, pulled
+through an injected `clock_fn`. §9's `ts_init` / `ts_event` pair, rendered.
+
+```
+[  1s  26ms] DEBUG    | 2026-01-24 14:19:46.420 | NEW MAX: rsi_fast    0.20ms
+[  0s 214ms] INFO     |                       — | 📂 Loading broker config
+```
+
+Only the session log carries the column: it is the tick-by-tick record. `autotrader_global.log`
+and `autotrader_summary.log` describe the session from outside a moment in it, so they do not.
+The filler appears before the executor exists — there is no session time yet to state, and §9
+forbids substituting wall-clock for it.
+
+**In a mock replay session the column can show two different dates, and that is not a defect.**
+The canonical clock is bimodal there: a tick sets it to the tick's own (replayed) timestamp, while
+the idle heartbeat sets it to wall-clock so phase and operation timeouts keep tracking real elapsed
+time. A replay of January data on an August afternoon therefore stamps tick lines with January and
+idle-heartbeat lines with August. The property predates the column — the column only makes it
+visible. It does not arise in live trading, where both sources are the same clock, and it is
+harmless in replay because nothing decides on the log. Sessions driven at a low `--delay` rarely go
+idle at all and show only replay dates.
+
 ### Warning/Error Summary
 
 At session end, warning and error counts from the session logger buffer are included in the post-session summary. This gives a quick health indicator without scrolling through session logs.

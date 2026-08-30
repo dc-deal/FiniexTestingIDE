@@ -47,8 +47,17 @@ Each scenario gets its own package (3-5 MB) instead of one global package (61 MB
 
 **The scenario log buffer crosses as `list[LogRecord]`, not as rendered lines.** A record
 (`framework/types/log_record_types.py`) carries level, observation timestamp, scope, message and
-— inside the tick loop — the tick index and the tick's own time. Rendering (colours, the level
-column, the elapsed timestamp, the tick prefix) happens at the surface that prints it. A buffer
+the run's own `event_time`. Rendering (colours, the level column, the elapsed timestamp, the
+event-time column) happens at the surface that prints it.
+
+The two times are §9's pair and must not be conflated: the elapsed bracket is OBSERVATION time
+(how far into the run we were), the column is EVENT time (what time it was in the market, from
+the canonical clock). The clock is PULLED through an injected `clock_fn`, attached once the
+executor exists — so heartbeat and ghost passes stamp their own instant, and the timer /
+resolution events of #375 need no further wiring. Whether a log renders the column at all is a
+ROLE declared at construction (`event_time_column`): the per-scenario logs and the live session
+log carry it, the run-level logs do not, and a declared column with no clock yet renders a
+fixed-width filler rather than a wall-clock substitute. A buffer
 of rendered lines forces every later consumer to take the fact apart again, and the run report is
 such a consumer: it used to recover the message with `split(' | ', 1)` and carried ANSI escape
 codes into the persisted JSON on the way.

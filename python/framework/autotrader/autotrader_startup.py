@@ -111,7 +111,10 @@ def create_autotrader_loggers(
         scenario_name='session',
         run_timestamp=run_timestamp,
         log_root_override=log_root,
-        file_name_prefix_override='autotrader'
+        file_name_prefix_override='autotrader',
+        # The tick-by-tick record of the session — every line carries the run's own time.
+        # global and summary do not: they describe the session from outside a moment in it.
+        event_time_column=True
     )
 
     # Create session_logs/ subdir (tick loop will create files there)
@@ -122,7 +125,7 @@ def create_autotrader_loggers(
     return global_logger, session_logger, summary_logger, run_dir
 
 
-def create_session_file_logger(run_dir: Path, date_suffix: str, log_level) -> FileLogger:
+def create_session_file_logger(run_dir: Path, date_suffix: str) -> FileLogger:
     """
     Create a new FileLogger for a specific day's session log.
 
@@ -132,7 +135,6 @@ def create_session_file_logger(run_dir: Path, date_suffix: str, log_level) -> Fi
     Args:
         run_dir: Session run directory (contains session_logs/ subdir)
         date_suffix: Date string for filename (YYYYMMDD)
-        log_level: Log level for the file logger
 
     Returns:
         FileLogger writing to session_logs/autotrader_session_YYYYMMDD.log
@@ -142,7 +144,9 @@ def create_session_file_logger(run_dir: Path, date_suffix: str, log_level) -> Fi
     return FileLogger(
         log_filename=f'autotrader_session_{date_suffix}.log',
         file_path=session_logs_dir,
-        log_level=log_level
+        # The threshold the session logger actually gates on, read from config (§28) — not
+        # carried over from the file logger being replaced, which never enforced it anyway.
+        log_level=AppConfigManager().get_file_logging_config_object().scenario_log_level
     )
 
 
@@ -315,6 +319,9 @@ def setup_pipeline(
         spot_mode=spot_mode,
         poll_interval_ms=broker_entry.broker_transport.poll_interval_ms,
     )
+    # The session log's event-time column pulls from the canonical clock. Attachable only
+    # HERE: the logger goes INTO build_live_executor above, so it necessarily exists first.
+    logger.attach_clock(executor.get_current_time_if_set)
     logger.info(
         f'💱 LiveTradeExecutor created: balances={balances}'
     )
