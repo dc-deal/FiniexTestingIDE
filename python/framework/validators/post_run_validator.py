@@ -29,10 +29,7 @@ from python.framework.types.validation_types import (
     ValidationResult,
 )
 from python.framework.utils.version_utils import parse_version
-from python.framework.validators.shared_advisory_checks import (
-    check_slow_components,
-    check_stress_test,
-)
+from python.framework.validators.shared_advisory_checks import check_stress_test
 
 # Scope of a batch-global finding — it concerns the run, not one scenario.
 _RUN_SCOPE = 'run'
@@ -68,7 +65,6 @@ class PostRunValidator:
         self._check_budget_too_high()
         self._check_coordination_overhead()
         self._check_bottlenecks()
-        self._check_slow_components()
         self._check_parallel_penalty()
         self._check_multi_currency()
         self._check_time_divergence()
@@ -260,24 +256,6 @@ class PostRunValidator:
         """The operation with the largest total time (the scenario's bottleneck), or '' if none."""
         ops = {n: t for n, t in profiling_data.profile_times.items() if n != 'total_per_tick'}
         return max(ops, key=ops.get) if ops else ''
-
-    def _check_slow_components(self) -> None:
-        """Warn when a worker or decision logic is slow (shared with the live session check)."""
-        worker_times: dict = {}
-        logic_times: dict = {}
-        for result in self._batch.process_result_list:
-            tlr = result.tick_loop_results
-            if not tlr:
-                continue
-            for w in (tlr.worker_statistics or []):
-                worker_times.setdefault(w.worker_name, []).append(w.worker_avg_time_ms)
-            if tlr.decision_statistics and tlr.decision_statistics.decision_logic_name:
-                logic_times.setdefault(
-                    tlr.decision_statistics.decision_logic_name, []).append(
-                        tlr.decision_statistics.decision_avg_time_ms)
-
-        for finding in check_slow_components(worker_times, logic_times):
-            self._add_finding(finding)
 
     def _check_parallel_penalty(self) -> None:
         """Warn when parallel worker execution COST time instead of saving it."""

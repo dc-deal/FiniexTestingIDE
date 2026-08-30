@@ -170,8 +170,10 @@ run end, in both pipelines. See [`docs/architecture/diagnostics_csv_sink.md`](..
 
 **Component metadata.** Every worker and decision logic should declare `get_metadata()` →
 `ComponentMetadata` (version, doc_link, and — for decision logics — recommended_markets /
-recommended_instruments). The framework logs the version at run start and emits a soft
-market-fit warning if the run's market/instrument is outside the recommended set. See
+recommended_instruments). The framework logs the version at run start and raises a soft
+market-fit advisory — a Tier-1 warning in the run report, never a block — if the run's
+market/instrument is outside the recommended set. It is decided BEFORE the run, so a
+mismatched scenario says so without being executed first. See
 [`docs/architecture/component_metadata.md`](../architecture/component_metadata.md).
 
 ---

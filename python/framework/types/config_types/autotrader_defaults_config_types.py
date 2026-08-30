@@ -37,6 +37,12 @@ class ClippingMonitorDefaults(BaseModel):
     """Clipping monitor defaults."""
     report_interval_s: float = 60.0
     strategy: str = 'queue_all'
+    # Post-session advisory: warn when the clipping ratio exceeds this share of ticks. Unlike
+    # an absolute millisecond threshold, this one is grounded — the ratio is already measured
+    # against real tick arrival, so it says how often the algo failed to keep up. Where the
+    # line sits is a policy question, which is why it is config and not a constant. A ratio
+    # can never exceed 1.0, so 1.0 disables the advisory.
+    warn_above_ratio: float = 0.05
 
 
 class DisplayDefaults(BaseModel):

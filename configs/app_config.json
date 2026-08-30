@@ -59,7 +59,8 @@
         },
         "clipping_monitor": {
             "report_interval_s": 60.0,
-            "strategy": "queue_all"
+            "strategy": "queue_all",
+            "warn_above_ratio": 0.05
         },
         "display": {
             "enabled": true,

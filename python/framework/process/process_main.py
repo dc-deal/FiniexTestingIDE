@@ -20,7 +20,6 @@ from python.framework.types.process_data_types import (
     ProcessScenarioConfig,
 )
 from python.framework.utils.file_utils import file_name_for_scenario
-from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
 
 
 def process_main(
@@ -70,10 +69,6 @@ def process_main(
             config, shared_data, scenario_logger)
         scenario_logger.debug(
             '🔄 Process preparation finished')
-
-        # Component metadata advisory (#118 Stage 0) — version line + soft market-fit warning
-        surface_decision_logic_metadata(
-            decision_logic, config.broker_type, config.symbol, scenario_logger)
 
         # === DECISION EVENT CHANNEL (#348) ===
         # Built only when the active decision logic subscribes to events.

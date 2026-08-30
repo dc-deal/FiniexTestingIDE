@@ -165,26 +165,23 @@ def test_expected_bottleneck_no_warning():
 
 class TestThePerformanceVerdictsLiveHere:
     """
-    The performance report used to print these as inline RECOMMENDATIONS, so the same judgement
-    sat in a renderer while its neighbours already lived in this validator. They are verdicts —
-    a threshold deciding whether an advisory fires — so they belong here.
+    The performance report used to print the parallel-penalty judgement as an inline
+    RECOMMENDATION, so it sat in a renderer while its neighbours already lived in this
+    validator. It is a verdict — a threshold deciding whether an advisory fires — so it
+    belongs here.
     """
 
-    def test_a_slow_worker_is_flagged(self):
+    def test_no_per_component_slowness_verdict_is_produced(self):
+        """
+        Removed deliberately, and pinned so it is not re-added by reflex: a FIXED millisecond
+        threshold cannot decide 'slow'. That is only meaningful against the tick interval,
+        which `_check_budget` already measures — and the two contradicted each other. See the
+        note in validators/shared_advisory_checks.py.
+        """
         out = _warnings(_batch_results([
-            _perf_result('s1', 0, worker_name='heavy', worker_avg=2.5),
-            _perf_result('s2', 1, worker_name='heavy', worker_avg=1.5)]))
-        assert 'slow_component' in out
-        assert 'heavy' in out['slow_component'] and '2.000ms' in out['slow_component']
-
-    def test_a_fast_worker_is_not(self):
-        assert 'slow_component' not in _warnings(_batch_results([
-            _perf_result('s1', 0, worker_avg=0.3)]))
-
-    def test_a_slow_decision_logic_is_flagged(self):
-        out = _warnings(_batch_results([
-            _perf_result('s1', 0, logic_name='tunnel', logic_avg=4.0)]))
-        assert 'slow_component' in out and 'tunnel' in out['slow_component']
+            _perf_result('s1', 0, worker_name='heavy', worker_avg=25.0),
+            _perf_result('s2', 1, logic_name='tunnel', logic_avg=40.0)]))
+        assert 'slow_component' not in out
 
     def test_parallel_that_costs_time_is_flagged(self):
         out = _warnings(_batch_results([

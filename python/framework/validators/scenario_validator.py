@@ -21,6 +21,7 @@ from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.broker_config import BrokerType
+from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.scenario_types.scenario_set_types import (
     BrokerScenarioInfo,
@@ -544,6 +545,47 @@ class ScenarioValidator:
                     for _m in errors]))
                 for error in errors:
                     logger.error(f'❌ {scenario.name}: {error}')
+
+    @staticmethod
+    def validate_market_fit(
+        scenarios: List[SingleScenario],
+        logger: AbstractLogger,
+    ) -> None:
+        """
+        Advise when a scenario's decision logic runs outside its recommended market/instrument.
+
+        Resolves the decision-logic class (class resolution only — `get_metadata()` is a
+        classmethod, so nothing is instantiated) and records the mismatch as an ADVISORY
+        finding. This used to be a `logger.warning` inside the subprocess, which made the run
+        report classify a validator's verdict as an unadjudicated log line — and it never
+        needed the run at all, since every input is static config.
+
+        Side Effects:
+        - Appends advisory (WARNING) findings to scenario.validation_result — never an error,
+          so no scenario is ever excluded by this check
+
+        Args:
+            scenarios: List of scenarios to advise on
+            logger: Logger for the factory
+        """
+        decision_factory = DecisionLogicFactory(logger)
+
+        for scenario in scenarios:
+            strategy = scenario.strategy_config or {}
+            logic_type = strategy.get('decision_logic_type', '')
+            if not logic_type:
+                continue
+            try:
+                logic_class, _ = decision_factory.resolve_logic_class(logic_type)
+            except Exception:
+                continue  # resolution failures reported by requirements/factory
+
+            findings = check_market_fit(
+                logic_class.get_metadata(), logic_type,
+                scenario.broker_type, scenario.symbol, scenario.name)
+            if findings:
+                scenario.validation_result.append(
+                    ValidationResult(scenario.name, findings))
 
     @staticmethod
     def _collect_parameter_errors(

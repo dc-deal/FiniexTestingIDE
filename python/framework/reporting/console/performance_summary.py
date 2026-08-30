@@ -410,11 +410,13 @@ class PerformanceSummary(AbstractBatchSummarySection):
                   f'Time saved: {time_saved_str}  |  '
                   f'Status: {parallel.status}')
 
-        # No recommendations here. Whether a component is too slow, or parallel execution is
-        # costing time, is a verdict — PostRunValidator decides it (_check_slow_components,
-        # _check_parallel_penalty) and the WARNINGS & ERRORS section renders it. This section
-        # shows the measurements, and the clean-run line belongs to the section that owns the
-        # verdicts, so it is not repeated here.
+        # No recommendations here. Whether parallel execution is costing time is a verdict —
+        # PostRunValidator decides it (_check_parallel_penalty) and the WARNINGS & ERRORS
+        # section renders it. This section shows the measurements, and the clean-run line
+        # belongs to the section that owns the verdicts, so it is not repeated here.
+        # There is deliberately NO per-component "too slow" verdict: see the note in
+        # validators/shared_advisory_checks.py — "slow" needs a relative reference, and the
+        # grounded form of that question is PostRunValidator._check_budget.
         print()
 
     def _get_parallel_status(self, time_saved_ms: float) -> str:

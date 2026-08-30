@@ -26,16 +26,34 @@ project convention it is **always maintained** for real components — see the p
 
 ## Behavior
 
-- **Version line at run start** (both pipelines): `surface_decision_logic_metadata`
-  (`framework/validators/component_metadata_advisory.py`) logs
-  `🧬 Algo: <name> v<version> — <doc_link>` at startup — sim subprocess (`process_main`) and
-  AutoTrader session (`autotrader_main`).
-- **Soft market-fit warning** (both pipelines): if a decision logic's `recommended_markets` /
-  `recommended_instruments` are non-empty and the run's market type / symbol is not among
-  them, a WARNING is emitted into the warnings channel (§35) — **never a block**. It is
-  advisory: the HARD market-compatibility check (worker activity metric, see
+Two things happen with this metadata, and they are deliberately **separate functions** in
+`framework/validators/component_metadata_advisory.py` — one is an observation, the other a
+verdict, and merging them is what put a validator's judgement into the log pot for a while.
+
+- **Version line — an OBSERVATION.** `surface_decision_logic_version` logs
+  `🧬 Algo: <name> v<version> — <doc_link>` into the run's own log, at the place the logic is
+  built: `process_startup_preparation` (sim subprocess) and `setup_pipeline` (AutoTrader).
+  Nothing judges it; it puts a fact where a reader of that log needs it.
+- **Market fit — a VERDICT.** `check_market_fit` RETURNS `ValidationFinding`s when
+  `recommended_markets` / `recommended_instruments` are non-empty and the run's market type /
+  symbol is not among them. It is **never a block** (severity WARNING, no scenario excluded):
+  the HARD market-compatibility check (worker activity metric, see
   [market_capabilities.md](market_capabilities.md)) is what actually rejects incompatible
   combinations; this is the "this algo was not designed for here" nudge.
+
+**Where the verdict is decided — before the run, in both pipelines.** Every input is static
+config, and `get_metadata()` is a classmethod, so nothing needs to be instantiated and no
+subprocess needs to start:
+
+| | Decided in | Lands on |
+|---|---|---|
+| Simulation | `ScenarioValidator.validate_market_fit`, Phase 0 of the mount (after `BrokerDataPreparator` assigns `scenario.broker_type`) | `SingleScenario.validation_result` |
+| AutoTrader | `AutotraderMain` at startup — a live operator must see it before the first trade | held, then `AutoTraderResult.session_validation_result` in `_collect_results` (the channel lives on the result) |
+
+Both surface as **Tier-1** rows in the run report, carrying `check='market_fit'` and
+`domain='algo'` — see [Warnings & Errors — Tier Taxonomy](warnings_errors_tiers.md). Live logs
+the message at INFO as well, so it is visible at startup; deliberately not at WARNING, which
+would put the same advisory in the report a second time as an unadjudicated pot line.
 
 ## Authoring
 

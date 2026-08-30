@@ -22,15 +22,22 @@ stressed session was indistinguishable from a clean one, in the console, in
 | Class | What it pins |
 |---|---|
 | `TestTheStressWarningReachesALiveSession` | an active config is flagged, a disabled one is not; the message says `Session (1)`, never the sim's `Scenarios`; a real live session (no mock-replay settings at all) is not a finding |
-| `TestSlowComponentsAreFlagged` | the sim threshold applied to the session's own worker / decision statistics; an empty session reports nothing |
+| `TestTheClippingAdvisory` | the live-only performance verdict: above/below the configured ratio, the boundary is exclusive, the knob in the profile actually changes the outcome, `1.0` disables it, and a session with zero ticks says nothing (no measurement ≠ no clipping) |
+| `TestAStartupFindingSurvivesToTheReport` | market fit is decided at startup and HELD until the result exists — the hand-over shape, plus the empty default that keeps a startup abort reportable |
 | `TestTheChannelReachesTheReport` | a finding becomes a Tier-1 `WarningRow` carrying `check` / `domain` / `scope`; the log pot still arrives as Tier 2 with both empty; a clean session reports nothing |
-| `TestTheSharedChecksProduceOneFormula` | sim and live differ only in the unit label, and the threshold is exclusive at the boundary |
+| `TestTheSharedChecksProduceOneFormula` | sim and live differ only in the unit label — the property a copied check would have lost |
 
-The last class is the one worth knowing about. The two checks are **shared**
+The last class is the one worth knowing about. The stress check is **shared**
 (`python/framework/validators/shared_advisory_checks.py`), not copied — a copy would drift
-silently, and these tests are what makes the sharing observable from the live side. The sim side
-pins the same formulas from the other end in
+silently, and this test is what makes the sharing observable from the live side. The sim side
+pins the same formula from the other end in
 [Post-Run Validator tests](../framework/batch_validations_tests.md).
+
+A second shared check (`slow_component`, a fixed millisecond threshold) existed briefly and
+was removed as misinformation — see the note in
+[Warnings & Errors — Tier Taxonomy](../../architecture/warnings_errors_tiers.md). The sim
+suite pins its ABSENCE so it is not re-added by reflex; live needs no such pin, because the
+session validator would have nothing to contradict it.
 
 ## The end-to-end half lives elsewhere
 

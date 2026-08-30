@@ -19,6 +19,9 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.exceptions.signal_data_errors import SignalSourceUnresolvedError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.validators.component_metadata_advisory import (
+    surface_decision_logic_version,
+)
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.file_logger import FileLogger
@@ -377,6 +380,12 @@ def setup_pipeline(
         f"✅ Created decision logic: "
         f"{config.strategy_config.get('decision_logic_type', '')}"
     )
+
+    # Provenance for this session log (#118 Stage 0) — logged where the logic is built, the
+    # same place the sim does it (process_startup_preparation). The market-fit VERDICT stays
+    # in AutotraderMain: it is a finding, not a log line, and it needs the session's
+    # validation channel.
+    surface_decision_logic_version(decision_logic, logger)
 
     # === Phase 8: WorkerOrchestrator + DecisionTradingApi ===
     worker_orchestrator = WorkerOrchestrator(

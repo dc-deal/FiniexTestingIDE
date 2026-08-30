@@ -6,6 +6,9 @@ from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.validators.component_metadata_advisory import (
+    surface_decision_logic_version,
+)
 from python.framework.factory.trade_simulator_factory import prepare_trade_executor_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -124,6 +127,11 @@ def process_startup_preparation(
 
     scenario_logger.debug(
         f'✅ Created decision logic: {config.decision_logic_type}')
+
+    # Provenance for this scenario log (#118 Stage 0) — an observation, logged where the
+    # logic is built. The market-fit VERDICT is NOT here: its inputs are all static config,
+    # so the batch decides it before any subprocess starts (ScenarioValidator.validate_market_fit).
+    surface_decision_logic_version(decision_logic, scenario_logger)
 
     # === CREATE WORKER COORDINATOR ===
     worker_coordinator = WorkerOrchestrator(

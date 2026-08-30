@@ -81,7 +81,7 @@ tests/
 │
 ├── framework/
 │   ├── bar_rendering/     unit — BarRenderingController consistency
-│   ├── batch_validations/ unit — ScenarioValidator, BrokerDataPreparator (Phase 0 batch pipeline)
+│   ├── batch_validations/ unit — ScenarioValidator, BrokerDataPreparator, PostRunValidator, market-fit advisory (Phase 0 batch pipeline)
 │   ├── config/            unit — execution_config 3-level cascade (#137)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141), outage contract + episode capture (#434/#451)

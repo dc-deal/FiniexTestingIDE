@@ -170,6 +170,45 @@ collection of them, and `is_valid` / `errors` / `warnings` are **views** over th
 | `test_domain_is_a_closed_set` | `ValidationDomain` is an Enum — a free string would break filtering |
 | `test_a_rejected_scenario_stays_excluded` | The §33 execution gate reads the derived flag |
 
+### `test_post_run_validator.py`
+
+The batch-global advisories that can only be known AFTER the run — the "lift" that took these
+verdicts out of the console renderers, where a report was deciding whether to warn. Every test
+builds a `BatchExecutionSummary` and reads the resulting `check` → message map, so it asserts on
+the structured finding rather than on printed text.
+
+| Test | Description |
+|------|-------------|
+| `test_debug_mode` / `test_no_debug_mode_when_not_debug` | A serial/debug batch says its timings are not representative |
+| `test_no_advisory_for_any_declared_version` | A declared data format version is never flagged |
+| `test_unknown_version_advisory` / `test_unknown_counted_against_all_files` | A missing version IS flagged, and the count is against all files — the advisory claims only the field's absence, never anything about the data |
+| `test_stress_test` | An active stress config is surfaced, so a stressed run cannot read as clean (shared with the live session validator) |
+| `test_budget_granularity` | A budget below data granularity has no effect and says so |
+| `test_clean_batch_no_warnings` | The zero state — nothing invented |
+| `test_coordination_overhead` / `test_no_overhead_when_low` | Coordination cost above half the computation is flagged; below it is not |
+| `test_infra_bottleneck` / `test_expected_bottleneck_no_warning` | A non-hot-path operation dominating is flagged; `worker_decision` dominating is normal |
+
+`TestThePerformanceVerdictsLiveHere` covers the parallel-execution verdict (penalty flagged,
+saving not, sequential never) — and pins one ABSENCE:
+
+| Test | Description |
+|------|-------------|
+| `test_no_per_component_slowness_verdict_is_produced` | There is deliberately no fixed-millisecond "slow worker" advisory. It existed, contradicted `_check_budget` in constructible cases, and was removed as misinformation — see [Warnings & Errors — Tier Taxonomy](../../architecture/warnings_errors_tiers.md). The test exists so it is not re-added by reflex |
+
+### `test_market_fit_advisory.py`
+
+The pre-run advisory that a decision logic is running outside its recommended market or
+instrument. It used to be a `logger.warning` inside the scenario subprocess — wrong in channel
+(a verdict arriving as an unadjudicated log line) and wrong in time (every input is static
+config, yet it took a subprocess to learn a scenario was mismatched).
+
+| Class | What it pins |
+|-------|-------------|
+| `TestTheVerdictIsAFindingNotALogLine` | a mismatch produces a `market_fit` finding in domain `algo`, carrying its scenario as scope — and never sets `is_valid=False` |
+| `TestItAnswersWithoutTheRun` | no instantiation, no subprocess; an unresolvable logic is SKIPPED rather than reported, so this gate cannot produce a false advisory over another gate's failure |
+| `TestTheCheckItself` | the pure function both pipelines call: no recommendation → no opinion; market and instrument are independent findings; an unknown broker is silent, never fatal |
+| `test_the_two_halves_stayed_apart` | the version line (observation) and the market fit (verdict) are separate functions — merging them back would silently re-route the verdict into the log pot |
+
 ### `test_scenario_package_index.py`
 
 The data-package lookup contract. Packages are keyed by `SingleScenario.scenario_index`; the
@@ -185,10 +224,11 @@ matching the index as soon as one scenario is excluded.
 ## Files
 
 - `tests/framework/batch_validations/test_scenario_validator.py`
-- `tests/framework/batch_validations/test_post_run_validator.py` — two of its checks
-  (`stress_test`, `slow_component`) are **shared** with the live session validator via
+- `tests/framework/batch_validations/test_post_run_validator.py` — one of its checks
+  (`stress_test`) is **shared** with the live session validator via
   `validators/shared_advisory_checks.py`; the live half is pinned in
   [Session Validation tests](../autotrader/session_validation_tests.md)
+- `tests/framework/batch_validations/test_market_fit_advisory.py`
 - `tests/framework/batch_validations/test_validation_types.py`
 - `tests/framework/batch_validations/test_scenario_package_index.py`
 - `tests/framework/batch_validations/test_broker_data_preparator.py`

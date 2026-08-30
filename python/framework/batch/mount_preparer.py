@@ -139,6 +139,15 @@ class MountPreparer:
             broker_scenario_map=_broker_scenario_map,
         )
 
+        # 5. Market-fit advisory (#118 Stage 0) — never excludes a scenario. It belongs HERE
+        # and not beside the parameter gate before the mount: scenario.broker_type is assigned
+        # by BrokerDataPreparator above, so an earlier call would resolve no market type and
+        # the check would be wired but permanently silent.
+        ScenarioValidator.validate_market_fit(
+            scenarios=self._valid(scenarios),
+            logger=self._logger,
+        )
+
         # set scenario final currencies.
         ScenarioValidator.set_scenario_account_currency(
             scenarios=self._valid(scenarios),

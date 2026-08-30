@@ -6,13 +6,13 @@ inputs that RETURNS findings; the caller routes them into its own validation cha
 `BatchExecutionSummary.batch_validation_result` (sim) or
 `AutoTraderResult.session_validation_result` (live).
 
-Functions rather than a shared validator base class: only two of the sim's thirteen checks
-apply to a live session, and a function over its inputs is testable without building a batch.
-Same division the reporting pipeline already uses — shared derivation, pipeline-specific
-coordinators.
+Functions rather than a shared validator base class: almost none of the sim's post-run checks
+apply to a single live session (they need profiling data, a tick budget, several scenarios or
+several currencies), and a function over its inputs is testable without building a batch. Same
+division the reporting pipeline already uses — shared derivation, pipeline-specific coordinators.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.validation_types import (
@@ -23,9 +23,6 @@ from python.framework.types.validation_types import (
 
 # Scope of a run-global finding — it concerns the run, not one unit.
 _RUN_SCOPE = 'run'
-# Component-cost verdict threshold — a worker or decision logic averaging more than this
-# per call is worth optimizing (was an inline recommendation in the performance report).
-SLOW_COMPONENT_MS = 1.0
 
 
 def _finding(check: str, domain: ValidationDomain, message: str) -> ValidationFinding:
@@ -93,30 +90,10 @@ def check_stress_test(
     return _finding('stress_test', ValidationDomain.SETUP, '\n'.join(lines))
 
 
-def check_slow_components(
-    worker_times: Dict[str, List[float]], logic_times: Dict[str, List[float]]
-) -> List[ValidationFinding]:
-    """
-    Warn when a worker or decision logic averages more than the slow-component threshold.
-
-    Args:
-        worker_times: Per-worker average times in ms, one entry per unit that ran it
-        logic_times: Per-decision-logic average times in ms, one entry per unit that ran it
-
-    Returns:
-        One finding per component kind that exceeded the threshold (empty when none did)
-    """
-    findings = []
-    for label, times in (('worker', worker_times), ('decision logic', logic_times)):
-        if not times:
-            continue
-        # Mean per component across units, then the worst of them — the same reading the
-        # performance report shows, so the advisory and the table cannot disagree.
-        name, avg = max(
-            ((n, sum(t) / len(t)) for n, t in times.items()), key=lambda pair: pair[1])
-        if avg <= SLOW_COMPONENT_MS:
-            continue
-        findings.append(_finding('slow_component', ValidationDomain.PERFORMANCE, (
-            f"Slowest {label} '{name}' averages {avg:.3f}ms per call "
-            f'(threshold {SLOW_COMPONENT_MS:.1f}ms) — candidate for optimization')))
-    return findings
+# A component-cost advisory against a FIXED millisecond threshold used to live here and was
+# removed deliberately: "slow" is only meaningful relative to the tick interval, and the
+# grounded form of that question already exists as PostRunValidator._check_budget (avg tick
+# processing vs the data's own P5 interval). The two could contradict each other in the same
+# report — a fixed 1.0ms fired on a worker using 6% of a 50ms window, and stayed silent when
+# eight sub-threshold workers together overran a 2ms one. A relative measure (share of tick
+# time) would be the honest replacement; an absolute one cannot be.

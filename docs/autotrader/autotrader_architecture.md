@@ -490,6 +490,14 @@ Tick N arrives        Tick N+1 arrives
 
 All metrics are tracked in two scopes: **session totals** (end-of-session summary) and **interval** (periodic report every N seconds, then reset). This shows *when* clipping occurs, not just *if*.
 
+### The verdict — `clipping_monitor.warn_above_ratio`
+
+The console prints the metrics; whether they are *bad* is decided by `SessionPostRunValidator._check_clipping`, which raises a **Tier-1 advisory** when `clipping_ratio` exceeds the configured share (default `0.05` in `app_config.json::autotrader.clipping_monitor`). A ratio can never exceed `1.0`, so that value disables the advisory.
+
+This is the **only** performance verdict a live session makes, and the reason is worth stating: the ratio is measured against *real tick arrival*, so it is grounded in what actually happened. A per-component millisecond threshold is not — 1.2 ms is fine at 50 ms between ticks and fatal at 2 ms — and an earlier check that tried it was removed as misinformation (see [Warnings & Errors — Tier Taxonomy](../architecture/warnings_errors_tiers.md)). Where exactly the line sits is a policy question, which is why it lives in config rather than in a constant.
+
+The sim has no counterpart: it judges clipping against a *configured* `tick_processing_budget_ms` (the tick-budget advisories), while a live session has only what it observed.
+
 ### Phases
 
 | Phase | What | Status |
