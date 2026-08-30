@@ -22,7 +22,6 @@ from python.framework.types.scenario_types.scenario_set_performance_types import
     EXPECTED_OPERATIONS,
     ProfilingData,
 )
-from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.validation_types import (
     Severity,
     ValidationDomain,
@@ -30,16 +29,19 @@ from python.framework.types.validation_types import (
     ValidationResult,
 )
 from python.framework.utils.version_utils import parse_version
+from python.framework.validators.shared_advisory_checks import (
+    check_slow_components,
+    check_stress_test,
+)
 
 # Scope of a batch-global finding — it concerns the run, not one scenario.
 _RUN_SCOPE = 'run'
+# What a unit is called in the shared stress-test message (live says 'Session').
+_SCENARIO_UNIT_LABEL = 'Scenarios'
 # Overhead verdict threshold — coordination overhead as a share of computation time.
 _HIGH_OVERHEAD_RATIO = 0.5
 # Infra-bottleneck verdict threshold — share of scenarios where a non-hot-path op dominated.
 _BOTTLENECK_PCT = 15.0
-# Component-cost verdict threshold — a worker or decision logic averaging more than this
-# per call is worth optimizing (was an inline recommendation in the performance report).
-_SLOW_COMPONENT_MS = 1.0
 # Time-divergence threshold — a currency group spanning more days than this gets an advisory.
 _TIME_DIVERGENCE_DAYS = 30
 
@@ -81,9 +83,18 @@ class PostRunValidator:
             domain: The area it belongs to
             message: Operator-readable text
         """
-        self._batch.add_batch_validation_result(ValidationResult(_RUN_SCOPE, [ValidationFinding(
+        self._add_finding(ValidationFinding(
             severity=Severity.WARNING, check=check, domain=domain, message=message,
-            scope=_RUN_SCOPE)]))
+            scope=_RUN_SCOPE))
+
+    def _add_finding(self, finding: ValidationFinding) -> None:
+        """
+        Append one already-built advisory finding to the batch-level channel.
+
+        Args:
+            finding: The advisory finding to record (from a shared check)
+        """
+        self._batch.add_batch_validation_result(ValidationResult(_RUN_SCOPE, [finding]))
 
     def _check_debug_mode(self) -> None:
         """Prominent notice when the batch ran in debug / serial mode (timings unreliable)."""
@@ -96,39 +107,12 @@ class PostRunValidator:
             'use a non-debug run for performance numbers.'))
 
     def _check_stress_test(self) -> None:
-        """Warn when any scenario has active stress tests (results contain intentional errors)."""
-        config_groups: dict[str, list[str]] = {}
-        for scenario in self._batch.single_scenario_list:
-            config = StressTestConfig.from_dict(scenario.stress_test_config)
-            if not config.has_any_enabled():
-                continue
-            parts = []
-            if config.reject_open_order and config.reject_open_order.enabled:
-                ro = config.reject_open_order
-                parts.append(
-                    f'reject_open_order: probability={ro.probability:.0%}, seed={ro.seed}')
-            if config.stale_data_stress and config.stale_data_stress.enabled:
-                sd = config.stale_data_stress
-                # Name the windows, not just their count: this is the INTENT half of the
-                # record ("what was planned"). What the run actually experienced is the
-                # feed-stability section (#451) — deliberately a different source.
-                windows = ' | '.join(
-                    f"'{e.label}' on {e.data_source} "
-                    f"{e.stale_start_date.isoformat()} → {e.stale_end_date.isoformat()}"
-                    for e in sd.events)
-                parts.append(
-                    f'stale_data_stress: {len(sd.events)} planned window(s) — {windows}')
-            signature = ' | '.join(parts)
-            config_groups.setdefault(signature, []).append(scenario.name)
-
-        if not config_groups:
-            return
-
-        lines = ['STRESS TEST ACTIVE — Results contain INTENTIONAL errors and rejections!']
-        for signature, scenario_names in config_groups.items():
-            lines.append(f'  → {signature}')
-            lines.append(f"    Scenarios ({len(scenario_names)}): {', '.join(scenario_names)}")
-        self._add('stress_test', ValidationDomain.SETUP, '\n'.join(lines))
+        """Warn when any scenario has active stress tests (shared with the live session check)."""
+        finding = check_stress_test(
+            [(s.name, s.stress_test_config) for s in self._batch.single_scenario_list],
+            _SCENARIO_UNIT_LABEL)
+        if finding is not None:
+            self._add_finding(finding)
 
     def _check_data_version(self) -> None:
         """
@@ -278,7 +262,7 @@ class PostRunValidator:
         return max(ops, key=ops.get) if ops else ''
 
     def _check_slow_components(self) -> None:
-        """Warn when a worker or decision logic averages more than the slow-component threshold."""
+        """Warn when a worker or decision logic is slow (shared with the live session check)."""
         worker_times: dict = {}
         logic_times: dict = {}
         for result in self._batch.process_result_list:
@@ -292,18 +276,8 @@ class PostRunValidator:
                     tlr.decision_statistics.decision_logic_name, []).append(
                         tlr.decision_statistics.decision_avg_time_ms)
 
-        for label, times in (('worker', worker_times), ('decision logic', logic_times)):
-            if not times:
-                continue
-            # Mean per component across scenarios, then the worst of them — the same reading the
-            # performance report shows, so the advisory and the table cannot disagree.
-            name, avg = max(
-                ((n, sum(t) / len(t)) for n, t in times.items()), key=lambda pair: pair[1])
-            if avg <= _SLOW_COMPONENT_MS:
-                continue
-            self._add('slow_component', ValidationDomain.PERFORMANCE, (
-                f"Slowest {label} '{name}' averages {avg:.3f}ms per call "
-                f'(threshold {_SLOW_COMPONENT_MS:.1f}ms) — candidate for optimization'))
+        for finding in check_slow_components(worker_times, logic_times):
+            self._add_finding(finding)
 
     def _check_parallel_penalty(self) -> None:
         """Warn when parallel worker execution COST time instead of saving it."""

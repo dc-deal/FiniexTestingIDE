@@ -70,3 +70,13 @@ class TestMarketDataOutage:
         """Aged archive → #434 signal hook on the first result (both sides)."""
         result = outage_session
         assert _count(result, '[PROBE] on_signal_stale fired') == 1
+
+    def test_the_stress_config_reaches_the_session_validation_channel(self, outage_session):
+        """
+        A stressed session must be distinguishable from a clean one — the live half of the
+        rule the sim batch has always honoured. This profile carries an active
+        stale_data_stress, so the run's own validation channel must say so.
+        """
+        findings = [f for vr in outage_session.session_validation_result for f in vr.findings]
+        assert 'stress_test' in [f.check for f in findings], (
+            f'No stress advisory in the channel: {[f.check for f in findings]}')

@@ -105,6 +105,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Algo State Persistence](tests/autotrader/state_persistence_tests.md) | Snapshot store, corrupt/stale policy, weekend-aware staleness, pre-flight (#354) |
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
 | [Reconciliation](tests/autotrader/reconciliation_tests.md) | Broker truth-pull + Reconciler ALERT_ONLY (#151) |
+| [Session Validation](tests/autotrader/session_validation_tests.md) | The live Tier-1 channel: SessionPostRunValidator + the checks shared with the sim batch |
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |
 | [Kraken Adapter Nonce](tests/autotrader/kraken_adapter_tests.md) | Private-call nonce monotonicity + lock (#332) |
 | [Test Taxonomy](tests/test_taxonomy.md) | The human-readable test map — which suite covers which pipeline domain |

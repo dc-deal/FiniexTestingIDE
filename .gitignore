@@ -213,7 +213,9 @@ export_github_issues.sh
 project_analysis_detailed.txt
 SUMMARY_*.md
 
-# Internal working docs (private — may reference user_algos / private bots)
-INTERNAL_*.md
-ISSUE_*.md
-SESSION_*.md
+# Internal working docs (private — may reference user_algos / private bots).
+# Root-anchored: unanchored these match at any depth, and with core.ignorecase=true on this
+# filesystem that silently swallowed docs/tests/**/session_*.md.
+/INTERNAL_*.md
+/ISSUE_*.md
+/SESSION_*.md

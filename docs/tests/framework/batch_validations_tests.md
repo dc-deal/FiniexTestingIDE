@@ -185,7 +185,10 @@ matching the index as soon as one scenario is excluded.
 ## Files
 
 - `tests/framework/batch_validations/test_scenario_validator.py`
-- `tests/framework/batch_validations/test_post_run_validator.py`
+- `tests/framework/batch_validations/test_post_run_validator.py` — two of its checks
+  (`stress_test`, `slow_component`) are **shared** with the live session validator via
+  `validators/shared_advisory_checks.py`; the live half is pinned in
+  [Session Validation tests](../autotrader/session_validation_tests.md)
 - `tests/framework/batch_validations/test_validation_types.py`
 - `tests/framework/batch_validations/test_scenario_package_index.py`
 - `tests/framework/batch_validations/test_broker_data_preparator.py`

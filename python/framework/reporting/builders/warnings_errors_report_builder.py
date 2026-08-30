@@ -3,7 +3,8 @@ Warnings & errors report builder (#391/#395) — the unified warnings/errors pos
 
 Reads the **already-decided** structured truth and maps it to `WarningsErrorsReport`:
 - Tier-1 major warnings ← the advisory `ValidationFinding`s of the per-scenario and
-  batch-level validation channels, each carrying its own origin (`check` / `domain`);
+  batch-level validation channels (sim) / the session validation channel (live), each
+  carrying its own origin (`check` / `domain`);
 - Tier-2 minor warnings ← the log WARNING pot (summarized);
 - errors ← `ValidationResult.errors` + the `ProcessResult` villain + the log ERROR pot;
 - outcome ← failed-scenario rollup (sim) / shutdown + emergency (live), plus the canonical
@@ -55,15 +56,21 @@ def build_warnings_errors_report_from_session(
         symbol: Traded symbol
 
     Returns:
-        WarningsErrorsReport — live has no validation channel: warnings are the session WARNING
-        buffer (Tier 2), errors the session ERROR buffer + emergency_reason (the villain)
+        WarningsErrorsReport — Tier-1 from the session validation channel, Tier-2 the session
+        WARNING buffer, errors the session ERROR buffer + emergency_reason (the villain)
     """
+    # Tier 1 — the session's post-run advisories (SessionPostRunValidator). Same rows as the
+    # batch channel produces, so both pipelines render and serve one shape.
+    warnings = []
+    for vr in result.session_validation_result:
+        warnings.extend(_warning_rows(vr, 'run'))
+
     # Tier-2 — the session WARNING buffer. The message arrives unrendered from the LogRecord,
     # so there is nothing to strip. check/domain stay empty: no assertion decided this, and the
     # channel is already named by the tier.
-    warnings = [
+    warnings.extend(
         WarningRow(tier=WarningTier.LOGGER_PRODUCED, scope=name, message=m)
-        for m in result.warning_messages]
+        for m in result.warning_messages)
 
     # Errors — the session ERROR buffer (pot) + the emergency villain
     errors = []

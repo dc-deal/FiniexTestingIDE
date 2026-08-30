@@ -62,6 +62,7 @@ from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
 from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
+from python.framework.validators.session_post_run_validator import SessionPostRunValidator
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
 
@@ -577,10 +578,6 @@ class AutotraderMain:
         """
         session_duration = time.monotonic() - self._session_start
 
-        # Collect warning/error counts + messages from session logger before closing
-        warnings = self._session_logger.get_records(LogLevel.WARNING)
-        errors = self._session_logger.get_records(LogLevel.ERROR)
-
         result = AutoTraderResult(
             session_duration_s=session_duration,
             ticks_processed=ticks_processed,
@@ -588,10 +585,11 @@ class AutotraderMain:
             shutdown_mode=self._shutdown_mode,
             operator_interrupted=self._first_interrupt_time > 0,
             emergency_reason=self._emergency_reason,
-            warning_messages=[record.message for record in warnings],
-            error_messages=[record.message for record in errors],
         )
 
+        # A collection failure goes to the SESSION logger (§35): the global one only reaches
+        # global.log and bypasses the summary. The buffers are therefore read AFTER this block
+        # — read before it, the right logger would still be too late to reach the report.
         if self._executor:
             try:
                 result.portfolio_stats = self._executor.portfolio.get_portfolio_statistics()
@@ -599,20 +597,20 @@ class AutotraderMain:
                 result.trade_history = self._executor.get_trade_history()
                 result.order_history = self._executor.get_order_history()
             except Exception as e:
-                self._global_logger.error(f'Error collecting executor stats: {e}')
+                self._session_logger.error(f'Error collecting executor stats: {e}')
 
         if self._decision_logic:
             try:
                 result.decision_statistics = self._decision_logic.get_statistics()
             except Exception as e:
-                self._global_logger.error(f'Error collecting decision stats: {e}')
+                self._session_logger.error(f'Error collecting decision stats: {e}')
 
         if self._worker_orchestrator:
             try:
                 result.worker_statistics = self._worker_orchestrator.get_worker_statistics()
                 result.signal_statistics = self._worker_orchestrator.get_signal_statistics()
             except Exception as e:
-                self._global_logger.error(f'Error collecting worker stats: {e}')
+                self._session_logger.error(f'Error collecting worker stats: {e}')
 
         if self._clipping_monitor:
             result.clipping_summary = self._clipping_monitor.get_session_summary()
@@ -624,6 +622,19 @@ class AutotraderMain:
             result.market_data_tick_stats = self._tick_loop.get_market_data_tick_stats()
         if self._worker_orchestrator:
             result.disturbance_episodes += self._worker_orchestrator.get_signal_episodes()
+
+        # Collect warning/error messages from the session logger before closing — after the
+        # collection block above, so a failure in it still reaches the report (and re-grades
+        # the outcome to FINISHED_WITH_ERRORS, §35).
+        result.warning_messages = [
+            record.message for record in self._session_logger.get_records(LogLevel.WARNING)]
+        result.error_messages = [
+            record.message for record in self._session_logger.get_records(LogLevel.ERROR)]
+
+        # Post-run advisories (Tier 1) into the session validation channel — the live
+        # counterpart of the sim's PostRunValidator, and in the same place: after the result
+        # is complete, before it is reported.
+        SessionPostRunValidator(result, self._config).validate()
 
         # === REPORTS === all run artifacts + post-session summary, delegated to
         # the live report coordinator (mirrors the sim BatchReportCoordinator —

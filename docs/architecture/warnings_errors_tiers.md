@@ -51,7 +51,7 @@ Errors split into two channels at run time (this mirrors the error model in the 
 | Tier | What | Producer (source of truth) | Importance |
 |---|---|---|---|
 | **Errors** | every error matters | `ValidationResult.errors` (validation/preparation failures, `is_valid=False`) **+** the `ProcessResult` villain (`error_type`/`message`/`traceback`) **+** the log ERROR pot (`scenario_logger_buffer`) | always surfaced |
-| **Tier 1 — major warnings** | advisory but important: debug-mode, stress-test, data-version, tick-budget (P5 / granularity / too-high), the account-currency / margin advisories, post-run profiling verdicts (overhead, bottleneck) | **validators** → `ValidationResult.warnings` (per-scenario) and the **batch-level** validation channel (run-scoped, e.g. debug-mode) | surfaced in the report |
+| **Tier 1 — major warnings** | advisory but important: debug-mode, stress-test, data-version, tick-budget (P5 / granularity / too-high), the account-currency / margin advisories, post-run profiling verdicts (overhead, bottleneck) | **validators** → `ValidationResult.warnings` (per-scenario), the **batch-level** validation channel (run-scoped, e.g. debug-mode), and the **session** channel on the live side | surfaced in the report |
 | **Tier 2 — minor warnings** | anything at WARNING level floating in the log | the log WARNING pot (`scenario_logger_buffer`) | summarized ("N in log — see scenario logs"), ignorable |
 
 `ValidationResult` (`framework/types/validation_types.py`) is the **single structured producer** for
@@ -66,21 +66,47 @@ the secondary, unstructured channel.
   execution (tick-budget needs profiling/clipping; overhead/bottleneck need the timing breakdown).
   `PostRunValidator` runs once after the batch, appends `ValidationResult.warnings` per scenario, and
   writes batch-global notices (debug-mode) into the **batch-level** validation channel
-  (`BatchExecutionSummary.batch_validation_result`). The report builder then only reads — it never
-  decides.
+  (`BatchExecutionSummary.batch_validation_result`). `SessionPostRunValidator` is its live
+  counterpart, writing into `AutoTraderResult.session_validation_result`. The report builder then
+  only reads — it never decides.
 
-## AutoTrader (live) — the asymmetry
+## AutoTrader (live) — the same four channels
 
-A live session has **no multi-scenario validation phase**; startup/preflight validation **aborts**
-(one session, nothing to exclude). So the live half maps:
+A live session has **no multi-scenario validation phase**, and startup/preflight validation still
+**aborts** rather than warns (one session, nothing to exclude). What it does have is a *post-run*
+validation channel, mirroring the batch one:
 
 - **Errors** → `AutoTraderResult.error_messages` (session ERROR buffer) + `emergency_reason` (the villain).
 - **Tier 2** → `AutoTraderResult.warning_messages` (session WARNING buffer).
-- **Tier 1 / validation** → effectively empty (preflight aborts instead of warning).
+- **Tier 1** → `AutoTraderResult.session_validation_result`, filled by `SessionPostRunValidator`
+  before the report coordinator runs — the same place the sim runs `PostRunValidator`.
 - **Outcome** → `shutdown_mode` (+ `emergency_reason`), re-graded by `get_outcome()` (below).
 
 The asymmetry is closed (#372): a normal session with pot errors is no longer graded as a clean run.
 Both pipelines now answer with the same `RunOutcome`, and the process exit code is that answer.
+
+### What the live validator checks, and what it deliberately does not
+
+Only two of the sim's thirteen post-run checks can be answered by a single session, and they are
+**shared, not copied** — `validators/shared_advisory_checks.py` holds the formula, each validator
+supplies its own inputs and routes the findings into its own channel:
+
+| Check | Live | Why |
+|---|---|---|
+| `stress_test` | ✅ | an active stress config is a Tier-1 warning in *both* pipelines — a stressed live session must not look clean |
+| `slow_component` | ✅ | `worker_statistics` / `decision_statistics` are the same types live |
+| overhead · bottleneck · parallel-penalty | — | need `profiling_data` / `coordination_statistics`, which a session does not collect |
+| the three tick-budget checks | — | live has no budget; clipping is observed, not configured |
+| multi-currency · time-divergence | — | one session, one currency, one span |
+| data-version · robustness · debug-mode | — | tick index, walk-forward and the batch serial mode are sim-only |
+
+**Observed feed outages are not a check.** They are facts and belong to the feed-stability
+section — the same intent/experience split the worked example above describes. A validator over
+them would collapse the two records the split exists to keep apart.
+
+The shared functions carry a `unit_label`, because the message names its units: the sim writes
+`Scenarios (3): …`, a session writes `Session (1): …`. Without it the live warning would use the
+sim's word.
 
 ## The run outcome — the same question both pipelines answer
 

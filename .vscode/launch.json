@@ -2245,6 +2245,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Session Validation (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/session_validation/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 42.5
+            }
+        },
+        {
             "name": "🧩 Pytest: Signal Coverage (All)",
             "type": "debugpy",
             "request": "launch",

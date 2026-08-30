@@ -72,6 +72,7 @@ tests/
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   ├── safety/            unit — circuit breaker (margin + spot)
 │   ├── reconciliation/    unit — broker truth-pull + Reconciler ALERT_ONLY (#151)
+│   ├── session_validation/ unit — SessionPostRunValidator: the live Tier-1 channel, shared stress/slow-component checks
 │   ├── api_monitor/       unit — broker REST latency/error telemetry (#351)
 │   ├── field_study_machine/  unit — Field Study phase state machine (#332)
 │   └── kraken_adapter/    unit — Kraken private-call nonce monotonicity + lock (#332)
