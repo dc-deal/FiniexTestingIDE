@@ -14,11 +14,12 @@ import csv
 
 import pytest
 
-from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.event_stream_csv_writer import EVENT_FIELDS
+from python.framework.types.log_level import LogLevel
 from python.framework.types.trading_env_types.order_types import CloseType, OrderSide
+from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/partial_close_lifecycle.json'
 
@@ -43,7 +44,7 @@ class TestSessionCompletes:
 
     def test_no_errors(self, session_result):
         result, _ = session_result
-        assert len(result.error_messages) == 0, result.error_messages
+        assert len(logged_messages(result, LogLevel.ERROR)) == 0, logged_messages(result, LogLevel.ERROR)
 
     def test_expected_trade_count(self, session_result):
         """3 partials from pos_usdjpy_1 + 1 full from pos_usdjpy_2 = 4 records."""

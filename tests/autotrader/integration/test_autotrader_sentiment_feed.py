@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.io.portfolio_report_io import (
@@ -22,6 +21,8 @@ from python.framework.reporting.io.portfolio_report_io import (
     read_portfolio_report,
 )
 from python.framework.reporting.store.report_store import IO_SUBDIR
+from python.framework.types.log_level import LogLevel
+from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/sentiment_mock_test.json'
 OUTAGE_PROFILE = 'configs/autotrader_profiles/backtesting/sentiment_outage_test.json'
@@ -82,22 +83,22 @@ class TestSentimentMockSession:
 
         # The profile replays a generated archive, so the synthetic-data advisory
         # is contracted output, not noise — assert it fires rather than ignoring it.
-        assert any('SYNTHETIC' in w for w in result.warning_messages), (
+        assert any('SYNTHETIC' in w for w in logged_messages(result, LogLevel.WARNING)), (
             f"Expected the synthetic-data advisory for 'crypto_sentiment_mock', "
-            f"got: {result.warning_messages[:5]}"
+            f"got: {logged_messages(result, LogLevel.WARNING)[:5]}"
         )
 
         # Clean session — no unexpected warnings or errors
         # Spot mode may leave positions open until scenario_end (no SHORT reversal)
         unexpected_warnings = [
-            w for w in result.warning_messages
+            w for w in logged_messages(result, LogLevel.WARNING)
             if 'positions remain open' not in w and 'SYNTHETIC' not in w
         ]
         assert len(unexpected_warnings) == 0, (
             f'Unexpected warnings: {unexpected_warnings[:5]}'
         )
-        assert len(result.error_messages) == 0, (
-            f'Unexpected errors: {result.error_messages[:5]}'
+        assert len(logged_messages(result, LogLevel.ERROR)) == 0, (
+            f'Unexpected errors: {logged_messages(result, LogLevel.ERROR)[:5]}'
         )
 
     def test_sentiment_worker_refreshed(self, sentiment_session):
@@ -138,8 +139,8 @@ class TestSentimentOutageSession:
         assert result.ticks_processed == 5000, (
             f'Expected 5000 ticks, got {result.ticks_processed}'
         )
-        assert len(result.error_messages) == 0, (
-            f'Unexpected errors: {result.error_messages[:5]}'
+        assert len(logged_messages(result, LogLevel.ERROR)) == 0, (
+            f'Unexpected errors: {logged_messages(result, LogLevel.ERROR)[:5]}'
         )
 
     def test_sentiment_worker_computed_while_fresh(self, outage_session):
@@ -159,7 +160,7 @@ class TestSentimentOutageSession:
         the decision's on_signal_stale reaction fires once and surfaces in the warning pot.
         """
         result, _ = outage_session
-        stale_warnings = [w for w in result.warning_messages if 'Signal feed stale' in w]
+        stale_warnings = [w for w in logged_messages(result, LogLevel.WARNING) if 'Signal feed stale' in w]
         assert len(stale_warnings) == 1, (
             f'Expected exactly one stale-feed warning, got {stale_warnings}'
         )

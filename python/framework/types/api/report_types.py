@@ -886,6 +886,22 @@ class WarningRow(BaseModel):
     domain: str = ''
 
 
+class LogEntryRow(BaseModel):
+    """
+    One entry from a logger's pot, with the fields the record carries.
+
+    The buffered `LogRecord` reaches DERIVE intact; reducing it to its message here would make
+    level, time and scope unreachable for every surface behind this model — console, artifact
+    and API alike (#391). The two times are §9's pair: `observed_at` is when we recorded it,
+    `event_time` is the run's own clock, absent when none was attached.
+    """
+    level: str
+    observed_at: datetime
+    scope: str = ''
+    message: str = ''
+    event_time: Optional[datetime] = None
+
+
 class UnitErrorRow(BaseModel):
     """Per-unit error record (#395): the villain + validation errors + the logged ERROR pot."""
     name: str
@@ -893,7 +909,7 @@ class UnitErrorRow(BaseModel):
     error_type: str = ''            # ProcessResult villain (uncaught exception)
     error_message: str = ''
     validation_errors: list[str] = []   # ValidationResult.errors (is_valid=False)
-    logged_errors: list[str] = []       # scenario/session logger ERROR pot (§35)
+    logged_errors: list[LogEntryRow] = []   # scenario/session logger ERROR pot (§35)
     traceback: str = ''
 
 

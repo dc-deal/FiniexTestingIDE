@@ -13,9 +13,10 @@ one session ("runs fine → silence → notified → recovered").
 
 import pytest
 
-from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.types.log_level import LogLevel
+from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 OUTAGE_PROFILE = 'configs/autotrader_profiles/backtesting/market_data_outage_test.json'
 
@@ -31,7 +32,7 @@ def outage_session():
 
 
 def _count(result, needle: str) -> int:
-    return sum(1 for w in result.warning_messages if needle in w)
+    return sum(1 for w in logged_messages(result, LogLevel.WARNING) if needle in w)
 
 
 class TestMarketDataOutage:
@@ -41,8 +42,8 @@ class TestMarketDataOutage:
         result = outage_session
         assert result.shutdown_mode == 'normal'
         assert result.ticks_processed == 3000
-        assert len(result.error_messages) == 0, (
-            f'Unexpected errors: {result.error_messages[:5]}')
+        assert len(logged_messages(result, LogLevel.ERROR)) == 0, (
+            f'Unexpected errors: {logged_messages(result, LogLevel.ERROR)[:5]}')
 
     def test_stale_episode_reaches_the_pot_with_span(self, outage_session):
         """One freeze → exactly one flip warning + one recovery span line."""
@@ -52,7 +53,7 @@ class TestMarketDataOutage:
         # Episode duration is a wall-axis measurement — never negative, even
         # though mock replay tick timestamps and wall heartbeat time diverge.
         recovery = next(
-            w for w in result.warning_messages if 'Market data recovered' in w)
+            w for w in logged_messages(result, LogLevel.WARNING) if 'Market data recovered' in w)
         assert '(-' not in recovery
 
     def test_decision_hook_fired_once(self, outage_session):

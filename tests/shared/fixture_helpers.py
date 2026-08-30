@@ -22,6 +22,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.log_level import LogLevel
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
@@ -34,6 +35,25 @@ from python.scenario.scenario_config_loader import ScenarioConfigLoader
 # =============================================================================
 # SCENARIO EXECUTION
 # =============================================================================
+
+def logged_messages(result, level: LogLevel) -> List[str]:
+    """
+    The session logger's messages of one level, for substring assertions.
+
+    The result carries whole `LogRecord`s so that level, times and scope survive into the run
+    report. Tests that only care about the text get it here instead of re-filtering the buffer
+    at every assertion — and the production result keeps no accessor it does not itself use.
+
+    Args:
+        result: An AutoTraderResult carrying a session logger buffer
+        level: The level to select
+
+    Returns:
+        The matching messages, in the order they were logged
+    """
+    return [record.message for record in result.session_logger_buffer
+            if record.level == level]
+
 
 def remove_run_dir(run_dir: Optional[Path]) -> None:
     """

@@ -10,10 +10,11 @@ through LiveTradeExecutor — complementary to the backtesting suite.
 
 import pytest
 
-from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.types.log_level import LogLevel
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
+from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/trade_lifecycle_test.json'
 
@@ -47,8 +48,8 @@ class TestNormalCycle:
         assert len(session_result.order_history) > 0, 'No orders recorded'
 
     def test_no_errors(self, session_result):
-        assert len(session_result.error_messages) == 0, (
-            f'Unexpected errors: {session_result.error_messages}'
+        assert len(logged_messages(session_result, LogLevel.ERROR)) == 0, (
+            f'Unexpected errors: {logged_messages(session_result, LogLevel.ERROR)}'
         )
 
     def test_trade_has_valid_entry_exit(self, session_result):

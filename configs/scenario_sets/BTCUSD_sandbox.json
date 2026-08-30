@@ -62,7 +62,7 @@
   },
   "scenarios": [
     {
-      "name": "BTCUSD_blocks_01",
+      "name": "BTCUSD_expect_no_data_error",
       "symbol": "BTCUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2024-01-28T19:55:00+00:00",

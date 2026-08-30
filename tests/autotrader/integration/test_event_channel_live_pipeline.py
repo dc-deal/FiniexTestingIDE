@@ -13,9 +13,10 @@ Also exercises request_session_end end-to-end: the bot ends the session itself
 
 import pytest
 
-from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.types.log_level import LogLevel
+from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/event_channel_lifecycle.json'
 
@@ -37,7 +38,7 @@ def session():
 
 def test_session_completes_without_errors(session):
     result, _ = session
-    assert len(result.error_messages) == 0, result.error_messages
+    assert len(logged_messages(result, LogLevel.ERROR)) == 0, logged_messages(result, LogLevel.ERROR)
 
 
 def test_event_sequence_matches_expected(session):

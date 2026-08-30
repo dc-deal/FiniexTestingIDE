@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, Query
 
 from python.framework.exceptions.api_errors import ApiException
+from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
@@ -268,7 +269,10 @@ def get_warnings_errors(run_id: str) -> WarningsErrorsReport:
     Returns:
         The WarningsErrorsReport (404 if the run has no warnings-errors artifact)
     """
-    report = ReportStore().get_warnings_errors(run_id)
+    try:
+        report = ReportStore().get_warnings_errors(run_id)
+    except ReportArtifactUnreadableError as e:
+        raise ApiException(409, 'artifact_unreadable', str(e)) from e
     if report is None:
         raise ApiException(
             404, 'run_not_found',

@@ -11,6 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from pydantic import ValidationError
+
+from python.configuration.app_config_manager import AppConfigManager
+from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.aggregated_portfolio_report_io import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
     read_aggregated_portfolio_report,
@@ -77,7 +81,6 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
-from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import (
     AUTOTRADER_GROUP,
@@ -308,7 +311,11 @@ class ReportStore:
         path = self._resolve(run_id, WARNINGS_ERRORS_ARTIFACT)
         if path is None:
             return None
-        return read_warnings_errors_report(path)
+        try:
+            return read_warnings_errors_report(path)
+        except ValidationError as e:
+            raise ReportArtifactUnreadableError(
+                WARNINGS_ERRORS_ARTIFACT, str(path), str(e)) from e
 
     def get_broker(self, run_id: str) -> Optional[BrokerReport]:
         """

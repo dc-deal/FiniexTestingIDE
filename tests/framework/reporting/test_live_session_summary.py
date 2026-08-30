@@ -6,10 +6,13 @@ stats + warnings/errors (from the session buffers, §35) + output locations. Bui
 AutoTraderResult (not a stand-in); rendered through the real ConsoleRenderer with stdout captured.
 """
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from python.framework.reporting.console.live_session_summary import LiveSessionSummary
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.log_level import LogLevel
+from python.framework.types.log_record_types import LogRecord
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -56,7 +59,9 @@ class TestLiveSessionSummary:
     def test_warnings_not_in_closing_block(self):
         # Warnings/errors moved to the shared WarningsSummary section (#403 Phase 2 follow-up);
         # the closing block no longer lists them (only the prominent emergency cause stays).
-        result = AutoTraderResult(warning_messages=['[  1s 000ms] WARNING | 1 position open'])
+        result = AutoTraderResult(session_logger_buffer=[
+            LogRecord(level=LogLevel.WARNING, timestamp=datetime.now(timezone.utc),
+                      scope='s', message='1 position open')])
         out = _render(result)
         assert 'Warnings:' not in out
         assert '1 position open' not in out

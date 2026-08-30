@@ -12,19 +12,23 @@ as Tier-1 rows carrying their own origin. The stress check is SHARED with the si
 (`shared_advisory_checks`), so the sim-side tests pin the same formula from the other end.
 """
 
+from datetime import datetime, timezone
+
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_session,
 )
 from python.framework.types.api.report_types import WarningTier
-from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.clipping_monitor_types import (
     ClippingSessionSummary,
 )
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.config_types.scenario_settings_config_types import (
     ScenarioSettingsConfig,
 )
+from python.framework.types.log_level import LogLevel
+from python.framework.types.log_record_types import LogRecord
 from python.framework.types.validation_types import ValidationDomain, ValidationResult
 from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.validators.session_post_run_validator import SessionPostRunValidator
@@ -151,7 +155,9 @@ class TestTheChannelReachesTheReport:
 
     def test_the_log_pot_still_arrives_as_tier_2(self):
         """Adding Tier 1 must not displace the channel that was already there."""
-        result = AutoTraderResult(warning_messages=['something odd happened'])
+        result = AutoTraderResult(session_logger_buffer=[
+            LogRecord(level=LogLevel.WARNING, timestamp=datetime.now(timezone.utc),
+                      scope='s', message='something odd happened')])
         report = self._report(result, _config(stress=_STRESS))
         tiers = [w.tier for w in report.warnings]
         assert tiers.count(WarningTier.VALIDATOR_PRODUCED) == 1

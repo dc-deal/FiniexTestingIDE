@@ -46,6 +46,7 @@ from python.framework.reporting.store.run_results_ledger import append_run_to_le
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.log_level import LogLevel
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.framework.types.signal_data_types import SignalObservedSeries
 from python.framework.utils.console_renderer import ConsoleRenderer
@@ -218,4 +219,5 @@ class AutotraderReportCoordinator:
         self._summary_logger.info(re.sub(r'\033\[[0-9;]+m', '', full_output))
         self._global_logger.info(
             f'📋 Session summary written — {result.ticks_processed} ticks, '
-            f'{len(result.warning_messages)} warnings, {len(result.error_messages)} errors')
+            f'{result.count_logged(LogLevel.WARNING)} warnings, '
+            f'{result.count_logged(LogLevel.ERROR)} errors')

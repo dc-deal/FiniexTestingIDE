@@ -16,11 +16,12 @@ Counterpart to test_safety_integration.py (spot mode).
 
 import pytest
 
-from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.types.autotrader_types.autotrader_config_types import SafetyConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.log_level import LogLevel
+from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 # Base profile: margin (mt5), 15K ticks, display off, INSTANT_FILL mock adapter
 BASE_PROFILE = 'configs/autotrader_profiles/backtesting/margin_safety_test.json'
@@ -93,7 +94,7 @@ class TestMarginSafetyNoFalsePositive:
     def test_no_safety_warnings(self, margin_safe_session):
         """No circuit breaker trigger messages in session warnings."""
         safety_warnings = [
-            w for w in margin_safe_session.warning_messages
+            w for w in logged_messages(margin_safe_session, LogLevel.WARNING)
             if 'circuit breaker' in w.lower()
         ]
         assert len(safety_warnings) == 0, (
@@ -122,7 +123,7 @@ class TestMarginSafetyTriggers:
     def test_safety_triggered(self, margin_trigger_session):
         """Circuit breaker warning must appear in session log."""
         safety_warnings = [
-            w for w in margin_trigger_session.warning_messages
+            w for w in logged_messages(margin_trigger_session, LogLevel.WARNING)
             if 'circuit breaker triggered' in w.lower()
         ]
         assert len(safety_warnings) >= 1, (
@@ -132,7 +133,7 @@ class TestMarginSafetyTriggers:
     def test_trigger_uses_min_balance(self, margin_trigger_session):
         """Warning must reference min_balance (not min_equity) in margin mode."""
         safety_warnings = [
-            w for w in margin_trigger_session.warning_messages
+            w for w in logged_messages(margin_trigger_session, LogLevel.WARNING)
             if 'circuit breaker triggered' in w.lower()
         ]
         assert any('min_balance' in w for w in safety_warnings), (
@@ -157,7 +158,7 @@ class TestMarginSafetyDisabledNoInterference:
 
     def test_no_safety_warnings(self, margin_disabled_session):
         safety_warnings = [
-            w for w in margin_disabled_session.warning_messages
+            w for w in logged_messages(margin_disabled_session, LogLevel.WARNING)
             if 'circuit breaker' in w.lower()
         ]
         assert len(safety_warnings) == 0

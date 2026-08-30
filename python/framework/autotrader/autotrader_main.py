@@ -48,7 +48,6 @@ from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.log_level import LogLevel
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.market_config_types import TradingModel
@@ -641,13 +640,11 @@ class AutotraderMain:
         if self._worker_orchestrator:
             result.disturbance_episodes += self._worker_orchestrator.get_signal_episodes()
 
-        # Collect warning/error messages from the session logger before closing — after the
-        # collection block above, so a failure in it still reaches the report (and re-grades
-        # the outcome to FINISHED_WITH_ERRORS, §35).
-        result.warning_messages = [
-            record.message for record in self._session_logger.get_records(LogLevel.WARNING)]
-        result.error_messages = [
-            record.message for record in self._session_logger.get_records(LogLevel.ERROR)]
+        # Collect the session logger's records before closing — after the collection block
+        # above, so a failure in it still reaches the report (and re-grades the outcome to
+        # FINISHED_WITH_ERRORS, §35). The records travel whole: the level filter belongs to
+        # DERIVE, which is also where the sim side applies it.
+        result.session_logger_buffer = self._session_logger.get_records()
 
         # Startup advisories held since before the run (market fit) — the channel lives on the
         # result, so this is the first moment they can be recorded.

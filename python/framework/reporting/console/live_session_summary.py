@@ -18,6 +18,7 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.log_level import LogLevel
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.utils.console_renderer import ConsoleRenderer
 
@@ -73,7 +74,7 @@ class LiveSessionSummary:
         if outcome == RunOutcome.FINISHED_WITH_ERRORS.value:
             print(renderer.yellow(
                 '  ⚠️  FINISHED WITH ERRORS — '
-                f'{len(result.error_messages)} error(s) logged during the session'))
+                f'{result.count_logged(LogLevel.ERROR)} error(s) logged during the session'))
 
         if result.portfolio_stats:
             pnl = result.portfolio_stats.total_profit - result.portfolio_stats.total_loss

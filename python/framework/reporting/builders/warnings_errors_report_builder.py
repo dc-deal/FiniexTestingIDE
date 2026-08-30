@@ -15,7 +15,10 @@ the scenario / batch validation channels. The builder makes NO decisions — eve
 by a validator upstream (pre-run phases + `PostRunValidator`). See docs/architecture/warnings_errors_tiers.md.
 """
 
+from typing import Optional
+
 from python.framework.types.api.report_types import (
+    LogEntryRow,
     UnitErrorRow,
     WarningRow,
     WarningsErrorsOutcome,
@@ -25,7 +28,6 @@ from python.framework.types.api.report_types import (
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.log_level import LogLevel
-from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.validation_types import Severity, ValidationResult
 
 
@@ -69,16 +71,17 @@ def build_warnings_errors_report_from_session(
     # so there is nothing to strip. check/domain stay empty: no assertion decided this, and the
     # channel is already named by the tier.
     warnings.extend(
-        WarningRow(tier=WarningTier.LOGGER_PRODUCED, scope=name, message=m)
-        for m in result.warning_messages)
+        WarningRow(tier=WarningTier.LOGGER_PRODUCED, scope=name, message=entry.message)
+        for entry in _log_entries(result.session_logger_buffer, LogLevel.WARNING))
 
     # Errors — the session ERROR buffer (pot) + the emergency villain
+    logged_errors = _log_entries(result.session_logger_buffer, LogLevel.ERROR)
     errors = []
-    if result.error_messages or result.emergency_reason:
+    if logged_errors or result.emergency_reason:
         errors.append(UnitErrorRow(
             name=name, symbol=symbol,
             error_message=result.emergency_reason or '',
-            logged_errors=list(result.error_messages)))
+            logged_errors=logged_errors))
 
     outcome = WarningsErrorsOutcome(
         run_outcome=result.get_outcome().value,
@@ -143,7 +146,7 @@ def _batch_errors(batch: BatchExecutionSummary) -> list:
         scenario = batch.get_scenario_by_process_result(result)
         validation_errors = [
             e for vr in scenario.validation_result if not vr.is_valid for e in vr.errors]
-        logged_errors = _logged(result, LogLevel.ERROR)
+        logged_errors = _log_entries(result.scenario_logger_buffer, LogLevel.ERROR)
         has_villain = bool(result.error_type or result.error_message)
         if not (validation_errors or logged_errors or has_villain):
             continue
@@ -172,12 +175,27 @@ def _batch_outcome(batch: BatchExecutionSummary) -> WarningsErrorsOutcome:
         first_failure_error=(first.error_message or '') if first else '')
 
 
-def _logged(result: ProcessResult, level: LogLevel) -> list:
-    """The messages of one level from a scenario's logger buffer, unrendered."""
-    if not result.scenario_logger_buffer:
+def _log_entries(buffer: Optional[list], level: LogLevel) -> list[LogEntryRow]:
+    """
+    One level's records from a logger buffer, as report rows.
+
+    Maps rather than reduces: the record reaches DERIVE with level, both times and scope intact,
+    and dropping them here would make them unreachable for the artifact and the API alike (#391).
+    Shared by both pipelines — the sim hands its scenario buffer, the live session its own.
+
+    Args:
+        buffer: The logger's records, or None when nothing was buffered
+        level: The level to select
+
+    Returns:
+        One row per matching record, in the order they were logged
+    """
+    if not buffer:
         return []
-    return [record.message for record in result.scenario_logger_buffer
-            if record.level == level]
+    return [LogEntryRow(level=record.level, observed_at=record.timestamp,
+                        scope=record.scope, message=record.message,
+                        event_time=record.event_time)
+            for record in buffer if record.level == level]
 
 
 def _log_pot_summary(batch: BatchExecutionSummary, level: LogLevel) -> tuple:
@@ -185,7 +203,7 @@ def _log_pot_summary(batch: BatchExecutionSummary, level: LogLevel) -> tuple:
     total = 0
     units = 0
     for result in batch.process_result_list:
-        n = len(_logged(result, level))
+        n = len(_log_entries(result.scenario_logger_buffer, level))
         if n > 0:
             total += n
             units += 1

@@ -22,6 +22,7 @@ from python.framework.reporting.io.warnings_errors_report_io import (
     write_warnings_errors_report,
 )
 from python.framework.types.api.report_types import (
+    LogEntryRow,
     UnitErrorRow,
     WarningRow,
     WarningsErrorsOutcome,
@@ -113,7 +114,7 @@ class TestBuildFromBatch:
         err = report.errors[0]
         assert err.error_type == 'ValidationError'
         assert err.validation_errors == ['start before data']
-        assert err.logged_errors == ['e1']
+        assert [e.message for e in err.logged_errors] == ['e1']
 
     def test_outcome_rollup(self):
         batch = _batch(
@@ -170,7 +171,10 @@ class TestNoRenderingReachesTheArtifact:
             [_result('s1', 0, success=False, error_type='X', error_message='boom', buffer=buffer)],
             [_scenario('s1', 0, 'BTCUSD')]))
 
-        assert report.errors[0].logged_errors == ['Broker rejected order']
+        entry = report.errors[0].logged_errors[0]
+        assert entry.message == 'Broker rejected order'
+        # The fields the record carried survive DERIVE — that is what the artifact is for.
+        assert entry.level == LogLevel.ERROR and entry.scope == 's1'
 
         path = write_warnings_errors_report(report, tmp_path)
         raw = path.read_bytes()
@@ -229,13 +233,15 @@ class TestBuildFromSession:
     def test_live_warnings_and_errors(self):
         result = AutoTraderResult(
             shutdown_mode='emergency', emergency_reason='balance breach',
-            warning_messages=['stale tick', 'reconnect'], error_messages=['order rejected'])
+            session_logger_buffer=[_record(LogLevel.WARNING, 'stale tick'),
+                                   _record(LogLevel.WARNING, 'reconnect'),
+                                   _record(LogLevel.ERROR, 'order rejected')])
         report = build_warnings_errors_report_from_session(result, 'dotusd_live', 'DOTUSD')
         assert [w.tier for w in report.warnings] == ['minor', 'minor']
         assert all(w.scope == 'dotusd_live' for w in report.warnings)
         assert len(report.errors) == 1
         assert report.errors[0].error_message == 'balance breach'
-        assert report.errors[0].logged_errors == ['order rejected']
+        assert [e.message for e in report.errors[0].logged_errors] == ['order rejected']
         assert report.outcome.shutdown_mode == 'emergency'
         assert report.outcome.emergency_reason == 'balance breach'
 
@@ -255,7 +261,8 @@ class TestBuildFromSession:
         assert emergency.outcome.run_outcome == RunOutcome.FAILED.value
 
         pot = build_warnings_errors_report_from_session(
-            AutoTraderResult(shutdown_mode='normal', error_messages=['order rejected']),
+            AutoTraderResult(shutdown_mode='normal',
+                             session_logger_buffer=[_record(LogLevel.ERROR, 'order rejected')]),
             'p', 'BTCUSD')
         assert pot.outcome.run_outcome == RunOutcome.FINISHED_WITH_ERRORS.value
 
@@ -296,7 +303,10 @@ class TestRender:
                 WarningRow(tier='major', scope='s1', message='account_currency normalized'),
                 WarningRow(tier='minor', scope='run', message='3 warning(s) in 2 scenario log(s)')],
             errors=[UnitErrorRow(name='bad', symbol='BTCUSD', error_type='ValidationError',
-                                 validation_errors=['start before data'], logged_errors=['e1'])],
+                                 validation_errors=['start before data'],
+                                 logged_errors=[LogEntryRow(
+                                     level=LogLevel.ERROR, observed_at=_DT,
+                                     scope='bad', message='e1')])],
             outcome=WarningsErrorsOutcome(failed_count=1))
         out = self._render(report)
         assert 'WARNINGS & ERRORS' in out
