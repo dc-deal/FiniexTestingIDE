@@ -30,6 +30,9 @@ from python.framework.types.performance_types.performance_stats_types import (
 )
 from python.framework.utils.console_renderer import ConsoleRenderer
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 
 def _ws(name, total, calls=1000) -> WorkerPerformanceStats:
     return WorkerPerformanceStats(
@@ -57,7 +60,7 @@ class TestBuild:
                 decision_min_time_ms=0.01, decision_max_time_ms=0.5),
             coordination=WorkerCoordinatorPerformanceStats(
                 parallel_workers=True, ticks_processed=1000, parallel_time_saved_ms=5.0))
-        row = build_worker_decision_report([u]).units[0]
+        row = build_worker_decision_report(_RUN_ID, [u]).units[0]
         assert row.name == 's1' and row.symbol == 'EURUSD'
         assert row.decision_logic_name == 'aggressive_trend'
         assert (row.buy_signals, row.sell_signals, row.flat_signals) == (5, 3, 92)
@@ -69,31 +72,31 @@ class TestBuild:
     def test_worker_totals_summed_across_units(self):
         u1 = _unit('s1', workers=[_ws('bollinger', 100.0, 1000), _ws('rsi', 80.0, 1000)])
         u2 = _unit('s2', workers=[_ws('bollinger', 60.0, 500), _ws('rsi', 40.0, 500)])
-        totals = {w.worker_name: w for w in build_worker_decision_report([u1, u2]).worker_totals}
+        totals = {w.worker_name: w for w in build_worker_decision_report(_RUN_ID, [u1, u2]).worker_totals}
         assert totals['bollinger'].total_time_ms == 160.0           # 100 + 60
         assert totals['bollinger'].call_count == 1500               # 1000 + 500
         assert round(totals['bollinger'].avg_time_ms, 6) == round(160.0 / 1500, 6)  # sum/sum, not averaged
 
     def test_worker_totals_sorted_desc(self):
         u = _unit(workers=[_ws('rsi', 40.0), _ws('bollinger', 100.0)])
-        totals = build_worker_decision_report([u]).worker_totals
+        totals = build_worker_decision_report(_RUN_ID, [u]).worker_totals
         assert [w.worker_name for w in totals] == ['bollinger', 'rsi']   # by total_time_ms desc
 
     def test_live_unit_without_coordination(self):
         # live-style: no coordination_statistics → coordination fields stay at defaults
         u = _unit('LIVE', symbol='BTCUSD', workers=[_ws('bollinger', 10.0)],
                   decision=DecisionLogicStats(decision_total_time_ms=2.0))
-        row = build_worker_decision_report([u]).units[0]
+        row = build_worker_decision_report(_RUN_ID, [u]).units[0]
         assert row.ticks_processed == 0 and row.parallel_workers is False
         assert row.decision_total_time_ms == 2.0
 
     def test_unit_without_decision_stats(self):
         # decision_statistics None → decision fields at defaults
-        row = build_worker_decision_report([_unit(workers=[_ws('bollinger', 5.0)], decision=None)]).units[0]
+        row = build_worker_decision_report(_RUN_ID, [_unit(workers=[_ws('bollinger', 5.0)], decision=None)]).units[0]
         assert row.decision_total_time_ms == 0.0 and row.decision_logic_name == ''
 
     def test_empty(self):
-        report = build_worker_decision_report([])
+        report = build_worker_decision_report(_RUN_ID, [])
         assert report.units == [] and report.worker_totals == []
 
 
@@ -114,7 +117,7 @@ class TestPerformanceRender:
                 WorkerStatRow(worker_type='CORE/rsi', worker_name='rsi_fast',
                               call_count=15000, total_time_ms=858.0, avg_time_ms=0.057,
                               min_time_ms=0.01, max_time_ms=0.4)])
-        return WorkerDecisionReport(units=[unit])
+        return WorkerDecisionReport(run_id=_RUN_ID, units=[unit])
 
     def _render(self, method_name: str) -> str:
         summary = PerformanceSummary(self._report())
@@ -155,7 +158,7 @@ class TestPerformanceRender:
 
     def test_layer_a_off_suppressed(self):
         # no workers anywhere → section suppressed
-        summary = PerformanceSummary(WorkerDecisionReport(units=[
+        summary = PerformanceSummary(WorkerDecisionReport(run_id=_RUN_ID, units=[
             WorkerDecisionUnitRow(name='s1', symbol='EURUSD', workers=[])]))
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -169,7 +172,7 @@ class TestCadenceDerivedInBuilder:
     def test_compute_ratio_and_idle(self):
         worker = _ws('rsi', total=100.0, calls=250)
         worker.worker_last_compute_tick = 900
-        row = build_worker_decision_report([_unit(
+        row = build_worker_decision_report(_RUN_ID, [_unit(
             workers=[worker],
             coordination=WorkerCoordinatorPerformanceStats(
                 parallel_workers=True, ticks_processed=1000,
@@ -180,7 +183,7 @@ class TestCadenceDerivedInBuilder:
 
     def test_no_ticks_leaves_the_derived_fields_at_zero(self):
         """Live units carry no coordination stats — the cadence figures stay absent."""
-        row = build_worker_decision_report([_unit(workers=[_ws('rsi', 100.0)])]).units[0]
+        row = build_worker_decision_report(_RUN_ID, [_unit(workers=[_ws('rsi', 100.0)])]).units[0]
         assert row.workers[0].compute_ratio_pct == 0.0
         assert row.workers[0].ticks_idle == 0
         assert row.parallel_avg_saved_per_tick_ms == 0.0

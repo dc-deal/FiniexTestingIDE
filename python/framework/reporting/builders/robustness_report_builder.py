@@ -38,11 +38,12 @@ from python.framework.types.scenario_types.scenario_set_types import SingleScena
 from python.framework.validators.scenario_validator import ScenarioValidator
 
 
-def build_robustness_report_from_batch(batch: BatchExecutionSummary) -> RobustnessReport:
+def build_robustness_report_from_batch(run_id: str, batch: BatchExecutionSummary) -> RobustnessReport:
     """
     Build the robustness report from a finished sim batch.
 
     Args:
+        run_id: The run this report belongs to
         batch: The completed batch summary (carries the robustness config + scenarios)
 
     Returns:
@@ -50,13 +51,13 @@ def build_robustness_report_from_batch(batch: BatchExecutionSummary) -> Robustne
     """
     config = batch.robustness_config
     if not config.enabled:
-        return RobustnessReport(enabled=False, metric=config.metric.value)
+        return RobustnessReport(run_id=run_id, enabled=False, metric=config.metric.value)
 
     scenario_by_name: Dict[str, SingleScenario] = {
         s.name: s for s in batch.single_scenario_list}
 
     rows: List[RobustnessWindowRow] = [
-        _window_row(unit, scenario_by_name.get(unit.name), config.metric)
+        _window_row(run_id, unit, scenario_by_name.get(unit.name), config.metric)
         for unit in run_units_from_batch(batch)
     ]
 
@@ -70,9 +71,11 @@ def build_robustness_report_from_batch(batch: BatchExecutionSummary) -> Robustne
 
     # Trust-gate input — the per-window numbers are artifacts when block-splitting distortion is
     # high. Generator profiles are not needed for the disposition math (only the mode label).
-    disposition = build_block_splitting_report_from_batch(batch, []).agg_disposition_pct
+    disposition = build_block_splitting_report_from_batch(
+        run_id, batch, []).agg_disposition_pct
 
     return RobustnessReport(
+        run_id=run_id,
         enabled=True,
         metric=config.metric.value,
         windows=rows,
@@ -92,13 +95,13 @@ def build_robustness_report_from_batch(batch: BatchExecutionSummary) -> Robustne
 
 
 def _window_row(
-    unit: RunUnit, scenario: Optional[SingleScenario], metric: RobustnessMetric
+    run_id: str, unit: RunUnit, scenario: Optional[SingleScenario], metric: RobustnessMetric
 ) -> RobustnessWindowRow:
     """Compose one window's row by reusing the section builders + run-summary (no re-derive)."""
-    portfolio = build_portfolio_report([unit])
-    trade = build_trade_history_report([unit])
-    execution = build_execution_stats_report([unit])
-    summary = build_run_summary(portfolio, trade, execution)
+    portfolio = build_portfolio_report(run_id, [unit])
+    trade = build_trade_history_report(run_id, [unit])
+    execution = build_execution_stats_report(run_id, [unit])
+    summary = build_run_summary(run_id, portfolio, trade, execution)
     ccy = summary.currencies[0] if summary.currencies else None
 
     expectancy = ccy.expectancy if ccy else 0.0

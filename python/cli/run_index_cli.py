@@ -36,12 +36,12 @@ class RunIndexCli:
         print(f'✅ {count} run(s) indexed → {self._file_logging.run_index}')
         duplicates = self._index.duplicate_ids()
         if duplicates:
-            print(f'\n⚠️  {len(duplicates)} id(s) appear more than once — these predate the '
-                  f'distinct id and collided when they were minted. Every report route resolves '
-                  f'the FIRST of each pair:')
+            print(f'\n⚠️  {len(duplicates)} id(s) appear more than once. A minted id cannot '
+                  f'collide, so a duplicate means two directories carry the same header — a '
+                  f'copy, or a hand-edited one. Every report route resolves the FIRST:')
             for run_id in duplicates:
                 print(f'      {run_id}')
-            print('    Re-run or remove one of each pair to clear it.')
+            print('    Remove one of each pair to clear it.')
         print()
         return 0
 
@@ -57,8 +57,8 @@ class RunIndexCli:
         print(f'📇 Run Index — {len(runs)} run(s) · {self._file_logging.run_index}')
         print('=' * 80 + '\n')
         for run in runs[:20]:
-            reports = '✅' if run.has_reports else '➖'
-            print(f'  {reports}  {run.run_id}  {run.group:<12}  {run.name}')
+            reports = f'{len(run.artifacts):>2} artifact(s)' if run.artifacts else '  logs only  '
+            print(f'  {run.run_id}  {run.group:<10}  {reports}  {run.name}')
         if len(runs) > 20:
             print(f'  … and {len(runs) - 20} more')
         print()

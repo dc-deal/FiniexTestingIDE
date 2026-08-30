@@ -13,6 +13,9 @@ from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import RunSummary, RunSummaryCurrency
 from python.framework.types.run_results_types import RunProvenance
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 
 @pytest.fixture
 def tmp_ledger(tmp_path):
@@ -26,7 +29,7 @@ def make_run_summary():
     def _make(currency='USD', net_pnl=0.0, expectancy=0.0, profit_factor=0.0,
               win_rate=0.0, max_drawdown=0.0, total_trades=0,
               orders_sent=0, orders_executed=0):
-        return RunSummary(
+        return RunSummary(run_id=_RUN_ID, 
             currencies=[RunSummaryCurrency(
                 currency=currency, net_pnl=net_pnl, profit_factor=profit_factor,
                 win_rate=win_rate, max_drawdown=max_drawdown, total_fees=0.0,

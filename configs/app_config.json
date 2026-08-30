@@ -25,9 +25,8 @@
         "global_log_dir": "logs/",
         "append_mode": true,
         "run_logs": {
-            "autotrader": "runs/autotrader",
-            "single_runs": "runs/single_runs",
-            "sweeps": "runs/sweeps"
+            "simulation": "runs/simulation",
+            "live": "runs/live"
         },
         "run_index": "runs/index.parquet",
         "scenario": {

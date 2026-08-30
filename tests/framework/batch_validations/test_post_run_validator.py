@@ -26,6 +26,9 @@ from python.framework.types.process_data_types import (
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.validators.post_run_validator import PostRunValidator
 
+# The validator names the run it validates (#475); opaque here.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 
 
@@ -84,7 +87,7 @@ def _batch_results(results) -> BatchExecutionSummary:
 
 def _warnings(batch) -> dict:
     """Run the validator and return {check_name: joined warning text}."""
-    PostRunValidator(batch).validate()
+    PostRunValidator(batch, _RUN_ID).validate()
     return {finding.check: finding.message
             for vr in batch.batch_validation_result for finding in vr.findings}
 

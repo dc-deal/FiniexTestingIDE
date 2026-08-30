@@ -10,11 +10,12 @@ from python.framework.types.api.report_types import RunMetaReport
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 
 
-def build_run_meta_report_from_batch(batch: BatchExecutionSummary) -> RunMetaReport:
+def build_run_meta_report_from_batch(run_id: str, batch: BatchExecutionSummary) -> RunMetaReport:
     """
     Build the run-level meta report from the batch execution summary.
 
     Args:
+        run_id: The run this report belongs to
         batch: The finished batch execution summary (the orchestrator's measurements)
 
     Returns:
@@ -45,6 +46,7 @@ def build_run_meta_report_from_batch(batch: BatchExecutionSummary) -> RunMetaRep
         for r in batch.process_result_list)
 
     return RunMetaReport(
+        run_id=run_id,
         scenario_count=count,
         disabled_count=disabled,
         symbols=sorted(set(s.symbol for s in scenarios)),

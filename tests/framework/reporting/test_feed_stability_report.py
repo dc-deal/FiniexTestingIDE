@@ -41,6 +41,9 @@ from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.stress_test_types import StaleDataEvent
 from python.framework.utils.console_renderer import ConsoleRenderer
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 TICK_SOURCE = 'kraken_spot'
 SIGNAL_SOURCE = 'crypto_sentiment'
 SYMBOL = 'BTCUSD'
@@ -110,10 +113,10 @@ def _planned(label: str, source: str, start: int, end: int) -> StaleDataEvent:
 
 def _summary_over(report) -> RunSummary:
     """Compose a RunSummary over empty trading sections — only the #451 totals matter."""
-    return build_run_summary(
-        PortfolioReport(units=[], aggregates=[]),
-        TradeHistoryReport(trades=[], count=0, symbols=[], analytics=[]),
-        ExecutionStatsReport(units=[], totals=ExecutionStatsTotals()),
+    return build_run_summary(_RUN_ID, 
+        PortfolioReport(run_id=_RUN_ID, units=[], aggregates=[]),
+        TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[]),
+        ExecutionStatsReport(run_id=_RUN_ID, units=[], totals=ExecutionStatsTotals()),
         None,
         report,
     )
@@ -123,19 +126,19 @@ class TestEmptyRun:
     """A clean run produces no section at all."""
 
     def test_no_episodes_no_rows(self):
-        report = build_feed_stability_report([_unit([])])
+        report = build_feed_stability_report(_RUN_ID, [_unit([])])
         assert report.units == []
         assert report.episode_count == 0
 
     def test_no_units_at_all(self):
-        assert build_feed_stability_report([]).units == []
+        assert build_feed_stability_report(_RUN_ID, []).units == []
 
 
 class TestGrouping:
     """One row per source across both domains."""
 
     def test_both_domains_in_one_table(self):
-        report = build_feed_stability_report([_unit(
+        report = build_feed_stability_report(_RUN_ID, [_unit(
             [_tick_episode(10, 25), _signal_episode(30, None)],
             signal_stats=[SignalResolutionStats(
                 worker_name='sentiment', signal_kind='llm_sentiment', symbol=SYMBOL,
@@ -150,7 +153,7 @@ class TestGrouping:
         assert by_source[SIGNAL_SOURCE].episodes[0].stale_to == ''
 
     def test_counters_attach_to_their_domain(self):
-        report = build_feed_stability_report([_unit(
+        report = build_feed_stability_report(_RUN_ID, [_unit(
             [_tick_episode(10, 25), _signal_episode(30, 40)],
             signal_stats=[SignalResolutionStats(
                 worker_name='sentiment', signal_kind='llm_sentiment', symbol=SYMBOL,
@@ -165,7 +168,7 @@ class TestGrouping:
         assert by_source[SIGNAL_SOURCE].blind_ticks == 5
 
     def test_episodes_sum_across_units(self):
-        report = build_feed_stability_report([
+        report = build_feed_stability_report(_RUN_ID, [
             _unit([_tick_episode(10, 25)]),
             _unit([_tick_episode(40, 50)]),
         ])
@@ -181,7 +184,7 @@ class TestOriginJoin:
     def test_overlapping_window_marks_the_episode_injected(self):
         # The signal flip lands INSIDE the window, later than its start (the staleness
         # threshold has to elapse first) — containment would miss it, overlap does not.
-        report = build_feed_stability_report([_unit(
+        report = build_feed_stability_report(_RUN_ID, [_unit(
             [_signal_episode(45, 70)],
             planned=[_planned('feed dies', SIGNAL_SOURCE, 30, 90)],
         )])
@@ -191,7 +194,7 @@ class TestOriginJoin:
         assert report.stress_injected_count == 1
 
     def test_disjoint_window_leaves_the_episode_real(self):
-        report = build_feed_stability_report([_unit(
+        report = build_feed_stability_report(_RUN_ID, [_unit(
             [_signal_episode(120, 140)],
             planned=[_planned('feed dies', SIGNAL_SOURCE, 30, 90)],
         )])
@@ -199,7 +202,7 @@ class TestOriginJoin:
         assert report.stress_injected_count == 0
 
     def test_window_of_another_source_does_not_match(self):
-        report = build_feed_stability_report([_unit(
+        report = build_feed_stability_report(_RUN_ID, [_unit(
             [_signal_episode(45, 70)],
             planned=[_planned('other feed', 'forex_macro_sentiment', 30, 90)],
         )])
@@ -207,7 +210,7 @@ class TestOriginJoin:
 
     def test_open_episode_matches_a_later_window(self):
         """An episode that never recovered reaches to the run end."""
-        report = build_feed_stability_report([_unit(
+        report = build_feed_stability_report(_RUN_ID, [_unit(
             [_signal_episode(45, None)],
             planned=[_planned('feed dies', SIGNAL_SOURCE, 30, 900)],
         )])
@@ -215,7 +218,7 @@ class TestOriginJoin:
 
     def test_capture_side_label_survives(self):
         """A capture site that KNOWS it injected is never overruled by the join."""
-        report = build_feed_stability_report([_unit([_tick_episode(10, 25, 'freeze drill')])])
+        report = build_feed_stability_report(_RUN_ID, [_unit([_tick_episode(10, 25, 'freeze drill')])])
         episode = report.units[0].episodes[0]
         assert episode.origin == DisturbanceOrigin.STRESS_INJECTED.value
         assert episode.label == 'freeze drill'
@@ -225,7 +228,7 @@ class TestRunSummaryTotals:
     """The executive line reads the totals — it does not re-scan the episodes."""
 
     def test_totals_reach_the_run_summary(self):
-        report = build_feed_stability_report([_unit(
+        report = build_feed_stability_report(_RUN_ID, [_unit(
             [_tick_episode(10, 25, 'w1'), _signal_episode(30, None)])])
         summary = _summary_over(report)
         assert summary.disturbance_episode_count == 2
@@ -234,7 +237,7 @@ class TestRunSummaryTotals:
         assert summary.disturbance_stale_seconds == 900.0   # 15 min + 0 (open at start)
 
     def test_clean_run_has_no_disturbance_line(self):
-        summary = _summary_over(build_feed_stability_report([_unit([])]))
+        summary = _summary_over(build_feed_stability_report(_RUN_ID, [_unit([])]))
         assert summary.disturbance_episode_count == 0
         assert format_disturbance_line(summary) == ''
 
@@ -249,7 +252,7 @@ class TestRender:
         return buffer.getvalue()
 
     def test_section_shows_both_domains_and_the_open_tail(self):
-        report = build_feed_stability_report([_unit(
+        report = build_feed_stability_report(_RUN_ID, [_unit(
             [_tick_episode(10, 25), _signal_episode(30, None)],
             planned=[_planned('feed dies 12h', SIGNAL_SOURCE, 20, 900)],
             signal_stats=[SignalResolutionStats(
@@ -267,7 +270,7 @@ class TestRender:
     def test_long_episode_list_collapses(self):
         """A live session with many short outages must not bury the source summary."""
         episodes = [_tick_episode(i * 10, i * 10 + 5) for i in range(12)]
-        report = build_feed_stability_report([_unit(episodes)])
+        report = build_feed_stability_report(_RUN_ID, [_unit(episodes)])
         output = self._render(report)
 
         assert '12 episodes — full list in feed_stability.json' in output
@@ -277,7 +280,7 @@ class TestRender:
         assert len(report.units[0].episodes) == 12
 
     def test_disturbance_line_wording(self):
-        report = build_feed_stability_report([_unit(
+        report = build_feed_stability_report(_RUN_ID, [_unit(
             [_tick_episode(10, 25, 'w1'), _tick_episode(40, 50)])])
         summary = _summary_over(report)
         line = format_disturbance_line(summary)

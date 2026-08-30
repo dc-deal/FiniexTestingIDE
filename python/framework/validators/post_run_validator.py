@@ -46,14 +46,17 @@ _TIME_DIVERGENCE_DAYS = 30
 class PostRunValidator:
     """Emits the post-run batch-global advisory warnings into the batch-level validation channel."""
 
-    def __init__(self, batch: BatchExecutionSummary):
+    def __init__(self, batch: BatchExecutionSummary, run_id: str):
         """
         Initialize the post-run validator.
 
         Args:
             batch: The completed batch summary (scenarios, process results, clipping, profiling)
+            run_id: The run being validated — the robustness verdict builds its report from the
+                same builder the artifact uses, and every report names its run (#475)
         """
         self._batch = batch
+        self._run_id = run_id
 
     def validate(self) -> None:
         """Run all post-run advisory checks; append a run-scoped ValidationResult per active warning."""
@@ -312,7 +315,7 @@ class PostRunValidator:
         config = self._batch.robustness_config
         if not config.enabled:
             return
-        report = build_robustness_report_from_batch(self._batch)
+        report = build_robustness_report_from_batch(self._run_id, self._batch)
         if report.distribution is None:
             return
 

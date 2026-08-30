@@ -14,6 +14,7 @@ from python.framework.types.scenario_types.window_set_types import WindowSet
 
 
 def build_block_splitting_report_from_batch(
+    run_id: str,
     batch: BatchExecutionSummary,
     generator_profiles: List[WindowSet],
 ) -> BlockSplittingReport:
@@ -21,6 +22,7 @@ def build_block_splitting_report_from_batch(
     Build the block-splitting disposition report from the batch + generator window sets.
 
     Args:
+        run_id: The run this report belongs to
         batch: The finished batch execution summary (carries the boundary reports)
         generator_profiles: Generator window sets — the symbol → generator-mode lookup
 
@@ -73,6 +75,7 @@ def build_block_splitting_report_from_batch(
     agg_pnl = sum(r.total_pnl for r in rows)
 
     return BlockSplittingReport(
+        run_id=run_id,
         symbols=rows,
         agg_force_closed_trades=agg_force,
         agg_total_trades=agg_trades,

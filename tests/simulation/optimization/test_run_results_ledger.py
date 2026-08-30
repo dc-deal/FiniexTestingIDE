@@ -2,6 +2,9 @@
 
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 
 def test_append_then_read_roundtrip(tmp_ledger, make_run_summary, make_provenance):
     """A run appends one row per currency; read returns it with the KPIs intact."""
@@ -122,7 +125,7 @@ def test_explicit_error_writes_error_row(tmp_ledger, make_run_summary, make_prov
 def test_no_currencies_writes_error_row(tmp_ledger, make_provenance):
     """A run with no usable data (no currencies) is recorded as an error row, never absent."""
     from python.framework.types.api.report_types import RunSummary
-    empty = RunSummary(currencies=[])
+    empty = RunSummary(run_id=_RUN_ID, currencies=[])
     tmp_ledger.append(empty, make_provenance(run_id='r1'))
     rows = tmp_ledger.read_rows()
     assert len(rows) == 1

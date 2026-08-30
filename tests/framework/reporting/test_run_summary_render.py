@@ -22,6 +22,9 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.utils.console_renderer import ConsoleRenderer
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 
 def _currency(currency='USD', net_pnl=6.0, win_rate=0.6667, winners=2, losers=1,
               profit_factor=4.33, total_fees=3.70, expectancy=0.0, r_trade_count=0):
@@ -33,7 +36,7 @@ def _currency(currency='USD', net_pnl=6.0, win_rate=0.6667, winners=2, losers=1,
 
 
 def _summary(currencies, sent=5, executed=5, rejected=0, sl_tp=0, units=5) -> RunSummary:
-    return RunSummary(
+    return RunSummary(run_id=_RUN_ID, 
         currencies=currencies, orders_sent=sent, orders_executed=executed,
         orders_rejected=rejected, sl_tp_triggered=sl_tp, unit_count=units)
 
@@ -42,10 +45,10 @@ def _render(summary: RunSummary) -> str:
     # Only _render_run_summary is exercised — it reads self._run_summary alone.
     executive = SimExecutiveSummary(
         app_config=None, run_summary=summary,
-        run_meta_report=RunMetaReport(), profiling_report=ProfilingReport(units=[]),
-        scenario_details_report=ScenarioDetailsReport(units=[]),
-        warnings_errors_report=WarningsErrorsReport(),
-        aggregated_report=AggregatedPortfolioReport())
+        run_meta_report=RunMetaReport(run_id=_RUN_ID), profiling_report=ProfilingReport(run_id=_RUN_ID, units=[]),
+        scenario_details_report=ScenarioDetailsReport(run_id=_RUN_ID, units=[]),
+        warnings_errors_report=WarningsErrorsReport(run_id=_RUN_ID),
+        aggregated_report=AggregatedPortfolioReport(run_id=_RUN_ID))
     buf = io.StringIO()
     with redirect_stdout(buf):
         executive._render_run_summary(ConsoleRenderer())

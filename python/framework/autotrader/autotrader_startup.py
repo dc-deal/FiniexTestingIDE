@@ -24,7 +24,6 @@ from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_startup_preparation import inject_signal_providers
-from python.framework.reporting.io.run_header_io import write_run_header
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.signal_data.producer.signal_pipelines_reader import fetch_pipeline_registry
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
@@ -36,7 +35,7 @@ from python.framework.types.api.report_types import RunHeader
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.market_config_types import TradingModel
-from python.framework.types.log_layout_types import AUTOTRADER_GROUP
+from python.framework.types.log_layout_types import RUN_TYPE_LIVE
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.signal_data_types import (
@@ -85,9 +84,9 @@ def create_autotrader_loggers(
         (global_logger, session_logger, summary_logger, run_dir, run_id)
     """
     session_name = config.name or f'{config.symbol}_{config.adapter_type}'
-    # From config (file_logging.run_logs.autotrader) — the same source the API reads,
+    # From config (file_logging.run_logs.live) — the same source the API reads,
     # so a moved log root cannot make a session invisible to the run index.
-    log_root = AppConfigManager().get_file_logging_config_object().run_logs.autotrader
+    log_root = AppConfigManager().get_file_logging_config_object().run_logs.live
 
     # Minted ONCE for all three loggers. Deriving it per logger would give three ids and
     # therefore three directories for one session — the trap this threading exists to avoid.
@@ -137,15 +136,14 @@ def create_autotrader_loggers(
         header = RunHeader(
             run_id=run_id,
             start_time=run_timestamp,
-            run_type=AUTOTRADER_GROUP,
+            run_type=RUN_TYPE_LIVE,
             run_name=session_name,
             parent_id=None,
             config_snapshot='autotrader_config.json',
             app_version=AppConfigManager().get_version(),
             git_commit=git.commit if git else None,
         )
-        write_run_header(header, run_dir)
-        RunIndex(AppConfigManager().get_file_logging_config_object().run_index).append(
+        RunIndex(AppConfigManager().get_file_logging_config_object().run_index).register_run(
             header, run_dir)
 
     # Create session_logs/ subdir (tick loop will create files there)

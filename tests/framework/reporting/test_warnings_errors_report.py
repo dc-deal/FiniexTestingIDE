@@ -44,6 +44,9 @@ from python.framework.types.validation_types import (
 )
 from python.framework.utils.console_renderer import ConsoleRenderer
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 
 
@@ -80,7 +83,7 @@ class TestBuildFromBatch:
                            severity=Severity.WARNING, check='debug_mode',
                            domain=ValidationDomain.SETUP, message='DEBUG MODE — ...',
                            scope='run')])])
-        report = build_warnings_errors_report_from_batch(batch)
+        report = build_warnings_errors_report_from_batch(_RUN_ID, batch)
         major = [w for w in report.warnings if w.tier == 'major']
         assert any(w.scope == 'run' and 'DEBUG MODE' in w.message for w in major)
 
@@ -90,14 +93,14 @@ class TestBuildFromBatch:
                 severity=Severity.WARNING, check='account_currency_normalized',
                 domain=ValidationDomain.CONFIG, message='account_currency normalized',
                 scope='s1')])])
-        report = build_warnings_errors_report_from_batch(_batch([_result('s1', 0)], [scenario]))
+        report = build_warnings_errors_report_from_batch(_RUN_ID, _batch([_result('s1', 0)], [scenario]))
         major = [w for w in report.warnings if w.tier == 'major' and w.scope == 's1']
         assert len(major) == 1 and 'account_currency' in major[0].message
 
     def test_minor_warning_summary_from_log_pot(self):
         buffer = [_record(LogLevel.WARNING, 'w1'), _record(LogLevel.WARNING, 'w2'),
                   _record(LogLevel.INFO, 'i1')]
-        report = build_warnings_errors_report_from_batch(
+        report = build_warnings_errors_report_from_batch(_RUN_ID, 
             _batch([_result('s1', 0, buffer=buffer)], [_scenario('s1', 0, 'BTCUSD')]))
         minor = [w for w in report.warnings if w.tier == 'minor']
         assert len(minor) == 1 and '2 warning(s)' in minor[0].message
@@ -109,7 +112,7 @@ class TestBuildFromBatch:
                 domain=ValidationDomain.DATA, message='start before data', scope='bad')])])
         result = _result('bad', 0, success=False, error_type='ValidationError',
                          error_message='failed', buffer=[_record(LogLevel.ERROR, 'e1')])
-        report = build_warnings_errors_report_from_batch(_batch([result], [scenario]))
+        report = build_warnings_errors_report_from_batch(_RUN_ID, _batch([result], [scenario]))
         assert len(report.errors) == 1
         err = report.errors[0]
         assert err.error_type == 'ValidationError'
@@ -120,13 +123,13 @@ class TestBuildFromBatch:
         batch = _batch(
             [_result('ok', 0), _result('bad', 1, success=False, error_message='boom')],
             [_scenario('ok', 0, 'BTCUSD'), _scenario('bad', 1, 'ETHUSD')])
-        outcome = build_warnings_errors_report_from_batch(batch).outcome
+        outcome = build_warnings_errors_report_from_batch(_RUN_ID, batch).outcome
         assert outcome.failed_count == 1 and outcome.total_units == 2
         assert outcome.failed_unit_names == ['bad']
         assert outcome.first_failure_name == 'bad' and outcome.first_failure_error == 'boom'
 
     def test_no_warnings_no_errors(self):
-        report = build_warnings_errors_report_from_batch(
+        report = build_warnings_errors_report_from_batch(_RUN_ID, 
             _batch([_result('s1', 0)], [_scenario('s1', 0, 'BTCUSD')]))
         assert report.warnings == [] and report.errors == []
         assert report.outcome.failed_count == 0
@@ -139,20 +142,20 @@ class TestBuildFromBatch:
         again what the counts mean, which is the second derivation the pipeline forbids.
         """
         clean = _batch([_result('ok', 0)], [_scenario('ok', 0, 'BTCUSD')])
-        assert build_warnings_errors_report_from_batch(clean).outcome.run_outcome == \
+        assert build_warnings_errors_report_from_batch(_RUN_ID, clean).outcome.run_outcome == \
             RunOutcome.SUCCESS.value
 
         crashed = _batch(
             [_result('bad', 0, success=False, error_type='ValueError', error_message='boom')],
             [_scenario('bad', 0, 'BTCUSD')])
-        assert build_warnings_errors_report_from_batch(crashed).outcome.run_outcome == \
+        assert build_warnings_errors_report_from_batch(_RUN_ID, crashed).outcome.run_outcome == \
             RunOutcome.FAILED.value
 
         pot = _batch(
             [_result('noisy', 0, success=False, error_type=LOGGED_ERRORS_TYPE,
                      error_message='Scenario logged 2 ERROR(s)')],
             [_scenario('noisy', 0, 'BTCUSD')])
-        assert build_warnings_errors_report_from_batch(pot).outcome.run_outcome == \
+        assert build_warnings_errors_report_from_batch(_RUN_ID, pot).outcome.run_outcome == \
             RunOutcome.FINISHED_WITH_ERRORS.value
 
 
@@ -167,7 +170,7 @@ class TestNoRenderingReachesTheArtifact:
 
     def test_a_logged_error_reaches_the_artifact_clean(self, tmp_path):
         buffer = [_record(LogLevel.ERROR, 'Broker rejected order')]
-        report = build_warnings_errors_report_from_batch(_batch(
+        report = build_warnings_errors_report_from_batch(_RUN_ID, _batch(
             [_result('s1', 0, success=False, error_type='X', error_message='boom', buffer=buffer)],
             [_scenario('s1', 0, 'BTCUSD')]))
 
@@ -184,7 +187,7 @@ class TestNoRenderingReachesTheArtifact:
     def test_the_message_needs_no_unpicking(self):
         """No level column, no timestamp, no tick prefix — nothing left to split off."""
         buffer = [_record(LogLevel.WARNING, 'signal feed stale')]
-        report = build_warnings_errors_report_from_batch(
+        report = build_warnings_errors_report_from_batch(_RUN_ID, 
             _batch([_result('s1', 0, buffer=buffer)], [_scenario('s1', 0, 'BTCUSD')]))
         pot = [w for w in report.warnings if w.tier == 'minor'][0]
         assert ' | ' not in pot.message
@@ -199,7 +202,7 @@ class TestOriginSurvivesToTheModel:
                            severity=Severity.WARNING, check='budget_granularity',
                            domain=ValidationDomain.PROFILING, message='budget below granularity',
                            scope='run')])])
-        row = build_warnings_errors_report_from_batch(batch).warnings[0]
+        row = build_warnings_errors_report_from_batch(_RUN_ID, batch).warnings[0]
         assert row.check == 'budget_granularity' and row.domain == 'profiling'
         assert row.scope == 'run' and row.tier == 'major'
 
@@ -213,7 +216,7 @@ class TestOriginSurvivesToTheModel:
                 severity=Severity.WARNING, check='signal_availability',
                 domain=ValidationDomain.DATA, message='signal coverage partial', scope='s1'),
         ])])
-        report = build_warnings_errors_report_from_batch(_batch([_result('s1', 0)], [scenario]))
+        report = build_warnings_errors_report_from_batch(_RUN_ID, _batch([_result('s1', 0)], [scenario]))
         major = [w for w in report.warnings if w.tier == 'major']
         assert [w.message for w in major] == ['signal coverage partial']
         assert major[0].domain == 'data' and major[0].scope == 's1'
@@ -221,7 +224,7 @@ class TestOriginSurvivesToTheModel:
     def test_a_log_pot_row_claims_no_assertion(self):
         """The channel is the TIER's answer; `check` means which assertion, and there is none."""
         buffer = [_record(LogLevel.WARNING, 'w1')]
-        report = build_warnings_errors_report_from_batch(
+        report = build_warnings_errors_report_from_batch(_RUN_ID, 
             _batch([_result('s1', 0, buffer=buffer)], [_scenario('s1', 0, 'BTCUSD')]))
         minor = [w for w in report.warnings if w.tier == WarningTier.LOGGER_PRODUCED]
         assert len(minor) == 1
@@ -236,7 +239,7 @@ class TestBuildFromSession:
             session_logger_buffer=[_record(LogLevel.WARNING, 'stale tick'),
                                    _record(LogLevel.WARNING, 'reconnect'),
                                    _record(LogLevel.ERROR, 'order rejected')])
-        report = build_warnings_errors_report_from_session(result, 'dotusd_live', 'DOTUSD')
+        report = build_warnings_errors_report_from_session(_RUN_ID, result, 'dotusd_live', 'DOTUSD')
         assert [w.tier for w in report.warnings] == ['minor', 'minor']
         assert all(w.scope == 'dotusd_live' for w in report.warnings)
         assert len(report.errors) == 1
@@ -246,21 +249,21 @@ class TestBuildFromSession:
         assert report.outcome.emergency_reason == 'balance breach'
 
     def test_live_clean_session(self):
-        report = build_warnings_errors_report_from_session(AutoTraderResult(), 'p', 'BTCUSD')
+        report = build_warnings_errors_report_from_session(_RUN_ID, AutoTraderResult(), 'p', 'BTCUSD')
         assert report.warnings == [] and report.errors == []
         assert report.outcome.shutdown_mode == 'normal' and report.outcome.failed_count == 0
 
     def test_live_outcome_carries_the_canonical_grading(self):
         """The live half stamps the same field, so both pipelines answer identically."""
-        clean = build_warnings_errors_report_from_session(AutoTraderResult(), 'p', 'BTCUSD')
+        clean = build_warnings_errors_report_from_session(_RUN_ID, AutoTraderResult(), 'p', 'BTCUSD')
         assert clean.outcome.run_outcome == RunOutcome.SUCCESS.value
 
-        emergency = build_warnings_errors_report_from_session(
+        emergency = build_warnings_errors_report_from_session(_RUN_ID, 
             AutoTraderResult(shutdown_mode='emergency', emergency_reason='balance breach'),
             'p', 'BTCUSD')
         assert emergency.outcome.run_outcome == RunOutcome.FAILED.value
 
-        pot = build_warnings_errors_report_from_session(
+        pot = build_warnings_errors_report_from_session(_RUN_ID, 
             AutoTraderResult(shutdown_mode='normal',
                              session_logger_buffer=[_record(LogLevel.ERROR, 'order rejected')]),
             'p', 'BTCUSD')
@@ -268,7 +271,7 @@ class TestBuildFromSession:
 
     def test_operator_stop_is_told_apart_from_a_crash(self):
         """Ctrl+C also arrives as 'emergency', so the outcome carries the discriminator."""
-        interrupted = build_warnings_errors_report_from_session(
+        interrupted = build_warnings_errors_report_from_session(_RUN_ID, 
             AutoTraderResult(shutdown_mode='emergency', operator_interrupted=True),
             'p', 'BTCUSD')
         assert interrupted.outcome.shutdown_mode == 'emergency'
@@ -276,7 +279,7 @@ class TestBuildFromSession:
         assert interrupted.outcome.run_outcome == RunOutcome.SUCCESS.value
         assert interrupted.outcome.emergency_reason == ''
 
-        crashed = build_warnings_errors_report_from_session(
+        crashed = build_warnings_errors_report_from_session(_RUN_ID, 
             AutoTraderResult(shutdown_mode='emergency', emergency_reason='tick loop died'),
             'p', 'BTCUSD')
         assert crashed.outcome.operator_interrupted is False
@@ -284,7 +287,7 @@ class TestBuildFromSession:
 
     def test_sim_outcome_leaves_the_live_only_fields_empty(self):
         """shutdown_mode '' on a sim run means 'not applicable', not 'unknown'."""
-        report = build_warnings_errors_report_from_batch(_batch([], []))
+        report = build_warnings_errors_report_from_batch(_RUN_ID, _batch([], []))
         assert report.outcome.shutdown_mode == ''
         assert report.outcome.operator_interrupted is False
 
@@ -297,7 +300,7 @@ class TestRender:
         return re.sub(r'\x1b\[[0-9;]*m', '', buf.getvalue())
 
     def test_renders_errors_and_tiers(self):
-        report = WarningsErrorsReport(
+        report = WarningsErrorsReport(run_id=_RUN_ID, 
             warnings=[
                 WarningRow(tier='major', scope='run', message='DEBUG MODE — timings unreliable'),
                 WarningRow(tier='major', scope='s1', message='account_currency normalized'),
@@ -319,6 +322,6 @@ class TestRender:
 
     def test_empty_report_renders_zero_state(self):
         # Always rendered now (both pipelines) — a clean zero-state when there are none.
-        out = self._render(WarningsErrorsReport())
+        out = self._render(WarningsErrorsReport(run_id=_RUN_ID))
         assert 'WARNINGS & ERRORS' in out
         assert 'No warnings or errors' in out

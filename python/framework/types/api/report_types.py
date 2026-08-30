@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, computed_field
 
 
 class ExecutionRow(BaseModel):
@@ -110,7 +110,22 @@ class TradeScenarioTotals(BaseModel):
     total_swap: float = 0.0  # Σ signed swap over the scenario (#365)
 
 
-class TradeHistoryReport(BaseModel):
+class RunScopedReport(BaseModel):
+    """
+    The base of every report a run persists as its own artifact.
+
+    It carries ONE field, and the reason is the whole point: a report body that does not name
+    its run cannot be checked against the run that was asked for. Two different sweep
+    combinations produce byte-identical portfolio bodies — measured — so a consumer receiving
+    the wrong one has nothing to notice it by. The route is not proof; the payload is.
+
+    Inheriting rather than repeating also puts `run_id` FIRST in every serialized artifact,
+    where a reader looks for it.
+    """
+    run_id: str
+
+
+class TradeHistoryReport(RunScopedReport):
     """The trade-history table + light metadata + per-currency analytics (#389/#393)."""
     trades: list[TradeHistoryRow]
     count: int
@@ -139,7 +154,7 @@ class OrderHistoryRow(BaseModel):
     rejection_message: str
 
 
-class OrderHistoryReport(BaseModel):
+class OrderHistoryReport(RunScopedReport):
     """The order-history table + light metadata (flat, like trade history)."""
     orders: list[OrderHistoryRow]
     count: int
@@ -221,7 +236,7 @@ class PortfolioAggregateRow(BaseModel):
     total_fees: float
 
 
-class PortfolioReport(BaseModel):
+class PortfolioReport(RunScopedReport):
     """
     Portfolio headline as the unified array model: per-unit rows + per-currency
     roll-up. sim = N units + M currency aggregates; live = 1 unit + 1 aggregate.
@@ -251,7 +266,7 @@ class ExecutionStatsTotals(BaseModel):
     sl_tp_triggered: int = 0
 
 
-class ExecutionStatsReport(BaseModel):
+class ExecutionStatsReport(RunScopedReport):
     """Order-execution counts as the unified array model: per-unit rows + a summed total."""
     units: list[ExecutionStatsRow]
     totals: ExecutionStatsTotals
@@ -286,7 +301,7 @@ class PendingOrdersUnitRow(BaseModel):
     active_stop_orders: list[ActiveOrderRow] = []
 
 
-class PendingOrdersReport(BaseModel):
+class PendingOrdersReport(RunScopedReport):
     """
     Pending-order lifecycle as the unified array model: per-unit rows. Sim-populated
     (the live AutoTraderResult carries no pending stats → empty units live).
@@ -316,7 +331,7 @@ class ScenarioDetailsRow(BaseModel):
     error_message: str = ''
 
 
-class ScenarioDetailsReport(BaseModel):
+class ScenarioDetailsReport(RunScopedReport):
     """
     Per-scenario execution/signal metadata (sim-only): one row per scenario, **including
     failed ones** (the section's job is the full scenario status grid).
@@ -363,16 +378,18 @@ class RunHeader(BaseModel):
 class RunInfo(BaseModel):
     """One discoverable run in the report store — identity only, no report content."""
     run_id: str
-    # The run's CATEGORY, which is also where its logs live (file_logging.run_logs):
-    # 'single_runs' (a standalone sim run) | 'sweeps' (one combination of a parameter
-    # sweep, also listed ranked under /sweeps) | 'autotrader' (a live session).
+    # The run's TYPE, which is also where its logs live (file_logging.run_logs):
+    # 'simulation' (a backtest — standalone, or one combination of a sweep) | 'live' (an
+    # AutoTrader session). Nesting is NOT part of the type: `parent_id` carries it.
     group: str
     name: str               # scenario-set name (sim) | profile name (live)
-    # Whether this run persisted report artifacts. A run can exist as logs alone — a test
-    # session writes no reports — and such a run is listed rather than hidden, because an
-    # index that silently omits runs is its own surprise. False means every report route
-    # will answer 404 for this id.
-    has_reports: bool = False
+    # Every report artifact this run persisted, by file name — 'portfolio.json',
+    # 'trade_history.csv', … The two pipelines produce DIFFERENT sets (a live session has no
+    # scenario_details / profiling / run_meta / aggregated_portfolio), so a consumer that
+    # guessed would get a 404 for the difference. Empty = the run exists as logs alone, which
+    # a test session legitimately does; such a run is listed rather than hidden, because an
+    # index that silently omits runs is its own surprise.
+    artifacts: list[str] = Field(default_factory=list)
     # Straight from the run's header (#475) — the list answers "what was this run" on its own,
     # instead of making a consumer open each run to find out.
     start_time: str = ''
@@ -382,6 +399,19 @@ class RunInfo(BaseModel):
     app_version: str = ''
     git_commit: Optional[str] = None
     config_snapshot: str = ''
+
+    @computed_field
+    @property
+    def has_reports(self) -> bool:
+        """
+        Whether this run persisted any report artifact.
+
+        Derived rather than stored, so it cannot drift from the list it summarises.
+
+        Returns:
+            True when the run carries at least one artifact
+        """
+        return bool(self.artifacts)
 
 
 class RunListResponse(BaseModel):
@@ -413,7 +443,7 @@ class RunSummaryCurrency(BaseModel):
     r_loss_count: int = 0
 
 
-class RunSummary(BaseModel):
+class RunSummary(RunScopedReport):
     """
     Cross-section run KPI model (#390 prework): per-currency KPIs (P&L-denominated) + global
     order counts (currency-agnostic). The single object every consumer reads — sweep objective,
@@ -528,7 +558,7 @@ class SweepDetailResponse(BaseModel):
     count: int
 
 
-class RunMetaReport(BaseModel):
+class RunMetaReport(RunScopedReport):
     """
     Run-level execution facts the orchestrator measures primarily (sim): scenario identity +
     the wall-clock timing split. These are the run-level values the executive / basic-stats read
@@ -577,7 +607,7 @@ class BlockSplittingSymbolRow(BaseModel):
     disposition_pct: float = 0.0        # |force-close P&L| / |total P&L| * 100
 
 
-class BlockSplittingReport(BaseModel):
+class BlockSplittingReport(RunScopedReport):
     """
     Block-splitting disposition (Profile Runs, sim-only): per-symbol rows + the cross-symbol
     aggregate (rendered only when more than one symbol). The GOOD/MODERATE/HIGH/SEVERE label
@@ -635,7 +665,7 @@ class WorkerDecisionUnitRow(BaseModel):
     workers: list[WorkerStatRow] = []
 
 
-class WorkerDecisionReport(BaseModel):
+class WorkerDecisionReport(RunScopedReport):
     """
     Per-unit worker + decision stats (#398, unified): one row per scenario/session, plus the
     per-worker timing totals rolled up across units. The coordination-overhead % breakdown
@@ -732,7 +762,7 @@ class ProfilingAggregate(BaseModel):
     bottlenecks: list[ProfilingBottleneckRow] = []
 
 
-class ProfilingReport(BaseModel):
+class ProfilingReport(RunScopedReport):
     """
     Per-unit tick-loop profiling + run-level roll-up + warmup (#399, **sim-only**). Closes the
     #398 residual: the `worker_decision` operation Total now lives here, so the worker/decision
@@ -774,7 +804,7 @@ class BrokerInfoRow(BaseModel):
     symbols: list[BrokerSymbolRow] = []
 
 
-class BrokerReport(BaseModel):
+class BrokerReport(RunScopedReport):
     """
     Broker configuration view: one unit per broker, each with its scenario list and
     per-symbol specs. Unified — sim builds one unit per broker from the batch, the live
@@ -847,7 +877,7 @@ class SignalSourceRow(BaseModel):
     usages: list[SignalUsageRow] = []
 
 
-class SignalReport(BaseModel):
+class SignalReport(RunScopedReport):
     """
     Signal configuration view (#433): one unit per signal source, each with its archive
     provenance and the scenarios consuming it. Unified — both pipelines build it from the
@@ -892,7 +922,7 @@ class FeedStabilitySourceRow(BaseModel):
     episodes: list[FeedStabilityEpisodeRow] = []
 
 
-class FeedStabilityReport(BaseModel):
+class FeedStabilityReport(RunScopedReport):
     """
     Feed stability view (#451): one row per source across BOTH staleness domains —
     the tick stream (#436) and every SIGNAL source (#434) — in both pipelines.
@@ -976,7 +1006,7 @@ class WarningsErrorsOutcome(BaseModel):
     operator_interrupted: bool = False
 
 
-class WarningsErrorsReport(BaseModel):
+class WarningsErrorsReport(RunScopedReport):
     """
     Unified warnings & errors section (#395, both pipelines). Tiered: errors (always) +
     Tier-1 major warnings (validator-produced) + Tier-2 minor warnings (log pot). The
@@ -1078,7 +1108,7 @@ class AggregatedPortfolioCurrency(BaseModel):
     spot: AggregatedPortfolioRow | None = None     # only when is_mixed
 
 
-class AggregatedPortfolioReport(BaseModel):
+class AggregatedPortfolioReport(RunScopedReport):
     """
     Aggregated per-currency portfolio — the rich detail view (#397, retires `PortfolioAggregator`).
     `RunSummary` stays the lean KPI headline; this is the comprehensive single-concern object
@@ -1138,7 +1168,7 @@ class RobustnessRegimeRow(BaseModel):
     pct_profitable: float = 0.0
 
 
-class RobustnessReport(BaseModel):
+class RobustnessReport(RunScopedReport):
     """
     Multi-window robustness + IS/OOS validation (#367, sim-only). PURE FACTS — the
     ROBUST/OVERFIT verdict is a decision and lives in `PostRunValidator`, not in this model.

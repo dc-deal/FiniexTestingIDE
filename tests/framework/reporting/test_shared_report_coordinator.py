@@ -22,6 +22,9 @@ from python.framework.types.process_data_types import ProcessResult, ProcessTick
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 
 # Every section writes these artifacts into the io/ dir (json for all 9, csv for three).
@@ -66,19 +69,19 @@ class TestDeriveAndPersist:
 
     def test_writes_all_artifacts_batch(self, tmp_path):
         io_dir = tmp_path / 'io'
-        SharedReportCoordinator.derive_and_persist(run_units_from_batch(_batch()), io_dir)
+        SharedReportCoordinator.derive_and_persist(_RUN_ID, run_units_from_batch(_batch()), io_dir)
         for name in _EXPECTED_FILES:
             assert (io_dir / name).exists(), f'missing artifact: {name}'
 
     def test_creates_io_dir_if_missing(self, tmp_path):
         # A nested, not-yet-existing io/ path must be created by the coordinator.
         io_dir = tmp_path / 'run' / 'io'
-        SharedReportCoordinator.derive_and_persist(run_units_from_batch(_batch()), io_dir)
+        SharedReportCoordinator.derive_and_persist(_RUN_ID, run_units_from_batch(_batch()), io_dir)
         assert io_dir.is_dir()
         assert (io_dir / 'run_summary.json').exists()
 
     def test_returns_populated_unified_reports(self, tmp_path):
-        unified = SharedReportCoordinator.derive_and_persist(
+        unified = SharedReportCoordinator.derive_and_persist(_RUN_ID, 
             run_units_from_batch(_batch()), tmp_path / 'io')
         assert isinstance(unified, UnifiedReports)
         # Two scenario units flow into every per-unit section.
@@ -91,7 +94,7 @@ class TestDeriveAndPersist:
     def test_session_single_unit(self, tmp_path):
         io_dir = tmp_path / 'io'
         result = AutoTraderResult(execution_stats=_stats(7, 6, 1, 4))
-        unified = SharedReportCoordinator.derive_and_persist(
+        unified = SharedReportCoordinator.derive_and_persist(_RUN_ID, 
             run_units_from_session(result, 'my_profile', 'BTCUSD'), io_dir)
         for name in _EXPECTED_FILES:
             assert (io_dir / name).exists(), f'missing artifact: {name}'

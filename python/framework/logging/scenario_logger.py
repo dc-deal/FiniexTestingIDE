@@ -85,11 +85,11 @@ class ScenarioLogger(AbstractLogger):
 
         if self._file_logging_config.scenario_enabled:
             # Create scenario run directory
-            # The caller hands over the category root it belongs to — a live session, a
-            # standalone run, or one sweep's combinations. The three come from config
-            # (file_logging.run_logs), which is the same source the API reads.
+            # The caller hands over the root it belongs to — a live session, a standalone
+            # run, or one sweep's combinations. They come from config (file_logging.run_logs),
+            # which is the same source the API reads.
             log_root = (log_root_override if log_root_override
-                        else self._file_logging_config.run_logs.single_runs)
+                        else self._file_logging_config.run_logs.simulation)
             prefix = file_name_prefix_override if file_name_prefix_override else self._file_logging_config.scenario_file_name_prefix
 
             if flat_log_filename:

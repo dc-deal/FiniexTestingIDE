@@ -69,7 +69,10 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import SINGLE_RUNS_GROUP
+from python.framework.types.log_layout_types import RUN_TYPE_SIMULATION
+
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
 
 _ZERO_ANALYTICS = TradeAnalytics(
     expectancy=0.0, avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0,
@@ -103,7 +106,7 @@ def _report() -> TradeHistoryReport:
             exit_price=1.32, exit_time='2025-10-13T09:10:00+00:00', duration_s=600.0,
             close_reason='sl_triggered', gross_pnl=-1.0, total_fees=0.2, net_pnl=-1.2),
     ]
-    return TradeHistoryReport(
+    return TradeHistoryReport(run_id=_RUN_ID, 
         trades=rows, count=2, symbols=['EURUSD', 'GBPUSD'], analytics=[_ZERO_ANALYTICS])
 
 
@@ -122,7 +125,7 @@ def _order_report() -> OrderHistoryReport:
             slippage_points=0.0, rejection_reason='insufficient_margin',
             rejection_message='not enough margin'),
     ]
-    return OrderHistoryReport(orders=rows, count=2, symbols=['EURUSD', 'GBPUSD'])
+    return OrderHistoryReport(run_id=_RUN_ID, orders=rows, count=2, symbols=['EURUSD', 'GBPUSD'])
 
 
 def _portfolio_report() -> PortfolioReport:
@@ -134,7 +137,7 @@ def _portfolio_report() -> PortfolioReport:
         currency='USD', unit_count=1, total_trades=10, winning_trades=6, losing_trades=4,
         win_rate=0.6, profit_factor=2.5, total_profit=100.0, total_loss=40.0,
         net_profit=60.0, max_drawdown=12.0, total_fees=5.0)
-    return PortfolioReport(units=[unit], aggregates=[agg])
+    return PortfolioReport(run_id=_RUN_ID, units=[unit], aggregates=[agg])
 
 
 def _execution_stats_report() -> ExecutionStatsReport:
@@ -143,7 +146,7 @@ def _execution_stats_report() -> ExecutionStatsReport:
         orders_rejected=1, sl_tp_triggered=2)
     totals = ExecutionStatsTotals(
         orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2)
-    return ExecutionStatsReport(units=[unit], totals=totals)
+    return ExecutionStatsReport(run_id=_RUN_ID, units=[unit], totals=totals)
 
 
 def _pending_orders_report() -> PendingOrdersReport:
@@ -153,11 +156,11 @@ def _pending_orders_report() -> PendingOrdersReport:
         active_limit_orders=[ActiveOrderRow(
             order_id='L1', order_type='limit', direction='long', lots=0.1,
             entry_price=1.10, stop_loss=1.09, take_profit=1.11)])
-    return PendingOrdersReport(units=[unit])
+    return PendingOrdersReport(run_id=_RUN_ID, units=[unit])
 
 
 def _scenario_details_report() -> ScenarioDetailsReport:
-    return ScenarioDetailsReport(units=[
+    return ScenarioDetailsReport(run_id=_RUN_ID, units=[
         ScenarioDetailsRow(
             name='s1', symbol='EURUSD', data_source='mt5', status='success',
             ticks_processed=15000, buy_signals=296, worker_count=2),
@@ -167,7 +170,7 @@ def _scenario_details_report() -> ScenarioDetailsReport:
 
 
 def _run_summary() -> RunSummary:
-    return RunSummary(
+    return RunSummary(run_id=_RUN_ID, 
         currencies=[RunSummaryCurrency(
             currency='USD', net_pnl=60.0, profit_factor=2.5, win_rate=0.6, max_drawdown=12.0,
             total_fees=5.0, total_trades=10, winning_trades=6, losing_trades=4,
@@ -176,14 +179,14 @@ def _run_summary() -> RunSummary:
 
 
 def _broker_report() -> BrokerReport:
-    return BrokerReport(units=[BrokerInfoRow(
+    return BrokerReport(run_id=_RUN_ID, units=[BrokerInfoRow(
         broker_type='kraken_spot', market_type='crypto', company='Kraken',
         config_hash='abcd1234', scenarios=['btc_run'],
         symbols=[BrokerSymbolRow(symbol='BTCUSD', base_currency='BTC', quote_currency='USD')])])
 
 
 def _signal_report() -> SignalReport:
-    return SignalReport(units=[SignalSourceRow(
+    return SignalReport(run_id=_RUN_ID, units=[SignalSourceRow(
         source='crypto_sentiment_mock', data_origin='synthetic',
         config_fingerprint='mock-1e9e9fc4', cadence_seconds=597.0, snapshot_count=1091,
         trigger_reasons={'scheduled': 1008, 'breaking': 83},
@@ -193,7 +196,7 @@ def _signal_report() -> SignalReport:
 
 
 def _feed_stability_report() -> FeedStabilityReport:
-    return FeedStabilityReport(
+    return FeedStabilityReport(run_id=_RUN_ID, 
         units=[FeedStabilitySourceRow(
             source='kraken_spot', domain='tick', stale_seconds=900.0, episode_count=1,
             origins=['stress-injected'], fresh_ticks=900, stale_ticks=100,
@@ -205,7 +208,7 @@ def _feed_stability_report() -> FeedStabilityReport:
 
 
 def _warnings_errors_report() -> WarningsErrorsReport:
-    return WarningsErrorsReport(
+    return WarningsErrorsReport(run_id=_RUN_ID, 
         warnings=[WarningRow(tier='major', scope='run', message='DEBUG MODE')],
         errors=[UnitErrorRow(name='bad', symbol='BTCUSD', error_type='ValidationError')],
         outcome=WarningsErrorsOutcome(failed_count=1, total_units=2))
@@ -216,18 +219,15 @@ def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
         currency='USD', unit_count=1, total_trades=10, winning_trades=6, losing_trades=4,
         win_rate=0.6, profit_factor=2.5, total_profit=100.0, total_loss=40.0, net_profit=60.0,
         max_drawdown=12.0, total_fees=5.0)
-    return AggregatedPortfolioReport(currencies=[AggregatedPortfolioCurrency(
+    return AggregatedPortfolioReport(run_id=_RUN_ID, currencies=[AggregatedPortfolioCurrency(
         currency='USD', scenario_count=1, scenario_names=['s1'],
         combined=AggregatedPortfolioRow(headline=headline, initial_balance=1000.0))])
 
 
 
 def _run_logs(root: Path) -> RunLogPaths:
-    """The three category roots under a tmp logs tree — what ReportStore now reads."""
-    return RunLogPaths(
-        autotrader=root / 'autotrader',
-        single_runs=root / 'scenario_sets' / 'single_runs',
-        sweeps=root / 'scenario_sets' / 'sweeps')
+    """The two run-type roots under a tmp logs tree."""
+    return RunLogPaths(simulation=root / 'simulation', live=root / 'live')
 
 
 def _index_path(root: Path) -> Path:
@@ -242,11 +242,11 @@ def _plant_run(root: Path, run_id: str = _RUN) -> Path:
     Returns:
         The run's io/ directory, created
     """
-    run_dir = _run_logs(root).single_runs / 'my_set' / run_id
+    run_dir = _run_logs(root).simulation / 'my_set' / run_id
     (run_dir / IO_SUBDIR).mkdir(parents=True)
-    RunIndex(_index_path(root)).append(
+    RunIndex(_index_path(root)).register_run(
         RunHeader(run_id=run_id, start_time=datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc),
-                  run_type=SINGLE_RUNS_GROUP, run_name='my_set'), run_dir)
+                  run_type=RUN_TYPE_SIMULATION, run_name='my_set'), run_dir)
     return run_dir / IO_SUBDIR
 
 @pytest.fixture
@@ -266,7 +266,7 @@ def client(tmp_path: Path):
     write_warnings_errors_report(_warnings_errors_report(), io_dir)
     write_aggregated_portfolio_report(_aggregated_portfolio_report(), io_dir)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
-    with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(_run_logs(tmp_path), _index_path(tmp_path))):
+    with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(_index_path(tmp_path))):
         yield TestClient(create_app())
 
 
@@ -449,7 +449,7 @@ def test_warnings_errors_from_an_older_schema_is_named_not_a_server_error(tmp_pa
         encoding='utf-8')
 
     with patch('python.api.endpoints.reports_router.ReportStore',
-               lambda: ReportStore(_run_logs(tmp_path), _index_path(tmp_path))):
+               lambda: ReportStore(_index_path(tmp_path))):
         response = TestClient(create_app()).get(_WARNINGS_URL)
 
     assert response.status_code == 409

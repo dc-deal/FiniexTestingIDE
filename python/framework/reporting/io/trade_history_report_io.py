@@ -60,12 +60,14 @@ def write_trade_history_csv(report: TradeHistoryReport, run_dir: Path) -> Path:
     # they do not flatten into a single CSV row (same rule as the portfolio model).
     nested = {'entry_executions', 'exit_executions'}
     path = Path(run_dir) / TRADE_HISTORY_CSV
-    columns = [k for k in TradeHistoryRow.model_fields if k not in nested]
+    # `run_id` leads every row: a CSV is the format that gets exported and merged, and
+    # a row without its run is a row nobody can trace back (#475).
+    columns = ['run_id'] + [k for k in TradeHistoryRow.model_fields if k not in nested]
     with path.open('w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for row in report.trades:
-            writer.writerow(row.model_dump(exclude=nested))
+            writer.writerow({'run_id': report.run_id, **row.model_dump(exclude=nested)})
     return path
 
 
@@ -103,6 +105,7 @@ def filter_trade_history_report(
 
     symbols = sorted({row.symbol for row in rows})
     return TradeHistoryReport(
+        run_id=report.run_id,
         trades=rows, count=len(rows), symbols=symbols,
         analytics=aggregate_trade_analytics(rows),
         scenario_totals=aggregate_trade_scenario_totals(rows))

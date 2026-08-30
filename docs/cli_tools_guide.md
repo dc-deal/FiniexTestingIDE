@@ -146,6 +146,55 @@ USDJPY:
       ...
 ```
 
+### 📈 Run Index: Status
+
+| | |
+|---|---|
+| **VS Code** | `📈 Run Index: Status` |
+| **CLI** | `python run_index_cli.py status` |
+| **Purpose** | What the derived run index holds — the table `GET /api/v1/reports/runs` reads |
+
+```
+📇 Run Index — 6 run(s) · runs/index.parquet
+
+  20260830_173933_f54f1d3d  live        14 artifact(s)  mock_session_test
+  20260830_173819_81d96b02  simulation  18 artifact(s)  btcusd_mini_set__sweep_20260830_173753_c003
+  20260830_173704_ce76e830  simulation  18 artifact(s)  multi_position_test
+```
+
+**`run_type` is the PIPELINE, never the nesting.** Two values only — `simulation` and `live`. A
+sweep combination is a `simulation` whose `parent_id` names its sweep; a live day fragment (#476)
+will be a `live` whose `parent_id` names its session.
+
+The artifact count is the length of the run's `artifacts` list — every report file it persisted,
+by name. **The two pipelines produce different sets** (18 for a simulation run, 14 for a live
+session: live has no `scenario_details` / `profiling` / `run_meta` / `aggregated_portfolio`), which
+is why the index carries the list rather than a boolean — a consumer that only learned "yes, some"
+would still be guessing which. A run with none exists as logs alone and is listed rather than
+hidden.
+
+### 📈 Run Index: Rebuild
+
+| | |
+|---|---|
+| **VS Code** | `📈 Run Index: Rebuild` |
+| **CLI** | `python run_index_cli.py rebuild` |
+| **Purpose** | Rebuild the index from the per-run `header.json` files |
+
+The index is DERIVED, and this command is what makes that true rather than merely stated: it may
+be deleted or go stale without anything being lost. The headers are the source; the index is the
+read path. Rebuild after moving the run tree, after restoring runs from a backup, or whenever the
+index and the tree disagree.
+
+```
+🔄 Rebuilding Run Index
+✅ 162 run(s) indexed → runs/index.parquet
+```
+
+A run with no header is skipped — it cannot be identified, which is the condition the header
+exists to end. A duplicate id is reported rather than resolved: a minted id cannot collide, so a
+duplicate means two directories carry the same header — a copy, or a hand-edited one.
+
 ### 📚 Tick File Coverage: SYMBOL
 
 | | |

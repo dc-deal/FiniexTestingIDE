@@ -19,18 +19,19 @@ from python.framework.types.api.report_types import (
 )
 
 
-def build_worker_decision_report(units: List[RunUnit]) -> WorkerDecisionReport:
+def build_worker_decision_report(run_id: str, units: List[RunUnit]) -> WorkerDecisionReport:
     """
     Build the worker/decision report from the run units.
 
     Args:
+        run_id: The run this report belongs to
         units: The run's units (sim: N scenarios; live: 1 session)
 
     Returns:
         WorkerDecisionReport — one row per unit + the per-worker timing totals
     """
     rows = [_to_unit_row(unit) for unit in units]
-    return WorkerDecisionReport(units=rows, worker_totals=aggregate_worker_totals(rows))
+    return WorkerDecisionReport(run_id=run_id, units=rows, worker_totals=aggregate_worker_totals(rows))
 
 
 def _to_unit_row(unit: RunUnit) -> WorkerDecisionUnitRow:

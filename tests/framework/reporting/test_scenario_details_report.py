@@ -25,6 +25,9 @@ from python.framework.types.process_data_types import (
 )
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 _DT2 = datetime(2025, 10, 13, 1, 0, 0, tzinfo=timezone.utc)
 
@@ -70,7 +73,7 @@ def _batch(results, scenarios) -> BatchExecutionSummary:
 class TestBuild:
     def test_success_row(self):
         batch = _batch([_result('s1', 0, tick_loop=_tick_loop())], [_scenario('s1', 0, 'EURUSD')])
-        row = build_scenario_details_report_from_batch(batch).units[0]
+        row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
         assert row.status == 'success'
         assert row.data_source == 'mt5' and row.symbol == 'EURUSD'
         assert (row.buy_signals, row.sell_signals, row.flat_signals) == (296, 263, 14441)
@@ -82,7 +85,7 @@ class TestBuild:
         batch = _batch(
             [_result('bad', 0, error_type='ValidationError', error_message='start before data')],
             [_scenario('bad', 0, 'BTCUSD')])
-        row = build_scenario_details_report_from_batch(batch).units[0]
+        row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
         assert row.status == 'failed'
         assert row.error_type == 'ValidationError' and row.error_message == 'start before data'
         assert row.ticks_processed == 0 and row.worker_count == 0
@@ -91,7 +94,7 @@ class TestBuild:
         batch = _batch(
             [_result('s1', 0, tick_loop=_tick_loop(), error_type='RuntimeError', error_message='boom')],
             [_scenario('s1', 0, 'EURUSD')])
-        row = build_scenario_details_report_from_batch(batch).units[0]
+        row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
         assert row.status == 'hybrid'
         assert row.error_type == 'RuntimeError'
         assert row.ticks_processed == 15000        # partial data preserved
@@ -101,7 +104,7 @@ class TestBuild:
         batch = _batch(
             [_result('s1', 0, tick_loop=_tick_loop())],
             [_scenario('s1', 0, 'EURUSD', account_currency='USD', explicit=True)])
-        row = build_scenario_details_report_from_batch(batch).units[0]
+        row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
         assert row.account_currency == 'USD'
         assert row.account_currency_explicit is True
 
@@ -110,6 +113,6 @@ class TestBuild:
         batch = _batch(
             [_result('s1', 0, tick_loop=_tick_loop())],
             [_scenario('s1', 0, 'EURUSD', account_currency='USD', explicit=False)])
-        row = build_scenario_details_report_from_batch(batch).units[0]
+        row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
         assert row.account_currency == 'USD'
         assert row.account_currency_explicit is False

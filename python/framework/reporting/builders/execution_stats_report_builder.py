@@ -14,11 +14,12 @@ from python.framework.types.api.report_types import ExecutionStatsReport, Execut
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 
-def build_execution_stats_report(units: List[RunUnit]) -> ExecutionStatsReport:
+def build_execution_stats_report(run_id: str, units: List[RunUnit]) -> ExecutionStatsReport:
     """
     Build the report from the run's units — one row per unit + summed totals.
 
     Args:
+        run_id: The run this report belongs to
         units: The run's units (sim: scenarios; live: the session)
 
     Returns:
@@ -28,7 +29,7 @@ def build_execution_stats_report(units: List[RunUnit]) -> ExecutionStatsReport:
         _to_row(unit.name, unit.symbol, unit.execution_stats)
         for unit in units if unit.execution_stats is not None
     ]
-    return ExecutionStatsReport(units=rows, totals=aggregate_execution_totals(rows))
+    return ExecutionStatsReport(run_id=run_id, units=rows, totals=aggregate_execution_totals(rows))
 
 
 def _to_row(name: str, symbol: str, stats: ExecutionStats) -> ExecutionStatsRow:

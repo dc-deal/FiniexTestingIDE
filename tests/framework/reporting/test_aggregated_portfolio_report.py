@@ -28,6 +28,9 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.utils.console_renderer import ConsoleRenderer
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 
 def _pf(name, currency='USD', symbol='EURUSD', spot=False, trades=2, win=1, lose=1,
         profit=100.0, loss=40.0, max_dd=12.0, max_eq=1000.0, fees=5.0, spread=3.0,
@@ -61,10 +64,10 @@ _ZERO_TOTALS = ExecutionStatsTotals(
 
 
 def _build(pf_rows, ex_rows=None, pe_rows=None):
-    return build_aggregated_portfolio_report(
-        PortfolioReport(units=pf_rows, aggregates=[]),
-        ExecutionStatsReport(units=ex_rows or [], totals=_ZERO_TOTALS),
-        PendingOrdersReport(units=pe_rows or []))
+    return build_aggregated_portfolio_report(_RUN_ID, 
+        PortfolioReport(run_id=_RUN_ID, units=pf_rows, aggregates=[]),
+        ExecutionStatsReport(run_id=_RUN_ID, units=ex_rows or [], totals=_ZERO_TOTALS),
+        PendingOrdersReport(run_id=_RUN_ID, units=pe_rows or []))
 
 
 class TestBuild:
@@ -135,9 +138,9 @@ class TestRender:
     def test_aggregated_section_renders(self):
         rep = _build([_pf('s1', profit=100, loss=40, maker=1.5, taker=2.5)], [_ex('s1')], [_pe('s1')])
         summary = PortfolioSummary(
-            PortfolioReport(units=[], aggregates=[]),
-            PendingOrdersReport(units=[]),
-            ExecutionStatsReport(units=[], totals=_ZERO_TOTALS),
+            PortfolioReport(run_id=_RUN_ID, units=[], aggregates=[]),
+            PendingOrdersReport(run_id=_RUN_ID, units=[]),
+            ExecutionStatsReport(run_id=_RUN_ID, units=[], totals=_ZERO_TOTALS),
             rep)
         buf = io.StringIO()
         with redirect_stdout(buf):

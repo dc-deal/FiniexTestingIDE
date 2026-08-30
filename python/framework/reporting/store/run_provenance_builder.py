@@ -13,7 +13,6 @@ degrades to an empty version, not an error.
 
 import json
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
@@ -32,7 +31,7 @@ from python.framework.utils.git_info_utils import get_git_info
 def build_run_provenance(
     batch_execution_summary: BatchExecutionSummary,
     scenario_set: ScenarioSet,
-    run_dir: Path,
+    run_id: str,
     sweep_context: Optional[SweepContext] = None,
     warnings_errors_report: Optional[WarningsErrorsReport] = None,
 ) -> Optional[RunProvenance]:
@@ -42,7 +41,8 @@ def build_run_provenance(
     Args:
         batch_execution_summary: The finished batch (carries the scenarios + their config)
         scenario_set: The run's scenario set (name + run timestamp)
-        run_dir: The run's directory (its name is the run_id)
+        run_id: The run this provenance describes — the minted id, never derived
+            from the directory name: identity is a field, not a path (#475)
         sweep_context: Optional sweep tagging when run as a sweep combination
         warnings_errors_report: The run's warnings/errors report — its canonical outcome decides
             the ledger status/error (a total failure → 'error'); None → 'ok'
@@ -71,7 +71,7 @@ def build_run_provenance(
         param_hash=param_hash,
         status=status,
         error=error,
-        run_id=run_dir.name,
+        run_id=run_id,
         run_timestamp=scenario_set.run_timestamp,
         scenario_set_name=scenario_set.scenario_set_name,
         app_version=AppConfigManager().get_version(),
@@ -93,7 +93,7 @@ def build_run_provenance(
 
 def build_run_provenance_from_session(
     config: AutoTraderConfig,
-    run_dir: Path,
+    run_id: str,
     run_timestamp: datetime,
     warnings_errors_report: Optional[WarningsErrorsReport] = None,
 ) -> RunProvenance:
@@ -107,7 +107,8 @@ def build_run_provenance_from_session(
 
     Args:
         config: The autotrader profile config (strategy_config + name + symbol + broker)
-        run_dir: The session's run directory (its name is the run_id)
+        run_id: The session this provenance describes — the minted id, never
+            derived from the directory name: identity is a field, not a path (#475)
         run_timestamp: The session start (UTC)
         warnings_errors_report: The session's warnings/errors report — a total failure
             (emergency) decides status 'error'; None → 'ok'
@@ -124,7 +125,7 @@ def build_run_provenance_from_session(
         param_hash=generate_config_fingerprint(strategy_config),
         status=status,
         error=error,
-        run_id=run_dir.name,
+        run_id=run_id,
         run_timestamp=run_timestamp,
         scenario_set_name=config.name or config.symbol,
         app_version=AppConfigManager().get_version(),

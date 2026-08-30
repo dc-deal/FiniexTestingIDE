@@ -28,11 +28,12 @@ from python.framework.types.scenario_types.scenario_set_performance_types import
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 
 
-def build_profiling_report_from_batch(batch: BatchExecutionSummary) -> ProfilingReport:
+def build_profiling_report_from_batch(run_id: str, batch: BatchExecutionSummary) -> ProfilingReport:
     """
     Build the profiling report from a sim batch — one unit per scenario with profiling data.
 
     Args:
+        run_id: The run this report belongs to
         batch: The completed batch summary
 
     Returns:
@@ -56,6 +57,7 @@ def build_profiling_report_from_batch(batch: BatchExecutionSummary) -> Profiling
         for phase in (batch.warmup_phases or [])
     ]
     return ProfilingReport(
+        run_id=run_id,
         units=rows,
         aggregate=aggregate_profiling(rows, budget_active=bool(clipping_map)),
         warmup_phases=warmup)

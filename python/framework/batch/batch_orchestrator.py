@@ -459,7 +459,7 @@ class BatchOrchestrator:
         # Post-run advisory warnings (Tier 1) — debug-mode / stress / data-version / budget.
         # Lifted out of the report renderer into a validator: the structured truth lands on
         # the validation channels, the report only reads it (#395, no decisions in reports).
-        PostRunValidator(summary).validate()
+        PostRunValidator(summary, self._scenario_set.run_id).validate()
 
         # Error handling — the structured failed-scenario detail is now the warnings/errors
         # model (rendered in the summary + warnings_errors.json + API). The global log keeps

@@ -50,12 +50,14 @@ def write_order_history_csv(report: OrderHistoryReport, run_dir: Path) -> Path:
         Path of the written CSV
     """
     path = Path(run_dir) / ORDER_HISTORY_CSV
-    columns = list(OrderHistoryRow.model_fields.keys())
+    # `run_id` leads every row: a CSV is the format that gets exported and merged, and
+    # a row without its run is a row nobody can trace back (#475).
+    columns = ['run_id'] + list(OrderHistoryRow.model_fields.keys())
     with path.open('w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for row in report.orders:
-            writer.writerow(row.model_dump())
+            writer.writerow({'run_id': report.run_id, **row.model_dump()})
     return path
 
 
@@ -84,4 +86,5 @@ def filter_order_history_report(
         rows.append(row)
 
     symbols = sorted({row.symbol for row in rows if row.symbol})
-    return OrderHistoryReport(orders=rows, count=len(rows), symbols=symbols)
+    return OrderHistoryReport(
+        run_id=report.run_id, orders=rows, count=len(rows), symbols=symbols)

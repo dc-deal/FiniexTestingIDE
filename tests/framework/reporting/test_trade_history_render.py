@@ -21,6 +21,9 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.utils.console_renderer import ConsoleRenderer
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 
 def _row() -> TradeHistoryRow:
     return TradeHistoryRow(
@@ -41,7 +44,7 @@ def _row() -> TradeHistoryRow:
 
 
 def _report() -> TradeHistoryReport:
-    return TradeHistoryReport(
+    return TradeHistoryReport(run_id=_RUN_ID, 
         trades=[_row()], count=1, symbols=['EURUSD'],
         analytics=[TradeAnalytics(
             currency='USD', trade_count=1,
@@ -54,7 +57,7 @@ def _report() -> TradeHistoryReport:
 
 
 def _empty_orders() -> OrderHistoryReport:
-    return OrderHistoryReport(orders=[], count=0, symbols=[])
+    return OrderHistoryReport(run_id=_RUN_ID, orders=[], count=0, symbols=[])
 
 
 def _render(method_name: str) -> str:

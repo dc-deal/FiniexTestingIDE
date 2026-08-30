@@ -3,13 +3,14 @@ Report store (#391) — resolves persisted run-report artifacts under the logs t
 
 The API's read-only source: given a run id, find the run's trade-history artifact
 (written by either pipeline into its run directory), read it, and apply the shared
-filter. Run directories follow `<logs_root>/<group>/<set-or-profile>/<run_id>/`, and the
-report artifacts live in the run's `io/` subfolder (`IO_SUBDIR`).
+filter. Run directories follow `<logs_root>/<set-or-profile>/<run_id>/`, and the
+report artifacts live in the run's `io/` subfolder (`IO_SUBDIR`). A run is located through
+the run index, never by walking the tree — a directory means nothing to this class (#475).
 """
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import ValidationError
 
@@ -82,51 +83,31 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
-from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import (
-    AUTOTRADER_GROUP,
-    IO_SUBDIR,
-    SINGLE_RUNS_GROUP,
-    SWEEPS_GROUP,
-)
-
-# Report artifacts (JSON + CSV) live in this subfolder of a run directory.
+from python.framework.types.log_layout_types import IO_SUBDIR
 
 
 class ReportStore:
-    """Locates + serves persisted run-report artifacts (sim + autotrader runs)."""
+    """Locates + serves persisted run-report artifacts (simulation + live runs)."""
 
-    # run dirs live at: <logs_root>/<group>/<set-or-profile>/<run_id>/<artifact>
-
-    def __init__(self, run_logs: Optional[RunLogPaths] = None,
-                 run_index_path: Optional[Path] = None):
+    def __init__(self, run_index_path: Optional[Path] = None):
         """
         Args:
-            run_logs: The three category roots; read from config when not given
-            run_index_path: The run index to read; from config when not given. Injectable for the
-                same reason the roots are: a caller pointed at an isolated tree must be pointed at
-                that tree's index too, or it asks the real one about runs that only exist in tmp
+            run_index_path: The run index to read; from config when not given. Injectable so a
+                caller pointed at an isolated tree can be pointed at that tree's index too,
+                rather than asking the real one about runs that only exist in tmp
         """
-        file_logging = AppConfigManager().get_file_logging_config_object()
-        paths = run_logs or file_logging.run_logs
-        self._index = RunIndex(run_index_path or file_logging.run_index)
-        # group name → root. The names are the API's `group` values, and the roots are the
-        # same ones the writers use — one source, so a moved log root cannot hide a run.
-        self._roots: Dict[str, Path] = {
-            AUTOTRADER_GROUP: Path(paths.autotrader),
-            SINGLE_RUNS_GROUP: Path(paths.single_runs),
-            SWEEPS_GROUP: Path(paths.sweeps),
-        }
+        self._index = RunIndex(
+            run_index_path or AppConfigManager().get_file_logging_config_object().run_index)
 
     def list_runs(self) -> List[RunInfo]:
-        """Every run in the tree, all three categories, newest first.
+        """Every indexed run, both types, newest first.
 
-        Not only runs carrying artifacts: `has_reports` says which do, and a caller that wants
-        the narrower set filters on it. An index that silently omitted a category would be its
-        own surprise.
+        Not only runs carrying artifacts: `artifacts` says which do, and a caller that wants the
+        narrower set filters on it. An index that silently omitted a type would be its own
+        surprise.
 
         Returns:
-            One identity row per run — id, category group, owning set / profile, has_reports
+            One identity row per run — id, run type, owning set / profile, artifacts
         """
         return self._index.list_runs()
 

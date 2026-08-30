@@ -118,6 +118,9 @@ class BatchReportCoordinator:
         5. Strip colors and log full version to scenario file
         """
         run_dir = self._scenario_set.logger.get_log_dir()
+        # Every report names the run it was built from — the payload identifies itself, so a
+        # consumer can check what it received rather than trusting the route (#475).
+        run_id = self._scenario_set.run_id
 
         # === DERIVE + PERSIST the shared units-derived sections (#403) ===
         # The 7 sections both pipelines share are built + written once by the shared
@@ -125,7 +128,7 @@ class BatchReportCoordinator:
         io_dir = run_dir / IO_SUBDIR
         units = run_units_from_batch(self._batch_execution_summary)
         unified = SharedReportCoordinator.derive_and_persist(
-            units, io_dir, self._batch_execution_summary.signal_scenario_map)
+            run_id, units, io_dir, self._batch_execution_summary.signal_scenario_map)
         trade_report = unified.trade_history
         order_report = unified.order_history
         portfolio_report = unified.portfolio
@@ -139,25 +142,26 @@ class BatchReportCoordinator:
         # === DERIVE the sim-only / pipeline-specific sections ===
         # Scenario details — per-scenario execution/signal metadata incl. failed (sim-only).
         scenario_details_report = build_scenario_details_report_from_batch(
-            self._batch_execution_summary)
+            run_id, self._batch_execution_summary)
         # Run meta — run-level timing split + scenario identity (the orchestrator's primary
         # measurements), projected once so PRESENT reads the model instead of the raw type.
-        run_meta_report = build_run_meta_report_from_batch(self._batch_execution_summary)
+        run_meta_report = build_run_meta_report_from_batch(run_id, self._batch_execution_summary)
         # Profiling — per-scenario operation timing + inter-tick + clipping + warmup (sim-only, #399).
-        profiling_report = build_profiling_report_from_batch(self._batch_execution_summary)
+        profiling_report = build_profiling_report_from_batch(run_id, self._batch_execution_summary)
         # Broker configuration — per-broker spec + scenarios + symbols (sim-only).
-        broker_report = build_broker_report_from_batch(self._batch_execution_summary)
+        broker_report = build_broker_report_from_batch(run_id, self._batch_execution_summary)
         # Warnings & errors — tiered, from the validation channels + log pots (#395).
         warnings_errors_report = build_warnings_errors_report_from_batch(
-            self._batch_execution_summary)
+            run_id, self._batch_execution_summary)
         # Aggregated per-currency portfolio — the rich detail view from the per-unit rows (#397).
         aggregated_portfolio_report = build_aggregated_portfolio_report(
-            portfolio_report, execution_stats_report, pending_report)
+            run_id, portfolio_report, execution_stats_report, pending_report)
         # Block-splitting disposition — Profile Runs only (empty otherwise; sim-only).
         block_splitting_report = build_block_splitting_report_from_batch(
-            self._batch_execution_summary, self._scenario_set.get_generator_profiles() or [])
+            run_id, self._batch_execution_summary,
+            self._scenario_set.get_generator_profiles() or [])
         # Robustness validation — multi-window + IS/OOS (empty unless robustness enabled; sim-only, #367).
-        robustness_report = build_robustness_report_from_batch(self._batch_execution_summary)
+        robustness_report = build_robustness_report_from_batch(run_id, self._batch_execution_summary)
 
         # === PRESENT — build the section sub-presenters from the models and render them
         # through the shared ordered renderer (#403 Phase 2; the section order lives in one
@@ -249,11 +253,15 @@ class BatchReportCoordinator:
         if robustness_report.enabled:
             write_robustness_report(robustness_report, io_dir)
 
+        # Every artifact of this run is on disk now — the index records WHICH, so a consumer
+        # knows what it can fetch instead of discovering it by 404 (#475).
+        SharedReportCoordinator.record_run_artifacts(run_dir)
+
         # === Run-results ledger (#390) — append the run to the persistent cross-run store the
         # Parameter Optimization system ranks over. The run's status/error (a total failure, e.g.
         # an out-of-range parameter combination) comes from the canonical warnings/errors outcome
         # inside build_run_provenance — recorded as an error-flagged row, never silently absent (#1). ===
         provenance = build_run_provenance(
-            self._batch_execution_summary, self._scenario_set, run_dir,
+            self._batch_execution_summary, self._scenario_set, run_id,
             self._sweep_context, warnings_errors_report)
         append_run_to_ledger(run_summary, provenance)

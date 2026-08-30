@@ -8,15 +8,18 @@ from typing import List, Optional
 
 import pandas as pd
 
-from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT, read_run_header
-from python.framework.reporting.io.trade_history_report_io import TRADE_HISTORY_ARTIFACT
+from python.framework.reporting.io.run_header_io import (
+    RUN_HEADER_ARTIFACT,
+    read_run_header,
+    write_run_header,
+)
 from python.framework.types.api.report_types import RunHeader, RunInfo
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import IO_SUBDIR
 
 # Fixed column order, so the file stays readable back across versions.
 INDEX_COLUMNS: List[str] = [
-    'run_id', 'start_time', 'run_type', 'run_name', 'parent_id', 'run_dir', 'has_reports',
+    'run_id', 'start_time', 'run_type', 'run_name', 'parent_id', 'run_dir', 'artifacts',
     'app_version', 'git_commit', 'config_snapshot',
 ]
 
@@ -24,6 +27,22 @@ INDEX_COLUMNS: List[str] = [
 def _or_none(value) -> Optional[str]:
     """Parquet reads a missing cell as NaN; the model wants None."""
     return value if isinstance(value, str) and value else None
+
+
+def _artifact_names(run_dir: Path) -> List[str]:
+    """
+    The report artifacts a run has persisted, by file name.
+
+    Args:
+        run_dir: The run's own directory
+
+    Returns:
+        Sorted file names in the run's io/ subfolder; empty when it has none
+    """
+    io_dir = run_dir / IO_SUBDIR
+    if not io_dir.is_dir():
+        return []
+    return sorted(f.name for f in io_dir.iterdir() if f.is_file())
 
 
 class RunIndex:
@@ -57,14 +76,19 @@ class RunIndex:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         frame[INDEX_COLUMNS].to_parquet(self._path, index=False)
 
-    def append(self, header: RunHeader, run_dir: Path) -> None:
+    def register_run(self, header: RunHeader, run_dir: Path) -> None:
         """
-        Record a run at its START. Replaces an existing row of the same id.
+        Write a run's header AND record it in the index, at its START.
+
+        One call rather than two, because the two must not come apart: a header without an
+        index row is a run the API cannot find, and an index row without a header is one a
+        rebuild would drop. Replaces an existing row of the same id.
 
         Args:
-            header: The run's identity, as written to its header.json
-            run_dir: Where the run's artifacts live
+            header: The run's identity
+            run_dir: The run's own directory
         """
+        write_run_header(header, run_dir)
         frame = self._frame()
         frame = frame[frame['run_id'] != header.run_id]
         row = pd.DataFrame([{
@@ -74,27 +98,34 @@ class RunIndex:
             'run_name': header.run_name,
             'parent_id': header.parent_id,
             'run_dir': str(run_dir),
-            'has_reports': False,
+            'artifacts': [],
             'app_version': header.app_version,
             'git_commit': header.git_commit,
             'config_snapshot': header.config_snapshot,
         }])
         self._write(pd.concat([frame, row], ignore_index=True))
 
-    def mark_reports_written(self, run_id: str) -> None:
+    def record_artifacts(self, run_id: str, run_dir: Path) -> None:
         """
-        Flip a run's `has_reports` once its artifacts exist.
+        Record which report artifacts a run persisted, once they exist.
 
-        Kept as an explicit update rather than an existence check at read time: checking would
-        mean one stat call per row on every request, which is the cost this index removes.
+        Written explicitly rather than listed at read time: listing would mean one directory
+        scan per row on every request, which is the cost this index exists to remove. The two
+        pipelines produce different sets, so the list — not a boolean — is what a consumer needs.
 
         Args:
             run_id: The run whose reports were just persisted
+            run_dir: The run's own directory, whose io/ subfolder is listed
         """
         frame = self._frame()
         if frame.empty or run_id not in set(frame['run_id']):
             return
-        frame.loc[frame['run_id'] == run_id, 'has_reports'] = True
+        names = _artifact_names(run_dir)
+        # A cell holding a list needs an object column, and `.apply` is the assignment form
+        # pandas accepts for one — a plain `.loc[mask] = names` would broadcast its elements.
+        mask = frame['run_id'] == run_id
+        frame['artifacts'] = frame['artifacts'].astype(object)
+        frame.loc[mask, 'artifacts'] = frame.loc[mask, 'artifacts'].apply(lambda _: names)
         self._write(frame)
 
     def list_runs(self) -> List[RunInfo]:
@@ -109,7 +140,7 @@ class RunIndex:
             return []
         frame = frame.sort_values('run_id', ascending=False)
         return [RunInfo(run_id=r.run_id, group=r.run_type, name=r.run_name,
-                        has_reports=bool(r.has_reports), start_time=r.start_time,
+                        artifacts=list(r.artifacts), start_time=r.start_time,
                         parent_id=_or_none(r.parent_id), app_version=r.app_version or '',
                         git_commit=_or_none(r.git_commit),
                         config_snapshot=r.config_snapshot or '')
@@ -138,13 +169,13 @@ class RunIndex:
         the condition the header exists to end.
 
         Args:
-            roots: The three category roots to scan
+            roots: The run-type roots to scan
 
         Returns:
             How many runs were indexed
         """
         rows = []
-        for root in (roots.autotrader, roots.single_runs, roots.sweeps):
+        for root in (roots.simulation, roots.live):
             for header_path in Path(root).rglob(RUN_HEADER_ARTIFACT):
                 run_dir = header_path.parent
                 header = read_run_header(header_path)
@@ -155,7 +186,7 @@ class RunIndex:
                     'run_name': header.run_name,
                     'parent_id': header.parent_id,
                     'run_dir': str(run_dir),
-                    'has_reports': (run_dir / IO_SUBDIR / TRADE_HISTORY_ARTIFACT).exists(),
+                    'artifacts': _artifact_names(run_dir),
                     'app_version': header.app_version,
                     'git_commit': header.git_commit,
                     'config_snapshot': header.config_snapshot,

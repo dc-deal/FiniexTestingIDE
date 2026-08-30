@@ -666,6 +666,7 @@ class AutotraderMain:
         AutotraderReportCoordinator(
             result=result,
             run_dir=self._run_dir,
+            run_id=self._run_id,
             run_timestamp=self._run_timestamp,
             config=self._config,
             decision_logic=self._decision_logic,

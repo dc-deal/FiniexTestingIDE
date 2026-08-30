@@ -29,6 +29,7 @@ from python.framework.types.trading_env_types.order_types import OrderSide
 
 
 def build_trade_history_report(
+    run_id: str,
     units: List[RunUnit],
     symbol: Optional[str] = None,
     close_reason: Optional[str] = None,
@@ -39,6 +40,7 @@ def build_trade_history_report(
     Build the report from the run's units — each row tagged with its unit name.
 
     Args:
+        run_id: The run this report belongs to
         units: The run's units (sim: scenarios; live: the session)
         symbol / close_reason / start / end: Optional filters
 
@@ -46,10 +48,11 @@ def build_trade_history_report(
         The filtered, mapped TradeHistoryReport
     """
     rows = [_to_row(trade, unit.name) for unit in units for trade in unit.trade_history]
-    return _assemble(rows, symbol, close_reason, start, end)
+    return _assemble(run_id, rows, symbol, close_reason, start, end)
 
 
 def _assemble(
+    run_id: str,
     rows: List[TradeHistoryRow],
     symbol: Optional[str],
     close_reason: Optional[str],
@@ -71,6 +74,7 @@ def _assemble(
 
     symbols = sorted({row.symbol for row in filtered})
     return TradeHistoryReport(
+        run_id=run_id,
         trades=filtered, count=len(filtered), symbols=symbols,
         analytics=aggregate_trade_analytics(filtered),
         scenario_totals=aggregate_trade_scenario_totals(filtered))

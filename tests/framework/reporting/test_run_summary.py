@@ -23,6 +23,9 @@ from python.framework.types.api.report_types import (
     TradeHistoryReport,
 )
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 
 def _agg(currency='USD', net=60.0) -> PortfolioAggregateRow:
     return PortfolioAggregateRow(
@@ -46,15 +49,15 @@ def _analytics(currency='USD', expectancy=0.5) -> TradeAnalytics:
 
 
 def _exec(sent=5, ex=4, rej=1, sltp=2) -> ExecutionStatsReport:
-    return ExecutionStatsReport(units=[], totals=ExecutionStatsTotals(
+    return ExecutionStatsReport(run_id=_RUN_ID, units=[], totals=ExecutionStatsTotals(
         orders_sent=sent, orders_executed=ex, orders_rejected=rej, sl_tp_triggered=sltp))
 
 
 class TestBuild:
     def test_composes_per_currency(self):
-        portfolio = PortfolioReport(units=[_unit()], aggregates=[_agg()])
-        trade = TradeHistoryReport(trades=[], count=0, symbols=[], analytics=[_analytics()])
-        rs = build_run_summary(portfolio, trade, _exec())
+        portfolio = PortfolioReport(run_id=_RUN_ID, units=[_unit()], aggregates=[_agg()])
+        trade = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[_analytics()])
+        rs = build_run_summary(_RUN_ID, portfolio, trade, _exec())
         assert len(rs.currencies) == 1
         c = rs.currencies[0]
         assert c.currency == 'USD'
@@ -66,20 +69,20 @@ class TestBuild:
 
     def test_currency_without_analytics_defaults_r(self):
         # portfolio currency present, no matching trade analytics → R fields default 0
-        portfolio = PortfolioReport(units=[_unit('JPY')], aggregates=[_agg(currency='JPY')])
-        trade = TradeHistoryReport(trades=[], count=0, symbols=[], analytics=[])
-        c = build_run_summary(portfolio, trade, _exec()).currencies[0]
+        portfolio = PortfolioReport(run_id=_RUN_ID, units=[_unit('JPY')], aggregates=[_agg(currency='JPY')])
+        trade = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[])
+        c = build_run_summary(_RUN_ID, portfolio, trade, _exec()).currencies[0]
         assert c.currency == 'JPY' and c.net_pnl == 60.0
         assert c.expectancy == 0.0 and c.r_trade_count == 0
 
     def test_multi_currency(self):
-        portfolio = PortfolioReport(
+        portfolio = PortfolioReport(run_id=_RUN_ID, 
             units=[_unit('USD'), _unit('JPY')],
             aggregates=[_agg('USD', net=60.0), _agg('JPY', net=100.0)])
-        trade = TradeHistoryReport(
+        trade = TradeHistoryReport(run_id=_RUN_ID, 
             trades=[], count=0, symbols=[],
             analytics=[_analytics('USD'), _analytics('JPY', expectancy=1.0)])
-        rs = build_run_summary(portfolio, trade, _exec())
+        rs = build_run_summary(_RUN_ID, portfolio, trade, _exec())
         by = {c.currency: c for c in rs.currencies}
         assert by['USD'].net_pnl == 60.0 and by['JPY'].net_pnl == 100.0
         assert by['JPY'].expectancy == 1.0
@@ -96,16 +99,16 @@ class TestUndefinedProfitFactor:
     def test_builder_carries_none_through(self):
         agg = _agg()
         agg.profit_factor = None
-        portfolio = PortfolioReport(units=[_unit()], aggregates=[agg])
-        trade = TradeHistoryReport(trades=[], count=0, symbols=[], analytics=[])
-        assert build_run_summary(portfolio, trade, _exec()).currencies[0].profit_factor is None
+        portfolio = PortfolioReport(run_id=_RUN_ID, units=[_unit()], aggregates=[agg])
+        trade = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[])
+        assert build_run_summary(_RUN_ID, portfolio, trade, _exec()).currencies[0].profit_factor is None
 
     def test_survives_the_json_round_trip(self, tmp_path):
         agg = _agg()
         agg.profit_factor = None
-        portfolio = PortfolioReport(units=[_unit()], aggregates=[agg])
-        trade = TradeHistoryReport(trades=[], count=0, symbols=[], analytics=[])
-        summary = build_run_summary(portfolio, trade, _exec())
+        portfolio = PortfolioReport(run_id=_RUN_ID, units=[_unit()], aggregates=[agg])
+        trade = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[])
+        summary = build_run_summary(_RUN_ID, portfolio, trade, _exec())
         read_back = read_run_summary(write_run_summary(summary, tmp_path))
         assert read_back.currencies[0].profit_factor is None
 

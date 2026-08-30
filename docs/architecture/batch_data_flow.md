@@ -88,28 +88,32 @@ reads meaning out of them any more.
 A run belongs to exactly ONE category, and the category IS its `group` in the API:
 
 ```
-file_logging.run_logs.autotrader    runs/autotrader/<profile>/<run_ts>/
-file_logging.run_logs.single_runs   runs/single_runs/<set>/<run_ts>/
-file_logging.run_logs.sweeps        runs/sweeps/<sweep_id>/<set>/<run_ts>/
+file_logging.run_logs.simulation    runs/simulation/<set>/<run_id>/
+                                    runs/simulation/sweeps/<sweep_id>/<combination>/<run_id>/
+file_logging.run_logs.live          runs/live/<profile>/<run_id>/
 ```
 
-**The three paths are configuration** (`app_config.json` → `file_logging.run_logs`), read by the
-writers (`ScenarioSet`, `autotrader_startup`) AND by `ReportStore` — one source, so a moved log
+**Two roots, because there are two run TYPES** — and the type is the PIPELINE, not the nesting.
+A sweep combination is a `simulation` with a `parent_id`; a live day fragment (#476) will be a
+`live` with a `parent_id`. Folding nesting into the type would make the most basic question —
+"is this a simulation?" — a two-value comparison, and would need a new value for every new kind
+of parent.
+
+**The paths are configuration** (`app_config.json` → `file_logging.run_logs`), read by the
+writers (`ScenarioSet`, `autotrader_startup`) AND by the run index — one source, so a moved log
 root cannot make runs invisible to the API. Before that, the sim root was config, the live root
 was a hard-coded `Path('logs/autotrader')` and the reader assumed a third thing: changing the
 config would silently have emptied the run index.
 
-The category NAMES live in `framework/types/log_layout_types.py`, because they are a contract:
-the API publishes them as `RunInfo.group`. The run index lists every category — a consumer that
-wants only standalone runs filters on the group, which it can, and an index that silently omitted
-a category would be its own surprise. `/sweeps` adds the sweep-shaped view on the same data:
-one sweep, its combinations ranked by the objective the sweep declared.
+The type NAMES live in `framework/types/log_layout_types.py`, because they are a contract: the
+API publishes them as `RunInfo.group`. The index lists both types — a consumer that wants only
+standalone runs filters on `parent_id`, and an index that silently omitted a type would be its
+own surprise. `/sweeps` adds the sweep-shaped view on the same data: one sweep, its combinations
+ranked by the objective the sweep declared.
 
-The distinction is structural on purpose. A sweep is not a run, it is a family of them, and the
-two want different views: `/reports/runs` lists standalone runs, `/sweeps` lists sweeps and ranks
-their combinations. Keeping them apart by PATH means the index needs no filter on names, and a
-combination cannot silently reappear in the run picker. It stays fully **addressable** — every
-report route resolves any `run_id`, at any depth; the index is a browse aid, not the authority
+**A directory means nothing to any program (#475).** Identity is a field: a run is located
+through the run index by an exact `run_id` match, never by walking the tree, so the nesting level
+of a sweep combination is invisible to every consumer. The tree stays the way a HUMAN browses it.
 on what can be read.
 
 ## Channel B: Process Output (`ProcessResult`)

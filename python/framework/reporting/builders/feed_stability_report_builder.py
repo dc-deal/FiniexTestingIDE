@@ -32,11 +32,12 @@ from python.framework.types.trading_env_types.stress_test_types import StaleData
 UNKNOWN_SIGNAL_SOURCE = '(signal)'
 
 
-def build_feed_stability_report(units: List[RunUnit]) -> FeedStabilityReport:
+def build_feed_stability_report(run_id: str, units: List[RunUnit]) -> FeedStabilityReport:
     """
     Build the feed-stability report from the run's units.
 
     Args:
+        run_id: The run this report belongs to
         units: The run's units (sim: N scenarios; live: 1 session)
 
     Returns:
@@ -71,12 +72,13 @@ def build_feed_stability_report(units: List[RunUnit]) -> FeedStabilityReport:
 
     # Early exit: a run without a single disturbance renders no section.
     if not rows:
-        return FeedStabilityReport(units=[])
+        return FeedStabilityReport(run_id=run_id, units=[])
 
     _attach_counters(rows, units)
 
     ordered = [rows[key] for key in sorted(rows.keys())]
     return FeedStabilityReport(
+        run_id=run_id,
         units=ordered,
         episode_count=sum(row.episode_count for row in ordered),
         stale_seconds=sum(row.stale_seconds for row in ordered),

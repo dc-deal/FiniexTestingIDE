@@ -22,11 +22,12 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
 
 
-def build_broker_report_from_batch(batch: BatchExecutionSummary) -> BrokerReport:
+def build_broker_report_from_batch(run_id: str, batch: BatchExecutionSummary) -> BrokerReport:
     """
     Build the broker report from a sim batch — one row per broker.
 
     Args:
+        run_id: The run this report belongs to
         batch: The completed batch summary (carries broker_scenario_map)
 
     Returns:
@@ -37,21 +38,22 @@ def build_broker_report_from_batch(batch: BatchExecutionSummary) -> BrokerReport
         _to_broker_row(info.broker_config, list(info.scenarios), sorted(info.symbols), market_config)
         for info in batch.broker_scenario_map.values()
     ]
-    return BrokerReport(units=units)
+    return BrokerReport(run_id=run_id, units=units)
 
 
-def build_broker_report_from_session(broker_config: BrokerConfig, symbol: str) -> BrokerReport:
+def build_broker_report_from_session(run_id: str, broker_config: BrokerConfig, symbol: str) -> BrokerReport:
     """
     Build the broker report for a live session — the single broker + traded symbol.
 
     Args:
+        run_id: The run this report belongs to
         broker_config: The resolved live BrokerConfig (the executor's broker)
         symbol: The session's traded symbol
 
     Returns:
         BrokerReport with one BrokerInfoRow (no scenario grid for live)
     """
-    return BrokerReport(units=[
+    return BrokerReport(run_id=run_id, units=[
         _to_broker_row(broker_config, [], [symbol], MarketConfigManager())])
 
 

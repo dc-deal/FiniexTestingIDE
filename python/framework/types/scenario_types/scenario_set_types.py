@@ -18,7 +18,6 @@ from python.framework.discoveries.signal_coverage.signal_coverage_report import 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
-from python.framework.reporting.io.run_header_io import write_run_header
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.types.api.report_types import RunHeader
@@ -26,11 +25,7 @@ from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,
     RobustnessRole,
 )
-from python.framework.types.log_layout_types import (
-    MOUNT_BUILD_LOG,
-    SINGLE_RUNS_GROUP,
-    SWEEPS_GROUP,
-)
+from python.framework.types.log_layout_types import MOUNT_BUILD_LOG, RUN_TYPE_SIMULATION
 from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.types.validation_types import ValidationResult
 from python.framework.utils.git_info_utils import get_git_info
@@ -203,12 +198,12 @@ class ScenarioSet:
         self._generator_profiles = scenario_config.generator_profiles
         self._generator_profile_paths = scenario_config.generator_profile_paths
         self._robustness = scenario_config.robustness or RobustnessConfig()
-        # Where this run's logs land, from config (file_logging.run_logs) — the same three
-        # paths the API reads. A sweep's combinations nest under their sweep id, a standalone
-        # run does not: structural, so the run index needs no name filter.
+        # Where this run's logs land, from config (file_logging.run_logs) — the same paths the
+        # API reads. A sweep's combinations nest under their sweep id, a standalone run does
+        # not: a directory level, while the run TYPE stays `simulation` for both.
         run_logs = app_config.get_file_logging_config_object().run_logs
-        self._log_root = (Path(run_logs.sweeps) / sweep_id if sweep_id
-                          else Path(run_logs.single_runs))
+        self._log_root = (run_logs.sweeps / sweep_id if sweep_id
+                          else Path(run_logs.simulation))
 
         # ScenarioSet creates its own loggers
         self._run_timestamp = datetime.now(
@@ -233,15 +228,14 @@ class ScenarioSet:
             header = RunHeader(
                 run_id=self._run_id,
                 start_time=self._run_timestamp,
-                run_type=SWEEPS_GROUP if sweep_id else SINGLE_RUNS_GROUP,
+                run_type=RUN_TYPE_SIMULATION,
                 run_name=self.scenario_set_name,
                 parent_id=sweep_id,
                 config_snapshot='scenario_config.json',
                 app_version=app_config.get_version(),
                 git_commit=git.commit if git else None,
             )
-            write_run_header(header, self.logger.get_log_dir())
-            RunIndex(app_config.get_file_logging_config_object().run_index).append(
+            RunIndex(app_config.get_file_logging_config_object().run_index).register_run(
                 header, self.logger.get_log_dir())
 
         # A mount build produces no batch report, so a summary logger would only ever write its

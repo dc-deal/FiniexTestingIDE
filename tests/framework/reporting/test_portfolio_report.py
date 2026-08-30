@@ -24,6 +24,9 @@ from python.framework.types.portfolio_types.portfolio_aggregation_types import P
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_types import BrokerType
+
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
 from python.framework.types.trading_env_types.order_types import (
     OrderAction,
     OrderDirection,
@@ -99,7 +102,7 @@ class TestBatch:
     """sim: N scenario units (symbol from SingleScenario) + per-currency roll-up from the rows."""
 
     def test_units_use_scenario_symbol(self):
-        report = build_portfolio_report(run_units_from_batch(_batch()))
+        report = build_portfolio_report(_RUN_ID, run_units_from_batch(_batch()))
 
         assert [u.name for u in report.units] == ['s1', 's2']
         # symbol is NOT on ProcessResult — must resolve via the index-synced scenario
@@ -111,7 +114,7 @@ class TestBatch:
         assert report.aggregates[0].net_profit == 120.0          # (100-40) + (100-40)
 
     def test_unit_headline_mapped(self):
-        report = build_portfolio_report(run_units_from_batch(_batch()))
+        report = build_portfolio_report(_RUN_ID, run_units_from_batch(_batch()))
         row = report.units[0]
         assert row.win_rate == 0.6
         assert row.profit_factor == 2.5
@@ -119,7 +122,7 @@ class TestBatch:
 
     def test_full_projection_fields(self):
         # the per-scenario linear block renders purely from these
-        row = build_portfolio_report(run_units_from_batch(_batch())).units[0]
+        row = build_portfolio_report(_RUN_ID, run_units_from_batch(_batch())).units[0]
         assert row.broker_name == 'kraken'
         assert row.spot_mode is False
         assert row.data_source == 'mt5'                # from the index-synced scenario
@@ -134,7 +137,7 @@ class TestBatch:
     def test_skips_scenarios_without_stats(self):
         bad = ProcessResult(
             success=False, scenario_name='bad', scenario_index=2, tick_loop_results=None)
-        report = build_portfolio_report(run_units_from_batch(_batch(extra_results=[bad])))
+        report = build_portfolio_report(_RUN_ID, run_units_from_batch(_batch(extra_results=[bad])))
         assert [u.name for u in report.units] == ['s1', 's2']
 
 
@@ -157,7 +160,7 @@ class TestSession:
 
     def test_single_unit_and_aggregate(self):
         result = AutoTraderResult(portfolio_stats=_stats(currency='USD'))
-        report = build_portfolio_report(run_units_from_session(result, 'my_profile', 'BTCUSD'))
+        report = build_portfolio_report(_RUN_ID, run_units_from_session(result, 'my_profile', 'BTCUSD'))
         assert len(report.units) == 1
         assert report.units[0].name == 'my_profile'
         assert report.units[0].symbol == 'BTCUSD'
@@ -166,7 +169,7 @@ class TestSession:
         assert report.aggregates[0].net_profit == 60.0
 
     def test_empty_when_no_stats(self):
-        report = build_portfolio_report(
+        report = build_portfolio_report(_RUN_ID, 
             run_units_from_session(AutoTraderResult(portfolio_stats=None), 'p', 'BTCUSD'))
         assert report.units == []
         assert report.aggregates == []
@@ -184,13 +187,13 @@ class TestDerivedInBuilder:
     """Figures the renderers used to compute themselves now come off the model (#391)."""
 
     def test_max_dd_pct_is_derived(self):
-        report = build_portfolio_report(run_units_from_batch(_single_unit_batch(_stats())))
+        report = build_portfolio_report(_RUN_ID, run_units_from_batch(_single_unit_batch(_stats())))
         assert report.units[0].max_dd_pct == pytest.approx(12.0 / 1100.0 * 100)
 
     def test_max_dd_pct_zero_without_equity(self):
         stats = _stats()
         stats.max_equity = 0.0
-        report = build_portfolio_report(run_units_from_batch(_single_unit_batch(stats)))
+        report = build_portfolio_report(_RUN_ID, run_units_from_batch(_single_unit_batch(stats)))
         assert report.units[0].max_dd_pct == 0.0
 
     def test_spot_estimate_uses_the_stamped_currency_split(self):
@@ -201,7 +204,7 @@ class TestDerivedInBuilder:
         stats.base_currency, stats.quote_currency = 'BTC', 'USD'
         stats.balances = {'USD': 500.0, 'BTC': 2.0}
         stats.initial_balances = {'USD': 700.0, 'BTC': 0.0}
-        unit = build_portfolio_report(run_units_from_batch(_single_unit_batch(stats))).units[0]
+        unit = build_portfolio_report(_RUN_ID, run_units_from_batch(_single_unit_batch(stats))).units[0]
         assert unit.spot_est_current == pytest.approx(700.0)      # 500 + 2 * 100
         assert unit.spot_est_initial == pytest.approx(700.0)
         assert unit.spot_est_pnl == pytest.approx(0.0)
@@ -211,5 +214,5 @@ class TestDerivedInBuilder:
         stats = _stats()
         stats.spot_mode = True
         stats.last_price = 0.0
-        unit = build_portfolio_report(run_units_from_batch(_single_unit_batch(stats))).units[0]
+        unit = build_portfolio_report(_RUN_ID, run_units_from_batch(_single_unit_batch(stats))).units[0]
         assert (unit.spot_est_current, unit.spot_est_pnl_pct) == (0.0, 0.0)

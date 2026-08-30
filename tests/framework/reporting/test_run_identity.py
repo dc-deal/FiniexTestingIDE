@@ -22,19 +22,16 @@ from python.framework.reporting.io.run_header_io import (
     write_run_header,
 )
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.types.log_layout_types import IO_SUBDIR
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import (
-    AUTOTRADER_GROUP,
-    SINGLE_RUNS_GROUP,
-    SWEEPS_GROUP,
-)
+from python.framework.types.log_layout_types import RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
 from python.framework.utils.run_id_utils import mint_run_id
 
 _START = datetime(2026, 8, 30, 13, 20, 34, tzinfo=timezone.utc)
 
 
-def _header(run_id: str, run_type: str = SINGLE_RUNS_GROUP, parent: str = None) -> RunHeader:
+def _header(run_id: str, run_type: str = RUN_TYPE_SIMULATION, parent: str = None) -> RunHeader:
     return RunHeader(run_id=run_id, start_time=_START, run_type=run_type,
                      run_name='my_set', parent_id=parent, config_snapshot='scenario_config.json',
                      app_version='1.4.0', git_commit='abc1234')
@@ -79,7 +76,7 @@ class TestTheIdIsDistinctAndStillReadable:
         index = RunIndex(tmp_path / 'index.parquet')
         header = _header('20260830_132034_aaaaaaaa')
         write_run_header(header, tmp_path / 'a_run')
-        index.append(header, tmp_path / 'a_run')
+        index.register_run(header, tmp_path / 'a_run')
 
         for crafted in ('*', '../secret', '20260830_132034', ''):
             assert index.run_dir(crafted) is None
@@ -110,25 +107,23 @@ class TestTheIndexIsDerivedAndRebuildable:
 
     @staticmethod
     def _tree(root: Path) -> RunLogPaths:
-        return RunLogPaths(autotrader=root / 'autotrader',
-                           single_runs=root / 'single_runs',
-                           sweeps=root / 'sweeps')
+        return RunLogPaths(simulation=root / 'simulation', live=root / 'live')
 
     def test_rebuild_reproduces_what_the_appends_wrote(self, tmp_path):
         roots = self._tree(tmp_path)
         index = RunIndex(tmp_path / 'index.parquet')
 
         planted = [
-            (_header('20260830_132034_aaaaaaaa', SINGLE_RUNS_GROUP),
-             roots.single_runs / 'my_set' / '20260830_132034_aaaaaaaa'),
-            (_header('20260830_132035_bbbbbbbb', AUTOTRADER_GROUP),
-             roots.autotrader / 'my_profile' / '20260830_132035_bbbbbbbb'),
-            (_header('20260830_132036_cccccccc', SWEEPS_GROUP, parent='sweep_20260830_132030'),
+            (_header('20260830_132034_aaaaaaaa'),
+             roots.simulation / 'my_set' / '20260830_132034_aaaaaaaa'),
+            (_header('20260830_132035_bbbbbbbb', RUN_TYPE_LIVE),
+             roots.live / 'my_profile' / '20260830_132035_bbbbbbbb'),
+            # A sweep combination is a SIMULATION with a parent — nesting is not a type.
+            (_header('20260830_132036_cccccccc', parent='sweep_20260830_132030'),
              roots.sweeps / 'sweep_20260830_132030' / 'my_set_c000' / '20260830_132036_cccccccc'),
         ]
         for header, run_dir in planted:
-            write_run_header(header, run_dir)
-            index.append(header, run_dir)
+            index.register_run(header, run_dir)
         before = index.list_runs()
 
         (tmp_path / 'index.parquet').unlink()
@@ -142,9 +137,8 @@ class TestTheIndexIsDerivedAndRebuildable:
         roots = self._tree(tmp_path)
         index = RunIndex(tmp_path / 'index.parquet')
         deep = roots.sweeps / 'sweep_20260830_132030' / 'my_set_c000' / '20260830_132036_cccccccc'
-        header = _header('20260830_132036_cccccccc', SWEEPS_GROUP, parent='sweep_20260830_132030')
-        write_run_header(header, deep)
-        index.append(header, deep)
+        header = _header('20260830_132036_cccccccc', parent='sweep_20260830_132030')
+        index.register_run(header, deep)
 
         assert index.run_dir('20260830_132036_cccccccc') == deep
         assert index.run_dir('20260830_132036_dddddddd') is None
@@ -152,11 +146,19 @@ class TestTheIndexIsDerivedAndRebuildable:
     def test_reports_are_marked_when_they_are_written(self, tmp_path):
         roots = self._tree(tmp_path)
         index = RunIndex(tmp_path / 'index.parquet')
-        run_dir = roots.single_runs / 'my_set' / '20260830_132034_aaaaaaaa'
+        run_dir = roots.simulation / 'my_set' / '20260830_132034_aaaaaaaa'
         header = _header('20260830_132034_aaaaaaaa')
-        write_run_header(header, run_dir)
-        index.append(header, run_dir)
+        index.register_run(header, run_dir)
 
+        assert index.list_runs()[0].artifacts == []
         assert index.list_runs()[0].has_reports is False
-        index.mark_reports_written('20260830_132034_aaaaaaaa')
+
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        for name in ('portfolio.json', 'trade_history.csv'):
+            (run_dir / IO_SUBDIR / name).write_text('{}', encoding='utf-8')
+        index.record_artifacts('20260830_132034_aaaaaaaa', run_dir)
+
+        # The LIST, not a boolean: the two pipelines produce different sets, so a consumer
+        # that only learned "yes, some" would still be guessing which.
+        assert index.list_runs()[0].artifacts == ['portfolio.json', 'trade_history.csv']
         assert index.list_runs()[0].has_reports is True
