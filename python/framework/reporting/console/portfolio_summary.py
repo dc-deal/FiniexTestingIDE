@@ -131,10 +131,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
             if line:
                 print(f'   {line}')
 
-        max_dd_pct = (unit.max_drawdown / unit.max_equity * 100) if unit.max_equity > 0 else 0.0
         print(
             f'   Max DD: {renderer.pnl(force_negative(unit.max_drawdown), unit.currency)} '
-            f'({max_dd_pct:.1f}%) | '
+            f'({unit.max_dd_pct:.1f}%) | '
             f'Max Equity: {renderer.pnl(force_positive(unit.max_equity), unit.currency)}')
 
         print(
@@ -167,10 +166,10 @@ class PortfolioSummary(AbstractBatchSummarySection):
                 current_str = renderer.red(current_str)
             return [f'Balance: {current_str} (init {initial_str})']
 
-        # Spot mode — dual balance + estimated portfolio value
-        symbol = unit.symbol
-        quote = symbol[-3:] if len(symbol) >= 6 else currency
-        base = symbol[:-3] if len(symbol) >= 6 else ''
+        # Spot mode — dual balance + estimated portfolio value. The currency split comes
+        # from the broker config via the model (#265); never split the symbol string here.
+        quote = unit.quote_currency or currency
+        base = unit.base_currency
         quote_bal = unit.balances.get(quote, 0.0)
         base_bal = unit.balances.get(base, 0.0)
         quote_init = unit.initial_balances.get(quote, 0.0)
@@ -183,15 +182,11 @@ class PortfolioSummary(AbstractBatchSummarySection):
             f'Init: {format_currency_simple(quote_init, quote)} | {base} {base_init_fmt}',
         ]
         if unit.last_price > 0:
-            est_current = quote_bal + (base_bal * unit.last_price)
-            est_initial = quote_init + (base_init * unit.last_price)
-            est_pnl = est_current - est_initial
-            est_pnl_pct = (est_pnl / est_initial * 100) if est_initial > 0 else 0.0
-            sign = '+' if est_pnl >= 0 else ''
+            sign = '+' if unit.spot_est_pnl >= 0 else ''
             price_str = format_currency_simple(unit.last_price, quote)
             lines.append(
-                f'Est: {sign}{format_currency_simple(est_pnl, quote)} '
-                f'({sign}{est_pnl_pct:.2f}%) @ {base} {price_str}')
+                f'Est: {sign}{format_currency_simple(unit.spot_est_pnl, quote)} '
+                f'({sign}{unit.spot_est_pnl_pct:.2f}%) @ {base} {price_str}')
         return lines
 
     @staticmethod
@@ -346,7 +341,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
               f'Loss: {renderer.pnl(force_negative(h.total_loss), currency)}')
 
         # Profit factor
-        if h.profit_factor == float('inf'):
+        if h.profit_factor is None:
             pf_str = '∞ (no losses)'
         else:
             pf_str = f'{h.profit_factor:.2f}'

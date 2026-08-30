@@ -490,6 +490,14 @@ Tick N arrives        Tick N+1 arrives
 
 All metrics are tracked in two scopes: **session totals** (end-of-session summary) and **interval** (periodic report every N seconds, then reset). This shows *when* clipping occurs, not just *if*.
 
+### The verdict — `clipping_monitor.warn_above_ratio`
+
+The console prints the metrics; whether they are *bad* is decided by `SessionPostRunValidator._check_clipping`, which raises a **Tier-1 advisory** when `clipping_ratio` exceeds the configured share (default `0.05` in `app_config.json::autotrader.clipping_monitor`). A ratio can never exceed `1.0`, so that value disables the advisory.
+
+This is the **only** performance verdict a live session makes, and the reason is worth stating: the ratio is measured against *real tick arrival*, so it is grounded in what actually happened. A per-component millisecond threshold is not — 1.2 ms is fine at 50 ms between ticks and fatal at 2 ms — and an earlier check that tried it was removed as misinformation (see [Warnings & Errors — Tier Taxonomy](../architecture/warnings_errors_tiers.md)). Where exactly the line sits is a policy question, which is why it lives in config rather than in a constant.
+
+The sim has no counterpart: it judges clipping against a *configured* `tick_processing_budget_ms` (the tick-budget advisories), while a live session has only what it observed.
+
 ### Phases
 
 | Phase | What | Status |
@@ -696,6 +704,31 @@ logs/autotrader/btcusd_mock/20260328_105127/
                                   POSITION_OPEN / POSITION_CLOSE / ORDER_REJECT).
                                   See trade_execution_visibility.md for schema.
 ```
+
+### The event-time column — and why a mock session shows two dates
+
+The session log carries **two** times per line: the elapsed bracket is OBSERVATION time (how far
+into the session we were), the column after the level is EVENT time — the canonical clock, pulled
+through an injected `clock_fn`. §9's `ts_init` / `ts_event` pair, rendered.
+
+```
+[  1s  26ms] DEBUG    | 2026-01-24 14:19:46.420 | NEW MAX: rsi_fast    0.20ms
+[  0s 214ms] INFO     |                       — | 📂 Loading broker config
+```
+
+Only the session log carries the column: it is the tick-by-tick record. `autotrader_global.log`
+and `autotrader_summary.log` describe the session from outside a moment in it, so they do not.
+The filler appears before the executor exists — there is no session time yet to state, and §9
+forbids substituting wall-clock for it.
+
+**In a mock replay session the column can show two different dates, and that is not a defect.**
+The canonical clock is bimodal there: a tick sets it to the tick's own (replayed) timestamp, while
+the idle heartbeat sets it to wall-clock so phase and operation timeouts keep tracking real elapsed
+time. A replay of January data on an August afternoon therefore stamps tick lines with January and
+idle-heartbeat lines with August. The property predates the column — the column only makes it
+visible. It does not arise in live trading, where both sources are the same clock, and it is
+harmless in replay because nothing decides on the log. Sessions driven at a low `--delay` rarely go
+idle at all and show only replay dates.
 
 ### Warning/Error Summary
 

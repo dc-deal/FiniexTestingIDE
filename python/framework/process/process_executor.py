@@ -4,6 +4,7 @@
 # ============================================================================
 
 
+from pathlib import Path
 from multiprocessing import Queue
 from typing import Optional
 
@@ -39,7 +40,7 @@ class ProcessExecutor:
         scenario_set_name: str,
         run_timestamp: str,
         live_stats_config: LiveStatsExportConfig = None,
-        run_group: str = None
+        log_root: Path = None
     ):
         """
         Initialize process executor.
@@ -59,7 +60,7 @@ class ProcessExecutor:
         self.scenario_set_name = scenario_set_name
         self.run_timestamp = run_timestamp
         self.live_stats_config = live_stats_config
-        self.run_group = run_group
+        self.log_root = log_root
 
         # Create config (serializable)
         self.config = ProcessScenarioConfig.from_scenario(
@@ -69,7 +70,7 @@ class ProcessExecutor:
             scenario_set_name=scenario_set_name,
             run_timestamp=run_timestamp,
             live_stats_config=live_stats_config,
-            run_group=run_group
+            log_root=log_root
         )
 
     def run(self,

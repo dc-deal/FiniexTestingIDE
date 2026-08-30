@@ -11,6 +11,8 @@ also covers the RunUnit record extraction. The live builder uses a real AutoTrad
 
 from datetime import datetime, timezone
 
+import pytest
+
 from python.framework.reporting.builders.portfolio_report_builder import build_portfolio_report
 from python.framework.reporting.builders.run_unit import (
     run_units_from_batch,
@@ -168,3 +170,46 @@ class TestSession:
             run_units_from_session(AutoTraderResult(portfolio_stats=None), 'p', 'BTCUSD'))
         assert report.units == []
         assert report.aggregates == []
+
+
+def _single_unit_batch(stats: PortfolioStats, name: str = 'u1') -> BatchExecutionSummary:
+    """A one-scenario batch — index-synced result + scenario, as the builder expects."""
+    return BatchExecutionSummary(
+        batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
+        process_result_list=[_process_result(name, 0, stats, [])],
+        single_scenario_list=[_scenario(name, 0, 'BTCUSD')])
+
+
+class TestDerivedInBuilder:
+    """Figures the renderers used to compute themselves now come off the model (#391)."""
+
+    def test_max_dd_pct_is_derived(self):
+        report = build_portfolio_report(run_units_from_batch(_single_unit_batch(_stats())))
+        assert report.units[0].max_dd_pct == pytest.approx(12.0 / 1100.0 * 100)
+
+    def test_max_dd_pct_zero_without_equity(self):
+        stats = _stats()
+        stats.max_equity = 0.0
+        report = build_portfolio_report(run_units_from_batch(_single_unit_batch(stats)))
+        assert report.units[0].max_dd_pct == 0.0
+
+    def test_spot_estimate_uses_the_stamped_currency_split(self):
+        """#265: the split is broker-config truth carried on the record — never symbol[-3:]."""
+        stats = _stats()
+        stats.spot_mode = True
+        stats.last_price = 100.0
+        stats.base_currency, stats.quote_currency = 'BTC', 'USD'
+        stats.balances = {'USD': 500.0, 'BTC': 2.0}
+        stats.initial_balances = {'USD': 700.0, 'BTC': 0.0}
+        unit = build_portfolio_report(run_units_from_batch(_single_unit_batch(stats))).units[0]
+        assert unit.spot_est_current == pytest.approx(700.0)      # 500 + 2 * 100
+        assert unit.spot_est_initial == pytest.approx(700.0)
+        assert unit.spot_est_pnl == pytest.approx(0.0)
+        assert (unit.base_currency, unit.quote_currency) == ('BTC', 'USD')
+
+    def test_no_spot_estimate_without_a_price(self):
+        stats = _stats()
+        stats.spot_mode = True
+        stats.last_price = 0.0
+        unit = build_portfolio_report(run_units_from_batch(_single_unit_batch(stats))).units[0]
+        assert (unit.spot_est_current, unit.spot_est_pnl_pct) == (0.0, 0.0)

@@ -10,7 +10,12 @@ produced by a validator upstream; it only formats. See docs/architecture/warning
 from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
 )
-from python.framework.types.api.report_types import UnitErrorRow, WarningRow, WarningsErrorsReport
+from python.framework.types.api.report_types import (
+    UnitErrorRow,
+    WarningRow,
+    WarningsErrorsReport,
+    WarningTier,
+)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -47,12 +52,14 @@ class WarningsSummary(AbstractBatchSummarySection):
             blocks.append(self._build_errors_block(renderer))
 
         # Tier-1 major warnings (run-scoped first for prominence, e.g. debug-mode)
-        major = [w for w in self._report.warnings if w.tier == 'major']
+        major = [w for w in self._report.warnings
+                 if w.tier == WarningTier.VALIDATOR_PRODUCED]
         for warning in sorted(major, key=lambda w: w.scope != 'run'):
             blocks.append(self._format_major(warning, renderer))
 
         # Tier-2 minor warnings — summarized, low-key
-        for warning in (w for w in self._report.warnings if w.tier == 'minor'):
+        for warning in (w for w in self._report.warnings
+                        if w.tier == WarningTier.LOGGER_PRODUCED):
             blocks.append(renderer.gray(warning.message))
 
         self._render_section_header(renderer)
@@ -104,12 +111,30 @@ class WarningsSummary(AbstractBatchSummarySection):
     def _format_major(self, warning: WarningRow, renderer: ConsoleRenderer) -> str:
         """Format a Tier-1 major warning: run-scope is prominent (bold red head), per-scenario yellow."""
         msg_lines = warning.message.split('\n')
+        prefix = self._origin_prefix(warning)
         if warning.scope == 'run':
-            out = [renderer.red(renderer.bold(msg_lines[0]))]
+            out = [renderer.red(renderer.bold(f'{prefix}{msg_lines[0]}'))]
             out += [renderer.yellow(line) for line in msg_lines[1:]]
             return '\n'.join(out)
 
-        # Per-scenario major warning — prefix with the unit scope
-        head = renderer.yellow(f'[{warning.scope}] {msg_lines[0]}')
+        # Per-scenario major warning — prefix with the origin and the unit scope
+        head = renderer.yellow(f'{prefix}{msg_lines[0]}')
         rest = [renderer.yellow(line) for line in msg_lines[1:]]
         return '\n'.join([head] + rest)
+
+    @staticmethod
+    def _origin_prefix(warning: WarningRow) -> str:
+        """
+        The `[domain · scope]` head that says who raised this and about what.
+
+        Args:
+            warning: The row to label
+
+        Returns:
+            The prefix; the bare scope when the row carries no domain (pre-origin artifact)
+        """
+        if not warning.domain:
+            return '' if warning.scope == 'run' else f'[{warning.scope}] '
+        if warning.scope == 'run':
+            return f'[{warning.domain}] '
+        return f'[{warning.domain} · {warning.scope}] '

@@ -11,6 +11,8 @@ import io
 import re
 from contextlib import redirect_stdout
 
+import pytest
+
 from python.framework.reporting.builders.aggregated_portfolio_report_builder import (
     build_aggregated_portfolio_report,
 )
@@ -146,3 +148,15 @@ class TestRender:
         assert 'COST BREAKDOWN' in out and 'RISK METRICS' in out
         # Layout A — all five cost categories incl. maker/taker (#3)
         assert 'Maker:' in out and 'Taker:' in out and 'Total Fees:' in out
+
+
+class TestExecutionRateDerived:
+    """The executive used to divide in the printout — the rate is a model figure now (#391)."""
+
+    def test_execution_rate_pct(self):
+        report = _build([_pf('s1')], ex_rows=[_ex('s1', sent=8, executed=6)])
+        assert report.currencies[0].combined.execution_rate_pct == pytest.approx(75.0)
+
+    def test_zero_orders_sent_is_zero_not_a_division(self):
+        report = _build([_pf('s1')], ex_rows=[_ex('s1', sent=0, executed=0)])
+        assert report.currencies[0].combined.execution_rate_pct == 0.0

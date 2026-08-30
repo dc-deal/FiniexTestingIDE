@@ -158,10 +158,8 @@ class PerformanceSummary(AbstractBatchSummarySection):
                 # since the last compute (BAR_CLOSE serves a cached value in between).
                 total_ticks = unit.ticks_processed
                 if total_ticks > 0:
-                    pct = w.call_count / total_ticks * 100
-                    idle = (total_ticks - w.last_compute_tick) if w.last_compute_tick >= 0 else 0
                     cadence = (f'{w.compute_basis:9} {w.call_count:>5}/{total_ticks} '
-                               f'computes ({pct:4.0f}%, {idle} idle)')
+                               f'computes ({w.compute_ratio_pct:4.0f}%, {w.ticks_idle} idle)')
                 else:
                     cadence = f'{w.compute_basis:9} {w.call_count:>5} computes'
                 print(f"      {renderer.blue(f'{w.worker_name:15}->{w.worker_type:15}')}  "
@@ -173,7 +171,7 @@ class PerformanceSummary(AbstractBatchSummarySection):
         # Parallel efficiency
         if parallel_workers and ticks_processed > 0:
             parallel_time_saved_ms = unit.parallel_time_saved_ms
-            parallel_avg_saved_per_tick_ms = parallel_time_saved_ms / ticks_processed
+            parallel_avg_saved_per_tick_ms = unit.parallel_avg_saved_per_tick_ms
             status = self._get_parallel_status(parallel_time_saved_ms)
 
             print(f"\n{renderer.bold('   ⚡ PARALLEL EFFICIENCY:')}")
@@ -402,8 +400,6 @@ class PerformanceSummary(AbstractBatchSummarySection):
             avg_str = renderer.red(f'{logic.avg_time:.3f}ms')
             print(f'      {renderer.red(logic.name)}  |  '
                   f'Avg: {avg_str} (across all scenarios)')
-            print(
-                f"      {renderer.yellow('→ Consider optimizing decision logic if > 1ms')}")
 
         # Worst parallel efficiency
         if bottlenecks.worst_parallel and bottlenecks.worst_parallel.time_saved < 0:
@@ -413,32 +409,14 @@ class PerformanceSummary(AbstractBatchSummarySection):
             print(f'      {renderer.red(parallel.name)}  |  '
                   f'Time saved: {time_saved_str}  |  '
                   f'Status: {parallel.status}')
-            print(
-                f"      {renderer.yellow('→ Parallel execution slower than sequential! Consider disabling.')}")
 
-        # Recommendations
-        print(f"\n{renderer.bold('   💡 RECOMMENDATIONS:')}")
-
-        has_issues: bool = False
-        if bottlenecks.slowest_worker and bottlenecks.slowest_worker.avg_time > 1.0:
-            worker_name = renderer.yellow(bottlenecks.slowest_worker.name)
-            print(f'      • Optimize {worker_name} worker (slowest component)')
-            has_issues = True
-
-        if bottlenecks.slowest_decision_logic and bottlenecks.slowest_decision_logic.avg_time > 1.0:
-            logic_name = renderer.yellow(
-                bottlenecks.slowest_decision_logic.name)
-            print(f'      • Optimize {logic_name} decision logic')
-            has_issues = True
-
-        if bottlenecks.worst_parallel and bottlenecks.worst_parallel.time_saved < 0:
-            print('      • Disable parallel workers for better performance')
-            has_issues = True
-
-        if not has_issues:
-            print(
-                f"      {renderer.green('✅ All components performing well! No major bottlenecks detected.')}")
-
+        # No recommendations here. Whether parallel execution is costing time is a verdict —
+        # PostRunValidator decides it (_check_parallel_penalty) and the WARNINGS & ERRORS
+        # section renders it. This section shows the measurements, and the clean-run line
+        # belongs to the section that owns the verdicts, so it is not repeated here.
+        # There is deliberately NO per-component "too slow" verdict: see the note in
+        # validators/shared_advisory_checks.py — "slow" needs a relative reference, and the
+        # grounded form of that question is PostRunValidator._check_budget.
         print()
 
     def _get_parallel_status(self, time_saved_ms: float) -> str:

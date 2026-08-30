@@ -87,8 +87,8 @@ class BatchExecutionError(ScenarioExecutionError):
             if logged_errors:
                 self._message += f'\n  Logged Errors ({len(logged_errors)}):\n'
                 # Show first 5 errors
-                for _, error_line in logged_errors[:5]:
-                    self._message += f'    • {error_line}\n'
+                for record in logged_errors[:5]:
+                    self._message += f'    • {record.message}\n'
                 if len(logged_errors) > 5:
                     self._message += f'    ... and {len(logged_errors) - 5} more\n'
 
@@ -100,18 +100,18 @@ class BatchExecutionError(ScenarioExecutionError):
 
     def _extract_logged_errors(self, buffer: list) -> list:
         """
-        Extract ERROR-level entries from scenario logger buffer.
+        Extract ERROR-level entries from a scenario logger buffer.
 
         Args:
-            buffer: Logger buffer as list of (level, line) tuples
+            buffer: Logger buffer as a list of LogRecord
 
         Returns:
-            List of (level, line) tuples containing only ERROR entries
+            The ERROR records
         """
         if not buffer:
             return []
 
-        return [(level, line) for level, line in buffer if level == LogLevel.ERROR]
+        return [record for record in buffer if record.level == LogLevel.ERROR]
 
     def get_failed_scenario_names(self) -> List[str]:
         """Get list of failed scenario names."""

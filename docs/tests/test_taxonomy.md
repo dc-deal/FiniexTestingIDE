@@ -72,6 +72,7 @@ tests/
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   ├── safety/            unit — circuit breaker (margin + spot)
 │   ├── reconciliation/    unit — broker truth-pull + Reconciler ALERT_ONLY (#151)
+│   ├── session_validation/ unit — SessionPostRunValidator: the live Tier-1 channel, shared stress/slow-component checks
 │   ├── api_monitor/       unit — broker REST latency/error telemetry (#351)
 │   ├── field_study_machine/  unit — Field Study phase state machine (#332)
 │   └── kraken_adapter/    unit — Kraken private-call nonce monotonicity + lock (#332)
@@ -80,7 +81,7 @@ tests/
 │
 ├── framework/
 │   ├── bar_rendering/     unit — BarRenderingController consistency
-│   ├── batch_validations/ unit — ScenarioValidator, BrokerDataPreparator (Phase 0 batch pipeline)
+│   ├── batch_validations/ unit — ScenarioValidator, BrokerDataPreparator, PostRunValidator, market-fit advisory (Phase 0 batch pipeline)
 │   ├── config/            unit — execution_config 3-level cascade (#137)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141), outage contract + episode capture (#434/#451)

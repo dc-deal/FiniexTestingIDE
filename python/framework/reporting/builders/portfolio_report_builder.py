@@ -29,9 +29,29 @@ def build_portfolio_report(units: List[RunUnit]) -> PortfolioReport:
     return PortfolioReport(units=rows, aggregates=aggregate_portfolio_by_currency(rows))
 
 
+def _spot_estimate(stats) -> tuple:
+    """Estimated spot portfolio value from the dual balance (quote + base x last price).
+
+    Args:
+        stats: The unit's portfolio stats (carries balances + the stamped currency split)
+
+    Returns:
+        (current, initial, pnl, pnl_pct) — all zero when the unit is not spot or has no price
+    """
+    if not stats.spot_mode or stats.last_price <= 0:
+        return 0.0, 0.0, 0.0, 0.0
+    quote, base = stats.quote_currency, stats.base_currency
+    current = stats.balances.get(quote, 0.0) + stats.balances.get(base, 0.0) * stats.last_price
+    initial = (stats.initial_balances.get(quote, 0.0)
+               + stats.initial_balances.get(base, 0.0) * stats.last_price)
+    pnl = current - initial
+    return current, initial, pnl, (pnl / initial * 100) if initial > 0 else 0.0
+
+
 def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
     """Map a unit's portfolio stats to the full per-unit projection row."""
     stats = unit.portfolio_stats
+    est_current, est_initial, est_pnl, est_pnl_pct = _spot_estimate(stats)
     return PortfolioUnitRow(
         name=unit.name,
         symbol=unit.symbol,
@@ -45,6 +65,7 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         total_loss=stats.total_loss,
         net_profit=stats.total_profit - stats.total_loss,
         max_drawdown=stats.max_drawdown,
+        max_dd_pct=(stats.max_drawdown / stats.max_equity * 100) if stats.max_equity > 0 else 0.0,
         total_fees=stats.total_fees,
         data_source=unit.data_source,
         sentiment_source=unit.sentiment_source,
@@ -65,4 +86,10 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         balances=stats.balances,
         initial_balances=stats.initial_balances,
         last_price=stats.last_price,
+        base_currency=stats.base_currency,
+        quote_currency=stats.quote_currency,
+        spot_est_current=est_current,
+        spot_est_initial=est_initial,
+        spot_est_pnl=est_pnl,
+        spot_est_pnl_pct=est_pnl_pct,
     )

@@ -18,10 +18,10 @@ Features:
 from datetime import datetime, timezone
 from pathlib import Path
 
+from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.log_level import LogLevel
-from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.log_record_types import LogRecord
 from python.framework.utils.file_utils import sanitize_filename
-from python.framework.utils.time_utils import format_timestamp
 
 
 class FileLogger:
@@ -46,16 +46,17 @@ class FileLogger:
         """
         Initialize file logger.
 
+        The log level is HEADER TEXT only — this class applies no threshold of its own. The
+        gate is the logger's _should_log_file, which reads file_logging.*.log_level; a second
+        decision point here would only invite the two to disagree.
+
         Args:
-            run_dir: Directory for log files
-            scenario_name: Scenario name (for scenario logs)
-            log_level: Minimum log level to write
+            file_path: Directory the log file is written to
+            log_level: The effective threshold, for the file header
+            log_filename: File name (sanitized on the way)
+            append_mode: Append to an existing file instead of overwriting
         """
         self.file_path = file_path
-        self.log_level = log_level
-        self._tick_loop_started = False
-        self._current_tick = None
-        self._tick_loop_count = 1
 
         self._sanitized_filename = sanitize_filename(log_filename)
 
@@ -69,36 +70,46 @@ class FileLogger:
 
             # Write header only if creating new file (not appending)
             if not append_mode:
-                self._write_header()
+                self._write_header(log_level)
             else:
                 # Add separator when appending
-                self._write_append_separator()
+                self._write_append_separator(log_level)
 
         except Exception as e:
             print(
                 f'Warning: Failed to create log file {self.log_file_path}: {e}')
             self.file_handle = None
 
-    def _write_header(self):
-        """Write log file header"""
+    def _write_header(self, log_level: LogLevel):
+        """
+        Write log file header.
+
+        Args:
+            log_level: The effective threshold to state in the header
+        """
         if not self.file_handle:
             return
 
         header = '=' * 80 + '\n'
         header += f'Log Name: {self._sanitized_filename}\n'
-        header += f'Log Level: {self.log_level}\n'
+        header += f'Log Level: {log_level}\n'
         header += '=' * 80 + '\n\n'
 
         self.file_handle.write(header)
         self.file_handle.flush()
 
-    def _write_append_separator(self):
-        """Write separator when appending to existing log"""
+    def _write_append_separator(self, log_level: LogLevel):
+        """
+        Write separator when appending to existing log.
+
+        Args:
+            log_level: The effective threshold to state in the separator
+        """
         if not self.file_handle:
             return
         timestamp = datetime.now(timezone.utc) .strftime('%Y-%m-%d %H:%M:%S')
 
-        log_level_str = 'LOG LEVEL: ' + self.log_level
+        log_level_str = 'LOG LEVEL: ' + log_level
         separator = (
             f"\n{'='*80}\n"
             f"{'SESSION CONTINUED'.center(80)}\n"
@@ -110,38 +121,28 @@ class FileLogger:
         self.file_handle.write(separator)
         self.file_handle.flush()
 
-    def set_tick_loop_started(self, started: bool):
-        self._tick_loop_started = started
-        if (started):
-            self._tick_loop_count = 1
-
-    def set_current_tick(self, tick_count: int, tick: TickData):
-        self._current_tick = tick
-        self._tick_loop_count = tick_count
-
-    def write_log(self, level: str, message: str, timestamp: str):
+    def write_log(self, record: LogRecord, timestamp: str, event_column: bool = False):
         """
         Write log entry to file.
 
-        Used by both GlobalLogger and ScenarioLogger.
-        - GlobalLogger: timestamp is DateTime string
-        - ScenarioLogger: timestamp is elapsed time string
+        Renders through AbstractLogger.format_line — the ONE line formula — with colours off.
+        A second literal here is how the log file and the scenario console drifted apart before.
+
+        The timestamp arrives pre-rendered because only the LOGGER knows which form it uses:
+        elapsed against its run_timestamp (ScenarioLogger) or absolute (GlobalLogger). The sink
+        has neither.
 
         Args:
-            level: Log level (INFO, DEBUG, WARNING, ERROR)
-            message: Plain text message (no colors)
-            timestamp: Pre-formatted timestamp string
+            record: The entry to write
+            timestamp: Pre-rendered observation timestamp
+            event_column: Whether this log carries the event-time column
         """
         if not self.file_handle:
             return
 
-        # tick loop logs.
-        if self._tick_loop_started:
-            tick_time = format_timestamp(self._current_tick.timestamp)
-            message = f'{self._tick_loop_count:5}| {tick_time} | {message}'
-
-        # Format: [timestamp] LEVEL | message
-        log_line = f'{timestamp} {level:8} | {message}\n'
+        log_line = AbstractLogger.format_line(
+            timestamp, record.level, record.message,
+            event_time=record.event_time, event_column=event_column, colored=False) + '\n'
 
         try:
             self.file_handle.write(log_line)

@@ -26,10 +26,10 @@ def write_feed_stability_report(report: FeedStabilityReport, run_dir: Path) -> P
         Path of the written artifact
     """
     path = Path(run_dir) / FEED_STABILITY_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_feed_stability_report(path: Path) -> FeedStabilityReport:
     """Read a persisted feed-stability report artifact."""
-    return FeedStabilityReport.model_validate_json(Path(path).read_text())
+    return FeedStabilityReport.model_validate_json(Path(path).read_bytes())

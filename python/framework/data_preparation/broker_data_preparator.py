@@ -26,7 +26,12 @@ from python.framework.types.scenario_types.scenario_set_types import (
     BrokerScenarioInfo,
     SingleScenario,
 )
-from python.framework.types.validation_types import ValidationResult
+from python.framework.types.validation_types import (
+    Severity,
+    ValidationDomain,
+    ValidationFinding,
+    ValidationResult,
+)
 
 
 class BrokerDataPreparator:
@@ -149,11 +154,11 @@ class BrokerDataPreparator:
 
             if config_mode == ConfigMode.DYNAMIC and data_broker_type in dynamic_broker_errors:
                 scenario.validation_result.append(ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=[dynamic_broker_errors[data_broker_type]],
-                    warnings=[],
-                ))
+                    scenario.name, [ValidationFinding(
+                        severity=Severity.ERROR, check='broker_config_unavailable',
+                        domain=ValidationDomain.BROKER,
+                        message=dynamic_broker_errors[data_broker_type],
+                        scope=scenario.name)]))
                 self.logger.error(
                     f'❌ {scenario.name}: broker config unavailable — {dynamic_broker_errors[data_broker_type]}'
                 )

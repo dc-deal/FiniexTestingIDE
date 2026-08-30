@@ -109,14 +109,19 @@ class RobustnessSummary(AbstractBatchSummarySection):
         return renderer.yellow(f'{label} → moderate degradation')
 
     def _render_caveats(self, renderer: ConsoleRenderer) -> None:
-        """Render the param-drift + low-trust caveats (the verdict warning is in the validator)."""
+        """
+        Render the facts a caveat rests on — never the caveat itself.
+
+        Parameter drift and block-splitting distortion both suppress the robustness verdict, and
+        both advisories are produced by PostRunValidator (_check_robustness) and shown in the
+        WARNINGS & ERRORS section. Printing them here too put the same judgement in two places,
+        each with its own copy of the threshold.
+        """
         report = self._report
         if not report.params_constant:
-            print(renderer.red(
-                f'    ⚠ Parameters NOT constant across windows '
-                f'({len(report.drifting_windows)} drift) — comparison is not fair'))
-        if report.disposition_pct > report.disposition_trust_pct:
-            print(renderer.red(
-                f'    ⚠ Block-splitting distortion {report.disposition_pct:.1f}% '
-                f'(> {report.disposition_trust_pct:.0f}%) — per-window numbers unreliable, '
-                f'verdict suppressed'))
+            print(renderer.gray(
+                f'    Parameters vary across windows ({len(report.drifting_windows)} drift)'))
+        if report.disposition_pct > 0:
+            print(renderer.gray(
+                f'    Block-splitting distortion: {report.disposition_pct:.1f}% '
+                f'(trust threshold {report.disposition_trust_pct:.0f}%)'))

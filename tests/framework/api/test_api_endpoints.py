@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.types.api.report_types import RunInfo
+from python.framework.types.api.report_types import RunInfo, RunResultRow
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -276,3 +276,69 @@ class TestReportRuns:
             r = client.get('/api/v1/reports/runs')
         assert r.status_code == 200
         assert r.json() == {'runs': [], 'count': 0}
+
+
+class TestSweeps:
+    """
+    A sweep is a family of runs, so it gets its own routes: the run index lists standalone runs,
+    these list sweeps and rank their combinations. Served from the ledger, where a sweep's
+    identity lives — the logs tree only knows directory names.
+    """
+
+    @staticmethod
+    def _rows():
+        return [
+            RunResultRow(run_id='r2', param_hash='h2', run_timestamp='20260615_120100',
+                         currency='EUR', sweep_id='sweep_1', sweep_objective='net_pnl',
+                         sweep_maximize=True, net_pnl=10.0,
+                         scenario_set_name='set__sweep_1_c001', status='ok'),
+            RunResultRow(run_id='r1', param_hash='h1', run_timestamp='20260615_120000',
+                         currency='EUR', sweep_id='sweep_1', sweep_objective='net_pnl',
+                         sweep_maximize=True, net_pnl=30.0,
+                         scenario_set_name='set__sweep_1_c000', status='ok'),
+        ]
+
+    def test_lists_recorded_sweeps(self, client):
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows()
+        with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
+            r = client.get('/api/v1/sweeps')
+        assert r.status_code == 200
+        data = r.json()
+        assert data['count'] == 1
+        assert data['sweeps'][0]['sweep_id'] == 'sweep_1'
+        assert data['sweeps'][0]['run_count'] == 2
+
+    def test_no_sweep_is_not_an_error(self, client):
+        ledger = MagicMock()
+        ledger.read_rows.return_value = []
+        with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
+            r = client.get('/api/v1/sweeps')
+        assert r.status_code == 200
+        assert r.json() == {'sweeps': [], 'count': 0}
+
+    def test_combinations_are_ranked_by_the_sweeps_own_objective(self, client):
+        """Ranked, not alphabetical — the question a sweep answers is which combination won."""
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows()
+        with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
+            r = client.get('/api/v1/sweeps/sweep_1')
+        assert r.status_code == 200
+        data = r.json()
+        assert data['objective'] == 'net_pnl' and data['maximize'] is True
+        assert [c['run_id'] for c in data['combinations']] == ['r1', 'r2']   # 30.0 before 10.0
+
+    def test_each_combination_carries_its_run_id(self, client):
+        """The hinge into the report routes — without it a sweep view is a dead end."""
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows()
+        with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
+            data = client.get('/api/v1/sweeps/sweep_1').json()
+        assert all(c['run_id'] for c in data['combinations'])
+
+    def test_unknown_sweep_is_a_404(self, client):
+        ledger = MagicMock()
+        ledger.read_rows.return_value = []
+        with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
+            r = client.get('/api/v1/sweeps/nope')
+        assert r.status_code == 404

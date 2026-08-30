@@ -8,7 +8,8 @@ lives in ONE place instead of being re-derived per consumer.
 
 import subprocess
 from datetime import datetime, timezone
-from typing import Optional
+from pathlib import Path
+from typing import List, Optional
 
 from python.framework.types.git_info_types import GitInfo
 
@@ -34,9 +35,41 @@ def get_git_commit() -> Optional[str]:
     return None
 
 
-def get_git_info() -> Optional[GitInfo]:
+def _drop_untracked_under(status_lines: List[str], directory: str) -> List[str]:
+    """
+    Remove untracked entries that live under one directory.
+
+    Exists for a self-inflicted wound: a certificate run writes its artifact into its
+    reports directory, so the very next run reads its own output as an uncommitted change
+    and reports the tree dirty although every line of code is committed. Only UNTRACKED
+    entries are dropped — a modified tracked file under the same directory is a real
+    change and still counts.
+
+    Args:
+        status_lines: Porcelain lines as git printed them
+        directory: Directory whose untracked entries do not count
+
+    Returns:
+        The lines that remain
+    """
+    prefix = Path(directory).as_posix().rstrip('/') + '/'
+    kept = []
+    for line in status_lines:
+        path = line[3:].strip().strip('"')
+        if line.startswith('??') and path.startswith(prefix):
+            continue
+        kept.append(line)
+    return kept
+
+
+def get_git_info(ignore_untracked_under: Optional[str] = None) -> Optional[GitInfo]:
     """
     Get full git repository information (branch, commit, date, message, dirty).
+
+    Args:
+        ignore_untracked_under: Directory whose untracked files do not make the tree
+            dirty; a certificate passes its own reports directory so it is not dirtied
+            by the artifact of the previous run
 
     Returns:
         GitInfo with the working-tree state, or None if git is unavailable
@@ -92,15 +125,17 @@ def get_git_info() -> Optional[GitInfo]:
             check=True,
             timeout=5
         ).stdout.strip()
-        uncommitted_count = len(status.splitlines())
+        status_lines = status.splitlines()
+        if ignore_untracked_under:
+            status_lines = _drop_untracked_under(status_lines, ignore_untracked_under)
 
         return GitInfo(
             branch=branch,
             commit=commit,
             date=commit_date,
             message=commit_message,
-            dirty=bool(status),
-            uncommitted_count=uncommitted_count
+            dirty=bool(status_lines),
+            uncommitted_count=len(status_lines)
         )
 
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):

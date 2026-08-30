@@ -105,6 +105,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Algo State Persistence](tests/autotrader/state_persistence_tests.md) | Snapshot store, corrupt/stale policy, weekend-aware staleness, pre-flight (#354) |
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
 | [Reconciliation](tests/autotrader/reconciliation_tests.md) | Broker truth-pull + Reconciler ALERT_ONLY (#151) |
+| [Session Validation](tests/autotrader/session_validation_tests.md) | The live Tier-1 channel: SessionPostRunValidator + the checks shared with the sim batch |
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |
 | [Kraken Adapter Nonce](tests/autotrader/kraken_adapter_tests.md) | Private-call nonce monotonicity + lock (#332) |
 | [Test Taxonomy](tests/test_taxonomy.md) | The human-readable test map — which suite covers which pipeline domain |
@@ -139,6 +140,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
 | [Live Telemetry Tests](tests/framework/live_telemetry_tests.md) | Frame serialization + the signal-transport block in the operator's CONNECTION panel |
 | [Reporting Pipeline Tests](tests/framework/reporting_tests.md) | Unified reporting (#391–#403): builders, IO/store, console renderers — including the two signal planes and what a live run may not claim |
+| [Logging Tests](tests/framework/logging_tests.md) | The log buffer carries records, not rendered lines: the fact survives, the rendering is reproduced character-identically, and a display setting cannot hide a report input |
 | [Signal Worker Tests](tests/framework/signal_workers_tests.md) | SIGNAL worker type (#141): types, provider, llm_sentiment, hybrid decision, orchestrator dispatch, live transports (#468) |
 | [Signal Coverage Tests](tests/framework/signal_coverage_tests.md) | Signal-series gap detection + scenario signal-window validation |
 | [Data Coverage Tests](tests/framework/data_coverage_tests.md) | Data format version spans — which collector schema produced which archive window |

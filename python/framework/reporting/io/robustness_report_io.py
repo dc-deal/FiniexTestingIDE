@@ -24,10 +24,10 @@ def write_robustness_report(report: RobustnessReport, run_dir: Path) -> Path:
         Path of the written artifact
     """
     path = Path(run_dir) / ROBUSTNESS_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_robustness_report(path: Path) -> RobustnessReport:
     """Read a persisted robustness report artifact."""
-    return RobustnessReport.model_validate_json(Path(path).read_text())
+    return RobustnessReport.model_validate_json(Path(path).read_bytes())

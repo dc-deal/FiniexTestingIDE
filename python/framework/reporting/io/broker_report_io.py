@@ -25,10 +25,10 @@ def write_broker_report(report: BrokerReport, run_dir: Path) -> Path:
         Path of the written artifact
     """
     path = Path(run_dir) / BROKER_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_broker_report(path: Path) -> BrokerReport:
     """Read a persisted broker report artifact."""
-    return BrokerReport.model_validate_json(Path(path).read_text())
+    return BrokerReport.model_validate_json(Path(path).read_bytes())

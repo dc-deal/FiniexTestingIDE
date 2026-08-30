@@ -11,6 +11,8 @@ import io
 import re
 from contextlib import redirect_stdout
 
+import pytest
+
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.builders.worker_decision_report_builder import (
     build_worker_decision_report,
@@ -136,6 +138,21 @@ class TestPerformanceRender:
         out = self._render('render_bottleneck_analysis')
         assert 'BOTTLENECK ANALYSIS' in out and 'SLOWEST WORKER' in out
 
+    def test_no_recommendation_is_made_here(self):
+        """Whether a component is too slow is a verdict — PostRunValidator decides it."""
+        out = self._render('render_bottleneck_analysis')
+        assert 'RECOMMENDATIONS' not in out
+        assert 'Optimize' not in out
+        assert 'Consider disabling' not in out
+        assert 'No major bottlenecks detected' not in out, \
+            'the clean-run line belongs to the section that owns the verdicts'
+
+    def test_the_measurements_stay(self):
+        """Only the judgement left — the numbers it was based on are still shown."""
+        out = self._render('render_bottleneck_analysis')
+        assert 'SLOWEST SCENARIO' in out and 'GBPUSD_w01' in out
+        assert 'bollinger_main' in out
+
     def test_layer_a_off_suppressed(self):
         # no workers anywhere → section suppressed
         summary = PerformanceSummary(WorkerDecisionReport(units=[
@@ -144,3 +161,26 @@ class TestPerformanceRender:
         with redirect_stdout(buf):
             summary.render_per_scenario(ConsoleRenderer())
         assert buf.getvalue() == ''
+
+
+class TestCadenceDerivedInBuilder:
+    """#420 cadence telemetry is derived once, not recomputed by the renderer (#391)."""
+
+    def test_compute_ratio_and_idle(self):
+        worker = _ws('rsi', total=100.0, calls=250)
+        worker.worker_last_compute_tick = 900
+        row = build_worker_decision_report([_unit(
+            workers=[worker],
+            coordination=WorkerCoordinatorPerformanceStats(
+                parallel_workers=True, ticks_processed=1000,
+                parallel_time_saved_ms=5.0))]).units[0]
+        assert row.workers[0].compute_ratio_pct == pytest.approx(25.0)   # 250 / 1000
+        assert row.workers[0].ticks_idle == 100                          # 1000 - 900
+        assert row.parallel_avg_saved_per_tick_ms == pytest.approx(0.005)
+
+    def test_no_ticks_leaves_the_derived_fields_at_zero(self):
+        """Live units carry no coordination stats — the cadence figures stay absent."""
+        row = build_worker_decision_report([_unit(workers=[_ws('rsi', 100.0)])]).units[0]
+        assert row.workers[0].compute_ratio_pct == 0.0
+        assert row.workers[0].ticks_idle == 0
+        assert row.parallel_avg_saved_per_tick_ms == 0.0

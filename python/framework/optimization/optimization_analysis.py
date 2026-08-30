@@ -10,9 +10,18 @@ most). The sensitivity is OFAT — it ignores interactions and makes no signific
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, get_args
 
-from python.framework.types.api.report_types import RunResultRow
+from python.framework.types.api.report_types import RunResultRow, SweepSummary
+
+# A KPI that may be undefined cannot order a ranking: the comparison against None
+# raises, and there is no honest position for 'not measured' in a best-first list.
+# Derived from the model, so a KPI widened to Optional later is covered without
+# touching this module. Today: profit_factor (no losing trade), avg_win_r /
+# avg_loss_r (empty R subset), signal_fresh_ratio (no SIGNAL worker).
+_UNRANKABLE_OBJECTIVES = frozenset(
+    name for name, field in RunResultRow.model_fields.items()
+    if type(None) in get_args(field.annotation))
 
 
 @dataclass
@@ -21,23 +30,6 @@ class ParamSensitivity:
     param: str
     influence: float                # spread of the per-level mean objective (max - min)
     level_means: Dict[str, float]   # level value (as string) → mean objective at that level
-
-
-@dataclass
-class SweepSummary:
-    """One sweep's at-a-glance line (for the sweep list), derived from its ledger rows."""
-    sweep_id: str
-    started: Optional[datetime]      # earliest run start in the sweep (UTC)
-    duration_s: float               # last - first run start (no per-run end in the ledger)
-    run_count: int                  # distinct combinations (run_ids)
-    ok_count: int
-    error_count: int
-    decision_logic_type: str
-    decision_version: str
-    base_config: str                # the swept scenario set (sweep tag stripped)
-    symbols: List[str]
-    objective: str
-    maximize: bool
 
 
 def summarize_sweeps(rows: List[RunResultRow]) -> List[SweepSummary]:
@@ -158,6 +150,10 @@ def _scope(
     if objective not in RunResultRow.model_fields:
         raise ValueError(
             f"Unknown objective '{objective}'. Available: {sorted(RunResultRow.model_fields)}")
+    if objective in _UNRANKABLE_OBJECTIVES:
+        raise ValueError(
+            f"Objective '{objective}' can be undefined for a run, so it cannot produce a "
+            f"total ranking. Use a KPI that is always measured, e.g. 'expectancy' or 'net_pnl'.")
     scoped = [r for r in rows if r.status == 'ok']
     if objective_currency is not None:
         scoped = [r for r in scoped if r.currency == objective_currency]

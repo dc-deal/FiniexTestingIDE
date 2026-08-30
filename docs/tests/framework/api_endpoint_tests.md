@@ -28,3 +28,17 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 ## Mocking Strategy
 
 `BarsIndexManager`, `MarketConfigManager` and `ReportStore` are patched at their import location in each router module. `pd.read_parquet` is patched for the bars test to return a minimal in-memory DataFrame. No filesystem access occurs during the test run.
+
+## Sweep routes (`TestSweeps`)
+
+A sweep is a family of runs, so it has its own routes. These pin what the run index must NOT do
+and what the sweep view must:
+
+| Test | Description |
+|------|-------------|
+| `test_lists_recorded_sweeps` | `/sweeps` groups the ledger rows into one row per sweep |
+| `test_no_sweep_is_not_an_error` | An empty ledger is a legitimate empty list, never a 404 |
+| `test_combinations_are_ranked_by_the_sweeps_own_objective` | `/sweeps/{id}` ranks by the objective the spec declared — ranking by anything else answers a question the sweep did not ask |
+| `test_each_combination_carries_its_run_id` | The hinge into the report routes; without it a sweep view is a dead end |
+| `test_unknown_sweep_is_a_404` | An id with no ledger rows |
+

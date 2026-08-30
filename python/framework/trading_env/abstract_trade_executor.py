@@ -1283,14 +1283,28 @@ class AbstractTradeExecutor(ABC):
 
         Returns:
             Timezone-aware datetime
-
-        Raises:
-            RuntimeError: If called before the loop injected a time
         """
         if self._clock_time is None:
             raise ClockNotInjectedError(
                 'get_current_time() called before the tick loop injected a time'
             )
+        return self._clock_time
+
+    def get_current_time_if_set(self) -> Optional[datetime]:
+        """
+        The canonical clock for OBSERVATION surfaces, or None before the loop injected one.
+
+        Deliberately narrow: this exists for surfaces that must RENDER "not known yet" rather
+        than fail — today the log line's event-time column. Everything that DECIDES or that
+        stamps an event record uses get_current_time(), which raises, because §9 forbids a
+        silent substitute there.
+
+        It is NOT mirrored on DecisionTradingApi, which is the only clock surface an algo can
+        reach. That is what keeps the §9 contract intact: no decision path can reach this.
+
+        Returns:
+            The injected time, or None while the clock is still unset
+        """
         return self._clock_time
 
     # ============================================

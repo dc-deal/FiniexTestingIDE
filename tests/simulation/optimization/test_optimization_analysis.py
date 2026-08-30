@@ -50,6 +50,19 @@ def test_rank_unknown_objective_raises(sweep_rows):
         rank(sweep_rows, 'nonexistent_kpi', maximize=True)
 
 
+def test_rank_rejects_an_objective_that_can_be_undefined(sweep_rows):
+    """A KPI that may be None cannot order a ranking — the comparison would raise."""
+    for objective in ('profit_factor', 'avg_win_r', 'avg_loss_r', 'signal_fresh_ratio'):
+        with pytest.raises(ValueError, match='cannot produce a total ranking'):
+            rank(sweep_rows, objective, maximize=True)
+
+
+def test_rank_keeps_the_always_measured_kpis(sweep_rows):
+    """The sweep objective and the P&L KPI stay rankable — this guards the exclusion."""
+    assert rank(sweep_rows, 'expectancy', maximize=True)
+    assert rank(sweep_rows, 'net_pnl', maximize=True)
+
+
 def test_rows_are_typed(sweep_rows):
     """read_rows returns typed RunResultRows with parsed sweep_params (not DataFrame cells)."""
     from python.framework.types.api.report_types import RunResultRow

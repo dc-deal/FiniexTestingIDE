@@ -308,7 +308,7 @@ After a tick run with block splitting, the **Block Splitting Disposition** quant
 | < 3% | ✅ GOOD | Current profile appropriate |
 | 3% – 10% | ⚠️ MODERATE | Consider larger blocks |
 | 10% – 25% | 🟡 HIGH | Results significantly distorted |
-| > 25% | ❌ UNRELIABLE | Switch to continuous mode |
+| > 25% | ❌ SEVERE | Switch to continuous mode |
 
 ### Improving a Poor Disposition
 
@@ -335,7 +335,7 @@ The disposition does NOT indicate a bad strategy — it indicates that the chose
 }
 ```
 
-A Forex strategy with ~3 trades per 24h block showed 82% UNRELIABLE (9/25 force-closed). Increasing `max_block_hours` to 48 halves the number of blocks and block boundaries. After regenerating profiles, the same strategy may drop to MODERATE or GOOD. The `min_block_hours` and `atr_percentile_threshold` control *where* splits happen, not *how many* — `max_block_hours` is the primary lever for disposition improvement.
+A Forex strategy with ~3 trades per 24h block showed 82% SEVERE (9/25 force-closed). Increasing `max_block_hours` to 48 halves the number of blocks and block boundaries. After regenerating profiles, the same strategy may drop to MODERATE or GOOD. The `min_block_hours` and `atr_percentile_threshold` control *where* splits happen, not *how many* — `max_block_hours` is the primary lever for disposition improvement.
 
 ### Empirical Feedback Loop
 

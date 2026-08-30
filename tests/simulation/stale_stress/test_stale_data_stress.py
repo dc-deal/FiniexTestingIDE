@@ -91,7 +91,8 @@ class TestOverlapGuard:
     def test_warning_in_scenario_buffer(self, summary):
         result = summary.process_result_list[OVERLAP_WARNING]
         assert result.success
-        buffer_lines = [line for _, line in (result.scenario_logger_buffer or [])]
+        buffer_lines = [record.message
+                        for record in (result.scenario_logger_buffer or [])]
         assert any('data deviation' in line for line in buffer_lines), (
             f'No overlap warning found in scenario buffer '
             f'({len(buffer_lines)} lines)')

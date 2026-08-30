@@ -10,11 +10,24 @@ from pydantic import BaseModel
 from python.framework.types.log_level import LogLevel
 
 
+class RunLogPaths(BaseModel):
+    """
+    Where each kind of run writes its logs — the ONE source for writers and readers alike.
+
+    Three categories, because the three are browsed differently: a live session, a standalone
+    simulation run, and one combination of a parameter sweep. The API reads these same paths to
+    build its run index and its sweep list, so a path declared here cannot drift from where the
+    runs actually land.
+    """
+    autotrader: Path
+    single_runs: Path
+    sweeps: Path
+
+
 class ScenarioFileLoggingConfig(BaseModel):
     """Scenario-level file logging config. None fields inherit from global."""
     enabled: Optional[bool] = None
     log_level: Optional[LogLevel] = None
-    log_root_path: Path
     file_name_prefix: str
 
 
@@ -30,6 +43,7 @@ class FileLoggingConfig(BaseModel):
     log_level: LogLevel
     log_path: Path
     append_mode: bool
+    run_logs: RunLogPaths
     scenario: ScenarioFileLoggingConfig
 
     # ============================================
@@ -71,11 +85,6 @@ class FileLoggingConfig(BaseModel):
         return self.scenario.log_level if self.scenario.log_level is not None else self.log_level
 
     @property
-    def scenario_log_root_path(self) -> Path:
-        """Root directory for scenario logs"""
-        return self.scenario.log_root_path
-
-    @property
     def scenario_file_name_prefix(self) -> str:
         """Name prefix for scenario logs (default "scenario" -> scenario_01_USDJPY_blks_02.log)"""
         return self.scenario.file_name_prefix
@@ -98,5 +107,6 @@ class FileLoggingConfig(BaseModel):
         return (
             f'FileLoggingConfig('
             f'global={self.enabled}/{self.log_level} @ {self.log_path}, '
-            f'scenario={self.scenario_enabled}/{self.scenario_log_level} @ {self.scenario.log_root_path})'
+            f'scenario={self.scenario_enabled}/{self.scenario_log_level} '
+            f'@ {self.run_logs.single_runs})'
         )

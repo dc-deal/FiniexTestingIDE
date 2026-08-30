@@ -7,10 +7,10 @@ sink to the run directory at session end. Uses a test-only probe decision logic
 """
 
 import csv
-import shutil
 
 import pytest
 
+from tests.shared.fixture_helpers import remove_run_dir
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 
@@ -23,8 +23,7 @@ def probe_session():
     trader = AutotraderMain(config)
     result = trader.run()
     yield trader, result
-    if trader._run_dir and trader._run_dir.exists():
-        shutil.rmtree(trader._run_dir)
+    remove_run_dir(trader._run_dir)
 
 
 class TestDiagnosticsSinkAutoTrader:

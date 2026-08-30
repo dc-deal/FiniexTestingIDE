@@ -22,7 +22,10 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 from python.data_management.index.signal_index_manager import SignalIndexManager
-from python.framework.exceptions.signal_data_errors import SignalSchemaError
+from python.framework.exceptions.signal_data_errors import (
+    SignalAlreadyImportedError,
+    SignalSchemaError,
+)
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.signal_data.signal_jsonl_loader import load_signal_series
 from python.framework.types.signal_data_types import (
@@ -56,19 +59,23 @@ class SignalDataImporter:
     Args:
         source_dir: Raw signal JSONL directory (e.g. data/raw/signals)
         target_dir: Parquet output root (e.g. data/processed/signals)
-        override: Overwrite an existing parquet — and re-read the finished archive
+        override: Replace an existing parquet instead of skipping it. Same meaning as the
+            tick importer's flag of that name, deliberately — one word, one contract
+        include_finished: Also read the finished archive, not only the inbox. Its own flag
+            because it is a different and far more expensive act than replacing one file
         finished_dir: Archive for imported JSONL; None disables the move
     """
 
     VERSION = '1.0'
 
     def __init__(self, source_dir: str, target_dir: str, override: bool = False,
-                 finished_dir: Optional[str] = None):
+                 finished_dir: Optional[str] = None, include_finished: bool = False):
         self.source_dir = Path(source_dir)
         self.target_dir = Path(target_dir)
         self.target_dir.mkdir(parents=True, exist_ok=True)
 
         self.override = override
+        self.include_finished = include_finished
         self.finished_dir = Path(finished_dir) if finished_dir else None
 
         # Import statistics
@@ -107,6 +114,14 @@ class SignalDataImporter:
                 self.processed_files += 1
                 if written is not None:
                     self._move_to_finished(root, jsonl_file)
+            except SignalAlreadyImportedError as e:
+                # A warning, never an error: re-running an import whose days are already
+                # archived is the normal case, and the tick importer grades it the same.
+                warning_msg = f'ALREADY IMPORTED: {jsonl_file.name}'
+                vLog.warning(warning_msg)
+                vLog.warning(str(e))
+                self.warnings.append(warning_msg)
+                vLog.info('→ Skipping import (parquet already exists)')
             except Exception as e:
                 error_msg = f'ERROR in {jsonl_file.name}: {str(e)}'
                 vLog.error(error_msg)
@@ -120,17 +135,21 @@ class SignalDataImporter:
         """
         The files to import, each paired with the root it was found under.
 
-        The inbox is source_dir. In override mode the finished archive is read as
-        well: "override" means rebuilding what is already imported, and once a file
-        has been imported that is exactly where it lives. A relative path present in
-        both roots is taken from source_dir — a re-exported day supersedes its
-        archived copy, and the subsequent move overwrites it.
+        The inbox is source_dir. With include_finished the archive is read as well, which
+        is how an already-imported day is re-projected after a read-time policy change.
+        A relative path present in both roots is taken from source_dir — a re-exported day
+        supersedes its archived copy, and the subsequent move overwrites it.
+
+        Deliberately NOT tied to `override`: the two were one flag until 2026-08-28, so
+        `--override` quietly re-projected the whole archive while the tick importer's flag
+        of the same name only ever touched the inbox. One word must not carry two
+        contracts across two CLIs the operator uses interchangeably.
 
         Returns:
             (root, file) pairs, sorted by relative path
         """
         roots = [self.source_dir]
-        if self.override and self.finished_dir and self.finished_dir.exists():
+        if self.include_finished and self.finished_dir and self.finished_dir.exists():
             roots.append(self.finished_dir)
 
         found: Dict[Path, Tuple[Path, Path]] = {}
@@ -215,8 +234,9 @@ class SignalDataImporter:
         target_path = self.target_dir / pipeline_id / f'{jsonl_file.stem}.parquet'
         target_path.parent.mkdir(parents=True, exist_ok=True)
         if target_path.exists() and not self.override:
-            raise FileExistsError(
-                f'{target_path} exists (use override to replace)')
+            raise SignalAlreadyImportedError(
+                f'{target_path.name} was already imported for {pipeline_id} — '
+                f'use --override to replace it')
         df.to_parquet(target_path, index=False)
 
         self.total_rows += len(df)

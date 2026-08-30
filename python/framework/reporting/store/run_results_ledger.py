@@ -32,7 +32,7 @@ LEDGER_COLUMNS: List[str] = [
     'config_snapshot', 'symbols', 'data_broker_type', 'currency',
     'net_pnl', 'expectancy', 'profit_factor', 'win_rate', 'max_drawdown',
     'total_fees', 'total_trades', 'winning_trades', 'losing_trades',
-    'avg_win_r', 'avg_loss_r', 'r_trade_count',
+    'avg_win_r', 'avg_loss_r', 'r_trade_count', 'r_win_count', 'r_loss_count',
     'orders_sent', 'orders_executed', 'orders_rejected', 'sl_tp_triggered',
     'signal_fresh_ratio',
 ]
@@ -182,6 +182,8 @@ class RunResultsLedger:
             'avg_win_r': currency.avg_win_r,
             'avg_loss_r': currency.avg_loss_r,
             'r_trade_count': currency.r_trade_count,
+            'r_win_count': currency.r_win_count,
+            'r_loss_count': currency.r_loss_count,
             'orders_sent': run_summary.orders_sent,
             'orders_executed': run_summary.orders_executed,
             'orders_rejected': run_summary.orders_rejected,

@@ -51,7 +51,7 @@ Errors split into two channels at run time (this mirrors the error model in the 
 | Tier | What | Producer (source of truth) | Importance |
 |---|---|---|---|
 | **Errors** | every error matters | `ValidationResult.errors` (validation/preparation failures, `is_valid=False`) **+** the `ProcessResult` villain (`error_type`/`message`/`traceback`) **+** the log ERROR pot (`scenario_logger_buffer`) | always surfaced |
-| **Tier 1 — major warnings** | advisory but important: debug-mode, stress-test, data-version, tick-budget (P5 / granularity / too-high), the account-currency / margin advisories, post-run profiling verdicts (overhead, bottleneck) | **validators** → `ValidationResult.warnings` (per-scenario) and the **batch-level** validation channel (run-scoped, e.g. debug-mode) | surfaced in the report |
+| **Tier 1 — major warnings** | advisory but important: debug-mode, stress-test, data-version, market-fit, tick-budget (P5 / granularity / too-high), the account-currency / margin advisories, post-run profiling verdicts (overhead, bottleneck) | **validators** → `ValidationResult.warnings` (per-scenario), the **batch-level** validation channel (run-scoped, e.g. debug-mode), and the **session** channel on the live side | surfaced in the report |
 | **Tier 2 — minor warnings** | anything at WARNING level floating in the log | the log WARNING pot (`scenario_logger_buffer`) | summarized ("N in log — see scenario logs"), ignorable |
 
 `ValidationResult` (`framework/types/validation_types.py`) is the **single structured producer** for
@@ -61,26 +61,71 @@ the secondary, unstructured channel.
 ### Pre-run vs. post-run validators
 
 - **Pre-run validators** (orchestrator Phase 0–5) catch blocking config/data **errors**
-  (`is_valid=False`) — a bad scenario is excluded, the batch continues.
+  (`is_valid=False`) — a bad scenario is excluded, the batch continues. They also raise
+  **advisories** that need no run at all: `validate_market_fit` (Phase 0) decides from static
+  config whether a decision logic is outside its recommended market, so a mismatch is reported
+  without executing the scenario first. An advisory never sets `is_valid=False`.
 - **Post-run validators** produce the advisory **Tier-1 warnings** that can only be known *after*
   execution (tick-budget needs profiling/clipping; overhead/bottleneck need the timing breakdown).
   `PostRunValidator` runs once after the batch, appends `ValidationResult.warnings` per scenario, and
   writes batch-global notices (debug-mode) into the **batch-level** validation channel
-  (`BatchExecutionSummary.batch_validation_result`). The report builder then only reads — it never
-  decides.
+  (`BatchExecutionSummary.batch_validation_result`). `SessionPostRunValidator` is its live
+  counterpart, writing into `AutoTraderResult.session_validation_result`. The report builder then
+  only reads — it never decides.
 
-## AutoTrader (live) — the asymmetry
+## AutoTrader (live) — the same four channels
 
-A live session has **no multi-scenario validation phase**; startup/preflight validation **aborts**
-(one session, nothing to exclude). So the live half maps:
+A live session has **no multi-scenario validation phase**, and startup/preflight validation still
+**aborts** rather than warns (one session, nothing to exclude). What it does have is a *post-run*
+validation channel, mirroring the batch one:
 
 - **Errors** → `AutoTraderResult.error_messages` (session ERROR buffer) + `emergency_reason` (the villain).
 - **Tier 2** → `AutoTraderResult.warning_messages` (session WARNING buffer).
-- **Tier 1 / validation** → effectively empty (preflight aborts instead of warning).
+- **Tier 1** → `AutoTraderResult.session_validation_result`, from two sources: post-run
+  advisories from `SessionPostRunValidator` (run before the report coordinator, the same place
+  the sim runs `PostRunValidator`), and startup advisories decided before the first tick
+  (market fit) which `AutotraderMain` HOLDS until `_collect_results` — the channel lives on the
+  result, and at startup the result does not exist yet.
 - **Outcome** → `shutdown_mode` (+ `emergency_reason`), re-graded by `get_outcome()` (below).
 
 The asymmetry is closed (#372): a normal session with pot errors is no longer graded as a clean run.
 Both pipelines now answer with the same `RunOutcome`, and the process exit code is that answer.
+
+### What the live validator checks, and what it deliberately does not
+
+Exactly one of the sim's post-run checks can be answered by a single session, and it is
+**shared, not copied**: `validators/shared_advisory_checks.py` holds the formula, each validator
+supplies its own inputs and routes the finding into its own channel. One further check runs the
+other way round — live-only, because the sim answers the same question from a configured budget:
+
+| Check | Live | Why |
+|---|---|---|
+| `stress_test` | ✅ | an active stress config is a Tier-1 warning in *both* pipelines — a stressed live session must not look clean |
+| `clipping` | ✅ live-only | the ratio is measured against real tick arrival, so it says how often the algo failed to keep up. Threshold: `autotrader.clipping_monitor.warn_above_ratio`. The sim has no counterpart — it judges against a CONFIGURED tick budget instead |
+| overhead · bottleneck · parallel-penalty | — | need `profiling_data` / `coordination_statistics`, which a session does not collect |
+| the three tick-budget checks | — | they judge a CONFIGURED `tick_processing_budget_ms`; live has none, which is why it gets the observed-ratio check above instead |
+| multi-currency · time-divergence | — | one session, one currency, one span |
+| data-version · robustness · debug-mode | — | tick index, walk-forward and the batch serial mode are sim-only |
+
+**There is no per-component "too slow" verdict in either pipeline, on purpose.** One existed
+against a fixed 1.0 ms threshold and was removed: "slow" is only meaningful relative to the tick
+interval, and the grounded form of that question is already `_check_budget` (average tick
+processing vs the data's own P5 interval). The two could contradict each other inside one report
+— the fixed threshold fired on a worker using 6 % of a 50 ms window, and stayed silent when eight
+sub-threshold workers together overran a 2 ms one. A relative measure (share of tick time) would
+be an honest replacement; an absolute one cannot be.
+
+Live got that honest replacement: the **clipping advisory** above. It is the same question —
+"is the algo keeping up?" — asked against a reference that exists (real tick arrival) instead
+of one invented (a millisecond constant).
+
+**Observed feed outages are not a check.** They are facts and belong to the feed-stability
+section — the same intent/experience split the worked example above describes. A validator over
+them would collapse the two records the split exists to keep apart.
+
+The shared functions carry a `unit_label`, because the message names its units: the sim writes
+`Scenarios (3): …`, a session writes `Session (1): …`. Without it the live warning would use the
+sim's word.
 
 ## The run outcome — the same question both pipelines answer
 
@@ -105,17 +150,94 @@ Two properties worth stating, because both were bugs waiting to happen:
   is therefore explicit: only the SIGINT handler sets it. Inferring it from a missing reason would
   have let a safety-initiated shutdown report success.
 
+## The Tier-2 pot — what is captured, and what it claims
+
+The pot is the log channel: observations nobody adjudicated. Two rules govern it.
+
+**Capture is independent of display.** `LogLevel.WARNING` and `LogLevel.ERROR` are buffered
+regardless of the CONSOLE threshold (`AbstractLogger._process_log`), because they are report
+input. Before that rule, raising the console log level silently removed warnings from the run
+report — a display setting deciding what the report was allowed to see. Everything below those
+two levels still follows the console setting.
+
+**A pot row claims no assertion.** Tier-2 rows leave `check` and `domain` empty, and that is
+the honest answer: no assertion decided a log line, and it belongs to no validator area. The
+channel is already named — by the tier itself.
+
+`WarningTier` is an Enum for that reason: it is the ORIGIN question, answered once.
+
+```python
+class WarningTier(StrEnum):
+    VALIDATOR_PRODUCED = 'major'    # a check decided it, so check/domain are filled
+    LOGGER_PRODUCED = 'minor'       # the log pot: an observation nobody adjudicated
+```
+
+The member names say what the value means; `major` / `minor` read like a severity and are not
+one. The VALUES stay as they are because they are the wire contract the API and FiniexViewer
+already consume — renaming them would be a consumer-facing change, renaming the members is not.
+
+The general rule this follows, so it does not drift again: **a closed set is an Enum, an open
+set is a string.** `tier` (2 channels) and `domain` (10 areas) are closed. `check` is open —
+every new assertion adds an id, and an Enum would have to be extended by whoever adds one, which
+is exactly the step that gets forgotten. `scope` is open too (any scenario or profile name).
+
+The pot's messages are unrendered — the buffer carries `LogRecord`s, so nothing has to be
+stripped and no terminal escape code can reach the artifact. See
+[Batch Data Flow](batch_data_flow.md).
+
+## The finding is the unit — `ValidationFinding`
+
+Every validator produces `ValidationFinding` (`framework/types/validation_types.py`), and
+`ValidationResult` is a typed collection of them. A finding carries its own `severity`
+(ERROR rejects the unit, WARNING advises), the `check` that decided it, the `domain` it belongs
+to, and the `scope` it concerns.
+
+`ValidationResult.is_valid` / `.errors` / `.warnings` are **views over `findings`**, not stored
+state. A stored flag can disagree with the list it summarizes; a derived one cannot. The §33
+execution gate (`SingleScenario.is_valid()`) reads the derived flag, so this is what decides
+whether a scenario runs.
+
+Two properties matter for anyone adding a validator:
+
+- **Severity belongs to the finding, not the container.** One result can therefore carry a
+  rejection *and* an advisory about the same subject, and both survive to the report. Before the
+  findings shape, an advisory sharing a container with an error was silently discarded.
+- **`check` is an open set, `domain` is a closed one.** `check` is a free string — every new
+  assertion brings a new id, exactly like `FeedCheck.name`. `domain` is `ValidationDomain`, an
+  Enum, because a free string would let `'profiling'` / `'Profiling'` / `'perf'` coexist and make
+  filtering worthless.
+
+`severity` and `tier` are orthogonal and must not be conflated: severity is the finding's own,
+tier says which channel it came from (validator → Tier 1, log pot → Tier 2).
+
 ## The model
 
 The unified section is `WarningsErrorsReport` (`framework/types/api/report_types.py`), derived once and
 rendered to console / file / API identically:
 
-- `warnings: list[WarningRow]` — `tier` ('major' | 'minor'), `scope` ('run' | unit name), `message`.
+- `warnings: list[WarningRow]` — `tier` ('major' | 'minor'), `scope` ('run' | unit name), `message`,
+  plus the origin: `check` (the assertion's stable id) and `domain` (its area). Both are empty on a
+  Tier-2 row and on artifacts written before the origin existed — the log pot is an observation
+  nobody attributed to a check, and a missing origin renders as the bare scope.
 - `errors: list[UnitErrorRow]` — per unit with any error: `error_type` / `error_message`,
   `validation_errors`, `logged_errors`, `traceback`.
+- `logged_errors: list[LogEntryRow]` — the pot's records, not their text. A row carries `level`,
+  `observed_at` (when we recorded it), `event_time` (the run's own clock, absent where none was
+  attached), `scope` and `message`. The record reaches DERIVE whole, so reducing it to a string
+  here would put level, time and scope out of reach of the artifact, the API and the viewer
+  alike (§391). Both pipelines map through the same helper, so the sim's scenario pot and the
+  live session pot produce one shape.
+  **Artifacts written before this carried bare strings and no longer validate.** Run output is
+  regenerated by every run and §27 rules out a compatibility layer, so they are not migrated —
+  but the read path names the condition (`ReportArtifactUnreadableError` → HTTP 409
+  `artifact_unreadable`) instead of letting a validation failure escape as an unexplained 500.
 - `outcome: WarningsErrorsOutcome` — `run_outcome` (the canonical grading, below) plus
   `failed_count` / `failed_unit_names` / `first_failure_*` (sim) and `emergency_reason` /
-  `shutdown_mode` (live). The Executive headline reads this — it does not re-scan.
+  `shutdown_mode` / `operator_interrupted` (live). The Executive headline reads this — it does
+  not re-scan. `operator_interrupted` rides along for the reason given above: `shutdown_mode`
+  alone cannot separate a Ctrl+C from a crash, so a surface that carried only the mode would
+  show 'emergency' beside a run graded `SUCCESS` and have no way to explain it. The live-only
+  fields are `''` / `False` on a sim run — that means *not applicable*, never *unknown*.
 
 `run_outcome` is stamped once at DERIVE from the pipeline's own result object
 (`BatchExecutionSummary.get_outcome()` / `AutoTraderResult.get_outcome()`), so the grading a

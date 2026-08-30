@@ -28,6 +28,7 @@ def build_certificate_identity(
     record_kind: str = 'certificate',
     validity_days: int = VALIDITY_DAYS,
     now: Optional[datetime] = None,
+    reports_dir: Optional[str] = None,
 ) -> CertificateIdentity:
     """
     Read the declared version, the tree and the environment into one identity.
@@ -39,12 +40,16 @@ def build_certificate_identity(
         validity_days: Days until the certificate expires
         now: Capture moment; defaults to the current UTC time. Wall-clock is correct here —
             this measures when the artifact was produced, not a simulated event
+        reports_dir: Where this run writes its certificate. Untracked files there do not
+            count as a dirty tree — otherwise a run is dirtied by the artifact of the
+            previous one, and a repeated release attempt fails for a reason that has
+            nothing to do with the code
 
     Returns:
         The identity, ready to spread into a certificate body
     """
     stamped = now or datetime.now(timezone.utc)
-    git = get_git_info()
+    git = get_git_info(ignore_untracked_under=reports_dir)
     override_names, unnamed_count = workspace_override_files()
     isolation_active = is_config_isolation_active()
 

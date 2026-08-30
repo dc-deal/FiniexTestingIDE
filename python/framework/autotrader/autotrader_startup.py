@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.autotrader.autotrader_broker_config_setup import create_broker_config
@@ -18,6 +19,9 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.exceptions.signal_data_errors import SignalSourceUnresolvedError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
+from python.framework.validators.component_metadata_advisory import (
+    surface_decision_logic_version,
+)
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.file_logger import FileLogger
@@ -75,7 +79,9 @@ def create_autotrader_loggers(
         (global_logger, session_logger, summary_logger, run_dir)
     """
     session_name = config.name or f'{config.symbol}_{config.adapter_type}'
-    log_root = Path('logs/autotrader')
+    # From config (file_logging.run_logs.autotrader) — the same source the API reads,
+    # so a moved log root cannot make a session invisible to the run index.
+    log_root = AppConfigManager().get_file_logging_config_object().run_logs.autotrader
 
     # Global logger — startup/shutdown/errors
     global_logger = ScenarioLogger(
@@ -105,7 +111,10 @@ def create_autotrader_loggers(
         scenario_name='session',
         run_timestamp=run_timestamp,
         log_root_override=log_root,
-        file_name_prefix_override='autotrader'
+        file_name_prefix_override='autotrader',
+        # The tick-by-tick record of the session — every line carries the run's own time.
+        # global and summary do not: they describe the session from outside a moment in it.
+        event_time_column=True
     )
 
     # Create session_logs/ subdir (tick loop will create files there)
@@ -116,7 +125,7 @@ def create_autotrader_loggers(
     return global_logger, session_logger, summary_logger, run_dir
 
 
-def create_session_file_logger(run_dir: Path, date_suffix: str, log_level) -> FileLogger:
+def create_session_file_logger(run_dir: Path, date_suffix: str) -> FileLogger:
     """
     Create a new FileLogger for a specific day's session log.
 
@@ -126,7 +135,6 @@ def create_session_file_logger(run_dir: Path, date_suffix: str, log_level) -> Fi
     Args:
         run_dir: Session run directory (contains session_logs/ subdir)
         date_suffix: Date string for filename (YYYYMMDD)
-        log_level: Log level for the file logger
 
     Returns:
         FileLogger writing to session_logs/autotrader_session_YYYYMMDD.log
@@ -136,7 +144,9 @@ def create_session_file_logger(run_dir: Path, date_suffix: str, log_level) -> Fi
     return FileLogger(
         log_filename=f'autotrader_session_{date_suffix}.log',
         file_path=session_logs_dir,
-        log_level=log_level
+        # The threshold the session logger actually gates on, read from config (§28) — not
+        # carried over from the file logger being replaced, which never enforced it anyway.
+        log_level=AppConfigManager().get_file_logging_config_object().scenario_log_level
     )
 
 
@@ -309,6 +319,9 @@ def setup_pipeline(
         spot_mode=spot_mode,
         poll_interval_ms=broker_entry.broker_transport.poll_interval_ms,
     )
+    # The session log's event-time column pulls from the canonical clock. Attachable only
+    # HERE: the logger goes INTO build_live_executor above, so it necessarily exists first.
+    logger.attach_clock(executor.get_current_time_if_set)
     logger.info(
         f'💱 LiveTradeExecutor created: balances={balances}'
     )
@@ -374,6 +387,12 @@ def setup_pipeline(
         f"✅ Created decision logic: "
         f"{config.strategy_config.get('decision_logic_type', '')}"
     )
+
+    # Provenance for this session log (#118 Stage 0) — logged where the logic is built, the
+    # same place the sim does it (process_startup_preparation). The market-fit VERDICT stays
+    # in AutotraderMain: it is a finding, not a log line, and it needs the session's
+    # validation channel.
+    surface_decision_logic_version(decision_logic, logger)
 
     # === Phase 8: WorkerOrchestrator + DecisionTradingApi ===
     worker_orchestrator = WorkerOrchestrator(

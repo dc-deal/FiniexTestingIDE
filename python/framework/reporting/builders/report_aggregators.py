@@ -56,13 +56,19 @@ def _trade_analytics(rows: List[TradeHistoryRow]) -> TradeAnalytics:
     r_rows = [r for r in rows if r.r_multiple is not None]
     winners = [r for r in rows if r.net_pnl > 0]
     losers = [r for r in rows if r.net_pnl < 0]
+    # The R subsets carry their own counts: a run can have R-defined trades and no winner
+    # among them, so r_trade_count cannot tell a reader whether avg_win_r was measured.
+    r_winners = [r.r_multiple for r in r_rows if r.net_pnl > 0]
+    r_losers = [r.r_multiple for r in r_rows if r.net_pnl < 0]
     return TradeAnalytics(
         currency=rows[0].currency if rows else '',
         trade_count=len(rows),
         expectancy=_mean([r.r_multiple for r in r_rows]),
-        avg_win_r=_mean([r.r_multiple for r in r_rows if r.net_pnl > 0]),
-        avg_loss_r=_mean([r.r_multiple for r in r_rows if r.net_pnl < 0]),
+        avg_win_r=_mean(r_winners) if r_winners else None,
+        avg_loss_r=_mean(r_losers) if r_losers else None,
         r_trade_count=len(r_rows),
+        r_win_count=len(r_winners),
+        r_loss_count=len(r_losers),
         avg_mae_winners=_mean([r.mae_pnl for r in winners]),
         avg_mae_losers=_mean([r.mae_pnl for r in losers]),
         avg_mfe_losers=_mean([r.mfe_pnl for r in losers]),
@@ -144,8 +150,13 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
     total_profit = sum(r.total_profit for r in rows)
     total_loss = sum(r.total_loss for r in rows)
     win_rate = winning_trades / total_trades if total_trades > 0 else 0.0
-    profit_factor = total_profit / total_loss if total_loss > 0 else (
-        0.0 if total_profit == 0 else float('inf'))
+    # None when nothing was traded — the same "undefined" the no-losing-trade case carries.
+    # 0.0 is reserved for a run that DID trade and produced no profit.
+    if total_trades == 0:
+        profit_factor = None
+    else:
+        profit_factor = total_profit / total_loss if total_loss > 0 else (
+            0.0 if total_profit == 0 else None)
     max_drawdown = 0.0
     for r in rows:
         if abs(r.max_drawdown) > abs(max_drawdown):
@@ -216,6 +227,9 @@ def aggregate_full_portfolio(
     lat = [p for p in pend if p.avg_latency_ms is not None]
     lat_count = sum(p.latency_count for p in lat)
 
+    orders_sent = sum(e.orders_sent for e in ex)
+    orders_executed = sum(e.orders_executed for e in ex)
+
     return AggregatedPortfolioRow(
         headline=headline,
         is_spot=is_spot,
@@ -240,10 +254,11 @@ def aggregate_full_portfolio(
         maker_fee=sum(r.maker_fee for r in rows),
         taker_fee=sum(r.taker_fee for r in rows),
         avg_spread=total_spread / total_trades if total_trades > 0 else 0.0,
-        orders_sent=sum(e.orders_sent for e in ex),
-        orders_executed=sum(e.orders_executed for e in ex),
+        orders_sent=orders_sent,
+        orders_executed=orders_executed,
         orders_rejected=sum(e.orders_rejected for e in ex),
         sl_tp_triggered=sum(e.sl_tp_triggered for e in ex),
+        execution_rate_pct=(orders_executed / orders_sent * 100) if orders_sent > 0 else 0.0,
         pending_total_resolved=sum(p.total_resolved for p in pend),
         pending_total_filled=sum(p.total_filled for p in pend),
         pending_total_rejected=sum(p.total_rejected for p in pend),
@@ -424,12 +439,19 @@ def aggregate_profiling(rows: List[ProfilingUnitRow], budget_active: bool) -> Pr
     ]
     bottlenecks.sort(key=lambda b: (-b.scenario_count, b.operation))
 
+    # Count the scenarios whose average tick processing exceeded their own P5 interval. The
+    # console used to compute this itself to decide what to print (#391: no measures in PRESENT).
+    scenarios_over_p5 = sum(
+        1 for r in rows
+        if r.inter_tick and r.avg_per_tick_ms > r.inter_tick.p5_ms)
+
     return ProfilingAggregate(
         scenarios=scenarios, total_ticks=total_ticks, total_time_s=total_time_ms / 1000,
         avg_per_tick_ms=avg_per_tick_ms, most_common_bottleneck=most_common,
         most_common_bottleneck_pct=most_common_pct, p5_min_ms=p5_min_ms, p5_max_ms=p5_max_ms,
         p95_processing_ms=p95_processing_ms, suggested_budget_ms=suggested_budget_ms,
-        budget_active=budget_active, clipping_total_ticks=clipping_total_ticks,
+        budget_active=budget_active, scenarios_over_p5=scenarios_over_p5,
+        clipping_total_ticks=clipping_total_ticks,
         clipping_total_kept=clipping_total_kept, clipping_total_clipped=clipping_total_clipped,
         clipping_budgets=clipping_budgets, avg_operation_times=avg_operation_times,
         bottlenecks=bottlenecks)

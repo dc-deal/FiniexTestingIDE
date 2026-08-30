@@ -10,12 +10,13 @@ the #434 signal-side hook on the first result — both staleness contracts in
 one session ("runs fine → silence → notified → recovered").
 """
 
-import shutil
 
 import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.types.log_level import LogLevel
+from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 OUTAGE_PROFILE = 'configs/autotrader_profiles/backtesting/market_data_outage_test.json'
 
@@ -27,12 +28,11 @@ def outage_session():
     trader = AutotraderMain(config)
     result = trader.run()
     yield result
-    if trader._run_dir and trader._run_dir.exists():
-        shutil.rmtree(trader._run_dir)
+    remove_run_dir(trader._run_dir)
 
 
 def _count(result, needle: str) -> int:
-    return sum(1 for w in result.warning_messages if needle in w)
+    return sum(1 for w in logged_messages(result, LogLevel.WARNING) if needle in w)
 
 
 class TestMarketDataOutage:
@@ -42,8 +42,8 @@ class TestMarketDataOutage:
         result = outage_session
         assert result.shutdown_mode == 'normal'
         assert result.ticks_processed == 3000
-        assert len(result.error_messages) == 0, (
-            f'Unexpected errors: {result.error_messages[:5]}')
+        assert len(logged_messages(result, LogLevel.ERROR)) == 0, (
+            f'Unexpected errors: {logged_messages(result, LogLevel.ERROR)[:5]}')
 
     def test_stale_episode_reaches_the_pot_with_span(self, outage_session):
         """One freeze → exactly one flip warning + one recovery span line."""
@@ -53,7 +53,7 @@ class TestMarketDataOutage:
         # Episode duration is a wall-axis measurement — never negative, even
         # though mock replay tick timestamps and wall heartbeat time diverge.
         recovery = next(
-            w for w in result.warning_messages if 'Market data recovered' in w)
+            w for w in logged_messages(result, LogLevel.WARNING) if 'Market data recovered' in w)
         assert '(-' not in recovery
 
     def test_decision_hook_fired_once(self, outage_session):
@@ -71,3 +71,13 @@ class TestMarketDataOutage:
         """Aged archive → #434 signal hook on the first result (both sides)."""
         result = outage_session
         assert _count(result, '[PROBE] on_signal_stale fired') == 1
+
+    def test_the_stress_config_reaches_the_session_validation_channel(self, outage_session):
+        """
+        A stressed session must be distinguishable from a clean one — the live half of the
+        rule the sim batch has always honoured. This profile carries an active
+        stale_data_stress, so the run's own validation channel must say so.
+        """
+        findings = [f for vr in outage_session.session_validation_result for f in vr.findings]
+        assert 'stress_test' in [f.check for f in findings], (
+            f'No stress advisory in the channel: {[f.check for f in findings]}')

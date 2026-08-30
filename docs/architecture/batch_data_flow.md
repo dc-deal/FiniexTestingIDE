@@ -43,6 +43,54 @@ Data prepared in the main process and distributed to subprocesses via pickle ser
 
 Each scenario gets its own package (3-5 MB) instead of one global package (61 MB) — 5x pickle overhead reduction.
 
+**The package dict is keyed by `SingleScenario.scenario_index`, never by a loop position.** The index is assigned once at config load (`scenario_config_loader.py`) and stays with the scenario; `SharedDataPreparator` fills the dict with it. Some consumers receive the COMPLETE scenario list (`ExecutionCoordinator`) and some receive the list FILTERED to the still-valid scenarios (`ScenarioDataValidator`, via `mount_preparer._valid()`), so a position matches the index only in the first case — and only until one scenario is excluded. Keying by position silently pairs a scenario with a neighbour's data. A missing package raises `ScenarioPackageMissingError`: after keying correctly, a hole can only mean the preparator and the consumer disagree about what was prepared, which is framework logic and not operator config (§33).
+
+**The scenario log buffer crosses as `list[LogRecord]`, not as rendered lines.** A record
+(`framework/types/log_record_types.py`) carries level, observation timestamp, scope, message and
+the run's own `event_time`. Rendering (colours, the level column, the elapsed timestamp, the
+event-time column) happens at the surface that prints it.
+
+The two times are §9's pair and must not be conflated: the elapsed bracket is OBSERVATION time
+(how far into the run we were), the column is EVENT time (what time it was in the market, from
+the canonical clock). The clock is PULLED through an injected `clock_fn`, attached once the
+executor exists — so heartbeat and ghost passes stamp their own instant, and the timer /
+resolution events of #375 need no further wiring. Whether a log renders the column at all is a
+ROLE declared at construction (`event_time_column`): the per-scenario logs and the live session
+log carry it, the run-level logs do not, and a declared column with no clock yet renders a
+fixed-width filler rather than a wall-clock substitute. A buffer
+of rendered lines forces every later consumer to take the fact apart again, and the run report is
+such a consumer: it used to recover the message with `split(' | ', 1)` and carried ANSI escape
+codes into the persisted JSON on the way.
+
+### Where a run's logs land — three categories, one source
+
+A run belongs to exactly ONE category, and the category IS its `group` in the API:
+
+```
+file_logging.run_logs.autotrader    logs/autotrader/<profile>/<run_ts>/
+file_logging.run_logs.single_runs   logs/scenario_sets/single_runs/<set>/<run_ts>/
+file_logging.run_logs.sweeps        logs/scenario_sets/sweeps/<sweep_id>/<set>/<run_ts>/
+```
+
+**The three paths are configuration** (`app_config.json` → `file_logging.run_logs`), read by the
+writers (`ScenarioSet`, `autotrader_startup`) AND by `ReportStore` — one source, so a moved log
+root cannot make runs invisible to the API. Before that, the sim root was config, the live root
+was a hard-coded `Path('logs/autotrader')` and the reader assumed a third thing: changing the
+config would silently have emptied the run index.
+
+The category NAMES live in `framework/types/log_layout_types.py`, because they are a contract:
+the API publishes them as `RunInfo.group`. The run index lists every category — a consumer that
+wants only standalone runs filters on the group, which it can, and an index that silently omitted
+a category would be its own surprise. `/sweeps` adds the sweep-shaped view on the same data:
+one sweep, its combinations ranked by the objective the sweep declared.
+
+The distinction is structural on purpose. A sweep is not a run, it is a family of them, and the
+two want different views: `/reports/runs` lists standalone runs, `/sweeps` lists sweeps and ranks
+their combinations. Keeping them apart by PATH means the index needs no filter on names, and a
+combination cannot silently reappear in the run picker. It stays fully **addressable** — every
+report route resolves any `run_id`, at any depth; the index is a browse aid, not the authority
+on what can be read.
+
 ## Channel B: Process Output (`ProcessResult`)
 
 Results returned from subprocesses after tick loop execution:

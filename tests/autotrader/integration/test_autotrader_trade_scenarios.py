@@ -8,13 +8,14 @@ Profile calibration (BTCUSD parquet, entry bid ~89308 at tick 10):
   - TP=89350: bid rises above that level at tick ~270
 """
 
-import shutil
 
 import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.types.log_level import LogLevel
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
+from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 _PROFILE_SL = 'configs/autotrader_profiles/backtesting/sl_triggered_test.json'
 _PROFILE_TP = 'configs/autotrader_profiles/backtesting/tp_triggered_test.json'
@@ -30,8 +31,7 @@ def _make_session_fixture(profile: str):
         trader = AutotraderMain(config)
         result = trader.run()
         yield result
-        if trader._run_dir and trader._run_dir.exists():
-            shutil.rmtree(trader._run_dir)
+        remove_run_dir(trader._run_dir)
     return _fixture
 
 
@@ -69,8 +69,8 @@ class TestStopLossConfiguration:
         )
 
     def test_no_session_errors(self, sl_session):
-        assert len(sl_session.error_messages) == 0, (
-            f'Unexpected errors: {sl_session.error_messages}'
+        assert len(logged_messages(sl_session, LogLevel.ERROR)) == 0, (
+            f'Unexpected errors: {logged_messages(sl_session, LogLevel.ERROR)}'
         )
 
 
@@ -99,8 +99,8 @@ class TestTakeProfitConfiguration:
         )
 
     def test_no_session_errors(self, tp_session):
-        assert len(tp_session.error_messages) == 0, (
-            f'Unexpected errors: {tp_session.error_messages}'
+        assert len(logged_messages(tp_session, LogLevel.ERROR)) == 0, (
+            f'Unexpected errors: {logged_messages(tp_session, LogLevel.ERROR)}'
         )
 
 
@@ -127,8 +127,8 @@ class TestDuplicateSignalGuard:
         )
 
     def test_no_session_errors(self, duplicate_session):
-        assert len(duplicate_session.error_messages) == 0, (
-            f'Unexpected errors: {duplicate_session.error_messages}'
+        assert len(logged_messages(duplicate_session, LogLevel.ERROR)) == 0, (
+            f'Unexpected errors: {logged_messages(duplicate_session, LogLevel.ERROR)}'
         )
 
 
@@ -146,8 +146,8 @@ class TestMinimalWarmup:
         assert warmup_session is not None, 'Session did not complete'
 
     def test_no_fatal_errors(self, warmup_session):
-        assert len(warmup_session.error_messages) == 0, (
-            f'Unexpected errors with bar_max_history=30: {warmup_session.error_messages}'
+        assert len(logged_messages(warmup_session, LogLevel.ERROR)) == 0, (
+            f'Unexpected errors with bar_max_history=30: {logged_messages(warmup_session, LogLevel.ERROR)}'
         )
 
     def test_ticks_were_processed(self, warmup_session):

@@ -4,6 +4,7 @@ Time utility functions for readable duration formatting
 
 
 from datetime import date, datetime, timezone
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from dateutil import parser
@@ -55,6 +56,50 @@ def format_duration(seconds: float, show_milliseconds: bool = False) -> str:
         return f'{hours}h {remaining_minutes}m'
     else:
         return f'{hours}h'
+
+
+def format_log_elapsed(seconds: float) -> str:
+    """
+    Format elapsed time as the log line's fixed-width bracket form.
+
+    Fixed width on purpose — the log's timestamp is a column, so it must not shift as the run
+    gets longer. Distinct from format_duration, which is variable width and made for prose.
+
+    Args:
+        seconds: Elapsed seconds since the run started
+
+    Returns:
+        The bracket form, e.g. "[  3s 417ms]"
+    """
+    whole_seconds = int(seconds)
+    milliseconds = int((seconds - whole_seconds) * 1000)
+    return f'[{whole_seconds:3d}s {milliseconds:3d}ms]'
+
+
+# Width of the event-time column, so the filler below matches the stamp exactly.
+EVENT_TIME_WIDTH: int = 23
+
+
+def format_log_event_time(event_time: Optional[datetime]) -> str:
+    """
+    Format the log line's event-time column — the run's own time, never wall-clock.
+
+    Fixed width for the same reason as format_log_elapsed: it is a column, so it must not shift
+    when the run enters its tick loop. A missing time is a STATE, not a gap to paper over — it
+    renders as a same-width filler, never as a substituted wall-clock (§9).
+
+    The layout is deliberately the prefix of the events.csv stamp
+    ('2026-01-24T15:25:19.618000+00:00'), so a log line can be correlated with an event row.
+
+    Args:
+        event_time: The canonical clock's instant, or None while the clock is unset
+
+    Returns:
+        'YYYY-MM-DD HH:MM:SS.mmm', or the filler of the same width
+    """
+    if event_time is None:
+        return '—'.rjust(EVENT_TIME_WIDTH)
+    return f"{event_time.strftime('%Y-%m-%d %H:%M:%S')}.{event_time.microsecond // 1000:03d}"
 
 
 def format_seconds(seconds: float) -> str:

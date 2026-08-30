@@ -5,7 +5,7 @@ Quantifies P&L distortion from block splitting in Profile Runs.
 Rendered only for Profile Runs. Always displayed regardless of summary_detail.
 Placed before Executive Summary in batch output. Thin presenter over the model
 (`BlockSplittingReport`) — the aggregation lives in the builder; only the
-GOOD/MODERATE/HIGH/UNRELIABLE display class is applied here.
+GOOD/MODERATE/HIGH/SEVERE display class is applied here.
 """
 
 from python.framework.reporting.console.abstract_batch_summary_section import (
@@ -17,11 +17,15 @@ from python.framework.utils.console_renderer import ConsoleRenderer
 # ============================================================================
 # Assessment Thresholds (display class)
 # ============================================================================
+# A MAGNITUDE scale, not a trust verdict. Whether block-splitting distortion makes the numbers
+# untrustworthy is decided once, by PostRunValidator._check_robustness against the configured
+# `disposition_trust_pct` — these steps only give the printed percentage a readable shape, so
+# they need no config and cannot contradict that verdict.
 
 DISPOSITION_GOOD = 3.0        # < 3% → GOOD
 DISPOSITION_MODERATE = 10.0   # 3-10% → MODERATE
 DISPOSITION_HIGH = 25.0       # 10-25% → HIGH
-                              # > 25% → UNRELIABLE
+                              # > 25% → SEVERE
 
 
 class BlockSplittingDisposition(AbstractBatchSummarySection):
@@ -125,7 +129,7 @@ class BlockSplittingDisposition(AbstractBatchSummarySection):
             renderer: Console renderer for coloring
 
         Returns:
-            Colored GOOD / MODERATE / HIGH / UNRELIABLE label
+            Colored GOOD / MODERATE / HIGH / SEVERE label — a magnitude, never a trust claim
         """
         if pct < DISPOSITION_GOOD:
             return renderer.green('✅ GOOD')
@@ -134,4 +138,4 @@ class BlockSplittingDisposition(AbstractBatchSummarySection):
         elif pct < DISPOSITION_HIGH:
             return renderer.yellow('🟡 HIGH')
         else:
-            return renderer.red('❌ UNRELIABLE')
+            return renderer.red('❌ SEVERE')

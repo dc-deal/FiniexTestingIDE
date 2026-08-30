@@ -16,15 +16,15 @@ Usage:
     scenario.logger.flush_buffer()
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger, ColorCodes
 from python.framework.logging.file_logger import FileLogger
 from python.framework.types.log_level import LogLevel
-from python.framework.types.market_types.market_data_types import TickData
-from python.framework.utils.time_utils import format_timestamp
+from python.framework.types.log_record_types import LogRecord
+from python.framework.utils.time_utils import format_log_elapsed
 
 
 class ScenarioLogger(AbstractLogger):
@@ -42,11 +42,11 @@ class ScenarioLogger(AbstractLogger):
                  scenario_set_name: str,
                  scenario_name: str,
                  run_timestamp: datetime,
-                 run_group: Optional[str] = None,
                  log_root_override: Optional[Path] = None,
                  file_name_prefix_override: Optional[str] = None,
                  use_global_log_level_for_console: bool = False,
-                 use_scenario_logs_subdir: bool = False
+                 use_scenario_logs_subdir: bool = False,
+                 event_time_column: bool = False
                  ):
         """
         Initialize scenario logger.
@@ -55,19 +55,19 @@ class ScenarioLogger(AbstractLogger):
             scenario_set_name: Scenario set name
             scenario_name: Scenario name (e.g., "GBPUSD_window_01")
             run_timestamp: Run timestamp string
-            run_group: Optional grouping dir nested under the log root (e.g. 'sweeps/<sweep_id>', #419)
             log_root_override: Custom log root path (bypasses config). Used by AutoTrader for separate log tree.
             file_name_prefix_override: Custom file name prefix (bypasses config). E.g., 'autotrader' → autotrader_<name>.log
             use_scenario_logs_subdir: Place log file in scenario_logs/ subdir (backtesting per-scenario logs only)
+            event_time_column: This log lies on the run's own time axis, so every line carries
+                the event-time column. True for the per-scenario logs and the live session log;
+                false for the run-level logs (global, summary, system info), which describe the
+                run from outside rather than from a moment inside it
         """
-        super().__init__(name=scenario_name)
+        super().__init__(name=scenario_name, event_time_column=event_time_column)
 
         self.scenario_set_name = scenario_set_name
         self.run_timestamp = run_timestamp
         run_timestamp_str = self.run_timestamp.strftime('%Y%m%d_%H%M%S')
-        self._tick_loop_started = False
-        self._current_tick = None
-        self._tick_loop_count = 1
         self._use_global_log_level_for_console = use_global_log_level_for_console
 
         self.run_dir = None
@@ -75,12 +75,13 @@ class ScenarioLogger(AbstractLogger):
 
         if self._file_logging_config.scenario_enabled:
             # Create scenario run directory
-            log_root = log_root_override if log_root_override else self._file_logging_config.scenario_log_root_path
+            # The caller hands over the category root it belongs to — a live session, a
+            # standalone run, or one sweep's combinations. The three come from config
+            # (file_logging.run_logs), which is the same source the API reads.
+            log_root = (log_root_override if log_root_override
+                        else self._file_logging_config.run_logs.single_runs)
             prefix = file_name_prefix_override if file_name_prefix_override else self._file_logging_config.scenario_file_name_prefix
-            # run_group (e.g. 'sweeps/<sweep_id>', #419) nests the run under a grouping dir so a
-            # sweep's many combination runs land together instead of cluttering the log root.
-            group_root = log_root / run_group if run_group else log_root
-            self.run_dir = group_root / scenario_set_name / run_timestamp_str
+            self.run_dir = log_root / scenario_set_name / run_timestamp_str
             self.run_dir.mkdir(parents=True, exist_ok=True)
 
             # Per-scenario files go into scenario_logs/ subdir (backtesting only)
@@ -97,20 +98,19 @@ class ScenarioLogger(AbstractLogger):
             # File logging disabled for scenarios
             pass
 
-    def _get_timestamp(self) -> str:
+    def _render_timestamp(self, record: LogRecord) -> str:
         """
-        Get elapsed time since scenario start.
+        Render the record's observation time as elapsed time since scenario start.
+
+        Args:
+            record: The entry whose timestamp to render
 
         Returns:
             Elapsed time string (e.g., "[ 3s 417ms]")
         """
-        elapsed = datetime.now(timezone.utc) - self.run_timestamp
-        total_seconds = elapsed.total_seconds()
-        seconds = int(total_seconds)
-        milliseconds = int((total_seconds - seconds) * 1000)
-        return f'[{seconds:3d}s {milliseconds:3d}ms]'
+        return format_log_elapsed((record.timestamp - self.run_timestamp).total_seconds())
 
-    def _should_log_console(self, level: LogLevel) -> str:
+    def _should_log_console(self, level: LogLevel) -> bool:
         """
         check if console log is enabled for logger
         """
@@ -121,14 +121,14 @@ class ScenarioLogger(AbstractLogger):
         )
         return LogLevel.should_log(level, effective_level)
 
-    def _should_log_file(self, level: LogLevel) -> str:
+    def _should_log_file(self, level: LogLevel) -> bool:
         """
          check if file log is enabled for logger
         """
         return LogLevel.should_log(
             level, self._file_logging_config.scenario_log_level)
 
-    def should_logLevel(self, level: LogLevel):
+    def should_log_level(self, level: LogLevel):
         """
         check if any log is active - usecase: scenario silent mode (only file log)
         """
@@ -144,62 +144,42 @@ class ScenarioLogger(AbstractLogger):
     def get_log_dir(self):
         return self.run_dir
 
-    def reset_start_time(self):
-        self.start_time = datetime.now(timezone.utc)
-
-    def set_tick_loop_started(self, started: bool):
-        self._tick_loop_started = started
-        self.file_logger.set_tick_loop_started(started)
-        if (started):
-            self._tick_loop_count = 1
-
-    def set_current_tick(self, tick_count: int, tick: TickData):
-        self.file_logger.set_current_tick(tick_count, tick)
-        self._current_tick = tick
-        self._tick_loop_count = tick_count
-
-    def _log_console_implementation(self, level: str, message: str, timestamp: str):
+    def _log_console_implementation(self, record: LogRecord):
         """
-            Format Message for Scenario Log.
+        Buffer the record for the scenario log.
 
-        Console: Buffered (flush at end)
-        File: Direct write (no buffer)
+        Console: Buffered (flush at end) — NO explicit print. Scenario buffers are printed
+        after the scenario run, so parallel scenarios do not interleave their output.
+        File: Direct write (no buffer), handled separately.
 
         Args:
-            level: Log level (INFO, DEBUG, WARNING, ERROR)
-            message: Log message
+            record: The entry to buffer
         """
-        if self._tick_loop_started:
-            tick_time = format_timestamp(self._current_tick.timestamp)
-            message = f'{self._tick_loop_count:5}| {tick_time} | {message}'
-        formatted_line = self._format_log_line(level, message, timestamp)
+        self.console_buffer.append(record)
 
-        # Console output (BUFFERED) - for scenario loggers.
-        # NO EXPLICIT CONSOLE PRINT. Scenario Buffers must be printet after scenario run.
-        self._add_to_console_buffer(level, formatted_line)
-
-    def _add_to_console_buffer(self, level: str, formatted_line: str):
+    def _capture_for_report(self, record: LogRecord) -> None:
         """
-        Add log line to console buffer.
+        Keep a WARNING/ERROR the console threshold suppressed — the run report still needs it.
 
         Args:
-            level: Log level
-            formatted_line: Pre-formatted log line with colors
+            record: The entry to keep
         """
-        self.console_buffer.append((level, formatted_line))
+        self.console_buffer.append(record)
 
-    def _write_to_file_implementation(self, level: str, message: str, timestamp: str):
+    def _write_to_file_implementation(self, record: LogRecord):
         """
         Write directly to scenario log file.
 
+        The elapsed timestamp is rendered HERE, not in FileLogger: it is measured against this
+        logger's run_timestamp, which the file sink does not have.
+
         Args:
-            level: Log level
-            message: Log message (plain text, no colors)
-            timestamp: Elapsed time timestamp
+            record: The entry to write
         """
         if self.file_logger is not None:
-            # Write to file (plain text format with elapsed time)
-            self.file_logger.write_log(level, message, timestamp)
+            # Write to file (plain text, elapsed time, no colours)
+            self.file_logger.write_log(
+                record, self._render_timestamp(record), self._event_time_column)
 
     def flush_buffer(self):
         """
@@ -223,9 +203,14 @@ class ScenarioLogger(AbstractLogger):
             if self._use_global_log_level_for_console
             else self._console_logging_config.scenario_log_level
         )
-        for level, formatted_line in self.console_buffer:
-            if LogLevel.should_log(level, effective_level):
-                print(formatted_line)
+        # The filter is load-bearing: WARNING/ERROR are buffered even when the console
+        # threshold suppresses them, because the run report needs them. They are removed
+        # HERE, at display time, so the console output is unchanged by that wider capture.
+        for record in self.console_buffer:
+            if LogLevel.should_log(record.level, effective_level):
+                print(AbstractLogger.render_record(
+                    record, run_start=self.run_timestamp,
+                    event_column=self._event_time_column))
 
         # Clear buffer
         self.console_buffer.clear()

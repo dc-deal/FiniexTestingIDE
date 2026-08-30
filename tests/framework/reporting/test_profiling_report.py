@@ -183,6 +183,62 @@ class TestAggregate:
         assert agg.scenarios == 0 and agg.bottlenecks == [] and agg.avg_operation_times == []
 
 
+class TestTheVerdictsLeftThePrintout:
+    """
+    The three tick-budget advisories (avg over P5, budget below granularity, budget above 2x P95)
+    are decided by PostRunValidator and rendered in the WARNINGS & ERRORS section. They used to be
+    computed a SECOND time here, from a different source — so the operator saw each of them twice,
+    with numbers that could disagree. This section now shows measurements only.
+    """
+
+    def _unit(self, name='s1', ticks=1000, total_ms=3000.0, p5=1.0):
+        return ProfilingUnitRow(
+            name=name, symbol='EURUSD', total_ticks=ticks, total_ms=total_ms,
+            avg_per_tick_ms=total_ms / ticks, bottleneck_operation='live_update',
+            operations=[ProfilingOperationRow(operation='live_update', avg_time_ms=1.0)],
+            inter_tick=InterTickStatsRow(p5_ms=p5))
+
+    def _render(self, units, budget_active=False, clipping=None) -> str:
+        agg = aggregate_profiling(units, budget_active=budget_active)
+        if clipping is not None:
+            agg = agg.model_copy(update=clipping)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            ProfilingSummary(ProfilingReport(units=units, aggregate=agg)).render_aggregated(
+                ConsoleRenderer())
+        return re.sub(r'\x1b\[[0-9;]*m', '', buf.getvalue())
+
+    def test_the_over_p5_count_is_a_measurement_on_the_model(self):
+        """The count moves to the builder; whether it warrants a warning is not decided here."""
+        over = self._unit('slow', total_ms=3000.0, p5=1.0)      # 3.0ms/tick vs 1.0ms P5
+        under = self._unit('fast', total_ms=500.0, p5=1.0)      # 0.5ms/tick
+        assert aggregate_profiling([over, under], budget_active=False).scenarios_over_p5 == 1
+        assert aggregate_profiling([under], budget_active=False).scenarios_over_p5 == 0
+
+    def test_no_budget_warning_is_printed_here(self):
+        out = self._render([self._unit('slow', total_ms=3000.0, p5=1.0)])
+        assert 'BUDGET WARNING' not in out
+        assert 'risk of clipping' not in out
+
+    def test_no_granularity_verdict_is_printed_here(self):
+        out = self._render([self._unit()], budget_active=True, clipping={
+            'clipping_total_ticks': 1000, 'clipping_total_kept': 1000,
+            'clipping_total_clipped': 0, 'clipping_budgets': [0.5]})
+        assert 'has no effect with integer-ms' not in out
+        assert 'Tick Processing Budget Active' in out, 'the nothing-to-report line stays'
+
+    def test_no_budget_too_high_verdict_is_printed_here(self):
+        out = self._render([self._unit()], budget_active=True, clipping={
+            'clipping_total_ticks': 1000, 'clipping_total_kept': 900,
+            'clipping_total_clipped': 100, 'clipping_budgets': [100.0]})
+        assert 'exceeds 2×' not in out and 'exceeds 2x' not in out
+
+    def test_the_green_nothing_to_report_line_stays(self):
+        """A validator reports what fails; 'all is well' is the renderer showing an absence."""
+        out = self._render([self._unit('fast', total_ms=500.0, p5=1.0)])
+        assert 'no clipping risk detected' in out
+
+
 class TestRenderWarmup:
     """render_warmup (#399, 3c) — the folded warmup breakdown, model-fed."""
 

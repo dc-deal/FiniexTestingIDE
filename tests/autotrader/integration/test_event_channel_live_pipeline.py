@@ -10,12 +10,13 @@ Also exercises request_session_end end-to-end: the bot ends the session itself
 (no operator Ctrl+C), and a SESSION_END event is delivered before teardown.
 """
 
-import shutil
 
 import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.types.log_level import LogLevel
+from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/event_channel_lifecycle.json'
 
@@ -32,13 +33,12 @@ def session():
     received = trader._decision_logic.get_received_event_log()
     run_dir = trader._run_dir
     yield result, received
-    if run_dir and run_dir.exists():
-        shutil.rmtree(run_dir)
+    remove_run_dir(run_dir)
 
 
 def test_session_completes_without_errors(session):
     result, _ = session
-    assert len(result.error_messages) == 0, result.error_messages
+    assert len(logged_messages(result, LogLevel.ERROR)) == 0, logged_messages(result, LogLevel.ERROR)
 
 
 def test_event_sequence_matches_expected(session):

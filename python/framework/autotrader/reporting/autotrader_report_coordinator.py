@@ -46,6 +46,7 @@ from python.framework.reporting.store.run_results_ledger import append_run_to_le
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.log_level import LogLevel
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.framework.types.signal_data_types import SignalObservedSeries
 from python.framework.utils.console_renderer import ConsoleRenderer
@@ -129,6 +130,12 @@ class AutotraderReportCoordinator:
         # Sentiment feed label (#438): the scenario's data_sentiment_type (mock; '' when none / live).
         units = run_units_from_session(
             result, name, self._config.symbol,
+            # The broker key, not the display name: it is what the data API is addressed by,
+            # so a report consumer can link this unit to its chart (sim has always carried it).
+            # `self._config.broker_type` is already the addressable key ('kraken_spot') — a
+            # plain str on AutoTraderConfig. NOT self._broker_config.broker_type, which is a
+            # BrokerType enum: the comment above is about that neighbouring attribute.
+            data_source=self._config.broker_type,
             sentiment_source=(
                 self._config.scenario_settings.data_sentiment_type
                 if self._config.scenario_settings else ''),
@@ -212,4 +219,5 @@ class AutotraderReportCoordinator:
         self._summary_logger.info(re.sub(r'\033\[[0-9;]+m', '', full_output))
         self._global_logger.info(
             f'📋 Session summary written — {result.ticks_processed} ticks, '
-            f'{len(result.warning_messages)} warnings, {len(result.error_messages)} errors')
+            f'{result.count_logged(LogLevel.WARNING)} warnings, '
+            f'{result.count_logged(LogLevel.ERROR)} errors')

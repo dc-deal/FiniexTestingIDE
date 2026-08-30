@@ -2,7 +2,9 @@
 Warnings & errors report builder (#391/#395) — the unified warnings/errors postprocessor.
 
 Reads the **already-decided** structured truth and maps it to `WarningsErrorsReport`:
-- Tier-1 major warnings ← `ValidationResult.warnings` (per-scenario + the batch-level channel);
+- Tier-1 major warnings ← the advisory `ValidationFinding`s of the per-scenario and
+  batch-level validation channels (sim) / the session validation channel (live), each
+  carrying its own origin (`check` / `domain`);
 - Tier-2 minor warnings ← the log WARNING pot (summarized);
 - errors ← `ValidationResult.errors` + the `ProcessResult` villain + the log ERROR pot;
 - outcome ← failed-scenario rollup (sim) / shutdown + emergency (live), plus the canonical
@@ -13,16 +15,20 @@ the scenario / batch validation channels. The builder makes NO decisions — eve
 by a validator upstream (pre-run phases + `PostRunValidator`). See docs/architecture/warnings_errors_tiers.md.
 """
 
+from typing import Optional
+
 from python.framework.types.api.report_types import (
+    LogEntryRow,
     UnitErrorRow,
     WarningRow,
     WarningsErrorsOutcome,
     WarningsErrorsReport,
+    WarningTier,
 )
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.log_level import LogLevel
-from python.framework.types.process_data_types import ProcessResult
+from python.framework.types.validation_types import Severity, ValidationResult
 
 
 def build_warnings_errors_report_from_batch(batch: BatchExecutionSummary) -> WarningsErrorsReport:
@@ -52,22 +58,30 @@ def build_warnings_errors_report_from_session(
         symbol: Traded symbol
 
     Returns:
-        WarningsErrorsReport — live has no validation channel: warnings are the session WARNING
-        buffer (Tier 2), errors the session ERROR buffer + emergency_reason (the villain)
+        WarningsErrorsReport — Tier-1 from the session validation channel, Tier-2 the session
+        WARNING buffer, errors the session ERROR buffer + emergency_reason (the villain)
     """
-    # Tier-2 (minor) — the session WARNING buffer. Strip the logger prefix
-    # ('[  4s] WARNING | msg' → 'msg') so the model carries the clean fact, not the log line.
-    warnings = [
-        WarningRow(tier='minor', scope=name, message=(m.split(' | ', 1)[-1] if ' | ' in m else m))
-        for m in result.warning_messages]
+    # Tier 1 — the session's post-run advisories (SessionPostRunValidator). Same rows as the
+    # batch channel produces, so both pipelines render and serve one shape.
+    warnings = []
+    for vr in result.session_validation_result:
+        warnings.extend(_warning_rows(vr, 'run'))
+
+    # Tier-2 — the session WARNING buffer. The message arrives unrendered from the LogRecord,
+    # so there is nothing to strip. check/domain stay empty: no assertion decided this, and the
+    # channel is already named by the tier.
+    warnings.extend(
+        WarningRow(tier=WarningTier.LOGGER_PRODUCED, scope=name, message=entry.message)
+        for entry in _log_entries(result.session_logger_buffer, LogLevel.WARNING))
 
     # Errors — the session ERROR buffer (pot) + the emergency villain
+    logged_errors = _log_entries(result.session_logger_buffer, LogLevel.ERROR)
     errors = []
-    if result.error_messages or result.emergency_reason:
+    if logged_errors or result.emergency_reason:
         errors.append(UnitErrorRow(
             name=name, symbol=symbol,
             error_message=result.emergency_reason or '',
-            logged_errors=list(result.error_messages)))
+            logged_errors=logged_errors))
 
     outcome = WarningsErrorsOutcome(
         run_outcome=result.get_outcome().value,
@@ -77,32 +91,49 @@ def build_warnings_errors_report_from_session(
         first_failure_name=name if result.emergency_reason else '',
         first_failure_error=result.emergency_reason or '',
         emergency_reason=result.emergency_reason or '',
-        shutdown_mode=result.shutdown_mode)
+        shutdown_mode=result.shutdown_mode,
+        operator_interrupted=result.operator_interrupted)
     return WarningsErrorsReport(warnings=warnings, errors=errors, outcome=outcome)
+
+
+def _warning_rows(result: ValidationResult, scope: str) -> list:
+    """
+    The advisory findings of one validation result as Tier-1 rows.
+
+    A finding carries its own severity, so a result holding errors AND advisories yields both
+    — the advisories are no longer dropped along with the rejection.
+
+    Args:
+        result: The validation result to read
+        scope: Fallback scope when the finding does not name one
+
+    Returns:
+        One WarningRow per advisory finding, each carrying its origin
+    """
+    return [
+        WarningRow(tier=WarningTier.VALIDATOR_PRODUCED, scope=finding.scope or scope,
+                   message=finding.message, check=finding.check, domain=finding.domain.value)
+        for finding in result.findings if finding.severity is Severity.WARNING]
 
 
 def _batch_warnings(batch: BatchExecutionSummary) -> list:
     """Tier-1 major (validation channels) + a Tier-2 minor summary of the log WARNING pot."""
     warnings = []
 
-    # Tier 1 — run-scoped (batch-global) validation results, e.g. debug-mode (PostRunValidator)
+    # Tier 1 — run-scoped (batch-global) findings, e.g. debug-mode (PostRunValidator)
     for vr in batch.batch_validation_result:
-        for msg in vr.warnings:
-            warnings.append(WarningRow(tier='major', scope='run', message=msg))
+        warnings.extend(_warning_rows(vr, 'run'))
 
     # Tier 1 — per-scenario validation warnings (pre-run validators, e.g. account-currency advisory)
     for scenario in batch.single_scenario_list:
         for vr in scenario.validation_result:
-            if not vr.is_valid:
-                continue
-            for msg in vr.warnings:
-                warnings.append(WarningRow(tier='major', scope=scenario.name, message=msg))
+            warnings.extend(_warning_rows(vr, scenario.name))
 
     # Tier 2 — the log WARNING pot, summarized (ignorable; the raw lines stay in the scenario logs)
     pot_total, pot_units = _log_pot_summary(batch, LogLevel.WARNING)
     if pot_total > 0:
         warnings.append(WarningRow(
-            tier='minor', scope='run',
+            tier=WarningTier.LOGGER_PRODUCED, scope='run',
             message=(f'{pot_total} warning(s) in {pot_units} scenario log(s) '
                      f'— see scenario logs for details')))
     return warnings
@@ -115,7 +146,7 @@ def _batch_errors(batch: BatchExecutionSummary) -> list:
         scenario = batch.get_scenario_by_process_result(result)
         validation_errors = [
             e for vr in scenario.validation_result if not vr.is_valid for e in vr.errors]
-        logged_errors = _logged(result, LogLevel.ERROR)
+        logged_errors = _log_entries(result.scenario_logger_buffer, LogLevel.ERROR)
         has_villain = bool(result.error_type or result.error_message)
         if not (validation_errors or logged_errors or has_villain):
             continue
@@ -144,11 +175,27 @@ def _batch_outcome(batch: BatchExecutionSummary) -> WarningsErrorsOutcome:
         first_failure_error=(first.error_message or '') if first else '')
 
 
-def _logged(result: ProcessResult, level: LogLevel) -> list:
-    """Extract the buffered log lines of one level from a scenario's logger buffer."""
-    if not result.scenario_logger_buffer:
+def _log_entries(buffer: Optional[list], level: LogLevel) -> list[LogEntryRow]:
+    """
+    One level's records from a logger buffer, as report rows.
+
+    Maps rather than reduces: the record reaches DERIVE with level, both times and scope intact,
+    and dropping them here would make them unreachable for the artifact and the API alike (#391).
+    Shared by both pipelines — the sim hands its scenario buffer, the live session its own.
+
+    Args:
+        buffer: The logger's records, or None when nothing was buffered
+        level: The level to select
+
+    Returns:
+        One row per matching record, in the order they were logged
+    """
+    if not buffer:
         return []
-    return [line for lvl, line in result.scenario_logger_buffer if lvl == level]
+    return [LogEntryRow(level=record.level, observed_at=record.timestamp,
+                        scope=record.scope, message=record.message,
+                        event_time=record.event_time)
+            for record in buffer if record.level == level]
 
 
 def _log_pot_summary(batch: BatchExecutionSummary, level: LogLevel) -> tuple:
@@ -156,7 +203,7 @@ def _log_pot_summary(batch: BatchExecutionSummary, level: LogLevel) -> tuple:
     total = 0
     units = 0
     for result in batch.process_result_list:
-        n = len(_logged(result, level))
+        n = len(_log_entries(result.scenario_logger_buffer, level))
         if n > 0:
             total += n
             units += 1

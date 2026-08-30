@@ -10,6 +10,7 @@ CORRECTIONS:
 - balances: Unified balance dict (replaces initial_balance + account_currency)
 """
 
+from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -20,6 +21,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 from python.framework.types.config_types.market_config_types import MarketType, TradingModel
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
+from python.framework.types.log_record_types import LogRecord
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats,
     WorkerCoordinatorPerformanceStats,
@@ -233,7 +235,7 @@ class ProcessScenarioConfig:
     scenario_set_name: str = ''
     run_timestamp: str = ''
     # Optional grouping dir nested under the log root (e.g. 'sweeps/<sweep_id>', #419)
-    run_group: Optional[str] = None
+    log_root: Optional[Path] = None
 
     # Live Stats Config
     live_stats_config: LiveStatsExportConfig = None
@@ -284,7 +286,7 @@ class ProcessScenarioConfig:
         scenario_set_name: str,
         run_timestamp: str,
         live_stats_config: LiveStatsExportConfig,
-        run_group: Optional[str] = None
+        log_root: Optional[Path] = None
     ) -> 'ProcessScenarioConfig':
         """
         Create ProcessScenarioConfig from SingleScenario + AppConfig.
@@ -406,7 +408,7 @@ class ProcessScenarioConfig:
             tick_loop_profiling=tick_loop_profiling,
             scenario_set_name=scenario_set_name,
             run_timestamp=run_timestamp,  # extracted from json, put into type.
-            run_group=run_group,
+            log_root=log_root,
             live_stats_config=live_stats_config,
             broker_type=scenario.broker_type,
             market_type=market_type,
@@ -605,7 +607,7 @@ class ProcessResult:
     tick_loop_results: ProcessTickLoopResult = None
 
     # logger lines to print after scenario run.
-    scenario_logger_buffer: list[tuple[str, str]] = None
+    scenario_logger_buffer: list[LogRecord] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""

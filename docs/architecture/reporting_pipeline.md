@@ -37,7 +37,7 @@ see *Pipeline in detail* below.
 | Run summary | `framework/reporting/builders/run_summary_builder.py` — `build_run_summary()` | the **cross-section KPI** composer (#390 prework): joins the per-section aggregates (portfolio roll-up + trade analytics + execution totals) into one run-wide `RunSummary` (per-currency KPIs + global counts) — composes, never re-derives. The single object the sweep / API / console headline reads |
 | Shared core | `framework/reporting/shared_report_coordinator.py` — `SharedReportCoordinator.derive_and_persist(units, io_dir, signal_scenario_map)` (+ `builders/unified_reports.py` — `UnifiedReports`) | the **units-derived DERIVE+PERSIST core both pipelines delegate to** (#403): builds + writes the 9 sections identical across sim + live (trade / order / portfolio / pending / execution-stats / run-summary / worker-decision / signal / feed-stability) and returns them as `UnifiedReports`, which each coordinator reuses for its own console + ledger |
 | IO | `framework/reporting/io/{trade_history,order_history,portfolio,execution_stats,pending_orders,scenario_details,run_summary,run_meta,worker_decision,profiling,broker,warnings_errors,aggregated_portfolio,block_splitting}_report_io.py` | write the artifact(s); read back + filter (the API path) |
-| Store | `framework/reporting/store/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` / `get_profiling` / `get_broker` / `get_signal` / `get_feed_stability` / `get_warnings_errors` / `get_aggregated_portfolio` |
+| Store | `framework/reporting/store/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree **at any depth** — a `run_group` (`sweeps/<sweep_id>`, #419) nests a run deeper than its set, and a fixed-depth lookup hides every swept run from the whole API (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` / `get_profiling` / `get_broker` / `get_signal` / `get_feed_stability` / `get_warnings_errors` / `get_aggregated_portfolio` |
 | Ledger | `framework/reporting/store/run_results_ledger.py` — `RunResultsLedger` | the **cross-run** PERSIST sink (#390): appends one flat row per (run × currency) — the `RunSummary` KPIs + provenance (`param_hash`, git, component versions, config snapshot, sweep tagging) — to `data/run_results/` as one parquet fragment per run. Separate from the per-run API artifacts above; it is the substrate the Parameter Optimization system ranks over. Provenance via `store/run_provenance_builder.py` — `build_run_provenance` (sim) / `build_run_provenance_from_session` (live, #403 · 5.a); **both pipelines append**. See [Parameter Optimization System](parameter_optimization_system.md) |
 | Console | `framework/reporting/console/run_console_renderer.py` — `RunConsoleRenderer` (+ the `*_summary` sub-presenters) | the **PRESENT** layer: `RunConsoleRenderer` owns the one canonical end-of-run section order both pipelines render through (#403 Phase 2). A `None` slot is skipped (render-if-present → live omits the sim-only sections); the per-currency AGGREGATE blocks render only for a multi-unit run (`unit_count > 1`); the closing block is pipeline-specific — `sim_executive_summary` (sim) / `live_session_summary` (live) |
 | Persist (sim) | `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()` | consumes the finished `BatchExecutionSummary`; delegates the 8 shared sections to `SharedReportCoordinator`, derives + writes its sim-only sections, renders the console via `RunConsoleRenderer` (Executive Summary closing), and appends to the ledger |
@@ -51,6 +51,72 @@ cross-run `run_results_ledger` + `run_provenance_builder`), and `console/` (PRES
 `shared_report_coordinator.py` at the top owns the shared DERIVE+PERSIST core (#403). The other
 `framework/reporting/*` files are unrelated reporting utilities (diagnostics CSV, event-stream
 CSV, field-study, …).
+
+### Where a value is produced — source fields at the source, calculations in the builder
+
+A field the process already owns — a broker-config fact, an event stamp, an authoritative
+lookup — is stamped onto the record where it is known, resolved once from its owner. Everything
+DERIVED from those fields is computed in the section's builder, off the run. The reason is cost,
+not tidiness: work the run does not need must not run inside the run. The exception is a value
+the process itself consumes (a decision or an execution path reads it) — that one is computed
+where it is used, and the report treats it as a source field like any other. When in doubt, put
+it in the builder: moving a calculation out of the run is always safe, moving one in is not.
+
+Worked example (#265 + #391): a spot unit's estimated portfolio value needs the instrument's
+base / quote split. The split is a broker-config FACT, so `PortfolioManager`'s stats carry
+`base_currency` / `quote_currency`, stamped once per unit after the tick loop. The ESTIMATE over
+those balances is a calculation, so it lives in `portfolio_report_builder`. The renderer prints
+both and computes neither — and, critically, never splits the symbol string itself.
+
+### Aggregates are their own stage, and they serve both outputs
+
+A per-currency / per-worker roll-up is computed once in `report_aggregators`, lands on the model,
+and is then available to the aggregated block AND to every single-unit render — a per-scenario
+view may show the run's aggregate beside its own figures without recomputing it. A renderer that
+builds its own aggregate is the defect this rule prevents.
+
+### Undefined KPIs — `None`, never a sentinel
+
+A KPI that has no value carries `None`, and the field comment says what `None` means. It is
+never a stand-in number and never `float('inf')`: **infinity has no JSON representation**, and
+Pydantic serializes it to `null` on write while the reader declares a plain `float` — so the
+artifact cannot be read back. Measured 2026-08-29 on `profit_factor` (gross profit / gross loss,
+undefined when a run has no losing trade): 5 of 1083 persisted runs were unreadable, and three
+API routes answered 500 for them.
+
+The rule applies to the whole chain, not just the model — the value is minted as `None` at the
+producing site (`portfolio_manager`, `report_aggregators`), stays `None` through DERIVE, and the
+PRESENT layer renders it as `n/a` / `∞ (no losses)`. One spelling end to end; a translation at a
+boundary is how the two drift apart again. Same convention as `signal_fresh_ratio`, where `None`
+means no SIGNAL worker was involved and deliberately not `1.0`.
+
+### An ambiguous field ships with its discriminator
+
+If a reader cannot tell two different states apart from a field's value, the field that
+separates them belongs on the model beside it. The console may know the difference from an
+object the API never sees — that is exactly how a surface ends up displaying a state nobody
+is in. Measured 2026-08-29: `shutdown_mode` is `'emergency'` after an operator Ctrl+C *and*
+after a crash, so a run graded `SUCCESS` shipped `'emergency'` with nothing to explain it;
+`AutoTraderResult.operator_interrupted` had existed all along and simply never reached
+`WarningsErrorsOutcome`. See [Warnings & Errors — Tier Taxonomy](warnings_errors_tiers.md).
+
+A live-only field on a sim run is `''` / `False` and means **not applicable**, not *unknown* —
+the same distinction the `None` rule above makes, one level down.
+
+### Artifact encoding — UTF-8 always, the process locale never
+
+Report artifacts are JSON, and JSON is UTF-8 by RFC 8259. Every `*_report_io` writer names
+`encoding='utf-8'` explicitly, and every reader hands **bytes** to Pydantic
+(`model_validate_json(path.read_bytes())`) so the decode follows the spec rather than the
+platform. The CSV surfaces name their encoding for the same reason.
+
+This is not theoretical tidiness: a run is written by one process and read back by another,
+and the API server is the one component an operator may start outside the container. With a
+locale-dependent read, an artifact written as UTF-8 and read on a Windows host decodes as
+cp1252 — `—` becomes `â€"`, and `⚠️` **raises**, because UTF-8's `0x8F` has no cp1252 mapping
+at all. One artifact class corrupts quietly, the other 500s. Guarded by
+`tests/framework/reporting/test_report_io_encoding.py`, including a drift check that no IO
+unit reintroduces the platform default.
 
 ## Section map — shared vs pipeline-specific (#403)
 
@@ -158,14 +224,14 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 |---|---|---|---|---|
 | Trade History (#389 analytics) | unified | ✅ | ✅ | offload the still-inline per-currency aggregates: trade-breakdown counts · duration · slippage distribution · rejection-by-reason |
 | Order History | unified | ✅ | ✅ | — |
-| Portfolio — per-scenario | unified | ✅ | ✅ (linear, boxes removed) | — |
+| Portfolio — per-scenario | unified | ✅ | ✅ (linear, boxes removed) | — `max_dd_pct` and the spot dual-balance estimate are derived in the builder; the renderer's `symbol[-3:]` currency split was replaced by the broker-config split stamped at capture (#265) |
 | Portfolio — aggregated (by currency) | sim | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (byte-identical; `PortfolioAggregator` retired) | — |
 | Pending Orders / Active | unified (sim-populated) | ✅ | ✅ | — |
 | Execution Stats — per-scenario | unified | ✅ | ✅ | — |
 | Execution — aggregated ORDER EXECUTION | sim | ✅ (in `AggregatedPortfolioReport`) | ✅ from the model | — (folded into the portfolio aggregate, #397) |
 | Scenario Details | **sim-only** | ✅ | ✅ (linear, incl. failed + `account_currency` hint) | — |
 | Run Summary (#390) | unified | ✅ | ✅ executive headline | — |
-| Worker / Decision (#398/#399) | unified | ✅ (`WorkerDecisionReport`) | ✅ — `performance_summary` (worker details / aggregated / bottleneck) + the breakdown both read the model (overhead Total from the profiling model, #399); the duplicate per-scenario worker list was removed | — |
+| Worker / Decision (#398/#399) | unified | ✅ (`WorkerDecisionReport`) | ✅ — `performance_summary` (worker details / aggregated / bottleneck) + the breakdown read the model (overhead Total from the profiling model, #399); the duplicate per-scenario worker list was removed. Per-worker cadence (`compute_ratio_pct`, `ticks_idle`) and `parallel_avg_saved_per_tick_ms` are derived in the builder | **still console-only:** the AGGREGATED STATS block and the bottleneck scan (slowest scenario / worst worker / worst decision logic) build their aggregates and pick their winners inside the renderer — a section migration, not a move |
 | Profiling — operations + inter-tick + clipping (#399) | **sim-only** | ✅ (`ProfilingReport`) | ✅ from the model | — |
 | Warmup phases (#399) | **sim-only** | ✅ (in `ProfilingReport`) | ✅ from the model (`ProfilingSummary.render_warmup`; `warmup_phase_summary` retired) | — |
 | Block-Splitting Disposition | **sim-only** (Profile Run) | ⏳ | ✅ inline | **separate follow-up** — generation-quality metric (`generator_profiles` + `block_boundary_report`), not runtime profiling |
@@ -173,8 +239,8 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 | Broker Configuration | unified | ✅ (`BrokerReport`) | ✅ from the model (sim full table · live compact line) | — |
 | Signal Configuration (#433) | unified | ✅ (`SignalReport`) | ✅ from the model (`SignalSummary`) | — Part C (fresh/stale/blind per tick) + Part A (the section) done; Part D moved to its own section below (#451) |
 | Feed Stability (#451) | unified | ✅ (`FeedStabilityReport`) | ✅ from the model (`FeedStabilitySummary`) | — the disturbance episodes of **both** staleness domains (tick stream #436 + every SIGNAL source #434) in one per-source table, plus the tick-domain fresh/stale counters and the `RunSummary` totals behind the executive line. Rendered only when the run saw an episode |
-| Warnings & Errors | unified | ✅ (`WarningsErrorsReport`) | ✅ from the model — tiered (errors / Tier-1 major / Tier-2 minor); executive failed-scenario headline reads the model outcome; warnings lifted into validators (`PostRunValidator`), the orchestrator keeps only a thin global-log line (#395) | **both pipelines render the shared `WarningsSummary`** (always shown — clean zero-state when none, #403 Phase 2); live messages get the logger prefix stripped in the builder |
-| Executive — detailed portfolio-performance block | **sim-only** | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (margin / spot / mixed preserved, byte-identical) | — (#397) |
+| Warnings & Errors | unified | ✅ (`WarningsErrorsReport`) | ✅ from the model — tiered (errors / Tier-1 major / Tier-2 minor); executive failed-scenario headline reads the model outcome; warnings lifted into validators (`PostRunValidator`), the orchestrator keeps only a thin global-log line (#395). Each Tier-1 row carries its ORIGIN (`check` / `domain`) from the `ValidationFinding` that produced it. The ERROR pot reaches the model as `LogEntryRow`s (level / both times / scope / message), mapped by one shared helper for both pipelines — a reduction to the message here would put those fields out of reach of every surface behind DERIVE | **both pipelines render the shared `WarningsSummary`** (always shown — clean zero-state when none, #403 Phase 2); live messages get the logger prefix stripped in the builder |
+| Executive — detailed portfolio-performance block | **sim-only** | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (margin / spot / mixed preserved, byte-identical) | — (#397); the profit factor is read from the model instead of recomputed with a divergent formula, and the order execution rate is carried as `execution_rate_pct` |
 | Shutdown / Emergency / Session | **autotrader-only** | ✅ | ✅ `LiveSessionSummary` | the live closing block of the unified `RunConsoleRenderer` (#403 Phase 2): session stats + warnings/errors (session buffers, §35) + output locations; #389 analytics line model-sourced |
 | **Final:** directory consolidation | — | — | — | ✅ **#396 DONE** — `batch_reporting/` folded into `framework/reporting/` by stage: `run_reports/` (DERIVE) · `io/` (PERSIST) · `console/` (PRESENT) |
 | Shared coordinator + folder split | — | — | — | ✅ **#403 DONE** — the units-derived DERIVE+PERSIST core extracted into `SharedReportCoordinator` (both pipelines delegate, returning `UnifiedReports`); the home re-split into `builders/` (DERIVE) · `io/` (PERSIST writers) · `store/` (read-master + cross-run ledger + provenance). Live ledger append wired (5.a) |

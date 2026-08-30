@@ -75,14 +75,12 @@ class ProfilingSummary(AbstractBatchSummarySection):
 
             self._render_scenario_profile(unit, renderer)
 
-    def render_aggregated(self, renderer: ConsoleRenderer, compact: bool = False, threshold: int = 9):
+    def render_aggregated(self, renderer: ConsoleRenderer):
         """
         Render aggregated profiling across all scenarios.
 
         Args:
             renderer: ConsoleRenderer instance
-            compact: If True, truncate budget warnings list to threshold entries
-            threshold: Max entries to show before truncating
         """
         if not self._layer_b_has_data():
             return
@@ -96,7 +94,7 @@ class ProfilingSummary(AbstractBatchSummarySection):
         renderer.print_bold('⚡ AGGREGATED PROFILING (ALL SCENARIOS)')
         renderer.section_separator()
 
-        self._render_aggregated_details(renderer, compact=compact, threshold=threshold)
+        self._render_aggregated_details(renderer)
         print()
 
     def render_bottleneck_analysis(self, renderer: ConsoleRenderer):
@@ -261,7 +259,7 @@ class ProfilingSummary(AbstractBatchSummarySection):
             '  Note: P5 = fastest 5% of tick arrivals. '
             'If avg processing > P5, the algorithm can\'t keep up with peak tick rate.'))
 
-    def _render_aggregated_details(self, renderer, compact: bool = False, threshold: int = 9):
+    def _render_aggregated_details(self, renderer):
         """Render aggregated profiling statistics from the model aggregate."""
         agg = self._report.aggregate
 
@@ -282,53 +280,36 @@ class ProfilingSummary(AbstractBatchSummarySection):
                 print()
 
         # Budget warnings (avg processing vs fastest tick intervals)
-        self._render_budget_warnings(renderer, compact=compact, threshold=threshold)
+        self._render_budget_warnings(renderer)
 
         # Per-operation averages
         self._render_cross_scenario_averages(renderer)
 
-    def _render_budget_warnings(self, renderer: ConsoleRenderer, compact: bool = False, threshold: int = 9) -> None:
+    def _render_budget_warnings(self, renderer: ConsoleRenderer) -> None:
         """
-        Render budget warnings when avg tick processing exceeds fastest tick intervals.
+        Render the tick-budget picture: the P5 range, the budget hint, the clipping roll-up.
+
+        Every verdict about those numbers lives in PostRunValidator (_check_budget,
+        _check_budget_granularity, _check_budget_too_high) and is rendered in the
+        WARNINGS & ERRORS section. This method only shows measurements.
 
         Args:
             renderer: ConsoleRenderer instance
-            compact: If True, truncate warnings list to threshold entries (sorted by severity)
-            threshold: Max warnings to display before collapsing
         """
         agg = self._report.aggregate
         has_budget_active = agg.budget_active
 
-        warnings = [
-            unit for unit in self._report.units
-            if unit.inter_tick and unit.avg_per_tick_ms > unit.inter_tick.p5_ms
-        ]
+        # Whether exceeding P5 warrants a warning is decided by PostRunValidator._check_budget
+        # and rendered in the WARNINGS & ERRORS section. This block only reads the count.
+        has_warnings = self._report.aggregate.scenarios_over_p5 > 0
         has_p5 = any(unit.inter_tick for unit in self._report.units)
-
-        # Only show per-scenario warnings when NO budget is configured.
-        # When budget is active, clipping is already being simulated — warning is redundant.
-        if warnings and not has_budget_active:
-            warnings.sort(key=lambda u: u.avg_per_tick_ms, reverse=True)
-            visible = warnings[:threshold] if compact and len(warnings) > threshold else warnings
-            for unit in visible:
-                print(renderer.red(
-                    f'  ⚠️  BUDGET WARNING: avg tick processing ({unit.avg_per_tick_ms:.3f}ms) '
-                    f'exceeds fastest 5% tick interval ({unit.inter_tick.p5_ms:.1f}ms) '
-                    f'in {unit.name} — risk of clipping in live'))
-            if compact and len(warnings) > threshold:
-                remaining = len(warnings) - threshold
-                print(renderer.red(
-                    f'  ⚠️  +{remaining} more scenarios exceed budget — see log for full list'))
-            print()
 
         if has_p5:
             print(f"  {renderer.bold('P5 range across scenarios:')} "
                   f"{agg.p5_min_ms:.1f}ms — {agg.p5_max_ms:.1f}ms")
             print()
 
-        has_warnings = bool(warnings)
-
-        # Recommendation only when there's a reason (warning or active budget)
+        # Recommendation only when there's a reason (scenarios over P5, or an active budget)
         if has_warnings or has_budget_active:
             self._render_budget_recommendation(renderer)
 
@@ -380,18 +361,12 @@ class ProfilingSummary(AbstractBatchSummarySection):
         budget_str = ', '.join(f'{b}ms' for b in agg.clipping_budgets)
 
         if total_clipped == 0:
-            # Check if budget is below data granularity (< 1.0ms with integer-ms timestamps)
-            max_budget = max(agg.clipping_budgets)
-            if max_budget < 1.0:
-                print(renderer.yellow(
-                    f'  ⚠️  Tick Processing Budget Active ({budget_str}) — '
-                    f'no ticks clipped, but budget < 1.0ms has no effect with integer-ms timestamps'))
-                print(renderer.gray(
-                    '     collected_msc has millisecond granularity — minimum effective budget is 1.0ms'))
-            else:
-                print(renderer.green(
-                    f'  ✅ Tick Processing Budget Active ({budget_str}) — '
-                    f'no ticks clipped ({total_ticks:,} ticks, {len(agg.clipping_budgets)} budget(s))'))
+            # A budget below data granularity is an advisory of PostRunValidator
+            # (_check_budget_granularity), not of this section — here it is simply the
+            # nothing-to-report state.
+            print(renderer.green(
+                f'  ✅ Tick Processing Budget Active ({budget_str}) — '
+                f'no ticks clipped ({total_ticks:,} ticks, {len(agg.clipping_budgets)} budget(s))'))
             print()
         else:
             overall_rate = total_clipped / total_ticks * 100
@@ -400,15 +375,6 @@ class ProfilingSummary(AbstractBatchSummarySection):
             print(f'     Total: {total_kept:,} / {total_ticks:,} ticks kept  |  '
                   f'Clipped: {total_clipped:,} ({overall_rate:.1f}%)')
             print()
-
-        # Check if budget is too high (> 2× P95 processing time)
-        if agg.p95_processing_ms > 0 and agg.clipping_budgets:
-            max_budget = max(agg.clipping_budgets)
-            if max_budget > agg.p95_processing_ms * 2:
-                print(renderer.yellow(
-                    f'  ⚠️  Budget ({max_budget}ms) exceeds 2× P95 processing time ({agg.p95_processing_ms:.3f}ms) '
-                    f'— ticks may be clipped unnecessarily, reducing simulation accuracy'))
-                print()
 
     def _render_cross_scenario_averages(self, renderer: ConsoleRenderer):
         """Render average operation times across all scenarios (from the model aggregate)."""

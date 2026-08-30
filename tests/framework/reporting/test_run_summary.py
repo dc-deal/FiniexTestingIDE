@@ -5,7 +5,14 @@ Composes the cross-section KPI model from the section reports (portfolio aggrega
 trade analytics + execution totals) — no re-derivation. Per-currency join + global counts.
 """
 
+from python.framework.reporting.builders.report_aggregators import (
+    aggregate_portfolio_by_currency,
+)
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
+from python.framework.reporting.io.run_summary_io import (
+    read_run_summary,
+    write_run_summary,
+)
 from python.framework.types.api.report_types import (
     ExecutionStatsReport,
     ExecutionStatsTotals,
@@ -77,3 +84,34 @@ class TestBuild:
         assert by['USD'].net_pnl == 60.0 and by['JPY'].net_pnl == 100.0
         assert by['JPY'].expectancy == 1.0
         assert rs.unit_count == 2
+
+
+class TestUndefinedProfitFactor:
+    """A run without a losing trade has no profit factor — and must still round-trip.
+
+    Regression: the value was minted as float('inf'), which Pydantic persists as JSON null,
+    and the reader declared a plain float. The API could not serve a run that only won.
+    """
+
+    def test_builder_carries_none_through(self):
+        agg = _agg()
+        agg.profit_factor = None
+        portfolio = PortfolioReport(units=[_unit()], aggregates=[agg])
+        trade = TradeHistoryReport(trades=[], count=0, symbols=[], analytics=[])
+        assert build_run_summary(portfolio, trade, _exec()).currencies[0].profit_factor is None
+
+    def test_survives_the_json_round_trip(self, tmp_path):
+        agg = _agg()
+        agg.profit_factor = None
+        portfolio = PortfolioReport(units=[_unit()], aggregates=[agg])
+        trade = TradeHistoryReport(trades=[], count=0, symbols=[], analytics=[])
+        summary = build_run_summary(portfolio, trade, _exec())
+        read_back = read_run_summary(write_run_summary(summary, tmp_path))
+        assert read_back.currencies[0].profit_factor is None
+
+    def test_aggregator_mints_none_not_infinity(self):
+        """The producer side: no gross loss means undefined, never an unpersistable inf."""
+        row = _unit()
+        row.total_loss = 0.0
+        row.losing_trades = 0
+        assert aggregate_portfolio_by_currency([row])[0].profit_factor is None

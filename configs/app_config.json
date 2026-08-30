@@ -24,10 +24,14 @@
         "log_level": "DEBUG",
         "log_path": "logs/",
         "append_mode": true,
+        "run_logs": {
+            "autotrader": "logs/autotrader",
+            "single_runs": "logs/scenario_sets/single_runs",
+            "sweeps": "logs/scenario_sets/sweeps"
+        },
         "scenario": {
             "enabled": true,
             "log_level": null,
-            "log_root_path": "logs/scenario_sets",
             "file_name_prefix": "scenario"
         }
     },
@@ -55,7 +59,8 @@
         },
         "clipping_monitor": {
             "report_interval_s": 60.0,
-            "strategy": "queue_all"
+            "strategy": "queue_all",
+            "warn_above_ratio": 0.05
         },
         "display": {
             "enabled": true,

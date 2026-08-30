@@ -199,6 +199,25 @@
             }
         },
         {
+            "name": "📡 Signal Stream Probe (Mock, inject control code)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "stream-probe-mock",
+                "--seconds",
+                "15",
+                "--inject",
+                "${input:signalControlCode}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_data_pipeline",
+                "order": 14
+            }
+        },
+        {
             "name": "📡 Signal Stream Probe (Producer)",
             "type": "debugpy",
             "request": "launch",
@@ -1914,6 +1933,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Logging (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/logging/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 25.5
+            }
+        },
+        {
             "name": "🧩 Pytest: Loop Cadence (All)",
             "type": "debugpy",
             "request": "launch",
@@ -2206,6 +2242,23 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 42
+            }
+        },
+        {
+            "name": "🧩 Pytest: Session Validation (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/session_validation/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 42.5
             }
         },
         {
@@ -3215,6 +3268,19 @@
             "id": "optimizationSweepId",
             "type": "promptString",
             "description": "Sweep id to report on (e.g. sweep_20260622_084931 — printed at the end of a sweep run)"
+        },
+        {
+            "id": "signalControlCode",
+            "type": "pickString",
+            "description": "Control code the local stand-in producer emits once the stream is live",
+            "options": [
+                "live",
+                "replay_truncated",
+                "cursor_ahead",
+                "epoch_changed",
+                "auth_revoked"
+            ],
+            "default": "epoch_changed"
         }
     ]
 }

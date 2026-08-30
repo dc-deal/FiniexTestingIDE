@@ -20,7 +20,12 @@ from python.framework.discoveries.signal_coverage.signal_coverage_report import 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.validation_types import ValidationResult
+from python.framework.types.validation_types import (
+    Severity,
+    ValidationDomain,
+    ValidationFinding,
+    ValidationResult,
+)
 from python.framework.validators.scenario_data_validator import ScenarioDataValidator
 
 
@@ -134,8 +139,7 @@ class DataCoverageReportManager:
         Args:
             scenarios: List of scenarios to validate
 
-        Returns:
-            Tuple of (valid_scenarios, invalid_scenarios_with_results)
+        Findings are appended to each scenario's validation_result (mutated in place).
         """
         self._logger.info('🔍 Phase 0.5: Validating data availability...')
 
@@ -148,12 +152,12 @@ class DataCoverageReportManager:
                 for error in date_logic_errors:
                     self._logger.error(f'❌ {scenario.name}: {error}')
 
-                validation_result = ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=date_logic_errors,
-                    warnings=[]
-                )
+                validation_result = ValidationResult(scenario.name, [
+                    ValidationFinding(
+                        severity=Severity.ERROR, check='date_logic',
+                        domain=ValidationDomain.CONFIG,
+                        message=error, scope=scenario.name)
+                    for error in date_logic_errors])
                 scenario.validation_result.append(validation_result)
                 continue
 
@@ -161,13 +165,12 @@ class DataCoverageReportManager:
             report_key = (scenario.data_broker_type, scenario.symbol)
             report = self._data_coverage_reports.get(report_key)
             if not report:
-                validation_result = ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=[
-                        f'No coverage report available for {scenario.data_broker_type}/{scenario.symbol}'],
-                    warnings=[]
-                )
+                validation_result = ValidationResult(scenario.name, [ValidationFinding(
+                    severity=Severity.ERROR, check='coverage_report_missing',
+                    domain=ValidationDomain.DATA,
+                    message=f'No coverage report available for '
+                            f'{scenario.data_broker_type}/{scenario.symbol}',
+                    scope=scenario.name)])
                 scenario.validation_result.append(validation_result)
                 self._logger.error(
                     f'❌ {scenario.name}: No coverage report for {scenario.data_broker_type}/{scenario.symbol}'
@@ -182,12 +185,12 @@ class DataCoverageReportManager:
                 for error in availability_errors:
                     self._logger.error(f'❌ {scenario.name}: {error}')
 
-                validation_result = ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=availability_errors,
-                    warnings=[]
-                )
+                validation_result = ValidationResult(scenario.name, [
+                    ValidationFinding(
+                        severity=Severity.ERROR, check='data_availability',
+                        domain=ValidationDomain.DATA,
+                        message=error, scope=scenario.name)
+                    for error in availability_errors])
                 scenario.validation_result.append(validation_result)
                 continue
 
@@ -201,22 +204,27 @@ class DataCoverageReportManager:
                 self._logger.warning(f'⚠️  {scenario.name}: {warning}')
 
             if signal_errors:
-                validation_result = ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=signal_errors,
-                    warnings=signal_warnings
-                )
+                validation_result = ValidationResult(scenario.name, [
+                    ValidationFinding(
+                        severity=Severity.ERROR, check='signal_availability',
+                        domain=ValidationDomain.DATA,
+                        message=error, scope=scenario.name)
+                    for error in signal_errors] + [
+                    ValidationFinding(
+                        severity=Severity.WARNING, check='signal_availability',
+                        domain=ValidationDomain.DATA,
+                        message=warning, scope=scenario.name)
+                    for warning in signal_warnings])
                 scenario.validation_result.append(validation_result)
                 continue
 
             # All checks passed
-            validation_result = ValidationResult(
-                is_valid=True,
-                scenario_name=scenario.name,
-                errors=[],
-                warnings=signal_warnings
-            )
+            validation_result = ValidationResult(scenario.name, [
+                ValidationFinding(
+                    severity=Severity.WARNING, check='signal_availability',
+                    domain=ValidationDomain.DATA,
+                    message=warning, scope=scenario.name)
+                for warning in signal_warnings])
             scenario.validation_result.append(validation_result)
 
     def validate_after_load(
@@ -235,8 +243,7 @@ class DataCoverageReportManager:
             scenario_packages: Dict mapping scenario index to its ProcessDataPackage
             requirements_map: Requirements map for warmup info
 
-        Returns:
-            Tuple of (valid_scenarios, invalid_scenarios_with_results)
+        Findings are appended to each scenario's validation_result (mutated in place).
         """
         self._logger.info('🔍 Phase 1.5: Validating data quality...')
 

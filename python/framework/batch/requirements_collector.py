@@ -24,7 +24,12 @@ from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.process_data_types import RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.validation_types import ValidationResult
+from python.framework.types.validation_types import (
+    Severity,
+    ValidationDomain,
+    ValidationFinding,
+    ValidationResult,
+)
 from python.framework.types.worker_types import SUBSCRIBE_ALL
 from python.framework.validators.algo_clock_validator import collect_algo_clock_violations
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
@@ -123,12 +128,12 @@ class RequirementsCollector:
             if compat_errors:
                 for error in compat_errors:
                     self._logger.error(f'❌ {scenario.name}: {error}')
-                scenario.validation_result.append(ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=compat_errors,
-                    warnings=[],
-                ))
+                scenario.validation_result.append(ValidationResult(scenario.name, [
+                    ValidationFinding(
+                        severity=Severity.ERROR, check='worker_compat',
+                        domain=ValidationDomain.ALGO,
+                        message=error, scope=scenario.name)
+                    for error in compat_errors]))
                 continue
 
             # === STEP 2: Algo state snapshot pre-flight (#354) ===
@@ -139,11 +144,10 @@ class RequirementsCollector:
             if state_error:
                 self._logger.error(f'❌ {scenario.name}: {state_error}')
                 scenario.validation_result.append(ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=[state_error],
-                    warnings=[],
-                ))
+                    scenario.name, [ValidationFinding(
+                        severity=Severity.ERROR, check='algo_state_snapshot',
+                        domain=ValidationDomain.ALGO,
+                        message=state_error, scope=scenario.name)]))
                 continue
 
             # === STEP 3: Algo clock pre-flight (#359) ===
@@ -155,11 +159,10 @@ class RequirementsCollector:
             if clock_error:
                 self._logger.error(f'❌ {scenario.name}: {clock_error}')
                 scenario.validation_result.append(ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=[clock_error],
-                    warnings=[],
-                ))
+                    scenario.name, [ValidationFinding(
+                        severity=Severity.ERROR, check='algo_clock',
+                        domain=ValidationDomain.ALGO,
+                        message=clock_error, scope=scenario.name)]))
                 continue
 
             # === STEP 3b: Worker-signal subscription pre-flight (#425) ===
@@ -170,11 +173,10 @@ class RequirementsCollector:
             if signal_error:
                 self._logger.error(f'❌ {scenario.name}: {signal_error}')
                 scenario.validation_result.append(ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=[signal_error],
-                    warnings=[],
-                ))
+                    scenario.name, [ValidationFinding(
+                        severity=Severity.ERROR, check='worker_signal_subscription',
+                        domain=ValidationDomain.ALGO,
+                        message=signal_error, scope=scenario.name)]))
                 continue
 
             # === STEP 4: Requirements aggregation ===
@@ -188,12 +190,10 @@ class RequirementsCollector:
                 error_formatted = f'❌ {scenario.name}: Error - {e} \n{traceback.format_exc()}'
                 self._logger.error(error_formatted)
 
-                validation_result = ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=[error_formatted],
-                    warnings=[]
-                )
+                validation_result = ValidationResult(scenario.name, [ValidationFinding(
+                    severity=Severity.ERROR, check='requirements_aggregation',
+                    domain=ValidationDomain.CONFIG,
+                    message=error_formatted, scope=scenario.name)])
                 scenario.validation_result.append(validation_result)
                 continue
 

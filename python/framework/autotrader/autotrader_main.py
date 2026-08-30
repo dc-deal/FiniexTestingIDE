@@ -12,7 +12,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.autotrader_data_preparer import prepare_mock_session_data
@@ -57,10 +57,12 @@ from python.framework.types.scenario_types.scenario_set_types import SignalScena
 from python.framework.types.signal_data_types import (
     SignalObservedSeries,
 )
+from python.framework.types.validation_types import ValidationFinding, ValidationResult
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
-from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
+from python.framework.validators.component_metadata_advisory import check_market_fit
+from python.framework.validators.session_post_run_validator import SessionPostRunValidator
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
 
@@ -136,6 +138,10 @@ class AutotraderMain:
 
         # #348 — Decision event channel (None when the decision logic subscribes to no events)
         self._decision_event_dispatcher: Optional[DecisionEventDispatcher] = None
+
+        # Advisory findings decided BEFORE the run (market fit) and held until the result
+        # exists to carry them. Defaults to empty so a startup abort still reports cleanly.
+        self._startup_findings: List[ValidationFinding] = []
 
         # #332 — Field Study recorder (set when the decision logic is LiveFieldStudy)
         self._field_study_recorder: Optional[FieldStudyRecorder] = None
@@ -241,11 +247,20 @@ class AutotraderMain:
                 raise SwapModeNotImplementedError(
                     self._config.symbol, _swap_spec.swap_mode)
 
-            # === COMPONENT METADATA ADVISORY (#118 Stage 0) ===
-            # Version line + soft (non-blocking) market-fit warning.
-            surface_decision_logic_metadata(
-                self._decision_logic, self._config.broker_type,
-                self._config.symbol, self._session_logger)
+            # === MARKET-FIT ADVISORY (#118 Stage 0) ===
+            # The version line is logged by setup_pipeline, where the logic is built. The
+            # VERDICT is decided here — a live operator must see it BEFORE the first trade,
+            # not after the session — but it is HELD until _collect_results, because the
+            # validation channel lives on the result and the result does not exist yet.
+            self._startup_findings = check_market_fit(
+                self._decision_logic.get_metadata(), self._decision_logic.name,
+                self._config.broker_type, self._config.symbol,
+                self._config.name or self._config.symbol)
+            for finding in self._startup_findings:
+                # INFO, deliberately not WARNING: the VERDICT travels as a Tier-1 finding.
+                # A WARNING would also enter the log pot, and the same advisory would appear
+                # twice in the report — once adjudicated, once as an unadjudicated pot line.
+                self._session_logger.info(f'⚠️  {finding.message}')
 
             # === DRIFT AUDIT (#327) ===
             # Gated by config; live-only by design — DRYRUN orders auto-skipped
@@ -560,12 +575,16 @@ class AutotraderMain:
             except Exception as e:
                 self._session_logger.error(f'Error during Field Study recorder shutdown: {e}')
 
-        # Collect statistics and produce reports
-        return self._collect_results(ticks_processed, ticks_clipped)
+        # Collect → grade → report, the same order the sim batch runs (batch_orchestrator:
+        # PostRunValidator, then BatchReportCoordinator over a finished result).
+        result = self._collect_results(ticks_processed, ticks_clipped)
+        SessionPostRunValidator(result, self._config).validate()
+        self._generate_reports(result)
+        return result
 
     def _collect_results(self, ticks_processed: int, ticks_clipped: int) -> AutoTraderResult:
         """
-        Collect all statistics into AutoTraderResult and produce reports.
+        Collect all statistics into AutoTraderResult.
 
         Args:
             ticks_processed: Total ticks processed
@@ -576,10 +595,6 @@ class AutotraderMain:
         """
         session_duration = time.monotonic() - self._session_start
 
-        # Collect warning/error counts + messages from session logger before closing
-        warnings = self._session_logger.get_buffer_warnings()
-        errors = self._session_logger.get_buffer_errors()
-
         result = AutoTraderResult(
             session_duration_s=session_duration,
             ticks_processed=ticks_processed,
@@ -587,10 +602,11 @@ class AutotraderMain:
             shutdown_mode=self._shutdown_mode,
             operator_interrupted=self._first_interrupt_time > 0,
             emergency_reason=self._emergency_reason,
-            warning_messages=[line for _, line in warnings],
-            error_messages=[line for _, line in errors],
         )
 
+        # A collection failure goes to the SESSION logger (§35): the global one only reaches
+        # global.log and bypasses the summary. The buffers are therefore read AFTER this block
+        # — read before it, the right logger would still be too late to reach the report.
         if self._executor:
             try:
                 result.portfolio_stats = self._executor.portfolio.get_portfolio_statistics()
@@ -598,20 +614,20 @@ class AutotraderMain:
                 result.trade_history = self._executor.get_trade_history()
                 result.order_history = self._executor.get_order_history()
             except Exception as e:
-                self._global_logger.error(f'Error collecting executor stats: {e}')
+                self._session_logger.error(f'Error collecting executor stats: {e}')
 
         if self._decision_logic:
             try:
                 result.decision_statistics = self._decision_logic.get_statistics()
             except Exception as e:
-                self._global_logger.error(f'Error collecting decision stats: {e}')
+                self._session_logger.error(f'Error collecting decision stats: {e}')
 
         if self._worker_orchestrator:
             try:
                 result.worker_statistics = self._worker_orchestrator.get_worker_statistics()
                 result.signal_statistics = self._worker_orchestrator.get_signal_statistics()
             except Exception as e:
-                self._global_logger.error(f'Error collecting worker stats: {e}')
+                self._session_logger.error(f'Error collecting worker stats: {e}')
 
         if self._clipping_monitor:
             result.clipping_summary = self._clipping_monitor.get_session_summary()
@@ -624,6 +640,27 @@ class AutotraderMain:
         if self._worker_orchestrator:
             result.disturbance_episodes += self._worker_orchestrator.get_signal_episodes()
 
+        # Collect the session logger's records before closing — after the collection block
+        # above, so a failure in it still reaches the report (and re-grades the outcome to
+        # FINISHED_WITH_ERRORS, §35). The records travel whole: the level filter belongs to
+        # DERIVE, which is also where the sim side applies it.
+        result.session_logger_buffer = self._session_logger.get_records()
+
+        # Startup advisories held since before the run (market fit) — the channel lives on the
+        # result, so this is the first moment they can be recorded.
+        for finding in self._startup_findings:
+            result.add_session_validation_result(
+                ValidationResult(finding.scope, [finding]))
+
+        return result
+
+    def _generate_reports(self, result: AutoTraderResult) -> None:
+        """
+        Write all session artifacts, print the post-session summary, close the loggers.
+
+        Args:
+            result: The finished (and already graded) session result to report
+        """
         # === REPORTS === all run artifacts + post-session summary, delegated to
         # the live report coordinator (mirrors the sim BatchReportCoordinator —
         # consumes the finished result).
@@ -645,8 +682,6 @@ class AutotraderMain:
         self._session_logger.close()
         self._summary_logger.close()
         self._global_logger.close()
-
-        return result
 
     # =========================================================================
     # SIGNAL HANDLING

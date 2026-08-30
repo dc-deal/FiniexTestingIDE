@@ -17,7 +17,13 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.validation_types import ValidationResult
+from python.framework.exceptions.mount_errors import ScenarioPackageMissingError
+from python.framework.types.validation_types import (
+    Severity,
+    ValidationDomain,
+    ValidationFinding,
+    ValidationResult,
+)
 from python.framework.utils.process_serialization_utils import time_range_from_transport_ticks
 from python.framework.utils.time_utils import ensure_utc_aware, format_duration
 
@@ -371,23 +377,23 @@ class ScenarioDataValidator:
             scenario_packages: Dict mapping scenario index to its ProcessDataPackage
             requirements_map: Requirements map for warmup info
 
-        Returns:
-            Tuple of (valid_scenarios, invalid_scenarios_with_results)
+        Findings are appended to each scenario's validation_result (mutated in place).
         """
 
-        for idx, scenario in enumerate(scenarios):
-            # Get scenario-specific data package
-            scenario_package = scenario_packages.get(idx)
+        for scenario in scenarios:
+            # Key by the scenario's OWN index, never by the loop position. The index is assigned
+            # once at config load (`scenario_config_loader.py`) and is what fills the dict
+            # (`shared_data_preparator.py` — `scenario_packages[scenario.scenario_index]`). This
+            # method receives the FILTERED list (`mount_preparer.py` → `_valid(scenarios)`), so a
+            # position stops matching the index the moment one scenario was excluded. Same lookup:
+            # `execution_coordinator.py` and `autotrader_data_preparer.py`.
+            scenario_package = scenario_packages.get(scenario.scenario_index)
             if not scenario_package:
-                # Missing package - create error result
-                result = ValidationResult(
-                    is_valid=False,
-                    scenario_name=scenario.name,
-                    errors=[
-                        f'No data package found for scenario index {idx}'],
-                    warnings=[]
-                )
-                continue
+                raise ScenarioPackageMissingError(
+                    f"No data package for scenario '{scenario.name}' "
+                    f'(index {scenario.scenario_index}, {len(scenario_packages)} package(s) '
+                    f'prepared) — the preparator and this validator disagree about what was '
+                    f'prepared')
 
             result = self._validate_single_scenario(
                 scenario, scenario_package, requirements_map
@@ -403,7 +409,7 @@ class ScenarioDataValidator:
                 # Log errors
                 for error in result.errors:
                     self._logger.error(f'❌ {scenario.name}: {error}')
-                    scenario.validation_result.append(result)
+                scenario.validation_result.append(result)
 
     def _validate_single_scenario(
         self,
@@ -422,50 +428,49 @@ class ScenarioDataValidator:
         Returns:
             ValidationResult with errors and warnings
         """
-        errors = []
-        warnings = []
+        findings: List[ValidationFinding] = []
 
         # Get coverage report for this symbol
         report_key = (scenario.data_broker_type, scenario.symbol)
         report = self._data_coverage_reports.get(report_key)
         if not report:
-            errors.append(
-                f'No coverage report available for {scenario.data_broker_type}/{scenario.symbol}')
-            return ValidationResult(
-                is_valid=False,
-                scenario_name=scenario.name,
-                errors=errors,
-                warnings=warnings
-            )
+            return ValidationResult(scenario.name, [ValidationFinding(
+                severity=Severity.ERROR, check='coverage_report_missing',
+                domain=ValidationDomain.DATA,
+                message=f'No coverage report available for '
+                        f'{scenario.data_broker_type}/{scenario.symbol}',
+                scope=scenario.name)])
+
+        # Each sub-validator returns plain message lists; they are attributed to their own
+        # check HERE, so a finding still names its origin after they are merged.
+        def _as(messages: List[str], severity: Severity, check: str) -> List[ValidationFinding]:
+            return [ValidationFinding(
+                severity=severity, check=check, domain=ValidationDomain.DATA,
+                message=message, scope=scenario.name) for message in messages]
 
         # === VALIDATION 1: start_date not in gap ===
         start_date_errors, start_date_warnings = self._validate_start_date_not_in_gap(
             scenario, report)
-        errors.extend(start_date_errors)
-        warnings.extend(start_date_warnings)
+        findings.extend(_as(start_date_errors, Severity.ERROR, 'start_date_in_gap'))
+        findings.extend(_as(start_date_warnings, Severity.WARNING, 'start_date_in_gap'))
 
         # === VALIDATION 2: Tick stretch gaps ===
         stretch_errors = self._validate_tick_stretch(
             scenario, report, scenario_package)
-        errors.extend(stretch_errors)
+        findings.extend(_as(stretch_errors, Severity.ERROR, 'tick_stretch_gap'))
 
         # === VALIDATION 3: Warmup quality ===
         warmup_errors, warmup_warnings = self._validate_warmup_quality(
             scenario, scenario_package, requirements_map
         )
-        errors.extend(warmup_errors)
-        warnings.extend(warmup_warnings)
+        findings.extend(_as(warmup_errors, Severity.ERROR, 'warmup_quality'))
+        findings.extend(_as(warmup_warnings, Severity.WARNING, 'warmup_quality'))
 
         # === VALIDATION 4: Signal gaps in the tick stretch ===
         signal_errors = self._validate_signal_stretch(scenario, scenario_package)
-        errors.extend(signal_errors)
+        findings.extend(_as(signal_errors, Severity.ERROR, 'signal_stretch_gap'))
 
-        return ValidationResult(
-            is_valid=len(errors) == 0,
-            scenario_name=scenario.name,
-            errors=errors,
-            warnings=warnings
-        )
+        return ValidationResult(scenario.name, findings)
 
     def _validate_start_date_not_in_gap(
         self,

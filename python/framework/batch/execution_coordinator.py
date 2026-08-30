@@ -4,6 +4,7 @@ Phase 2: Coordinates sequential and parallel scenario execution
 
 Extracted from BatchOrchestrator to separate execution logic.
 """
+from pathlib import Path
 import pickle
 import time
 import traceback
@@ -22,7 +23,13 @@ from python.framework.types.live_types.live_stats_config_types import (
 )
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.types.validation_types import ValidationResult, get_validation_list_report
+from python.framework.types.validation_types import (
+    Severity,
+    ValidationDomain,
+    ValidationFinding,
+    ValidationResult,
+    get_validation_list_report,
+)
 from python.framework.utils.runtime_env_utils import is_debug_execution
 
 
@@ -44,7 +51,7 @@ class ExecutionCoordinator:
         app_config: AppConfigManager,
         live_stats_config: LiveStatsExportConfig,
         logger: AbstractLogger,
-        run_group: str = None
+        log_root: Path = None
     ):
         """
         Initialize execution coordinator.
@@ -55,14 +62,14 @@ class ExecutionCoordinator:
             app_config: Application configuration manager
             live_stats_config: Live stats configuration
             logger: Logger instance for status messages
-            run_group: Optional grouping dir for the run logs (e.g. 'sweeps/<sweep_id>', #419)
+            log_root: The category root the run logs land under (file_logging.run_logs)
         """
         self._scenario_set_name = scenario_set_name
         self._run_timestamp = run_timestamp
         self._app_config = app_config
         self._live_stats_config = live_stats_config
         self._logger = logger
-        self._run_group = run_group
+        self._log_root = log_root
 
     def execute_sequential(
         self,
@@ -107,11 +114,14 @@ class ExecutionCoordinator:
                 scenario_set_name=self._scenario_set_name,
                 run_timestamp=self._run_timestamp,
                 live_stats_config=self._live_stats_config,
-                run_group=self._run_group
+                log_root=self._log_root
             )
 
             # === Use scenario-specific package ===
-            scenario_data = scenario_packages.get(idx)
+            # Keyed by the scenario's own index (assigned at config load), not by the loop
+            # position — they coincide here only because this list is the COMPLETE, ordered
+            # one. Same lookup: `scenario_data_validator.py`, `autotrader_data_preparer.py`.
+            scenario_data = scenario_packages.get(scenario.scenario_index)
             if scenario_data is None:
                 # Should never happen if validation passed
                 results[idx] = self._create_validation_failed_result(
@@ -199,11 +209,15 @@ class ExecutionCoordinator:
                     scenario_index=idx,
                     scenario_set_name=self._scenario_set_name,
                     run_timestamp=self._run_timestamp,
-                    live_stats_config=self._live_stats_config
+                    live_stats_config=self._live_stats_config,
+                    log_root=self._log_root
                 )
 
                 # === Use scenario-specific package ===
-                scenario_data = scenario_packages.get(idx)
+                # Keyed by the scenario's own index (assigned at config load), not by the loop
+                # position — they coincide here only because this list is the COMPLETE, ordered
+                # one. Same lookup: `scenario_data_validator.py`, `autotrader_data_preparer.py`.
+                scenario_data = scenario_packages.get(scenario.scenario_index)
                 if scenario_data is None:
                     results[idx] = self._create_validation_failed_result(
                         scenario, idx, live_queue,  f'❌ No data package for scenario {idx}: {scenario.name} - data packages: {len(scenario_packages)}')
@@ -310,12 +324,10 @@ class ExecutionCoordinator:
         # append an additional error, if nessecary (commonly used right before execution)
         if (additional_error_message is not None):
             self._logger.error(additional_error_message)
-            validation_error = ValidationResult(
-                is_valid=False,
-                scenario_name=scenario.name,
-                errors=[additional_error_message],
-                warnings=[]
-            )
+            validation_error = ValidationResult(scenario.name, [ValidationFinding(
+                severity=Severity.ERROR, check='scenario_execution',
+                domain=ValidationDomain.EXECUTION,
+                message=additional_error_message, scope=scenario.name)])
             scenario.validation_result.append(validation_error)
 
         validation_result = scenario.validation_result

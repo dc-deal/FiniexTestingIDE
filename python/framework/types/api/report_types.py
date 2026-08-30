@@ -7,6 +7,8 @@ surface. Pydantic (not @dataclass) because the API serializes it directly — sa
 exception as api_types.py.
 """
 
+from datetime import datetime
+from enum import StrEnum
 from typing import Any, Optional
 
 from pydantic import BaseModel
@@ -80,9 +82,14 @@ class TradeAnalytics(BaseModel):
     currency: str = ''      # account currency this aggregate is over
     trade_count: int = 0    # trades in this currency group
     expectancy: float       # mean R over trades with a defined R
-    avg_win_r: float        # mean R of winners (R-defined)
-    avg_loss_r: float       # mean R of losers (R-defined)
+    # None = not measured (no R-defined winner / loser) — never 0.0, which a reader cannot
+    # tell from a measured zero. Gate on the counts, not on r_trade_count: a run can have
+    # R-defined trades and still no winner among them.
+    avg_win_r: float | None     # mean R of winners (R-defined)
+    avg_loss_r: float | None    # mean R of losers (R-defined)
     r_trade_count: int      # trades with a defined R (had a stop loss)
+    r_win_count: int = 0    # R-defined trades that won
+    r_loss_count: int = 0   # R-defined trades that lost
     avg_mae_winners: float  # mean MAE P&L on winners — SL too tight if large vs win size
     avg_mae_losers: float   # mean MAE P&L on losers
     avg_mfe_losers: float   # mean MFE P&L on losers — "left on the table" read
@@ -147,12 +154,18 @@ class PortfolioUnitRow(BaseModel):
     total_trades: int
     winning_trades: int
     losing_trades: int
+    # Ratio 0..1. A 0.0 with total_trades == 0 means NOT MEASURED — the discriminator is
+    # total_trades on this same row. Deliberately not widened to None: unlike the R fields,
+    # that discriminator is complete, and win_rate is a rankable sweep objective (#390).
     win_rate: float
-    profit_factor: float
+    # None = undefined: either the run had no losing trade, or it never traded at all.
+    # 0.0 therefore always means MEASURED and zero.
+    profit_factor: float | None
     total_profit: float
     total_loss: float
     net_profit: float       # total_profit - total_loss
     max_drawdown: float
+    max_dd_pct: float = 0.0     # max_drawdown / max_equity — derived here, never in a renderer
     total_fees: float
     # Full projection — the per-scenario linear block renders purely from these (defaulted:
     # additive columns; the per-currency aggregated section stays on PortfolioAggregator).
@@ -166,6 +179,15 @@ class PortfolioUnitRow(BaseModel):
     current_balance: float = 0.0
     initial_balance: float = 0.0
     conversion_rate: float | None = None
+    # Currency split from the broker config (#265), stamped at capture — a renderer must
+    # never split the symbol string itself.
+    base_currency: str = ''
+    quote_currency: str = ''
+    # Spot dual-balance estimate — derived here, never in a renderer
+    spot_est_current: float = 0.0
+    spot_est_initial: float = 0.0
+    spot_est_pnl: float = 0.0
+    spot_est_pnl_pct: float = 0.0
     total_spread_cost: float = 0.0
     total_commission: float = 0.0
     total_swap: float = 0.0
@@ -185,8 +207,13 @@ class PortfolioAggregateRow(BaseModel):
     total_trades: int
     winning_trades: int
     losing_trades: int
+    # Ratio 0..1. A 0.0 with total_trades == 0 means NOT MEASURED — the discriminator is
+    # total_trades on this same row. Deliberately not widened to None: unlike the R fields,
+    # that discriminator is complete, and win_rate is a rankable sweep objective (#390).
     win_rate: float
-    profit_factor: float
+    # None = undefined: either the run had no losing trade, or it never traded at all.
+    # 0.0 therefore always means MEASURED and zero.
+    profit_factor: float | None
     total_profit: float
     total_loss: float
     net_profit: float
@@ -300,8 +327,16 @@ class ScenarioDetailsReport(BaseModel):
 class RunInfo(BaseModel):
     """One discoverable run in the report store — identity only, no report content."""
     run_id: str
-    group: str              # 'scenario_sets' (sim) | 'autotrader' (live)
+    # The run's CATEGORY, which is also where its logs live (file_logging.run_logs):
+    # 'single_runs' (a standalone sim run) | 'sweeps' (one combination of a parameter
+    # sweep, also listed ranked under /sweeps) | 'autotrader' (a live session).
+    group: str
     name: str               # scenario-set name (sim) | profile name (live)
+    # Whether this run persisted report artifacts. A run can exist as logs alone — a test
+    # session writes no reports — and such a run is listed rather than hidden, because an
+    # index that silently omits runs is its own surprise. False means every report route
+    # will answer 404 for this id.
+    has_reports: bool = False
 
 
 class RunListResponse(BaseModel):
@@ -318,7 +353,7 @@ class RunSummaryCurrency(BaseModel):
     """
     currency: str
     net_pnl: float          # ← PortfolioAggregateRow.net_profit
-    profit_factor: float    # ← PortfolioAggregateRow.profit_factor
+    profit_factor: float | None  # ← PortfolioAggregateRow (None = no losing trade)
     win_rate: float         # ← PortfolioAggregateRow.win_rate
     max_drawdown: float     # ← PortfolioAggregateRow.max_drawdown
     total_fees: float       # ← PortfolioAggregateRow.total_fees
@@ -326,9 +361,11 @@ class RunSummaryCurrency(BaseModel):
     winning_trades: int
     losing_trades: int
     expectancy: float       # ← TradeAnalytics.expectancy (mean R) — the sweep objective
-    avg_win_r: float        # ← TradeAnalytics.avg_win_r
-    avg_loss_r: float       # ← TradeAnalytics.avg_loss_r
+    avg_win_r: float | None     # ← TradeAnalytics (None = no R-defined winner)
+    avg_loss_r: float | None    # ← TradeAnalytics (None = no R-defined loser)
     r_trade_count: int      # ← TradeAnalytics.r_trade_count
+    r_win_count: int = 0
+    r_loss_count: int = 0
 
 
 class RunSummary(BaseModel):
@@ -387,15 +424,15 @@ class RunResultRow(BaseModel):
     # KPIs (the rankable objective fields)
     net_pnl: float = 0.0
     expectancy: float = 0.0
-    profit_factor: float = 0.0
+    profit_factor: float | None = None  # None = undefined (no losing trade)
     win_rate: float = 0.0
     max_drawdown: float = 0.0
     total_fees: float = 0.0
     total_trades: int = 0
     winning_trades: int = 0
     losing_trades: int = 0
-    avg_win_r: float = 0.0
-    avg_loss_r: float = 0.0
+    avg_win_r: float | None = None
+    avg_loss_r: float | None = None
     r_trade_count: int = 0
     orders_sent: int = 0
     orders_executed: int = 0
@@ -403,6 +440,47 @@ class RunResultRow(BaseModel):
     sl_tp_triggered: int = 0
     # Weakest SIGNAL channel of the run (#433); None = no SIGNAL worker was involved
     signal_fresh_ratio: float | None = None
+
+
+class SweepSummary(BaseModel):
+    """
+    One sweep's at-a-glance line, derived from its ledger rows (#390).
+
+    A sweep is not a run — it is a family of them. The run index lists standalone runs; this is
+    the entry point for the other kind, and a consumer drills from here into the combinations.
+    """
+    sweep_id: str
+    started: Optional[datetime] = None   # earliest run start in the sweep (UTC)
+    duration_s: float = 0.0              # last - first run start (no per-run end in the ledger)
+    run_count: int = 0                   # distinct combinations (run_ids)
+    ok_count: int = 0
+    error_count: int = 0
+    decision_logic_type: str = ''
+    decision_version: str = ''
+    base_config: str = ''                # the swept scenario set (sweep tag stripped)
+    symbols: list[str] = []
+    objective: str = ''
+    maximize: bool = True
+
+
+class SweepListResponse(BaseModel):
+    """Every recorded sweep, newest first."""
+    sweeps: list[SweepSummary]
+    count: int
+
+
+class SweepDetailResponse(BaseModel):
+    """
+    One sweep's combinations, ranked by its own objective.
+
+    Ranked, not alphabetical: the question a sweep answers is which combination won, and each
+    row carries its `run_id` so a consumer can open that run through the report routes.
+    """
+    sweep_id: str
+    objective: str
+    maximize: bool
+    combinations: list[RunResultRow]
+    count: int
 
 
 class RunMetaReport(BaseModel):
@@ -457,7 +535,7 @@ class BlockSplittingSymbolRow(BaseModel):
 class BlockSplittingReport(BaseModel):
     """
     Block-splitting disposition (Profile Runs, sim-only): per-symbol rows + the cross-symbol
-    aggregate (rendered only when more than one symbol). The GOOD/MODERATE/HIGH/UNRELIABLE label
+    aggregate (rendered only when more than one symbol). The GOOD/MODERATE/HIGH/SEVERE label
     is a display class applied by the presenter — only the facts + ratios live here.
     """
     symbols: list[BlockSplittingSymbolRow] = []
@@ -478,6 +556,9 @@ class WorkerStatRow(BaseModel):
     max_time_ms: float = 0.0
     compute_basis: str = 'live'     # #420 cadence basis (live / bar_close)
     last_compute_tick: int = -1     # #420 tick index of the last real compute (idle telemetry)
+    # Cadence, derived here so every surface reads the same figure
+    compute_ratio_pct: float = 0.0  # call_count / the unit's ticks_processed
+    ticks_idle: int = 0             # ticks since the last real compute
 
 
 class WorkerDecisionUnitRow(BaseModel):
@@ -504,6 +585,7 @@ class WorkerDecisionUnitRow(BaseModel):
     ticks_processed: int = 0
     parallel_workers: bool = False
     parallel_time_saved_ms: float = 0.0
+    parallel_avg_saved_per_tick_ms: float = 0.0     # parallel_time_saved_ms / ticks_processed
     # per-worker timing
     workers: list[WorkerStatRow] = []
 
@@ -592,6 +674,10 @@ class ProfilingAggregate(BaseModel):
     p95_processing_ms: float = 0.0
     suggested_budget_ms: float = 0.0    # P95 + 10% margin
     budget_active: bool = False
+    # How many scenarios processed a tick slower than their own fastest 5% of tick intervals.
+    # A COUNT, not a verdict — whether that warrants a warning is decided by PostRunValidator
+    # (_check_budget). The console reads it only to know whether a budget hint is worth showing.
+    scenarios_over_p5: int = 0
     # Clipping roll-up (only meaningful when budget_active)
     clipping_total_ticks: int = 0
     clipping_total_kept: int = 0
@@ -776,11 +862,44 @@ class FeedStabilityReport(BaseModel):
     source_count: int = 0
 
 
+class WarningTier(StrEnum):
+    """
+    Which CHANNEL produced a warning row — the tier IS the origin question, answered once.
+
+    Named for what the value means rather than for its severity: 'major' / 'minor' read like
+    a severity and are not one. The VALUES stay as they are because they are the wire contract
+    the API and FiniexViewer already consume; only the names are ours to make honest.
+    """
+    VALIDATOR_PRODUCED = 'major'    # Tier 1 — a check decided it, so check/domain are filled
+    LOGGER_PRODUCED = 'minor'       # Tier 2 — the log pot: an observation nobody adjudicated
+
+
 class WarningRow(BaseModel):
     """One warning notice (#395). See docs/architecture/warnings_errors_tiers.md."""
-    tier: str = 'major'             # 'major' (Tier 1, validator-produced) | 'minor' (Tier 2, log pot)
+    tier: WarningTier = WarningTier.VALIDATOR_PRODUCED
     scope: str = 'run'              # 'run' (batch-global) | unit name (per-scenario / session)
     message: str = ''
+    # Origin — WHICH ASSERTION decided this. `check` is its stable id, `domain` its area. Both
+    # are empty on a LOGGER_PRODUCED row: no assertion decided it, and the channel is already
+    # named by `tier` — putting it here too would be the same value in two fields.
+    check: str = ''
+    domain: str = ''
+
+
+class LogEntryRow(BaseModel):
+    """
+    One entry from a logger's pot, with the fields the record carries.
+
+    The buffered `LogRecord` reaches DERIVE intact; reducing it to its message here would make
+    level, time and scope unreachable for every surface behind this model — console, artifact
+    and API alike (#391). The two times are §9's pair: `observed_at` is when we recorded it,
+    `event_time` is the run's own clock, absent when none was attached.
+    """
+    level: str
+    observed_at: datetime
+    scope: str = ''
+    message: str = ''
+    event_time: Optional[datetime] = None
 
 
 class UnitErrorRow(BaseModel):
@@ -790,7 +909,7 @@ class UnitErrorRow(BaseModel):
     error_type: str = ''            # ProcessResult villain (uncaught exception)
     error_message: str = ''
     validation_errors: list[str] = []   # ValidationResult.errors (is_valid=False)
-    logged_errors: list[str] = []       # scenario/session logger ERROR pot (§35)
+    logged_errors: list[LogEntryRow] = []   # scenario/session logger ERROR pot (§35)
     traceback: str = ''
 
 
@@ -806,7 +925,10 @@ class WarningsErrorsOutcome(BaseModel):
     first_failure_name: str = ''
     first_failure_error: str = ''
     emergency_reason: str = ''      # live villain
-    shutdown_mode: str = ''         # live outcome ('normal' | 'emergency')
+    shutdown_mode: str = ''         # live outcome ('normal' | 'emergency'); '' on sim (not applicable)
+    # An operator Ctrl+C also arrives as shutdown_mode='emergency', so the mode alone cannot
+    # separate a deliberate stop from a crash — this flag is the discriminator get_outcome() uses.
+    operator_interrupted: bool = False
 
 
 class WarningsErrorsReport(BaseModel):
@@ -876,6 +998,7 @@ class AggregatedPortfolioRow(BaseModel):
     orders_executed: int = 0
     orders_rejected: int = 0
     sl_tp_triggered: int = 0
+    execution_rate_pct: float = 0.0     # orders_executed / orders_sent
     # Pending
     pending_total_resolved: int = 0
     pending_total_filled: int = 0

@@ -18,6 +18,7 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.log_level import LogLevel
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.utils.console_renderer import ConsoleRenderer
 
@@ -62,7 +63,10 @@ class LiveSessionSummary:
         print(f'  Duration:       {result.session_duration_s:.1f}s')
         print(f'  Ticks:          {result.ticks_processed:,}')
         print(f'  Clipped:        {result.ticks_clipped:,}')
-        print(f'  Shutdown:       {result.shutdown_mode}')
+        # A Ctrl+C also ends as 'emergency' — name it, so a deliberate stop does not
+        # read like a crash on the operator's own screen.
+        operator_stop = ' (operator stop)' if result.operator_interrupted else ''
+        print(f'  Shutdown:       {result.shutdown_mode}{operator_stop}')
         if result.shutdown_mode == 'emergency' and result.emergency_reason:
             print(renderer.red(f'  ❌ EMERGENCY CAUSE: {result.emergency_reason}'))
         outcome = (self._warnings_errors_report.outcome.run_outcome
@@ -70,7 +74,7 @@ class LiveSessionSummary:
         if outcome == RunOutcome.FINISHED_WITH_ERRORS.value:
             print(renderer.yellow(
                 '  ⚠️  FINISHED WITH ERRORS — '
-                f'{len(result.error_messages)} error(s) logged during the session'))
+                f'{result.count_logged(LogLevel.ERROR)} error(s) logged during the session'))
 
         if result.portfolio_stats:
             pnl = result.portfolio_stats.total_profit - result.portfolio_stats.total_loss
@@ -84,8 +88,10 @@ class LiveSessionSummary:
 
         # Trade analytics (#389/#393) — model-sourced, one line per account currency.
         for a in (self._trade_report.analytics if self._trade_report else []):
+            win_r = f'{a.avg_win_r:+.2f}' if a.avg_win_r is not None else 'n/a'
+            loss_r = f'{a.avg_loss_r:+.2f}' if a.avg_loss_r is not None else 'n/a'
             print(f'  Analytics:      expectancy {a.expectancy:+.3f}R | '
-                  f'win-R {a.avg_win_r:+.2f} / loss-R {a.avg_loss_r:+.2f} | '
+                  f'win-R {win_r} / loss-R {loss_r} | '
                   f'R-trades {a.r_trade_count}/{a.trade_count} ({a.currency})')
 
         clipping = result.clipping_summary

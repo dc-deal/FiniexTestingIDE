@@ -7,7 +7,7 @@ Deterministic: same data + same config = same results.
 """
 
 import json
-import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -17,7 +17,10 @@ from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.io.broker_report_io import read_broker_report
 from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.log_level import LogLevel
+from python.framework.types.log_record_types import LogRecord
 from python.framework.types.run_outcome_types import RunOutcome
+from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'
 
@@ -32,8 +35,7 @@ def mock_session():
     trader = AutotraderMain(config)
     result = trader.run()
     yield result, trader._run_dir
-    if trader._run_dir and trader._run_dir.exists():
-        shutil.rmtree(trader._run_dir)
+    remove_run_dir(trader._run_dir)
 
 
 class TestAutotraderMockSession:
@@ -76,14 +78,14 @@ class TestAutotraderMockSession:
         # === Clean session — no unexpected warnings or errors ===
         # Spot mode may leave positions open until scenario_end (no SHORT reversal)
         unexpected_warnings = [
-            w for w in result.warning_messages
+            w for w in logged_messages(result, LogLevel.WARNING)
             if 'positions remain open' not in w
         ]
         assert len(unexpected_warnings) == 0, (
             f'Unexpected warnings: {unexpected_warnings[:5]}'
         )
-        assert len(result.error_messages) == 0, (
-            f'Unexpected errors: {result.error_messages[:5]}'
+        assert len(logged_messages(result, LogLevel.ERROR)) == 0, (
+            f'Unexpected errors: {logged_messages(result, LogLevel.ERROR)[:5]}'
         )
 
         # === Decision logic produced trades ===
@@ -223,7 +225,20 @@ class TestSessionExitCode:
 
         This replaces the pinned assertion that held the old behaviour in place.
         """
+        def _rec(level, message):
+            return LogRecord(level=level, timestamp=datetime.now(timezone.utc),
+                             scope='s', message=message)
+
         result = AutoTraderResult(shutdown_mode='normal',
-                                  error_messages=['something went wrong'])
+                                  session_logger_buffer=[_rec(LogLevel.ERROR,
+                                                              'something went wrong')])
         assert result.get_outcome() == RunOutcome.FINISHED_WITH_ERRORS
         assert result.get_exit_code() == 3
+
+        # The other half of the contract: the grading reads the ERROR level, not the mere
+        # presence of records. A chatty but clean session stays SUCCESS.
+        clean = AutoTraderResult(shutdown_mode='normal',
+                                 session_logger_buffer=[_rec(LogLevel.WARNING, 'noisy'),
+                                                        _rec(LogLevel.INFO, 'chatter')])
+        assert clean.get_outcome() == RunOutcome.SUCCESS
+        assert clean.get_exit_code() == 0

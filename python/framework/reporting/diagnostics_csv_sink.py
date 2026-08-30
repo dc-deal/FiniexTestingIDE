@@ -80,7 +80,7 @@ class DiagnosticsCsvSink:
         filename = f'{self._name}_{scenario_suffix}.csv' if scenario_suffix else f'{self._name}.csv'
         out_path = run_dir / filename
         try:
-            with open(out_path, 'w', newline='') as f:
+            with open(out_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(
                     f, fieldnames=self._columns, extrasaction='ignore')
                 writer.writeheader()

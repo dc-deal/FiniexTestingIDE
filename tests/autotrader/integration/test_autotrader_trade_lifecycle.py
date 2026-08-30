@@ -7,13 +7,14 @@ Validates fill prices, close reasons, portfolio integrity, and log output
 through LiveTradeExecutor — complementary to the backtesting suite.
 """
 
-import shutil
 
 import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.types.log_level import LogLevel
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
+from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/trade_lifecycle_test.json'
 
@@ -28,8 +29,7 @@ def session_result():
     trader = AutotraderMain(config)
     result = trader.run()
     yield result
-    if trader._run_dir and trader._run_dir.exists():
-        shutil.rmtree(trader._run_dir)
+    remove_run_dir(trader._run_dir)
 
 
 class TestNormalCycle:
@@ -48,8 +48,8 @@ class TestNormalCycle:
         assert len(session_result.order_history) > 0, 'No orders recorded'
 
     def test_no_errors(self, session_result):
-        assert len(session_result.error_messages) == 0, (
-            f'Unexpected errors: {session_result.error_messages}'
+        assert len(logged_messages(session_result, LogLevel.ERROR)) == 0, (
+            f'Unexpected errors: {logged_messages(session_result, LogLevel.ERROR)}'
         )
 
     def test_trade_has_valid_entry_exit(self, session_result):
@@ -180,5 +180,4 @@ def cleanup_log_dir():
     created = []
     yield created
     for d in created:
-        if d and d.exists():
-            shutil.rmtree(d)
+        remove_run_dir(d)

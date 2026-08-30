@@ -134,11 +134,12 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         for c in summary.currencies:
             # Expectancy (mean R) is only meaningful with stop-loss trades.
             exp_str = f'{c.expectancy:+.2f}R' if c.r_trade_count > 0 else 'n/a'
+            pf_str = f'{c.profit_factor:.2f}' if c.profit_factor is not None else 'n/a'
             print(
                 f'{c.currency}:'.ljust(20)
                 + f'P&L {renderer.pnl(c.net_pnl, c.currency)} | '
                 + f'Win {c.win_rate * 100:.1f}% ({c.winning_trades}W/{c.losing_trades}L) | '
-                + f'PF {c.profit_factor:.2f} | '
+                + f'PF {pf_str} | '
                 + f'Exp {exp_str} | '
                 + f'Fees {format_currency_simple(c.total_fees, c.currency)}'
             )
@@ -406,9 +407,8 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         losing = h.losing_trades
         win_rate = h.win_rate
 
-        # Profit factor (executive formula: total_profit / abs(total_loss))
-        profit_factor = h.total_profit / \
-            abs(h.total_loss) if h.total_loss != 0 else 0
+        # Profit factor comes from the model — the same figure every surface renders
+        pf_str = f'{h.profit_factor:.2f}' if h.profit_factor is not None else 'n/a'
 
         scenario_count = h.unit_count
 
@@ -428,8 +428,7 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         orders_sent = row.orders_sent
         orders_executed = row.orders_executed
         orders_rejected = row.orders_rejected
-        exec_rate = (orders_executed / orders_sent *
-                     100) if orders_sent > 0 else 0
+        exec_rate = row.execution_rate_pct
 
         print('')
         print(f'Total Trades:       {total_trades} ({winning}W / {losing}L)')
@@ -438,7 +437,7 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             f'Avg Win:            {format_currency_simple(row.avg_win, currency)}')
         print(
             f'Avg Loss:           {format_currency_simple(row.avg_loss, currency)}')
-        print(f'Profit Factor:      {profit_factor:.2f}')
+        print(f'Profit Factor:      {pf_str}')
 
         if orders_rejected > 0:
             print(

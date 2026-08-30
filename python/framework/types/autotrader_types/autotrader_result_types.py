@@ -8,6 +8,8 @@ from typing import List, Optional
 
 from python.framework.types.autotrader_types.clipping_monitor_types import ClippingSessionSummary
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
+from python.framework.types.log_level import LogLevel
+from python.framework.types.log_record_types import LogRecord
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats,
     WorkerPerformanceStats,
@@ -18,6 +20,7 @@ from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
+from python.framework.types.validation_types import ValidationResult
 
 
 @dataclass
@@ -43,9 +46,12 @@ class AutoTraderResult:
         market_data_tick_stats: Market-data resolution counters (#451 Part 4)
         shutdown_mode: How the session ended ('normal' or 'emergency')
         operator_interrupted: Whether the operator requested the stop (SIGINT)
-        warning_messages: Warning messages from session logger buffer
-        error_messages: Error messages from session logger buffer
+        session_logger_buffer: The session logger's records (level, times, scope, message).
+            Mirrors ProcessResult.scenario_logger_buffer, so both pipelines hand the reporting
+            stage the same shape and the level filter lives at DERIVE, not here
         emergency_reason: Fatal cause when shutdown_mode == 'emergency' (None otherwise)
+        session_validation_result: Post-run advisory findings (Tier 1) — the live counterpart
+            of BatchExecutionSummary.batch_validation_result
     """
     session_duration_s: float = 0.0
     ticks_processed: int = 0
@@ -63,8 +69,17 @@ class AutoTraderResult:
     shutdown_mode: str = 'normal'
     operator_interrupted: bool = False
     emergency_reason: Optional[str] = None
-    warning_messages: List[str] = field(default_factory=list)
-    error_messages: List[str] = field(default_factory=list)
+    session_logger_buffer: List[LogRecord] = field(default_factory=list)
+    session_validation_result: List[ValidationResult] = field(default_factory=list)
+
+    def add_session_validation_result(self, result: ValidationResult) -> None:
+        """
+        Append a post-run validation result to the session's validation channel.
+
+        Args:
+            result: The validation result to record
+        """
+        self.session_validation_result.append(result)
 
     def get_outcome(self) -> RunOutcome:
         """
@@ -82,10 +97,25 @@ class AutoTraderResult:
         if self.shutdown_mode == 'emergency' and not self.operator_interrupted:
             return RunOutcome.FAILED
 
-        if self.error_messages:
+        if self.count_logged(LogLevel.ERROR):
             return RunOutcome.FINISHED_WITH_ERRORS
 
         return RunOutcome.SUCCESS
+
+    def count_logged(self, level: LogLevel) -> int:
+        """
+        How many session-logger records of one level the run produced.
+
+        A query on the result, so the renderers that show the count do not each filter the
+        buffer themselves (§391 — PRESENT renders, it does not compute).
+
+        Args:
+            level: The level to count
+
+        Returns:
+            The number of matching records
+        """
+        return sum(1 for record in self.session_logger_buffer if record.level == level)
 
     def get_exit_code(self) -> int:
         """

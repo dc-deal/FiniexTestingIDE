@@ -25,10 +25,10 @@ def write_run_meta_report(report: RunMetaReport, run_dir: Path) -> Path:
         Path of the written artifact
     """
     path = Path(run_dir) / RUN_META_ARTIFACT
-    path.write_text(report.model_dump_json(indent=2))
+    path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
 
 def read_run_meta_report(path: Path) -> RunMetaReport:
     """Read a persisted run-meta report artifact."""
-    return RunMetaReport.model_validate_json(Path(path).read_text())
+    return RunMetaReport.model_validate_json(Path(path).read_bytes())

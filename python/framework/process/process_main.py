@@ -12,6 +12,7 @@ from python.framework.process.process_tick_loop import execute_tick_loop
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.types.live_types.live_stats_config_types import ScenarioStatus
+from python.framework.types.log_level import LogLevel
 from python.framework.types.process_data_types import (
     LOGGED_ERRORS_TYPE,
     ProcessDataPackage,
@@ -19,7 +20,6 @@ from python.framework.types.process_data_types import (
     ProcessScenarioConfig,
 )
 from python.framework.utils.file_utils import file_name_for_scenario
-from python.framework.validators.component_metadata_advisory import surface_decision_logic_metadata
 
 
 def process_main(
@@ -54,8 +54,11 @@ def process_main(
             scenario_name=file_name_for_scenario(
                 config.scenario_index, config.name),
             run_timestamp=config.run_timestamp,
-            run_group=config.run_group,
-            use_scenario_logs_subdir=True
+            log_root_override=config.log_root,
+            use_scenario_logs_subdir=True,
+            # This log IS the run's tick-by-tick record, so every line carries the run's own
+            # time. The clock itself is attached once the executor exists (startup preparation).
+            event_time_column=True
         )
         scenario_logger.info(f'⏱️  Process started at {start_time}')
 
@@ -69,10 +72,6 @@ def process_main(
             config, shared_data, scenario_logger)
         scenario_logger.debug(
             '🔄 Process preparation finished')
-
-        # Component metadata advisory (#118 Stage 0) — version line + soft market-fit warning
-        surface_decision_logic_metadata(
-            decision_logic, config.broker_type, config.symbol, scenario_logger)
 
         # === DECISION EVENT CHANNEL (#348) ===
         # Built only when the active decision logic subscribes to events.
@@ -108,8 +107,8 @@ def process_main(
         error_traceback = None
 
         # === Get Log Buffer ===
-        log_buffer = scenario_logger.get_buffer()
-        errors_in_buffer = scenario_logger.get_buffer_errors()
+        log_buffer = scenario_logger.get_records()
+        errors_in_buffer = scenario_logger.get_records(LogLevel.ERROR)
         scenario_logger.close()
 
         # === Tick loop Error Check ===
@@ -152,8 +151,6 @@ def process_main(
             error_message=error_message,
             traceback=error_traceback
         )
-        scenario_logger.debug(
-            f'🕐 {config.name} returning at {time.time()}')
         return result
 
     except Exception as e:
@@ -161,7 +158,7 @@ def process_main(
         log_buffer = None
         try:
             # try to fetch Log, if possible.
-            log_buffer = scenario_logger.get_buffer()
+            log_buffer = scenario_logger.get_records()
             send_status_update_process(live_queue, config,
                                        ScenarioStatus.FINISHED_WITH_ERROR)
         except:

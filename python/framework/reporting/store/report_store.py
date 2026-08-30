@@ -11,6 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from pydantic import ValidationError
+
+from python.configuration.app_config_manager import AppConfigManager
+from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.aggregated_portfolio_report_io import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
     read_aggregated_portfolio_report,
@@ -77,6 +81,12 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
+from python.framework.types.config_types.file_logging_config_types import RunLogPaths
+from python.framework.types.log_layout_types import (
+    AUTOTRADER_GROUP,
+    SINGLE_RUNS_GROUP,
+    SWEEPS_GROUP,
+)
 
 # Report artifacts (JSON + CSV) live in this subfolder of a run directory.
 IO_SUBDIR = 'io'
@@ -86,10 +96,20 @@ class ReportStore:
     """Locates + serves persisted run-report artifacts (sim + autotrader runs)."""
 
     # run dirs live at: <logs_root>/<group>/<set-or-profile>/<run_id>/<artifact>
-    _GROUPS = ('scenario_sets', 'autotrader')
 
-    def __init__(self, logs_root: Path = Path('logs')):
-        self._logs_root = Path(logs_root)
+    def __init__(self, run_logs: Optional[RunLogPaths] = None):
+        """
+        Args:
+            run_logs: The three category roots; read from config when not given
+        """
+        paths = run_logs or AppConfigManager().get_file_logging_config_object().run_logs
+        # group name → root. The names are the API's `group` values, and the roots are the
+        # same ones the writers use — one source, so a moved log root cannot hide a run.
+        self._roots: Dict[str, Path] = {
+            AUTOTRADER_GROUP: Path(paths.autotrader),
+            SINGLE_RUNS_GROUP: Path(paths.single_runs),
+            SWEEPS_GROUP: Path(paths.sweeps),
+        }
 
     def list_runs(self) -> List[RunInfo]:
         """Runs carrying a trade-history artifact, newest first.
@@ -98,11 +118,18 @@ class ReportStore:
             One identity row per run — id, log group, and the owning set / profile name
         """
         runs: Dict[str, RunInfo] = {}
-        for group in self._GROUPS:
-            for artifact in (self._logs_root / group).glob(f'*/*/{IO_SUBDIR}/{TRADE_HISTORY_ARTIFACT}'):
-                run_dir = artifact.parent.parent
+        for group, root in self._roots.items():
+            # A run directory sits at a depth the CATEGORY fixes: <owner>/<run_ts>, and one
+            # level deeper for a sweep, which nests its combinations under the sweep id.
+            pattern = '*/*/*' if group == SWEEPS_GROUP else '*/*'
+            for run_dir in sorted(root.glob(pattern)):
+                if not run_dir.is_dir():
+                    continue
+                # Listed even without artifacts: a run can exist as logs alone (a test session
+                # writes no reports), and hiding it would make the index disagree with the tree.
                 runs.setdefault(run_dir.name, RunInfo(
-                    run_id=run_dir.name, group=group, name=run_dir.parent.name))
+                    run_id=run_dir.name, group=group, name=run_dir.parent.name,
+                    has_reports=(run_dir / IO_SUBDIR / TRADE_HISTORY_ARTIFACT).exists()))
         return sorted(runs.values(), key=lambda run: run.run_id, reverse=True)
 
     def get_trade_history(
@@ -284,7 +311,11 @@ class ReportStore:
         path = self._resolve(run_id, WARNINGS_ERRORS_ARTIFACT)
         if path is None:
             return None
-        return read_warnings_errors_report(path)
+        try:
+            return read_warnings_errors_report(path)
+        except ValidationError as e:
+            raise ReportArtifactUnreadableError(
+                WARNINGS_ERRORS_ARTIFACT, str(path), str(e)) from e
 
     def get_broker(self, run_id: str) -> Optional[BrokerReport]:
         """
@@ -332,8 +363,21 @@ class ReportStore:
         return read_feed_stability_report(path)
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
-        """Find a named report artifact (in the run's io/ subfolder) across the log groups."""
-        for group in self._GROUPS:
-            for found in (self._logs_root / group).glob(f'*/{run_id}/{IO_SUBDIR}/{artifact}'):
+        """
+        Find a named report artifact (in the run's io/ subfolder) across the log groups.
+
+        Searched at ANY depth and across ALL categories, sweeps included: the index lists
+        standalone runs, but every run stays addressable by its id.
+
+        Args:
+            run_id: The run's directory name
+            artifact: The artifact's file name
+
+        Returns:
+            The artifact path, or None when no run carries it
+        """
+        for root in self._roots.values():
+            for found in root.rglob(
+                    f'{run_id}/{IO_SUBDIR}/{artifact}'):
                 return found
         return None

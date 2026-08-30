@@ -101,7 +101,7 @@ class SignalFeedCertificate:
                 'was never exercised — the failures above are the finding'))
             return assessment
 
-        git = get_git_info()
+        git = get_git_info(ignore_untracked_under=reports_dir)
         assessment.checks.extend(validator.validate_build(
             build=probe.build,
             consumer_dirty=git.dirty if git else None,
@@ -155,6 +155,7 @@ class SignalFeedCertificate:
             Path to the written certificate
         """
         identity = build_certificate_identity(
+            reports_dir=reports_dir,
             release_version=release_version, comment=comment,
             validity_days=VALIDITY_DAYS)
         warnings = [w for w in (identity.version_mismatch(),
@@ -163,7 +164,7 @@ class SignalFeedCertificate:
         certificate = {
             **identity.to_dict(),
             'overall_status': status,
-            **SignalFeedCertificate._body(assessment),
+            **SignalFeedCertificate._body(assessment, reports_dir),
         }
         if warnings:
             certificate['identity_warnings'] = warnings
@@ -232,12 +233,14 @@ class SignalFeedCertificate:
     # ============================================
 
     @staticmethod
-    def _body(assessment: SignalFeedAssessment) -> Dict[str, Any]:
+    def _body(assessment: SignalFeedAssessment, reports_dir: str) -> Dict[str, Any]:
         """
         The certificate's recorded content, without the release metadata.
 
         Args:
             assessment: The assessed run
+            reports_dir: Where this run writes, so its own artifact does not read as a
+                dirty tree
 
         Returns:
             The producer, series, provenance, cost and check sections
@@ -251,7 +254,7 @@ class SignalFeedCertificate:
                          if o.snapshot.stream_epoch is not None})
 
         build = probe.build
-        git = get_git_info()
+        git = get_git_info(ignore_untracked_under=reports_dir)
 
         return {
             'build': {

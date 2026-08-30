@@ -403,7 +403,7 @@ class TickIndexManager:
     def _migrate_from_json(self) -> bool:
         """Migrate from legacy JSON format to Parquet."""
         try:
-            with open(self._legacy_json_file, 'r') as f:
+            with open(self._legacy_json_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 self.index = data.get('symbols', {})
 
