@@ -33,6 +33,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderType,
 )
+from python.framework.utils.run_id_utils import mint_run_id
 
 SYMBOL = 'BTCUSD'
 _BASE_MSC = 1_000_000  # arbitrary simulated wall-clock anchor (ms)
@@ -140,6 +141,7 @@ def _run_loop(ticks, wants_heartbeat: bool) -> MagicMock:
     logger = ScenarioLogger(
         scenario_set_name='parity', scenario_name='heartbeat_ghost',
         run_timestamp=datetime.now(tz=timezone.utc),
+        run_id=mint_run_id(datetime.now(timezone.utc)),
     )
     controller = BarRenderingController(logger=logger)
     controller._required_timeframes = {'M1'}

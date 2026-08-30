@@ -44,6 +44,9 @@ class FileLoggingConfig(BaseModel):
     global_log_dir: Path
     append_mode: bool
     run_logs: RunLogPaths
+    # The derived run index — ONE compacted file, rebuildable from the per-run headers. Its own
+    # key because the three category roots are independent paths and share no declared parent.
+    run_index: Path
     scenario: ScenarioFileLoggingConfig
 
     # ============================================

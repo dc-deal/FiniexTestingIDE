@@ -4,12 +4,13 @@ Phase 2: Coordinates sequential and parallel scenario execution
 
 Extracted from BatchOrchestrator to separate execution logic.
 """
-from pathlib import Path
 import pickle
 import time
 import traceback
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from datetime import datetime
 from multiprocessing import Queue
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
@@ -47,7 +48,8 @@ class ExecutionCoordinator:
     def __init__(
         self,
         scenario_set_name: str,
-        run_timestamp: str,
+        run_timestamp: datetime,
+        run_id: str,
         app_config: AppConfigManager,
         live_stats_config: LiveStatsExportConfig,
         logger: AbstractLogger,
@@ -58,7 +60,8 @@ class ExecutionCoordinator:
 
         Args:
             scenario_set_name: Name of the scenario set
-            run_timestamp: Timestamp for this batch run
+            run_timestamp: Start of this batch run (the logger's elapsed baseline)
+            run_id: The run's identity, shared by every logger of this run
             app_config: Application configuration manager
             live_stats_config: Live stats configuration
             logger: Logger instance for status messages
@@ -66,6 +69,7 @@ class ExecutionCoordinator:
         """
         self._scenario_set_name = scenario_set_name
         self._run_timestamp = run_timestamp
+        self._run_id = run_id
         self._app_config = app_config
         self._live_stats_config = live_stats_config
         self._logger = logger
@@ -113,6 +117,7 @@ class ExecutionCoordinator:
                 scenario_index=idx,
                 scenario_set_name=self._scenario_set_name,
                 run_timestamp=self._run_timestamp,
+                run_id=self._run_id,
                 live_stats_config=self._live_stats_config,
                 log_root=self._log_root
             )
@@ -209,6 +214,7 @@ class ExecutionCoordinator:
                     scenario_index=idx,
                     scenario_set_name=self._scenario_set_name,
                     run_timestamp=self._run_timestamp,
+                    run_id=self._run_id,
                     live_stats_config=self._live_stats_config,
                     log_root=self._log_root
                 )

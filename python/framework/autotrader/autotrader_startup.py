@@ -19,23 +19,24 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.exceptions.signal_data_errors import SignalSourceUnresolvedError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-from python.framework.validators.component_metadata_advisory import (
-    surface_decision_logic_version,
-)
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.file_logger import FileLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_startup_preparation import inject_signal_providers
-from python.framework.signal_data.transport.signal_boot_bridge import SignalBootBridge
-from python.framework.signal_data.signal_data_provider import SignalDataProvider
+from python.framework.reporting.io.run_header_io import write_run_header
+from python.framework.reporting.store.run_index import RunIndex
 from python.framework.signal_data.producer.signal_pipelines_reader import fetch_pipeline_registry
+from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
+from python.framework.signal_data.transport.signal_boot_bridge import SignalBootBridge
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
+from python.framework.types.api.report_types import RunHeader
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.market_config_types import TradingModel
+from python.framework.types.log_layout_types import AUTOTRADER_GROUP
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.signal_data_types import (
@@ -47,6 +48,11 @@ from python.framework.types.signal_data_types import (
     SignalTransportKind,
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.utils.git_info_utils import get_git_info
+from python.framework.utils.run_id_utils import mint_run_id
+from python.framework.validators.component_metadata_advisory import (
+    surface_decision_logic_version,
+)
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -64,7 +70,7 @@ def create_autotrader_loggers(
     - summary: Post-session summary (file + console flush)
 
     Log directory layout:
-        logs/autotrader/<name>/<timestamp>/
+        runs/autotrader/<name>/<run_id>/
             autotrader_global.log
             autotrader_summary.log
             session_logs/
@@ -76,18 +82,23 @@ def create_autotrader_loggers(
         run_timestamp: Session start timestamp (UTC)
 
     Returns:
-        (global_logger, session_logger, summary_logger, run_dir)
+        (global_logger, session_logger, summary_logger, run_dir, run_id)
     """
     session_name = config.name or f'{config.symbol}_{config.adapter_type}'
     # From config (file_logging.run_logs.autotrader) — the same source the API reads,
     # so a moved log root cannot make a session invisible to the run index.
     log_root = AppConfigManager().get_file_logging_config_object().run_logs.autotrader
 
+    # Minted ONCE for all three loggers. Deriving it per logger would give three ids and
+    # therefore three directories for one session — the trap this threading exists to avoid.
+    run_id = mint_run_id(run_timestamp, log_root / session_name)
+
     # Global logger — startup/shutdown/errors
     global_logger = ScenarioLogger(
         scenario_set_name=session_name,
         scenario_name='global',
         run_timestamp=run_timestamp,
+        run_id=run_id,
         log_root_override=log_root,
         file_name_prefix_override='autotrader'
     )
@@ -99,6 +110,7 @@ def create_autotrader_loggers(
         scenario_set_name=session_name,
         scenario_name='summary',
         run_timestamp=run_timestamp,
+        run_id=run_id,
         log_root_override=log_root,
         file_name_prefix_override='autotrader'
     )
@@ -110,6 +122,7 @@ def create_autotrader_loggers(
         scenario_set_name=session_name,
         scenario_name='session',
         run_timestamp=run_timestamp,
+        run_id=run_id,
         log_root_override=log_root,
         file_name_prefix_override='autotrader',
         # The tick-by-tick record of the session — every line carries the run's own time.
@@ -117,12 +130,30 @@ def create_autotrader_loggers(
         event_time_column=True
     )
 
+    # The run header goes down FIRST, before the session can fail — a crashed session is
+    # exactly the one somebody needs to identify afterwards.
+    if run_dir:
+        git = get_git_info()
+        header = RunHeader(
+            run_id=run_id,
+            start_time=run_timestamp,
+            run_type=AUTOTRADER_GROUP,
+            run_name=session_name,
+            parent_id=None,
+            config_snapshot='autotrader_config.json',
+            app_version=AppConfigManager().get_version(),
+            git_commit=git.commit if git else None,
+        )
+        write_run_header(header, run_dir)
+        RunIndex(AppConfigManager().get_file_logging_config_object().run_index).append(
+            header, run_dir)
+
     # Create session_logs/ subdir (tick loop will create files there)
     if run_dir:
         session_logs_dir = run_dir / 'session_logs'
         session_logs_dir.mkdir(parents=True, exist_ok=True)
 
-    return global_logger, session_logger, summary_logger, run_dir
+    return global_logger, session_logger, summary_logger, run_dir, run_id
 
 
 def create_session_file_logger(run_dir: Path, date_suffix: str) -> FileLogger:

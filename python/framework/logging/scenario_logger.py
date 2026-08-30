@@ -42,6 +42,7 @@ class ScenarioLogger(AbstractLogger):
                  scenario_set_name: str,
                  scenario_name: str,
                  run_timestamp: datetime,
+                 run_id: str,
                  log_root_override: Optional[Path] = None,
                  file_name_prefix_override: Optional[str] = None,
                  use_global_log_level_for_console: bool = False,
@@ -55,7 +56,10 @@ class ScenarioLogger(AbstractLogger):
         Args:
             scenario_set_name: Scenario set name
             scenario_name: Scenario name (e.g., "GBPUSD_window_01")
-            run_timestamp: Run timestamp string
+            run_timestamp: Run start — the baseline the elapsed column is measured against
+            run_id: The run's identity, minted ONCE per run and used verbatim as the run
+                directory name. Not derived here: every logger of one run must land in the same
+                directory, and three loggers deriving three ids would give three directories
             log_root_override: Custom log root path (bypasses config). Used by AutoTrader for separate log tree.
             file_name_prefix_override: Custom file name prefix (bypasses config). E.g., 'autotrader' → autotrader_<name>.log
             use_scenario_logs_subdir: Place log file in scenario_logs/ subdir (backtesting per-scenario logs only)
@@ -73,7 +77,7 @@ class ScenarioLogger(AbstractLogger):
 
         self.scenario_set_name = scenario_set_name
         self.run_timestamp = run_timestamp
-        run_timestamp_str = self.run_timestamp.strftime('%Y%m%d_%H%M%S')
+        self.run_id = run_id
         self._use_global_log_level_for_console = use_global_log_level_for_console
 
         self.run_dir = None
@@ -95,7 +99,7 @@ class ScenarioLogger(AbstractLogger):
                 log_dir.mkdir(parents=True, exist_ok=True)
                 log_filename = flat_log_filename
             else:
-                self.run_dir = log_root / scenario_set_name / run_timestamp_str
+                self.run_dir = log_root / scenario_set_name / run_id
                 self.run_dir.mkdir(parents=True, exist_ok=True)
 
                 # Per-scenario files go into scenario_logs/ subdir (backtesting only)

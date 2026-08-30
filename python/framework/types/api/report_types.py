@@ -324,6 +324,42 @@ class ScenarioDetailsReport(BaseModel):
     units: list[ScenarioDetailsRow]
 
 
+class RunHeader(BaseModel):
+    """
+    What a run IS — written once, at the run's START, into its own directory.
+
+    The single source of truth for a run's identity. Everything else that answers "which run is
+    this" is derived from it: the index, and every consumer that used to reconstruct the answer
+    from the directory path. Directories stay human-navigable (§36) but stop carrying meaning.
+
+    Written at the START, not the end, for one reason that decides the design: a run that
+    crashes is exactly the run somebody needs to identify. An artifact produced on the way out
+    is missing whenever it matters most.
+
+    Args:
+        run_id: The run's identity — also its directory name
+        start_time: When the run began (UTC, tz-aware)
+        run_type: Its category, the same value the API serves as `RunInfo.group`
+        run_name: The owning scenario set (sim) or profile (live)
+        parent_id: What this run belongs to, or None when it stands alone. Today a sweep's id
+            for one of its combinations. Named `parent_id` and not `parent_run_id` on purpose:
+            a sweep is NOT itself a run (it has no header — it is defined by the runs naming
+            it), while the daily fragments of #476 will point at a parent that IS one. One
+            field, two kinds of parent, and the name has to stay true for both
+        config_snapshot: File name of the config this run was commissioned with
+        app_version: The app version that produced it
+        git_commit: The commit it ran from, when the working tree exposes one
+    """
+    run_id: str
+    start_time: datetime
+    run_type: str
+    run_name: str
+    parent_id: Optional[str] = None
+    config_snapshot: str = ''
+    app_version: str = ''
+    git_commit: Optional[str] = None
+
+
 class RunInfo(BaseModel):
     """One discoverable run in the report store — identity only, no report content."""
     run_id: str
@@ -337,6 +373,15 @@ class RunInfo(BaseModel):
     # index that silently omits runs is its own surprise. False means every report route
     # will answer 404 for this id.
     has_reports: bool = False
+    # Straight from the run's header (#475) — the list answers "what was this run" on its own,
+    # instead of making a consumer open each run to find out.
+    start_time: str = ''
+    # The run this one belongs to: a sweep for one of its combinations, and — once the daily
+    # cycle lands (#476) — the session a day fragment was cut from. None means it stands alone.
+    parent_id: Optional[str] = None
+    app_version: str = ''
+    git_commit: Optional[str] = None
+    config_snapshot: str = ''
 
 
 class RunListResponse(BaseModel):

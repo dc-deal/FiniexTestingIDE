@@ -34,6 +34,7 @@ from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.process_data_types import ProcessScenarioConfig
 from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.utils.run_id_utils import mint_run_id
 from tests.shared.parity_comparators import (
     assert_bars_equal,
     assert_portfolio_equal,
@@ -76,6 +77,7 @@ def _run_simulation(ticks):
         scenario_set_name='parity',
         scenario_name='bar_parity_kraken_spot_btcusd_sim',
         run_timestamp=datetime.now(tz=timezone.utc),
+        run_id=mint_run_id(datetime.now(timezone.utc)),
     )
     controller = BarRenderingController(logger=logger)
     controller._required_timeframes = {TIMEFRAME}
@@ -126,6 +128,7 @@ def _run_autotrader(ticks):
         scenario_set_name='parity',
         scenario_name='bar_parity_kraken_spot_btcusd_at',
         run_timestamp=datetime.now(tz=timezone.utc),
+        run_id=mint_run_id(datetime.now(timezone.utc)),
     )
     controller = BarRenderingController(logger=logger)
     controller._required_timeframes = {TIMEFRAME}
@@ -212,6 +215,7 @@ def _run_simulation_trades(ticks):
         scenario_set_name='parity',
         scenario_name='trade_parity_kraken_spot_btcusd_sim',
         run_timestamp=datetime.now(tz=timezone.utc),
+        run_id=mint_run_id(datetime.now(timezone.utc)),
     )
     controller = BarRenderingController(logger=logger)
     controller._required_timeframes = {TIMEFRAME}
@@ -270,6 +274,7 @@ def _run_autotrader_trades(ticks):
         scenario_set_name='parity',
         scenario_name='trade_parity_kraken_spot_btcusd_at',
         run_timestamp=datetime.now(tz=timezone.utc),
+        run_id=mint_run_id(datetime.now(timezone.utc)),
     )
     controller = BarRenderingController(logger=logger)
     controller._required_timeframes = {TIMEFRAME}

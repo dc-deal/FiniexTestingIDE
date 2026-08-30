@@ -212,6 +212,7 @@ class BatchOrchestrator:
         self._execution_coordinator = ExecutionCoordinator(
             scenario_set_name=self.scenario_set_name,
             run_timestamp=self.logger_start_time_format,
+            run_id=self._scenario_set.run_id,
             app_config=self._app_config_manager,
             live_stats_config=self._live_stats_config,
             logger=self._logger,
@@ -280,6 +281,13 @@ class BatchOrchestrator:
         Returns:
             BatchExecutionSummary with aggregated results from all scenarios
         """
+        # The config snapshot belongs to a run that EXECUTES, so it is taken here rather than at
+        # one caller: the CLI path took it, the benchmark harness builds its ScenarioSet directly
+        # and did not — so the very runs that carry the release benchmark certificates were the
+        # ones without a snapshot. build_mount() deliberately does NOT pass through here; a mount
+        # build is not a run and has no run directory to snapshot into.
+        self._scenario_set.copy_config_snapshot()
+
         self._logger.info(
             f'🚀 Starting batch execution '
             f'({len(self._scenarios)} scenarios, '

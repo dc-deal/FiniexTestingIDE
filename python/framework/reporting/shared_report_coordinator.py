@@ -11,6 +11,7 @@ Stateless by design (composition, not a base class) — see the pipeline coordin
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.builders.execution_stats_report_builder import (
     build_execution_stats_report,
 )
@@ -45,6 +46,10 @@ from python.framework.reporting.io.order_history_report_io import (
 )
 from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
+from python.framework.reporting.io.run_header_io import (
+    RUN_HEADER_ARTIFACT,
+    read_run_header,
+)
 from python.framework.reporting.io.run_summary_io import write_run_summary
 from python.framework.reporting.io.signal_report_io import write_signal_report
 from python.framework.reporting.io.trade_history_report_io import (
@@ -52,6 +57,7 @@ from python.framework.reporting.io.trade_history_report_io import (
     write_trade_history_report,
 )
 from python.framework.reporting.io.worker_decision_report_io import write_worker_decision_report
+from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.framework.types.signal_data_types import SignalObservedSeries
 
@@ -121,6 +127,13 @@ class SharedReportCoordinator:
         # Worker/decision — per-unit worker + decision performance (#398).
         worker_decision = build_worker_decision_report(units)
         write_worker_decision_report(worker_decision, io_dir)
+
+        # The run now HAS reports — the index says so from here on. The id comes from the run's
+        # own header, not from the directory name: identity is a field, not a path (#475).
+        header_path = io_dir.parent / RUN_HEADER_ARTIFACT
+        if header_path.exists():
+            RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \
+                .mark_reports_written(read_run_header(header_path).run_id)
 
         return UnifiedReports(
             trade_history=trade_history,

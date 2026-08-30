@@ -29,6 +29,7 @@
             "single_runs": "runs/single_runs",
             "sweeps": "runs/sweeps"
         },
+        "run_index": "runs/index.parquet",
         "scenario": {
             "enabled": true,
             "log_level": null,

@@ -62,6 +62,27 @@ of rendered lines forces every later consumer to take the fact apart again, and 
 such a consumer: it used to recover the message with `split(' | ', 1)` and carried ANSI escape
 codes into the persisted JSON on the way.
 
+### What identifies a run (#475)
+
+A run is identified by `run_id` — `<timestamp>_<hash>`, e.g. `20260830_132034_a3f9c2d1`. The
+readable half keeps ordering intact (the run index sorts on it, the sweep ranking tie-breaks on
+it); the random half makes it distinct, because a second-resolution stamp collided in ordinary
+use — 4 of 188 runs, and a collision made the API serve a different run's artifacts than the index
+listed under that id.
+
+It is minted ONCE per run and passed down: to the three loggers of a live session, and through
+`ProcessScenarioConfig` into each simulation subprocess. Deriving it per logger would give one run
+three ids and therefore three directories.
+
+Each run writes a `header.json` at its START — id, start time, category, owner, and the parent it
+belongs to (a sweep, today; a session for #476's daily fragments). At the start rather than the
+end, because a run that crashes is exactly the run somebody needs to identify.
+
+`runs/index.parquet` is ONE compacted file DERIVED from those headers, and it is what the API
+reads. Derived is the point: it may be deleted or go stale without anything being lost —
+`run_index_cli.py rebuild` reconstructs it. Directories stay human-navigable (§36) but no program
+reads meaning out of them any more.
+
 ### Where a run's logs land — three categories, one source
 
 A run belongs to exactly ONE category, and the category IS its `group` in the API:

@@ -74,7 +74,7 @@ For production use, restrict `allow_origins` to the actual deployment domain. No
 | GET | `/api/v1/brokers/{broker}/symbols` | Symbols for a broker with `market_type` |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/coverage` | Available date range and timeframes |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/bars` | OHLCV bars (query: `timeframe`, `from`, `to`) |
-| GET | `/api/v1/reports/runs` | Index of EVERY run, newest first — `run_id`, `group` ∈ `single_runs` \| `sweeps` \| `autotrader`, the set / profile name, and `has_reports`. A run with `has_reports: false` exists as logs only (a test session writes none) and every route below will 404 for it. The entry point the routes below are addressed by |
+| GET | `/api/v1/reports/runs` | Index of EVERY run, newest first — `run_id`, `group` ∈ `single_runs` \| `sweeps` \| `autotrader`, the set / profile name, and `has_reports`. Served from the derived run index, which is built from each run's `header.json`; `run_id` is `<timestamp>_<hash>` (#475) and is validated against that shape before any lookup. A run with `has_reports: false` exists as logs only (a test session writes none) and every route below will 404 for it. The entry point the routes below are addressed by |
 | GET | `/api/v1/sweeps` | Every recorded parameter sweep, newest first — id, start, duration, combination + ok/error counts, algo, objective. Served from the run-results ledger (#390) |
 | GET | `/api/v1/sweeps/{sweep_id}` | One sweep's combinations, RANKED by the objective the sweep declared. Each row carries its `run_id`, the hinge into the report routes |
 | GET | `/api/v1/reports/runs/{run_id}/trade-history` | Trade-history report (query: `symbol`, `close_reason`, `start`, `end`) |

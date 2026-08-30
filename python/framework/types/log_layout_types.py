@@ -22,3 +22,8 @@ SWEEPS_GROUP = 'sweeps'
 # sweep-level output, so it lands beside the sweep's ranked.csv rather than in a directory
 # shaped like a run — the run index counts runs, and a shared data load is not one.
 MOUNT_BUILD_LOG = 'mount_build.log'
+
+# The subfolder a run's report artifacts live in, inside its run directory. Part of the layout
+# contract like the names above: the store resolves artifacts through it, and the run index needs
+# it without importing the store.
+IO_SUBDIR = 'io'

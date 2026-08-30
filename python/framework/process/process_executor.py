@@ -4,8 +4,9 @@
 # ============================================================================
 
 
-from pathlib import Path
+from datetime import datetime
 from multiprocessing import Queue
+from pathlib import Path
 from typing import Optional
 
 from python.configuration.app_config_manager import AppConfigManager
@@ -38,7 +39,8 @@ class ProcessExecutor:
         app_config_loader: AppConfigManager,
         scenario_index: int,
         scenario_set_name: str,
-        run_timestamp: str,
+        run_timestamp: datetime,
+        run_id: str,
         live_stats_config: LiveStatsExportConfig = None,
         log_root: Path = None
     ):
@@ -52,13 +54,15 @@ class ProcessExecutor:
             app_config: Application configuration
             scenario_index: Index in scenario list
             scenario_set_name: Name of scenario set (for logger)
-            run_timestamp: Shared timestamp (for logger)
+            run_timestamp: Shared run start (the logger's elapsed baseline)
+            run_id: The run's identity — the subprocess rebuilds the same run directory from it
         """
         self.scenario = scenario
         self.app_config = app_config_loader
         self.scenario_index = scenario_index
         self.scenario_set_name = scenario_set_name
         self.run_timestamp = run_timestamp
+        self.run_id = run_id
         self.live_stats_config = live_stats_config
         self.log_root = log_root
 
@@ -69,6 +73,7 @@ class ProcessExecutor:
             scenario_index=scenario_index,
             scenario_set_name=scenario_set_name,
             run_timestamp=run_timestamp,
+            run_id=run_id,
             live_stats_config=live_stats_config,
             log_root=log_root
         )
