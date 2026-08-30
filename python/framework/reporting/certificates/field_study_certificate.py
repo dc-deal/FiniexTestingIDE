@@ -24,6 +24,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.certificates.certificate_identity_builder import (
     build_certificate_identity,
 )
@@ -41,17 +42,21 @@ class FieldStudyCertificate:
     """Reads a Field Study JSONL run and produces / writes a PASS/FAIL certificate."""
 
     @staticmethod
-    def find_latest_jsonl(search_root: str = 'logs/autotrader') -> Optional[Path]:
+    def find_latest_jsonl(search_root: Optional[str] = None) -> Optional[Path]:
         """
-        Find the most recent field_study.jsonl under the AutoTrader log root.
+        Find the most recent field_study.jsonl under the AutoTrader run root.
+
+        The root is resolved from config when not given — a default literal here is a second
+        declaration of a path config already owns, and it is correct only until the tree moves.
 
         Args:
-            search_root: Directory to scan recursively
+            search_root: Directory to scan recursively; None resolves run_logs.autotrader
 
         Returns:
             Path to the newest field_study.jsonl, or None if none exist
         """
-        root = Path(search_root)
+        root = Path(search_root) if search_root else Path(
+            AppConfigManager().get_file_logging_config_object().run_logs.autotrader)
         if not root.exists():
             return None
         candidates = list(root.rglob('field_study.jsonl'))

@@ -22,12 +22,12 @@
     "file_logging": {
         "enabled": true,
         "log_level": "DEBUG",
-        "log_path": "logs/",
+        "global_log_dir": "logs/",
         "append_mode": true,
         "run_logs": {
-            "autotrader": "logs/autotrader",
-            "single_runs": "logs/scenario_sets/single_runs",
-            "sweeps": "logs/scenario_sets/sweeps"
+            "autotrader": "runs/autotrader",
+            "single_runs": "runs/single_runs",
+            "sweeps": "runs/sweeps"
         },
         "scenario": {
             "enabled": true,

@@ -247,7 +247,7 @@ Sections not listed here (`execution`, `clipping_monitor`, `order_guard`) inheri
 
 | Section | Purpose | Notes |
 |---------|---------|-------|
-| `name` | Session name | Used for log directory (`logs/autotrader/<name>/`) |
+| `name` | Session name | Used for run directory (`runs/autotrader/<name>/`) |
 | `symbol` | Trading pair | Single symbol per session |
 | `broker_type` | Broker identifier | Maps to MarketType via `market_config.json`; broker connection settings read from there too |
 | `adapter_type` | `mock` or `live` | Mock: no credentials needed |
@@ -688,12 +688,12 @@ Three `ScenarioLogger` instances per session, each with a distinct purpose:
 | Session | `session_logs/autotrader_session_YYYYMMDD.log` | Per-tick processing, decisions, orders | Buffered (cleared before summary) |
 | Summary | `autotrader_summary.log` | Post-session report, statistics | Flushed to console at end |
 
-- Directory: `logs/autotrader/<name>/<session_timestamp>/`
-- Separate from backtesting logs (`logs/scenario_sets/`)
+- Directory: `runs/autotrader/<name>/<session_timestamp>/` (from `file_logging.run_logs.autotrader`)
+- Separate from simulation runs (`runs/single_runs/`, `runs/sweeps/`); `logs/` holds only `global.log`
 - Session log **rotates daily** at midnight UTC — prevents unbounded file growth on 24/7 sessions
 
 ```
-logs/autotrader/btcusd_mock/20260328_105127/
+runs/autotrader/btcusd_mock/20260328_105127/
   autotrader_global.log           Startup, shutdown, errors
   autotrader_summary.log          Post-session summary
   session_logs/

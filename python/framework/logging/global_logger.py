@@ -42,12 +42,14 @@ class GlobalLogger(AbstractLogger):
 
         # Create file logger if enabled
         if self.file_logging_enabled:
-            log_file_path = self._file_logging_config.global_log_path
-            log_dir = log_file_path.parent
+            # The DIRECTORY global.log lives in — created here, not its parent. Taking
+            # `.parent` of 'logs/' yields '.', so the real directory was never created and the
+            # open only worked while it happened to exist already.
+            log_dir = self._file_logging_config.global_log_dir
             log_dir.mkdir(parents=True, exist_ok=True)
 
             self.file_logger = FileLogger(
-                file_path=log_file_path,
+                file_path=log_dir,
                 log_filename='global.log',
                 log_level=self._file_logging_config.global_log_level,
                 append_mode=self._file_logging_config.global_append_mode

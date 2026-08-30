@@ -158,7 +158,7 @@ the run directory is later deleted.
 
 - **Best combinations** — ordered by the objective (stable tie-break by `run_id`, so two runs of the
   same grid + data give the same ranking → pairs with the determinism gate #368). Writes the ranked
-  table to `logs/sweeps/<sweep_id>_ranked.csv`. **Error rows are excluded** (the exclusion lives once in
+  table to the sweep's own directory, `<run_logs.sweeps>/<sweep_id>/ranked.csv`, beside the combination runs it ranks. **Error rows are excluded** (the exclusion lives once in
   the analysis `_scope`, so every consumer is safe — no failed run can "win" by doing nothing).
 - **Errored combinations** — a warning block lists every `status='error'` combination + its reason
   (e.g. a parameter out of range), so the operator sees what needs fixing. Recorded, not evaluated.

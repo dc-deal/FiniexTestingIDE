@@ -41,7 +41,7 @@ class FileLoggingConfig(BaseModel):
     """
     enabled: bool
     log_level: LogLevel
-    log_path: Path
+    global_log_dir: Path
     append_mode: bool
     run_logs: RunLogPaths
     scenario: ScenarioFileLoggingConfig
@@ -59,11 +59,6 @@ class FileLoggingConfig(BaseModel):
     def global_log_level(self) -> LogLevel:
         """Global log level (validated)"""
         return self.log_level
-
-    @property
-    def global_log_path(self) -> Path:
-        """Path to global.log file"""
-        return self.log_path
 
     @property
     def global_append_mode(self) -> bool:
@@ -106,7 +101,7 @@ class FileLoggingConfig(BaseModel):
         """Debug representation"""
         return (
             f'FileLoggingConfig('
-            f'global={self.enabled}/{self.log_level} @ {self.log_path}, '
+            f'global={self.enabled}/{self.log_level} @ {self.global_log_dir}, '
             f'scenario={self.scenario_enabled}/{self.scenario_log_level} '
             f'@ {self.run_logs.single_runs})'
         )

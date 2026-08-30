@@ -806,7 +806,7 @@ Total:                   ~63ms
 
 **Log Directory Structure (Backtesting):**
 ```
-logs/scenario_sets/<set_name>/<timestamp>/
+runs/single_runs/<set_name>/<timestamp>/
   scenario_summary.log          Batch summary report (all scenarios)
   scenario_system_info.log      System & version info (if enabled)
   <set_name>.json               Config snapshot
@@ -818,7 +818,7 @@ logs/scenario_sets/<set_name>/<timestamp>/
 
 Compare with AutoTrader (`session_logs/` instead of `scenario_logs/`):
 ```
-logs/autotrader/<name>/<timestamp>/
+runs/autotrader/<name>/<timestamp>/
   autotrader_global.log
   autotrader_summary.log
   session_logs/

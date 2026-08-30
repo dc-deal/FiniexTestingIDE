@@ -67,9 +67,9 @@ codes into the persisted JSON on the way.
 A run belongs to exactly ONE category, and the category IS its `group` in the API:
 
 ```
-file_logging.run_logs.autotrader    logs/autotrader/<profile>/<run_ts>/
-file_logging.run_logs.single_runs   logs/scenario_sets/single_runs/<set>/<run_ts>/
-file_logging.run_logs.sweeps        logs/scenario_sets/sweeps/<sweep_id>/<set>/<run_ts>/
+file_logging.run_logs.autotrader    runs/autotrader/<profile>/<run_ts>/
+file_logging.run_logs.single_runs   runs/single_runs/<set>/<run_ts>/
+file_logging.run_logs.sweeps        runs/sweeps/<sweep_id>/<set>/<run_ts>/
 ```
 
 **The three paths are configuration** (`app_config.json` → `file_logging.run_logs`), read by the

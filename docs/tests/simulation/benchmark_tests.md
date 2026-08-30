@@ -450,8 +450,8 @@ Reports are saved as JSON with full audit trail in `tests/simulation/benchmark/r
     "summary_generation_time_s": [1.1, 1.2, 1.3]
   },
   "artifacts": [
-    {"source": "logs/scenario_sets/.../scenario_summary.log", "destination": "tests/simulation/benchmark/reports/logs/run_1/scenario_summary.log", "copied_at": "..."},
-    {"source": "logs/scenario_sets/.../scenario_global_log.log", "destination": "tests/simulation/benchmark/reports/logs/run_1/scenario_global_log.log", "copied_at": "..."}
+    {"source": "runs/single_runs/.../scenario_summary.log", "destination": "tests/simulation/benchmark/reports/logs/run_1/scenario_summary.log", "copied_at": "..."},
+    {"source": "runs/single_runs/.../scenario_global_log.log", "destination": "tests/simulation/benchmark/reports/logs/run_1/scenario_global_log.log", "copied_at": "..."}
   ],
   "warnings": []
 }

@@ -18,8 +18,6 @@ from python.framework.optimization.optimization_analysis import rank, sensitivit
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import RunResultRow
 
-# Where the human-facing ranked CSV lands (run output, not the ledger dir).
-SWEEP_REPORT_DIR = Path('logs/sweeps')
 
 
 def render_sweep_list() -> None:
@@ -187,9 +185,25 @@ def _short_path(dotted_path: str) -> str:
 
 
 def _write_csv(ranked: List[RunResultRow], sweep_id: str) -> Path:
-    """Write the ranked typed rows to logs/sweeps/<sweep_id>_ranked.csv."""
-    SWEEP_REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    path = SWEEP_REPORT_DIR / f'{sweep_id}_ranked.csv'
+    """
+    Write the ranked typed rows into the sweep's OWN directory, beside the combination
+    runs they rank.
+
+    The root comes from config (file_logging.run_logs.sweeps). A fourth hardcoded tree is
+    how this evaluation used to land somewhere the run index does not scan, and therefore
+    stayed invisible to the API.
+
+    Args:
+        ranked: The ranked rows to write
+        sweep_id: The sweep whose directory receives the file
+
+    Returns:
+        The written CSV path
+    """
+    sweep_dir = Path(
+        AppConfigManager().get_file_logging_config_object().run_logs.sweeps) / sweep_id
+    sweep_dir.mkdir(parents=True, exist_ok=True)
+    path = sweep_dir / 'ranked.csv'
     flat = [_flat(row) for row in ranked]
     with open(path, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=list(RunResultRow.model_fields))
