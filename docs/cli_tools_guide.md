@@ -19,7 +19,7 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `data_index_cli.py` | Import & Inspection | import, tick-data-report, inspect |
 | `tick_index_cli.py` | Tick Index Management | rebuild, status, file-coverage, files |
 | `bar_index_cli.py` | Bar Index Management | rebuild, status, render |
-| `run_index_cli.py` | Run Index Management | rebuild, status |
+| `run_index_cli.py` | Run Index Management | rebuild, status, prune |
 | `discoveries_cli.py` | Volatility Profiling, Discoveries & Data Coverage | profile, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
 | `generator_cli.py` | Block & Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
 | `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, list |
@@ -173,6 +173,54 @@ session: live has no `scenario_details` / `profiling` / `run_meta` / `aggregated
 is why the index carries the list rather than a boolean — a consumer that only learned "yes, some"
 would still be guessing which. A run with none exists as logs alone and is listed rather than
 hidden.
+
+### 📈 Run Index: Prune
+
+| | |
+|---|---|
+| **VS Code** | `📈 Run Index: Prune (dry run)` |
+| **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--apply]` |
+| **Purpose** | Remove what the run tree no longer needs — after showing exactly what that is |
+
+**The dry run is the default and it IS the product.** Without `--apply` nothing is touched. A run
+directory is the only copy of its logs; the closest existing command, `discoveries coverage clear`,
+deletes without ceremony because a cache is rebuildable — this is not that.
+
+```
+🧹 Prune Run Tree — DRY RUN (nothing deleted; add --apply)
+
+  DELETE     87 · not runs (no header, not indexed)   0.3 MB
+             runs/simulation/parity/20260830_175903_00557431
+             … 82 more
+  DELETE     49 · older than the 2 newest of their family   18.0 MB
+  DELETE     12 · sweep directories left without a single combination   17.8 MB
+  KEEP       35 · reporting=expected, no artifacts — crashed or still running
+  KEEP        2 · hold field_study.jsonl (evidence behind a release gate)
+  KEEP       34 · complete
+  SKIP       17 · sweep directories — not runs, deliberately header-less
+
+  The run-results ledger is untouched: 430 fragment(s) remain, including those of the runs above.
+```
+
+**Two things it will never delete, whatever flags are given:**
+
+- a run with `reporting=expected` and **no artifacts** — it crashed before reporting or is still
+  going. A crashed run is the only record of that failure and the most valuable directory there is
+- a run holding `field_study.jsonl` — the raw evidence behind a real-money release certificate
+
+**The selectors** (`--keep-last` and `--orphans` are opt-in; the third is always on):
+
+| Flag | Removes |
+|---|---|
+| `--keep-last N` | per scenario set / profile, all but the N newest complete runs. **A sweep is the unit, not the combination** — the N newest sweeps survive WHOLE, the rest go WHOLE, because a half-pruned sweep leaves a `ranked.csv` ranking runs that no longer exist |
+| `--orphans` | directories that are not runs: no header, not in the index. Never sweep directories (correctly header-less) and never a run's own `io/`, `scenario_logs/`, … |
+| *(always on)* | `reporting=none` with no artifacts — commissioned to produce nothing, and it did not |
+
+`--apply` deletes, then **rebuilds the index**: it is derived, so it follows the tree rather than
+being edited alongside it. One unremovable directory is reported and does not abort the rest.
+
+Age (`--older-than`) is deliberately absent — that policy is defined once, together with the
+AutoTrader session-log retention, so the project has one retention vocabulary rather than two.
 
 ### 📈 Run Index: Rebuild
 

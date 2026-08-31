@@ -159,6 +159,31 @@ thing to look at. Redirecting keeps all of that and still leaves the operator's 
 Measured 2026-08-30, before `_isolate_run_tree` existed: **134 of 138 rows** in the operator's
 production run index came from two suite runs. The API served them and the viewer listed them.
 
+### Where the redirected output lands
+
+`tmp_path_factory` is a pytest built-in, not something this project configures — pytest picks the
+location and cleans it up:
+
+```
+/tmp/pytest-of-<user>/pytest-<N>/
+├── run_tree0/                  ← _isolate_run_tree  (the trailing 0 is mktemp's counter)
+│   ├── index.parquet
+│   ├── simulation/<set>/<run_id>/
+│   └── live/<profile>/<run_id>/
+└── run_results_ledger0/        ← _isolate_run_results_ledger
+```
+
+- **Retention is pytest's**, not ours: it keeps the last **3** numbered sessions and removes older
+  ones (`tmp_path_retention_count` / `tmp_path_retention_policy`, both left at their defaults). No
+  manual cleanup, and `/tmp` is empty after a container restart anyway.
+- **One directory per pytest PROCESS.** The runner starts a separate process per suite, so a full
+  run produces ~58 of them and pytest keeps three. `pytest-current` therefore points at the LAST
+  suite that ran, not at the whole run — worth knowing before hunting for a specific test's log.
+- `--basetemp=<dir>` moves it, but pytest **deletes that directory if it exists** — never point it
+  at anything worth keeping.
+- Side effect worth having: `/tmp` is the container's own filesystem, not the 9p mount the project
+  sits on (§42), so test output is written at ~2 µs per access instead of ~2.1 ms.
+
 ## Files
 
 | File | Purpose |

@@ -285,6 +285,24 @@
             }
         },
         {
+            "name": "📈 Run Index: Prune (dry run)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
+            "args": [
+                "prune",
+                "--orphans",
+                "--keep-last",
+                "3"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_index_management",
+                "order": 19
+            }
+        },
+        {
             "name": "📈 Run Index: Rebuild",
             "type": "debugpy",
             "request": "launch",

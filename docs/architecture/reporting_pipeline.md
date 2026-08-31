@@ -286,8 +286,19 @@ reporting=expected  + artifacts=18   →  complete
 ```
 
 Without the pair, an empty artifact list means all three at once — and a crashed run is then
-indistinguishable from an intentionally silent one. It is also what makes cleanup decidable:
-`none` is the machine-checkable statement that nothing here is worth keeping.
+indistinguishable from an intentionally silent one.
+
+**Retention is deliberately opposite between the two stores (#390, #482).** The run TREE is
+finite and prunable — `run_index_cli.py prune` removes runs and rebuilds the index afterwards,
+because the index is derived and follows the tree rather than being edited beside it. The
+cross-run LEDGER (`data/run_results/`) keeps its row for every run that ever finished, including
+runs whose directory is long gone: 430 fragments against 94 runs in the tree, measured. That gap
+is the design, not a leak — nobody should later "fix" it.
+
+The `reporting` field is what makes pruning safe, but it is the **guard** rather than the
+selector: `reporting=expected` with no artifacts is a run that crashed before reporting, and no
+flag may reach it. What the operator actually selects by is redundancy (`--keep-last`) and
+directories that are not runs at all (`--orphans`).
 
 ## Both pipelines write the same artifacts
 
