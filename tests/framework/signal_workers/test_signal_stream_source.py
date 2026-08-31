@@ -19,14 +19,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.transport import signal_stream_source
 from python.framework.signal_data.transport.signal_frame_recorder import SignalFrameRecorder
+from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.transport.signal_stream_source import (
     CONNECT_TIMEOUT_S,
     MINIMUM_WATCHDOG_S,
     SignalStreamSource,
 )
+from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.config_types.sentiment_config_types import (
     ActiveProducer,
     ResolvedCredential,
@@ -116,7 +117,7 @@ def build(server: MockStreamServer, inbox: SignalInbox, cursor=None,
         config=SentimentStreamConfig(
             enabled=True, pipeline_id=pipeline_id,
             heartbeat_timeout_multiple=multiple,
-            reconnect_backoff_initial_s=0.05, reconnect_backoff_max_s=0.1),
+            connection=ConnectionPolicy(initial_delay_s=0.05, max_delay_s=0.1)),
         producer=ActiveProducer(
             name='test', base_url=server.base_url(),
             credential=ResolvedCredential(token=token, source='tests (in-memory)')),

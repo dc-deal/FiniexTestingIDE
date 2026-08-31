@@ -37,6 +37,7 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
+from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
@@ -71,6 +72,7 @@ from python.framework.types.trading_env_types.order_types import (
 )
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
+from python.framework.utils.connection_ladder import ConnectionLadder
 
 
 class LiveTradeExecutor(AbstractTradeExecutor):
@@ -107,6 +109,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         spot_mode: bool = False,
         initial_balances: Optional[dict[str, float]] = None,
         poll_interval_ms: int = 5000,
+        rest_ladder: Optional[ConnectionLadder] = None,
+        session_key: str = '',
     ):
         """
         Initialize live trade executor.
@@ -124,6 +128,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             poll_interval_ms: Minimum wall-clock interval between consecutive
                 status polls for the same active LIMIT order. Throttle
                 for #320's async polling scheduler. Default 5000 ms.
+            rest_ladder: Retry/give-up decision for the broker's REST endpoint (#473),
+                shared with the Reconciler. Defaults to the standard policy.
+            session_key: Short discriminator this session stamps onto every client order
+                id it sends (#473). Empty disables the wire key — mock and dry-run paths
+                that never reach a venue do not need one.
         """
         super().__init__(
             broker_config=broker_config,
@@ -145,11 +154,21 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         self._timeout_config = timeout_config or TimeoutConfig()
         self._poll_interval_ms = poll_interval_ms
+        self._session_key = session_key
+        # #473 — one ladder for the broker's REST endpoint, shared with the Reconciler so
+        # both classify a 502 the same way. A transport fault must never reach the trading
+        # logic wearing the face of a venue rejection.
+        self._rest_ladder = rest_ladder or ConnectionLadder(
+            name='broker_rest',
+            policy=ConnectionPolicy(),
+            logger=logger,
+        )
 
         # Live order tracker with broker ref tracking
         self._request_processor = LiveRequestProcessor(
             logger=logger,
             timeout_config=self._timeout_config,
+            rest_ladder=self._rest_ladder,
         )
 
         # Live mode: broker handles SL/TP server-side
@@ -197,6 +216,49 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         # Start the processor's worker thread.
         self._request_processor.start_worker()
+
+    def get_rest_ladder(self) -> ConnectionLadder:
+        """
+        The retry/give-up decision for the broker's REST endpoint (#473).
+
+        Shared rather than per-caller: the Reconciler's truth pull and the order path
+        talk to the same endpoint, and two classifications of one 502 is exactly the
+        drift this ladder exists to remove.
+
+        Returns:
+            The ConnectionLadder this executor was built with
+        """
+        return self._rest_ladder
+
+    def get_session_key(self) -> str:
+        """
+        The discriminator stamped onto every client order id this session sends (#473).
+
+        Returns:
+            The session key, or '' when no wire key is stamped
+        """
+        return self._session_key
+
+    def build_client_order_id(self, order_id: str) -> Optional[str]:
+        """
+        The key this session sends to the venue for one internal order id.
+
+        Two jobs. It survives a restart without colliding: the counter inside `order_id`
+        restarts at 1 with the process, so an order still resting at the venue from the
+        previous session would otherwise be matched by a brand-new one. And it is short —
+        Kraken allows 18 ASCII characters, which the readable internal id does not fit
+        alongside a discriminator, so the readable form stays in our own books.
+
+        Args:
+            order_id: Internal order id, e.g. 'pos_btcusd_47'
+
+        Returns:
+            The wire key, e.g. 'p1641_47', or None when no session key is configured
+        """
+        if not self._session_key:
+            return None
+        counter = order_id.rsplit('_', 1)[-1]
+        return f'p{self._session_key}_{counter}'
 
     # ============================================
     # Pending Order Processing (live-specific)
@@ -346,12 +408,24 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             reason='order_timeout',
         )
 
-        # Record timeout as rejection
+        # Record timeout as rejection. #473 — an order that went UNRESOLVED never got an
+        # answer, so BROKER_ERROR would blame the venue for our transport fault. The venue
+        # may still hold it; because the submit carried our client order id, the reconcile
+        # pull can now attribute that resting order to us, and #349 decides what to do
+        # about it.
+        unresolved = (
+            pending.execution_state.in_flight_operation is PendingOperation.PENDING_SUBMIT)
         self._orders_rejected += 1
         rejection = create_rejection_result(
             order_id=pending.pending_order_id,
-            reason=RejectionReason.BROKER_ERROR,
-            message=f'Order timed out after {self._timeout_config.order_timeout_seconds}s',
+            reason=(RejectionReason.BROKER_UNREACHABLE if unresolved
+                    else RejectionReason.BROKER_ERROR),
+            message=(
+                f'Order unresolved for {self._timeout_config.order_timeout_seconds}s — the '
+                f'broker never answered. It may hold this order; reconciliation matches it '
+                f'by client order id.'
+                if unresolved else
+                f'Order timed out after {self._timeout_config.order_timeout_seconds}s'),
         )
         self._order_history.append(rejection)
         self._notify_outcome(pending.direction, rejection, pending)
@@ -402,7 +476,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         When the worker delivers a SubmitResponse for a LIMIT order, the
         processor delegates here so we can update that list directly.
 
-        Three branches:
+        Four branches:
+          UNRESOLVED → keep it, mark in-flight (#473 — the venue may hold it)
           REJECTED → remove from _active_limit_orders + record rejection
           FILLED   → remove + _fill_open_order (sync-fill broker, rare)
           PENDING  → confirm broker_ref (polling Phase 2 takes over)
@@ -419,6 +494,17 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         if pending is None:
             self.logger.warning(
                 f'drain_inbox: LIMIT SubmitResponse for unknown order_id {order_id}'
+            )
+            return
+
+        if response.is_unresolved:
+            # #473 — no answer is not a refusal. Keep the order and leave broker_ref
+            # untouched: overwriting it with the empty ref the failure carries would
+            # lose the only handle a later query could use.
+            pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
+            self.logger.error(
+                f'📡 LIMIT order {order_id} UNRESOLVED — the broker did not answer '
+                f'({response.rejection_reason}). Kept in flight for resolution by query.'
             )
             return
 
@@ -974,6 +1060,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 lots=request.lots,
                 order_type=OrderType.MARKET,
                 adapter=self.broker.adapter,
+                client_order_id=self.build_client_order_id(order_id),
                 **order_kwargs,
             )
             result = OrderResult(
@@ -1026,6 +1113,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             lots=request.lots,
             order_type=OrderType.LIMIT,
             adapter=self.broker.adapter,
+            client_order_id=self.build_client_order_id(order_id),
             **order_kwargs,
         )
 
@@ -1097,6 +1185,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             close_direction=close_direction,
             close_lots=close_lots,
             adapter=self.broker.adapter,
+            client_order_id=self.build_client_order_id(position_id),
         )
 
         return OrderResult(

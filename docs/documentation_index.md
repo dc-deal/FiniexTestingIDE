@@ -46,6 +46,7 @@
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
 | [Broker Trade Records](architecture/broker_trade_records.md) | Order ↔ executions pairing model, BrokerTrade type, Tier-3 trades-query layer |
 | [Trade Execution Visibility](architecture/trade_execution_visibility.md) | Trigger / BrokerOrder / Fills three-level model, Position.entry_trades + TradeRecord.entry_trades / exit_trades propagation, sub-line rendering, long-format event-stream CSV (#330) |
+| [External Connection Policy](architecture/external_connection_policy.md) | One retry ladder, one give-up rule, one classification for all seven outbound connections — TRANSIENT / TERMINAL / INADMISSIBLE, why a write is resolved by asking rather than retried, the `cl_ord_id` wire key, who owns the wait (#473) |
 | [Drift Audit](architecture/drift_audit.md) | Read-only local-vs-broker drift telemetry (#327) — FEE / VOLUME / PRICE counters, async trades-query consumer, live-display footer |
 | [Decision Event Channel](architecture/decision_event_channel.md) | Typed ordered event channel — order/fill/cancel/partial-close/session-end hooks for decision logic, drain-at-boundary, request_session_end (#348) |
 | [Reporting Pipeline](architecture/reporting_pipeline.md) | One result model for console/file/API across sim + live — capture → derive (postprocessor) → present; trade-history / order-history / portfolio slices, section taxonomy, ReportStore, /reports endpoints (#391) |

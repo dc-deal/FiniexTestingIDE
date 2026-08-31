@@ -75,7 +75,7 @@ tests/
 │   ├── session_validation/ unit — SessionPostRunValidator: the live Tier-1 channel, shared stress/slow-component checks
 │   ├── api_monitor/       unit — broker REST latency/error telemetry (#351)
 │   ├── field_study_machine/  unit — Field Study phase state machine (#332)
-│   └── kraken_adapter/    unit — Kraken private-call nonce monotonicity + lock (#332)
+│   └── kraken_adapter/    unit — Kraken private-call nonce monotonicity + lock (#332), client-order-id wire key + read-back (#473)
 │
 ├── parity/                parity — simulation vs. AutoTrader identical output (#294, #318, #326, #360 sim ghost-pass)
 │
@@ -83,6 +83,7 @@ tests/
 │   ├── bar_rendering/     unit — BarRenderingController consistency
 │   ├── batch_validations/ unit — ScenarioValidator, BrokerDataPreparator, PostRunValidator, market-fit advisory (Phase 0 batch pipeline)
 │   ├── config/            unit — execution_config 3-level cascade (#137)
+│   ├── connection_ladder/ unit — shared retry decision for every external connection: classification, backoff, jitter, budget, give-up (#473)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141), outage contract + episode capture (#434/#451)
 │   ├── reporting/         unit — report builders, aggregators, IO/store, console renderers (#391/#433/#451)

@@ -45,6 +45,8 @@ from typing import Callable, Dict, List, Optional
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
+from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
+from python.framework.types.connection_types import ConnectionOutcome
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
@@ -65,6 +67,7 @@ from python.framework.types.live_types.live_request_types import (
     TradesQueryResponse,
 )
 from python.framework.types.trading_env_types.latency_simulator_types import (
+    PendingOperation,
     PendingOrder,
     PendingOrderAction,
     PendingOrderTiming,
@@ -77,6 +80,7 @@ from python.framework.types.trading_env_types.order_types import (
     create_rejection_result,
 )
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
+from python.framework.utils.connection_ladder import ConnectionLadder
 
 
 class LiveRequestProcessor(AbstractPendingOrderManager):
@@ -94,16 +98,29 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
     next drain_inbox() call from the main thread.
     """
 
-    def __init__(self, logger: AbstractLogger, timeout_config: TimeoutConfig):
+    def __init__(
+        self,
+        logger: AbstractLogger,
+        timeout_config: TimeoutConfig,
+        rest_ladder: Optional[ConnectionLadder] = None,
+    ):
         """
         Initialize the live request processor.
 
         Args:
             logger: Logger instance
             timeout_config: Timeout thresholds for order monitoring
+            rest_ladder: Classification for broker transport failures (#473). Without it
+                every failure would keep reading as a venue rejection, which is what turns
+                a lost answer into an orphan order
         """
         super().__init__(logger)
         self._timeout_config = timeout_config
+        self._rest_ladder = rest_ladder or ConnectionLadder(
+            name='broker_rest',
+            policy=ConnectionPolicy(),
+            logger=logger,
+        )
 
         # Broker ref → order_id index for O(1) lookup when responses arrive
         self._broker_ref_index: Dict[str, str] = {}
@@ -189,12 +206,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         try:
             raw = adapter._do_request_submit(payload)
         except Exception as e:
-            return BrokerResponse(
-                broker_ref='',
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=datetime.now(timezone.utc),
-            )
+            return self._failure_response(
+                e, broker_ref='', timestamp=datetime.now(timezone.utc),
+                operation='submit')
 
         return adapter._parse_submit_response(
             raw,
@@ -237,12 +251,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         try:
             raw = adapter._do_request_submit(payload)
         except Exception as e:
-            return BrokerResponse(
-                broker_ref='',
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=datetime.now(timezone.utc),
-            )
+            return self._failure_response(
+                e, broker_ref='', timestamp=datetime.now(timezone.utc),
+                operation='submit')
 
         return adapter._parse_submit_response(
             raw,
@@ -718,13 +729,65 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                     f'Unknown job type in outbox: {type(job).__name__}'
                 )
 
+    def _failure_response(
+        self,
+        error: BaseException,
+        broker_ref: str,
+        timestamp: datetime,
+        operation: str,
+        self_healing: bool = False,
+    ) -> BrokerResponse:
+        """
+        Turn a failed broker call into the response that says what actually happened.
+
+        The whole point of #473 in one method: a TRANSIENT transport fault becomes
+        UNRESOLVED, never REJECTED. Reporting "we could not reach the venue" as "the venue
+        refused you" makes the executor drop an order that may be resting at the broker —
+        we manufacture the divergence #349 exists to resolve. Anything the ladder does not
+        classify as transient IS an answer (a venue error, a signing fault, our own bug)
+        and stays a rejection.
+
+        The LEVEL matters as much as the outcome. A failed status poll heals itself on the
+        next throttle cycle, so it is a warning; a failed submit leaves an order whose fate
+        we do not know, so it is an error and belongs in the §35 pot. Grading a thirty-day
+        run FINISHED_WITH_ERRORS over one 502 on a re-poll would make the outcome contract
+        useless exactly where it is supposed to earn its keep.
+
+        Args:
+            error: What the call raised
+            broker_ref: The reference the call was about ('' for a submit that never got one)
+            timestamp: Receipt time of the failure
+            operation: What was being attempted, for the line the operator reads
+            self_healing: True when the caller retries this on its own cadence — then the
+                failure is a warning rather than an entry in the error pot
+
+        Returns:
+            A BrokerResponse carrying UNRESOLVED or REJECTED
+        """
+        transient = self._rest_ladder.classify(error) is ConnectionOutcome.TRANSIENT
+        if transient:
+            message = (
+                f'📡 broker unreachable during {operation} ({error}) — outcome UNRESOLVED. '
+                f'This is an external system, not the trading logic.'
+            )
+            if self_healing:
+                self.logger.warning(f'{message} Retrying on the next cadence.')
+            else:
+                self.logger.error(f'{message} Resolution comes from the next query.')
+        return BrokerResponse(
+            broker_ref=broker_ref,
+            status=BrokerOrderStatus.UNRESOLVED if transient else BrokerOrderStatus.REJECTED,
+            rejection_reason=str(error),
+            timestamp=timestamp,
+        )
+
     def _dispatch_submit_job(self, job: SubmitJob) -> None:
         """
         Worker-thread handler for SubmitJob.
 
         Performs the broker transport via the adapter's Tier-3 layers,
         wraps the result in a SubmitResponse, and pushes it to the inbox.
-        Transport errors are caught and surfaced as REJECTED responses.
+        A transport fault surfaces as UNRESOLVED, a venue answer as REJECTED (#473).
 
         Args:
             job: The SubmitJob enqueued by submit_open_order_async or
@@ -735,12 +798,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             raw = job.adapter._do_request_submit(job.payload)
             response = job.adapter._parse_submit_response(raw, timestamp=now)
         except Exception as e:
-            response = BrokerResponse(
-                broker_ref='',
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=now,
-            )
+            response = self._failure_response(
+                e, broker_ref='', timestamp=now, operation='submit')
 
         self._http_inbox.put(SubmitResponse(
             order_id=job.order_id,
@@ -777,12 +836,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 raw, original_broker_ref=job.broker_ref, timestamp=now,
             )
         except Exception as e:
-            response = BrokerResponse(
-                broker_ref=job.broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=now,
-            )
+            response = self._failure_response(
+                e, broker_ref=job.broker_ref, timestamp=now,
+                operation='modify')
 
         self._http_inbox.put(EditResponse(
             order_id=job.order_id,
@@ -804,12 +860,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 raw, job.broker_ref, now,
             )
         except Exception as e:
-            response = BrokerResponse(
-                broker_ref=job.broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=now,
-            )
+            response = self._failure_response(
+                e, broker_ref=job.broker_ref, timestamp=now,
+                operation='cancel')
 
         self._http_inbox.put(CancelResponse(
             order_id=job.order_id,
@@ -843,12 +896,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 raw, position_id=job.position_id, timestamp=now,
             )
         except Exception as e:
-            response = BrokerResponse(
-                broker_ref=job.position_id,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=now,
-            )
+            response = self._failure_response(
+                e, broker_ref=job.position_id, timestamp=now,
+                operation='position modify')
 
         self._http_inbox.put(PositionModifyResponse(
             position_id=job.position_id,
@@ -873,12 +923,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             raw = job.adapter._do_request_query(payload)
             response = job.adapter._parse_query_response(raw, job.broker_ref, now)
         except Exception as e:
-            response = BrokerResponse(
-                broker_ref=job.broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=now,
-            )
+            response = self._failure_response(
+                e, broker_ref=job.broker_ref, timestamp=now,
+                operation='status query', self_healing=True)
 
         self._http_inbox.put(QueryResponse(
             order_id=job.order_id,
@@ -1016,6 +1063,19 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             return
 
         response = item.broker_response
+
+        if response.is_unresolved:
+            # #473 — the venue never answered. It may or may not hold this order, so the
+            # one thing we must NOT do is drop it: a forgotten resting order is an orphan,
+            # and the algo must not be told the venue refused something it never saw.
+            # The pending stays, marked in-flight, and the query path resolves it.
+            pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
+            self.logger.error(
+                f'📡 Order {item.order_id} UNRESOLVED — the broker did not answer '
+                f'({response.rejection_reason}). Keeping it in flight; the venue may hold '
+                f'it. Resolution comes from the next query, not from re-sending.'
+            )
+            return
 
         if response.is_rejected:
             # Submit failed at broker — discard local pending, notify executor
@@ -1446,12 +1506,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         try:
             raw = adapter._do_request_modify(payload)
         except Exception as e:
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=now,
-            )
+            return self._failure_response(
+                e, broker_ref=broker_ref, timestamp=now,
+                operation='modify')
         return adapter._parse_modify_response(raw, original_broker_ref=broker_ref, timestamp=now)
 
     def query_order_sync(
@@ -1479,12 +1536,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         try:
             raw = adapter._do_request_query(payload)
         except Exception as e:
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=now,
-            )
+            return self._failure_response(
+                e, broker_ref=broker_ref, timestamp=now,
+                operation='status query', self_healing=True)
         return adapter._parse_query_response(raw, broker_ref, now)
 
     def cancel_order_sync(
@@ -1512,10 +1566,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         try:
             raw = adapter._do_request_cancel(payload)
         except Exception as e:
-            return BrokerResponse(
-                broker_ref=broker_ref,
-                status=BrokerOrderStatus.REJECTED,
-                rejection_reason=str(e),
-                timestamp=now,
-            )
+            return self._failure_response(
+                e, broker_ref=broker_ref, timestamp=now,
+                operation='cancel')
         return adapter._parse_cancel_response(raw, broker_ref, now)

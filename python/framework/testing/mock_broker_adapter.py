@@ -431,6 +431,8 @@ class MockBrokerAdapter(AbstractAdapter):
             'lots': lots,
             'order_type': order_type,
             'expected_price': kwargs.get('expected_price'),
+            # #473 — echoed so the mock suites exercise the same round trip the venue does.
+            'client_order_id': kwargs.get('client_order_id'),
         }
 
     def _build_query_payload(self, broker_ref: str) -> Dict[str, Any]:

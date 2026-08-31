@@ -24,6 +24,11 @@ from python.configuration.autotrader.abstract_broker_config_fetcher import (
 from python.configuration.credential_guard import assert_real_credential
 from python.framework.logging.scenario_logger import ScenarioLogger
 
+# Mirrors BrokerTransportConfig.request_timeout_s, which is where an operator tunes it.
+# A constant here only for the direct-construction paths (the broker-config CLI) that
+# have no broker entry in scope.
+_DEFAULT_REQUEST_TIMEOUT_S: float = 15.0
+
 
 class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
     """
@@ -40,7 +45,6 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
     """
 
     API_BASE = 'https://api.kraken.com'
-    REQUEST_TIMEOUT_S = 15
 
     # Kraken uses non-standard symbol names internally
     KRAKEN_TO_STANDARD = {
@@ -66,9 +70,11 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         credentials_path: str,
         logger: Optional[ScenarioLogger] = None,
         api_base_url: Optional[str] = None,
+        request_timeout_s: float = _DEFAULT_REQUEST_TIMEOUT_S,
     ):
         self._logger = logger
         self._api_base_url = api_base_url or self.API_BASE
+        self._request_timeout_s = request_timeout_s
         self._api_key, self._api_secret = self._load_credentials(credentials_path)
 
     def fetch_broker_config(self, symbol: str, broker_type: str) -> Dict[str, Any]:
@@ -222,7 +228,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             API result dict
         """
         url = f'{self._api_base_url}{endpoint}'
-        response = requests.get(url, params=params, timeout=self.REQUEST_TIMEOUT_S)
+        response = requests.get(url, params=params, timeout=self._request_timeout_s)
         response.raise_for_status()
 
         data = response.json()
@@ -253,7 +259,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             url,
             headers=headers,
             data=data,
-            timeout=self.REQUEST_TIMEOUT_S,
+            timeout=self._request_timeout_s,
         )
         response.raise_for_status()
 

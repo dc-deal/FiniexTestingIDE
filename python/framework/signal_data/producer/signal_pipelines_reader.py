@@ -16,6 +16,7 @@ That is why a release certificate can prove the feed contract without buying an 
 
 from typing import Any, List, Optional
 
+from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.signal_data.producer.signal_http_reader import fetch_json
 from python.framework.types.config_types.sentiment_config_types import ActiveProducer
 from python.framework.types.signal_data_types import (
@@ -73,6 +74,31 @@ def fetch_pipeline_registry(
         stream=_stream_settings(payload),
         pipelines=pipelines)
 
+
+def read_registry_or_raise(producer: ActiveProducer) -> ProducerPipelineRegistry:
+    """
+    One attempt at the producer registry, raising so a ladder can classify it.
+
+    The reader reports failure as a RESULT rather than by raising, and it is the only
+    thing that knows whether the answer was a refused credential — so the translation
+    into the shared vocabulary happens here, at the one call site that has both facts.
+
+    Args:
+        producer: Active endpoint with its resolved credential
+
+    Returns:
+        The registry when the read succeeded
+
+    Raises:
+        ConnectionAttemptFailedError: the read did not succeed; `terminal` says whether
+            another attempt could help
+    """
+    registry = fetch_pipeline_registry(producer)
+    if registry.ok:
+        return registry
+    raise ConnectionAttemptFailedError(
+        f'{producer.describe()}: {registry.detail}',
+        terminal=registry.credential_rejected)
 
 def _rows(payload: Any) -> Optional[List[Any]]:
     """

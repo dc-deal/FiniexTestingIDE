@@ -51,7 +51,15 @@
                 "api_base_url": "https://api.kraken.com",
                 "rate_limit_interval_s": 1.0,
                 "request_timeout_s": 15,
-                "poll_interval_ms": 5000
+                "poll_interval_ms": 5000,
+                "connection": {
+                    "initial_delay_s": 1.0,
+                    "max_delay_s": 60.0,
+                    "jitter": true,
+                    "attempt_budget": 3,
+                    "request_timeout_s": 15.0,
+                    "on_give_up": "abort"
+                }
             }
         }
     ]

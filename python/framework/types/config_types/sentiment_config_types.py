@@ -13,6 +13,11 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from python.framework.types.config_types.connection_policy_config_types import (
+    ConnectionPolicy,
+)
+from python.framework.types.connection_types import GiveUpAction
+
 
 @dataclass
 class ActiveProducer:
@@ -161,8 +166,18 @@ class SentimentStreamConfig(BaseModel):
     # /v1/pipelines — a local copy of their number reports a feed outage that never
     # happened on the day they change it. The replay window is served the same way.
     heartbeat_timeout_multiple: float = 3.0
-    reconnect_backoff_initial_s: float = 5.0
-    reconnect_backoff_max_s: float = 60.0
+    # #473 — the stream's own reconnect ladder. Budget 0: a long-lived feed's whole job is
+    # to come back, so it never gives up on a transport fault; the terminal control frames
+    # and a refused credential are what end it, and those are classification, not budget.
+    connection: ConnectionPolicy = ConnectionPolicy(
+        initial_delay_s=5.0, max_delay_s=60.0, attempt_budget=0)
+    # #473 — the registry read that PRECEDES the stream, and the one connection whose
+    # give-up rule is a genuine operator choice: degrade is defensible here because the
+    # staleness contracts (#434/#436) describe the reduced state and the boot bridge has
+    # already mounted the archive slice, so the session starts STALE rather than blind.
+    boot_connection: ConnectionPolicy = ConnectionPolicy(
+        initial_delay_s=2.0, max_delay_s=30.0, attempt_budget=3,
+        on_give_up=GiveUpAction.DEGRADE)
 
 
 class SentimentHealthConfig(BaseModel):

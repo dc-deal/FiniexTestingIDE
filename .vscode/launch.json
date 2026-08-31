@@ -1758,6 +1758,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Connection Ladder (#473)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/connection_ladder/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 13
+            }
+        },
+        {
             "name": "🧩 Pytest: Data Coverage (All)",
             "type": "debugpy",
             "request": "launch",

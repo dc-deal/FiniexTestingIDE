@@ -9,7 +9,7 @@ Two paths:
 Direct Bar object creation — no subprocess serialization round-trip.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -17,10 +17,14 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFetcher
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.exceptions.connection_errors import ConnectionInadmissibleError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
+from python.framework.types.connection_types import GiveUpAction
 from python.framework.types.market_types.market_data_types import Bar
+from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
 from python.framework.utils.scenario_requirements import calculate_scenario_requirements
 from python.framework.workers.abstract_worker import AbstractWorker
 
@@ -47,6 +51,7 @@ class AutotraderWarmupPreparator:
         config: AutoTraderConfig,
         workers: List,
         bar_controller: BarRenderingController,
+        connection_policy: Optional[ConnectionPolicy] = None,
     ) -> None:
         """
         Calculate warmup requirements, load bars, validate, and inject.
@@ -55,6 +60,8 @@ class AutotraderWarmupPreparator:
             config: AutoTrader configuration
             workers: List of worker instances (with get_warmup_requirements())
             bar_controller: BarRenderingController to inject bars into
+            connection_policy: Retry ladder for the broker's bar history (#473). Live
+                path only; the parquet path reads a local archive
         """
         # === Step 1: Calculate requirements from workers ===
         reqs = calculate_scenario_requirements(workers)
@@ -70,9 +77,10 @@ class AutotraderWarmupPreparator:
         )
 
         # === Step 2: Load bars ===
-        if config.adapter_type == 'live':
+        live = config.adapter_type == 'live'
+        if live:
             bars_by_tf = self._fetch_bars_from_api(
-                config.symbol, warmup_by_tf
+                config.symbol, warmup_by_tf, connection_policy or ConnectionPolicy()
             )
         else:
             bars_by_tf = self._load_bars_from_parquet(
@@ -82,7 +90,7 @@ class AutotraderWarmupPreparator:
             )
 
         # === Step 4: Validate completeness ===
-        self._validate_warmup_bars(bars_by_tf, warmup_by_tf)
+        self._validate_warmup_bars(bars_by_tf, warmup_by_tf, live)
 
         # === Step 5: Inject directly into bar renderer ===
         total_bars = 0
@@ -190,6 +198,7 @@ class AutotraderWarmupPreparator:
         self,
         symbol: str,
         warmup_by_tf: Dict[str, int],
+        policy: ConnectionPolicy,
     ) -> Dict[str, List[Bar]]:
         """
         Fetch warmup bars from broker API.
@@ -197,31 +206,40 @@ class AutotraderWarmupPreparator:
         Uses KrakenOhlcBarFetcher for Kraken broker type.
         Extensible to MT5 via ABC pattern (#209).
 
+        The ladder here DEGRADES on give-up even where the broker's policy says abort:
+        a short read is reported one level up by _validate_warmup_bars, which knows how
+        many bars are missing on which timeframe and can say so. Aborting here would
+        replace that with "the endpoint did not answer", which is true and useless.
+
         Args:
             symbol: Trading symbol (e.g., 'BTCUSD')
             warmup_by_tf: Required bars per timeframe
+            policy: The broker's connection policy — its numbers, its own give-up rule
+                replaced as described above
 
         Returns:
             Dict[timeframe, List[Bar]]
         """
-        fetcher = KrakenOhlcBarFetcher(logger=self._logger)
+        fetcher = KrakenOhlcBarFetcher(
+            logger=self._logger, request_timeout_s=policy.request_timeout_s)
+        ladder = ConnectionLadder(
+            name='broker_warmup',
+            policy=policy.model_copy(update={'on_give_up': GiveUpAction.DEGRADE}),
+            logger=self._logger,
+        )
         result: Dict[str, List[Bar]] = {}
 
         for timeframe, warmup_count in warmup_by_tf.items():
-            try:
-                bars = fetcher.fetch_bars(
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    count=warmup_count,
-                )
-                result[timeframe] = bars
-                self._logger.debug(
-                    f'  📊 {timeframe}: {len(bars)}/{warmup_count} bars fetched from API'
-                )
-            except Exception as e:
-                self._logger.warning(
-                    f'⚠️  API bar fetch failed for {timeframe}: {e}'
-                )
+            bars = run_with_ladder(
+                lambda tf=timeframe, n=warmup_count: fetcher.fetch_bars(
+                    symbol=symbol, timeframe=tf, count=n),
+                ladder,
+            )
+            result[timeframe] = bars or []
+            self._logger.debug(
+                f'  📊 {timeframe}: {len(result[timeframe])}/{warmup_count} '
+                f'bars fetched from API'
+            )
 
         return result
 
@@ -310,19 +328,46 @@ class AutotraderWarmupPreparator:
         self,
         bars_by_tf: Dict[str, List[Bar]],
         warmup_by_tf: Dict[str, int],
+        live: bool,
     ) -> None:
         """
-        Validate that loaded bars meet requirements. Log warnings for shortfalls.
+        Validate that loaded bars meet requirements — warn on replay, REFUSE on live.
 
         Args:
             bars_by_tf: Loaded bars per timeframe
             warmup_by_tf: Required bars per timeframe
+            live: True when the bars came from the broker API
+
+        Raises:
+            ConnectionInadmissibleError: live, and the requirement is unmet
         """
-        for timeframe, required_count in warmup_by_tf.items():
-            actual = len(bars_by_tf.get(timeframe, []))
-            if actual < required_count:
-                self._logger.warning(
-                    f'⚠️  Insufficient warmup bars for {timeframe}: '
-                    f'{actual}/{required_count} — '
-                    f'workers may produce unreliable signals until history fills'
-                )
+        short = {
+            timeframe: (len(bars_by_tf.get(timeframe, [])), required)
+            for timeframe, required in warmup_by_tf.items()
+            if len(bars_by_tf.get(timeframe, [])) < required
+        }
+        if not short:
+            return
+
+        detail = ' · '.join(
+            f'{tf}: {actual}/{required}' for tf, (actual, required) in short.items())
+
+        if not live:
+            # Mock/replay reads a local archive: a short window is a data question the
+            # operator can see and fix, and refusing would block backtest-shaped runs
+            # that deliberately start near the edge of their data.
+            self._logger.warning(
+                f'⚠️  Insufficient warmup bars — {detail} — '
+                f'workers may produce unreliable signals until history fills'
+            )
+            return
+
+        # #473 — live: refuse. A worker with no history still emits a number, that number
+        # is wrong, and NOTHING declares it wrong: unlike a stale signal or a stale feed,
+        # an empty indicator history has no contract to degrade into. Trading on it is not
+        # a reduced run, it is a different one.
+        raise ConnectionInadmissibleError(
+            f'Warmup requirement unmet: {detail}. The broker\'s bar history could not be '
+            f'read, and there is no staleness contract for an empty indicator history — '
+            f'refusing to start rather than trading on unreliable worker output.'
+        )

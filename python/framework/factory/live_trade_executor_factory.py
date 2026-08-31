@@ -13,7 +13,9 @@ from typing import Optional
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.live_types.live_execution_types import TimeoutConfig
+from python.framework.utils.connection_ladder import ConnectionLadder
 
 
 def build_live_executor(
@@ -24,6 +26,8 @@ def build_live_executor(
     timeout_config: Optional[TimeoutConfig] = None,
     spot_mode: bool = False,
     poll_interval_ms: int = 5000,
+    connection_policy: Optional[ConnectionPolicy] = None,
+    session_key: str = '',
 ) -> LiveTradeExecutor:
     """
     Create a fully configured LiveTradeExecutor.
@@ -40,6 +44,10 @@ def build_live_executor(
         poll_interval_ms: Per-order async poll throttle in ms (#320, default 5000).
             Sourced from BrokerTransportConfig.poll_interval_ms when wired
             from autotrader_startup.
+        connection_policy: Retry ladder and give-up rule for this broker's REST endpoint
+            (#473). Sourced from BrokerTransportConfig.connection.
+        session_key: Discriminator for the client order ids this session sends (#473).
+            Empty on paths that never reach a venue.
 
     Returns:
         LiveTradeExecutor ready for live trading
@@ -56,6 +64,14 @@ def build_live_executor(
     initial_balance = balances.get(account_currency, 0.0)
     initial_balances = balances if spot_mode else None
 
+    # One ladder for this broker's REST endpoint, handed to the executor so the order path
+    # and the Reconciler classify the same 502 the same way (#473).
+    rest_ladder = ConnectionLadder(
+        name='broker_rest',
+        policy=connection_policy or ConnectionPolicy(),
+        logger=logger,
+    )
+
     return LiveTradeExecutor(
         broker_config=broker_config,
         initial_balance=initial_balance,
@@ -65,4 +81,6 @@ def build_live_executor(
         spot_mode=spot_mode,
         initial_balances=initial_balances,
         poll_interval_ms=poll_interval_ms,
+        rest_ladder=rest_ladder,
+        session_key=session_key,
     )

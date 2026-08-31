@@ -351,6 +351,57 @@ The worker thread is single-threaded so simple time-based throttling is sufficie
 
 ---
 
+## Connection failures — what an adapter contributes, and what it must NOT (#473)
+
+An adapter does **not** decide how often to retry, how long to wait, or when to give up.
+That decision lives once, framework-side, in `ConnectionLadder`
+(`framework/utils/connection_ladder.py`) — otherwise every new adapter invents a behaviour
+and the project ends up with one per broker, which is the state #473 exists to end.
+
+An adapter contributes exactly two things:
+
+**1. Translate its transport failures into the shared vocabulary.** Only the transport
+knows whether it saw a dropped socket or a 400, and the classification is by exception
+TYPE, never by parsing a message:
+
+```python
+try:
+    response = send()
+    response.raise_for_status()
+    return response
+except requests.exceptions.HTTPError as error:
+    status = error.response.status_code if error.response is not None else 0
+    raise ConnectionAttemptFailedError(
+        f'HTTP {status} from {endpoint}',
+        terminal=is_terminal_status(status)) from error
+except requests.exceptions.RequestException as error:
+    raise ConnectionAttemptFailedError(
+        f'{type(error).__name__} on {endpoint}: {error}', terminal=False) from error
+```
+
+A **venue-level** error is not a transport fault — Kraken's `{'error': ['EOrder:Insufficient
+funds']}` is the venue speaking, so it stays an ordinary exception and classifies TERMINAL.
+Retrying "insufficient funds" forever would report their outage for our order.
+
+**2. Its numbers**, in `market_config.json::broker_transport.connection` — the same
+`ConnectionPolicy` schema every other connection uses.
+
+### The client order id is not optional for a live adapter
+
+`_build_submit_payload(**kwargs)` receives `client_order_id`. Put it on the wire wherever
+the venue accepts one, and read it back in `_parse_openorders_response` into
+`BrokerOrder.client_order_id`.
+
+It is what makes a submit whose answer was lost answerable at all: the venue's own
+reference is exactly what did not arrive. Without it a transport fault leaves an order that
+may be resting at the broker and cannot be attributed — an orphan. Mind the venue's length
+limit (Kraken: 18 ASCII characters) and truncate rather than let a live order be refused.
+
+An order the venue reports with no key of ours is not a defect — it is somebody else's
+order, and that absence is the fact that tells it apart.
+
+---
+
 ## DryRunOrderSimulator — Mandatory Integration
 
 Every live-capable adapter must integrate the shared `DryRunOrderSimulator` (`python/framework/trading_env/adapters/dry_run_simulator.py`). It provides a counter-based PENDING → FILLED lifecycle so dry-run mode exercises the same pending pipeline as real-mode.

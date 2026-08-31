@@ -395,17 +395,34 @@ different series and nothing here would say so.
   "enabled": false,
   "pipeline_id": "",
   "heartbeat_timeout_multiple": 3.0,
-  "reconnect_backoff_initial_s": 5.0,
-  "reconnect_backoff_max_s": 60.0
+  "connection": {
+    "initial_delay_s": 5.0, "max_delay_s": 60.0, "jitter": true,
+    "attempt_budget": 0, "request_timeout_s": 15.0, "on_give_up": "alert"
+  },
+  "boot_connection": {
+    "initial_delay_s": 2.0, "max_delay_s": 30.0, "jitter": true,
+    "attempt_budget": 3, "request_timeout_s": 15.0, "on_give_up": "degrade"
+  }
 }
 ```
 
+Both blocks are the shared `ConnectionPolicy` schema (#473) — the same fields the broker's transport
+and the tick socket use, so this feed escalates the way every other connection does. `connection` is
+the STREAM's reconnect ladder, budget 0 because a long-lived feed's whole job is to come back; what
+ends it is a terminal control frame or a refused credential, which is classification rather than
+arithmetic. `boot_connection` is the registry read that PRECEDES the stream.
+
+**That boot read used to have one attempt and end the session.** A restart at 03:14 while a reverse
+proxy cycles is exactly the moment nobody is watching, so it now has a ladder and a configured
+give-up. `degrade` is defensible here and nowhere else at boot: the staleness contracts (#434 / #436)
+describe the reduced state and the boot bridge has already mounted the archive slice, so the session
+starts STALE and says so, rather than blind or dead. Policy:
+[external_connection_policy.md](../architecture/external_connection_policy.md).
+
 `heartbeat_seconds` and `replay_window_hours` are **not here**. The producer serves both on
 `GET /v1/pipelines`, at response level because they are properties of the engine rather than of a
-stream, and both are mandatory: a session that cannot read them refuses to start rather than guessing
-a keep-alive interval, which would be a watchdog that fires on a healthy feed. `cadence_seconds` sits
-on the pipeline row for the same reason it is seconds and not an `M10` token — a staleness threshold
-is computed from the number.
+stream. `cadence_seconds` sits on the pipeline row for the same reason it is seconds and not an `M10`
+token — a staleness threshold is computed from the number.
 
 Their in-band `retry:` is read and reported, never obeyed: it is a default for a client with no
 policy of its own, and ours governs.
