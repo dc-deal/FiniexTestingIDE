@@ -20,7 +20,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
-from python.framework.types.api.report_types import RunHeader
+from python.framework.types.api.report_types import RunHeader, RunReporting
 from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,
     RobustnessRole,
@@ -28,7 +28,7 @@ from python.framework.types.config_types.robustness_config_types import (
 from python.framework.types.log_layout_types import MOUNT_BUILD_LOG, RUN_TYPE_SIMULATION
 from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.types.validation_types import ValidationResult
-from python.framework.utils.git_info_utils import get_git_info
+from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
@@ -178,7 +178,8 @@ class ScenarioSet:
     """Self-contained scenario set with its own logging infrastructure"""
 
     def __init__(self, scenario_config: LoadedScenarioConfig, app_config: AppConfigManager,
-                 sweep_id: Optional[str] = None, mount_only: bool = False):
+                 sweep_id: Optional[str] = None, mount_only: bool = False,
+                 reporting: RunReporting = RunReporting.EXPECTED):
         """
         Args:
             scenario_config: The loaded scenario set
@@ -189,6 +190,10 @@ class ScenarioSet:
                 no run directory — a shared data load is not a run, and a directory shaped like
                 one is indistinguishable from a real run in the API's index. No summary logger
                 either: there is no batch report to summarise
+            reporting: Whether this run will be given a report coordinator. Declared here
+                because only the CALLER knows — a test that stops after `orchestrator.run()`
+                passes NONE, so its empty artifact list reads as intended rather than as a
+                run that died before reporting (#475)
         """
 
         self.scenario_set_name = scenario_config.scenario_set_name
@@ -223,8 +228,9 @@ class ScenarioSet:
         )
         # The run header goes down FIRST, before anything else can fail. A mount build gets
         # none: it has no run directory, because it is not a run.
+        # Only the COMMIT is needed here — `get_git_commit()` costs 68 ms where the full
+        # read costs ~2.0 s, and the header has no use for branch / dirty (§42).
         if not mount_only and self.logger.get_log_dir() is not None:
-            git = get_git_info()
             header = RunHeader(
                 run_id=self._run_id,
                 start_time=self._run_timestamp,
@@ -233,7 +239,8 @@ class ScenarioSet:
                 parent_id=sweep_id,
                 config_snapshot='scenario_config.json',
                 app_version=app_config.get_version(),
-                git_commit=git.commit if git else None,
+                git_commit=get_git_commit(),
+                reporting=reporting,
             )
             RunIndex(app_config.get_file_logging_config_object().run_index).register_run(
                 header, self.logger.get_log_dir())

@@ -17,6 +17,7 @@ import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
+from python.framework.types.api.report_types import RunReporting
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
@@ -32,7 +33,8 @@ def harness_run_dir() -> Path:
     that used to be the only one taking the snapshot. Reproducing the harness is the whole point.
     """
     app_config = AppConfigManager()
-    scenario_set = ScenarioSet(ScenarioConfigLoader().load_config(SCENARIO_SET), app_config)
+    scenario_set = ScenarioSet(ScenarioConfigLoader().load_config(SCENARIO_SET), app_config,
+                                reporting=RunReporting.NONE)
     BatchOrchestrator(scenario_set, app_config).run()
     return scenario_set.logger.get_log_dir()
 

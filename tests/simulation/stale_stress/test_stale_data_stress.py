@@ -18,6 +18,7 @@ import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
+from python.framework.types.api.report_types import RunReporting
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
@@ -39,7 +40,7 @@ def summary():
     """Run the 5-scenario stress set once, shared across all tests."""
     scenario_config = ScenarioConfigLoader().load_config(str(FIXTURE_SET))
     app_config = AppConfigManager()
-    scenario_set = ScenarioSet(scenario_config, app_config)
+    scenario_set = ScenarioSet(scenario_config, app_config, reporting=RunReporting.NONE)
     return BatchOrchestrator(scenario_set, app_config).run()
 
 

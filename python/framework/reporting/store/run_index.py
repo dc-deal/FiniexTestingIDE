@@ -13,14 +13,14 @@ from python.framework.reporting.io.run_header_io import (
     read_run_header,
     write_run_header,
 )
-from python.framework.types.api.report_types import RunHeader, RunInfo
+from python.framework.types.api.report_types import RunHeader, RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import IO_SUBDIR
 
 # Fixed column order, so the file stays readable back across versions.
 INDEX_COLUMNS: List[str] = [
     'run_id', 'start_time', 'run_type', 'run_name', 'parent_id', 'run_dir', 'artifacts',
-    'app_version', 'git_commit', 'config_snapshot',
+    'app_version', 'git_commit', 'config_snapshot', 'reporting',
 ]
 
 
@@ -102,6 +102,7 @@ class RunIndex:
             'app_version': header.app_version,
             'git_commit': header.git_commit,
             'config_snapshot': header.config_snapshot,
+            'reporting': str(header.reporting),
         }])
         self._write(pd.concat([frame, row], ignore_index=True))
 
@@ -143,7 +144,8 @@ class RunIndex:
                         artifacts=list(r.artifacts), start_time=r.start_time,
                         parent_id=_or_none(r.parent_id), app_version=r.app_version or '',
                         git_commit=_or_none(r.git_commit),
-                        config_snapshot=r.config_snapshot or '')
+                        config_snapshot=r.config_snapshot or '',
+                        reporting=r.reporting or RunReporting.EXPECTED)
                 for r in frame.itertuples()]
 
     def run_dir(self, run_id: str) -> Optional[Path]:
@@ -190,6 +192,7 @@ class RunIndex:
                     'app_version': header.app_version,
                     'git_commit': header.git_commit,
                     'config_snapshot': header.config_snapshot,
+                    'reporting': str(header.reporting),
                 })
         self._write(pd.DataFrame(rows, columns=INDEX_COLUMNS))
         return len(rows)

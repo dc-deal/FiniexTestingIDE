@@ -47,7 +47,7 @@ from python.framework.types.signal_data_types import (
     SignalTransportKind,
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType
-from python.framework.utils.git_info_utils import get_git_info
+from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id
 from python.framework.validators.component_metadata_advisory import (
     surface_decision_logic_version,
@@ -131,8 +131,9 @@ def create_autotrader_loggers(
 
     # The run header goes down FIRST, before the session can fail — a crashed session is
     # exactly the one somebody needs to identify afterwards.
+    # Only the COMMIT is needed here — `get_git_commit()` costs 68 ms where the full read
+    # costs ~2.0 s, and the header has no use for branch / dirty (§42).
     if run_dir:
-        git = get_git_info()
         header = RunHeader(
             run_id=run_id,
             start_time=run_timestamp,
@@ -141,7 +142,7 @@ def create_autotrader_loggers(
             parent_id=None,
             config_snapshot='autotrader_config.json',
             app_version=AppConfigManager().get_version(),
-            git_commit=git.commit if git else None,
+            git_commit=get_git_commit(),
         )
         RunIndex(AppConfigManager().get_file_logging_config_object().run_index).register_run(
             header, run_dir)

@@ -339,6 +339,17 @@ class ScenarioDetailsReport(RunScopedReport):
     units: list[ScenarioDetailsRow]
 
 
+class RunReporting(StrEnum):
+    """
+    Whether a run was commissioned to produce report artifacts.
+
+    EXPECTED is the default because it is what every real run is; NONE is declared by a caller
+    that deliberately runs without a report coordinator — today the simulation test path.
+    """
+    EXPECTED = 'expected'
+    NONE = 'none'
+
+
 class RunHeader(BaseModel):
     """
     What a run IS — written once, at the run's START, into its own directory.
@@ -364,6 +375,14 @@ class RunHeader(BaseModel):
         config_snapshot: File name of the config this run was commissioned with
         app_version: The app version that produced it
         git_commit: The commit it ran from, when the working tree exposes one
+        reporting: Whether this run was COMMISSIONED to write report artifacts. Declared at
+            the start, by the caller that decides it — not read from config, because there is
+            no config for it: the sim test path simply never builds a report coordinator.
+            Without this field an empty artifact list means three different things — the run is
+            still going, it CRASHED before reporting, or it was never meant to report — and a
+            crashed run is then indistinguishable from an intentionally silent one. It also
+            makes cleanup decidable: `none` is the machine-checkable statement "there is
+            nothing here anyone wants to look at"
     """
     run_id: str
     start_time: datetime
@@ -373,6 +392,7 @@ class RunHeader(BaseModel):
     config_snapshot: str = ''
     app_version: str = ''
     git_commit: Optional[str] = None
+    reporting: RunReporting = RunReporting.EXPECTED
 
 
 class RunInfo(BaseModel):
@@ -399,6 +419,11 @@ class RunInfo(BaseModel):
     app_version: str = ''
     git_commit: Optional[str] = None
     config_snapshot: str = ''
+    # Whether the run was COMMISSIONED to report. Read it together with `artifacts`: empty +
+    # 'expected' means the run is still going or died before reporting, empty + 'none' means
+    # it was never meant to. Without the pair a crashed run looks like a deliberately silent
+    # one, and a consumer cannot tell an incomplete run from an intentional one.
+    reporting: RunReporting = RunReporting.EXPECTED
 
     @computed_field
     @property

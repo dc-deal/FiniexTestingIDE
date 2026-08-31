@@ -23,7 +23,7 @@ import subprocess
 import pytest
 
 from python.framework.utils import git_info_utils
-from python.framework.utils.git_info_utils import get_git_info
+from python.framework.utils.git_info_utils import get_git_commit, get_git_info
 
 REPORTS_DIR = 'tests/live_signal_feed/reports'
 
@@ -76,9 +76,19 @@ def scripted(monkeypatch):
         A callable taking the porcelain output the test wants git to report
     """
     def install(status_output: str):
+        # The reader caches per process (§41), so each scripted case must start from an
+        # empty cache — otherwise the second test reads the first test's answer and the
+        # suite goes green while asserting nothing.
+        get_git_info.cache_clear()
+        get_git_commit.cache_clear()
         monkeypatch.setattr(subprocess, 'run', scripted_git(status_output))
         monkeypatch.setattr(git_info_utils.subprocess, 'run', scripted_git(status_output))
-    return install
+    yield install
+    # And clear it again on the way out: monkeypatch removes the scripted subprocess, but
+    # the SCRIPTED ANSWER would stay in the cache and reach every later test in this
+    # process — a fake commit hash nobody would think to look for.
+    get_git_info.cache_clear()
+    get_git_commit.cache_clear()
 
 
 class TestOwnArtifactDoesNotDirtyTheTree:

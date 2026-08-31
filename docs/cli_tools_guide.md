@@ -167,7 +167,8 @@ sweep combination is a `simulation` whose `parent_id` names its sweep; a live da
 will be a `live` whose `parent_id` names its session.
 
 The artifact count is the length of the run's `artifacts` list — every report file it persisted,
-by name. **The two pipelines produce different sets** (18 for a simulation run, 14 for a live
+by name. A run with none is not automatically incomplete: the header's `reporting` field says
+whether it was commissioned to report at all. **The two pipelines produce different sets** (18 for a simulation run, 14 for a live
 session: live has no `scenario_details` / `profiling` / `run_meta` / `aggregated_portfolio`), which
 is why the index carries the list rather than a boolean — a consumer that only learned "yes, some"
 would still be guessing which. A run with none exists as logs alone and is listed rather than

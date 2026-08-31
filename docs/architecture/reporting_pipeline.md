@@ -251,6 +251,44 @@ units; for flat record lists (trades, orders) every row carries its `symbol` and
 filtered, not grouped. The generic `RunUnit` abstraction that deduplicates the per-source
 extraction is **implemented** (`builders/run_unit.py`); every builder maps from it.
 
+## Reporting is OPTIONAL in simulation and MANDATORY live — on purpose
+
+The two pipelines differ in **who decides that a report is written**, and the difference is a
+decision, not an oversight:
+
+```
+SIM    orchestrator.run()                          → the CALLER then chooses to build
+                                                     BatchReportCoordinator, or not
+LIVE   autotrader_main.run() calls                 → no way past it
+       self._generate_reports(result) internally
+```
+
+**A backtest can be repeated; its report may be optional.** The simulation test path relies on
+exactly this — it stops after `orchestrator.run()` and writes no artifacts, which is how ~35 of
+the tree's runs legitimately carry none.
+
+**A live session cannot be repeated. Its report is the only record that real money moved.** If
+the call sat with the caller, "forgotten" would be a reachable state, and the price of reaching
+it is a real-money session with no record. So the live pipeline does not offer the choice.
+
+Making the two symmetric would mean either lifting the live call out — which introduces exactly
+that footgun — or making the sim call mandatory, which the test path cannot afford. The
+asymmetry is the correct shape, and it is recorded here so it reads as a decision.
+
+**What the two DO share** is that the decision is now *declared*: `RunHeader.reporting` is
+`expected` or `none`, written at run start by whoever knows. Read it together with the index's
+`artifacts` list:
+
+```
+reporting=none      + artifacts=[]   →  as commissioned          (a consumer greys it out)
+reporting=expected  + artifacts=[]   →  still running, or DIED before reporting
+reporting=expected  + artifacts=18   →  complete
+```
+
+Without the pair, an empty artifact list means all three at once — and a crashed run is then
+indistinguishable from an intentionally silent one. It is also what makes cleanup decidable:
+`none` is the machine-checkable statement that nothing here is worth keeping.
+
 ## Both pipelines write the same artifacts
 
 The shared inputs are the executor's `get_trade_history()` / `get_order_history()` and the

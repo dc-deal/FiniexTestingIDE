@@ -139,6 +139,26 @@ Backtesting test scenarios (`configs/scenario_sets/backtesting/`) **must keep ex
 
 **Rule:** Normal scenario sets can be slimmed down to inherit app defaults. Test scenario sets are pinned — they define their own truth.
 
+## Output Isolation — tests never write production data (§34)
+
+Three autouse fixtures in `tests/conftest.py` redirect everything a run persists, for the whole
+test session. All three are session-scoped and need no opt-in:
+
+| What | Fixture | Redirected to |
+|---|---|---|
+| user config overrides | `FINIEX_CONFIG_ISOLATION=1` at module import | skipped entirely |
+| the run tree + its index | `_isolate_run_tree` | `tmp_path_factory` |
+| the cross-run results ledger | `_isolate_run_results_ledger` | `tmp_path_factory` |
+
+**Why redirect rather than switch logging off.** Turning `file_logging.scenario.enabled` off
+would also produce a clean tree — no directory, no header, and therefore no index row. But it
+would take away what tests legitimately use: two integration tests read their own run directory
+to assert on artifacts, §36 diagnosis needs the log files, and a failing test's log is the first
+thing to look at. Redirecting keeps all of that and still leaves the operator's tree untouched.
+
+Measured 2026-08-30, before `_isolate_run_tree` existed: **134 of 138 rows** in the operator's
+production run index came from two suite runs. The API served them and the viewer listed them.
+
 ## Files
 
 | File | Purpose |
