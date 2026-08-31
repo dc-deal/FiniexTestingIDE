@@ -31,11 +31,12 @@ from python.framework.types.log_level import LogLevel
 from python.framework.types.validation_types import Severity, ValidationResult
 
 
-def build_warnings_errors_report_from_batch(batch: BatchExecutionSummary) -> WarningsErrorsReport:
+def build_warnings_errors_report_from_batch(run_id: str, batch: BatchExecutionSummary) -> WarningsErrorsReport:
     """
     Build the report from a sim batch.
 
     Args:
+        run_id: The run this report belongs to
         batch: The completed batch summary (validation channels + process results)
 
     Returns:
@@ -44,15 +45,17 @@ def build_warnings_errors_report_from_batch(batch: BatchExecutionSummary) -> War
     warnings = _batch_warnings(batch)
     errors = _batch_errors(batch)
     outcome = _batch_outcome(batch)
-    return WarningsErrorsReport(warnings=warnings, errors=errors, outcome=outcome)
+    return WarningsErrorsReport(run_id=run_id, warnings=warnings, errors=errors, outcome=outcome)
 
 
 def build_warnings_errors_report_from_session(
+    run_id: str,
     result: AutoTraderResult, name: str, symbol: str) -> WarningsErrorsReport:
     """
     Build the report for a live session.
 
     Args:
+        run_id: The run this report belongs to
         result: The collected session result
         name: Unit label (profile name / symbol)
         symbol: Traded symbol
@@ -93,7 +96,7 @@ def build_warnings_errors_report_from_session(
         emergency_reason=result.emergency_reason or '',
         shutdown_mode=result.shutdown_mode,
         operator_interrupted=result.operator_interrupted)
-    return WarningsErrorsReport(warnings=warnings, errors=errors, outcome=outcome)
+    return WarningsErrorsReport(run_id=run_id, warnings=warnings, errors=errors, outcome=outcome)
 
 
 def _warning_rows(result: ValidationResult, scope: str) -> list:

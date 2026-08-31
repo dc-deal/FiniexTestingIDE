@@ -11,6 +11,7 @@ Stateless by design (composition, not a base class) — see the pipeline coordin
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.builders.execution_stats_report_builder import (
     build_execution_stats_report,
 )
@@ -45,6 +46,10 @@ from python.framework.reporting.io.order_history_report_io import (
 )
 from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
 from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
+from python.framework.reporting.io.run_header_io import (
+    RUN_HEADER_ARTIFACT,
+    read_run_header,
+)
 from python.framework.reporting.io.run_summary_io import write_run_summary
 from python.framework.reporting.io.signal_report_io import write_signal_report
 from python.framework.reporting.io.trade_history_report_io import (
@@ -52,6 +57,7 @@ from python.framework.reporting.io.trade_history_report_io import (
     write_trade_history_report,
 )
 from python.framework.reporting.io.worker_decision_report_io import write_worker_decision_report
+from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.framework.types.signal_data_types import SignalObservedSeries
 
@@ -60,7 +66,27 @@ class SharedReportCoordinator:
     """The shared units-derived DERIVE+PERSIST core (#403). Stateless — both pipelines delegate."""
 
     @staticmethod
+    def record_run_artifacts(run_dir: Path) -> None:
+        """
+        Record the run's persisted artifacts in the index — called LAST, by each pipeline.
+
+        Deliberately not part of `derive_and_persist`: both pipelines write further artifacts of
+        their own after that returns, so a list taken there would be short by exactly those. The
+        id comes from the run's own header, never from the directory name — identity is a field,
+        not a path (#475).
+
+        Args:
+            run_dir: The run's own directory
+        """
+        header_path = run_dir / RUN_HEADER_ARTIFACT
+        if not header_path.exists():
+            return
+        RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \
+            .record_artifacts(read_run_header(header_path).run_id, run_dir)
+
+    @staticmethod
     def derive_and_persist(
+        run_id: str,
         units: List[RunUnit],
         io_dir: Path,
         signal_scenario_map: Optional[Dict[Tuple[str, str], SignalScenarioInfo]] = None,
@@ -70,6 +96,8 @@ class SharedReportCoordinator:
         Build + persist the units-derived report sections shared by both pipelines.
 
         Args:
+            run_id: The run these reports belong to — every artifact names it, so a consumer
+                can check what it received instead of trusting the route it asked on (#475)
             units: The run's units (sim: N scenarios; live: 1 session)
             io_dir: The run's io/ subfolder (created if missing)
             observed_feed: What a live transport accumulated while the session ran — the
@@ -82,44 +110,44 @@ class SharedReportCoordinator:
         """
         io_dir.mkdir(parents=True, exist_ok=True)
 
-        trade_history = build_trade_history_report(units)
+        trade_history = build_trade_history_report(run_id, units)
         write_trade_history_report(trade_history, io_dir)
         write_trade_history_csv(trade_history, io_dir)
 
-        order_history = build_order_history_report(units)
+        order_history = build_order_history_report(run_id, units)
         write_order_history_report(order_history, io_dir)
         write_order_history_csv(order_history, io_dir)
 
         # Portfolio full projection — per-unit rows + per-currency roll-up.
-        portfolio = build_portfolio_report(units)
+        portfolio = build_portfolio_report(run_id, units)
         write_portfolio_report(portfolio, io_dir)
 
         # Pending-orders — per-unit lifecycle + latency + active orders.
-        pending_orders = build_pending_orders_report(units)
+        pending_orders = build_pending_orders_report(run_id, units)
         write_pending_orders_report(pending_orders, io_dir)
 
         # Execution-stats headline — per-unit order counts + summed total.
-        execution_stats = build_execution_stats_report(units)
+        execution_stats = build_execution_stats_report(run_id, units)
         write_execution_stats_report(execution_stats, io_dir)
         write_execution_stats_csv(execution_stats, io_dir)
 
         # Signal configuration — archive provenance + what the strategy decided on (#433).
         # Built BEFORE the run summary: it supplies the run's weakest fresh ratio.
-        signal = build_signal_report(signal_scenario_map or {}, units, observed_feed)
+        signal = build_signal_report(run_id, signal_scenario_map or {}, units, observed_feed)
         write_signal_report(signal, io_dir)
 
         # Feed stability — the observed outage episodes of both staleness domains (#451).
         # Also before the run summary: it supplies the run's disturbance totals.
-        feed_stability = build_feed_stability_report(units)
+        feed_stability = build_feed_stability_report(run_id, units)
         write_feed_stability_report(feed_stability, io_dir)
 
         # Run summary — cross-section KPIs composed from the section aggregates (#390 prework).
         run_summary = build_run_summary(
-            portfolio, trade_history, execution_stats, signal, feed_stability)
+            run_id, portfolio, trade_history, execution_stats, signal, feed_stability)
         write_run_summary(run_summary, io_dir)
 
         # Worker/decision — per-unit worker + decision performance (#398).
-        worker_decision = build_worker_decision_report(units)
+        worker_decision = build_worker_decision_report(run_id, units)
         write_worker_decision_report(worker_decision, io_dir)
 
         return UnifiedReports(

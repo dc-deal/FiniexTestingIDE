@@ -22,8 +22,12 @@ from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.reporting.builders.report_aggregators import aggregate_signal_fresh_ratio
 from python.framework.reporting.builders.run_unit import run_units_from_batch
 from python.framework.reporting.builders.signal_report_builder import build_signal_report
+from python.framework.types.api.report_types import RunReporting
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
+
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
 
 FIXTURE_SET = (
     Path(__file__).resolve().parents[3]
@@ -45,7 +49,7 @@ def summary():
     """Run the 6-scenario resolution set once, shared across all tests."""
     scenario_config = ScenarioConfigLoader().load_config(str(FIXTURE_SET))
     app_config = AppConfigManager()
-    scenario_set = ScenarioSet(scenario_config, app_config)
+    scenario_set = ScenarioSet(scenario_config, app_config, reporting=RunReporting.NONE)
     return BatchOrchestrator(scenario_set, app_config).run()
 
 
@@ -150,7 +154,7 @@ class TestReportProjection:
 
     @pytest.fixture(scope='class')
     def report(self, summary):
-        return build_signal_report(
+        return build_signal_report(_RUN_ID, 
             summary.signal_scenario_map, run_units_from_batch(summary))
 
     def test_one_source_with_every_scenario(self, report):

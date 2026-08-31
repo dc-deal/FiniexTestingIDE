@@ -29,6 +29,7 @@ from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.process_data_types import ProcessScenarioConfig
+from python.framework.utils.run_id_utils import mint_run_id
 
 TIMEFRAME = 'M5'
 SYMBOL = 'BTCUSD'
@@ -58,6 +59,7 @@ def _build_controller() -> BarRenderingController:
         scenario_set_name='tick_clipping_test',
         scenario_name='bar_clipping_regression',
         run_timestamp=datetime.now(tz=timezone.utc),
+        run_id=mint_run_id(datetime.now(timezone.utc)),
     )
     controller = BarRenderingController(logger=logger)
     # Bypass worker registration — directly set required timeframes.
@@ -98,6 +100,7 @@ def _build_mocks():
         scenario_set_name='tick_clipping_test',
         scenario_name='bar_clipping_regression',
         run_timestamp=datetime.now(tz=timezone.utc),
+        run_id=mint_run_id(datetime.now(timezone.utc)),
     )
 
     return trade_simulator, worker_coordinator, decision_logic, logger
@@ -238,6 +241,7 @@ def _build_autotrader_tick_loop(ticks_with_flags):
         scenario_set_name='tick_clipping_test',
         scenario_name='bar_clipping_autotrader_regression',
         run_timestamp=datetime.now(tz=timezone.utc),
+        run_id=mint_run_id(datetime.now(timezone.utc)),
     )
     controller = BarRenderingController(logger=logger)
     controller._required_timeframes = {TIMEFRAME}

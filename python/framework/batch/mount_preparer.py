@@ -288,7 +288,7 @@ class MountPreparer:
 
         self._logger.info(
             f'✅ Continuing with {valid_scenario_count}/{scenario_count} '
-            f'invalid scenario(s) ({total_invalid} filtered out)'
+            f'valid scenario(s) ({total_invalid} filtered out)'
         )
 
         # Data identity — fingerprint each loaded scenario's data (broker / symbol / window /

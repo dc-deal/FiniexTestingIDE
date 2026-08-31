@@ -15,18 +15,19 @@ from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import PortfolioReport, PortfolioUnitRow
 
 
-def build_portfolio_report(units: List[RunUnit]) -> PortfolioReport:
+def build_portfolio_report(run_id: str, units: List[RunUnit]) -> PortfolioReport:
     """
     Build the portfolio report from the run's units (per-unit rows + per-currency roll-up).
 
     Args:
+        run_id: The run this report belongs to
         units: The run's units (sim: N scenarios; live: 1 session)
 
     Returns:
         PortfolioReport with one full-projection row per unit (with stats) + per-currency aggregate
     """
     rows = [_to_unit_row(u) for u in units if u.portfolio_stats is not None]
-    return PortfolioReport(units=rows, aggregates=aggregate_portfolio_by_currency(rows))
+    return PortfolioReport(run_id=run_id, units=rows, aggregates=aggregate_portfolio_by_currency(rows))
 
 
 def _spot_estimate(stats) -> tuple:

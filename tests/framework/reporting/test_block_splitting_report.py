@@ -10,6 +10,9 @@ from python.framework.reporting.builders.block_splitting_report_builder import (
     build_block_splitting_report_from_batch,
 )
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
 from python.framework.types.process_data_types import (
     BlockBoundaryReport,
     ProcessResult,
@@ -37,7 +40,7 @@ def _batch(results) -> BatchExecutionSummary:
 
 
 def _build(results):
-    return build_block_splitting_report_from_batch(_batch(results), [])
+    return build_block_splitting_report_from_batch(_RUN_ID, _batch(results), [])
 
 
 class TestBuild:

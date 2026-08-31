@@ -32,6 +32,9 @@ from python.framework.types.trading_env_types.broker_types import (
 )
 from python.framework.utils.console_renderer import ConsoleRenderer
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 
 def _broker_spec() -> BrokerSpecification:
     return BrokerSpecification(
@@ -90,7 +93,7 @@ def _batch(symbols, scenarios, config_hash='abcd1234') -> BatchExecutionSummary:
 class TestBuild:
     def test_maps_broker_row(self):
         batch = _batch(['BTCUSD'], ['btc_run'])
-        report = build_broker_report_from_batch(batch)
+        report = build_broker_report_from_batch(_RUN_ID, batch)
         assert len(report.units) == 1
         row = report.units[0]
         assert row.broker_type == 'kraken_spot'
@@ -104,7 +107,7 @@ class TestBuild:
 
     def test_symbols_sorted_and_mapped(self):
         batch = _batch(['ETHUSD', 'BTCUSD'], ['run'])
-        row = build_broker_report_from_batch(batch).units[0]
+        row = build_broker_report_from_batch(_RUN_ID, batch).units[0]
         # symbols come from a set → builder sorts them
         assert [s.symbol for s in row.symbols] == ['BTCUSD', 'ETHUSD']
         btc = row.symbols[0]
@@ -114,13 +117,13 @@ class TestBuild:
     def test_empty_batch_no_units(self):
         batch = BatchExecutionSummary(
             batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0)
-        assert build_broker_report_from_batch(batch).units == []
+        assert build_broker_report_from_batch(_RUN_ID, batch).units == []
 
 
 class TestBuildFromSession:
     def test_single_broker_single_symbol_no_scenarios(self):
         # live session: one broker + one symbol, no scenario grid
-        report = build_broker_report_from_session(_fake_config(['BTCUSD']), 'BTCUSD')
+        report = build_broker_report_from_session(_RUN_ID, _fake_config(['BTCUSD']), 'BTCUSD')
         assert len(report.units) == 1
         row = report.units[0]
         assert row.broker_type == 'kraken_spot'
@@ -140,7 +143,7 @@ class TestRender:
         return re.sub(r'\x1b\[[0-9;]*m', '', buf.getvalue())
 
     def _report(self, scenarios) -> BrokerReport:
-        return BrokerReport(units=[BrokerInfoRow(
+        return BrokerReport(run_id=_RUN_ID, units=[BrokerInfoRow(
             broker_type='kraken_spot', market_type='crypto', company='Kraken',
             server='kraken-spot', trade_mode='demo', leverage=1,
             margin_mode='none', hedging_allowed=False, config_hash='abcd1234',
@@ -163,5 +166,5 @@ class TestRender:
         assert '• s1' not in out
 
     def test_no_units_message(self):
-        out = self._render(BrokerReport(units=[]))
+        out = self._render(BrokerReport(run_id=_RUN_ID, units=[]))
         assert 'No broker configuration available' in out

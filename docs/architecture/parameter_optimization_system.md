@@ -108,6 +108,40 @@ each grid value is written into every scenario's `strategy_config` (in-memory, n
 is never mutated). The scenario set name is tagged per combination (`__<sweep_id>_c<idx>`) so each
 combination gets a unique run directory.
 
+**What a sweep directory holds.** One directory per combination, and the sweep's own two
+artifacts — nothing else:
+
+```
+runs/simulation/sweeps/<sweep_id>/
+├── mount_build.log                     the shared data load, performed ONCE
+├── ranked.csv                          the ranking, written by `report <sweep_id>`
+├── <set>__<sweep_id>_c000/<run_id>/    one combination
+├── <set>__<sweep_id>_c001/<run_id>/
+└── …
+```
+
+**A combination is a RUN; the sweep is not.** Each combination writes its own `header.json` with
+`run_type: simulation` and `parent_id` set to the sweep id (#475) — a sweep is not a run TYPE, it
+is a parent. The combination therefore answers every report route exactly like a standalone run — measured on the consumer side: all fourteen routes return identical field sets. The sweep
+itself has no header and never will: it is DEFINED by the runs that name it as parent, which is
+why `/api/v1/sweeps` is derived from the ledger rather than from a sweep object. What a sweep adds
+is the level ABOVE the report — the ranking — and `parent_id` makes it reachable from below
+without asking `/sweeps` first.
+
+The same field carries the daily fragments of #476, and the two must not be reasoned about alike:
+a sweep's children are ALTERNATIVES, contemporaneous and comparable, and ranking them is the point;
+a session's fragments are a SEQUENCE, consecutive slices of one run, where a timeline is what you
+want and a ranking would mean nothing.
+
+`mount_build.log` is where the #419 mount build writes: the data window, the tick count, the
+warmup bars and the broker configuration every combination then reuses. It is sweep-level output
+and lives at sweep level — deliberately, because it used to be written through a `ScenarioSet`
+built only to produce the mount, and constructing one opens a run directory as a side effect. That
+left a directory shaped like a run in which no run had happened, indistinguishable in the API's
+index from a legitimate log-only session. `ScenarioSet(..., mount_only=True)` writes the record
+flat and opens no run directory; the count of child directories is pinned by
+`tests/simulation/optimization/test_sweep_directory_shape.py`.
+
 ---
 
 ## The Run Results Ledger (`data/run_results/`)
@@ -158,7 +192,7 @@ the run directory is later deleted.
 
 - **Best combinations** — ordered by the objective (stable tie-break by `run_id`, so two runs of the
   same grid + data give the same ranking → pairs with the determinism gate #368). Writes the ranked
-  table to `logs/sweeps/<sweep_id>_ranked.csv`. **Error rows are excluded** (the exclusion lives once in
+  table to the sweep's own directory, `<run_logs.simulation>/sweeps/<sweep_id>/ranked.csv`, beside the combination runs it ranks. **Error rows are excluded** (the exclusion lives once in
   the analysis `_scope`, so every consumer is safe — no failed run can "win" by doing nothing).
 - **Errored combinations** — a warning block lists every `status='error'` combination + its reason
   (e.g. a parameter out of range), so the operator sees what needs fixing. Recorded, not evaluated.

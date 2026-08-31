@@ -30,6 +30,35 @@ os.environ.setdefault('FINIEX_CONFIG_ISOLATION', '1')
 import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.types.config_types.file_logging_config_types import RunLogPaths
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _isolate_run_tree(tmp_path_factory):
+    """
+    Redirect the run tree AND its index to a throwaway dir for the whole test session.
+
+    The sibling of `_isolate_run_results_ledger` below, for the other two output planes.
+    Without it every test that builds a ScenarioSet or runs an AutoTrader session registers
+    a run in the OPERATOR's `runs/` tree and in the index the API serves — measured
+    2026-08-30: 134 of 138 index rows came from two suite runs. Tests must never write
+    production data (§34).
+
+    Redirecting rather than switching file logging off, deliberately: the tree still exists,
+    so a test may read its own run directory (two integration tests assert on artifacts, and
+    §36 diagnosis stays possible), and a failing test's log is still there to look at — just
+    under tmp.
+    """
+    root = tmp_path_factory.mktemp('run_tree')
+    real = AppConfigManager().get_file_logging_config_object()
+    isolated = real.model_copy(update={
+        'run_logs': RunLogPaths(simulation=root / 'simulation', live=root / 'live'),
+        'run_index': root / 'index.parquet',
+    })
+    mp = pytest.MonkeyPatch()
+    mp.setattr(AppConfigManager, 'get_file_logging_config_object', lambda self: isolated)
+    yield
+    mp.undo()
 
 
 @pytest.fixture(scope='session', autouse=True)

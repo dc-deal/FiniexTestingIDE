@@ -4,9 +4,19 @@ FiniexTestingIDE - Git Info Utilities
 Single source of truth for reading version-control state from the working tree.
 Used by run reports, certificates and performance snapshots so the git lookup
 lives in ONE place instead of being re-derived per consumer.
+
+READ THIS BEFORE ADDING A CALLER — the full read is EXPENSIVE, and the cost is the
+filesystem rather than git. Measured 2026-08-30: `get_git_info()` ~2.0 s, of which
+`git status` is ~1.8 s, because a single `stat()` costs ~2.1 ms on this project's 9p
+mount instead of the 1-2 µs an ext4 volume would take. A bare `os.stat()` loop over the
+tracked files is SLOWER than `git status` itself, so no git library can help — the only
+lever is calling it less. Two consequences, neither optional:
+  - need only the commit? call `get_git_commit()` (68 ms), never the full read
+  - the full read is CACHED per process (below)
 """
 
 import subprocess
+from functools import lru_cache
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -14,9 +24,14 @@ from typing import List, Optional
 from python.framework.types.git_info_types import GitInfo
 
 
+@lru_cache(maxsize=1)
 def get_git_commit() -> Optional[str]:
     """
     Get the current short git commit hash.
+
+    The cheap read — one subprocess, ~68 ms against the ~2.0 s of the full one. Cached for
+    the same reason and with the same consequence as `get_git_info`: the checked-out commit
+    does not change under a running process, and a scripted test must clear it.
 
     Returns:
         Short commit hash, or None if git is unavailable or not in a repo
@@ -62,9 +77,22 @@ def _drop_untracked_under(status_lines: List[str], directory: str) -> List[str]:
     return kept
 
 
+@lru_cache(maxsize=None)
 def get_git_info(ignore_untracked_under: Optional[str] = None) -> Optional[GitInfo]:
     """
     Get full git repository information (branch, commit, date, message, dirty).
+
+    CACHED per process, keyed on the argument — a certificate asks a different question
+    than a run report and must keep its own answer. The cache is what makes the cost
+    bearable: one CLI run used to pay it 2-3 times, and a pytest process once per run it
+    executed. The working tree is read ONCE, at the first call.
+
+    That is a semantic choice, not only a speed one: a long live session then reports the
+    tree state it STARTED from, which is the honest answer — it describes the code that
+    ran, not the code that happens to be checked out when the session ends.
+
+    A test that scripts the git subprocess must call `get_git_info.cache_clear()` between
+    cases, or the second case reads the first case's answer.
 
     Args:
         ignore_untracked_under: Directory whose untracked files do not make the tree

@@ -37,6 +37,9 @@ from python.framework.types.signal_data_types import (
 )
 from python.framework.utils.console_renderer import ConsoleRenderer
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 SOURCE = 'crypto_sentiment_mock'
 SYMBOL = 'BTCUSD'
 WINDOW_START = datetime(2026, 4, 27, 6, 0, tzinfo=timezone.utc)
@@ -110,7 +113,7 @@ class TestArchivePlane:
     """The source row carries the coverage facts, unchanged."""
 
     def test_provenance_and_cadence(self, coverage):
-        report = build_signal_report({(SOURCE, SYMBOL): _info(coverage, 'a')}, [_unit('a', 10, 0, 0)])
+        report = build_signal_report(_RUN_ID, {(SOURCE, SYMBOL): _info(coverage, 'a')}, [_unit('a', 10, 0, 0)])
         unit = report.units[0]
         assert unit.source == SOURCE
         assert unit.data_origin == 'synthetic'
@@ -119,7 +122,7 @@ class TestArchivePlane:
         assert unit.snapshot_count == coverage.snapshot_count
 
     def test_trigger_reasons_counted_per_envelope(self, coverage):
-        report = build_signal_report({(SOURCE, SYMBOL): _info(coverage, 'a')}, [_unit('a', 10, 0, 0)])
+        report = build_signal_report(_RUN_ID, {(SOURCE, SYMBOL): _info(coverage, 'a')}, [_unit('a', 10, 0, 0)])
         assert report.units[0].trigger_reasons == {'scheduled': 6, 'boot': 1}
         assert report.units[0].trigger_unknown == 0
 
@@ -131,19 +134,19 @@ class TestArchivePlane:
         partial = SignalCoverageReport(data_sentiment_type=SOURCE, symbol=SYMBOL)
         partial.analyze([path])
 
-        report = build_signal_report({(SOURCE, SYMBOL): _info(partial, 'a')}, [_unit('a', 10, 0, 0)])
+        report = build_signal_report(_RUN_ID, {(SOURCE, SYMBOL): _info(partial, 'a')}, [_unit('a', 10, 0, 0)])
         assert report.units[0].trigger_reasons == {'scheduled': 3}
         assert report.units[0].trigger_unknown == 4
 
     def test_empty_map_yields_no_units(self):
-        assert build_signal_report({}, [_unit('a', 10, 0, 0)]) == SignalReport(units=[])
+        assert build_signal_report(_RUN_ID, {}, [_unit('a', 10, 0, 0)]) == SignalReport(run_id=_RUN_ID, units=[])
 
 
 class TestRuntimePlane:
     """The usage rows carry what the strategy decided on."""
 
     def test_counters_land_on_the_matching_scenario(self, coverage):
-        report = build_signal_report(
+        report = build_signal_report(_RUN_ID, 
             {(SOURCE, SYMBOL): _info(coverage, 'alpha', 'beta')},
             [_unit('alpha', 900, 100, 0), _unit('beta', 500, 0, 500)])
         rows = {usage.scenario: usage for usage in report.units[0].usages}
@@ -154,7 +157,7 @@ class TestRuntimePlane:
 
     def test_scenario_without_a_run_unit_stays_zero(self, coverage):
         """A failed scenario produces no RunUnit — its row must not borrow another's counters."""
-        report = build_signal_report(
+        report = build_signal_report(_RUN_ID, 
             {(SOURCE, SYMBOL): _info(coverage, 'ran', 'failed')}, [_unit('ran', 100, 0, 0)])
         rows = {usage.scenario: usage for usage in report.units[0].usages}
         assert (rows['failed'].fresh_ticks, rows['failed'].fresh_ratio) == (0, 0.0)
@@ -164,7 +167,7 @@ class TestRuntimePlane:
         unit.signal_statistics.append(SignalResolutionStats(
             worker_name='sentiment_slow', signal_kind='llm_sentiment', symbol=SYMBOL,
             fresh_ticks=60, stale_ticks=40, blind_ticks=0))
-        report = build_signal_report({(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [unit])
+        report = build_signal_report(_RUN_ID, {(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [unit])
         row = report.units[0].usages[0]
         assert (row.fresh_ticks, row.stale_ticks) == (160, 40)
 
@@ -187,7 +190,7 @@ class TestRuntimePlane:
             fresh_ticks=60, stale_ticks=40, blind_ticks=0,
             availability_clamps=1, max_clamp_correction_ms=2000.0))
 
-        report = build_signal_report({(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [unit])
+        report = build_signal_report(_RUN_ID, {(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [unit])
         row = report.units[0].usages[0]
         assert row.availability_clamps == 1, (
             'one series, one clamp — however many workers read it')
@@ -208,7 +211,7 @@ class TestRuntimePlane:
         met.signal_statistics[0].availability_clamps = 2
         met.signal_statistics[0].max_clamp_correction_ms = 4500.0
 
-        report = build_signal_report(
+        report = build_signal_report(_RUN_ID, 
             {(SOURCE, SYMBOL): _info(coverage, 'met', 'missed')},
             [met, _unit('missed', 100, 0, 0)])
         rows = {usage.scenario: usage for usage in report.units[0].usages}
@@ -221,14 +224,14 @@ class TestFreshRatioAggregate:
     """The run-wide ratio is the weakest channel, not the average."""
 
     def test_minimum_over_usages(self, coverage):
-        report = build_signal_report(
+        report = build_signal_report(_RUN_ID, 
             {(SOURCE, SYMBOL): _info(coverage, 'good', 'bad')},
             [_unit('good', 1000, 0, 0), _unit('bad', 200, 800, 0)])
         assert aggregate_signal_fresh_ratio(report) == pytest.approx(0.2)
 
     def test_none_when_nothing_resolved(self, coverage):
         """No SIGNAL tick at all → unset, deliberately NOT 1.0 (that would claim a perfect feed)."""
-        report = build_signal_report({(SOURCE, SYMBOL): _info(coverage, 'a')}, [])
+        report = build_signal_report(_RUN_ID, {(SOURCE, SYMBOL): _info(coverage, 'a')}, [])
         assert aggregate_signal_fresh_ratio(report) is None
 
 
@@ -242,7 +245,7 @@ class TestRender:
         return buffer.getvalue()
 
     def test_decision_basis_and_counters_are_shown(self, coverage):
-        report = build_signal_report(
+        report = build_signal_report(_RUN_ID, 
             {(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [_unit('alpha', 900, 100, 0)])
         output = self._render(report)
         assert 'what the strategy actually decided on' in output
@@ -255,14 +258,14 @@ class TestRender:
         noise, and noise in the quiet case is how a report stops being read — the count
         earns its place precisely because it is normally absent.
         """
-        quiet = build_signal_report(
+        quiet = build_signal_report(_RUN_ID, 
             {(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [_unit('alpha', 900, 0, 0)])
         assert 'availability clamp' not in self._render(quiet)
 
         noisy_unit = _unit('alpha', 900, 0, 0)
         noisy_unit.signal_statistics[0].availability_clamps = 3
         noisy_unit.signal_statistics[0].max_clamp_correction_ms = 1500.0
-        noisy = build_signal_report(
+        noisy = build_signal_report(_RUN_ID, 
             {(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [noisy_unit])
         output = self._render(noisy)
         assert '3 availability clamp(s)' in output
@@ -271,13 +274,13 @@ class TestRender:
             'the number alone does not say what happened; the line has to')
 
     def test_synthetic_origin_is_marked(self, coverage):
-        report = build_signal_report(
+        report = build_signal_report(_RUN_ID, 
             {(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [_unit('alpha', 10, 0, 0)])
         assert 'SYNTHETIC' in self._render(report)
 
     def test_mock_fingerprint_prefix_survives(self, coverage):
         """The mock prefix must stay visible — it is the mock-versus-real discriminator."""
-        report = build_signal_report(
+        report = build_signal_report(_RUN_ID, 
             {(SOURCE, SYMBOL): _info(coverage, 'alpha')}, [_unit('alpha', 10, 0, 0)])
         assert '#mock-1e9e9fc4' in self._render(report)
 
@@ -312,23 +315,23 @@ class TestFeedPlane:
 
     def test_a_feed_alone_produces_a_row(self):
         """No scenario map, no archive — the counters still have somewhere to go."""
-        report = build_signal_report({}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84))
+        report = build_signal_report(_RUN_ID, {}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84))
         assert len(report.units) == 1
         assert report.units[0].series_kind == 'feed'
         assert report.units[0].snapshot_count == 3
 
     def test_neither_plane_produces_nothing(self):
         """A run that bound no signal source at all still renders no section."""
-        assert build_signal_report({}, [_unit('session', 10, 0, 0)]).units == []
+        assert build_signal_report(_RUN_ID, {}, [_unit('session', 10, 0, 0)]).units == []
 
     def test_the_decision_basis_survives(self):
-        report = build_signal_report({}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84))
+        report = build_signal_report(_RUN_ID, {}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84))
         usage = report.units[0].usages[0]
         assert (usage.fresh_ticks, usage.stale_ticks, usage.blind_ticks) == (977, 0, 0)
         assert usage.fresh_ratio == 1.0
 
     def test_composition_and_provenance_come_from_the_envelopes(self):
-        report = build_signal_report({}, [_unit('session', 5, 0, 0)], _feed(82, 83, 84))
+        report = build_signal_report(_RUN_ID, {}, [_unit('session', 5, 0, 0)], _feed(82, 83, 84))
         unit = report.units[0]
         assert unit.data_origin == 'live'
         assert unit.config_fingerprint == '904c2e16bbfb'
@@ -353,27 +356,27 @@ class TestFeedClaimsNothingItCannotKnow:
 
     def test_an_absent_gap_analysis_never_renders_as_no_gaps(self):
         output = self._render(
-            build_signal_report({}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84)))
+            build_signal_report(_RUN_ID, {}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84)))
         assert 'no gaps' not in output
         assert 'Archive:' not in output
         assert 'Feed:' in output
 
     def test_no_coverage_percentage_without_an_archive(self):
-        report = build_signal_report({}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84))
+        report = build_signal_report(_RUN_ID, {}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84))
         assert report.units[0].usages[0].coverage_ratio is None
         assert 'coverage' not in self._render(report)
 
     def test_the_cadence_is_labelled_as_the_producer_s_own(self):
         """A session that received three envelopes has no sample to measure a median from."""
         output = self._render(
-            build_signal_report({}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84)))
+            build_signal_report(_RUN_ID, {}, [_unit('session', 977, 0, 0)], _feed(82, 83, 84)))
         assert '(producer)' in output
         assert '(measured)' not in output
 
     def test_the_archive_plane_still_says_measured(self, coverage):
         """The sim path is untouched — same section, same words."""
         output = self._render(
-            build_signal_report({(SOURCE, SYMBOL): _info(coverage, 'a')}, [_unit('a', 10, 0, 0)]))
+            build_signal_report(_RUN_ID, {(SOURCE, SYMBOL): _info(coverage, 'a')}, [_unit('a', 10, 0, 0)]))
         assert 'Archive:' in output and '(measured)' in output
         assert 'Feed:' not in output
 

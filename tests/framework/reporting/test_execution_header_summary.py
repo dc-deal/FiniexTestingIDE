@@ -19,12 +19,15 @@ from python.framework.types.api.report_types import (
 from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 
 def _header(failed=0, total=5, scenario_count=5, exec_time=1.5, is_profile=False, app_config=None):
     outcome = WarningsErrorsOutcome(failed_count=failed, total_units=total)
-    meta = RunMetaReport(
+    meta = RunMetaReport(run_id=_RUN_ID, 
         scenario_count=scenario_count, execution_time_s=exec_time, is_profile_run=is_profile)
-    return ExecutionHeaderSummary(meta, WarningsErrorsReport(outcome=outcome), app_config)
+    return ExecutionHeaderSummary(meta, WarningsErrorsReport(run_id=_RUN_ID, outcome=outcome), app_config)
 
 
 class TestStatus:

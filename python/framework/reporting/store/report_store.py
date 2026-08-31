@@ -3,13 +3,14 @@ Report store (#391) — resolves persisted run-report artifacts under the logs t
 
 The API's read-only source: given a run id, find the run's trade-history artifact
 (written by either pipeline into its run directory), read it, and apply the shared
-filter. Run directories follow `<logs_root>/<group>/<set-or-profile>/<run_id>/`, and the
-report artifacts live in the run's `io/` subfolder (`IO_SUBDIR`).
+filter. Run directories follow `<logs_root>/<set-or-profile>/<run_id>/`, and the
+report artifacts live in the run's `io/` subfolder (`IO_SUBDIR`). A run is located through
+the run index, never by walking the tree — a directory means nothing to this class (#475).
 """
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import ValidationError
 
@@ -64,6 +65,7 @@ from python.framework.reporting.io.worker_decision_report_io import (
     WORKER_DECISION_ARTIFACT,
     read_worker_decision_report,
 )
+from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
     BrokerReport,
@@ -81,56 +83,33 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
     WorkerDecisionReport,
 )
-from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import (
-    AUTOTRADER_GROUP,
-    SINGLE_RUNS_GROUP,
-    SWEEPS_GROUP,
-)
-
-# Report artifacts (JSON + CSV) live in this subfolder of a run directory.
-IO_SUBDIR = 'io'
+from python.framework.types.log_layout_types import IO_SUBDIR
 
 
 class ReportStore:
-    """Locates + serves persisted run-report artifacts (sim + autotrader runs)."""
+    """Locates + serves persisted run-report artifacts (simulation + live runs)."""
 
-    # run dirs live at: <logs_root>/<group>/<set-or-profile>/<run_id>/<artifact>
-
-    def __init__(self, run_logs: Optional[RunLogPaths] = None):
+    def __init__(self, run_index_path: Optional[Path] = None):
         """
         Args:
-            run_logs: The three category roots; read from config when not given
+            run_index_path: The run index to read; from config when not given. Injectable so a
+                caller pointed at an isolated tree can be pointed at that tree's index too,
+                rather than asking the real one about runs that only exist in tmp
         """
-        paths = run_logs or AppConfigManager().get_file_logging_config_object().run_logs
-        # group name → root. The names are the API's `group` values, and the roots are the
-        # same ones the writers use — one source, so a moved log root cannot hide a run.
-        self._roots: Dict[str, Path] = {
-            AUTOTRADER_GROUP: Path(paths.autotrader),
-            SINGLE_RUNS_GROUP: Path(paths.single_runs),
-            SWEEPS_GROUP: Path(paths.sweeps),
-        }
+        self._index = RunIndex(
+            run_index_path or AppConfigManager().get_file_logging_config_object().run_index)
 
     def list_runs(self) -> List[RunInfo]:
-        """Runs carrying a trade-history artifact, newest first.
+        """Every indexed run, both types, newest first.
+
+        Not only runs carrying artifacts: `artifacts` says which do, and a caller that wants the
+        narrower set filters on it. An index that silently omitted a type would be its own
+        surprise.
 
         Returns:
-            One identity row per run — id, log group, and the owning set / profile name
+            One identity row per run — id, run type, owning set / profile, artifacts
         """
-        runs: Dict[str, RunInfo] = {}
-        for group, root in self._roots.items():
-            # A run directory sits at a depth the CATEGORY fixes: <owner>/<run_ts>, and one
-            # level deeper for a sweep, which nests its combinations under the sweep id.
-            pattern = '*/*/*' if group == SWEEPS_GROUP else '*/*'
-            for run_dir in sorted(root.glob(pattern)):
-                if not run_dir.is_dir():
-                    continue
-                # Listed even without artifacts: a run can exist as logs alone (a test session
-                # writes no reports), and hiding it would make the index disagree with the tree.
-                runs.setdefault(run_dir.name, RunInfo(
-                    run_id=run_dir.name, group=group, name=run_dir.parent.name,
-                    has_reports=(run_dir / IO_SUBDIR / TRADE_HISTORY_ARTIFACT).exists()))
-        return sorted(runs.values(), key=lambda run: run.run_id, reverse=True)
+        return self._index.list_runs()
 
     def get_trade_history(
         self,
@@ -364,20 +343,27 @@ class ReportStore:
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
         """
-        Find a named report artifact (in the run's io/ subfolder) across the log groups.
+        Find a named report artifact through the run index.
 
-        Searched at ANY depth and across ALL categories, sweeps included: the index lists
-        standalone runs, but every run stays addressable by its id.
+        The lookup is an EXACT match against the index, and that is the guard. The previous
+        implementation interpolated the id — which arrives from a URL — into a glob pattern,
+        where `'*'` is a valid-looking id that matches the first run in the tree. Membership in
+        a table of known ids is strictly stronger than a shape check: a shape accepts anything
+        well-formed, including ids that do not exist.
+
+        The index also replaces the depth-dependent search this used to need: a sweep's
+        combination sat one level deeper than a standalone run, so the lookup had to know the
+        shape of the tree. It now looks up a row.
 
         Args:
-            run_id: The run's directory name
+            run_id: The run's identity
             artifact: The artifact's file name
 
         Returns:
-            The artifact path, or None when no run carries it
+            The artifact path, or None when the run is unknown or carries no such artifact
         """
-        for root in self._roots.values():
-            for found in root.rglob(
-                    f'{run_id}/{IO_SUBDIR}/{artifact}'):
-                return found
-        return None
+        run_dir = self._index.run_dir(run_id)
+        if run_dir is None:
+            return None
+        path = run_dir / IO_SUBDIR / artifact
+        return path if path.exists() else None

@@ -35,9 +35,9 @@ class ScenarioSetUtils:
             return
         try:
             if self.config_snapshot_path.exists():
-                scource_path = self.config_snapshot_path
+                source_path = self.config_snapshot_path
                 target_path = self.scenario_log_path / self._file_name
-                shutil.copy2(scource_path,
+                shutil.copy2(source_path,
                              target_path)
                 self.config_copied = True
                 vLog.debug(
@@ -45,7 +45,7 @@ class ScenarioSetUtils:
             else:
                 # Log warning in file
                 vLog.warning(
-                    f'⚠️  WARNING: Config file not found for snapshot: {self.source_config_path}\n\n'
+                    f'⚠️  WARNING: Config file not found for snapshot: {self.config_snapshot_path}\n\n'
                 )
         except Exception as e:
             vLog.error(

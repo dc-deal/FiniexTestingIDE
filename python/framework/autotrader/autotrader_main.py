@@ -177,9 +177,8 @@ class AutotraderMain:
         self._run_timestamp = run_timestamp
 
         # === LOGGERS ===
-        self._global_logger, self._session_logger, self._summary_logger, self._run_dir = (
-            create_autotrader_loggers(self._config, run_timestamp)
-        )
+        (self._global_logger, self._session_logger, self._summary_logger,
+         self._run_dir, self._run_id) = create_autotrader_loggers(self._config, run_timestamp)
 
         self._print_startup_banner()
         self._global_logger.info(
@@ -667,6 +666,7 @@ class AutotraderMain:
         AutotraderReportCoordinator(
             result=result,
             run_dir=self._run_dir,
+            run_id=self._run_id,
             run_timestamp=self._run_timestamp,
             config=self._config,
             decision_logic=self._decision_logic,

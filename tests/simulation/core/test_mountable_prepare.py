@@ -18,6 +18,7 @@ from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.exceptions.mount_errors import MountIdentityMismatchError
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.mount_package_types import DataIdentityKey
+from python.framework.types.api.report_types import RunReporting
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
 from python.framework.validators.scenario_validator import ScenarioValidator
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
@@ -29,7 +30,7 @@ def _build() -> Tuple[BatchOrchestrator, ScenarioSet]:
     """Build a fresh orchestrator + scenario set for the core config."""
     scenario_config = ScenarioConfigLoader().load_config(CORE_CONFIG)
     app_config = AppConfigManager()
-    scenario_set = ScenarioSet(scenario_config, app_config)
+    scenario_set = ScenarioSet(scenario_config, app_config, reporting=RunReporting.NONE)
     return BatchOrchestrator(scenario_set, app_config), scenario_set
 
 

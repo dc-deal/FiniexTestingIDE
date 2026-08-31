@@ -176,7 +176,6 @@ def initialize_batch_and_run(
 
         vLog.info('📊 Writing system & version information...')
         scenario_set.write_scenario_system_info_log()
-        scenario_set.copy_config_snapshot()
 
         # ============================================================
         # Execute Batch via Orchestrator

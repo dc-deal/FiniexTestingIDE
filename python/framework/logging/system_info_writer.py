@@ -30,6 +30,7 @@ except ImportError:
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.git_info_types import GitInfo
 from python.framework.utils.git_info_utils import get_git_info
@@ -80,7 +81,7 @@ def write_system_version_parameters(logger: ScenarioLogger) -> None:
     # DEBUG: Detailed specs
     python_detailed = _get_python_detailed()
     dependencies = _get_dependencies()
-    paths = _get_paths()
+    paths = _get_paths(logger.get_log_dir())
     docker_limits = _get_docker_limits() if env_info == 'docker' else None
 
     debug_output = _format_debug_details(
@@ -226,19 +227,26 @@ def _get_dependencies() -> Dict[str, str]:
     return deps
 
 
-def _get_paths() -> Dict[str, str]:
+def _get_paths(log_dir: Optional[Path]) -> Dict[str, str]:
     """
-    Get important application paths.
+    The paths this run actually uses.
+
+    This block exists for reproducibility tracking, so every entry has to be the value in
+    force — not a literal that once described the layout. The data root comes from config;
+    the log directory is the one the run's own logger opened, because config holds THREE
+    run roots and a fixed pick would be right for a standalone run and wrong for every
+    sweep combination.
+
+    Args:
+        log_dir: The run's own log directory, or None when file logging is off
 
     Returns:
         Dict with paths
     """
-    cwd = Path.cwd()
-
     return {
-        'app_root': str(cwd),
-        'data_path': str(cwd / 'data' / 'parquet'),
-        'log_path': str(cwd / 'logs' / 'scenario_sets')
+        'app_root': str(Path.cwd()),
+        'data_path': AppConfigManager().get_data_processed_path(),
+        'log_path': str(log_dir) if log_dir else '(file logging disabled)'
     }
 
 

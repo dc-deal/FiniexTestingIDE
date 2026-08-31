@@ -23,8 +23,12 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.log_level import ColorCodes, LogLevel
 from python.framework.types.log_record_types import LogRecord
-from python.framework.utils.time_utils import (EVENT_TIME_WIDTH, format_log_elapsed,
-                                               format_log_event_time)
+from python.framework.utils.run_id_utils import mint_run_id
+from python.framework.utils.time_utils import (
+    EVENT_TIME_WIDTH,
+    format_log_elapsed,
+    format_log_event_time,
+)
 
 _START = datetime(2026, 8, 29, 12, 0, 0, tzinfo=timezone.utc)
 _EVENT = datetime(2026, 3, 4, 9, 15, 30, 412000, tzinfo=timezone.utc)
@@ -124,7 +128,8 @@ class TestADisplaySettingCannotHideAReportInput:
     def _logger(tmp_path: Path) -> ScenarioLogger:
         return ScenarioLogger(
             scenario_set_name='t', scenario_name='s1',
-            run_timestamp=datetime.now(timezone.utc), log_root_override=tmp_path)
+            run_timestamp=datetime.now(timezone.utc),
+            run_id=mint_run_id(datetime.now(timezone.utc)), log_root_override=tmp_path)
 
     def test_warning_and_error_survive_a_silent_console(self, tmp_path, monkeypatch):
         logger = self._logger(tmp_path)
@@ -187,7 +192,8 @@ class TestTheClockIsPulledNotPushed:
     def test_a_logger_without_a_clock_records_no_event_time(self, tmp_path):
         logger = ScenarioLogger(
             scenario_set_name='t', scenario_name='s1', log_root_override=tmp_path,
-            run_timestamp=datetime.now(timezone.utc), event_time_column=True)
+            run_timestamp=datetime.now(timezone.utc),
+            run_id=mint_run_id(datetime.now(timezone.utc)), event_time_column=True)
         logger.warning('before the clock exists')
         assert logger.get_records()[0].event_time is None
         logger.close()
@@ -195,7 +201,8 @@ class TestTheClockIsPulledNotPushed:
     def test_an_attached_clock_stamps_every_later_record(self, tmp_path):
         logger = ScenarioLogger(
             scenario_set_name='t', scenario_name='s1', log_root_override=tmp_path,
-            run_timestamp=datetime.now(timezone.utc), event_time_column=True)
+            run_timestamp=datetime.now(timezone.utc),
+            run_id=mint_run_id(datetime.now(timezone.utc)), event_time_column=True)
         logger.warning('before')
         logger.attach_clock(lambda: _EVENT)
         logger.warning('after')

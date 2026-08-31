@@ -23,6 +23,9 @@ from python.framework.types.process_data_types import ProcessResult, ProcessTick
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 
 
@@ -63,19 +66,19 @@ class TestBatch:
     """sim: N scenario units (symbol from SingleScenario) + summed totals."""
 
     def test_units_use_scenario_symbol(self):
-        report = build_execution_stats_report(run_units_from_batch(_batch()))
+        report = build_execution_stats_report(_RUN_ID, run_units_from_batch(_batch()))
         assert [u.name for u in report.units] == ['s1', 's2']
         # symbol is NOT on ProcessResult — must resolve via the index-synced scenario
         assert [u.symbol for u in report.units] == ['EURUSD', 'GBPUSD']
 
     def test_unit_counts_mapped(self):
-        report = build_execution_stats_report(run_units_from_batch(_batch()))
+        report = build_execution_stats_report(_RUN_ID, run_units_from_batch(_batch()))
         row = report.units[0]
         assert (row.orders_sent, row.orders_executed, row.orders_rejected, row.sl_tp_triggered) \
             == (5, 4, 1, 2)
 
     def test_totals_sum_currency_agnostic(self):
-        report = build_execution_stats_report(run_units_from_batch(_batch()))
+        report = build_execution_stats_report(_RUN_ID, run_units_from_batch(_batch()))
         assert report.totals.orders_sent == 8
         assert report.totals.orders_executed == 7
         assert report.totals.orders_rejected == 1
@@ -84,7 +87,7 @@ class TestBatch:
     def test_skips_scenarios_without_stats(self):
         bad = ProcessResult(
             success=False, scenario_name='bad', scenario_index=2, tick_loop_results=None)
-        report = build_execution_stats_report(run_units_from_batch(_batch(extra_results=[bad])))
+        report = build_execution_stats_report(_RUN_ID, run_units_from_batch(_batch(extra_results=[bad])))
         assert [u.name for u in report.units] == ['s1', 's2']
 
 
@@ -94,7 +97,7 @@ class TestSession:
     def test_single_unit_and_totals(self):
         result = AutoTraderResult(
             execution_stats=_stats(sent=7, executed=6, rejected=1, sl_tp=4))
-        report = build_execution_stats_report(
+        report = build_execution_stats_report(_RUN_ID, 
             run_units_from_session(result, 'my_profile', 'BTCUSD'))
         assert len(report.units) == 1
         assert report.units[0].name == 'my_profile'
@@ -103,7 +106,7 @@ class TestSession:
         assert report.totals.sl_tp_triggered == 4
 
     def test_empty_when_no_stats(self):
-        report = build_execution_stats_report(
+        report = build_execution_stats_report(_RUN_ID, 
             run_units_from_session(AutoTraderResult(execution_stats=None), 'p', 'BTCUSD'))
         assert report.units == []
         assert report.totals.orders_sent == 0

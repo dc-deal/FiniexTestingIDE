@@ -29,6 +29,9 @@ from python.framework.types.scenario_types.scenario_set_types import SingleScena
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 _T0 = datetime(2025, 10, 13, 8, 0, 0, tzinfo=timezone.utc)
 
 
@@ -60,7 +63,7 @@ def _trade(position_id: str = 'p1', with_executions: bool = True) -> TradeRecord
 
 def _session_report(result: AutoTraderResult, name: str):
     """Build the trade report from a single live-session unit."""
-    return build_trade_history_report(run_units_from_session(result, name, ''))
+    return build_trade_history_report(_RUN_ID, run_units_from_session(result, name, ''))
 
 
 class TestProjection:
@@ -109,7 +112,7 @@ class TestSourceVariants:
                     name='EURUSD_cont_01', scenario_index=1, symbol='EURUSD',
                     data_broker_type='mt5', start_date=_T0),
             ])
-        report = build_trade_history_report(run_units_from_batch(batch))
+        report = build_trade_history_report(_RUN_ID, run_units_from_batch(batch))
         assert [r.scenario_name for r in report.trades] == ['AUDUSD_cont_00', 'EURUSD_cont_01']
 
     def test_from_session_tags_name(self):

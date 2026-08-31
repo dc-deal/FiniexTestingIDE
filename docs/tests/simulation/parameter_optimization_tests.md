@@ -26,6 +26,7 @@ System doc: [Parameter Optimization System](../../architecture/parameter_optimiz
 | `test_sweep_grid_validator.py` | Valid grid passes; **unknown param + out-of-range value pass** (structural-only — existence/range moved to the run's Phase 0); bad path prefix, wrong decision/worker path length, empty value list all raise (structural fail-fast) |
 | `test_sweep_mount_reuse.py` (#419) | **warm == cold** (a real mount-reused sweep yields ledger results identical to the cold reload path — off-switch toggled); **data-level abort** (an empty base mount records no runs); **OOM-signature detection** (`_has_subprocess_oom` on `BrokenProcessPool`) |
 | `test_optimization_config_loader.py` | Spec fields parsed, `sweep_name` defaults to file stem, missing spec raises, unknown key rejected (`extra='forbid'`) |
+| `test_sweep_directory_shape.py` | **one directory per combination, and nothing else** — a `ScenarioSet` built only to produce the shared mount used to open a run directory as a side effect, leaving a run that never ran (logs, no artifacts, a row in the API index carrying `has_reports: false`). Both halves are pinned: the phantom is gone AND `mount_build.log` exists and carries the data-load record — the point was to MOVE sweep-level output to sweep level, not to lose it |
 
 ---
 

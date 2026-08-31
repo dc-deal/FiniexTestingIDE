@@ -7,21 +7,34 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from python.framework.types.log_layout_types import SWEEPS_SUBDIR
 from python.framework.types.log_level import LogLevel
 
 
 class RunLogPaths(BaseModel):
     """
-    Where each kind of run writes its logs — the ONE source for writers and readers alike.
+    Where each run type writes its logs — the ONE source for writers and readers alike.
 
-    Three categories, because the three are browsed differently: a live session, a standalone
-    simulation run, and one combination of a parameter sweep. The API reads these same paths to
-    build its run index and its sweep list, so a path declared here cannot drift from where the
-    runs actually land.
+    Two roots, matching the two run types: a backtest and a live session are browsed
+    differently, and they produce different artifact sets. The API reads these same paths to
+    build its run index, so a path declared here cannot drift from where the runs actually land.
     """
-    autotrader: Path
-    single_runs: Path
-    sweeps: Path
+    simulation: Path
+    live: Path
+
+    @property
+    def sweeps(self) -> Path:
+        """
+        Where a sweep's combinations nest.
+
+        Composed rather than configured: a sweep IS simulation, so its runs belong under the
+        simulation root. A separate config key would allow the two to be pointed at different
+        trees, which no consumer could then reconcile.
+
+        Returns:
+            The sweeps subfolder of the simulation root
+        """
+        return self.simulation / SWEEPS_SUBDIR
 
 
 class ScenarioFileLoggingConfig(BaseModel):
@@ -41,9 +54,12 @@ class FileLoggingConfig(BaseModel):
     """
     enabled: bool
     log_level: LogLevel
-    log_path: Path
+    global_log_dir: Path
     append_mode: bool
     run_logs: RunLogPaths
+    # The derived run index — ONE compacted file, rebuildable from the per-run headers. Its own
+    # key because the three category roots are independent paths and share no declared parent.
+    run_index: Path
     scenario: ScenarioFileLoggingConfig
 
     # ============================================
@@ -59,11 +75,6 @@ class FileLoggingConfig(BaseModel):
     def global_log_level(self) -> LogLevel:
         """Global log level (validated)"""
         return self.log_level
-
-    @property
-    def global_log_path(self) -> Path:
-        """Path to global.log file"""
-        return self.log_path
 
     @property
     def global_append_mode(self) -> bool:
@@ -106,7 +117,7 @@ class FileLoggingConfig(BaseModel):
         """Debug representation"""
         return (
             f'FileLoggingConfig('
-            f'global={self.enabled}/{self.log_level} @ {self.log_path}, '
+            f'global={self.enabled}/{self.log_level} @ {self.global_log_dir}, '
             f'scenario={self.scenario_enabled}/{self.scenario_log_level} '
-            f'@ {self.run_logs.single_runs})'
+            f'@ {self.run_logs.simulation})'
         )

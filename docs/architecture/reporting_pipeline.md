@@ -30,14 +30,14 @@ see *Pipeline in detail* below.
 
 | Layer | Unit | Role |
 |---|---|---|
-| Model | `framework/types/api/report_types.py` | the canonical, Pydantic, serializable models (the same models the API serves and the console/CSV render): `TradeHistoryReport`, `OrderHistoryReport`, `PortfolioReport` (full per-unit projection), `ExecutionStatsReport`, `PendingOrdersReport`, `ScenarioDetailsReport`, `RunSummary` (cross-section KPIs), `WorkerDecisionReport` (per-unit worker + decision performance — incl. the #420 cadence telemetry: per-worker `compute_basis`, compute/tick ratio, last-compute idle), `ProfilingReport` (per-unit operation timing + inter-tick + clipping + run-level aggregate + warmup, sim-only) |
+| Model | `framework/types/api/report_types.py` | the canonical, Pydantic, serializable models (the same models the API serves and the console/CSV render). **Every artifact model inherits `RunScopedReport`, whose one required field is `run_id`** (#475): a body that does not name its run cannot be checked against the run that was asked for — measured, two sweep combinations produce byte-identical portfolio bodies, so a consumer receiving the wrong one has nothing to notice it by. The route is not proof; the payload is. Inheriting also puts `run_id` FIRST in every serialized artifact, and the three CSVs carry it as their first COLUMN, on every row, because a CSV is the format that gets exported and merged. Models: `TradeHistoryReport`, `OrderHistoryReport`, `PortfolioReport` (full per-unit projection), `ExecutionStatsReport`, `PendingOrdersReport`, `ScenarioDetailsReport`, `RunSummary` (cross-section KPIs), `WorkerDecisionReport` (per-unit worker + decision performance — incl. the #420 cadence telemetry: per-worker `compute_basis`, compute/tick ratio, last-compute idle), `ProfilingReport` (per-unit operation timing + inter-tick + clipping + run-level aggregate + warmup, sim-only) |
 | Run units | `framework/reporting/builders/run_unit.py` — `RunUnit` (+ `run_units_from_batch` / `run_units_from_session`) | the **unified per-unit source** (#391 Phase 2): the run extracted once into units (sim: N scenarios; live: 1 session), each carrying `name` · `symbol` · the raw trade / order / portfolio / execution sources. Every builder maps from these — no per-section extraction, no flat variants |
-| Postprocessor | `framework/reporting/builders/{trade_history,order_history,portfolio,execution_stats,pending_orders,worker_decision,scenario_details,profiling,broker,warnings_errors,aggregated_portfolio}_report_builder.py` | **pure** derivation: `RunUnit`s → report. One `build_*_report(units, …)` per section. The shared filter (trade / order) lives here. `scenario_details` / `profiling` / `broker` / `warnings_errors` are the exceptions — not via `RunUnit`: they read the batch directly (failed scenarios carry no `RunUnit`; `warnings_errors` reads the validation channels + log pots — the verdicts are decided by validators upstream, never here). `aggregated_portfolio` rolls up the per-unit portfolio / execution / pending **rows** |
+| Postprocessor | `framework/reporting/builders/{trade_history,order_history,portfolio,execution_stats,pending_orders,worker_decision,scenario_details,profiling,broker,warnings_errors,aggregated_portfolio}_report_builder.py` | **pure** derivation: `RunUnit`s → report. One `build_*_report(run_id, units, …)` per section — `run_id` leads, because the model requires it. The shared filter (trade / order) lives here. `scenario_details` / `profiling` / `broker` / `warnings_errors` are the exceptions — not via `RunUnit`: they read the batch directly (failed scenarios carry no `RunUnit`; `warnings_errors` reads the validation channels + log pots — the verdicts are decided by validators upstream, never here). `aggregated_portfolio` rolls up the per-unit portfolio / execution / pending **rows** |
 | Aggregators | `framework/reporting/builders/report_aggregators.py` | the **measures** over the report rows — one pure `aggregate_*(rows)` per section (trade analytics per currency incl. P&L totals, execution totals, the lean portfolio per-currency roll-up + the rich `aggregate_full_portfolio` for #397). Ratios recomputed from summed components (byte-identical to the retired console `PortfolioAggregator`) |
 | Run summary | `framework/reporting/builders/run_summary_builder.py` — `build_run_summary()` | the **cross-section KPI** composer (#390 prework): joins the per-section aggregates (portfolio roll-up + trade analytics + execution totals) into one run-wide `RunSummary` (per-currency KPIs + global counts) — composes, never re-derives. The single object the sweep / API / console headline reads |
-| Shared core | `framework/reporting/shared_report_coordinator.py` — `SharedReportCoordinator.derive_and_persist(units, io_dir, signal_scenario_map)` (+ `builders/unified_reports.py` — `UnifiedReports`) | the **units-derived DERIVE+PERSIST core both pipelines delegate to** (#403): builds + writes the 9 sections identical across sim + live (trade / order / portfolio / pending / execution-stats / run-summary / worker-decision / signal / feed-stability) and returns them as `UnifiedReports`, which each coordinator reuses for its own console + ledger |
+| Shared core | `framework/reporting/shared_report_coordinator.py` — `SharedReportCoordinator.derive_and_persist(run_id, units, io_dir, signal_scenario_map)` (+ `builders/unified_reports.py` — `UnifiedReports`) | the **units-derived DERIVE+PERSIST core both pipelines delegate to** (#403): builds + writes the 9 sections identical across sim + live (trade / order / portfolio / pending / execution-stats / run-summary / worker-decision / signal / feed-stability) and returns them as `UnifiedReports`, which each coordinator reuses for its own console + ledger. Its `record_run_artifacts(run_dir)` is called LAST by each pipeline — deliberately not inside `derive_and_persist`, because both pipelines write further artifacts of their own after it returns, so a list taken there would be short by exactly those |
 | IO | `framework/reporting/io/{trade_history,order_history,portfolio,execution_stats,pending_orders,scenario_details,run_summary,run_meta,worker_decision,profiling,broker,warnings_errors,aggregated_portfolio,block_splitting}_report_io.py` | write the artifact(s); read back + filter (the API path) |
-| Store | `framework/reporting/store/report_store.py` — `ReportStore` | resolves a run's persisted artifacts under the logs tree **at any depth** — a `run_group` (`sweeps/<sweep_id>`, #419) nests a run deeper than its set, and a fixed-depth lookup hides every swept run from the whole API (the API's read-only source) — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` / `get_profiling` / `get_broker` / `get_signal` / `get_feed_stability` / `get_warnings_errors` / `get_aggregated_portfolio` |
+| Store | `framework/reporting/store/report_store.py` — `ReportStore` | resolves a run's artifacts through the **run index** (`run_index.py`), never by walking the tree: a run is looked up by id, and its directory is a column. The lookup is an EXACT match against the index, and that is the guard: the id arrives from a URL and was previously interpolated into a glob (`'*'` matched the first run). Membership in a table of known ids is strictly stronger than a shape check, which accepts anything well-formed. The depth-dependent search this used to need is gone with it — `get_trade_history` / `get_order_history` / `get_portfolio` / `get_execution_stats` / `get_pending_orders` / `get_scenario_details` / `get_run_summary` / `get_worker_decision` / `get_profiling` / `get_broker` / `get_signal` / `get_feed_stability` / `get_warnings_errors` / `get_aggregated_portfolio` |
 | Ledger | `framework/reporting/store/run_results_ledger.py` — `RunResultsLedger` | the **cross-run** PERSIST sink (#390): appends one flat row per (run × currency) — the `RunSummary` KPIs + provenance (`param_hash`, git, component versions, config snapshot, sweep tagging) — to `data/run_results/` as one parquet fragment per run. Separate from the per-run API artifacts above; it is the substrate the Parameter Optimization system ranks over. Provenance via `store/run_provenance_builder.py` — `build_run_provenance` (sim) / `build_run_provenance_from_session` (live, #403 · 5.a); **both pipelines append**. See [Parameter Optimization System](parameter_optimization_system.md) |
 | Console | `framework/reporting/console/run_console_renderer.py` — `RunConsoleRenderer` (+ the `*_summary` sub-presenters) | the **PRESENT** layer: `RunConsoleRenderer` owns the one canonical end-of-run section order both pipelines render through (#403 Phase 2). A `None` slot is skipped (render-if-present → live omits the sim-only sections); the per-currency AGGREGATE blocks render only for a multi-unit run (`unit_count > 1`); the closing block is pipeline-specific — `sim_executive_summary` (sim) / `live_session_summary` (live) |
 | Persist (sim) | `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()` | consumes the finished `BatchExecutionSummary`; delegates the 8 shared sections to `SharedReportCoordinator`, derives + writes its sim-only sections, renders the console via `RunConsoleRenderer` (Executive Summary closing), and appends to the ledger |
@@ -250,6 +250,55 @@ session). Where a section carries per-unit meaning (portfolio breakdown) the mod
 units; for flat record lists (trades, orders) every row carries its `symbol` and the list is
 filtered, not grouped. The generic `RunUnit` abstraction that deduplicates the per-source
 extraction is **implemented** (`builders/run_unit.py`); every builder maps from it.
+
+## Reporting is OPTIONAL in simulation and MANDATORY live — on purpose
+
+The two pipelines differ in **who decides that a report is written**, and the difference is a
+decision, not an oversight:
+
+```
+SIM    orchestrator.run()                          → the CALLER then chooses to build
+                                                     BatchReportCoordinator, or not
+LIVE   autotrader_main.run() calls                 → no way past it
+       self._generate_reports(result) internally
+```
+
+**A backtest can be repeated; its report may be optional.** The simulation test path relies on
+exactly this — it stops after `orchestrator.run()` and writes no artifacts, which is how ~35 of
+the tree's runs legitimately carry none.
+
+**A live session cannot be repeated. Its report is the only record that real money moved.** If
+the call sat with the caller, "forgotten" would be a reachable state, and the price of reaching
+it is a real-money session with no record. So the live pipeline does not offer the choice.
+
+Making the two symmetric would mean either lifting the live call out — which introduces exactly
+that footgun — or making the sim call mandatory, which the test path cannot afford. The
+asymmetry is the correct shape, and it is recorded here so it reads as a decision.
+
+**What the two DO share** is that the decision is now *declared*: `RunHeader.reporting` is
+`expected` or `none`, written at run start by whoever knows. Read it together with the index's
+`artifacts` list:
+
+```
+reporting=none      + artifacts=[]   →  as commissioned          (a consumer greys it out)
+reporting=expected  + artifacts=[]   →  still running, or DIED before reporting
+reporting=expected  + artifacts=18   →  complete
+```
+
+Without the pair, an empty artifact list means all three at once — and a crashed run is then
+indistinguishable from an intentionally silent one.
+
+**Retention is deliberately opposite between the two stores (#390, #482).** The run TREE is
+finite and prunable — `run_index_cli.py prune` removes runs and rebuilds the index afterwards,
+because the index is derived and follows the tree rather than being edited beside it. The
+cross-run LEDGER (`data/run_results/`) keeps its row for every run that ever finished, including
+runs whose directory is long gone: 430 fragments against 94 runs in the tree, measured. That gap
+is the design, not a leak — nobody should later "fix" it.
+
+The `reporting` field is what makes pruning safe, but it is the **guard** rather than the
+selector: `reporting=expected` with no artifacts is a run that crashed before reporting, and no
+flag may reach it. What the operator actually selects by is redundancy (`--keep-last`) and
+directories that are not runs at all (`--orphans`).
 
 ## Both pipelines write the same artifacts
 

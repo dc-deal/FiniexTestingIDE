@@ -21,6 +21,7 @@ System doc: [Process Execution & Subprocess Architecture](../../process_executio
 |---|---|
 | `test_mountable_prepare.py` | **split equivalence** (`run()` == validate + `prepare_mount()` + `execute()`) · **reuse / determinism** (one `MountPackage`, `execute()` twice → identical results, #368) · **data identity** (`DataIdentityKey` ignores `strategy_config`, changes with the data window) · **identity guard** (`execute()` raises `MountIdentityMismatchError` when fed scenarios whose data identity does not match the mount) |
 | `test_batch_exit_code.py` | **the batch outcome reaches the process** (#372): all scenarios completed → `0` · a crashed scenario → `2` · only `LoggedErrors` failures → `3` · a crash outranks logged errors · an empty batch is not a success → `1` |
+| `test_config_snapshot.py` | **every executing run carries its config** (#475 prework): a run started the way the benchmark harness starts one — `ScenarioSet` + orchestrator, without the CLI wrapper — gets `scenario_config.json`, and the snapshot is the config that actually ran. The call lives in `BatchOrchestrator.run()` because that is where every consumer passes; when only the CLI took it, the release-benchmark runs were the ones without one |
 
 ---
 

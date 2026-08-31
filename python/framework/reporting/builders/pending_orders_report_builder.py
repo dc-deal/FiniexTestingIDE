@@ -21,11 +21,12 @@ from python.framework.types.trading_env_types.pending_order_stats_types import (
 )
 
 
-def build_pending_orders_report(units: List[RunUnit]) -> PendingOrdersReport:
+def build_pending_orders_report(run_id: str, units: List[RunUnit]) -> PendingOrdersReport:
     """
     Build the report from the run's units — one row per unit with pending activity.
 
     Args:
+        run_id: The run this report belongs to
         units: The run's units (sim: scenarios; live: the session)
 
     Returns:
@@ -41,7 +42,7 @@ def build_pending_orders_report(units: List[RunUnit]) -> PendingOrdersReport:
         if not has_resolved and not has_active:
             continue
         rows.append(_to_row(unit.name, unit.symbol, stats))
-    return PendingOrdersReport(units=rows)
+    return PendingOrdersReport(run_id=run_id, units=rows)
 
 
 def _to_row(name: str, symbol: str, stats: PendingOrderStats) -> PendingOrdersUnitRow:

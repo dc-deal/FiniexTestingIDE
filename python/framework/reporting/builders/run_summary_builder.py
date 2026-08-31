@@ -25,6 +25,7 @@ from python.framework.types.api.report_types import (
 
 
 def build_run_summary(
+    run_id: str,
     portfolio_report: PortfolioReport,
     trade_report: TradeHistoryReport,
     execution_report: ExecutionStatsReport,
@@ -35,6 +36,7 @@ def build_run_summary(
     Compose the run-wide KPI summary from the section reports.
 
     Args:
+        run_id: The run this report belongs to
         portfolio_report: The portfolio report (per-currency aggregates)
         trade_report: The trade-history report (per-currency analytics)
         execution_report: The execution-stats report (global order totals)
@@ -54,6 +56,7 @@ def build_run_summary(
     ]
     totals = execution_report.totals
     return RunSummary(
+        run_id=run_id,
         currencies=currencies,
         orders_sent=totals.orders_sent,
         orders_executed=totals.orders_executed,

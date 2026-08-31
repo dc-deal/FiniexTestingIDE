@@ -21,6 +21,9 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 )
 from python.framework.types.trading_env_types.order_types import OrderDirection
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 _T0 = datetime(2025, 10, 13, 8, 0, 0, tzinfo=timezone.utc)
 
 
@@ -69,12 +72,12 @@ class TestMapping:
     """TradeRecord → renderable row."""
 
     def test_builds_rows(self):
-        report = build_trade_history_report(_units([_trade(), _trade(position_id='p2')]))
+        report = build_trade_history_report(_RUN_ID, _units([_trade(), _trade(position_id='p2')]))
         assert report.count == 2
         assert len(report.trades) == 2
 
     def test_row_fields_mapped(self):
-        report = build_trade_history_report(_units([_trade(net_pnl=12.5, duration_min=15)]))
+        report = build_trade_history_report(_RUN_ID, _units([_trade(net_pnl=12.5, duration_min=15)]))
         row = report.trades[0]
         assert row.direction == 'long'                 # enum → value
         assert row.close_reason == 'tp_triggered'
@@ -83,7 +86,7 @@ class TestMapping:
         assert row.entry_time.endswith('+00:00')       # ISO-8601 UTC
 
     def test_short_direction(self):
-        report = build_trade_history_report(_units([_trade(direction=OrderDirection.SHORT)]))
+        report = build_trade_history_report(_RUN_ID, _units([_trade(direction=OrderDirection.SHORT)]))
         assert report.trades[0].direction == 'short'
 
 
@@ -98,17 +101,17 @@ class TestFilters:
         ]
 
     def test_filter_by_symbol(self):
-        report = build_trade_history_report(_units(self._mixed()), symbol='GBPUSD')
+        report = build_trade_history_report(_RUN_ID, _units(self._mixed()), symbol='GBPUSD')
         assert report.count == 1
         assert report.trades[0].position_id == 'p2'
 
     def test_filter_by_close_reason(self):
-        report = build_trade_history_report(_units(self._mixed()), close_reason='sl_triggered')
+        report = build_trade_history_report(_RUN_ID, _units(self._mixed()), close_reason='sl_triggered')
         assert report.count == 2
         assert {r.position_id for r in report.trades} == {'p2', 'p3'}
 
     def test_filter_by_time_range(self):
-        report = build_trade_history_report(
+        report = build_trade_history_report(_RUN_ID, 
             _units(self._mixed()), start=_T0 + timedelta(minutes=30), end=_T0 + timedelta(minutes=90))
         assert report.count == 1
         assert report.trades[0].position_id == 'p2'
@@ -118,19 +121,19 @@ class TestMetadata:
     """Distinct symbols + empty case."""
 
     def test_distinct_symbols_sorted(self):
-        report = build_trade_history_report(_units([
+        report = build_trade_history_report(_RUN_ID, _units([
             _trade(symbol='GBPUSD'), _trade(symbol='EURUSD'), _trade(symbol='EURUSD')]))
         assert report.symbols == ['EURUSD', 'GBPUSD']
 
     def test_empty(self):
-        report = build_trade_history_report(_units([]))
+        report = build_trade_history_report(_RUN_ID, _units([]))
         assert report.count == 0
         assert report.trades == []
         assert report.symbols == []
 
     def test_scenario_totals(self):
         # per-scenario footer totals (the table footer, model-served)
-        report = build_trade_history_report(
+        report = build_trade_history_report(_RUN_ID, 
             _units([_trade(net_pnl=20.0), _trade(position_id='p2', net_pnl=-10.0)]))
         assert len(report.scenario_totals) == 1
         st = report.scenario_totals[0]
@@ -144,16 +147,16 @@ class TestAnalytics:
 
     def test_r_multiple(self):
         # net_pnl 20 / initial_risk 10 → R = 2.0
-        report = build_trade_history_report(_units([_trade(net_pnl=20.0, initial_risk=10.0)]))
+        report = build_trade_history_report(_RUN_ID, _units([_trade(net_pnl=20.0, initial_risk=10.0)]))
         assert report.trades[0].r_multiple == 2.0
 
     def test_r_multiple_none_without_sl(self):
         # no initial_risk (trade had no stop loss) → R undefined
-        assert build_trade_history_report(_units([_trade()])).trades[0].r_multiple is None
+        assert build_trade_history_report(_RUN_ID, _units([_trade()])).trades[0].r_multiple is None
 
     def test_distance_forex_pip_unit(self):
         # Forex: authoritative pip_size 1e-4 stamped at source → distance in pips (#167)
-        row = build_trade_history_report(
+        row = build_trade_history_report(_RUN_ID, 
             _units([_trade(mae_price=1.0990, mfe_price=1.1030)])).trades[0]
         assert round(row.mae_distance, 1) == 10.0   # |1.1000 - 1.0990| / 1e-4
         assert round(row.mfe_distance, 1) == 30.0   # |1.1030 - 1.1000| / 1e-4
@@ -161,7 +164,7 @@ class TestAnalytics:
 
     def test_distance_crypto_tick_unit(self):
         # Crypto: pip_size = tick (0.1 for BTCUSD) → distance in ticks, labeled 'tick' (#167)
-        row = build_trade_history_report(_units([_trade(
+        row = build_trade_history_report(_RUN_ID, _units([_trade(
             symbol='BTCUSD', mae_price=1.0980, mfe_price=1.1050,
             pip_size=0.1, price_unit='tick')])).trades[0]
         assert round(row.mae_distance, 2) == 0.02   # |1.1000 - 1.0980| / 0.1
@@ -175,7 +178,7 @@ class TestAnalytics:
             _trade(position_id='l1', net_pnl=-10.0, initial_risk=10.0, mae_pnl=-12.0, mfe_pnl=4.0),  # R=-1
             _trade(position_id='l2', net_pnl=-10.0, initial_risk=10.0, mae_pnl=-8.0, mfe_pnl=6.0),   # R=-1
         ]
-        a = build_trade_history_report(_units(trades)).analytics[0]   # single currency ('')
+        a = build_trade_history_report(_RUN_ID, _units(trades)).analytics[0]   # single currency ('')
         assert a.r_trade_count == 4
         assert a.trade_count == 4
         assert a.expectancy == 0.5                 # (2+2-1-1)/4
@@ -196,22 +199,22 @@ class TestAnalytics:
             _trade(position_id='l1', net_pnl=-10.0, initial_risk=10.0),  # R=-1
             _trade(position_id='l2', net_pnl=-10.0, initial_risk=10.0),  # R=-1
         ]
-        a = build_trade_history_report(_units(trades)).analytics[0]
+        a = build_trade_history_report(_RUN_ID, _units(trades)).analytics[0]
         assert (a.r_trade_count, a.r_win_count, a.r_loss_count) == (3, 1, 2)
 
     def test_no_r_winner_leaves_avg_win_r_unmeasured(self):
         """The archive case: one R-trade, and it lost. 0.0 would read as a measured zero."""
         trades = [_trade(position_id='l1', net_pnl=-10.0, initial_risk=10.0)]   # R=-1
-        a = build_trade_history_report(_units(trades)).analytics[0]
+        a = build_trade_history_report(_RUN_ID, _units(trades)).analytics[0]
         assert a.r_trade_count == 1 and a.r_win_count == 0
         assert a.avg_win_r is None
         assert a.avg_loss_r == -1.0
 
     def test_no_r_loser_leaves_avg_loss_r_unmeasured(self):
         trades = [_trade(position_id='w1', net_pnl=20.0, initial_risk=10.0)]    # R=2
-        a = build_trade_history_report(_units(trades)).analytics[0]
+        a = build_trade_history_report(_RUN_ID, _units(trades)).analytics[0]
         assert a.avg_loss_r is None and a.r_loss_count == 0
         assert a.avg_win_r == 2.0
 
     def test_empty_analytics(self):
-        assert build_trade_history_report(_units([])).analytics == []   # no rows → no currency groups
+        assert build_trade_history_report(_RUN_ID, _units([])).analytics == []   # no rows → no currency groups

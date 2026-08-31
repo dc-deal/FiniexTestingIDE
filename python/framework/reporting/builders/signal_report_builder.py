@@ -31,6 +31,7 @@ from python.framework.types.signal_data_types import (
 
 
 def build_signal_report(
+    run_id: str,
     signal_scenario_map: Dict[Tuple[str, str], SignalScenarioInfo],
     units: List[RunUnit],
     observed_feed: Optional[SignalObservedSeries] = None,
@@ -44,6 +45,7 @@ def build_signal_report(
     case: there is no archive to analyse, only what the feed stated about itself.
 
     Args:
+        run_id: The run this report belongs to
         signal_scenario_map: (source, symbol) → coverage + the scenario windows bound to it
         units: The run's units (sim: N scenarios; live: 1 session) — carry the counters
         observed_feed: What a live transport accumulated, when this run consumed one
@@ -53,10 +55,10 @@ def build_signal_report(
     """
     # Early exit: this run bound no signal source at all — neither archive nor feed
     if not signal_scenario_map and observed_feed is None:
-        return SignalReport(units=[])
+        return SignalReport(run_id=run_id, units=[])
 
     if not signal_scenario_map:
-        return SignalReport(units=[_to_feed_row(observed_feed, units)])
+        return SignalReport(run_id=run_id, units=[_to_feed_row(observed_feed, units)])
 
     stats_index = _index_resolution_stats(units)
 
@@ -69,7 +71,7 @@ def build_signal_report(
         _to_source_row(source, infos, stats_index)
         for source, infos in sorted(by_source.items())
     ]
-    return SignalReport(units=rows)
+    return SignalReport(run_id=run_id, units=rows)
 
 
 def _index_resolution_stats(

@@ -23,6 +23,7 @@ from python.framework.types.api.report_types import (
 
 
 def build_aggregated_portfolio_report(
+    run_id: str,
     portfolio_report: PortfolioReport,
     execution_report: ExecutionStatsReport,
     pending_report: PendingOrdersReport,
@@ -31,6 +32,7 @@ def build_aggregated_portfolio_report(
     Build the aggregated per-currency portfolio report from the per-unit model rows.
 
     Args:
+        run_id: The run this report belongs to
         portfolio_report: per-scenario portfolio rows (currency + balances + costs + spot)
         execution_report: per-scenario order counts (joined by unit name)
         pending_report: per-scenario pending stats incl. latency count (joined by unit name)
@@ -70,4 +72,4 @@ def build_aggregated_portfolio_report(
             margin=margin,
             spot=spot,
         ))
-    return AggregatedPortfolioReport(currencies=currencies)
+    return AggregatedPortfolioReport(run_id=run_id, currencies=currencies)

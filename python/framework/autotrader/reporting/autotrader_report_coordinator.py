@@ -69,6 +69,7 @@ class AutotraderReportCoordinator:
         self,
         result: AutoTraderResult,
         run_dir: Path,
+        run_id: str,
         run_timestamp: datetime,
         config: AutoTraderConfig,
         decision_logic: Optional[AbstractDecisionLogic],
@@ -84,6 +85,8 @@ class AutotraderReportCoordinator:
         Args:
             result: The completed session result to report
             run_dir: The session's run directory
+            run_id: The session's identity — every report names the run it was built from, so
+                a consumer can check what it received rather than trusting the route (#475)
             run_timestamp: The session start (UTC) — the ledger row's run timestamp
             config: The autotrader profile config (portfolio unit name/symbol)
             decision_logic: The decision logic (algo diagnostics sinks)
@@ -96,6 +99,7 @@ class AutotraderReportCoordinator:
         """
         self._result = result
         self._run_dir = run_dir
+        self._run_id = run_id
         self._run_timestamp = run_timestamp
         self._config = config
         self._decision_logic = decision_logic
@@ -152,13 +156,13 @@ class AutotraderReportCoordinator:
         # portfolio (single session = its own currency aggregate) / pending (empty for live) /
         # execution-stats / run-summary / worker-decision. The models feed the unified console.
         unified = SharedReportCoordinator.derive_and_persist(
-            units, io_dir, self._signal_scenario_map, self._observed_feed)
+            self._run_id, units, io_dir, self._signal_scenario_map, self._observed_feed)
 
         # Warnings & errors — tiered model (#395). Persisted for API parity with the sim runs;
         # the closing block keeps reading the session buffers directly (same structured source,
         # avoids double-rendering the emergency cause, §35).
         warnings_errors_report = build_warnings_errors_report_from_session(
-            result, name, self._config.symbol)
+            self._run_id, result, name, self._config.symbol)
         write_warnings_errors_report(warnings_errors_report, io_dir)
 
         # Broker configuration — the session's single broker + symbol (unified model;
@@ -167,15 +171,19 @@ class AutotraderReportCoordinator:
         broker_report = None
         if self._broker_config is not None:
             broker_report = build_broker_report_from_session(
-                self._broker_config, self._config.symbol)
+                self._run_id, self._broker_config, self._config.symbol)
             write_broker_report(broker_report, io_dir)
+
+        # Every artifact of this session is on disk now — the index records WHICH, so a consumer
+        # knows what it can fetch instead of discovering it by 404 (#475).
+        SharedReportCoordinator.record_run_artifacts(self._run_dir)
 
         # Run-results ledger (#390) — append the session to the persistent cross-run store the
         # Parameter Optimization system ranks over. Same RunSummary model + provenance as the sim
         # pipeline; the profile's strategy_config makes the param_hash comparable to the backtest
         # (sim/live parity). A live session is never swept; an emergency → status='error' row.
         provenance = build_run_provenance_from_session(
-            self._config, self._run_dir, self._run_timestamp, warnings_errors_report)
+            self._config, self._run_id, self._run_timestamp, warnings_errors_report)
         append_run_to_ledger(unified.run_summary, provenance)
 
         # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.

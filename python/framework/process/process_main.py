@@ -54,6 +54,7 @@ def process_main(
             scenario_name=file_name_for_scenario(
                 config.scenario_index, config.name),
             run_timestamp=config.run_timestamp,
+            run_id=config.run_id,
             log_root_override=config.log_root,
             use_scenario_logs_subdir=True,
             # This log IS the run's tick-by-tick record, so every line carries the run's own

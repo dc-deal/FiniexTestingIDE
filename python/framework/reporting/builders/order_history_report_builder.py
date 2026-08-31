@@ -15,6 +15,7 @@ from python.framework.types.trading_env_types.order_types import OrderResult
 
 
 def build_order_history_report(
+    run_id: str,
     units: List[RunUnit],
     symbol: Optional[str] = None,
     status: Optional[str] = None,
@@ -23,6 +24,7 @@ def build_order_history_report(
     Build the canonical order-history report from the run's units.
 
     Args:
+        run_id: The run this report belongs to
         units: The run's units (sim: scenarios; live: the session)
         symbol / status: Optional filters
 
@@ -30,10 +32,11 @@ def build_order_history_report(
         OrderHistoryReport with the filtered, mapped rows + distinct symbols
     """
     rows = [_to_row(order, unit.name) for unit in units for order in unit.order_history]
-    return _assemble(rows, symbol, status)
+    return _assemble(run_id, rows, symbol, status)
 
 
 def _assemble(
+    run_id: str,
     rows: List[OrderHistoryRow], symbol: Optional[str], status: Optional[str]) -> OrderHistoryReport:
     """Apply the shared row filter and assemble the report (the one filter path)."""
     filtered = []
@@ -44,7 +47,7 @@ def _assemble(
             continue
         filtered.append(row)
     symbols = sorted({row.symbol for row in filtered if row.symbol})
-    return OrderHistoryReport(orders=filtered, count=len(filtered), symbols=symbols)
+    return OrderHistoryReport(run_id=run_id, orders=filtered, count=len(filtered), symbols=symbols)
 
 
 def _to_row(order: OrderResult, scenario_name: str = '') -> OrderHistoryRow:

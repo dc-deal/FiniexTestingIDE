@@ -15,11 +15,13 @@ from python.framework.types.scenario_types.scenario_set_types import SingleScena
 
 
 def build_scenario_details_report_from_batch(
+    run_id: str,
     batch: BatchExecutionSummary) -> ScenarioDetailsReport:
     """
     Build the report from a sim batch — one row per scenario (incl. failed).
 
     Args:
+        run_id: The run this report belongs to
         batch: The completed batch summary
 
     Returns:
@@ -29,7 +31,7 @@ def build_scenario_details_report_from_batch(
         _to_row(result, batch.get_scenario_by_process_result(result))
         for result in batch.process_result_list
     ]
-    return ScenarioDetailsReport(units=rows)
+    return ScenarioDetailsReport(run_id=run_id, units=rows)
 
 
 def _to_row(result: ProcessResult, scenario: SingleScenario) -> ScenarioDetailsRow:

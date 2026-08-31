@@ -11,6 +11,9 @@ from python.framework.reporting.builders.pending_orders_report_builder import (
 )
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
+
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
 from python.framework.types.trading_env_types.pending_order_stats_types import (
     ActiveOrderSnapshot,
     PendingOrderStats,
@@ -41,14 +44,14 @@ def _unit(name: str = 's1', pending: PendingOrderStats = None) -> RunUnit:
 
 class TestBuild:
     def test_maps_unit(self):
-        report = build_pending_orders_report([_unit(pending=_pending())])
+        report = build_pending_orders_report(_RUN_ID, [_unit(pending=_pending())])
         assert len(report.units) == 1
         u = report.units[0]
         assert (u.total_resolved, u.total_filled, u.total_force_closed) == (3, 2, 1)
         assert (u.avg_latency_ms, u.min_latency_ms, u.max_latency_ms) == (42.0, 21.0, 60.0)
 
     def test_active_orders_mapped(self):
-        report = build_pending_orders_report([_unit(pending=_pending(actives=[_active()]))])
+        report = build_pending_orders_report(_RUN_ID, [_unit(pending=_pending(actives=[_active()]))])
         rows = report.units[0].active_limit_orders
         assert len(rows) == 1
         a = rows[0]
@@ -56,7 +59,7 @@ class TestBuild:
         assert a.entry_price == 1.1000 and a.stop_loss == 1.0980 and a.take_profit == 1.1040
 
     def test_skips_units_without_activity(self):
-        report = build_pending_orders_report([
+        report = build_pending_orders_report(_RUN_ID, [
             _unit(name='none', pending=None),
             _unit(name='empty', pending=PendingOrderStats()),   # no resolved, no active
             _unit(name='real', pending=_pending()),
@@ -66,5 +69,5 @@ class TestBuild:
     def test_no_latency_is_none(self):
         # min_latency_ms None → avg reported as None (no latency data)
         ps = PendingOrderStats(total_resolved=1, total_filled=1)
-        report = build_pending_orders_report([_unit(pending=ps)])
+        report = build_pending_orders_report(_RUN_ID, [_unit(pending=ps)])
         assert report.units[0].avg_latency_ms is None

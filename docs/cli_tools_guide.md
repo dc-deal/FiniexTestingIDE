@@ -19,6 +19,7 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `data_index_cli.py` | Import & Inspection | import, tick-data-report, inspect |
 | `tick_index_cli.py` | Tick Index Management | rebuild, status, file-coverage, files |
 | `bar_index_cli.py` | Bar Index Management | rebuild, status, render |
+| `run_index_cli.py` | Run Index Management | rebuild, status, prune |
 | `discoveries_cli.py` | Volatility Profiling, Discoveries & Data Coverage | profile, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
 | `generator_cli.py` | Block & Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
 | `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, list |
@@ -144,6 +145,104 @@ USDJPY:
       • M5: 30,853 bars [Ticks: 9,920,219, Ø 321/bar]
       ...
 ```
+
+### 📈 Run Index: Status
+
+| | |
+|---|---|
+| **VS Code** | `📈 Run Index: Status` |
+| **CLI** | `python run_index_cli.py status` |
+| **Purpose** | What the derived run index holds — the table `GET /api/v1/reports/runs` reads |
+
+```
+📇 Run Index — 6 run(s) · runs/index.parquet
+
+  20260830_173933_f54f1d3d  live        14 artifact(s)  mock_session_test
+  20260830_173819_81d96b02  simulation  18 artifact(s)  btcusd_mini_set__sweep_20260830_173753_c003
+  20260830_173704_ce76e830  simulation  18 artifact(s)  multi_position_test
+```
+
+**`run_type` is the PIPELINE, never the nesting.** Two values only — `simulation` and `live`. A
+sweep combination is a `simulation` whose `parent_id` names its sweep; a live day fragment (#476)
+will be a `live` whose `parent_id` names its session.
+
+The artifact count is the length of the run's `artifacts` list — every report file it persisted,
+by name. A run with none is not automatically incomplete: the header's `reporting` field says
+whether it was commissioned to report at all. **The two pipelines produce different sets** (18 for a simulation run, 14 for a live
+session: live has no `scenario_details` / `profiling` / `run_meta` / `aggregated_portfolio`), which
+is why the index carries the list rather than a boolean — a consumer that only learned "yes, some"
+would still be guessing which. A run with none exists as logs alone and is listed rather than
+hidden.
+
+### 📈 Run Index: Prune
+
+| | |
+|---|---|
+| **VS Code** | `📈 Run Index: Prune (dry run)` |
+| **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--apply]` |
+| **Purpose** | Remove what the run tree no longer needs — after showing exactly what that is |
+
+**The dry run is the default and it IS the product.** Without `--apply` nothing is touched. A run
+directory is the only copy of its logs; the closest existing command, `discoveries coverage clear`,
+deletes without ceremony because a cache is rebuildable — this is not that.
+
+```
+🧹 Prune Run Tree — DRY RUN (nothing deleted; add --apply)
+
+  DELETE     87 · not runs (no header, not indexed)   0.3 MB
+             runs/simulation/parity/20260830_175903_00557431
+             … 82 more
+  DELETE     49 · older than the 2 newest of their family   18.0 MB
+  DELETE     12 · sweep directories left without a single combination   17.8 MB
+  KEEP       35 · reporting=expected, no artifacts — crashed or still running
+  KEEP        2 · hold field_study.jsonl (evidence behind a release gate)
+  KEEP       34 · complete
+  SKIP       17 · sweep directories — not runs, deliberately header-less
+
+  The run-results ledger is untouched: 430 fragment(s) remain, including those of the runs above.
+```
+
+**Two things it will never delete, whatever flags are given:**
+
+- a run with `reporting=expected` and **no artifacts** — it crashed before reporting or is still
+  going. A crashed run is the only record of that failure and the most valuable directory there is
+- a run holding `field_study.jsonl` — the raw evidence behind a real-money release certificate
+
+**The selectors** (`--keep-last` and `--orphans` are opt-in; the third is always on):
+
+| Flag | Removes |
+|---|---|
+| `--keep-last N` | per scenario set / profile, all but the N newest complete runs. **A sweep is the unit, not the combination** — the N newest sweeps survive WHOLE, the rest go WHOLE, because a half-pruned sweep leaves a `ranked.csv` ranking runs that no longer exist |
+| `--orphans` | directories that are not runs: no header, not in the index. Never sweep directories (correctly header-less) and never a run's own `io/`, `scenario_logs/`, … |
+| *(always on)* | `reporting=none` with no artifacts — commissioned to produce nothing, and it did not |
+
+`--apply` deletes, then **rebuilds the index**: it is derived, so it follows the tree rather than
+being edited alongside it. One unremovable directory is reported and does not abort the rest.
+
+Age (`--older-than`) is deliberately absent — that policy is defined once, together with the
+AutoTrader session-log retention, so the project has one retention vocabulary rather than two.
+
+### 📈 Run Index: Rebuild
+
+| | |
+|---|---|
+| **VS Code** | `📈 Run Index: Rebuild` |
+| **CLI** | `python run_index_cli.py rebuild` |
+| **Purpose** | Rebuild the index from the per-run `header.json` files |
+
+The index is DERIVED, and this command is what makes that true rather than merely stated: it may
+be deleted or go stale without anything being lost. The headers are the source; the index is the
+read path. Rebuild after moving the run tree, after restoring runs from a backup, or whenever the
+index and the tree disagree.
+
+```
+🔄 Rebuilding Run Index
+✅ 162 run(s) indexed → runs/index.parquet
+```
+
+A run with no header is skipped — it cannot be identified, which is the condition the header
+exists to end. A duplicate id is reported rather than resolved: a minted id cannot collide, so a
+duplicate means two directories carry the same header — a copy, or a hand-edited one.
 
 ### 📚 Tick File Coverage: SYMBOL
 

@@ -10,9 +10,9 @@ CORRECTIONS:
 - balances: Unified balance dict (replaces initial_balance + account_currency)
 """
 
-from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
@@ -233,7 +233,10 @@ class ProcessScenarioConfig:
     # === LOGGER METADATA ===
     # For ScenarioLogger initialization
     scenario_set_name: str = ''
-    run_timestamp: str = ''
+    # The run's start (the elapsed baseline) and its identity. run_timestamp is a datetime, not
+    # the string this field used to claim — ScenarioLogger calls .strftime() on it.
+    run_timestamp: Optional[datetime] = None
+    run_id: str = ''
     # Optional grouping dir nested under the log root (e.g. 'sweeps/<sweep_id>', #419)
     log_root: Optional[Path] = None
 
@@ -284,7 +287,8 @@ class ProcessScenarioConfig:
         app_config_loader: AppConfigManager,
         scenario_index: int,
         scenario_set_name: str,
-        run_timestamp: str,
+        run_timestamp: datetime,
+        run_id: str,
         live_stats_config: LiveStatsExportConfig,
         log_root: Optional[Path] = None
     ) -> 'ProcessScenarioConfig':
@@ -301,7 +305,8 @@ class ProcessScenarioConfig:
             app_config: Application configuration
             scenario_index: Index in scenario list
             scenario_set_name: Name of scenario set (for logger)
-            run_timestamp: Shared timestamp (for logger)
+            run_timestamp: Shared run start (for the logger's elapsed baseline)
+            run_id: The run's identity — the subprocess rebuilds the same run directory from it
 
         Returns:
             Serializable ProcessScenarioConfig
@@ -407,7 +412,8 @@ class ProcessScenarioConfig:
             worker_decision_tracking=worker_decision_tracking,
             tick_loop_profiling=tick_loop_profiling,
             scenario_set_name=scenario_set_name,
-            run_timestamp=run_timestamp,  # extracted from json, put into type.
+            run_timestamp=run_timestamp,
+            run_id=run_id,
             log_root=log_root,
             live_stats_config=live_stats_config,
             broker_type=scenario.broker_type,

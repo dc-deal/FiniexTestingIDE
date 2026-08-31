@@ -23,6 +23,7 @@ from python.data_management.importers.vectorized_bar_renderer import VectorizedB
 from python.framework.bars.bar_renderer import BarRenderer
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.utils.run_id_utils import mint_run_id
 from tests.framework.bar_rendering.conftest import (
     generate_boundary_ticks,
     generate_ticks,
@@ -40,6 +41,7 @@ def _create_bar_renderer() -> BarRenderer:
         scenario_set_name='test_consistency',
         scenario_name='renderer_comparison',
         run_timestamp=datetime.now(tz=timezone.utc),
+        run_id=mint_run_id(datetime.now(timezone.utc)),
     )
     return BarRenderer(logger=logger)
 

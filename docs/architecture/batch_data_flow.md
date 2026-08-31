@@ -62,33 +62,58 @@ of rendered lines forces every later consumer to take the fact apart again, and 
 such a consumer: it used to recover the message with `split(' | ', 1)` and carried ANSI escape
 codes into the persisted JSON on the way.
 
+### What identifies a run (#475)
+
+A run is identified by `run_id` — `<timestamp>_<hash>`, e.g. `20260830_132034_a3f9c2d1`. The
+readable half keeps ordering intact (the run index sorts on it, the sweep ranking tie-breaks on
+it); the random half makes it distinct, because a second-resolution stamp collided in ordinary
+use — 4 of 188 runs, and a collision made the API serve a different run's artifacts than the index
+listed under that id.
+
+It is minted ONCE per run and passed down: to the three loggers of a live session, and through
+`ProcessScenarioConfig` into each simulation subprocess. Deriving it per logger would give one run
+three ids and therefore three directories.
+
+Each run writes a `header.json` at its START — id, start time, category, owner, and the parent it
+belongs to (a sweep, today; a session for #476's daily fragments). At the start rather than the
+end, because a run that crashes is exactly the run somebody needs to identify.
+
+`runs/index.parquet` is ONE compacted file DERIVED from those headers, and it is what the API
+reads. Derived is the point: it may be deleted or go stale without anything being lost —
+`run_index_cli.py rebuild` reconstructs it. Directories stay human-navigable (§36) but no program
+reads meaning out of them any more.
+
 ### Where a run's logs land — three categories, one source
 
 A run belongs to exactly ONE category, and the category IS its `group` in the API:
 
 ```
-file_logging.run_logs.autotrader    logs/autotrader/<profile>/<run_ts>/
-file_logging.run_logs.single_runs   logs/scenario_sets/single_runs/<set>/<run_ts>/
-file_logging.run_logs.sweeps        logs/scenario_sets/sweeps/<sweep_id>/<set>/<run_ts>/
+file_logging.run_logs.simulation    runs/simulation/<set>/<run_id>/
+                                    runs/simulation/sweeps/<sweep_id>/<combination>/<run_id>/
+file_logging.run_logs.live          runs/live/<profile>/<run_id>/
 ```
 
-**The three paths are configuration** (`app_config.json` → `file_logging.run_logs`), read by the
-writers (`ScenarioSet`, `autotrader_startup`) AND by `ReportStore` — one source, so a moved log
+**Two roots, because there are two run TYPES** — and the type is the PIPELINE, not the nesting.
+A sweep combination is a `simulation` with a `parent_id`; a live day fragment (#476) will be a
+`live` with a `parent_id`. Folding nesting into the type would make the most basic question —
+"is this a simulation?" — a two-value comparison, and would need a new value for every new kind
+of parent.
+
+**The paths are configuration** (`app_config.json` → `file_logging.run_logs`), read by the
+writers (`ScenarioSet`, `autotrader_startup`) AND by the run index — one source, so a moved log
 root cannot make runs invisible to the API. Before that, the sim root was config, the live root
 was a hard-coded `Path('logs/autotrader')` and the reader assumed a third thing: changing the
 config would silently have emptied the run index.
 
-The category NAMES live in `framework/types/log_layout_types.py`, because they are a contract:
-the API publishes them as `RunInfo.group`. The run index lists every category — a consumer that
-wants only standalone runs filters on the group, which it can, and an index that silently omitted
-a category would be its own surprise. `/sweeps` adds the sweep-shaped view on the same data:
-one sweep, its combinations ranked by the objective the sweep declared.
+The type NAMES live in `framework/types/log_layout_types.py`, because they are a contract: the
+API publishes them as `RunInfo.group`. The index lists both types — a consumer that wants only
+standalone runs filters on `parent_id`, and an index that silently omitted a type would be its
+own surprise. `/sweeps` adds the sweep-shaped view on the same data: one sweep, its combinations
+ranked by the objective the sweep declared.
 
-The distinction is structural on purpose. A sweep is not a run, it is a family of them, and the
-two want different views: `/reports/runs` lists standalone runs, `/sweeps` lists sweeps and ranks
-their combinations. Keeping them apart by PATH means the index needs no filter on names, and a
-combination cannot silently reappear in the run picker. It stays fully **addressable** — every
-report route resolves any `run_id`, at any depth; the index is a browse aid, not the authority
+**A directory means nothing to any program (#475).** Identity is a field: a run is located
+through the run index by an exact `run_id` match, never by walking the tree, so the nesting level
+of a sweep combination is invisible to every consumer. The tree stays the way a HUMAN browses it.
 on what can be read.
 
 ## Channel B: Process Output (`ProcessResult`)

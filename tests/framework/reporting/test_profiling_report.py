@@ -40,6 +40,9 @@ from python.framework.types.process_data_types import (
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.utils.console_renderer import ConsoleRenderer
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 
 
@@ -77,7 +80,7 @@ class TestBuild:
         batch = _batch(
             [_result('s1', 0, {'live_update': 600.0, 'worker_decision': 300.0, 'bar_rendering': 100.0}, 5000)],
             [_scenario('s1', 0, 'EURUSD')])
-        row = build_profiling_report_from_batch(batch).units[0]
+        row = build_profiling_report_from_batch(_RUN_ID, batch).units[0]
         assert row.name == 's1' and row.symbol == 'EURUSD'
         assert row.total_ticks == 5000
         assert row.total_ms == 1000.0
@@ -92,7 +95,7 @@ class TestBuild:
         batch = _batch(
             [_result('s1', 0, {'worker_decision': 100.0}, 100, intervals=[1.0, 2.0, 3.0, 4.0, 5.0])],
             [_scenario('s1', 0)])
-        row = build_profiling_report_from_batch(batch).units[0]
+        row = build_profiling_report_from_batch(_RUN_ID, batch).units[0]
         assert row.inter_tick is not None
         assert row.inter_tick.min_ms == 1.0 and row.inter_tick.max_ms == 5.0
         assert row.inter_tick.interval_count == 5
@@ -103,7 +106,7 @@ class TestBuild:
         batch = _batch(
             [_result('s1', 0, {'worker_decision': 100.0}, 5000)],
             [_scenario('s1', 0)], clipping=clipping)
-        row = build_profiling_report_from_batch(batch).units[0]
+        row = build_profiling_report_from_batch(_RUN_ID, batch).units[0]
         assert row.clipping is not None
         assert row.clipping.ticks_clipped == 1000 and row.clipping.budget_ms == 1.5
 
@@ -112,7 +115,7 @@ class TestBuild:
             [_result('s1', 0, {'worker_decision': 100.0}, 100)],
             [_scenario('s1', 0)],
             warmup=[WarmupPhaseEntry(name='Data Loading', duration_s=9.47)])
-        report = build_profiling_report_from_batch(batch)
+        report = build_profiling_report_from_batch(_RUN_ID, batch)
         assert [(w.name, w.duration_s) for w in report.warmup_phases] == [('Data Loading', 9.47)]
 
     def test_layer_b_off_scenario_skipped(self):
@@ -122,7 +125,7 @@ class TestBuild:
             coordination_statistics=WorkerCoordinatorPerformanceStats(ticks_processed=100))
         result = ProcessResult(success=True, scenario_name='off', scenario_index=0,
                                tick_loop_results=tick_loop)
-        report = build_profiling_report_from_batch(_batch([result], [_scenario('off', 0)]))
+        report = build_profiling_report_from_batch(_RUN_ID, _batch([result], [_scenario('off', 0)]))
         assert report.units == []
 
 
@@ -204,7 +207,7 @@ class TestTheVerdictsLeftThePrintout:
             agg = agg.model_copy(update=clipping)
         buf = io.StringIO()
         with redirect_stdout(buf):
-            ProfilingSummary(ProfilingReport(units=units, aggregate=agg)).render_aggregated(
+            ProfilingSummary(ProfilingReport(run_id=_RUN_ID, units=units, aggregate=agg)).render_aggregated(
                 ConsoleRenderer())
         return re.sub(r'\x1b\[[0-9;]*m', '', buf.getvalue())
 
@@ -243,7 +246,7 @@ class TestRenderWarmup:
     """render_warmup (#399, 3c) — the folded warmup breakdown, model-fed."""
 
     def _render(self, phases) -> str:
-        report = ProfilingReport(units=[], warmup_phases=phases)
+        report = ProfilingReport(run_id=_RUN_ID, units=[], warmup_phases=phases)
         buf = io.StringIO()
         with redirect_stdout(buf):
             ProfilingSummary(report).render_warmup(ConsoleRenderer())

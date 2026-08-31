@@ -34,6 +34,9 @@ from python.framework.validators.scenario_validator import ScenarioValidator
 from python.scenario.generator.role_assignment import assign_roles_time_ordered
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 _DT = datetime(2026, 2, 10, tzinfo=timezone.utc)
 
 
@@ -91,7 +94,7 @@ def _batch(nets, roles=None, regimes=None, metric=RobustnessMetric.NET_PNL,
 
 def _verdicts(batch) -> dict:
     """Run the PostRunValidator and return {check_name: joined warning text}."""
-    PostRunValidator(batch).validate()
+    PostRunValidator(batch, _RUN_ID).validate()
     return {finding.check: finding.message
             for vr in batch.batch_validation_result for finding in vr.findings}
 
@@ -177,11 +180,11 @@ class TestBuildReport:
     def test_disabled_is_empty(self):
         b = BatchExecutionSummary(
             batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0)
-        r = build_robustness_report_from_batch(b)
+        r = build_robustness_report_from_batch(_RUN_ID, b)
         assert r.enabled is False and r.windows == []
 
     def test_distribution(self):
-        r = build_robustness_report_from_batch(_batch([10.0, 0.0, 0.0, -5.0]))
+        r = build_robustness_report_from_batch(_RUN_ID, _batch([10.0, 0.0, 0.0, -5.0]))
         d = r.distribution
         assert d.window_count == 4
         assert d.pct_profitable == 25.0          # only the +10 window
@@ -191,40 +194,40 @@ class TestBuildReport:
     def test_in_out_of_sample_and_wfe_overfit(self):
         roles = [RobustnessRole.IN_SAMPLE, RobustnessRole.IN_SAMPLE,
                  RobustnessRole.OUT_OF_SAMPLE, RobustnessRole.OUT_OF_SAMPLE]
-        r = build_robustness_report_from_batch(_batch([10.0, 10.0, 1.0, 1.0], roles=roles))
+        r = build_robustness_report_from_batch(_RUN_ID, _batch([10.0, 10.0, 1.0, 1.0], roles=roles))
         assert r.in_sample.mean_metric == 10.0 and r.out_of_sample.mean_metric == 1.0
         assert r.walk_forward_efficiency == pytest.approx(0.1)
 
     def test_wfe_robust(self):
         roles = [RobustnessRole.IN_SAMPLE, RobustnessRole.OUT_OF_SAMPLE]
-        r = build_robustness_report_from_batch(_batch([10.0, 9.0], roles=roles))
+        r = build_robustness_report_from_batch(_RUN_ID, _batch([10.0, 9.0], roles=roles))
         assert r.walk_forward_efficiency == pytest.approx(0.9)
 
     def test_wfe_undefined_when_is_not_profitable(self):
         roles = [RobustnessRole.IN_SAMPLE, RobustnessRole.OUT_OF_SAMPLE]
-        r = build_robustness_report_from_batch(_batch([-5.0, 1.0], roles=roles))
+        r = build_robustness_report_from_batch(_RUN_ID, _batch([-5.0, 1.0], roles=roles))
         assert r.walk_forward_efficiency is None
 
     def test_regime_breakdown(self):
         regimes = ['high', 'low', 'low']
-        r = build_robustness_report_from_batch(_batch([2.0, 4.0, 6.0], regimes=regimes))
+        r = build_robustness_report_from_batch(_RUN_ID, _batch([2.0, 4.0, 6.0], regimes=regimes))
         by = {row.regime: row for row in r.regime_breakdown}
         assert by['low'].window_count == 2 and by['low'].mean_metric == pytest.approx(5.0)
         assert by['high'].window_count == 1
 
     def test_no_regime_breakdown_without_regimes(self):
-        assert build_robustness_report_from_batch(_batch([1.0, 2.0])).regime_breakdown == []
+        assert build_robustness_report_from_batch(_RUN_ID, _batch([1.0, 2.0])).regime_breakdown == []
 
     def test_param_drift_flagged(self):
         strategies = [{'decision_logic_config': {'a': 1}}, {'decision_logic_config': {'a': 2}}]
-        r = build_robustness_report_from_batch(_batch([1.0, 2.0], strategies=strategies))
+        r = build_robustness_report_from_batch(_RUN_ID, _batch([1.0, 2.0], strategies=strategies))
         assert r.params_constant is False and r.drifting_windows == ['ETHUSD_vol_01']
 
     def test_disposition_copied(self):
         boundary = BlockBoundaryReport(
             force_closed_trades=1, force_closed_pnl=40.0,
             natural_closed_trades=1, natural_closed_pnl=10.0, discarded_pending_orders=0)
-        r = build_robustness_report_from_batch(_batch([5.0, 5.0], boundaries=[boundary, None]))
+        r = build_robustness_report_from_batch(_RUN_ID, _batch([5.0, 5.0], boundaries=[boundary, None]))
         assert r.disposition_pct == pytest.approx(80.0)   # 40 / (40+10)
 
 

@@ -18,13 +18,18 @@ from python.framework.discoveries.signal_coverage.signal_coverage_report import 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
+from python.framework.reporting.store.run_index import RunIndex
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
+from python.framework.types.api.report_types import RunHeader, RunReporting
 from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,
     RobustnessRole,
 )
+from python.framework.types.log_layout_types import MOUNT_BUILD_LOG, RUN_TYPE_SIMULATION
 from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.types.validation_types import ValidationResult
+from python.framework.utils.git_info_utils import get_git_commit
+from python.framework.utils.run_id_utils import mint_run_id
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 
 
@@ -173,7 +178,23 @@ class ScenarioSet:
     """Self-contained scenario set with its own logging infrastructure"""
 
     def __init__(self, scenario_config: LoadedScenarioConfig, app_config: AppConfigManager,
-                 sweep_id: Optional[str] = None):
+                 sweep_id: Optional[str] = None, mount_only: bool = False,
+                 reporting: RunReporting = RunReporting.EXPECTED):
+        """
+        Args:
+            scenario_config: The loaded scenario set
+            app_config: Application configuration
+            sweep_id: When given, this set's runs nest under that sweep's directory
+            mount_only: This set exists solely to BUILD A DATA MOUNT (#419), not to run. It
+                writes its one log flat into the sweep directory as mount_build.log and opens
+                no run directory — a shared data load is not a run, and a directory shaped like
+                one is indistinguishable from a real run in the API's index. No summary logger
+                either: there is no batch report to summarise
+            reporting: Whether this run will be given a report coordinator. Declared here
+                because only the CALLER knows — a test that stops after `orchestrator.run()`
+                passes NONE, so its empty artifact list reads as intended rather than as a
+                run that died before reporting (#475)
+        """
 
         self.scenario_set_name = scenario_config.scenario_set_name
         self._scenarios = scenario_config.scenarios
@@ -182,30 +203,62 @@ class ScenarioSet:
         self._generator_profiles = scenario_config.generator_profiles
         self._generator_profile_paths = scenario_config.generator_profile_paths
         self._robustness = scenario_config.robustness or RobustnessConfig()
-        # Where this run's logs land, from config (file_logging.run_logs) — the same three
-        # paths the API reads. A sweep's combinations nest under their sweep id, a standalone
-        # run does not: structural, so the run index needs no name filter.
+        # Where this run's logs land, from config (file_logging.run_logs) — the same paths the
+        # API reads. A sweep's combinations nest under their sweep id, a standalone run does
+        # not: a directory level, while the run TYPE stays `simulation` for both.
         run_logs = app_config.get_file_logging_config_object().run_logs
-        self._log_root = (Path(run_logs.sweeps) / sweep_id if sweep_id
-                          else Path(run_logs.single_runs))
+        self._log_root = (run_logs.sweeps / sweep_id if sweep_id
+                          else Path(run_logs.simulation))
 
         # ScenarioSet creates its own loggers
         self._run_timestamp = datetime.now(
             timezone.utc)
+        # Minted ONCE here and handed to every logger of this run — they must share a directory.
+        # The owner dir is passed so a taken id is re-minted rather than silently joined.
+        self._run_id = mint_run_id(self._run_timestamp, self._log_root / self.scenario_set_name)
 
         self.logger = ScenarioLogger(
             scenario_set_name=self.scenario_set_name,
             scenario_name='global_log',
             run_timestamp=self._run_timestamp,
+            run_id=self._run_id,
             log_root_override=self._log_root,
-            use_global_log_level_for_console=True
+            use_global_log_level_for_console=True,
+            flat_log_filename=MOUNT_BUILD_LOG if mount_only else None
         )
-        self.printed_summary_logger = ScenarioLogger(
+        # The run header goes down FIRST, before anything else can fail. A mount build gets
+        # none: it has no run directory, because it is not a run.
+        # Only the COMMIT is needed here — `get_git_commit()` costs 68 ms where the full
+        # read costs ~2.0 s, and the header has no use for branch / dirty (§42).
+        if not mount_only and self.logger.get_log_dir() is not None:
+            header = RunHeader(
+                run_id=self._run_id,
+                start_time=self._run_timestamp,
+                run_type=RUN_TYPE_SIMULATION,
+                run_name=self.scenario_set_name,
+                parent_id=sweep_id,
+                config_snapshot='scenario_config.json',
+                app_version=app_config.get_version(),
+                git_commit=get_git_commit(),
+                reporting=reporting,
+            )
+            RunIndex(app_config.get_file_logging_config_object().run_index).register_run(
+                header, self.logger.get_log_dir())
+
+        # A mount build produces no batch report, so a summary logger would only ever write its
+        # own header — which is exactly what it used to do.
+        self.printed_summary_logger = None if mount_only else ScenarioLogger(
             scenario_set_name=self.scenario_set_name,
             scenario_name='summary',
             run_timestamp=self._run_timestamp,
+            run_id=self._run_id,
             log_root_override=self._log_root
         )
+
+    @property
+    def run_id(self) -> str:
+        """The identity this run is known by — directory name, artifact key, ledger column."""
+        return self._run_id
 
     @property
     def run_timestamp(self) -> datetime:
@@ -256,6 +309,7 @@ class ScenarioSet:
                 scenario_set_name=self.scenario_set_name,
                 scenario_name='system_info',
                 run_timestamp=self.logger.get_run_timestamp(),
+                run_id=self._run_id,
                 log_root_override=self._log_root
             )
 

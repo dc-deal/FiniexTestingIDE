@@ -49,10 +49,12 @@ def write_execution_stats_csv(report: ExecutionStatsReport, run_dir: Path) -> Pa
         Path of the written CSV
     """
     path = Path(run_dir) / EXECUTION_STATS_CSV
-    columns = list(ExecutionStatsRow.model_fields)
+    # `run_id` leads every row: a CSV is the format that gets exported and merged, and
+    # a row without its run is a row nobody can trace back (#475).
+    columns = ['run_id'] + list(ExecutionStatsRow.model_fields)
     with path.open('w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for row in report.units:
-            writer.writerow(row.model_dump())
+            writer.writerow({'run_id': report.run_id, **row.model_dump()})
     return path

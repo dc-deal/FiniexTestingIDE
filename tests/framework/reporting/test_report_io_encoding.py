@@ -31,6 +31,9 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 # Both characters are real content in shipped artifacts: the em-dash in validator messages,
 # the warning sign in the dry_run override warning.
 _EM_DASH = 'consumes a source — either add one'
@@ -42,7 +45,7 @@ _EMOJI_UTF8 = _EMOJI.encode('utf-8')
 
 
 def _report() -> WarningsErrorsReport:
-    return WarningsErrorsReport(warnings=[
+    return WarningsErrorsReport(run_id=_RUN_ID, warnings=[
         WarningRow(tier='minor', scope='s', message=_EM_DASH),
         WarningRow(tier='minor', scope='s', message=_EMOJI),
     ])
@@ -74,7 +77,7 @@ class TestJsonArtifactEncoding:
 class TestCsvSurfaceEncoding:
     def test_csv_is_utf8_on_disk(self, tmp_path):
         """The CSV surface carries the same text and must not depend on the locale either."""
-        report = TradeHistoryReport(trades=[], count=0, symbols=[], analytics=[])
+        report = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[])
         write_trade_history_report(report, tmp_path)
         path = write_trade_history_csv(report, tmp_path)
         path.read_bytes().decode('utf-8')

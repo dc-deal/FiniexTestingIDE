@@ -34,6 +34,9 @@ from python.framework.validators.component_metadata_advisory import check_market
 from python.framework.validators.session_post_run_validator import SessionPostRunValidator
 from python.framework.validators.shared_advisory_checks import check_stress_test
 
+# Every report artifact names its run (#475); the value is opaque to these tests.
+_RUN_ID = '20260830_120000_a1b2c3d4'
+
 _STRESS = {
     'stale_data_stress': {
         'enabled': True,
@@ -144,7 +147,7 @@ class TestTheChannelReachesTheReport:
     @staticmethod
     def _report(result: AutoTraderResult, config: AutoTraderConfig):
         SessionPostRunValidator(result, config).validate()
-        return build_warnings_errors_report_from_session(result, config.name, config.symbol)
+        return build_warnings_errors_report_from_session(_RUN_ID, result, config.name, config.symbol)
 
     def test_a_finding_becomes_a_tier_1_row_with_its_origin(self):
         report = self._report(AutoTraderResult(), _config(stress=_STRESS))
@@ -187,7 +190,7 @@ class TestAStartupFindingSurvivesToTheReport:
         result = AutoTraderResult()
         result.add_session_validation_result(ValidationResult(finding.scope, [finding]))
 
-        report = build_warnings_errors_report_from_session(result, 'live_probe', 'BTCUSD')
+        report = build_warnings_errors_report_from_session(_RUN_ID, result, 'live_probe', 'BTCUSD')
         rows = [w for w in report.warnings if w.tier == WarningTier.VALIDATOR_PRODUCED]
         assert len(rows) == 1
         assert rows[0].check == 'market_fit' and rows[0].domain == 'algo'
@@ -195,7 +198,7 @@ class TestAStartupFindingSurvivesToTheReport:
 
     def test_the_default_is_empty_so_a_startup_abort_still_reports(self):
         """A session that dies before the check must not lose its report to an empty channel."""
-        report = build_warnings_errors_report_from_session(
+        report = build_warnings_errors_report_from_session(_RUN_ID, 
             AutoTraderResult(), 'live_probe', 'BTCUSD')
         assert report.warnings == []
 

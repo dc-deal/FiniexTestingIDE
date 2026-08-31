@@ -285,6 +285,54 @@
             }
         },
         {
+            "name": "📈 Run Index: Prune (dry run)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
+            "args": [
+                "prune",
+                "--orphans",
+                "--keep-last",
+                "3"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_index_management",
+                "order": 19
+            }
+        },
+        {
+            "name": "📈 Run Index: Rebuild",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
+            "args": [
+                "rebuild"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_index_management",
+                "order": 20
+            }
+        },
+        {
+            "name": "📈 Run Index: Status",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
+            "args": [
+                "status"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_index_management",
+                "order": 21
+            }
+        },
+        {
             "name": "📈 Bar Index: Status",
             "type": "debugpy",
             "request": "launch",
