@@ -30,6 +30,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ReconciliationDefaults,
 )
 from python.framework.types.config_types.market_config_types import TradingModel
+from python.framework.types.connection_types import ConnectionOutcome
 from python.framework.types.live_types.reconciliation_types import (
     BrokerOrder,
     BrokerPosition,
@@ -84,11 +85,14 @@ class Reconciler:
         self._executor = executor
         self._adapter = executor.broker.adapter
         self._portfolio = executor.portfolio
+        self._rest_ladder = executor.get_rest_ladder()
         self._config = config
         self._logger = logger
         self._trading_model = trading_model
         self._symbol = symbol
 
+        self._skipped_count: int = 0             # cycles that could not reach the broker (#473)
+        self._last_skipped_reason: Optional[str] = None
         self._last_reconcile_tick: int = 0
         self._last_reconcile_time: float = time.monotonic()
         self._reconcile_count: int = 0
@@ -128,20 +132,32 @@ class Reconciler:
         """
         Pull broker truth, diff against local shadow state, handle (ALERT_ONLY).
 
+        The broker pull is the one step that reaches outside the process, and a venue
+        answering 502 for a moment must not end a thirty-day session (#473). On a TRANSIENT
+        failure the cycle is SKIPPED and reported: this method is already cadenced, so
+        `is_due` is the ladder and no wait belongs in the tick loop. A TERMINAL failure
+        still propagates — a refused credential is not something to keep quiet about.
+
         Args:
             current_tick: Current tick-loop counter (updates the cadence tracker)
 
         Returns:
-            ReconciliationResult for this cycle
+            ReconciliationResult for this cycle, or a skipped one when broker truth was
+            unreachable
         """
-        broker_orders = self._adapter.get_broker_orders()
-        local_orders = self._executor.get_active_orders()
+        try:
+            broker_orders = self._adapter.get_broker_orders()
+            local_orders = self._executor.get_active_orders()
 
-        if self._trading_model == TradingModel.MARGIN:
-            broker_positions = self._adapter.get_broker_positions()
-            local_positions = self._portfolio.get_open_positions()
-        else:
-            broker_positions, local_positions = [], []
+            if self._trading_model == TradingModel.MARGIN:
+                broker_positions = self._adapter.get_broker_positions()
+                local_positions = self._portfolio.get_open_positions()
+            else:
+                broker_positions, local_positions = [], []
+        except Exception as error:   # noqa: BLE001 — classified, never swallowed
+            if self._rest_ladder.classify(error) is not ConnectionOutcome.TRANSIENT:
+                raise
+            return self._skip_cycle(current_tick, error)
 
         result = self._diff(broker_positions, broker_orders, local_positions, local_orders)
         self._handle_result(result)
@@ -159,6 +175,37 @@ class Reconciler:
         self._last_reconcile_tick = current_tick
         self._last_reconcile_time = time.monotonic()
         return result
+
+    def _skip_cycle(self, current_tick: int, error: BaseException) -> ReconciliationResult:
+        """
+        Record a cycle that could not compare anything, and advance the cadence.
+
+        Advancing the cadence is deliberate: without it an unreachable venue would make
+        every heartbeat re-attempt the pull at full speed, which is a retry storm wearing
+        a cadence for a hat. The next attempt comes at the normal interval.
+
+        Args:
+            current_tick: Current tick-loop counter
+            error: The transport failure that ended the pull
+
+        Returns:
+            A ReconciliationResult carrying only skipped_reason
+        """
+        self._reconcile_count += 1
+        self._skipped_count += 1
+        self._last_skipped_reason = str(error)
+        self._last_reconcile_tick = current_tick
+        self._last_reconcile_time = time.monotonic()
+
+        self._logger.warning(
+            f'🔍 reconcile #{self._reconcile_count}: SKIPPED — broker truth unreachable '
+            f'({error}) · next attempt in {self._config.min_interval_seconds:.0f}s'
+        )
+        return ReconciliationResult(
+            timestamp=datetime.now(timezone.utc),
+            is_clean=False,
+            skipped_reason=str(error),
+        )
 
     def _diff(
         self,
@@ -442,11 +489,27 @@ class Reconciler:
             'reconcile_count': self._reconcile_count,
             'reconcile_state_age_s': now - self._state_since,             # time in current clean/divergent state
             'reconcile_next_in_s': max(0.0, self._config.min_interval_seconds - age),
+            # #473: a skipped cycle verified nothing. Without this the panel would show a
+            # reconcile count climbing against an unreachable venue — "gave up" wearing the
+            # face of "still checking".
+            'reconcile_skipped': self._skipped_count,
+            'reconcile_skipped_reason': self._last_skipped_reason,
         }
+
+    def get_skipped_count(self) -> int:
+        """
+        Cycles that could not reach the broker at all (#473).
+
+        Returns:
+            Number of skipped cycles this session
+        """
+        return self._skipped_count
 
     def shutdown(self) -> None:
         """Emit a final one-line reconciliation summary to the session log."""
+        skipped = (f' | {self._skipped_count} skipped (broker unreachable)'
+                   if self._skipped_count else '')
         self._logger.info(
             f'🔍 Reconciliation final: {self._reconcile_count} cycles | '
-            f'{self._divergence_count} total divergence(s) (ALERT_ONLY)'
+            f'{self._divergence_count} total divergence(s) (ALERT_ONLY){skipped}'
         )

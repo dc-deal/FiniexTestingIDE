@@ -23,6 +23,7 @@ import pytest
 from python.framework.signal_data.producer.signal_feed_stream_observer import (
     SignalFeedStreamObserver,
 )
+from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.config_types.sentiment_config_types import (
     ActiveProducer,
     ResolvedCredential,
@@ -82,7 +83,7 @@ def observe(server: MockStreamServer, seconds: float = 0.6, pipeline_id: str = P
                 credential=ResolvedCredential(token=token, source='tests (in-memory)')),
             stream_config=SentimentStreamConfig(
                 enabled=True, pipeline_id=pipeline_id, heartbeat_timeout_multiple=2.0,
-                reconnect_backoff_initial_s=0.05, reconnect_backoff_max_s=0.1),
+                connection=ConnectionPolicy(initial_delay_s=0.05, max_delay_s=0.1)),
             logger=MagicMock(),
         ).observe(seconds=seconds)
     finally:

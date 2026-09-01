@@ -239,7 +239,14 @@ class SignalHealthProbe:
         self._logger.info('📡 Producer budget resumed — evaluations continue.')
 
     def _run(self) -> None:
-        """Probe until stopped, treating an unreachable producer as non-fatal."""
+        """
+        Probe until stopped, treating an unreachable producer as non-fatal.
+
+        The cadence IS the retry ladder here (#473): a probe that could not reach the
+        producer simply asks again next cycle, so nothing waits and nothing escalates.
+        What the ladder's classification adds is the other half — a TERMINAL failure
+        stops rather than repeating itself for a month.
+        """
         while not self._stop.is_set():
             try:
                 self.probe_once()
@@ -253,7 +260,11 @@ class SignalHealthProbe:
                     self._logger.warning(
                         f'📡 The producer health route answered {error.code}. That route is '
                         f'documented as reachable without a token, so this points at the '
-                        f'configured address rather than at the credential.')
+                        f'configured address rather than at the credential. Stopping the '
+                        f'probe: an address we got wrong will not correct itself, and '
+                        f'repeating this every {self._config.interval_s:.0f}s for the rest '
+                        f'of the session would bury the one time it mattered.')
+                    return
                 else:
                     with self._lock:
                         self._status.probe_errors += 1

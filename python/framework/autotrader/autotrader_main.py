@@ -36,11 +36,11 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
+from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.signal_data.transport.abstract_signal_transport import (
     AbstractSignalTransport,
 )
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
-from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.signal_data.transport.signal_transport_setup import setup_signal_transport
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -220,7 +220,7 @@ class AutotraderMain:
              self._clipping_monitor,
              self._trading_model,
              self._display_label_cache) = setup_pipeline(
-                self._config, self._session_logger, self._data_package)
+                self._config, self._session_logger, self._run_id, self._data_package)
             self._print_startup_phase('Pipeline created successfully')
 
             # === ALGO CLOCK VALIDATION (#359) ===

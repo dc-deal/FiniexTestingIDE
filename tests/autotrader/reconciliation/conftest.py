@@ -14,12 +14,14 @@ from typing import List, Optional
 
 import pytest
 
+from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter
 from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     ReconciliationDefaults,
 )
+from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
@@ -29,6 +31,7 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrderFills,
 )
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
+from python.framework.utils.connection_ladder import ConnectionLadder
 
 # =============================================================================
 # Builders
@@ -128,14 +131,24 @@ class FakeExecutor:
         adapter: MockBrokerAdapter,
         active_orders: Optional[List[PendingOrder]] = None,
         positions: Optional[List[Position]] = None,
+        rest_ladder: Optional[ConnectionLadder] = None,
     ):
         self.broker = SimpleNamespace(adapter=adapter)
         self._positions = list(positions or [])
         self.portfolio = SimpleNamespace(get_open_positions=lambda: list(self._positions))
         self._active_orders = list(active_orders or [])
+        self._rest_ladder = rest_ladder or ConnectionLadder(
+            name='broker_rest',
+            policy=ConnectionPolicy(),
+            logger=GlobalLogger(name='ReconciliationTest'),
+            transient=(ConnectionAttemptFailedError,),
+        )
 
     def get_active_orders(self) -> List[PendingOrder]:
         return self._active_orders
+
+    def get_rest_ladder(self) -> ConnectionLadder:
+        return self._rest_ladder
 
 
 @pytest.fixture

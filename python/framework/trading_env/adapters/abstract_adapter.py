@@ -442,7 +442,11 @@ class AbstractAdapter(ABC):
             direction: LONG or SHORT
             lots: Order size
             order_type: MARKET or LIMIT
-            **kwargs: price (for LIMIT), stop_loss, take_profit, etc.
+            **kwargs: price (for LIMIT), stop_loss, take_profit, and `client_order_id` —
+                a key WE chose, which an adapter must put on the wire wherever the venue
+                accepts one and read back in _parse_openorders_response (#473). It is the
+                only way to ask about a submit whose answer was lost, because the venue's
+                own reference is exactly what did not arrive
 
         Returns:
             Adapter-specific payload dict (passed to _do_request_submit)

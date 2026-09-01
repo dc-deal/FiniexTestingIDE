@@ -162,6 +162,10 @@ class RejectionReason(Enum):
     BROKER_ERROR = 'broker_error'
     REJECTION_COOLDOWN = 'rejection_cooldown'
     STALE_MARKET_DATA = 'stale_market_data'
+    # #473 — we never reached the venue, so it never refused anything. Recorded when an
+    # order that went UNRESOLVED runs out its timeout: the venue may still hold it, and
+    # calling that a broker error would put our transport fault on their account.
+    BROKER_UNREACHABLE = 'broker_unreachable'
 
 
 # ============================================

@@ -14,6 +14,11 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
+# Mirrors BrokerTransportConfig.request_timeout_s, which is where an operator tunes it.
+# Present as a constant only for the direct-construction paths (tests, CLI probes) that
+# have no broker entry in scope.
+_DEFAULT_REQUEST_TIMEOUT_S: float = 15.0
+
 
 class KrakenOhlcBarFetcher:
     """
@@ -27,7 +32,6 @@ class KrakenOhlcBarFetcher:
     """
 
     API_BASE = 'https://api.kraken.com'
-    REQUEST_TIMEOUT_S = 15
 
     # Kraken OHLC interval codes (minutes)
     TIMEFRAME_TO_INTERVAL: Dict[str, int] = {
@@ -48,8 +52,13 @@ class KrakenOhlcBarFetcher:
         'DASHUSD': 'DASHUSD',
     }
 
-    def __init__(self, logger: Optional[ScenarioLogger] = None):
+    def __init__(
+        self,
+        logger: Optional[ScenarioLogger] = None,
+        request_timeout_s: float = _DEFAULT_REQUEST_TIMEOUT_S,
+    ):
         self._logger = logger
+        self._request_timeout_s = request_timeout_s
 
     def fetch_bars(
         self,
@@ -141,7 +150,7 @@ class KrakenOhlcBarFetcher:
             'since': since,
         }
 
-        response = requests.get(url, params=params, timeout=self.REQUEST_TIMEOUT_S)
+        response = requests.get(url, params=params, timeout=self._request_timeout_s)
         response.raise_for_status()
 
         data = response.json()

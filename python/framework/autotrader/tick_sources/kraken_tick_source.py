@@ -29,6 +29,8 @@ from python.framework.autotrader.tick_sources.kraken_tick_message_parser import 
     KrakenTickMessageParser,
 )
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
+from python.framework.utils.connection_ladder import ConnectionLadder
 
 
 class KrakenTickSource(AbstractTickSource):
@@ -74,6 +76,18 @@ class KrakenTickSource(AbstractTickSource):
         self._ws_url = ws_url
         self._reconnect_initial_delay_s = reconnect_initial_delay_s
         self._reconnect_max_delay_s = reconnect_max_delay_s
+        # #473 — the shared ladder. Budget 0 keeps this connection's "never give up":
+        # a dead tick socket is not a reason to end a session, it is a reason to keep
+        # asking. Jitter is what it did not have.
+        self._ladder = ConnectionLadder(
+            name='broker_ticks',
+            policy=ConnectionPolicy(
+                initial_delay_s=reconnect_initial_delay_s,
+                max_delay_s=reconnect_max_delay_s,
+                attempt_budget=0,
+            ),
+            logger=logger,
+        )
         self._connection_check_interval_s = connection_check_interval_s
         self._connection_dead_s = connection_dead_s
         self._logger = logger
@@ -371,9 +385,11 @@ class KrakenTickSource(AbstractTickSource):
 
     def _get_reconnect_delay(self, attempt: int) -> float:
         """
-        Calculate reconnect delay with exponential backoff.
+        Delay before the next reconnect attempt, from the shared ladder (#473).
 
-        Formula: initial * 2^attempt, capped at max.
+        Gains jitter, which this connection did not have: a fleet of clients returning in
+        lockstep after a venue-side blip is a self-inflicted thundering herd, and the
+        venue rate-limits the same endpoint the orders go through.
 
         Args:
             attempt: Current reconnect attempt number (0-based)
@@ -381,8 +397,7 @@ class KrakenTickSource(AbstractTickSource):
         Returns:
             Delay in seconds
         """
-        delay = self._reconnect_initial_delay_s * (2 ** attempt)
-        return min(delay, self._reconnect_max_delay_s)
+        return self._ladder.next_delay(attempt + 1)
 
     def _create_ssl_context(self) -> ssl.SSLContext:
         """

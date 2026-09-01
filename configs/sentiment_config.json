@@ -17,8 +17,22 @@
     "enabled": false,
     "pipeline_id": "",
     "heartbeat_timeout_multiple": 3.0,
-    "reconnect_backoff_initial_s": 5.0,
-    "reconnect_backoff_max_s": 60.0
+    "connection": {
+      "initial_delay_s": 5.0,
+      "max_delay_s": 60.0,
+      "jitter": true,
+      "attempt_budget": 0,
+      "request_timeout_s": 15.0,
+      "on_give_up": "alert"
+    },
+    "boot_connection": {
+      "initial_delay_s": 2.0,
+      "max_delay_s": 30.0,
+      "jitter": true,
+      "attempt_budget": 3,
+      "request_timeout_s": 15.0,
+      "on_give_up": "degrade"
+    }
   },
   "health": {
     "enabled": true,

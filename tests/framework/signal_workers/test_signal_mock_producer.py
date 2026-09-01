@@ -21,6 +21,7 @@ from python.framework.signal_data.producer.signal_mock_producer import (
     SignalMockProducer,
 )
 from python.framework.signal_data.producer.signal_stream_probe import run_stream_probe
+from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.config_types.sentiment_config_types import (
     ActiveProducer,
     ResolvedCredential,
@@ -55,8 +56,9 @@ def probe(mock_logger, inject=None):
                 credential=ResolvedCredential(token='t', source='(built in)')),
             stream_config=SentimentStreamConfig(
                 enabled=True, pipeline_id=mock.get_pipeline_id(),
-                reconnect_backoff_initial_s=RECONNECT_BACKOFF_S,
-                reconnect_backoff_max_s=RECONNECT_BACKOFF_S),
+                connection=ConnectionPolicy(
+                    initial_delay_s=RECONNECT_BACKOFF_S,
+                    max_delay_s=RECONNECT_BACKOFF_S)),
             logger=mock_logger,
             seconds=PROBE_SECONDS)
     finally:

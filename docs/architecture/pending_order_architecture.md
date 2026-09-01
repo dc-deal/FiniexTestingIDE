@@ -197,6 +197,52 @@ cancel_stop_order(order_id="EURUSD_1")     ← Same pattern
 get_pending_stats()                         ← ActiveOrderSnapshot.order_id = "EURUSD_1"
 ```
 
+### The wire key — live only (#473)
+
+The internal id above never goes to the venue. Live submits carry a short **client order
+id** derived from it, and the two exist for different reasons:
+
+```
+internal (both pipelines)   pos_btcusd_47   readable, ours, unchanged
+wire key (live only)        p1641_47        1641 = 4 chars of the run id's random half
+```
+
+**It fits:** Kraken allows 18 ASCII characters, which the readable form does not.
+**It does not collide across a restart:** the counter restarts at 1 with the process, so
+without a session discriminator a fresh order would carry the key of one still resting at
+the venue from last night — and boot adoption (#355) would match the wrong order.
+
+The key is what makes an UNRESOLVED order answerable: the venue's own reference is exactly
+what a lost answer did not deliver. The **session** owns it, not the run — a #476 day
+fragment must not change it mid-session.
+
+---
+
+## UNRESOLVED — the state that is ours, not the venue's (#473)
+
+A fourth outcome sits beside PENDING / FILLED / REJECTED, and it exists because "the venue
+refused this order" and "we could not reach the venue" are different facts:
+
+```
+submit → transport fault (5xx, dropped socket, timeout)
+   └─ BrokerOrderStatus.UNRESOLVED
+      ├─ the PendingOrder STAYS in its world              ← it may be resting at the venue
+      ├─ in_flight_operation = PENDING_SUBMIT
+      ├─ broker_ref is NOT overwritten                    ← the only handle a query has
+      ├─ on_order_rejected does NOT fire                  ← the venue never spoke
+      └─ resolution comes from the QUERY path, never from re-sending
+```
+
+**A write is never retried.** A retry after a lost answer is how one intent becomes two
+positions. This is the FIX answer since 1992 — resolve a lost response with an Order Status
+Request, never by re-sending — and dropping the order instead would forget one that is
+live at the broker, manufacturing exactly the divergence reconciliation (#349) exists to
+resolve.
+
+The algo needs no new code: `has_in_flight_operation()` stays true and the existing
+discipline pattern blocks. Full policy:
+[external_connection_policy.md](external_connection_policy.md).
+
 ---
 
 ## Why Separate Modify Commands

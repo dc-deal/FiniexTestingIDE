@@ -7,6 +7,10 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
+from python.framework.types.config_types.connection_policy_config_types import (
+    ConnectionPolicy,
+)
+
 
 class MarketType(Enum):
     """Supported market types with distinct trading rules."""
@@ -81,6 +85,10 @@ class BrokerTransportConfig(BaseModel):
     rate_limit_interval_s: float = 1.0
     request_timeout_s: int = 15
     poll_interval_ms: int = 5000
+    # #473 — the retry ladder and give-up rule for every call to THIS broker: the REST
+    # endpoint, the warmup bar history and the configuration read. One schema, shared with
+    # the producer's and the tick source's own blocks.
+    connection: ConnectionPolicy = ConnectionPolicy()
 
 
 class BrokerEntryConfig(BaseModel):

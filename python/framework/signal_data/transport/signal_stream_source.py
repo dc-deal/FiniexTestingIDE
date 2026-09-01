@@ -19,7 +19,6 @@ Runs on its own thread because the loop must never wait on a socket.
 """
 
 import json
-import random
 import socket
 import threading
 from collections import deque
@@ -36,15 +35,15 @@ from python.framework.exceptions.signal_data_errors import (
     SignalStreamSilenceError,
 )
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.signal_data.producer.signal_health_probe import SignalHealthProbe
+from python.framework.signal_data.producer.signal_http_reader import CREDENTIAL_STATUS_CODES
+from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.signal_data.transport.abstract_signal_transport import (
     AbstractSignalTransport,
 )
 from python.framework.signal_data.transport.signal_field_watch import SignalFieldWatch
 from python.framework.signal_data.transport.signal_frame_recorder import SignalFrameRecorder
-from python.framework.signal_data.producer.signal_health_probe import SignalHealthProbe
-from python.framework.signal_data.producer.signal_http_reader import CREDENTIAL_STATUS_CODES
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
-from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
 from python.framework.signal_data.transport.signal_sse_decoder import SignalSseDecoder
 from python.framework.types.autotrader_types.autotrader_display_types import (
     SignalTransportEvent,
@@ -68,6 +67,7 @@ from python.framework.types.signal_data_types import (
     StreamHeartbeatFrame,
     schema_major,
 )
+from python.framework.utils.connection_ladder import ConnectionLadder
 
 # Bytes taken per socket read. read1() returns what one underlying read produced rather
 # than blocking for a full buffer, which is what keeps a frame's latency the frame's own.
@@ -182,6 +182,15 @@ class SignalStreamSource(AbstractSignalTransport):
                 and supplying both is a 400
         """
         self._config = config
+        # #473 — one shape for "how long until the next attempt", shared with every other
+        # external connection. Budget 0: a long-lived feed's job is to come back; what ends
+        # it is a terminal frame or a refused credential, which is classification, not
+        # arithmetic.
+        self._ladder = ConnectionLadder(
+            name='signal_stream',
+            policy=config.connection,
+            logger=logger,
+        )
         self._producer = producer
         self._settings = stream_settings
         self._signal_kind = signal_kind
@@ -396,8 +405,15 @@ class SignalStreamSource(AbstractSignalTransport):
         self._record('identity probe stopped — the feed is over', AwarenessLevel.NOTICE)
 
     def _reconnect_until_done(self) -> None:
-        """Reconnect until the session stops or a terminal frame ends the feed."""
-        backoff_s = self._config.reconnect_backoff_initial_s
+        """
+        Reconnect until the session stops or a terminal frame ends the feed.
+
+        The delays come from the shared ladder (#473) rather than from arithmetic here, so
+        this feed escalates the same way the broker's socket does. The LOOP stays local:
+        it does more per pass than retry — advance a cursor, close a refill gap, honour a
+        terminal frame — and a generic wrapper would hide all three.
+        """
+        attempt = 0
         while not self._stop.is_set() and not self._terminal:
             try:
                 self._connect_once()
@@ -405,7 +421,7 @@ class SignalStreamSource(AbstractSignalTransport):
                     return
                 # A clean close is the producer's business, not a fault — reconnect at the
                 # base delay rather than escalating a backoff against a healthy server.
-                backoff_s = self._config.reconnect_backoff_initial_s
+                attempt = 0
                 if self._refill_gap:
                     self._refill_gap = False
                     continue
@@ -415,21 +431,8 @@ class SignalStreamSource(AbstractSignalTransport):
                 if self._stop.is_set():
                     return
                 self._record_transport_failure(error)
-            self._stop.wait(self._jittered(backoff_s))
-            backoff_s = min(backoff_s * 2.0, self._config.reconnect_backoff_max_s)
-
-    @staticmethod
-    def _jittered(delay_s: float) -> float:
-        """
-        Spread a reconnect delay so simultaneous clients do not return in lockstep.
-
-        Args:
-            delay_s: The delay the backoff arrived at
-
-        Returns:
-            A delay between half and the whole of it
-        """
-        return delay_s * random.uniform(0.5, 1.0)
+            attempt += 1
+            self._stop.wait(self._ladder.next_delay(attempt))
 
     def _connect_once(self) -> None:
         """Open one connection and read it until it ends, is stopped, or turns terminal."""

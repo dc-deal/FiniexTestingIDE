@@ -26,6 +26,12 @@ class BrokerOrderStatus(Enum):
 
     Represents the lifecycle of an order at the broker level.
     Mapped from broker-specific status codes to this unified enum.
+
+    UNRESOLVED is the one value here that is OURS rather than the venue's (#473): the
+    request did not complete, so the venue may or may not hold this order. It exists
+    because "the venue refused this order" and "we could not reach the venue" are
+    different facts, and reporting the second as the first is how an orphan is born —
+    we forget an order that is resting at the broker.
     """
     PENDING = 'pending'
     FILLED = 'filled'
@@ -33,6 +39,7 @@ class BrokerOrderStatus(Enum):
     REJECTED = 'rejected'
     CANCELLED = 'cancelled'
     EXPIRED = 'expired'
+    UNRESOLVED = 'unresolved'
 
 
 @dataclass
@@ -72,8 +79,18 @@ class BrokerResponse:
         return self.status == BrokerOrderStatus.REJECTED
 
     @property
+    def is_unresolved(self) -> bool:
+        """We could not reach the venue — its answer, if any, was lost (#473)."""
+        return self.status == BrokerOrderStatus.UNRESOLVED
+
+    @property
     def is_terminal(self) -> bool:
-        """Order reached a final state (no further updates expected)."""
+        """
+        Order reached a final state (no further updates expected).
+
+        UNRESOLVED is deliberately NOT terminal: it is the absence of an answer, so the
+        one thing that must still happen is asking again.
+        """
         return self.status in (
             BrokerOrderStatus.FILLED,
             BrokerOrderStatus.REJECTED,

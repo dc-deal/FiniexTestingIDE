@@ -63,6 +63,9 @@ class BrokerOrder:
         price: Limit price, if applicable
         stop_loss: Attached stop-loss, if provided
         take_profit: Attached take-profit, if provided
+        client_order_id: The key WE chose for this order, echoed back by the venue (#473).
+            None when the venue reports no key — which is itself the fact that tells an
+            order we placed apart from one somebody else did
         raw: Untouched broker payload for forensic inspection
     """
     broker_ref: str
@@ -74,6 +77,7 @@ class BrokerOrder:
     price: Optional[float] = None
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
+    client_order_id: Optional[str] = None
     raw: Optional[Dict[str, Any]] = None
 
 
@@ -96,6 +100,9 @@ class ReconciliationResult:
         stale_orders: (local, broker) order pairs matched but diverging
         partial_fills: Local pendings observed as partially filled (#326 cumulative_*)
         is_clean: True when every bucket is empty
+        skipped_reason: Set when broker truth could not be pulled at all (#473) — the
+            cycle produced no comparison, which is neither clean nor divergent. Named
+            rather than boolean because "unreachable" is the fact the operator needs
     """
     timestamp: datetime
     ghost_positions: List[BrokerPosition] = field(default_factory=list)
@@ -106,6 +113,7 @@ class ReconciliationResult:
     stale_orders: List[Tuple[PendingOrder, BrokerOrder]] = field(default_factory=list)
     partial_fills: List[PendingOrder] = field(default_factory=list)
     is_clean: bool = True
+    skipped_reason: Optional[str] = None
 
 
 @dataclass

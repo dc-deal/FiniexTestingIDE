@@ -895,6 +895,35 @@ The listener signature `add_order_outcome_listener(callback)` was extended to `C
 
 Standard symbols (e.g., `BTCUSD`) are mapped to Kraken pair names (e.g., `XBTUSD`) for order API calls via the `kraken_pair_name` field in the broker config JSON (static seed or runtime cache). If the field is absent, the symbol key is used as-is.
 
+## External Connections — one ladder, one give-up rule (#473)
+
+A live session holds seven connections to things outside its own process. They now share
+one classification and one vocabulary; the full policy is
+[architecture/external_connection_policy.md](../architecture/external_connection_policy.md).
+Two consequences visible in this pipeline:
+
+**The tick loop cannot die of a broker fault.** The reconcile truth pull and the order
+re-poll are already cadenced, so on a transient failure the cycle is **skipped** rather
+than retried inline — no sleep in the loop, no shifted heartbeat, and the cadence is the
+ladder. Before this, one 502 from a public venue propagated to `autotrader_main` and ended
+the session in an emergency shutdown.
+
+```
+14:32:07  🔍 reconcile #47: SKIPPED — broker truth unreachable (HTTP 502) · next attempt in 30s
+14:32:37  🔍 reconcile #48: clean — broker_orders=1 local_orders=1
+```
+
+A skipped cycle is **not clean** (nothing was compared) and is counted separately
+(`reconcile_skipped` on the SESSION panel) — a reconcile count climbing against a dead
+venue would be "gave up" wearing the face of "still checking".
+
+**Boot reads differ on purpose.** The signal producer registry **degrades** (the staleness
+contracts describe the reduced state and the boot bridge mounts the archive slice, so the
+session starts STALE rather than blind); warmup bars and the account balance **refuse to
+start**, because neither has a contract to degrade into.
+
+---
+
 ## Live Warmup (#231)
 
 Workers need warmup bars before producing meaningful signals. Without warmup, a worker with `{"M5": 14}` needs 70 minutes of live ticks before its first valid RSI. The warmup system pre-loads historical bars at startup.
@@ -907,6 +936,29 @@ Workers need warmup bars before producing meaningful signals. Without warmup, a 
 | **Reference time** | First tick timestamp from parquet file | `datetime.now(UTC)` |
 | **Network** | No | Yes (public, no auth) |
 | **Extensibility** | Static data | ABC pattern → MT5 (#209) |
+| **On a short read** | warn and continue | **refuse to start** (#473) |
+
+### Why live refuses rather than warns (#473)
+
+The fetch has a retry ladder, and a give-up produces an empty result rather than an
+exception — so the refusal is raised one level up, by the validation that knows *how many*
+bars are missing on *which* timeframe and can say so.
+
+It refuses because **there is no contract for an empty indicator history.** A stale signal
+and a stale market feed each have one (#434 / #436): the input declares itself unusable and
+the algo's mandatory hook decides. A worker with 0 of 200 bars declares nothing — it still
+emits a number, that number is wrong, and nothing marks it wrong. Trading on it is not a
+reduced run, it is a different one.
+
+```
+❌ Warmup requirement unmet: H1: 0/200. The broker's bar history could not be read, and
+   there is no staleness contract for an empty indicator history — refusing to start
+   rather than trading on unreliable worker output.
+```
+
+The mock path keeps warning: it reads a local archive, a short window is a data question
+the operator can see, and refusing would block replay runs that deliberately start near
+the edge of their data.
 
 ### Flow
 
@@ -924,7 +976,7 @@ Phase 9 in setup_pipeline():
      Mock: BarsIndexManager → parquet → filter before ref_ts → tail(count)
      Live: KrakenOhlcBarFetcher → GET /0/public/OHLC → Bar objects
 
-  4. Validate: warn if fewer bars than required
+  4. Validate: mock warns if fewer bars than required — LIVE REFUSES (#473)
 
   5. bar_renderer.initialize_historical_bars() per timeframe
      → Workers have full history from tick 1

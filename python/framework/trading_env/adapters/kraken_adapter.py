@@ -22,11 +22,12 @@ import time
 import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import requests
 
 from python.configuration.credential_guard import assert_real_credential
+from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
@@ -48,9 +49,13 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     StopLimitOrder,
 )
+from python.framework.utils.connection_ladder import is_terminal_status
 
 from .abstract_adapter import AbstractAdapter
 from .dry_run_simulator import DryRunOrderSimulator
+
+# Kraken's limit for a client order id, verified against their API docs (#355).
+_CL_ORD_ID_MAX_LEN: int = 18
 
 
 class KrakenAdapter(AbstractAdapter):
@@ -579,7 +584,7 @@ class KrakenAdapter(AbstractAdapter):
             direction: LONG or SHORT
             lots: Order size
             order_type: MARKET or LIMIT
-            **kwargs: price (required for LIMIT)
+            **kwargs: price (required for LIMIT), client_order_id (#473)
 
         Returns:
             Kraken-formatted POST data dict
@@ -600,6 +605,13 @@ class KrakenAdapter(AbstractAdapter):
             price = kwargs.get('price')
             if price is not None:
                 data['price'] = str(price)
+
+        # #473 — a key we chose ourselves, so a submit whose answer was lost can still be
+        # ASKED about: the txid is exactly what did not arrive. Kraken accepts free-format
+        # ASCII up to 18 characters and returns it in OpenOrders / QueryOrders.
+        client_order_id = kwargs.get('client_order_id')
+        if client_order_id:
+            data['cl_ord_id'] = str(client_order_id)[:_CL_ORD_ID_MAX_LEN]
 
         return data
 
@@ -1142,6 +1154,9 @@ class KrakenAdapter(AbstractAdapter):
                 lots=float(info.get('vol', 0.0)),
                 status=status,
                 price=price,
+                # #473 — read our own key back. Without it a resting order we placed and a
+                # resting order somebody else placed are the same unknown row.
+                client_order_id=info.get('cl_ord_id') or None,
                 raw=info,
             ))
         return out
@@ -1258,6 +1273,11 @@ class KrakenAdapter(AbstractAdapter):
 
         Returns:
             API result dict
+
+        Raises:
+            ConnectionAttemptFailedError: the request did not complete — a transport fault
+                or an HTTP status. Carries whether retrying could help (§473), so the
+                caller's ladder does not have to guess from a message string
         """
         if data is None:
             data = {}
@@ -1271,20 +1291,57 @@ class KrakenAdapter(AbstractAdapter):
             self._enforce_rate_limit()
             headers = self._sign_request(endpoint, data)
             url = f'{self._api_base_url}{endpoint}'
-            response = requests.post(
-                url,
-                headers=headers,
-                data=data,
-                timeout=self._request_timeout_s,
+            response = self._request(
+                lambda: requests.post(
+                    url,
+                    headers=headers,
+                    data=data,
+                    timeout=self._request_timeout_s,
+                ),
+                endpoint,
             )
-        response.raise_for_status()
 
         result = response.json()
+        # A Kraken-level error is the VENUE speaking, not a transport fault — it stays a
+        # plain ConnectionError and therefore classifies TERMINAL. Retrying "Insufficient
+        # funds" forever would report their outage for our order.
         errors = result.get('error', [])
         if errors:
             raise ConnectionError(f'Kraken API error: {errors}')
 
         return result.get('result', {})
+
+    @staticmethod
+    def _request(send: Callable[[], requests.Response], endpoint: str) -> requests.Response:
+        """
+        Perform one HTTP attempt and translate its failure into the shared vocabulary.
+
+        The translation belongs here rather than in the ladder: only the transport knows
+        whether it saw a dropped socket or a 400, and #473's classification is by exception
+        type, never by parsing a message.
+
+        Args:
+            send: The request to make
+            endpoint: API path, for the message the operator reads
+
+        Returns:
+            The response, already status-checked
+
+        Raises:
+            ConnectionAttemptFailedError: transport fault (retryable) or HTTP status
+        """
+        try:
+            response = send()
+            response.raise_for_status()
+            return response
+        except requests.exceptions.HTTPError as error:
+            status = error.response.status_code if error.response is not None else 0
+            raise ConnectionAttemptFailedError(
+                f'HTTP {status} from {endpoint}',
+                terminal=is_terminal_status(status)) from error
+        except requests.exceptions.RequestException as error:
+            raise ConnectionAttemptFailedError(
+                f'{type(error).__name__} on {endpoint}: {error}', terminal=False) from error
 
     def _sign_request(self, url_path: str, data: Dict) -> Dict[str, str]:
         """

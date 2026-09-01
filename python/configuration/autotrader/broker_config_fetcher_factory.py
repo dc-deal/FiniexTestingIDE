@@ -47,6 +47,7 @@ class BrokerConfigFetcherFactory:
                 credentials_path=entry.credentials_file,
                 logger=logger,
                 api_base_url=entry.broker_transport.api_base_url or None,
+                request_timeout_s=entry.broker_transport.connection.request_timeout_s,
             )
 
         raise NotImplementedError(
