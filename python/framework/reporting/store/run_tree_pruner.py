@@ -69,7 +69,7 @@ class RunTreePruner:
         """
         file_logging = AppConfigManager().get_file_logging_config_object()
         self._roots = run_logs or file_logging.run_logs
-        self._index = RunIndex(run_index_path or file_logging.run_index)
+        self._index = RunIndex(run_index_path or file_logging.run_index, self._roots)
 
     def plan(self, selectors: PruneSelectors) -> PruneReport:
         """
@@ -117,7 +117,7 @@ class RunTreePruner:
                 # removing, and the operator needs the whole list rather than the first failure.
                 result.failed.append(f'{candidate.path}: {e}')
 
-        result.indexed_after_rebuild = self._index.rebuild(self._roots)
+        result.indexed_after_rebuild = self._index.rebuild()
         result.duplicate_ids = self._index.duplicate_ids()
         return result
 
@@ -315,7 +315,7 @@ class RunTreePruner:
         Returns:
             The fragment count, or 0 when the ledger directory does not exist
         """
-        ledger_dir = Path(AppConfigManager().get_run_results_path())
+        ledger_dir = Path(AppConfigManager().get_run_ledger_path())
         if not ledger_dir.exists():
             return 0
         return len(list(ledger_dir.glob('*.parquet')))

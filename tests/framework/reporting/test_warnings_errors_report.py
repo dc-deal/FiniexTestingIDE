@@ -13,14 +13,15 @@ import re
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 
+from python.framework.reporting.io.artifact_specs import (
+    WARNINGS_ERRORS_ARTIFACT,
+)
+from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_batch,
     build_warnings_errors_report_from_session,
 )
 from python.framework.reporting.console.warnings_summary import WarningsSummary
-from python.framework.reporting.io.warnings_errors_report_io import (
-    write_warnings_errors_report,
-)
 from python.framework.types.api.report_types import (
     LogEntryRow,
     UnitErrorRow,
@@ -179,7 +180,7 @@ class TestNoRenderingReachesTheArtifact:
         # The fields the record carried survive DERIVE — that is what the artifact is for.
         assert entry.level == LogLevel.ERROR and entry.scope == 's1'
 
-        path = write_warnings_errors_report(report, tmp_path)
+        path = write_artifact(report, tmp_path, WARNINGS_ERRORS_ARTIFACT)
         raw = path.read_bytes()
         assert b'\x1b[' not in raw, 'terminal escape codes must never reach the artifact'
         assert not self._ANSI.search(raw.decode('utf-8'))

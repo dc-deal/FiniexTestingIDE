@@ -308,6 +308,7 @@ class AutotraderMain:
                     symbol=self._config.symbol,
                     weekend_aware=weekend_aware,
                     logger=self._session_logger,
+                    run_id=self._run_id,
                 )
                 loaded = self._state_store.load()
                 if loaded is not None:

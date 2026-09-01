@@ -394,6 +394,7 @@ class AutotraderDisplayExporter:
             'reconcile_count': int(counters.get('reconcile_count', 0)),
             'reconcile_state_age_s': float(counters.get('reconcile_state_age_s', 0.0)),
             'reconcile_next_in_s': float(counters.get('reconcile_next_in_s', 0.0)),
+            'reconcile_unaccounted': int(counters.get('reconcile_unaccounted', 0)),
         }
 
     def _api_perf_snapshot(self) -> Optional[ApiPerfSnapshot]:

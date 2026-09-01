@@ -16,6 +16,7 @@ Usage:
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.file_logger import FileLogger
+from python.framework.types.log_layout_types import GLOBAL_LOG_FILE
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
 
@@ -50,7 +51,7 @@ class GlobalLogger(AbstractLogger):
 
             self.file_logger = FileLogger(
                 file_path=log_dir,
-                log_filename='global.log',
+                log_filename=GLOBAL_LOG_FILE,
                 log_level=self._file_logging_config.global_log_level,
                 append_mode=self._file_logging_config.global_append_mode
             )

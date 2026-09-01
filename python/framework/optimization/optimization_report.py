@@ -22,7 +22,7 @@ from python.framework.types.api.report_types import RunResultRow
 
 def render_sweep_list() -> None:
     """Print every recorded sweep as an informative one-liner (most recent last)."""
-    ledger = RunResultsLedger(Path(AppConfigManager().get_run_results_path()))
+    ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
     summaries = summarize_sweeps(ledger.read_rows())
 
     print('\n' + '=' * 80)
@@ -63,7 +63,7 @@ def render_sweep_report(
         objective_currency: Restrict to this currency (needed when > 1 currency)
         top_n: How many top combinations to print
     """
-    ledger = RunResultsLedger(Path(AppConfigManager().get_run_results_path()))
+    ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
     rows = ledger.read_rows(sweep_id=sweep_id)
 
     print('\n' + '=' * 80)

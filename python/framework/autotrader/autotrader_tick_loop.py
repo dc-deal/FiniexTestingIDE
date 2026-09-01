@@ -276,8 +276,7 @@ class AutotraderTickLoop:
                 self._evaluate_market_data_staleness()
                 # #151 + #360: reconcile on the timer too (was tick-only). Time-bounded
                 # by min_interval_seconds → self-throttled, no API storm during idle.
-                if self._reconciler is not None and self._reconciler.is_due(ticks_processed):
-                    self._reconciler.reconcile(ticks_processed)
+                self._reconcile_if_due(ticks_processed)
                 # #141 Part 2a: an envelope that landed between two ticks reaches the
                 # decision HERE. process_heartbeat forwards cached worker results by design,
                 # so without this the arrival would wait for the next tick — minutes on a
@@ -396,8 +395,7 @@ class AutotraderTickLoop:
             # === 6c. Reconciliation (#151, hybrid cadence, ALERT_ONLY) ===
             # Broker truth-pull every N ticks OR M seconds. Sync (like the #320
             # polling path); infrequent, so the periodic block is bounded.
-            if self._reconciler is not None and self._reconciler.is_due(ticks_processed):
-                self._reconciler.reconcile(ticks_processed)
+            self._reconcile_if_due(ticks_processed)
 
             # === 6d. Algo State Persistence (#354, hybrid cadence) ===
             # Restart-safe algo memory (Category B). Save every N ticks OR M seconds.
@@ -546,6 +544,26 @@ class AutotraderTickLoop:
             side=decision.action.value,
             tick_time=self._executor.get_current_time(),
         ))
+
+    def _reconcile_if_due(self, ticks_processed: int) -> None:
+        """
+        Pull broker truth if the reconcile cadence is due, and act on what came back.
+
+        The Reconciler only ever reads (ALERT_ONLY). The one outcome that carries a write
+        is an ATTRIBUTION (#355): a resting broker order carrying this session's client
+        order id belongs to a local pending whose submit answer was lost, so the venue's
+        reference is handed to the executor — the owner of that state — which puts the
+        order back into the poll path. Everything else the cycle found is reported by the
+        Reconciler itself; correction is #349.
+
+        Args:
+            ticks_processed: Current tick counter (drives the hybrid cadence)
+        """
+        if self._reconciler is None or not self._reconciler.is_due(ticks_processed):
+            return
+        result = self._reconciler.reconcile(ticks_processed)
+        if result.attributed_orders:
+            self._executor.apply_order_attributions(result.attributed_orders)
 
     def _persist_state_if_due(self, ticks_processed: int) -> None:
         """

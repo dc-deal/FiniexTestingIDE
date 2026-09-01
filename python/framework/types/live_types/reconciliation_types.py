@@ -90,16 +90,40 @@ class ReconciliationResult:
     both worlds. ghost_* = broker has it, we lack it locally; orphan_* = we have it
     locally, broker lacks it; stale_* = matched by broker_ref but field mismatch.
 
+    A resting broker order that WE placed is no longer a ghost (#355). The client order
+    id says whose it is, so an unmatched broker order splits three ways — our own
+    session's, an earlier session's, or nobody's we can name — and the first of those
+    splits again depending on whether a local pending is still waiting for it:
+
+        our key + local pending without broker_ref  → attributed  (the lost answer)
+        our key, this session, no local pending     → abandoned   (placed and forgotten)
+        our key shape, another session              → foreign_session (adoption, Phase 2)
+        no key at all                               → ghost       (not ours, as far as we know)
+
     Args:
         timestamp: When the reconcile cycle completed (UTC, tz-aware)
         ghost_positions: Broker positions with no local Position match (MARGIN)
         orphan_positions: Local positions with no broker match (MARGIN)
         stale_positions: (local, broker) pairs matched but diverging (MARGIN)
-        ghost_orders: Broker orders with no local pending match
+        ghost_orders: Broker orders carrying no client order id and no local match
         orphan_orders: Local pendings (with broker_ref) with no broker match
         stale_orders: (local, broker) order pairs matched but diverging
+        attributed_orders: (local, broker) pairs matched by THIS session's client order
+            id where the local pending has no broker_ref yet — a submit whose answer was
+            lost (#473) and which the venue does hold. Not a divergence: the reference is
+            restored by the executor, which returns the order to the poll path
+        abandoned_orders: Broker orders carrying this session's client order id with no
+            local pending left — we placed them and no longer track them
+        foreign_session_orders: Broker orders carrying a client order id of our shape but
+            another session's discriminator — an earlier session of this bot. Boot-time
+            adoption is #355 Phase 2; mid-session they are a divergence
+        unconfirmed_orders: Local pendings whose submit was never answered and which the
+            venue does not show either. They block has_pending_orders() and nothing times
+            them out, so each one is reported once into the session error pot; resolving
+            them needs a targeted status query (#487)
         partial_fills: Local pendings observed as partially filled (#326 cumulative_*)
-        is_clean: True when every bucket is empty
+        is_clean: True when every DIVERGENCE bucket is empty — attributed_orders and
+            partial_fills do not count, being a repair and a normal market outcome
         skipped_reason: Set when broker truth could not be pulled at all (#473) — the
             cycle produced no comparison, which is neither clean nor divergent. Named
             rather than boolean because "unreachable" is the fact the operator needs
@@ -111,6 +135,10 @@ class ReconciliationResult:
     ghost_orders: List[BrokerOrder] = field(default_factory=list)
     orphan_orders: List[PendingOrder] = field(default_factory=list)
     stale_orders: List[Tuple[PendingOrder, BrokerOrder]] = field(default_factory=list)
+    attributed_orders: List[Tuple[PendingOrder, BrokerOrder]] = field(default_factory=list)
+    abandoned_orders: List[BrokerOrder] = field(default_factory=list)
+    foreign_session_orders: List[BrokerOrder] = field(default_factory=list)
+    unconfirmed_orders: List[PendingOrder] = field(default_factory=list)
     partial_fills: List[PendingOrder] = field(default_factory=list)
     is_clean: bool = True
     skipped_reason: Optional[str] = None

@@ -8,20 +8,16 @@ from typing import List, Optional
 
 import pandas as pd
 
+from python.framework.exceptions.store_errors import StoreIndexSourceMissingError
 from python.framework.reporting.io.run_header_io import (
     RUN_HEADER_ARTIFACT,
     read_run_header,
     write_run_header,
 )
+from python.framework.store.abstract_store_index import AbstractStoreIndex
 from python.framework.types.api.report_types import RunHeader, RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import IO_SUBDIR
-
-# Fixed column order, so the file stays readable back across versions.
-INDEX_COLUMNS: List[str] = [
-    'run_id', 'start_time', 'run_type', 'run_name', 'parent_id', 'run_dir', 'artifacts',
-    'app_version', 'git_commit', 'config_snapshot', 'reporting',
-]
 
 
 def _or_none(value) -> Optional[str]:
@@ -45,7 +41,7 @@ def _artifact_names(run_dir: Path) -> List[str]:
     return sorted(f.name for f in io_dir.iterdir() if f.is_file())
 
 
-class RunIndex:
+class RunIndex(AbstractStoreIndex):
     """
     ONE compacted parquet file, derived from the per-run `header.json` files.
 
@@ -59,22 +55,22 @@ class RunIndex:
     headers are the truth; this is the read path.
     """
 
-    def __init__(self, path: Path):
+    # Fixed column order, so the file stays readable back across versions.
+    COLUMNS: List[str] = [
+        'run_id', 'start_time', 'run_type', 'run_name', 'parent_id', 'run_dir', 'artifacts',
+        'app_version', 'git_commit', 'config_snapshot', 'reporting',
+    ]
+    LOGIC_VERSION: int = 1
+
+    def __init__(self, path: Path, roots: Optional[RunLogPaths] = None):
         """
         Args:
             path: The index file (file_logging.run_index)
+            roots: The run-type roots `rebuild()` scans. Optional because most callers only
+                register and read; a caller that rebuilds must supply them
         """
-        self._path = Path(path)
-
-    def _frame(self) -> pd.DataFrame:
-        """The current table, or an empty one with the right columns."""
-        if not self._path.exists():
-            return pd.DataFrame(columns=INDEX_COLUMNS)
-        return pd.read_parquet(self._path)
-
-    def _write(self, frame: pd.DataFrame) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        frame[INDEX_COLUMNS].to_parquet(self._path, index=False)
+        super().__init__(path)
+        self._roots = roots
 
     def register_run(self, header: RunHeader, run_dir: Path) -> None:
         """
@@ -89,7 +85,7 @@ class RunIndex:
             run_dir: The run's own directory
         """
         write_run_header(header, run_dir)
-        frame = self._frame()
+        frame = self.read()
         frame = frame[frame['run_id'] != header.run_id]
         row = pd.DataFrame([{
             'run_id': header.run_id,
@@ -104,7 +100,7 @@ class RunIndex:
             'config_snapshot': header.config_snapshot,
             'reporting': str(header.reporting),
         }])
-        self._write(pd.concat([frame, row], ignore_index=True))
+        self.write_incremental(pd.concat([frame, row], ignore_index=True))
 
     def record_artifacts(self, run_id: str, run_dir: Path) -> None:
         """
@@ -118,7 +114,7 @@ class RunIndex:
             run_id: The run whose reports were just persisted
             run_dir: The run's own directory, whose io/ subfolder is listed
         """
-        frame = self._frame()
+        frame = self.read()
         if frame.empty or run_id not in set(frame['run_id']):
             return
         names = _artifact_names(run_dir)
@@ -127,7 +123,7 @@ class RunIndex:
         mask = frame['run_id'] == run_id
         frame['artifacts'] = frame['artifacts'].astype(object)
         frame.loc[mask, 'artifacts'] = frame.loc[mask, 'artifacts'].apply(lambda _: names)
-        self._write(frame)
+        self.write_incremental(frame)
 
     def list_runs(self) -> List[RunInfo]:
         """
@@ -136,7 +132,7 @@ class RunIndex:
         Returns:
             One identity row per run
         """
-        frame = self._frame()
+        frame = self.read()
         if frame.empty:
             return []
         frame = frame.sort_values('run_id', ascending=False)
@@ -158,11 +154,11 @@ class RunIndex:
         Returns:
             Its directory, or None when the index does not carry it
         """
-        frame = self._frame()
+        frame = self.read()
         hit = frame[frame['run_id'] == run_id] if not frame.empty else frame
         return Path(hit.iloc[0]['run_dir']) if len(hit) else None
 
-    def rebuild(self, roots: RunLogPaths) -> int:
+    def rebuild(self) -> int:
         """
         Rebuild the whole index from the headers on disk.
 
@@ -170,14 +166,16 @@ class RunIndex:
         header predates this mechanism and is skipped — it cannot be identified, which is exactly
         the condition the header exists to end.
 
-        Args:
-            roots: The run-type roots to scan
-
         Returns:
             How many runs were indexed
         """
+        if self._roots is None:
+            raise StoreIndexSourceMissingError(
+                'RunIndex.rebuild() needs the run-type roots — construct it as '
+                'RunIndex(path, roots) when the index is to be rebuilt.'
+            )
         rows = []
-        for root in (roots.simulation, roots.live):
+        for root in (self._roots.simulation, self._roots.live):
             for header_path in Path(root).rglob(RUN_HEADER_ARTIFACT):
                 run_dir = header_path.parent
                 header = read_run_header(header_path)
@@ -194,7 +192,7 @@ class RunIndex:
                     'config_snapshot': header.config_snapshot,
                     'reporting': str(header.reporting),
                 })
-        self._write(pd.DataFrame(rows, columns=INDEX_COLUMNS))
+        self.write(pd.DataFrame(rows, columns=self.COLUMNS))
         return len(rows)
 
     def duplicate_ids(self) -> List[str]:
@@ -210,7 +208,7 @@ class RunIndex:
         Returns:
             The duplicated ids, sorted
         """
-        frame = self._frame()
+        frame = self.read()
         if frame.empty:
             return []
         counts = frame['run_id'].value_counts()

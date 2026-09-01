@@ -5,14 +5,14 @@ Composes the cross-section KPI model from the section reports (portfolio aggrega
 trade analytics + execution totals) — no re-derivation. Per-currency join + global counts.
 """
 
+from python.framework.reporting.io.artifact_specs import (
+    RUN_SUMMARY_ARTIFACT,
+)
+from python.framework.reporting.io.report_artifact_io import read_artifact, write_artifact
 from python.framework.reporting.builders.report_aggregators import (
     aggregate_portfolio_by_currency,
 )
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
-from python.framework.reporting.io.run_summary_io import (
-    read_run_summary,
-    write_run_summary,
-)
 from python.framework.types.api.report_types import (
     ExecutionStatsReport,
     ExecutionStatsTotals,
@@ -109,7 +109,7 @@ class TestUndefinedProfitFactor:
         portfolio = PortfolioReport(run_id=_RUN_ID, units=[_unit()], aggregates=[agg])
         trade = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[])
         summary = build_run_summary(_RUN_ID, portfolio, trade, _exec())
-        read_back = read_run_summary(write_run_summary(summary, tmp_path))
+        read_back = read_artifact(write_artifact(summary, tmp_path, RUN_SUMMARY_ARTIFACT), RUN_SUMMARY_ARTIFACT)
         assert read_back.currencies[0].profit_factor is None
 
     def test_aggregator_mints_none_not_infinity(self):

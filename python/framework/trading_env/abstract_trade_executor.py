@@ -59,6 +59,7 @@ from python.framework.types.decision_event_types import (
     PartialCloseEvent,
     SessionEndSeverity,
 )
+from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
@@ -409,6 +410,25 @@ class AbstractTradeExecutor(ABC):
         update, not a model mutation.
 
         Default no-op for executors without a transport layer (TradeSimulator).
+        """
+        return
+
+    def apply_order_attributions(
+        self,
+        attributions: List[Tuple[PendingOrder, BrokerOrder]],
+    ) -> None:
+        """
+        Adopt the venue's reference for resting orders recognized as ours (#355).
+
+        Called by the live tick loop with what the Reconciler matched on the client order
+        id. The Reconciler detects and never writes; the executor owns the pending state,
+        so the write lands here.
+
+        Default no-op for executors without broker truth: the simulator's PortfolioManager
+        IS the truth, so it has nothing to attribute (Design Decision #9).
+
+        Args:
+            attributions: (local pending, broker order) pairs matched by client order id
         """
         return
 

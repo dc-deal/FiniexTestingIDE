@@ -12,12 +12,16 @@ Used by:
 - discoveries_cli.py (CLI cache commands)
 """
 
+from pathlib import Path
 from typing import Dict, Optional
+
+from python.configuration.app_config_manager import AppConfigManager
 
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
     DataCoverageReportCache,
 )
 from python.framework.discoveries.discovery_cache import DiscoveryCache
+from python.framework.discoveries.discovery_cache_index import DiscoveryCacheIndex
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import (
     VolatilityProfileAnalyzerCache,
 )
@@ -68,6 +72,15 @@ class DiscoveryCacheManager:
         results['volatility_profile'] = self._volatility_profile_cache.build_all(
             force_rebuild=force
         )
+
+        # The rebuild just rewrote every cache file, which leaves the store index (#486)
+        # describing the previous generation. Refreshing it here is the difference between an
+        # operator who rebuilt the caches and an operator who is then told, without a reason,
+        # that something is stale.
+        indexed = DiscoveryCacheIndex(
+            Path(AppConfigManager().get_data_processed_path())
+            / DiscoveryCache.CACHE_PARENT_DIR).rebuild()
+        self._logger.info(f'Discovery cache index refreshed: {indexed} entr(y/ies)')
 
         total_generated = sum(r['generated'] for r in results.values())
         total_skipped = sum(r['skipped'] for r in results.values())

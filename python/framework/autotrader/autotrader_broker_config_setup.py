@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict
 
 from python.configuration.autotrader.broker_config_fetcher_factory import BrokerConfigFetcherFactory
+from python.configuration.autotrader.kraken_config_fetcher import get_runtime_cache_path
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -147,7 +148,7 @@ def _create_live_broker_config_dynamic(
 
     # Pass the actual runtime cache file path so _log_broker_config_loaded can
     # surface cache age in the startup output (helps diagnose stale-fee issues).
-    cache_path = f'data/runtime/brokers/{config.broker_type}/{config.broker_type}_broker_config.json'
+    cache_path = str(get_runtime_cache_path(config.broker_type))
     _log_broker_config_loaded(broker_config, cache_path, logger)
     return broker_config
 

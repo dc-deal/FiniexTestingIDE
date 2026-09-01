@@ -16,31 +16,23 @@ from typing import Optional
 
 import pytest
 
+from python.framework.reporting.certificates.certificate_index import CertificateIndex
+from python.framework.store.store_registrations import CERTIFICATES_ROOT
+
 REPORTS_DIR = Path(__file__).parent / 'reports'
 
 
 def _find_latest_report() -> Optional[Path]:
-    """Return the newest committed certificate by timestamp, or None."""
-    if not REPORTS_DIR.exists():
-        return None
-    reports = list(REPORTS_DIR.glob('field_study_report_*.json'))
-    if not reports:
-        return None
+    """
+    The newest certificate of this family, through the shared certificate index (#486).
 
-    latest_report = None
-    latest_ts = None
-    for report_path in reports:
-        try:
-            data = json.loads(report_path.read_text(encoding='utf-8'))
-            ts = data.get('timestamp')
-            if ts:
-                parsed = datetime.fromisoformat(ts)
-                if latest_ts is None or parsed > latest_ts:
-                    latest_ts = parsed
-                    latest_report = report_path
-        except (json.JSONDecodeError, KeyError, ValueError):
-            continue
-    return latest_report
+    Each family used to carry its own lookup, and the four did not agree — one ordered by
+    the timestamp inside the document, another by the file name. One store, one answer.
+
+    Returns:
+        Path to the newest certificate, or None when none exists
+    """
+    return CertificateIndex(CERTIFICATES_ROOT).find_latest('live_field_study')
 
 
 class TestFieldStudyCertificate:

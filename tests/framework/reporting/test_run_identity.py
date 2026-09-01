@@ -111,7 +111,7 @@ class TestTheIndexIsDerivedAndRebuildable:
 
     def test_rebuild_reproduces_what_the_appends_wrote(self, tmp_path):
         roots = self._tree(tmp_path)
-        index = RunIndex(tmp_path / 'index.parquet')
+        index = RunIndex(tmp_path / 'index.parquet', roots)
 
         planted = [
             (_header('20260830_132034_aaaaaaaa'),
@@ -129,7 +129,7 @@ class TestTheIndexIsDerivedAndRebuildable:
         (tmp_path / 'index.parquet').unlink()
         assert index.list_runs() == [], 'a deleted index must read as empty, not stale'
 
-        assert index.rebuild(roots) == len(planted)
+        assert index.rebuild() == len(planted)
         assert index.list_runs() == before
 
     def test_a_run_is_addressable_without_walking_the_tree(self, tmp_path):

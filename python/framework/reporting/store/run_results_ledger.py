@@ -20,13 +20,11 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 from python.framework.types.api.report_types import RunResultRow, RunSummary
 from python.framework.types.run_results_types import RunProvenance
 
 # Fixed column order — kept stable so fragments stay schema-compatible across runs.
-# The read-path cache: the union of every fragment as ONE file. Derived, never the truth —
-# deleting it costs one slow read, nothing more.
-COMPACTED_CACHE: str = '.compacted.parquet'
 
 LEDGER_COLUMNS: List[str] = [
     'param_hash', 'status', 'error', 'run_id', 'run_timestamp', 'sweep_id', 'sweep_params',
@@ -51,6 +49,7 @@ class RunResultsLedger:
             ledger_dir: Directory holding the per-run parquet fragments
         """
         self._dir = Path(ledger_dir)
+        self._index = RunLedgerIndex(self._dir, LEDGER_COLUMNS)
 
     def append(self, run_summary: RunSummary, provenance: RunProvenance) -> Path:
         """
@@ -97,50 +96,16 @@ class RunResultsLedger:
         Returns:
             DataFrame of ledger rows (empty if the ledger does not exist yet)
         """
-        files = sorted(f for f in self._dir.glob('*.parquet')
-                       if f.name != COMPACTED_CACHE) if self._dir.exists() else []
-        if not files:
+        if not self._index.fragments():
             return pd.DataFrame(columns=LEDGER_COLUMNS)
-        df = self._cached_union(files)
+        if not self._index.is_valid():
+            self._index.rebuild()
+        df = self._index.read()
         if sweep_id is not None:
             df = df[df['sweep_id'] == sweep_id]
         if scenario_set_name is not None:
             df = df[df['scenario_set_name'] == scenario_set_name]
         return df.reset_index(drop=True)
-
-    def _cached_union(self, files: List[Path]) -> pd.DataFrame:
-        """
-        The union of every fragment, served from a compacted cache when nothing changed.
-
-        One fragment per run is the right WRITE shape — parquet is immutable, so a file per run
-        is the lock-free append. It is the wrong READ shape: measured here, 404 fragments cost
-        3.29 s to open while the same rows as a single file cost 0.008 s, and 99.6 % of that is
-        the open rather than the work. The cache gives the read path one file without giving up
-        the append property.
-
-        Fragments are still read INDIVIDUALLY when the cache misses: one written before a column
-        existed simply lacks it, and reading the directory in one shot would collapse to a common
-        schema and silently drop the newer columns. reindex pins the canonical set.
-
-        Args:
-            files: The fragment paths, cache excluded
-
-        Returns:
-            The unioned table with the canonical column set
-        """
-        cache = self._dir / COMPACTED_CACHE
-        newest = max(f.stat().st_mtime_ns for f in files)
-        # The freshness marker is the CACHE FILE's own mtime, not instance state: every consumer
-        # builds its own ledger object (the API builds one per request), so a marker held in
-        # memory would never survive to be hit. Fragments are append-only, so "cache is newer
-        # than every fragment" is the whole condition.
-        if cache.exists() and cache.stat().st_mtime_ns >= newest:
-            return pd.read_parquet(cache)
-
-        df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
-        df = df.reindex(columns=LEDGER_COLUMNS)
-        df.to_parquet(cache, index=False)
-        return df
 
     def read_rows(
         self,
@@ -256,7 +221,7 @@ def append_run_to_ledger(
     """
     if provenance is None:
         return
-    ledger = RunResultsLedger(Path(AppConfigManager().get_run_results_path()))
+    ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
     ledger.append(run_summary, provenance)
 
 

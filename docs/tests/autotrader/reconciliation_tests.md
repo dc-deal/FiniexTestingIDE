@@ -24,6 +24,7 @@ tests/autotrader/reconciliation/
 ├── test_kraken_pull_parsers.py      ← Phase 1: Kraken _parse_* layers (pure, offline)
 ├── test_reconciler_diff.py          ← Phase 2: SPOT order diff (ghost/orphan/stale + in-flight grace)
 ├── test_reconciler_margin.py        ← Phase 2: MARGIN position diff; SPOT gate
+├── test_reconciler_client_key.py    ← #355 Phase 1: client-order-id join + the four order buckets
 ├── test_cadence_and_alert_only.py   ← Phase 2: is_due hybrid + non-mutation + counters
 ├── test_flat_preflight.py           ← Phase 2: is_account_flat (orders + balances)
 └── test_reconciliation_config.py    ← ReconciliationDefaults loader wiring
@@ -38,10 +39,11 @@ tests/autotrader/reconciliation/
 | `test_broker_truth_pull.py` | `MockBrokerAdapter.get_broker_orders/balances/positions` return seeded state; `MockDivergenceMode` (`DROP_ORDERS`, `DROP_BALANCE`, `PHANTOM_POSITION`, `STALE_PRICE`) perturbs as documented |
 | `test_kraken_pull_parsers.py` | `KrakenAdapter._parse_openorders/balance/openpositions_response` map raw Kraken payloads → typed objects; reverse pair→symbol (XETHZUSD → ETHUSD); buy/sell → LONG/SHORT; dry-run sentinel → empty; zero-balance dropped |
 | `test_reconciler_diff.py` | SPOT order reconciliation: clean match, ghost (broker extra), orphan (local extra), stale (price mismatch), `DROP_ORDERS` → all orphans, partial-fill bucket. **In-flight grace:** local orders with `broker_ref=None` or `DRYRUN-*` are excluded (no false orphans) |
+| `test_reconciler_client_key.py` | #355 Phase 1: the order diff joins on the CLIENT order id before `broker_ref`. Attribution (our key + a ref-less pending → repair, cycle stays clean, Reconciler writes nothing); classification of an unclaimed broker order (this session → `abandoned`, another session → `foreign_session`, no key → `ghost`, a foreign client's key → `ghost`, never claimed); the local `unconfirmed` bucket (submit never answered AND absent at the broker) reported into the error pot exactly ONCE per order; the normal submit roundtrip and `DRYRUN-*` stay excluded; a session with no key claims nothing |
 | `test_reconciler_margin.py` | Position diff is `MARGIN`-gated: on SPOT a synthesized local position does NOT read as orphan; on MARGIN ghost/orphan/stale positions are detected |
 | `test_cadence_and_alert_only.py` | `is_due` hybrid (every N ticks OR M seconds); `reconcile()` resets the tick window; ALERT_ONLY does not mutate local state; current-cycle vs cumulative divergence counters; **recovery** (a resolved divergence resets the current count + clean flag so the panel returns to ● ok); non-`alert_only` mode raises `NotImplementedError` (→ #349) |
 | `test_flat_preflight.py` | `is_account_flat()` on SPOT: flat when no resting orders and only quote-currency balance; not flat with a resting order or a non-quote asset balance; dust balances ignored |
-| `test_reconciliation_config.py` | `ReconciliationDefaults` defaults off; profile values applied via `load_autotrader_config`; unknown key → `ValueError` |
+| `test_reconciliation_config.py` | `ReconciliationDefaults` mirrors `app_config.json` (enabled), and a mock adapter auto-disables in the loader unless the profile sets `enabled` explicitly; profile values applied via `load_autotrader_config`; unknown key → `ValueError` |
 
 ---
 
@@ -52,6 +54,20 @@ tests/autotrader/reconciliation/
 - **ghost** — broker has it, we lack it locally (`BrokerOrder` / `BrokerPosition`)
 - **orphan** — we have it locally, broker lacks it (`PendingOrder` / `Position`)
 - **stale** — matched by `broker_ref` but a field (price / lots) diverges
+
+Since #355 the ORDER diff joins on the client order id first, so an order we placed is no
+longer an anonymous ghost. `ghost` keeps its meaning and loses the cases that were never
+ghosts:
+
+- **attributed** — our key, and a local pending is still waiting for its reference. The
+  lost submit answer (#473): a repair, not a divergence, so it does **not** clear
+  `is_clean`. The Reconciler only reports it; the executor performs the write
+- **abandoned** — our key, this session, nothing local left
+- **foreign_session** — our key shape, another session's discriminator (boot adoption is
+  #355 Phase 2)
+- **unconfirmed** — local: submit never answered and the broker does not show it either.
+  Nothing times such a pending out, so it keeps `has_pending_orders()` true; each one is
+  reported into the session error pot once, and resolving it needs #487
 
 ### TradingModel gate
 

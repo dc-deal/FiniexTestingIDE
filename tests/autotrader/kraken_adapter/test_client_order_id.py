@@ -21,7 +21,12 @@ import pytest
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
-from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
+from python.framework.utils.run_id_utils import (
+    build_client_order_id,
+    mint_run_id,
+    parse_client_order_id,
+    session_key_from_run_id,
+)
 
 _KRAKEN_CONFIG = 'configs/brokers/kraken/kraken_spot_broker_config.json'
 _CL_ORD_ID_MAX_LEN = 18
@@ -120,8 +125,46 @@ class TestSessionKey:
         key = session_key_from_run_id(
             mint_run_id(datetime(2026, 8, 31, 3, 14, tzinfo=timezone.utc)))
         # Longest realistic shape: a six-character symbol and a five-digit counter.
-        wire = f'p{key}_{99999}'
+        wire = build_client_order_id(key, 'pos_btcusd_99999')
         assert len(wire) <= _CL_ORD_ID_MAX_LEN
 
     def test_empty_session_key_means_no_wire_key(self):
         assert session_key_from_run_id('no_random_half_here_') == ''
+
+
+class TestKeyRoundTrip:
+    """
+    build / parse are one format, and #355 depends on the pair agreeing.
+
+    The builder writes the key onto the wire; the parser reads it back off a truth pull to
+    decide whose order a resting one is. If the two ever disagree, an order of ours reads
+    as a stranger's — which is the one classification that must not be wrong.
+    """
+
+    def test_a_built_key_parses_back(self):
+        wire = build_client_order_id('1641', 'pos_btcusd_47')
+        assert wire == 'p1641_47'
+        assert parse_client_order_id(wire) == ('1641', '47')
+
+    def test_no_session_key_means_no_wire_key(self):
+        assert build_client_order_id('', 'pos_btcusd_47') is None
+
+    def test_the_counter_survives_a_symbol_of_any_length(self):
+        # Only the trailing counter goes on the wire — the readable id stays in our books.
+        assert build_client_order_id('1641', 'pos_x_9') == 'p1641_9'
+        assert build_client_order_id('1641', 'pos_verylongsymbol_9') == 'p1641_9'
+
+    @pytest.mark.parametrize('foreign', [
+        None,
+        '',
+        'bot-7-entry',       # another client's own scheme
+        'p164_47',           # discriminator too short
+        'p16411_47',         # discriminator too long
+        'p1641_x',           # counter not a number
+        'p1641_',            # counter missing
+        '1641_47',           # prefix missing
+    ])
+    def test_a_key_that_is_not_ours_is_refused(self, foreign):
+        # Client order ids are free-format at the venue, so a loose parse would claim
+        # another client's order as one of ours.
+        assert parse_client_order_id(foreign) is None

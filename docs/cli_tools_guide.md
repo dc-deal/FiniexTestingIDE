@@ -120,7 +120,7 @@ Crypto (Kraken Spot) — no weekend closure, and no spread line where the source
 | **Purpose** | Quick overview: number of symbols and files |
 
 ```
-Index file:   data/processed/.parquet_tick_index.parquet
+Index file:   data/processed/ticks_index.parquet
 Last update:  2026-02-03 19:44:18
 Broker Types: kraken_spot, mt5
 Symbols:      16
@@ -155,7 +155,7 @@ USDJPY:
 | **Purpose** | What the derived run index holds — the table `GET /api/v1/reports/runs` reads |
 
 ```
-📇 Run Index — 6 run(s) · runs/index.parquet
+📇 Run Index — 6 run(s) · runs/runs_index.parquet
 
   20260830_173933_f54f1d3d  live        14 artifact(s)  mock_session_test
   20260830_173819_81d96b02  simulation  18 artifact(s)  btcusd_mini_set__sweep_20260830_173753_c003
@@ -237,7 +237,7 @@ index and the tree disagree.
 
 ```
 🔄 Rebuilding Run Index
-✅ 162 run(s) indexed → runs/index.parquet
+✅ 162 run(s) indexed → runs/runs_index.parquet
 ```
 
 A run with no header is skipped — it cannot be identified, which is the condition the header
@@ -356,7 +356,7 @@ Force Rebuild: DISABLED (skip valid caches)
 
 ```
 📦 Data Coverage Report Cache Status
-Cache Dir:     data/processed/.discovery_caches/data_coverage_cache
+Cache Dir:     data/processed/discovery_caches/data_coverage_cache
 Cache Files:   16
 Cache Size:    0.02 MB
 ------------------------------------------------------------
@@ -787,10 +787,10 @@ The indices are stored in Parquet format (since v1.1):
 
 | Index | File | Migration |
 |-------|------|-----------|
-| Tick Index | `.parquet_tick_index.parquet` | Auto from `.json` |
-| Bar Index | `.parquet_bars_index.parquet` | Auto from `.json` |
-| Data Coverage Cache | `.discovery_caches/data_coverage_cache/*.parquet` | Gap analysis |
-| Extreme Moves Cache | `.discovery_caches/extreme_moves_cache/*.parquet` | Extreme move scan |
-| Volatility Profile Cache | `.discovery_caches/volatility_profile_cache/*.parquet` | Volatility profile |
+| Tick Index | `ticks_index.parquet` | Auto from `.json` |
+| Bar Index | `bars_index.parquet` | Auto from `.json` |
+| Data Coverage Cache | `discovery_caches/data_coverage_cache/*.parquet` | Gap analysis |
+| Extreme Moves Cache | `discovery_caches/extreme_moves_cache/*.parquet` | Extreme move scan |
+| Volatility Profile Cache | `discovery_caches/volatility_profile_cache/*.parquet` | Volatility profile |
 
 Old JSON indices are automatically migrated and backed up as `.json.bak`.

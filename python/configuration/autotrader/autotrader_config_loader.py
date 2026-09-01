@@ -158,7 +158,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     if adapter_type_resolved == 'mock' and not profile_explicitly_set_reconciliation_enabled:
         reconciliation_enabled_resolved = False
     else:
-        reconciliation_enabled_resolved = reconciliation_raw.get('enabled', False)
+        reconciliation_enabled_resolved = reconciliation_raw.get('enabled', True)
 
     # API monitor: same mock-auto-disable rationale — a mock adapter has no real
     # _fetch_private transport, so the monitor would record nothing useful.

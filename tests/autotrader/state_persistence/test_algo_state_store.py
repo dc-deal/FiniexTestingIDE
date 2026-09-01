@@ -13,10 +13,12 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from python.framework.exceptions.persistence_errors import StatePersistenceError
-from python.framework.persistence.algo_state_store import AlgoStateStore
+from python.framework.persistence.algo_state_store import _SCHEMA_VERSION, AlgoStateStore
+from python.framework.types.store_types import StoreId
 
 
-def _make_store(config, logger, weekend_aware=False, profile='btcusd_test', symbol='BTCUSD'):
+def _make_store(config, logger, weekend_aware=False, profile='btcusd_test', symbol='BTCUSD',
+                run_id='20260901_120000_abcdef12'):
     """Build a store for the given config (crypto/24-7 by default)."""
     return AlgoStateStore(
         config=config,
@@ -24,6 +26,7 @@ def _make_store(config, logger, weekend_aware=False, profile='btcusd_test', symb
         symbol=symbol,
         weekend_aware=weekend_aware,
         logger=logger,
+        run_id=run_id,
     )
 
 
@@ -67,8 +70,17 @@ class TestAtomicWrite:
         assert path.exists()
         assert not path.with_name(path.name + '.tmp').exists()
         envelope = json.loads(path.read_text(encoding='utf-8'))
-        assert envelope['schema_version'] == 1
+        assert envelope['schema_version'] == _SCHEMA_VERSION
         assert envelope['snapshot'] == {'k': 1}
+
+    def test_envelope_records_which_run_wrote_it(self, store_config, logger):
+        """Provenance, never identity — the key stays the bot, so a restart still finds it."""
+        store = _make_store(store_config, logger, run_id='20260901_120000_abcdef12')
+        store.save({'k': 1}, tick_counter=1)
+        envelope = json.loads(store.get_state_path().read_text(encoding='utf-8'))
+        assert envelope['written_by_run_id'] == '20260901_120000_abcdef12'
+        assert envelope['store_id'] == StoreId.SESSION_STATE
+        assert '20260901_120000_abcdef12' not in store.get_state_path().name
 
 
 class TestCadence:

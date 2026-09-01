@@ -8,7 +8,7 @@ Invalidation based on source bar file modification time.
 Architecture:
 - DataCoverageReport remains UNCHANGED
 - Cache wraps and hydrates DataCoverageReport instances
-- Storage: .discovery_caches/data_coverage_cache/{broker_type}_{symbol}.parquet
+- Storage: discovery_caches/data_coverage_cache/{broker_type}_{symbol}.parquet
 """
 
 import json
@@ -29,8 +29,10 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.coverage_report_types import Gap, GapCategory
 from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.store_types import DISCOVERY_CACHE_DIRNAME
 from python.framework.utils.config_fingerprint_utils import (
     generate_config_fingerprint,
+    read_cache_metadata,
     read_fingerprint_from_parquet,
 )
 
@@ -45,7 +47,7 @@ class DataCoverageReportCache:
     Auto-invalidates when source bar files change.
 
     Cache Structure:
-        .discovery_caches/data_coverage_cache/
+        discovery_caches/data_coverage_cache/
             mt5_EURUSD.parquet
             mt5_USDJPY.parquet
             kraken_spot_BTCUSD.parquet
@@ -55,7 +57,7 @@ class DataCoverageReportCache:
         - Metadata (start_time, end_time, gap_counts, source_bar_mtime)
     """
 
-    CACHE_PARENT_DIR = '.discovery_caches'
+    CACHE_PARENT_DIR = DISCOVERY_CACHE_DIRNAME
     CACHE_SUB_DIR = 'data_coverage_cache'
 
     def __init__(self, logger: AbstractLogger = vLog):
@@ -74,6 +76,7 @@ class DataCoverageReportCache:
 
         # Bar index for source file lookup
         self._bar_index: Optional[BarsIndexManager] = None
+        self._live_fingerprint: Optional[str] = None
 
     def _get_bar_index(self) -> BarsIndexManager:
         """Lazy-load bar index."""
@@ -102,6 +105,21 @@ class DataCoverageReportCache:
         section = config.get('data_coverage', {})
         return generate_config_fingerprint(section)
 
+    def _live_config_fingerprint(self) -> str:
+        """
+        The current config's fingerprint, computed once per instance.
+
+        Memoized because the loader reads its JSON twice per construction, and a validity check
+        runs once per cached entry — rebuilding it per entry is what turns a free comparison into
+        a doubling of the check's cost.
+
+        Returns:
+            SHA256 fingerprint of the live config section
+        """
+        if self._live_fingerprint is None:
+            self._live_fingerprint = self._get_current_config_fingerprint()
+        return self._live_fingerprint
+
     def get_config_fingerprint(self, broker_type: str, symbol: str) -> Optional[str]:
         """
         Get stored config fingerprint from cached coverage report.
@@ -125,25 +143,22 @@ class DataCoverageReportCache:
         - Source bar file is newer than cache
         - Source bar file doesn't exist
         - Granularity has changed since cache was built
+        - The config section that PRODUCED it has changed (#486 finding 57) — granularity was
+          the only config key checked, while thresholds.short/moderate decide every gap's
+          CATEGORY and moved no bar file
         """
         cache_path = self._get_cache_path(broker_type, symbol)
-
-        if not cache_path.exists():
+        metadata = read_cache_metadata(cache_path)
+        if metadata is None:
             return False
 
-        # Get source bar mtime and granularity from cache metadata
-        try:
-            pq_file = pq.ParquetFile(cache_path)
-            metadata = pq_file.schema_arrow.metadata or {}
-            cached_mtime = float(metadata.get(
-                b'source_bar_mtime', b'0').decode())
-            cached_granularity = metadata.get(
-                b'granularity', b'').decode()
-        except Exception:
+        if metadata.get('config_fingerprint') != self._live_config_fingerprint():
             return False
+
+        cached_mtime = float(metadata.get('source_bar_mtime', '0'))
 
         # Invalidate if granularity changed
-        if cached_granularity != self._granularity:
+        if metadata.get('granularity', '') != self._granularity:
             return False
 
         # Compare with current bar file mtime

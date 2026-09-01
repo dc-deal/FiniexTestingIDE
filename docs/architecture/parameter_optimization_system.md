@@ -22,7 +22,7 @@ is the `RunSummary` from the [reporting pipeline](reporting_pipeline.md).
 
 ```
 OptimizationRunner                RunResultsLedger                optimization_cli report
-  expand grid → N combos    ──►   data/run_results/         ──►   rank + sensitivity
+  expand grid → N combos    ──►   runs/ledger/         ──►   rank + sensitivity
   run each as one batch           (1 parquet fragment/run)        "which combination wins?"
   (each self-records)             leading key: param_hash
 ```
@@ -144,14 +144,14 @@ flat and opens no run directory; the count of child directories is pinned by
 
 ---
 
-## The Run Results Ledger (`data/run_results/`)
+## The Run Results Ledger (`runs/ledger/`)
 
 A persistent, accumulating store — **every** run appends to it (sim batch + live session, #403 · 5.a),
 not only sweeps — so it doubles as a complete run history. It is a flat directory with **one parquet fragment per run**
 (`<scenario_set>_<run_id>.parquet`); parquet is immutable, so one file per run is the lock-free append.
 Read the whole directory back as one table.
 
-- **Home:** `data/run_results/` (path from `app_config.json::paths.run_results`). The data layer, not
+- **Home:** `runs/ledger/` (path from `app_config.json::paths.run_ledger`). A RECORD store beside the runs it records (#486), not
   `logs/` — the ledger survives log cleanup. Gitignored (generated runtime data).
 - **No partition by config name** — all identity (`param_hash`, `sweep_id`, `scenario_set_name`,
   `decision_logic_type`, …) is **columns**, never folder structure. The leading key for ranking is

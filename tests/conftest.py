@@ -30,7 +30,9 @@ os.environ.setdefault('FINIEX_CONFIG_ISOLATION', '1')
 import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.store.abstract_store_index import store_index_filename
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
+from python.framework.types.store_types import StoreId
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -53,7 +55,8 @@ def _isolate_run_tree(tmp_path_factory):
     real = AppConfigManager().get_file_logging_config_object()
     isolated = real.model_copy(update={
         'run_logs': RunLogPaths(simulation=root / 'simulation', live=root / 'live'),
-        'run_index': root / 'index.parquet',
+        # Same naming rule as production (#486): <store_id>_index.parquet
+        'run_index': root / store_index_filename(StoreId.RUNS),
     })
     mp = pytest.MonkeyPatch()
     mp.setattr(AppConfigManager, 'get_file_logging_config_object', lambda self: isolated)
@@ -67,14 +70,14 @@ def _isolate_run_results_ledger(tmp_path_factory):
     Redirect the run-results ledger to a throwaway dir for the whole test session.
 
     End-to-end runs (the AutoTrader integration sessions, any full report coordinator) append
-    to the ledger via AppConfigManager().get_run_results_path(); without this the real
-    data/run_results/ would collect test fragments. Tests must never write production data
+    to the ledger via AppConfigManager().get_run_ledger_path(); without this the real
+    runs/ledger/ would collect test fragments. Tests must never write production data
     (§34) — the optimization unit tests isolate via their own tmp_ledger; this covers the
     coordinator-driven writes globally.
     """
     ledger_dir = tmp_path_factory.mktemp('run_results_ledger')
     mp = pytest.MonkeyPatch()
-    mp.setattr(AppConfigManager, 'get_run_results_path', lambda self: str(ledger_dir))
+    mp.setattr(AppConfigManager, 'get_run_ledger_path', lambda self: str(ledger_dir))
     yield
     mp.undo()
 
@@ -130,7 +133,9 @@ def pytest_collection_modifyitems(items):
             '/tests/framework/worker_tests/',
             '/tests/framework/market_compatibility/',
             '/tests/framework/signal_coverage/',
+            '/tests/framework/discovery_validity/',
             '/tests/framework/static_analysis/',
+            '/tests/framework/store/',
             '/tests/framework/tick_parquet_reader/',
             '/tests/framework/user_namespace/',
             '/tests/simulation/optimization/',

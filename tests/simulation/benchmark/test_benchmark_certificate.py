@@ -22,43 +22,23 @@ from typing import Any, Dict, Optional
 
 import pytest
 
+from python.framework.reporting.certificates.certificate_index import CertificateIndex
+from python.framework.store.store_registrations import CERTIFICATES_ROOT
+
 BENCHMARK_REPORTS_DIR = Path(__file__).parent / 'reports'
 
 
 def _find_latest_report() -> Optional[Path]:
     """
-    Find the most recent benchmark report by timestamp.
+    The newest certificate of this family, through the shared certificate index (#486).
+
+    Each family used to carry its own lookup, and the four did not agree — one ordered by
+    the timestamp inside the document, another by the file name. One store, one answer.
 
     Returns:
-        Path to latest report or None if no reports exist
+        Path to the newest certificate, or None when none exists
     """
-    if not BENCHMARK_REPORTS_DIR.exists():
-        return None
-
-    reports = list(BENCHMARK_REPORTS_DIR.glob('benchmark_report_*.json'))
-
-    if not reports:
-        return None
-
-    # Parse reports and find latest by timestamp field
-    latest_report = None
-    latest_timestamp = None
-
-    for report_path in reports:
-        try:
-            with open(report_path, 'r') as f:
-                report = json.load(f)
-
-            timestamp_str = report.get('timestamp')
-            if timestamp_str:
-                timestamp = datetime.fromisoformat(timestamp_str)
-                if latest_timestamp is None or timestamp > latest_timestamp:
-                    latest_timestamp = timestamp
-                    latest_report = report_path
-        except (json.JSONDecodeError, KeyError, ValueError):
-            continue
-
-    return latest_report
+    return CertificateIndex(CERTIFICATES_ROOT).find_latest('benchmark')
 
 
 def _load_report(report_path: Path) -> Dict[str, Any]:

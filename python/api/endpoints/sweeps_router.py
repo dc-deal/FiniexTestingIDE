@@ -25,7 +25,7 @@ router = APIRouter()
 
 def _ledger() -> RunResultsLedger:
     """The run-results ledger at its configured location — a sweep's identity lives here."""
-    return RunResultsLedger(Path(AppConfigManager().get_run_results_path()))
+    return RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
 
 
 @router.get('/sweeps', response_model=SweepListResponse)

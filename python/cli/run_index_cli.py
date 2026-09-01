@@ -24,7 +24,7 @@ class RunIndexCli:
     def __init__(self):
         """Initialize CLI with paths from AppConfigManager."""
         self._file_logging = AppConfigManager().get_file_logging_config_object()
-        self._index = RunIndex(self._file_logging.run_index)
+        self._index = RunIndex(self._file_logging.run_index, self._file_logging.run_logs)
 
     def cmd_rebuild(self) -> int:
         """
@@ -36,7 +36,7 @@ class RunIndexCli:
         print('\n' + '=' * 80)
         print('🔄 Rebuilding Run Index')
         print('=' * 80 + '\n')
-        count = self._index.rebuild(self._file_logging.run_logs)
+        count = self._index.rebuild()
         print(f'✅ {count} run(s) indexed → {self._file_logging.run_index}')
         duplicates = self._index.duplicate_ids()
         if duplicates:

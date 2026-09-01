@@ -35,28 +35,27 @@ from python.framework.reporting.builders.unified_reports import UnifiedReports
 from python.framework.reporting.builders.worker_decision_report_builder import (
     build_worker_decision_report,
 )
-from python.framework.reporting.io.execution_stats_report_io import (
+from python.framework.reporting.io.artifact_specs import (
+    EXECUTION_STATS_ARTIFACT,
+    FEED_STABILITY_ARTIFACT,
+    ORDER_HISTORY_ARTIFACT,
+    PENDING_ORDERS_ARTIFACT,
+    PORTFOLIO_ARTIFACT,
+    RUN_SUMMARY_ARTIFACT,
+    SIGNAL_ARTIFACT,
+    TRADE_HISTORY_ARTIFACT,
+    WORKER_DECISION_ARTIFACT,
+)
+from python.framework.reporting.io.report_artifact_io import write_artifact
+from python.framework.reporting.io.report_csv_io import (
     write_execution_stats_csv,
-    write_execution_stats_report,
-)
-from python.framework.reporting.io.feed_stability_report_io import write_feed_stability_report
-from python.framework.reporting.io.order_history_report_io import (
     write_order_history_csv,
-    write_order_history_report,
+    write_trade_history_csv,
 )
-from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
-from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
 from python.framework.reporting.io.run_header_io import (
     RUN_HEADER_ARTIFACT,
     read_run_header,
 )
-from python.framework.reporting.io.run_summary_io import write_run_summary
-from python.framework.reporting.io.signal_report_io import write_signal_report
-from python.framework.reporting.io.trade_history_report_io import (
-    write_trade_history_csv,
-    write_trade_history_report,
-)
-from python.framework.reporting.io.worker_decision_report_io import write_worker_decision_report
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.framework.types.signal_data_types import SignalObservedSeries
@@ -111,44 +110,44 @@ class SharedReportCoordinator:
         io_dir.mkdir(parents=True, exist_ok=True)
 
         trade_history = build_trade_history_report(run_id, units)
-        write_trade_history_report(trade_history, io_dir)
+        write_artifact(trade_history, io_dir, TRADE_HISTORY_ARTIFACT)
         write_trade_history_csv(trade_history, io_dir)
 
         order_history = build_order_history_report(run_id, units)
-        write_order_history_report(order_history, io_dir)
+        write_artifact(order_history, io_dir, ORDER_HISTORY_ARTIFACT)
         write_order_history_csv(order_history, io_dir)
 
         # Portfolio full projection — per-unit rows + per-currency roll-up.
         portfolio = build_portfolio_report(run_id, units)
-        write_portfolio_report(portfolio, io_dir)
+        write_artifact(portfolio, io_dir, PORTFOLIO_ARTIFACT)
 
         # Pending-orders — per-unit lifecycle + latency + active orders.
         pending_orders = build_pending_orders_report(run_id, units)
-        write_pending_orders_report(pending_orders, io_dir)
+        write_artifact(pending_orders, io_dir, PENDING_ORDERS_ARTIFACT)
 
         # Execution-stats headline — per-unit order counts + summed total.
         execution_stats = build_execution_stats_report(run_id, units)
-        write_execution_stats_report(execution_stats, io_dir)
+        write_artifact(execution_stats, io_dir, EXECUTION_STATS_ARTIFACT)
         write_execution_stats_csv(execution_stats, io_dir)
 
         # Signal configuration — archive provenance + what the strategy decided on (#433).
         # Built BEFORE the run summary: it supplies the run's weakest fresh ratio.
         signal = build_signal_report(run_id, signal_scenario_map or {}, units, observed_feed)
-        write_signal_report(signal, io_dir)
+        write_artifact(signal, io_dir, SIGNAL_ARTIFACT)
 
         # Feed stability — the observed outage episodes of both staleness domains (#451).
         # Also before the run summary: it supplies the run's disturbance totals.
         feed_stability = build_feed_stability_report(run_id, units)
-        write_feed_stability_report(feed_stability, io_dir)
+        write_artifact(feed_stability, io_dir, FEED_STABILITY_ARTIFACT)
 
         # Run summary — cross-section KPIs composed from the section aggregates (#390 prework).
         run_summary = build_run_summary(
             run_id, portfolio, trade_history, execution_stats, signal, feed_stability)
-        write_run_summary(run_summary, io_dir)
+        write_artifact(run_summary, io_dir, RUN_SUMMARY_ARTIFACT)
 
         # Worker/decision — per-unit worker + decision performance (#398).
         worker_decision = build_worker_decision_report(run_id, units)
-        write_worker_decision_report(worker_decision, io_dir)
+        write_artifact(worker_decision, io_dir, WORKER_DECISION_ARTIFACT)
 
         return UnifiedReports(
             trade_history=trade_history,

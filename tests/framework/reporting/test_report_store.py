@@ -9,24 +9,23 @@ no run required.
 from datetime import datetime, timezone
 from pathlib import Path
 
-from python.framework.reporting.io.aggregated_portfolio_report_io import (
-    write_aggregated_portfolio_report,
+from python.framework.reporting.io.artifact_specs import (
+    AGGREGATED_PORTFOLIO_ARTIFACT,
+    BROKER_ARTIFACT,
+    EXECUTION_STATS_ARTIFACT,
+    ORDER_HISTORY_ARTIFACT,
+    PENDING_ORDERS_ARTIFACT,
+    PORTFOLIO_ARTIFACT,
+    RUN_SUMMARY_ARTIFACT,
+    SCENARIO_DETAILS_ARTIFACT,
+    TRADE_HISTORY_ARTIFACT,
+    WARNINGS_ERRORS_ARTIFACT,
 )
-from python.framework.reporting.io.broker_report_io import write_broker_report
-from python.framework.reporting.io.execution_stats_report_io import (
+from python.framework.reporting.io.report_artifact_io import write_artifact
+from python.framework.reporting.io.report_csv_io import (
     write_execution_stats_csv,
-    write_execution_stats_report,
-)
-from python.framework.reporting.io.order_history_report_io import write_order_history_report
-from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
-from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
-from python.framework.reporting.io.run_summary_io import write_run_summary
-from python.framework.reporting.io.scenario_details_report_io import write_scenario_details_report
-from python.framework.reporting.io.trade_history_report_io import (
     write_trade_history_csv,
-    write_trade_history_report,
 )
-from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
 from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import (
@@ -168,7 +167,7 @@ def _write_run(logs_root: Path, category: str, owner: str, run_id: str,
     run_dir = _base(logs_root, category, sweep_id) / owner / run_id
     io_dir = run_dir / IO_SUBDIR
     io_dir.mkdir(parents=True)
-    write_trade_history_report(_report(), io_dir)
+    write_artifact(_report(), io_dir, TRADE_HISTORY_ARTIFACT)
     _index(logs_root).register_run(
         _run_header(run_id, category, owner, sweep_id or None), run_dir)
     # The artifacts exist, so the row lists them — the index is told, never inferred.
@@ -327,7 +326,7 @@ def _portfolio_report() -> PortfolioReport:
 class TestOrderHistory:
     def test_reads_and_filters(self, tmp_path):
         run_dir = _planted_run(tmp_path, RUN_TYPE_SIMULATION, 'my_set', '20260615_120000_aaaaaaaa')
-        write_order_history_report(_order_report(), run_dir / IO_SUBDIR)
+        write_artifact(_order_report(), run_dir / IO_SUBDIR, ORDER_HISTORY_ARTIFACT)
 
         full = ReportStore(_index_path(tmp_path)).get_order_history('20260615_120000_aaaaaaaa')
         assert full.count == 2
@@ -343,15 +342,15 @@ class TestOrderHistory:
 class TestPortfolio:
     def test_reads_portfolio(self, tmp_path):
         run_dir = _planted_run(tmp_path, RUN_TYPE_LIVE, 'my_profile', '20260615_130000_bbbbbbbb')
-        write_portfolio_report(_portfolio_report(), run_dir / IO_SUBDIR)
+        write_artifact(_portfolio_report(), run_dir / IO_SUBDIR, PORTFOLIO_ARTIFACT)
 
-        report = ReportStore(_index_path(tmp_path)).get_portfolio('20260615_130000_bbbbbbbb')
+        report = ReportStore(_index_path(tmp_path)).get('20260615_130000_bbbbbbbb', PORTFOLIO_ARTIFACT)
         assert report is not None
         assert len(report.units) == 1 and report.units[0].net_profit == 60.0
         assert report.aggregates[0].currency == 'USD'
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(_index_path(tmp_path)).get_portfolio('nope') is None
+        assert ReportStore(_index_path(tmp_path)).get('nope', PORTFOLIO_ARTIFACT) is None
 
 
 def _execution_stats_report() -> ExecutionStatsReport:
@@ -366,15 +365,15 @@ def _execution_stats_report() -> ExecutionStatsReport:
 class TestExecutionStats:
     def test_reads_execution_stats(self, tmp_path):
         run_dir = _planted_run(tmp_path, RUN_TYPE_SIMULATION, 'my_set', '20260615_120000_aaaaaaaa')
-        write_execution_stats_report(_execution_stats_report(), run_dir / IO_SUBDIR)
+        write_artifact(_execution_stats_report(), run_dir / IO_SUBDIR, EXECUTION_STATS_ARTIFACT)
 
-        report = ReportStore(_index_path(tmp_path)).get_execution_stats('20260615_120000_aaaaaaaa')
+        report = ReportStore(_index_path(tmp_path)).get('20260615_120000_aaaaaaaa', EXECUTION_STATS_ARTIFACT)
         assert report is not None
         assert report.units[0].sl_tp_triggered == 2
         assert report.totals.orders_executed == 4
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(_index_path(tmp_path)).get_execution_stats('nope') is None
+        assert ReportStore(_index_path(tmp_path)).get('nope', EXECUTION_STATS_ARTIFACT) is None
 
     def test_csv_header_and_rows(self, tmp_path):
         write_execution_stats_csv(_execution_stats_report(), tmp_path)
@@ -398,16 +397,16 @@ def _pending_orders_report() -> PendingOrdersReport:
 class TestPendingOrders:
     def test_reads_pending_orders(self, tmp_path):
         run_dir = _planted_run(tmp_path, RUN_TYPE_SIMULATION, 'my_set', '20260615_120000_aaaaaaaa')
-        write_pending_orders_report(_pending_orders_report(), run_dir / IO_SUBDIR)
+        write_artifact(_pending_orders_report(), run_dir / IO_SUBDIR, PENDING_ORDERS_ARTIFACT)
 
-        report = ReportStore(_index_path(tmp_path)).get_pending_orders('20260615_120000_aaaaaaaa')
+        report = ReportStore(_index_path(tmp_path)).get('20260615_120000_aaaaaaaa', PENDING_ORDERS_ARTIFACT)
         assert report is not None
         u = report.units[0]
         assert u.total_resolved == 3 and u.avg_latency_ms == 42.0
         assert u.active_limit_orders[0].order_id == 'L1'
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(_index_path(tmp_path)).get_pending_orders('nope') is None
+        assert ReportStore(_index_path(tmp_path)).get('nope', PENDING_ORDERS_ARTIFACT) is None
 
 
 def _scenario_details_report() -> ScenarioDetailsReport:
@@ -424,15 +423,15 @@ def _scenario_details_report() -> ScenarioDetailsReport:
 class TestScenarioDetails:
     def test_reads_scenario_details(self, tmp_path):
         run_dir = _planted_run(tmp_path, RUN_TYPE_SIMULATION, 'my_set', '20260615_120000_aaaaaaaa')
-        write_scenario_details_report(_scenario_details_report(), run_dir / IO_SUBDIR)
+        write_artifact(_scenario_details_report(), run_dir / IO_SUBDIR, SCENARIO_DETAILS_ARTIFACT)
 
-        report = ReportStore(_index_path(tmp_path)).get_scenario_details('20260615_120000_aaaaaaaa')
+        report = ReportStore(_index_path(tmp_path)).get('20260615_120000_aaaaaaaa', SCENARIO_DETAILS_ARTIFACT)
         assert report is not None
         assert [u.status for u in report.units] == ['success', 'failed']
         assert report.units[0].buy_signals == 296
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(_index_path(tmp_path)).get_scenario_details('nope') is None
+        assert ReportStore(_index_path(tmp_path)).get('nope', SCENARIO_DETAILS_ARTIFACT) is None
 
 
 def _run_summary() -> RunSummary:
@@ -447,15 +446,15 @@ def _run_summary() -> RunSummary:
 class TestRunSummary:
     def test_reads_run_summary(self, tmp_path):
         run_dir = _planted_run(tmp_path, RUN_TYPE_SIMULATION, 'my_set', '20260615_120000_aaaaaaaa')
-        write_run_summary(_run_summary(), run_dir / IO_SUBDIR)
+        write_artifact(_run_summary(), run_dir / IO_SUBDIR, RUN_SUMMARY_ARTIFACT)
 
-        rs = ReportStore(_index_path(tmp_path)).get_run_summary('20260615_120000_aaaaaaaa')
+        rs = ReportStore(_index_path(tmp_path)).get('20260615_120000_aaaaaaaa', RUN_SUMMARY_ARTIFACT)
         assert rs is not None
         assert rs.currencies[0].expectancy == 0.5
         assert rs.orders_executed == 4 and rs.unit_count == 1
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(_index_path(tmp_path)).get_run_summary('nope') is None
+        assert ReportStore(_index_path(tmp_path)).get('nope', RUN_SUMMARY_ARTIFACT) is None
 
 
 def _broker_report() -> BrokerReport:
@@ -475,16 +474,16 @@ def _warnings_errors_report() -> WarningsErrorsReport:
 class TestWarningsErrors:
     def test_reads_warnings_errors(self, tmp_path):
         run_dir = _planted_run(tmp_path, RUN_TYPE_SIMULATION, 'my_set', '20260615_120000_aaaaaaaa')
-        write_warnings_errors_report(_warnings_errors_report(), run_dir / IO_SUBDIR)
+        write_artifact(_warnings_errors_report(), run_dir / IO_SUBDIR, WARNINGS_ERRORS_ARTIFACT)
 
-        report = ReportStore(_index_path(tmp_path)).get_warnings_errors('20260615_120000_aaaaaaaa')
+        report = ReportStore(_index_path(tmp_path)).get('20260615_120000_aaaaaaaa', WARNINGS_ERRORS_ARTIFACT)
         assert report is not None
         assert report.warnings[0].message == 'DEBUG MODE'
         assert report.errors[0].name == 'bad'
         assert report.outcome.failed_count == 1
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(_index_path(tmp_path)).get_warnings_errors('nope') is None
+        assert ReportStore(_index_path(tmp_path)).get('nope', WARNINGS_ERRORS_ARTIFACT) is None
 
 
 def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
@@ -500,27 +499,27 @@ def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
 class TestAggregatedPortfolio:
     def test_reads_aggregated_portfolio(self, tmp_path):
         run_dir = _planted_run(tmp_path, RUN_TYPE_SIMULATION, 'my_set', '20260615_120000_aaaaaaaa')
-        write_aggregated_portfolio_report(_aggregated_portfolio_report(), run_dir / IO_SUBDIR)
+        write_artifact(_aggregated_portfolio_report(), run_dir / IO_SUBDIR, AGGREGATED_PORTFOLIO_ARTIFACT)
 
-        report = ReportStore(_index_path(tmp_path)).get_aggregated_portfolio('20260615_120000_aaaaaaaa')
+        report = ReportStore(_index_path(tmp_path)).get('20260615_120000_aaaaaaaa', AGGREGATED_PORTFOLIO_ARTIFACT)
         assert report is not None
         cur = report.currencies[0]
         assert cur.currency == 'USD' and cur.combined.headline.total_trades == 4
         assert cur.combined.initial_balance == 2000.0
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(_index_path(tmp_path)).get_aggregated_portfolio('nope') is None
+        assert ReportStore(_index_path(tmp_path)).get('nope', AGGREGATED_PORTFOLIO_ARTIFACT) is None
 
 
 class TestBroker:
     def test_reads_broker(self, tmp_path):
         run_dir = _planted_run(tmp_path, RUN_TYPE_SIMULATION, 'my_set', '20260615_120000_aaaaaaaa')
-        write_broker_report(_broker_report(), run_dir / IO_SUBDIR)
+        write_artifact(_broker_report(), run_dir / IO_SUBDIR, BROKER_ARTIFACT)
 
-        report = ReportStore(_index_path(tmp_path)).get_broker('20260615_120000_aaaaaaaa')
+        report = ReportStore(_index_path(tmp_path)).get('20260615_120000_aaaaaaaa', BROKER_ARTIFACT)
         assert report is not None
         assert report.units[0].broker_type == 'kraken_spot'
         assert report.units[0].symbols[0].symbol == 'BTCUSD'
 
     def test_not_found_returns_none(self, tmp_path):
-        assert ReportStore(_index_path(tmp_path)).get_broker('nope') is None
+        assert ReportStore(_index_path(tmp_path)).get('nope', BROKER_ARTIFACT) is None
