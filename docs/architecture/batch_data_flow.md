@@ -78,7 +78,7 @@ Each run writes a `header.json` at its START — id, start time, category, owner
 belongs to (a sweep, today; a session for #476's daily fragments). At the start rather than the
 end, because a run that crashes is exactly the run somebody needs to identify.
 
-`runs/index.parquet` is ONE compacted file DERIVED from those headers, and it is what the API
+`runs/runs_index.parquet` is ONE compacted file DERIVED from those headers, and it is what the API
 reads. Derived is the point: it may be deleted or go stale without anything being lost —
 `run_index_cli.py rebuild` reconstructs it. Directories stay human-navigable (§36) but no program
 reads meaning out of them any more.

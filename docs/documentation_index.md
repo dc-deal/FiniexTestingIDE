@@ -46,6 +46,7 @@
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
 | [Broker Trade Records](architecture/broker_trade_records.md) | Order ↔ executions pairing model, BrokerTrade type, Tier-3 trades-query layer |
 | [Trade Execution Visibility](architecture/trade_execution_visibility.md) | Trigger / BrokerOrder / Fills three-level model, Position.entry_trades + TradeRecord.entry_trades / exit_trades propagation, sub-line rendering, long-format event-stream CSV (#330) |
+| [Data Storage Layout](architecture/data_storage_layout.md) | The store catalog — eleven data stores by kind (record · carry-over · archive · derived · special) and retrieval form, the index obligation, why the bulk form stays outside the abstraction (#486) |
 | [External Connection Policy](architecture/external_connection_policy.md) | One retry ladder, one give-up rule, one classification for all seven outbound connections — TRANSIENT / TERMINAL / INADMISSIBLE, why a write is resolved by asking rather than retried, the `cl_ord_id` wire key, who owns the wait (#473) |
 | [Drift Audit](architecture/drift_audit.md) | Read-only local-vs-broker drift telemetry (#327) — FEE / VOLUME / PRICE counters, async trades-query consumer, live-display footer |
 | [Decision Event Channel](architecture/decision_event_channel.md) | Typed ordered event channel — order/fill/cancel/partial-close/session-end hooks for decision logic, drain-at-boundary, request_session_end (#348) |
@@ -155,4 +156,6 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Market Compatibility](tests/framework/market_compatibility_tests.md) | Worker activity metric declaration, pre-flight scenario rejection |
 | [Algo Clock Convention](tests/framework/algo_clock_tests.md) | §9 wall-clock ban lint (decision logic/workers, CI plane) |
 | [Algo Clock Validator](tests/framework/algo_clock_validator_tests.md) | §9 runtime startup validator — AST scan of loaded algos (CORE + USER) + batch pre-flight |
+| [Discovery Cache Validity](tests/framework/discovery_validity_tests.md) | The config-fingerprint comparison across all three cache families, and the single-open metadata reader behind it |
+| [Store Model Tests](tests/framework/store_tests.md) | Catalog completeness, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope |
 | [Static Analysis Tests](tests/framework/static_analysis_tests.md) | §40 undefined-name gate (pyflakes) + the measured ruff/vulture backlog tier |

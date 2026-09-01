@@ -13,6 +13,20 @@ from fastapi import APIRouter, Query
 
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
+from python.framework.reporting.io.artifact_specs import (
+    AGGREGATED_PORTFOLIO_ARTIFACT,
+    BROKER_ARTIFACT,
+    EXECUTION_STATS_ARTIFACT,
+    FEED_STABILITY_ARTIFACT,
+    PENDING_ORDERS_ARTIFACT,
+    PORTFOLIO_ARTIFACT,
+    PROFILING_ARTIFACT,
+    RUN_SUMMARY_ARTIFACT,
+    SCENARIO_DETAILS_ARTIFACT,
+    SIGNAL_ARTIFACT,
+    WARNINGS_ERRORS_ARTIFACT,
+    WORKER_DECISION_ARTIFACT,
+)
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
@@ -117,7 +131,7 @@ def get_portfolio(run_id: str) -> PortfolioReport:
     Returns:
         The PortfolioReport (404 if the run has no portfolio artifact)
     """
-    report = ReportStore().get_portfolio(run_id)
+    report = ReportStore().get(run_id, PORTFOLIO_ARTIFACT)
     if report is None:
         raise ApiException(
             404, 'run_not_found',
@@ -136,7 +150,7 @@ def get_execution_stats(run_id: str) -> ExecutionStatsReport:
     Returns:
         The ExecutionStatsReport (404 if the run has no execution-stats artifact)
     """
-    report = ReportStore().get_execution_stats(run_id)
+    report = ReportStore().get(run_id, EXECUTION_STATS_ARTIFACT)
     if report is None:
         raise ApiException(
             404, 'run_not_found',
@@ -155,7 +169,7 @@ def get_pending_orders(run_id: str) -> PendingOrdersReport:
     Returns:
         The PendingOrdersReport (404 if the run has no pending-orders artifact)
     """
-    report = ReportStore().get_pending_orders(run_id)
+    report = ReportStore().get(run_id, PENDING_ORDERS_ARTIFACT)
     if report is None:
         raise ApiException(
             404, 'run_not_found',
@@ -174,7 +188,7 @@ def get_scenario_details(run_id: str) -> ScenarioDetailsReport:
     Returns:
         The ScenarioDetailsReport (404 if the run has no scenario-details artifact)
     """
-    report = ReportStore().get_scenario_details(run_id)
+    report = ReportStore().get(run_id, SCENARIO_DETAILS_ARTIFACT)
     if report is None:
         raise ApiException(
             404, 'run_not_found',
@@ -193,7 +207,7 @@ def get_run_summary(run_id: str) -> RunSummary:
     Returns:
         The RunSummary (404 if the run has no run-summary artifact)
     """
-    report = ReportStore().get_run_summary(run_id)
+    report = ReportStore().get(run_id, RUN_SUMMARY_ARTIFACT)
     if report is None:
         raise ApiException(
             404, 'run_not_found',
@@ -212,7 +226,7 @@ def get_worker_decision(run_id: str) -> WorkerDecisionReport:
     Returns:
         The WorkerDecisionReport (404 if the run has no worker-decision artifact)
     """
-    report = ReportStore().get_worker_decision(run_id)
+    report = ReportStore().get(run_id, WORKER_DECISION_ARTIFACT)
     if report is None:
         raise ApiException(
             404, 'run_not_found',
@@ -231,7 +245,7 @@ def get_profiling(run_id: str) -> ProfilingReport:
     Returns:
         The ProfilingReport (404 if the run has no profiling artifact)
     """
-    report = ReportStore().get_profiling(run_id)
+    report = ReportStore().get(run_id, PROFILING_ARTIFACT)
     if report is None:
         raise ApiException(
             404, 'run_not_found',
@@ -250,7 +264,7 @@ def get_aggregated_portfolio(run_id: str) -> AggregatedPortfolioReport:
     Returns:
         The AggregatedPortfolioReport (404 if the run has no aggregated-portfolio artifact)
     """
-    report = ReportStore().get_aggregated_portfolio(run_id)
+    report = ReportStore().get(run_id, AGGREGATED_PORTFOLIO_ARTIFACT)
     if report is None:
         raise ApiException(
             404, 'run_not_found',
@@ -270,7 +284,7 @@ def get_warnings_errors(run_id: str) -> WarningsErrorsReport:
         The WarningsErrorsReport (404 if the run has no warnings-errors artifact)
     """
     try:
-        report = ReportStore().get_warnings_errors(run_id)
+        report = ReportStore().get(run_id, WARNINGS_ERRORS_ARTIFACT)
     except ReportArtifactUnreadableError as e:
         raise ApiException(409, 'artifact_unreadable', str(e)) from e
     if report is None:
@@ -291,7 +305,7 @@ def get_broker(run_id: str) -> BrokerReport:
     Returns:
         The BrokerReport (404 if the run has no broker artifact)
     """
-    report = ReportStore().get_broker(run_id)
+    report = ReportStore().get(run_id, BROKER_ARTIFACT)
     if report is None:
         raise ApiException(
             404, 'run_not_found',
@@ -311,7 +325,7 @@ def get_signal(run_id: str) -> SignalReport:
     Returns:
         The SignalReport (404 if the run has no signal artifact)
     """
-    report = ReportStore().get_signal(run_id)
+    report = ReportStore().get(run_id, SIGNAL_ARTIFACT)
     if report is None:
         raise ApiException(
             404, 'run_not_found',
@@ -331,7 +345,7 @@ def get_feed_stability(run_id: str) -> FeedStabilityReport:
     Returns:
         The FeedStabilityReport (404 if the run has no feed-stability artifact)
     """
-    report = ReportStore().get_feed_stability(run_id)
+    report = ReportStore().get(run_id, FEED_STABILITY_ARTIFACT)
     if report is None:
         raise ApiException(
             404, 'run_not_found',

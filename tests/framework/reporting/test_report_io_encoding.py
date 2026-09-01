@@ -12,19 +12,16 @@ raise outright, because UTF-8's third emoji byte (0x8F) is undefined in cp1252.
 """
 
 from pathlib import Path
-
-from python.framework.reporting.io.trade_history_report_io import (
+from python.framework.reporting.io.artifact_specs import (
     TRADE_HISTORY_ARTIFACT,
-    TRADE_HISTORY_CSV,
-    read_trade_history_report,
-    write_trade_history_csv,
-    write_trade_history_report,
-)
-from python.framework.reporting.io.warnings_errors_report_io import (
     WARNINGS_ERRORS_ARTIFACT,
-    read_warnings_errors_report,
-    write_warnings_errors_report,
 )
+from python.framework.reporting.io.report_artifact_io import read_artifact, write_artifact
+from python.framework.reporting.io.report_csv_io import (
+    TRADE_HISTORY_CSV,
+    write_trade_history_csv,
+)
+
 from python.framework.types.api.report_types import (
     TradeHistoryReport,
     WarningRow,
@@ -54,34 +51,34 @@ def _report() -> WarningsErrorsReport:
 class TestJsonArtifactEncoding:
     def test_non_ascii_survives_the_round_trip(self, tmp_path):
         """What the builder put in is what the reader gets back, character for character."""
-        write_warnings_errors_report(_report(), tmp_path)
-        back = read_warnings_errors_report(tmp_path / WARNINGS_ERRORS_ARTIFACT)
+        write_artifact(_report(), tmp_path, WARNINGS_ERRORS_ARTIFACT)
+        back = read_artifact(tmp_path / WARNINGS_ERRORS_ARTIFACT.filename, WARNINGS_ERRORS_ARTIFACT)
         assert [w.message for w in back.warnings] == [_EM_DASH, _EMOJI]
 
     def test_artifact_is_utf8_on_disk(self, tmp_path):
         """The bytes are UTF-8 regardless of the writing process's locale."""
-        path = write_warnings_errors_report(_report(), tmp_path)
+        path = write_artifact(_report(), tmp_path, WARNINGS_ERRORS_ARTIFACT)
         raw = path.read_bytes()
         assert _EMOJI_UTF8 in raw
         raw.decode('utf-8')  # raises if the writer used a platform codec
 
     def test_a_locale_read_would_have_corrupted_it(self, tmp_path):
         """Documents the defect: the same clean bytes, read with the wrong codec."""
-        path = write_warnings_errors_report(_report(), tmp_path)
+        path = write_artifact(_report(), tmp_path, WARNINGS_ERRORS_ARTIFACT)
         mangled = path.read_bytes().decode('cp1252', errors='surrogateescape')
         assert 'â€”' in mangled                    # em-dash, quietly corrupted
         assert '\udc8f' in mangled                 # 0x8F has no cp1252 mapping at all
-        assert read_warnings_errors_report(path).warnings[0].message == _EM_DASH
+        assert read_artifact(path, WARNINGS_ERRORS_ARTIFACT).warnings[0].message == _EM_DASH
 
 
 class TestCsvSurfaceEncoding:
     def test_csv_is_utf8_on_disk(self, tmp_path):
         """The CSV surface carries the same text and must not depend on the locale either."""
         report = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[])
-        write_trade_history_report(report, tmp_path)
+        write_artifact(report, tmp_path, TRADE_HISTORY_ARTIFACT)
         path = write_trade_history_csv(report, tmp_path)
         path.read_bytes().decode('utf-8')
-        assert read_trade_history_report(tmp_path / TRADE_HISTORY_ARTIFACT) == report
+        assert read_artifact(tmp_path / TRADE_HISTORY_ARTIFACT.filename, TRADE_HISTORY_ARTIFACT) == report
         assert path.name == TRADE_HISTORY_CSV
 
 

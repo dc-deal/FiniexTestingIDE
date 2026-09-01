@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from python.data_management.index.tick_index_manager import TickIndexManager
+
 import pytest
 
 from python.configuration.import_config_manager import ImportConfigManager
@@ -140,15 +142,21 @@ def build_minimal_tick_json(
 
 def find_tick_parquets(target_dir: Path) -> List[Path]:
     """
-    Find tick Parquet files in target directory, excluding index files.
+    Find tick Parquet files in target directory, excluding the index.
+
+    The exclusion NAMES the index instead of testing for a leading dot. The dot was doing this
+    job implicitly, and it stopped the moment the index naming rule dropped it (#486) — an
+    implicit convention fails silently the first time the thing it depends on changes, and here
+    it turned the index file into the first "tick file" the metadata tests examined.
 
     Args:
         target_dir: Target directory to search
 
     Returns:
-        List of Parquet file paths (excluding hidden/index files)
+        List of tick Parquet file paths
     """
-    return [f for f in target_dir.glob('**/*.parquet') if not f.name.startswith('.')]
+    return [f for f in target_dir.glob('**/*.parquet')
+            if f.name != TickIndexManager.INDEX_FILE_PARQUET]
 
 
 def write_json_fixture(directory: Path, filename: str, data: Dict[str, Any]) -> Path:

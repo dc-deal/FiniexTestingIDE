@@ -21,6 +21,8 @@ import pyarrow.parquet as pq
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.store.abstract_store_index import store_index_filename
+from python.framework.types.store_types import StoreId
 
 vLog = get_global_logger()
 
@@ -36,7 +38,9 @@ class BarsIndexManager:
     """
 
     # Index file names
-    INDEX_FILE_PARQUET = '.parquet_bars_index.parquet'
+    # One naming rule for every index (#486): <store_id>_index.parquet. No dot —
+    # a store index is not a hidden file, and two of the seven used to be.
+    INDEX_FILE_PARQUET = store_index_filename(StoreId.BARS)
     INDEX_FILE_JSON_LEGACY = '.parquet_bars_index.json'
 
     def __init__(self, logger: AbstractLogger = vLog):

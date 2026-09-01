@@ -9,7 +9,7 @@ Follows DataCoverageReportCache pattern:
 - Lazy bar index loading
 
 Cache Structure:
-    .discovery_caches/extreme_moves_cache/
+    discovery_caches/extreme_moves_cache/
         mt5_EURUSD_extreme_moves.parquet
         mt5_USDJPY_extreme_moves.parquet
 """
@@ -34,8 +34,10 @@ from python.framework.types.discovery_types import (
     ExtremeMoveResult,
     MoveDirection,
 )
+from python.framework.types.store_types import DISCOVERY_CACHE_DIRNAME
 from python.framework.utils.config_fingerprint_utils import (
     generate_config_fingerprint,
+    read_cache_metadata,
     read_fingerprint_from_parquet,
 )
 
@@ -49,7 +51,7 @@ class DiscoveryCache:
     Auto-invalidates when source bar files change (mtime comparison).
     """
 
-    CACHE_PARENT_DIR = '.discovery_caches'
+    CACHE_PARENT_DIR = DISCOVERY_CACHE_DIRNAME
     CACHE_SUB_DIR = 'extreme_moves_cache'
     GRANULARITY = 'M5'
 
@@ -60,6 +62,7 @@ class DiscoveryCache:
         self.cache_dir = self.data_dir / self.CACHE_PARENT_DIR / self.CACHE_SUB_DIR
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._bar_index: Optional[BarsIndexManager] = None
+        self._live_fingerprint: Optional[str] = None
 
     def _get_bar_index(self) -> BarsIndexManager:
         """Lazy-load bar index."""
@@ -87,6 +90,21 @@ class DiscoveryCache:
         section = config.get('extreme_moves', {})
         return generate_config_fingerprint(section)
 
+    def _live_config_fingerprint(self) -> str:
+        """
+        The current config's fingerprint, computed once per instance.
+
+        Memoized because the loader reads its JSON twice per construction, and a validity check
+        runs once per cached entry — rebuilding it per entry is what turns a free comparison into
+        a doubling of the check's cost.
+
+        Returns:
+            SHA256 fingerprint of the live config section
+        """
+        if self._live_fingerprint is None:
+            self._live_fingerprint = self._get_current_config_fingerprint()
+        return self._live_fingerprint
+
     def get_config_fingerprint(self, broker_type: str, symbol: str) -> Optional[str]:
         """
         Get stored config fingerprint from cached extreme moves.
@@ -113,19 +131,19 @@ class DiscoveryCache:
         - Cache file doesn't exist
         - Source bar file is newer than cached mtime
         - Source bar file doesn't exist
+        - The config section that PRODUCED it has changed (#486 finding 57)
         """
         cache_path = self._get_cache_path(broker_type, symbol, discovery_type)
-        if not cache_path.exists():
+        metadata = read_cache_metadata(cache_path)
+        if metadata is None:
             return False
 
-        try:
-            pq_file = pq.ParquetFile(cache_path)
-            metadata = pq_file.schema_arrow.metadata or {}
-            cached_mtime = float(metadata.get(
-                b'source_bar_mtime', b'0').decode())
-        except Exception:
+        # The fingerprint was already being WRITTEN on every save and read by nobody. A config
+        # change moves no bar file, so mtime alone reports a stale cache as valid.
+        if metadata.get('config_fingerprint') != self._live_config_fingerprint():
             return False
 
+        cached_mtime = float(metadata.get('source_bar_mtime', '0'))
         current_mtime = self._get_source_bar_mtime(broker_type, symbol)
         if current_mtime is None:
             return False

@@ -41,7 +41,7 @@ All caches follow the same pattern:
 ### Directory Structure
 
 ```
-data/processed/.discovery_caches/
+data/processed/discovery_caches/
 ├── data_coverage_cache/            # DataCoverageReportCache
 │   └── {broker}_{symbol}.parquet
 ├── extreme_moves_cache/            # DiscoveryCache

@@ -526,14 +526,16 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
 # RUNTIME CACHE HELPERS  (module-level, used by KrakenConfigFetcher)
 # =============================================================================
 
-_RUNTIME_CACHE_BASE = Path('data/runtime/brokers')
+# Public because the store catalog (#486) registers this directory as a store and must name it
+# from its one definition rather than repeating the literal.
+RUNTIME_CACHE_BASE = Path('data/runtime/brokers')
 _CACHE_REFRESH_DAYS = 7
 _CACHE_STALE_WARN_DAYS = 30
 
 
 def _get_runtime_cache_path(broker_type: str) -> Path:
     """Return the runtime cache file path for a broker type."""
-    return _RUNTIME_CACHE_BASE / broker_type / f'{broker_type}_broker_config.json'
+    return RUNTIME_CACHE_BASE / broker_type / f'{broker_type}_broker_config.json'
 
 
 def get_runtime_cache_path(broker_type: str) -> Path:

@@ -15,20 +15,21 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
-from python.framework.reporting.io.aggregated_portfolio_report_io import (
-    write_aggregated_portfolio_report,
+from python.framework.reporting.io.artifact_specs import (
+    AGGREGATED_PORTFOLIO_ARTIFACT,
+    BROKER_ARTIFACT,
+    EXECUTION_STATS_ARTIFACT,
+    FEED_STABILITY_ARTIFACT,
+    ORDER_HISTORY_ARTIFACT,
+    PENDING_ORDERS_ARTIFACT,
+    PORTFOLIO_ARTIFACT,
+    RUN_SUMMARY_ARTIFACT,
+    SCENARIO_DETAILS_ARTIFACT,
+    SIGNAL_ARTIFACT,
+    TRADE_HISTORY_ARTIFACT,
+    WARNINGS_ERRORS_ARTIFACT,
 )
-from python.framework.reporting.io.broker_report_io import write_broker_report
-from python.framework.reporting.io.execution_stats_report_io import write_execution_stats_report
-from python.framework.reporting.io.feed_stability_report_io import write_feed_stability_report
-from python.framework.reporting.io.order_history_report_io import write_order_history_report
-from python.framework.reporting.io.pending_orders_report_io import write_pending_orders_report
-from python.framework.reporting.io.portfolio_report_io import write_portfolio_report
-from python.framework.reporting.io.run_summary_io import write_run_summary
-from python.framework.reporting.io.scenario_details_report_io import write_scenario_details_report
-from python.framework.reporting.io.signal_report_io import write_signal_report
-from python.framework.reporting.io.trade_history_report_io import write_trade_history_report
-from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
+from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.store.report_store import IO_SUBDIR, ReportStore
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import (
@@ -253,18 +254,18 @@ def _plant_run(root: Path, run_id: str = _RUN) -> Path:
 def client(tmp_path: Path):
     # Artifacts live in the run's io/ subfolder (#396 housekeeping)
     io_dir = _plant_run(tmp_path)
-    write_trade_history_report(_report(), io_dir)
-    write_order_history_report(_order_report(), io_dir)
-    write_portfolio_report(_portfolio_report(), io_dir)
-    write_execution_stats_report(_execution_stats_report(), io_dir)
-    write_pending_orders_report(_pending_orders_report(), io_dir)
-    write_scenario_details_report(_scenario_details_report(), io_dir)
-    write_run_summary(_run_summary(), io_dir)
-    write_broker_report(_broker_report(), io_dir)
-    write_signal_report(_signal_report(), io_dir)
-    write_feed_stability_report(_feed_stability_report(), io_dir)
-    write_warnings_errors_report(_warnings_errors_report(), io_dir)
-    write_aggregated_portfolio_report(_aggregated_portfolio_report(), io_dir)
+    write_artifact(_report(), io_dir, TRADE_HISTORY_ARTIFACT)
+    write_artifact(_order_report(), io_dir, ORDER_HISTORY_ARTIFACT)
+    write_artifact(_portfolio_report(), io_dir, PORTFOLIO_ARTIFACT)
+    write_artifact(_execution_stats_report(), io_dir, EXECUTION_STATS_ARTIFACT)
+    write_artifact(_pending_orders_report(), io_dir, PENDING_ORDERS_ARTIFACT)
+    write_artifact(_scenario_details_report(), io_dir, SCENARIO_DETAILS_ARTIFACT)
+    write_artifact(_run_summary(), io_dir, RUN_SUMMARY_ARTIFACT)
+    write_artifact(_broker_report(), io_dir, BROKER_ARTIFACT)
+    write_artifact(_signal_report(), io_dir, SIGNAL_ARTIFACT)
+    write_artifact(_feed_stability_report(), io_dir, FEED_STABILITY_ARTIFACT)
+    write_artifact(_warnings_errors_report(), io_dir, WARNINGS_ERRORS_ARTIFACT)
+    write_artifact(_aggregated_portfolio_report(), io_dir, AGGREGATED_PORTFOLIO_ARTIFACT)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
     with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(_index_path(tmp_path))):
         yield TestClient(create_app())

@@ -32,7 +32,7 @@ def _kpis_by_hash(rows):
 
 def _warm_then_cold(grid_spec, monkeypatch):
     """Run a sweep warm (mount reuse) then cold (off-switch); return (warm, cold) KPI maps."""
-    ledger = RunResultsLedger(AppConfigManager().get_run_results_path())
+    ledger = RunResultsLedger(AppConfigManager().get_run_ledger_path())
     sweep_warm = OptimizationRunner().run(grid_spec)  # mount reuse on (default)
 
     monkeypatch.setattr(
@@ -66,7 +66,7 @@ def test_data_level_abort_records_nothing(monkeypatch):
         warmup_phases=[], batch_warmup_time=0.0, data_identity={})
     monkeypatch.setattr(BatchOrchestrator, 'build_mount', lambda self: empty_mount)
 
-    ledger = RunResultsLedger(AppConfigManager().get_run_results_path())
+    ledger = RunResultsLedger(AppConfigManager().get_run_ledger_path())
     sweep_id = OptimizationRunner().run(MINI_GRID)
 
     assert ledger.read_rows(sweep_id=sweep_id) == [], 'aborted sweep must record no runs'

@@ -16,10 +16,10 @@ import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.reporting.io.portfolio_report_io import (
+from python.framework.reporting.io.artifact_specs import (
     PORTFOLIO_ARTIFACT,
-    read_portfolio_report,
 )
+from python.framework.reporting.io.report_artifact_io import read_artifact
 from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.types.log_level import LogLevel
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
@@ -115,7 +115,7 @@ class TestSentimentMockSession:
     def test_portfolio_report_carries_sentiment_source(self, sentiment_session):
         """The persisted portfolio report tags the session's sentiment feed (#438)."""
         _, run_dir = sentiment_session
-        report = read_portfolio_report(run_dir / IO_SUBDIR / PORTFOLIO_ARTIFACT)
+        report = read_artifact(run_dir / IO_SUBDIR / PORTFOLIO_ARTIFACT.filename, PORTFOLIO_ARTIFACT)
         assert report.units[0].sentiment_source == 'crypto_sentiment_mock', (
             f"Expected sentiment_source 'crypto_sentiment_mock', "
             f"got '{report.units[0].sentiment_source}'"

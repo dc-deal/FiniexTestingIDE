@@ -28,18 +28,22 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from pydantic import ValidationError
+
 from python.framework.exceptions.persistence_errors import StatePersistenceError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     StatePersistenceDefaults,
 )
-from python.framework.types.persistence_types import RestoreContext
+from python.framework.types.persistence_types import CarryOverEnvelope, RestoreContext
+from python.framework.types.store_types import StoreId
 from python.framework.utils.market_calendar import MarketCalendar
 from python.framework.utils.time_utils import parse_datetime
 
 # Envelope format version — guards the store's own file format (forward-compat).
 # The algo versions its own payload inside `snapshot` if it needs to.
-_SCHEMA_VERSION = 1
+# 2: the shared CarryOverEnvelope (#486) — adds store_id + written_by_run_id provenance.
+_SCHEMA_VERSION = 2
 
 
 class AlgoStateStore:
@@ -58,6 +62,9 @@ class AlgoStateStore:
         weekend_aware: True if the market closes on weekends (Forex) — staleness
             then counts trading days; False for 24/7 markets (crypto).
         logger: Session logger.
+        run_id: The writing session's run identity, recorded as PROVENANCE in the
+            envelope (#486). Never part of the key — a carry-over is keyed by the bot,
+            because a restart mints a new run id and the successor must still find it.
     """
 
     def __init__(
@@ -67,12 +74,14 @@ class AlgoStateStore:
         symbol: str,
         weekend_aware: bool,
         logger: AbstractLogger,
+        run_id: Optional[str] = None,
     ):
         self._config = config
         self._profile = profile
         self._symbol = symbol
         self._weekend_aware = weekend_aware
         self._logger = logger
+        self._run_id = run_id
 
         self._path = Path(config.path) / f'{self._sanitize(profile)}_{self._sanitize(symbol)}.json'
 
@@ -128,18 +137,20 @@ class AlgoStateStore:
         if not snapshot:
             return
 
-        envelope = {
-            'schema_version': _SCHEMA_VERSION,
-            'saved_at_utc': datetime.now(timezone.utc).isoformat(),
-            'profile': self._profile,
-            'symbol': self._symbol,
-            'snapshot': snapshot,
-        }
+        envelope = CarryOverEnvelope(
+            schema_version=_SCHEMA_VERSION,
+            store_id=StoreId.SESSION_STATE,
+            saved_at_utc=datetime.now(timezone.utc).isoformat(),
+            written_by_run_id=self._run_id,
+            profile=self._profile,
+            symbol=self._symbol,
+            snapshot=snapshot,
+        )
 
         # Serialize first — a non-serializable value must fail loudly here, not
         # leave a partial file. (The boot pre-flight catches it earlier in dev.)
         try:
-            payload = json.dumps(envelope, indent=2)
+            payload = json.dumps(envelope.model_dump(), indent=2)
         except TypeError as e:
             raise StatePersistenceError(
                 f'Algo snapshot is not JSON-serializable: {e}. '
@@ -169,29 +180,28 @@ class AlgoStateStore:
             return None
 
         try:
-            with open(self._path, 'r', encoding='utf-8') as f:
-                envelope = json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
+            envelope = CarryOverEnvelope.model_validate_json(self._path.read_bytes())
+        except (ValidationError, OSError) as e:
             return self._handle_corrupt(f'unreadable state file: {e}')
 
-        if not isinstance(envelope, dict) or envelope.get('schema_version') != _SCHEMA_VERSION:
+        if envelope.schema_version != _SCHEMA_VERSION:
             return self._handle_corrupt(
-                f"schema_version mismatch (expected {_SCHEMA_VERSION}, "
-                f"got {envelope.get('schema_version') if isinstance(envelope, dict) else 'n/a'})"
+                f'schema_version mismatch (expected {_SCHEMA_VERSION}, '
+                f'got {envelope.schema_version})'
             )
 
         # Identity mismatch is not corruption — the file simply is not this bot's
         # state. The filename is keyed, so this is a defensive check only.
-        if envelope.get('profile') != self._profile or envelope.get('symbol') != self._symbol:
+        if envelope.profile != self._profile or envelope.symbol != self._symbol:
             self._logger.warning(
-                f"⚠️ State file identity mismatch "
-                f"(file: {envelope.get('profile')}/{envelope.get('symbol')}, "
-                f"expected: {self._profile}/{self._symbol}) — ignoring, starting fresh"
+                f'⚠️ State file identity mismatch '
+                f'(file: {envelope.profile}/{envelope.symbol}, '
+                f'expected: {self._profile}/{self._symbol}) — ignoring, starting fresh'
             )
             return None
 
-        snapshot = envelope.get('snapshot', {})
-        saved_at = parse_datetime(envelope['saved_at_utc'])
+        snapshot = envelope.snapshot
+        saved_at = parse_datetime(envelope.saved_at_utc)
         now_utc = datetime.now(timezone.utc)
         age_seconds = max(0.0, (now_utc - saved_at).total_seconds())
         trading_days = self._trading_days_between(saved_at, now_utc)

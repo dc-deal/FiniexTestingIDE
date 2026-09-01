@@ -21,6 +21,8 @@ import pyarrow.parquet as pq
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.store.abstract_store_index import store_index_filename
+from python.framework.types.store_types import StoreId
 from python.framework.types.signal_data_types import SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn
 
 vLog = get_global_logger()
@@ -34,7 +36,9 @@ class SignalIndexManager:
     Memory: Nested dict {data_sentiment_type: {symbol: [entries]}}
     """
 
-    INDEX_FILE_PARQUET = '.signal_index.parquet'
+    # One naming rule for every index (#486): <store_id>_index.parquet. No dot —
+    # a store index is not a hidden file, and two of the seven used to be.
+    INDEX_FILE_PARQUET = store_index_filename(StoreId.SIGNALS)
 
     def __init__(self, logger: AbstractLogger = vLog, data_dir: Optional[str] = None):
         """

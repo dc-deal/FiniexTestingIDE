@@ -35,8 +35,11 @@ from python.framework.reporting.console.trade_history_summary import TradeHistor
 from python.framework.reporting.console.warnings_summary import WarningsSummary
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
-from python.framework.reporting.io.broker_report_io import write_broker_report
-from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
+from python.framework.reporting.io.artifact_specs import (
+    BROKER_ARTIFACT,
+    WARNINGS_ERRORS_ARTIFACT,
+)
+from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
 from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_provenance_builder import (
@@ -163,7 +166,7 @@ class AutotraderReportCoordinator:
         # avoids double-rendering the emergency cause, §35).
         warnings_errors_report = build_warnings_errors_report_from_session(
             self._run_id, result, name, self._config.symbol)
-        write_warnings_errors_report(warnings_errors_report, io_dir)
+        write_artifact(warnings_errors_report, io_dir, WARNINGS_ERRORS_ARTIFACT)
 
         # Broker configuration — the session's single broker + symbol (unified model;
         # same artifact + API shape as the sim runs). Skipped if the session never built
@@ -172,7 +175,7 @@ class AutotraderReportCoordinator:
         if self._broker_config is not None:
             broker_report = build_broker_report_from_session(
                 self._run_id, self._broker_config, self._config.symbol)
-            write_broker_report(broker_report, io_dir)
+            write_artifact(broker_report, io_dir, BROKER_ARTIFACT)
 
         # Every artifact of this session is on disk now — the index records WHICH, so a consumer
         # knows what it can fetch instead of discovering it by 404 (#475).

@@ -17,19 +17,24 @@ from typing import Any, Dict, Optional
 
 import pytest
 
+from python.framework.reporting.certificates.certificate_index import CertificateIndex
+from python.framework.store.store_registrations import CERTIFICATES_ROOT
+
 REPORTS_DIR = Path(__file__).parent / 'reports'
 CONFIGS_DIR = Path(__file__).resolve().parents[2] / 'configs'
 
 
 def _find_latest_report() -> Optional[Path]:
     """
-    The most recent certificate by filename timestamp.
+    The newest certificate of this family, through the shared certificate index (#486).
+
+    Each family used to carry its own lookup, and the four did not agree — one ordered by
+    the timestamp inside the document, another by the file name. One store, one answer.
 
     Returns:
-        Path to the latest certificate, or None when none exists
+        Path to the newest certificate, or None when none exists
     """
-    reports = sorted(REPORTS_DIR.glob('live_adapter_report_*.json'))
-    return reports[-1] if reports else None
+    return CertificateIndex(CERTIFICATES_ROOT).find_latest('live_adapters')
 
 
 def _load(path: Path) -> Dict[str, Any]:

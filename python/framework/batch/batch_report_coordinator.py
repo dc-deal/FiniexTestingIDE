@@ -51,16 +51,17 @@ from python.framework.reporting.console.worker_decision_breakdown_summary import
     WorkerDecisionBreakdownSummary,
 )
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
-from python.framework.reporting.io.aggregated_portfolio_report_io import (
-    write_aggregated_portfolio_report,
+from python.framework.reporting.io.artifact_specs import (
+    AGGREGATED_PORTFOLIO_ARTIFACT,
+    BLOCK_SPLITTING_ARTIFACT,
+    BROKER_ARTIFACT,
+    PROFILING_ARTIFACT,
+    ROBUSTNESS_ARTIFACT,
+    RUN_META_ARTIFACT,
+    SCENARIO_DETAILS_ARTIFACT,
+    WARNINGS_ERRORS_ARTIFACT,
 )
-from python.framework.reporting.io.block_splitting_report_io import write_block_splitting_report
-from python.framework.reporting.io.broker_report_io import write_broker_report
-from python.framework.reporting.io.profiling_report_io import write_profiling_report
-from python.framework.reporting.io.robustness_report_io import write_robustness_report
-from python.framework.reporting.io.run_meta_report_io import write_run_meta_report
-from python.framework.reporting.io.scenario_details_report_io import write_scenario_details_report
-from python.framework.reporting.io.warnings_errors_report_io import write_warnings_errors_report
+from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
 from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_provenance_builder import build_run_provenance
@@ -240,18 +241,18 @@ class BatchReportCoordinator:
 
         # === PERSIST the pipeline-specific sections (the shared 7 were written by the
         # shared coordinator above); same io/ subfolder (#396 housekeeping) ===
-        write_scenario_details_report(scenario_details_report, io_dir)
-        write_run_meta_report(run_meta_report, io_dir)
-        write_profiling_report(profiling_report, io_dir)
-        write_broker_report(broker_report, io_dir)
-        write_warnings_errors_report(warnings_errors_report, io_dir)
-        write_aggregated_portfolio_report(aggregated_portfolio_report, io_dir)
+        write_artifact(scenario_details_report, io_dir, SCENARIO_DETAILS_ARTIFACT)
+        write_artifact(run_meta_report, io_dir, RUN_META_ARTIFACT)
+        write_artifact(profiling_report, io_dir, PROFILING_ARTIFACT)
+        write_artifact(broker_report, io_dir, BROKER_ARTIFACT)
+        write_artifact(warnings_errors_report, io_dir, WARNINGS_ERRORS_ARTIFACT)
+        write_artifact(aggregated_portfolio_report, io_dir, AGGREGATED_PORTFOLIO_ARTIFACT)
         # Block-splitting artifact only when there is something to report (Profile Runs).
         if block_splitting_report.symbols:
-            write_block_splitting_report(block_splitting_report, io_dir)
+            write_artifact(block_splitting_report, io_dir, BLOCK_SPLITTING_ARTIFACT)
         # Robustness artifact only when robustness mode is enabled (#367).
         if robustness_report.enabled:
-            write_robustness_report(robustness_report, io_dir)
+            write_artifact(robustness_report, io_dir, ROBUSTNESS_ARTIFACT)
 
         # Every artifact of this run is on disk now — the index records WHICH, so a consumer
         # knows what it can fetch instead of discovering it by 404 (#475).

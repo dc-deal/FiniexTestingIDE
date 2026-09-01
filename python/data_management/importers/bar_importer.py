@@ -521,7 +521,7 @@ class BarImporter:
         """
         Update bar index and discovery caches after rendering.
 
-        Creates/updates .parquet_bars_index.parquet and rebuilds discovery caches.
+        Creates/updates bars_index.parquet and rebuilds discovery caches.
         Called by the caller after rendering is complete — not automatically.
         """
         vLog.info('\n📄 Updating bar index...')

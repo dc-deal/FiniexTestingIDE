@@ -28,7 +28,7 @@
             "simulation": "runs/simulation",
             "live": "runs/live"
         },
-        "run_index": "runs/index.parquet",
+        "run_index": "runs/runs_index.parquet",
         "scenario": {
             "enabled": true,
             "log_level": null,
@@ -40,7 +40,7 @@
         "user_algo_dirs": [
             "user_algos/"
         ],
-        "run_results": "data/run_results"
+        "run_ledger": "runs/ledger"
     },
     "history": {
         "bar_max_history": 1000,

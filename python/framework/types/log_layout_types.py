@@ -35,3 +35,8 @@ MOUNT_BUILD_LOG = 'mount_build.log'
 # contract like the names above: the store resolves artifacts through it, and the run index needs
 # it without importing the store.
 IO_SUBDIR = 'io'
+
+# The framework-wide log file, inside file_logging.global_log_dir. Named here for the same reason
+# as the rest: the logger writes it and the store catalog registers it, and two literals for one
+# file is how they drift apart.
+GLOBAL_LOG_FILE = 'global.log'

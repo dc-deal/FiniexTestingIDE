@@ -14,7 +14,10 @@ import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.reporting.io.broker_report_io import read_broker_report
+from python.framework.reporting.io.artifact_specs import (
+    BROKER_ARTIFACT,
+)
+from python.framework.reporting.io.report_artifact_io import read_artifact
 from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.log_level import LogLevel
@@ -120,7 +123,7 @@ class TestAutotraderMockSession:
         broker_artifact = run_dir / IO_SUBDIR / 'broker.json'
         assert broker_artifact.exists(), 'broker.json not written for live session'
 
-        report = read_broker_report(broker_artifact)
+        report = read_artifact(broker_artifact, BROKER_ARTIFACT)
         assert len(report.units) == 1
         assert report.units[0].symbols[0].symbol == 'BTCUSD'
 
