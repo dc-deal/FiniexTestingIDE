@@ -34,7 +34,8 @@ tests/autotrader/live_executor/
 ├── test_async_modify.py                ← Level 6: Async modify lifecycle regressions (#318)
 ├── test_async_cancel.py                ← Level 7: Async cancel lifecycle regressions (#318)
 ├── test_broker_trade_records.py        ← Level 8: BrokerTrade aggregation + async trades_query (#326)
-└── test_polling_cadence.py             ← Level 9: Heartbeat, async polling, throttle, in-flight (#320)
+├── test_polling_cadence.py             ← Level 9: Heartbeat, async polling, throttle, in-flight (#320)
+└── test_order_attribution.py           ← Level 10: adopting the venue's reference for an order of ours (#355)
 ```
 
 **Why this pattern?**
@@ -667,3 +668,29 @@ Validates the fourth audit channel: trade-channel tick mid-price captured at sub
 | `test_slippage_always_marked_structural` | Every SLIPPAGE record carries `is_structural=True` regardless of threshold breach (sub + over case) |
 | `test_slippage_zero_when_tick_matches_fill` | Exact match → `relative_delta_pct=0`, counter stays 0, record still appended as evidence-of-compare |
 | `test_slippage_captured_on_close_order` | `PendingOrderAction.CLOSE` pending with submission_tick set → SLIPPAGE record produced (action-agnostic compare verification — partial-close slippage path) |
+
+---
+
+## test_order_attribution.py (5 Tests) — #355 Phase 1
+
+`apply_order_attributions()` is the write half of the client-order-id join. The Reconciler
+matches a resting broker order to a local pending that lost its submit answer (#473) and
+never writes; the executor owns that state, so the venue's reference is restored here.
+
+The reference is not a correction of what we believe — it is the name the venue gave an
+order we already know we placed. That is why an **already set** reference is never
+overwritten: overwriting one would be a correction, and correction is #349.
+
+What makes it matter is the poll path. A pending without a `broker_ref` is skipped by
+`_process_active_orders` on every pass, and nothing times it out — `check_timeouts` only
+walks the processor's own pending dict, while a resting LIMIT order lives in
+`_active_limit_orders` and has no timeout at all. `has_pending_orders()` counts it
+regardless, so an algo waiting for its orders to settle waits for the rest of the session.
+
+| Test | Description |
+|---|---|
+| `test_missing_reference_is_restored` | Ref-less pending + matching broker order → `broker_ref` set, `in_flight_operation` back to `NONE` |
+| `test_an_existing_reference_is_never_overwritten` | A settled `broker_ref` survives an attribution naming a different reference (#349 boundary) |
+| `test_empty_input_is_a_no_op` | No attributions → nothing touched |
+| `test_a_reference_less_pending_is_never_polled_and_never_expires` | The defect itself: after a heartbeat the order is neither polled (`in_flight_query` False) nor expired, and still blocks `has_pending_orders()` |
+| `test_after_attribution_the_order_is_polled_again` | The cure: with the reference restored, the next heartbeat schedules a query |

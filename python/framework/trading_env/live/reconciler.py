@@ -19,11 +19,20 @@ Divergence vocabulary:
     ghost  — broker has it, we lack it locally
     orphan — we have it locally, broker lacks it
     stale  — matched by broker_ref but a field diverges
+
+Since #355 the order diff joins on the CLIENT order id first, so a resting order we
+placed is no longer an anonymous ghost:
+    attributed      — our key, and a local pending is still waiting for its reference
+    abandoned       — our key, this session, nothing local left
+    foreign_session — our key shape, another session (boot adoption is #355 Phase 2)
+    unconfirmed     — local pending, submit never answered, not at the broker either
+The write that completes an attribution belongs to the executor; this class only ever
+reads (ALERT_ONLY).
 """
 
 import time
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.config_types.autotrader_defaults_config_types import (
@@ -38,7 +47,11 @@ from python.framework.types.live_types.reconciliation_types import (
     ReconciliationResult,
 )
 from python.framework.types.portfolio_types.portfolio_types import Position
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
+from python.framework.types.trading_env_types.latency_simulator_types import (
+    PendingOperation,
+    PendingOrder,
+)
+from python.framework.utils.run_id_utils import parse_client_order_id
 
 if TYPE_CHECKING:
     from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
@@ -98,6 +111,11 @@ class Reconciler:
         self._reconcile_count: int = 0
         self._divergence_count: int = 0          # cumulative (session total, for the summary)
         self._last_divergence_count: int = 0     # current cycle (for the SESSION panel)
+        self._attributed_count: int = 0          # orders reclaimed by client order id (#355)
+        self._last_unaccounted_count: int = 0    # current cycle: ours, but not accounted for
+        # Orders already reported as unconfirmed — the pot gets each one once, not once
+        # per cycle (#355). Never cleared: a second report says nothing the first did not.
+        self._reported_unconfirmed: Set[str] = set()
         self._last_clean: bool = True
         self._state_since: float = time.monotonic()  # when the current clean/divergent state began
 
@@ -215,11 +233,17 @@ class Reconciler:
         local_orders: List[PendingOrder],
     ) -> ReconciliationResult:
         """
-        Compute the divergence buckets. Match by broker_ref.
+        Compute the divergence buckets. Match by client order id, then by broker_ref.
 
-        In-flight (broker_ref=None) and dry-run (DRYRUN-*) local orders are
-        excluded — they are mid-roundtrip / synthetic and would otherwise read
-        as false orphans (mirrors the DriftAuditor's DRYRUN skip).
+        The client order id joins FIRST because it is OURS (#355): it still answers
+        "whose order is this" when the venue's own reference never reached us, which is
+        exactly the state a submit leaves behind when its answer is lost (#473).
+        broker_ref remains the join for everything already confirmed.
+
+        Dry-run (DRYRUN-*) local orders stay excluded, and a local order still inside its
+        normal submit roundtrip (broker_ref=None, no in-flight submit marker) is excluded
+        too — both would otherwise read as false orphans (mirrors the DriftAuditor's
+        DRYRUN skip).
 
         Args:
             broker_positions: Broker truth positions (MARGIN; [] on SPOT)
@@ -231,19 +255,53 @@ class Reconciler:
             ReconciliationResult with all buckets + is_clean
         """
         # --- Orders (world-agnostic) ---
+        session_key = self._executor.get_session_key()
+
         local_orders_by_ref: Dict[str, PendingOrder] = {
             o.broker_ref: o
             for o in local_orders
             if self._is_reconcilable_ref(o.broker_ref)
         }
+        # Only the ref-LESS pendings are indexed by client key: one already matched by
+        # ref must not be able to fill a second bucket.
+        local_orders_by_ckey: Dict[str, PendingOrder] = {}
+        for o in local_orders:
+            if self._is_reconcilable_ref(o.broker_ref):
+                continue
+            ckey = self._executor.build_client_order_id(o.pending_order_id)
+            if ckey:
+                local_orders_by_ckey[ckey] = o
+
         broker_orders_by_ref: Dict[str, BrokerOrder] = {
             o.broker_ref: o for o in broker_orders if o.broker_ref
         }
+        broker_orders_by_ckey: Dict[str, BrokerOrder] = {
+            o.client_order_id: o for o in broker_orders if o.client_order_id
+        }
 
-        ghost_orders = [
-            bo for ref, bo in broker_orders_by_ref.items()
-            if ref not in local_orders_by_ref
+        attributed_orders: List[Tuple[PendingOrder, BrokerOrder]] = [
+            (lo, broker_orders_by_ckey[ckey])
+            for ckey, lo in local_orders_by_ckey.items()
+            if ckey in broker_orders_by_ckey
         ]
+        attributed_refs = {bo.broker_ref for _, bo in attributed_orders}
+
+        # A broker order neither join found is UNCLAIMED, and what that means is decided
+        # by the key it carries rather than by its absence from our books.
+        ghost_orders: List[BrokerOrder] = []
+        abandoned_orders: List[BrokerOrder] = []
+        foreign_session_orders: List[BrokerOrder] = []
+        for ref, bo in broker_orders_by_ref.items():
+            if ref in local_orders_by_ref or ref in attributed_refs:
+                continue
+            parsed = parse_client_order_id(bo.client_order_id)
+            if parsed is None:
+                ghost_orders.append(bo)
+            elif parsed[0] == session_key:
+                abandoned_orders.append(bo)
+            else:
+                foreign_session_orders.append(bo)
+
         orphan_orders = [
             lo for ref, lo in local_orders_by_ref.items()
             if ref not in broker_orders_by_ref
@@ -252,6 +310,18 @@ class Reconciler:
             (lo, broker_orders_by_ref[ref])
             for ref, lo in local_orders_by_ref.items()
             if ref in broker_orders_by_ref and self._order_is_stale(lo, broker_orders_by_ref[ref])
+        ]
+
+        # A pending whose submit was never answered AND which the venue does not show:
+        # it blocks has_pending_orders() and nothing times it out, because the resting-order
+        # list has no timeout at all. PENDING_SUBMIT is the precise marker — it is written
+        # only where an unresolved submit is kept (#473), never on the normal roundtrip.
+        attributed_ids = {lo.pending_order_id for lo, _ in attributed_orders}
+        unconfirmed_orders = [
+            lo for lo in local_orders
+            if not lo.broker_ref
+            and lo.execution_state.in_flight_operation is PendingOperation.PENDING_SUBMIT
+            and lo.pending_order_id not in attributed_ids
         ]
 
         # --- Positions (MARGIN only; both lists empty on SPOT) ---
@@ -283,9 +353,12 @@ class Reconciler:
 
         # partial_fills do NOT affect is_clean — a partial fill is a normal
         # market outcome (observed, not a divergence; #349 delta-applies it).
+        # attributed_orders do not either: a reclaimed reference is a repair, and a cycle
+        # that repairs something is not the same thing as a cycle that found damage.
         is_clean = not (
             ghost_positions or orphan_positions or stale_positions
             or ghost_orders or orphan_orders or stale_orders
+            or abandoned_orders or foreign_session_orders or unconfirmed_orders
         )
 
         return ReconciliationResult(
@@ -296,6 +369,10 @@ class Reconciler:
             ghost_orders=ghost_orders,
             orphan_orders=orphan_orders,
             stale_orders=stale_orders,
+            attributed_orders=attributed_orders,
+            abandoned_orders=abandoned_orders,
+            foreign_session_orders=foreign_session_orders,
+            unconfirmed_orders=unconfirmed_orders,
             partial_fills=partial_fills,
             is_clean=is_clean,
         )
@@ -383,11 +460,25 @@ class Reconciler:
             self._state_since = time.monotonic()
         self._last_clean = result.is_clean
 
+        # An attribution is reported whether or not the cycle is otherwise clean — it is
+        # the one outcome here that CHANGED something, so it must not hide behind is_clean.
+        self._report_attributions(result)
+        self._report_unconfirmed(result)
+
+        # The panel's own headline for "ours, and we cannot account for it" — a snapshot
+        # like the divergence count below, so it clears when the state clears.
+        self._last_unaccounted_count = (
+            len(result.abandoned_orders) + len(result.foreign_session_orders)
+            + len(result.unconfirmed_orders)
+        )
+
         # Current-cycle divergence count (snapshot) — drives the SESSION panel, so
         # it resets to 0 when a divergence is resolved (panel returns to ● ok).
         n = (
             len(result.ghost_positions) + len(result.orphan_positions) + len(result.stale_positions)
             + len(result.ghost_orders) + len(result.orphan_orders) + len(result.stale_orders)
+            + len(result.abandoned_orders) + len(result.foreign_session_orders)
+            + len(result.unconfirmed_orders)
         )
         self._last_divergence_count = n
         if result.is_clean:
@@ -398,10 +489,57 @@ class Reconciler:
             f'[RECONCILE] {n} divergence(s) detected (ALERT_ONLY)\n'
             f'   orders     ghost={len(result.ghost_orders)} '
             f'orphan={len(result.orphan_orders)} stale={len(result.stale_orders)}\n'
+            f'   ours       abandoned={len(result.abandoned_orders)} '
+            f'foreign_session={len(result.foreign_session_orders)} '
+            f'unconfirmed={len(result.unconfirmed_orders)}\n'
             f'   positions  ghost={len(result.ghost_positions)} '
             f'orphan={len(result.orphan_positions)} stale={len(result.stale_positions)}\n'
             f'   partial_fills={len(result.partial_fills)} (observed, not a divergence)'
         )
+
+    def _report_attributions(self, result: ReconciliationResult) -> None:
+        """
+        Name every order the client key reclaimed from broker truth (#355).
+
+        The executor performs the write (the Reconciler stays read-only); this is the
+        record that it happened, and it names both keys so the operator can follow the
+        order from our books to the venue's.
+
+        Args:
+            result: The diff outcome for this cycle
+        """
+        for pending, broker_order in result.attributed_orders:
+            self._attributed_count += 1
+            self._logger.info(
+                f'🔍 reconcile #{self._reconcile_count}: attributed — order '
+                f'{pending.pending_order_id} (client_order_id={broker_order.client_order_id}) '
+                f'is resting at the broker as {broker_order.broker_ref}. Its submit answer '
+                f'was lost; the reference is restored and polling resumes.'
+            )
+
+    def _report_unconfirmed(self, result: ReconciliationResult) -> None:
+        """
+        Report a pending that was never confirmed and is not at the broker either.
+
+        Edge-triggered per order: a cycle-by-cycle repeat would fill the session error pot
+        with one fact. It is an ERROR rather than a warning on purpose (§35) — such an
+        order keeps has_pending_orders() true, so an algo that waits on it stops trading
+        for the rest of the session, and a session in that state must not grade green.
+
+        Args:
+            result: The diff outcome for this cycle
+        """
+        for pending in result.unconfirmed_orders:
+            if pending.pending_order_id in self._reported_unconfirmed:
+                continue
+            self._reported_unconfirmed.add(pending.pending_order_id)
+            self._logger.error(
+                f'❌ Order {pending.pending_order_id} was submitted but never confirmed, '
+                f'and the broker does not show it either. It may still have been accepted, '
+                f'so it is NOT dropped — but it keeps has_pending_orders() true, which '
+                f'blocks any algo waiting on it. Resolving it needs a targeted order-status '
+                f'query (#487); until then, check the account by hand.'
+            )
 
     # ============================================
     # Flat-preflight (consumed by the Field Study #332)
@@ -477,7 +615,8 @@ class Reconciler:
 
         Returns:
             reconcile_enabled / divergences (current) / total_divergences (cumulative)
-            / clean / count / state_age_s / next_in_s
+            / clean / count / state_age_s / next_in_s / skipped (+reason) / attributed
+            (session total) / unaccounted (current cycle)
         """
         now = time.monotonic()
         age = now - self._last_reconcile_time
@@ -494,6 +633,11 @@ class Reconciler:
             # face of "still checking".
             'reconcile_skipped': self._skipped_count,
             'reconcile_skipped_reason': self._last_skipped_reason,
+            # #355: session totals for the two order states an operator can act on — an
+            # order we placed and stopped tracking, and one we cannot account for at all.
+            # Attributions are a repair and belong in the log, not on the panel.
+            'reconcile_attributed': self._attributed_count,
+            'reconcile_unaccounted': self._last_unaccounted_count,
         }
 
     def get_skipped_count(self) -> int:
@@ -509,7 +653,12 @@ class Reconciler:
         """Emit a final one-line reconciliation summary to the session log."""
         skipped = (f' | {self._skipped_count} skipped (broker unreachable)'
                    if self._skipped_count else '')
+        reclaimed = (f' | {self._attributed_count} order(s) reclaimed by client order id'
+                     if self._attributed_count else '')
+        unconfirmed = (f' | {len(self._reported_unconfirmed)} order(s) left unaccounted'
+                       if self._reported_unconfirmed else '')
         self._logger.info(
             f'🔍 Reconciliation final: {self._reconcile_count} cycles | '
-            f'{self._divergence_count} total divergence(s) (ALERT_ONLY){skipped}'
+            f'{self._divergence_count} total divergence(s) (ALERT_ONLY)'
+            f'{skipped}{reclaimed}{unconfirmed}'
         )

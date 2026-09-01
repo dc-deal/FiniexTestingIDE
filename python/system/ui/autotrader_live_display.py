@@ -435,9 +435,15 @@ class AutoTraderLiveDisplay:
                 )
             else:
                 age = self._fmt_duration(stats.reconcile_state_age_s)
+                # #355: an order that is OURS but unaccounted for is the actionable
+                # subset, so it gets its own marker rather than being one of N.
+                unaccounted = (
+                    f'[red] · {stats.reconcile_unaccounted} ours, unaccounted[/red]'
+                    if stats.reconcile_unaccounted else ''
+                )
                 lines.append(
-                    f'Reconcile: [yellow]⚠️ {stats.reconcile_divergences} divergence(s)[/yellow]  '
-                    f'[dim]for {age} · next ≤{next_in:.0f}s[/dim]'
+                    f'Reconcile: [yellow]⚠️ {stats.reconcile_divergences} divergence(s)[/yellow]'
+                    f'{unaccounted}  [dim]for {age} · next ≤{next_in:.0f}s[/dim]'
                 )
 
         return Panel('\n'.join(lines), title='[bold]SESSION[/bold]', box=box.ROUNDED)

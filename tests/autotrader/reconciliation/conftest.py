@@ -27,11 +27,18 @@ from python.framework.types.live_types.live_execution_types import BrokerOrderSt
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.trading_env_types.latency_simulator_types import (
+    PendingOperation,
     PendingOrder,
+    PendingOrderExecutionState,
     PendingOrderFills,
 )
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 from python.framework.utils.connection_ladder import ConnectionLadder
+from python.framework.utils.run_id_utils import build_client_order_id
+
+# This session's discriminator in the reconciliation tests. Any four characters do —
+# what the tests exercise is the difference between THIS one and another (#355).
+_TEST_SESSION_KEY = '1641'
 
 # =============================================================================
 # Builders
@@ -46,8 +53,14 @@ def make_pending(
     limit_price: float = 2000.0,
     order_type: OrderType = OrderType.LIMIT,
     cumulative_filled_lots: float = 0.0,
+    in_flight_operation: PendingOperation = PendingOperation.NONE,
 ) -> PendingOrder:
-    """Build a local resting PendingOrder (what get_active_orders returns)."""
+    """
+    Build a local resting PendingOrder (what get_active_orders returns).
+
+    in_flight_operation=PENDING_SUBMIT models the state #473 leaves behind when a submit
+    answer is lost: the order is kept, its broker_ref is not.
+    """
     return PendingOrder(
         pending_order_id=order_id,
         order_type=order_type,
@@ -57,6 +70,7 @@ def make_pending(
         lots=lots,
         order_kwargs={'limit_price': limit_price},
         fills=PendingOrderFills(cumulative_filled_lots=cumulative_filled_lots),
+        execution_state=PendingOrderExecutionState(in_flight_operation=in_flight_operation),
     )
 
 
@@ -68,8 +82,14 @@ def make_broker_order(
     price: float = 2000.0,
     order_type: OrderType = OrderType.LIMIT,
     status: BrokerOrderStatus = BrokerOrderStatus.PENDING,
+    client_order_id: Optional[str] = None,
 ) -> BrokerOrder:
-    """Build a broker-truth BrokerOrder."""
+    """
+    Build a broker-truth BrokerOrder.
+
+    client_order_id is what the venue echoes back (#473). None models both a venue that
+    reports no key and an order somebody else placed.
+    """
     return BrokerOrder(
         broker_ref=broker_ref,
         symbol=symbol,
@@ -78,6 +98,7 @@ def make_broker_order(
         lots=lots,
         status=status,
         price=price,
+        client_order_id=client_order_id,
     )
 
 
@@ -124,7 +145,13 @@ def make_broker_position(
 # =============================================================================
 
 class FakeExecutor:
-    """Minimal executor surface the Reconciler depends on."""
+    """
+    Minimal executor surface the Reconciler depends on.
+
+    The client-order-id half (#355) uses the REAL key builder rather than a copy of the
+    format — a fake that spelled the shape out a second time would keep passing after the
+    real one changed.
+    """
 
     def __init__(
         self,
@@ -132,11 +159,13 @@ class FakeExecutor:
         active_orders: Optional[List[PendingOrder]] = None,
         positions: Optional[List[Position]] = None,
         rest_ladder: Optional[ConnectionLadder] = None,
+        session_key: str = _TEST_SESSION_KEY,
     ):
         self.broker = SimpleNamespace(adapter=adapter)
         self._positions = list(positions or [])
         self.portfolio = SimpleNamespace(get_open_positions=lambda: list(self._positions))
         self._active_orders = list(active_orders or [])
+        self._session_key = session_key
         self._rest_ladder = rest_ladder or ConnectionLadder(
             name='broker_rest',
             policy=ConnectionPolicy(),
@@ -149,6 +178,12 @@ class FakeExecutor:
 
     def get_rest_ladder(self) -> ConnectionLadder:
         return self._rest_ladder
+
+    def get_session_key(self) -> str:
+        return self._session_key
+
+    def build_client_order_id(self, order_id: str) -> Optional[str]:
+        return build_client_order_id(self._session_key, order_id)
 
 
 @pytest.fixture
@@ -169,7 +204,8 @@ def make_reconciler(logger):
     Factory: build a Reconciler over a FakeExecutor with seeded local state.
 
     Returns:
-        Callable(adapter, active_orders, positions, trading_model, config, symbol)
+        Callable(adapter, active_orders, positions, trading_model, config, symbol,
+        session_key)
     """
     def _make(
         adapter: MockBrokerAdapter,
@@ -178,8 +214,9 @@ def make_reconciler(logger):
         trading_model: TradingModel = TradingModel.SPOT,
         config: Optional[ReconciliationDefaults] = None,
         symbol: str = 'ETHUSD',
+        session_key: str = _TEST_SESSION_KEY,
     ) -> Reconciler:
-        executor = FakeExecutor(adapter, active_orders, positions)
+        executor = FakeExecutor(adapter, active_orders, positions, session_key=session_key)
         return Reconciler(
             executor=executor,
             config=config or ReconciliationDefaults(enabled=True),

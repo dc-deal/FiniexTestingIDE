@@ -243,6 +243,30 @@ The algo needs no new code: `has_in_flight_operation()` stays true and the exist
 discipline pattern blocks. Full policy:
 [external_connection_policy.md](external_connection_policy.md).
 
+### How the state ENDS (#355 Phase 1)
+
+An UNRESOLVED order is kept on purpose, which makes the exit from that state a question
+worth answering explicitly. It has three exits, and the second one is why this matters:
+
+1. **The venue does hold it.** The reconcile truth pull joins on the client order id, finds
+   the resting order, and the executor restores the `broker_ref`
+   (`apply_order_attributions`). World 2 polling resumes and the order behaves normally
+   again.
+2. **The venue does not show it — and that resolves nothing.** It may never have been
+   accepted, or it may have filled. The order is therefore neither dropped nor confirmed,
+   and it stays in its world. **A World-2 pending has no timeout at all** (`check_timeouts`
+   walks only the latency queue's own dict), so nothing removes it, `_process_active_orders`
+   skips it for want of a reference, and `has_pending_orders()` keeps counting it — an algo
+   that waits for its orders to settle stops trading. That is why the Reconciler reports
+   each such order ONCE into the session error pot: the session must not grade green.
+   Deciding it needs the closed-order / trades channel (#487).
+3. **A MARKET order in the latency queue times out** after `order_timeout_seconds` and is
+   recorded as `BROKER_UNREACHABLE` — blaming the transport, not the venue.
+
+The asymmetry between 2 and 3 is real and deliberate for now: the timeout (30 s) is shorter
+than the truth-pull cadence (≥60 s), so a latency-queue order is usually gone before the
+pull could attribute it. Asking early, on the unresolved event itself, is #487.
+
 ---
 
 ## Why Separate Modify Commands

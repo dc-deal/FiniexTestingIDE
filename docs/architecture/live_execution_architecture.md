@@ -230,6 +230,19 @@ Live state stays correct through two distinct layers — do not conflate them:
 
 **Layer 2 — Reconciler (trust net).** The Reconciler (#151) pulls broker truth (`get_broker_orders` / `get_broker_balances` / `get_broker_positions`) on a separate hybrid cadence (every N ticks OR M seconds) and diffs it against the shadow state. It does **not** learn the fill first — it verifies after the fact and reports divergence (`ghost` / `orphan` / `stale`). Today it runs **ALERT_ONLY** (detect + log + SESSION panel), validated on real money.
 
+**Whose order is it? (#355 Phase 1.)** The order diff joins on the **client order id** before `broker_ref`, because our own key still answers that question when the venue's reference never arrived (#473). A resting broker order therefore splits four ways instead of being an anonymous ghost:
+
+| Bucket | Meaning | Divergence? |
+|---|---|---|
+| `attributed` | our key, and a local pending is still waiting for its reference — the lost submit answer | no, a repair |
+| `abandoned` | our key, this session, nothing local left | yes |
+| `foreign_session` | our key shape, another session's discriminator — an earlier session of this bot | yes (boot adoption is #355 Phase 2) |
+| `ghost` | no key at all — somebody else's order, or one placed by hand | yes, unchanged |
+
+Plus one local bucket: `unconfirmed` — a pending whose submit was never answered and which the broker does not show either. It is never dropped (the venue may still hold it) but it keeps `has_pending_orders()` true, so it is reported once into the session error pot; resolving it needs the targeted status query in #487.
+
+**The Reconciler still writes nothing.** An attribution is applied by the executor (`apply_order_attributions`), called by the tick loop with what the cycle matched, and it only ever fills a `broker_ref` that is `None` — overwriting a settled one would be correction, which is #349.
+
 **Detection source is transparent to the algo.** Poll today (#320); WebSocket push (#331) becomes the V1.4 primary, with polling demoted to a resilience fallback. Both feed the same executor hooks and the same #348 channel, so the decision logic reacts identically regardless of source.
 
 **Correction is V1.4 (#349).** `AUTO_CORRECT` (stale-field + partial-fill delta-apply) and `HALT_TRADING` (with operator-confirm-to-resume). Ghost/orphan positions always escalate to HALT — adopting an unknown position with a synthetic entry price corrupts P&L permanently.

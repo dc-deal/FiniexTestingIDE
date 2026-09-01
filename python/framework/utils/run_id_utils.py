@@ -5,7 +5,7 @@ Minting the one identity a run is known by.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 from uuid import uuid4
 
 # Length of the random half. Eight hex characters is the form already used for order-guard ids
@@ -17,6 +17,10 @@ _SUFFIX_LEN: int = 8
 # fit beside it — and the requirement is uniqueness across the venue's OPEN orders, not
 # across all time.
 _SESSION_KEY_LEN: int = 4
+
+# Leading character of a client order id, so the key is recognizable as ours at a glance
+# in the venue's own order list — and so a parse can refuse a string that is not one.
+_CL_ORD_ID_PREFIX: str = 'p'
 
 # The timestamp half. Fixed width and zero-padded on purpose: `ReportStore.list_runs` sorts run ids
 # lexicographically descending and the sweep ranking tie-breaks on them, so "newest first" and
@@ -76,3 +80,54 @@ def session_key_from_run_id(run_id: str) -> str:
     """
     parts = run_id.rsplit('_', 1)
     return parts[-1][:_SESSION_KEY_LEN] if len(parts) == 2 else ''
+
+
+def build_client_order_id(session_key: str, order_id: str) -> Optional[str]:
+    """
+    The key a live session sends to the venue for one internal order id.
+
+    Two jobs. It survives a restart without colliding: the counter inside `order_id`
+    restarts at 1 with the process, so an order still resting at the venue from the
+    previous session would otherwise be matched by a brand-new one. And it is short —
+    Kraken allows 18 ASCII characters, which the readable internal id does not fit
+    alongside a discriminator, so the readable form stays in our own books.
+
+    Args:
+        session_key: This session's discriminator, from session_key_from_run_id
+        order_id: Internal order id, e.g. 'pos_btcusd_47'
+
+    Returns:
+        The wire key, e.g. 'p1641_47', or None when no session key is configured
+    """
+    if not session_key:
+        return None
+    counter = order_id.rsplit('_', 1)[-1]
+    return f'{_CL_ORD_ID_PREFIX}{session_key}_{counter}'
+
+
+def parse_client_order_id(client_order_id: Optional[str]) -> Optional[Tuple[str, str]]:
+    """
+    Split a wire key back into the session that sent it and the order's counter.
+
+    The reader half of build_client_order_id, and the reason the shape lives here rather
+    than at the sending site: on a truth pull the venue echoes the key back, and the
+    session half is what tells THIS session's order apart from one an earlier session of
+    the same bot left resting (#355).
+
+    Deliberately strict — the discriminator must have the exact minted width and the
+    counter must be digits. A client order id is free-format at the venue, so anything
+    looser would claim another client's key as ours, which is the one mistake that turns
+    a foreign order into an adoption candidate.
+
+    Args:
+        client_order_id: The key the venue echoed back, e.g. 'p1641_47'
+
+    Returns:
+        (session_key, counter), or None when the string is not one of our keys
+    """
+    if not client_order_id or not client_order_id.startswith(_CL_ORD_ID_PREFIX):
+        return None
+    session_key, _, counter = client_order_id[len(_CL_ORD_ID_PREFIX):].partition('_')
+    if len(session_key) != _SESSION_KEY_LEN or not counter.isdigit():
+        return None
+    return session_key, counter

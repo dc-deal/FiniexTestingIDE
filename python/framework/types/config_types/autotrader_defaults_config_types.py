@@ -83,9 +83,9 @@ class ReconciliationDefaults(BaseModel):
 
     Detects divergence between local shadow state and broker truth. ALERT_ONLY
     only in V1.3 (detect + log + SESSION counter, no mutation); AUTO_CORRECT /
-    HALT_TRADING land in #349. Live-only; default disabled.
+    HALT_TRADING land in #349. Live-only — mock adapters auto-disable in the loader.
     """
-    enabled: bool = False
+    enabled: bool = True
     mode: Literal['alert_only', 'auto_correct', 'halt_trading'] = 'alert_only'
     interval_ticks: int = 100          # reconcile every N ticks ...
     min_interval_seconds: float = 60.0  # ... OR every M wall-clock seconds (hybrid)

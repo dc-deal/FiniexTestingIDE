@@ -65,8 +65,25 @@ submit → transport fault
       ├─ the PendingOrder STAYS in the tracker
       ├─ in_flight_operation = PENDING_SUBMIT
       ├─ on_order_rejected does NOT fire   (the venue never spoke)
-      └─ the query path resolves it, keyed by our own client order id
+      └─ the truth pull resolves it, keyed by our own client order id
 ```
+
+**Who does the asking, and what is still missing (#355 Phase 1 / #487).** The reconcile
+truth pull now joins on the client order id before `broker_ref`, so a resting order
+carrying THIS session's key is matched to the pending that lost its answer, and the
+executor restores the reference — the order returns to the poll path. Two limits are worth
+knowing rather than rediscovering:
+
+- **The pull is cadenced, the timeout is not aligned with it.** A MARKET order's in-flight
+  window is bounded by `order_timeout_seconds` (30 s) while the pull runs at
+  `reconciliation.min_interval_seconds` (≥60 s), so an unresolved MARKET order is usually
+  already timed out when the next pull arrives. Asking EARLY — a targeted order-status
+  request fired by the unresolved event itself, plus a bounded in-flight window — is #487.
+- **Absence at the venue does not resolve anything.** An order missing from the open-order
+  list may never have been accepted, or may have filled. The pull cannot tell those apart,
+  so such a pending is neither dropped nor confirmed: it is reported once into the session
+  error pot naming the order, because it keeps `has_pending_orders()` true. Deciding it
+  needs the closed-order / trades channel, which is again #487.
 
 The algo needs no new code: `has_in_flight_operation()` stays true and its existing
 discipline pattern blocks. What it gains is that "the venue refused this order" and "we
@@ -94,6 +111,13 @@ must not change it mid-session.
 An order the venue reports with *no* key of ours is not a defect: it is somebody else's
 order, and that absence is the fact that tells it apart. #349 turns it into an EXTERNAL
 order rather than a ghost.
+
+The key is read as strictly as it is written: the discriminator must have the exact minted
+width and the counter must be digits (`parse_client_order_id`). A client order id is
+free-format at the venue, so a looser parse would claim another client's order as one of
+ours — and since the session half of the key is what separates "my own lost answer" from
+"an earlier session of this bot" (the #355 adoption candidate), a wrong claim there is the
+one classification that must not be guessed.
 
 ---
 

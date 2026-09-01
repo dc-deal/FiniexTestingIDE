@@ -30,7 +30,7 @@ Feature gating: MARKET + LIMIT orders supported. Limit order modification is bro
 
 import time
 from datetime import datetime, timezone
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
@@ -44,6 +44,7 @@ from python.framework.types.live_types.live_execution_types import (
     TimeoutConfig,
 )
 from python.framework.types.live_types.live_request_types import QueryResponse, TradesQueryResponse
+from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     EntryType,
@@ -73,6 +74,7 @@ from python.framework.types.trading_env_types.order_types import (
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.connection_ladder import ConnectionLadder
+from python.framework.utils.run_id_utils import build_client_order_id
 
 
 class LiveTradeExecutor(AbstractTradeExecutor):
@@ -243,11 +245,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         The key this session sends to the venue for one internal order id.
 
-        Two jobs. It survives a restart without colliding: the counter inside `order_id`
-        restarts at 1 with the process, so an order still resting at the venue from the
-        previous session would otherwise be matched by a brand-new one. And it is short —
-        Kraken allows 18 ASCII characters, which the readable internal id does not fit
-        alongside a discriminator, so the readable form stays in our own books.
+        The SHAPE of the key lives in run_id_utils beside the discriminator it is built
+        from, because #355 reads keys as well as writes them and one format must not be
+        spelled out in two places.
 
         Args:
             order_id: Internal order id, e.g. 'pos_btcusd_47'
@@ -255,10 +255,38 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Returns:
             The wire key, e.g. 'p1641_47', or None when no session key is configured
         """
-        if not self._session_key:
-            return None
-        counter = order_id.rsplit('_', 1)[-1]
-        return f'p{self._session_key}_{counter}'
+        return build_client_order_id(self._session_key, order_id)
+
+    def apply_order_attributions(
+        self,
+        attributions: List[Tuple[PendingOrder, BrokerOrder]],
+    ) -> None:
+        """
+        Adopt the venue's reference for orders the truth pull recognized as ours (#355).
+
+        The Reconciler detects, the executor writes: a resting order carrying THIS
+        session's client order id belongs to a local pending whose submit answer was lost
+        (#473), so the reference is not a correction of what we believe — it is the name
+        the venue gave the order we already know we placed. Restoring it puts the pending
+        back into the poll path, which is what ends the block on has_pending_orders().
+
+        A reference that is already set is never overwritten. That would be a genuine
+        correction, and correction is #349's decision, not this one.
+
+        Args:
+            attributions: (local pending, broker order) pairs matched by client order id
+        """
+        for pending, broker_order in attributions:
+            if pending.broker_ref:
+                continue
+
+            pending.broker_ref = broker_order.broker_ref
+            pending.execution_state.in_flight_operation = PendingOperation.NONE
+            self.logger.info(
+                f'🔗 Order {pending.pending_order_id} reclaimed from broker truth '
+                f'(client_order_id={broker_order.client_order_id}) — '
+                f'broker_ref={broker_order.broker_ref} restored, polling resumed'
+            )
 
     # ============================================
     # Pending Order Processing (live-specific)

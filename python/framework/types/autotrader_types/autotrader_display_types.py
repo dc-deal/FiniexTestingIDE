@@ -363,12 +363,17 @@ class AutoTraderDisplayStats:
     # divergences = current cycle; count = cycles run (0 = no check yet);
     # state_age_s = seconds in the current clean/divergent state ("clean for Xs");
     # next_in_s = time-based bound to the next reconcile (may fire sooner on ticks).
+    # unaccounted (#355) = orders that ARE ours by client order id but that we cannot
+    # account for: placed and no longer tracked, left over from an earlier session, or
+    # submitted without ever being confirmed. Called out separately because it is the
+    # subset an operator can act on.
     reconcile_enabled: bool = False
     reconcile_divergences: int = 0
     reconcile_clean: bool = True
     reconcile_count: int = 0
     reconcile_state_age_s: float = 0.0
     reconcile_next_in_s: float = 0.0
+    reconcile_unaccounted: int = 0
 
     # #351 — API performance monitor snapshot (None when not wired / disabled).
     # Renderer adds an "API PERFORMANCE" panel when present + non-empty.
