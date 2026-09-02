@@ -1,5 +1,5 @@
 """
-Store registrations (#486) — the thirteen data stores, declared once.
+Store registrations (#486) — every data store, declared once.
 
 This module is DATA, not machinery: it names every place the application persists bytes, and
 what kind of place it is. A store that is not declared here has no read path — which is the
@@ -19,6 +19,10 @@ from python.configuration.import_config_manager import ImportConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
+from python.framework.persistence.cold_start_state_index import (
+    COLD_START_INDEX_FILE,
+    ColdStartStateIndex,
+)
 from python.framework.discoveries.discovery_cache_index import (
     DISCOVERY_INDEX_FILE,
     DiscoveryCacheIndex,
@@ -62,9 +66,13 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
     app_config = AppConfigManager()
     file_logging = app_config.get_file_logging_config_object()
     processed = Path(app_config.get_data_processed_path())
+    autotrader_defaults = app_config.get_autotrader_defaults()
     state_path = Path(
-        app_config.get_autotrader_defaults().get('state_persistence', {}).get(
+        autotrader_defaults.get('state_persistence', {}).get(
             'path', 'data/runtime/session_state'))
+    cold_start_path = Path(
+        autotrader_defaults.get('cold_start', {}).get(
+            'path', 'data/runtime/cold_start_state'))
 
     # The run tree's root is the index's parent by construction (#478 put the index at the top of
     # the tree it describes), so it is derived rather than declared a fourth time.
@@ -106,6 +114,25 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             entry_glob=CERTIFICATE_GLOB,
             index_path=CERTIFICATES_ROOT / CERTIFICATE_INDEX_FILE,
             index_factory=lambda: CertificateIndex(CERTIFICATES_ROOT),
+        ),
+        StoreId.COLD_START_STATE: StoreDescriptor(
+            store_id=StoreId.COLD_START_STATE,
+            kind=StoreKind.CARRY_OVER,
+            root=cold_start_path,
+            key='<profile>_<symbol>',
+            form=RetrievalForm.DOCUMENT,
+            backend=StoreBackend.DISK,
+            entry_glob='*.json',
+            index_path=cold_start_path / COLD_START_INDEX_FILE,
+            index_factory=lambda: ColdStartStateIndex(cold_start_path),
+            note='The FRAMEWORK carry-over beside the algo one (#355): the session keys this '
+                 'bot sent orders under, and the highest position counter it minted. Its own '
+                 'store rather than a section in session_state, because that one is gated '
+                 'behind the algo opt-in while this must be written for every live bot. It '
+                 'HAS an index because something searches ACROSS bots — which bot carries '
+                 'what, since when, from which run. History is deliberately absent: a '
+                 'carry-over overwrites, so what a given boot adopted lives in that run RECORD '
+                 'and the two indexes are joined.',
         ),
         StoreId.SESSION_STATE: StoreDescriptor(
             store_id=StoreId.SESSION_STATE,

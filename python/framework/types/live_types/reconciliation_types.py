@@ -66,6 +66,10 @@ class BrokerOrder:
         client_order_id: The key WE chose for this order, echoed back by the venue (#473).
             None when the venue reports no key — which is itself the fact that tells an
             order we placed apart from one somebody else did
+        filled_lots: How much of `lots` the venue has already executed. `lots` is the ORIGINAL
+            order size, not the unfilled remainder — Kraken reports `vol` and `vol_exec`
+            separately — so without this a partially filled resting order looks untouched, and
+            boot adoption (#355) would rebuild it at full size
         raw: Untouched broker payload for forensic inspection
     """
     broker_ref: str
@@ -75,6 +79,7 @@ class BrokerOrder:
     lots: float
     status: BrokerOrderStatus
     price: Optional[float] = None
+    filled_lots: float = 0.0
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     client_order_id: Optional[str] = None
@@ -98,14 +103,16 @@ class ReconciliationResult:
         our key + local pending without broker_ref  → attributed  (the lost answer)
         our key, this session, no local pending     → abandoned   (placed and forgotten)
         our key shape, another session              → foreign_session (adoption, Phase 2)
-        no key at all                               → ghost       (not ours, as far as we know)
+        no key of OURS                              → ghost       (not ours, as far as we know)
 
     Args:
         timestamp: When the reconcile cycle completed (UTC, tz-aware)
         ghost_positions: Broker positions with no local Position match (MARGIN)
         orphan_positions: Local positions with no broker match (MARGIN)
         stale_positions: (local, broker) pairs matched but diverging (MARGIN)
-        ghost_orders: Broker orders carrying no client order id and no local match
+        ghost_orders: Broker orders with no local match and no client order id OF OURS —
+            either none at all, or one that is not our shape (another client's scheme).
+            Placed by hand or by somebody else, as far as we can tell
         orphan_orders: Local pendings (with broker_ref) with no broker match
         stale_orders: (local, broker) order pairs matched but diverging
         attributed_orders: (local, broker) pairs matched by THIS session's client order
@@ -113,7 +120,9 @@ class ReconciliationResult:
             lost (#473) and which the venue does hold. Not a divergence: the reference is
             restored by the executor, which returns the order to the poll path
         abandoned_orders: Broker orders carrying this session's client order id with no
-            local pending left — we placed them and no longer track them
+            local pending left — we placed them and no longer track them. An order the
+            latency queue is still waiting on (MARKET / CLOSE) is NOT in here: it has no
+            counterpart among the resting orders the diff compares, but it is tracked
         foreign_session_orders: Broker orders carrying a client order id of our shape but
             another session's discriminator — an earlier session of this bot. Boot-time
             adoption is #355 Phase 2; mid-session they are a divergence

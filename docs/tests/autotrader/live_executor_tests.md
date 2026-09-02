@@ -10,7 +10,9 @@ The live executor test suite validates the LiveTradeExecutor, LiveRequestProcess
 - Initial Balance: 10,000 USD
 - Execution Modes: instant_fill, delayed_fill, reject_all, timeout
 
-**Total Tests:** 87
+**Total Tests:** see the runner output — the per-file sections below are the map.
+(An absolute number here drifted from the sum of the sections and was stale by several
+files; the runner counts, this document explains.)
 
 **Location:** `tests/autotrader/live_executor/`
 
@@ -36,6 +38,7 @@ tests/autotrader/live_executor/
 ├── test_broker_trade_records.py        ← Level 8: BrokerTrade aggregation + async trades_query (#326)
 ├── test_polling_cadence.py             ← Level 9: Heartbeat, async polling, throttle, in-flight (#320)
 └── test_order_attribution.py           ← Level 10: adopting the venue's reference for an order of ours (#355)
+                                          (the deferred-cancel duty lives here too)
 ```
 
 **Why this pattern?**
@@ -694,3 +697,5 @@ regardless, so an algo waiting for its orders to settle waits for the rest of th
 | `test_empty_input_is_a_no_op` | No attributions → nothing touched |
 | `test_a_reference_less_pending_is_never_polled_and_never_expires` | The defect itself: after a heartbeat the order is neither polled (`in_flight_query` False) nor expired, and still blocks `has_pending_orders()` |
 | `test_after_attribution_the_order_is_polled_again` | The cure: with the reference restored, the next heartbeat schedules a query |
+| `test_a_parked_cancel_is_issued_when_the_reference_arrives` | A cancel the algo parked while the reference was missing (#361) is ISSUED by the repair, not discarded — otherwise the algo gets back a resting order it cancelled, and a resting order can fill |
+| `test_an_order_nobody_cancelled_is_left_alone` | No parked intent → the in-flight marker simply clears |

@@ -11,6 +11,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ApiMonitorConfig,
     AutotraderExecutionDefaults,
     ClippingMonitorDefaults,
+    ColdStartDefaults,
     DisplayDefaults,
     DriftAuditConfig,
     OrderGuardDefaults,
@@ -114,5 +115,6 @@ class AutoTraderConfig:
     reconciliation: ReconciliationDefaults = field(default_factory=ReconciliationDefaults)
     api_monitor: ApiMonitorConfig = field(default_factory=ApiMonitorConfig)
     state_persistence: StatePersistenceDefaults = field(default_factory=StatePersistenceDefaults)
+    cold_start: ColdStartDefaults = field(default_factory=ColdStartDefaults)
     config_path: Optional[Path] = None
     dry_run: Optional[bool] = None

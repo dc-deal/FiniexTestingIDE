@@ -98,6 +98,11 @@
             "max_age_trading_days": 5,
             "on_corrupt": "warn_reset",
             "on_stale": "warn_reset"
+        },
+        "cold_start": {
+            "enabled": true,
+            "path": "data/runtime/cold_start_state",
+            "adoption_mode": "operator_confirm"
         }
     },
     "backtesting": {

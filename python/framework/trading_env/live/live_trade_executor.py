@@ -30,7 +30,7 @@ Feature gating: MARKET + LIMIT orders supported. Limit order modification is bro
 
 import time
 from datetime import datetime, timezone
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
@@ -54,6 +54,7 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOperation,
     PendingOrder,
     PendingOrderAction,
+    PendingOrderFills,
     PendingOrderOutcome,
     PendingOrderTiming,
 )
@@ -257,6 +258,73 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         return build_client_order_id(self._session_key, order_id)
 
+    def get_in_flight_order_ids(self) -> Set[str]:
+        """
+        Internal ids the latency queue is still waiting on (#355).
+
+        The truth pull compares against the RESTING orders only, so a MARKET or CLOSE order
+        in flight has no counterpart there and would read as one we placed and stopped
+        tracking. It is tracked — just in the other world. This is how the Reconciler tells
+        the two apart.
+
+        Returns:
+            The pending order ids currently held by the request processor
+        """
+        return {p.pending_order_id for p in self._request_processor.get_pending_orders()}
+
+    def adopt_resting_orders(
+        self,
+        adoptions: List[Tuple[str, BrokerOrder]],
+    ) -> None:
+        """
+        Rebuild shadow pendings for resting broker orders recognised as ours (#355 Phase 2).
+
+        Boot-time counterpart to apply_order_attributions: there the local pending exists and
+        only its reference is missing; here nothing local exists at all, because the process
+        that placed the order is gone. What makes the reconstruction honest rather than a
+        guess is the client order id — the order carries a key this bot minted, so the
+        internal id is recovered rather than invented.
+
+        The order lands in the resting-order world with its reference already set, so the
+        normal poll path picks it up on the first pass and a fill is processed like any other.
+
+        Args:
+            adoptions: (recovered internal order id, broker order) pairs
+        """
+        for order_id, broker_order in adoptions:
+            pending = PendingOrder(
+                pending_order_id=order_id,
+                order_action=PendingOrderAction.OPEN,
+                order_type=broker_order.order_type,
+                timing=PendingOrderTiming(submitted_at=None),
+                broker_ref=broker_order.broker_ref,
+                symbol=broker_order.symbol,
+                direction=broker_order.direction,
+                lots=broker_order.lots,
+                entry_price=broker_order.price,
+                # The venue reports the ORIGINAL size and the executed part separately, so an
+                # already partly-filled resting order has to be adopted as partly filled.
+                # Carrying only `lots` would rebuild it at full size and overstate the shadow
+                # by exactly the part that already traded.
+                fills=PendingOrderFills(cumulative_filled_lots=broker_order.filled_lots),
+                order_kwargs={
+                    'stop_loss': broker_order.stop_loss,
+                    'take_profit': broker_order.take_profit,
+                },
+                submission=SubmissionMetadata(),
+            )
+            self._active_limit_orders.append(pending)
+            # An adopted order was SENT — by a predecessor of this session, but sent. Counting
+            # it keeps the executed/sent ratio meaningful; without it a fill would raise the
+            # execution rate above 100 %.
+            self._orders_sent += 1
+            self.logger.info(
+                f'🧬 Adopted resting order {order_id} from broker truth '
+                f'(client_order_id={broker_order.client_order_id}, '
+                f'broker_ref={broker_order.broker_ref}, {broker_order.direction.value} '
+                f'{broker_order.lots} {broker_order.symbol} @ {broker_order.price})'
+            )
+
     def apply_order_attributions(
         self,
         attributions: List[Tuple[PendingOrder, BrokerOrder]],
@@ -273,20 +341,53 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         A reference that is already set is never overwritten. That would be a genuine
         correction, and correction is #349's decision, not this one.
 
+        This is the SECOND place a broker_ref goes from None to set, and it therefore owes
+        the same duty as the first (_handle_limit_submit_response): a cancel the algo asked
+        for while the reference was missing was PARKED, not refused (#361), and the missing
+        reference was the only reason it could not be sent. Restoring the reference without
+        issuing it would hand the order back to the poll path as if nothing had been asked —
+        and a resting order the algo cancelled can still fill.
+
         Args:
             attributions: (local pending, broker order) pairs matched by client order id
         """
         for pending, broker_order in attributions:
             if pending.broker_ref:
                 continue
+            if not broker_order.broker_ref:
+                # An attribution without a venue reference would leave the pending invisible
+                # in BOTH directions: still skipped by the poller (no ref) and no longer
+                # PENDING_SUBMIT, so the error-pot report that grades the session never
+                # fires. Kraken cannot produce it today; the second adapter (#209) is the
+                # reason this is a guard rather than an assumption.
+                self.logger.warning(
+                    f'🔗 Attribution for {pending.pending_order_id} carries no broker '
+                    f'reference (client_order_id={broker_order.client_order_id}) — ignored.'
+                )
+                continue
 
             pending.broker_ref = broker_order.broker_ref
-            pending.execution_state.in_flight_operation = PendingOperation.NONE
             self.logger.info(
                 f'🔗 Order {pending.pending_order_id} reclaimed from broker truth '
                 f'(client_order_id={broker_order.client_order_id}) — '
                 f'broker_ref={broker_order.broker_ref} restored, polling resumed'
             )
+
+            if pending.execution_state.cancel_requested:
+                pending.execution_state.cancel_requested = False
+                pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
+                self._request_processor.submit_cancel_order_async(
+                    order_id=pending.pending_order_id,
+                    broker_ref=pending.broker_ref,
+                    adapter=self.broker.adapter,
+                )
+                self.logger.info(
+                    f'❌ Limit order {pending.pending_order_id} deferred cancel issued '
+                    f'after attribution (broker_ref={pending.broker_ref})'
+                )
+                continue
+
+            pending.execution_state.in_flight_operation = PendingOperation.NONE
 
     # ============================================
     # Pending Order Processing (live-specific)
@@ -898,14 +999,25 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         the response is consumed on the main thread in _handle_query_response
         (via drain_inbox / heartbeat).
 
-        Three gates, all silent skips:
+        Four gates, all silent skips:
+          - no tick has arrived yet (see below)
           - no broker_ref yet (submit-in-flight window)
           - in_flight_query (a previous poll has not returned yet)
           - inside throttle window (last_polled_at_ms + poll_interval_ms > now)
 
         Pathological "stuck in-flight" cases are caught by check_timeouts().
+
+        WHY THE TICK GATE (#355). A fill cannot be PROCESSED without a tick: `_fill_open_order`
+        reads `self._current_tick` for the record and `get_current_price` for bid/ask, and both
+        are None before the first one arrives. Every other order reaches this list from a
+        decision, which by definition already ran on a tick — so the situation could not occur
+        until boot ADOPTION became the first path that puts a fillable order into the shadow
+        before any tick exists. Polling one then would answer FILLED into a dereference of
+        None, i.e. an uncaught exception in the tick loop of a live session, with a real
+        execution at the venue and no local record of it. Waiting for the first tick costs
+        nothing: the algo is not running before it either.
         """
-        if not self._active_limit_orders:
+        if not self._active_limit_orders or self._current_tick is None:
             return
 
         now_ms = time.time() * 1000.0

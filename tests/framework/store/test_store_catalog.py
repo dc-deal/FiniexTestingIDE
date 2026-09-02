@@ -143,7 +143,7 @@ class TestCatalogCompleteness:
         allowed = {
             Path('data/test'): 'import-pipeline fixtures, written only by tests (§34)',
             Path('data/raw_sample_data'): 'the shipped sample package — an input nobody derives from',
-            Path('data/runtime'): 'the parent of two registered stores, not a store itself',
+            Path('data/runtime'): 'the parent of registered stores, not a store itself',
             Path('configs/brokers'): 'hand-written broker seed configuration (§28)',
             Path('configs/credentials'): 'credential files (§29) — never indexed, never listed',
             Path('configs/scenario_sets'): 'hand-written scenario configuration',

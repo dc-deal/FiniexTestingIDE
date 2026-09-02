@@ -22,7 +22,8 @@ tests/autotrader/loop_cadence/
 ├── test_clock_injection.py         ← executor clock: inject / advance / decoupled from tick
 ├── test_heartbeat_cadence.py       ← Part A re-poll on heartbeat + Part C process_heartbeat
 ├── test_ghost_phase_cadence.py     ← phase outcome vs observation cadence (the #15 blocker)
-└── test_market_data_staleness.py   ← #436 contract: loop evaluation, guard block, mandatory hook, stress driver
+├── test_market_data_staleness.py   ← #436 contract: loop evaluation, guard block, mandatory hook, stress driver
+└── test_reconcile_handoff.py       ← #355 Phase 1: the loop hands attributions to the executor
 ```
 
 ---
@@ -34,6 +35,7 @@ tests/autotrader/loop_cadence/
 | `test_clock_injection.py` | `get_current_time()` raises before any injection; `set_current_time()` is returned verbatim; `on_tick` sets the clock from the tick timestamp; a heartbeat injection **advances** the clock past the last tick while `get_current_price` stays at the last-known tick (clock decoupled from price) |
 | `test_heartbeat_cadence.py` | **Part A:** `heartbeat()` schedules the active-order status poll (`in_flight_query` flips True) — the fill/cancel-confirm query now fires during idle, not only on a real tick. **Part C:** `WorkerOrchestrator.process_heartbeat()` returns `None` for a non-opt-in logic (compute never called), and for an opt-in logic calls `compute(tick=None, …)` with the **cached** `_worker_results` (workers are not recomputed) |
 | `test_ghost_phase_cadence.py` | The `multi_cancel` phase **PASSES** when the cancel resolution is observed on a ghost-pass within the budget, and **FAILS** when it is only checkable at a far-future tick after the budget burned — the cause→effect behind the field-study `cancel-all not confirmed` blocker |
+| `test_reconcile_handoff.py` | **#355 Phase 1, 5 tests:** the loop is the seam between the two halves of the client-key feature — the Reconciler DETECTS (read-only by contract), the executor WRITES. Asserts that what a cycle matched reaches `apply_order_attributions` verbatim, that a clean cycle hands over nothing at all (an empty call would make a non-event look like a repair), that a not-due cadence pulls nothing, that a session without a Reconciler is a no-op (every mock run takes that path), and that the tick counter reaches the Reconciler. Built via `__new__` with two collaborators — the method needs no queue, workers or decision logic |
 | `test_market_data_staleness.py` | **#436 contract, 22 tests:** heartbeat evaluation flips ONCE per episode (edge), keeps the readable status growing (escalation input), stays inert when disabled/pre-tick; recovery resets the edge + logs the from–to span; reconnect deltas reach the pot. OrderGuard rejects new entries while stale (`STALE_MARKET_DATA`), respects the disable flag, cooldown regression intact. The mandatory `on_market_data_stale` override is startup-validated (missing → ValueError). `stale_data_stress` config parses/validates hard (`data_source` required, window order, per-source filtering); the sim `StaleDataStressDriver` runs the full window lifecycle (entry edge, no re-fire, recovery span, skipped windows, `finish()`), and the overlap guard warns `data deviation` on disjoint windows |
 
 ---

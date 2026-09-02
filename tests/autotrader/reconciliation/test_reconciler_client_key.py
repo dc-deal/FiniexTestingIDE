@@ -126,6 +126,9 @@ class TestUnclaimedClassification:
         assert result.ghost_orders == []
         assert result.foreign_session_orders == []
         assert result.is_clean is False
+        counters = reconciler.get_display_counters()
+        assert counters['reconcile_divergences'] == 1
+        assert counters['reconcile_unaccounted'] == 1
 
     def test_another_sessions_key_is_foreign_not_ghost(self, mock_adapter, make_reconciler):
         mock_adapter.set_broker_orders([
@@ -140,6 +143,8 @@ class TestUnclaimedClassification:
         assert result.foreign_session_orders[0].broker_ref == 'OQ7X2A-OLD'
         assert result.abandoned_orders == []
         assert result.ghost_orders == []
+        assert result.is_clean is False
+        assert reconciler.get_display_counters()['reconcile_unaccounted'] == 1
 
     def test_no_key_at_all_stays_a_ghost(self, mock_adapter, make_reconciler):
         # Backwards behaviour: an order placed by hand or by another client is exactly
@@ -167,6 +172,66 @@ class TestUnclaimedClassification:
             assert len(result.ghost_orders) == 1, f'{foreign} was claimed as a key of ours'
             assert result.abandoned_orders == []
             assert result.foreign_session_orders == []
+
+
+class TestTrackedElsewhere:
+    """An order the latency queue is still waiting on is ours AND accounted for."""
+
+    def test_an_in_flight_market_order_is_not_abandoned(self, mock_adapter, make_reconciler):
+        # MARKET and CLOSE orders live in the request processor, not in the resting-order
+        # list the diff compares against. Catch one in the window where the venue already
+        # lists it and the naive reading is "we placed it and stopped tracking it" — a red
+        # panel marker for an order that fills a second later.
+        mock_adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-INFLIGHT', client_order_id=_ckey('pos_ethusd_47')),
+        ])
+        reconciler = make_reconciler(
+            mock_adapter, active_orders=[], in_flight_order_ids=['pos_ethusd_47'])
+
+        result = reconciler.reconcile(current_tick=1)
+
+        assert result.abandoned_orders == []
+        assert result.ghost_orders == []
+        assert result.foreign_session_orders == []
+        assert result.is_clean is True
+
+    def test_an_order_nobody_tracks_is_still_abandoned(self, mock_adapter, make_reconciler):
+        # The guard must not swallow the real case it sits next to.
+        mock_adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-RESTING', client_order_id=_ckey('pos_ethusd_51')),
+        ])
+        reconciler = make_reconciler(
+            mock_adapter, active_orders=[], in_flight_order_ids=['pos_ethusd_47'])
+
+        result = reconciler.reconcile(current_tick=1)
+
+        assert len(result.abandoned_orders) == 1
+        assert result.is_clean is False
+
+
+class TestBrokerOrderWithoutAReference:
+    """A keyed order with no venue reference must never be attributed."""
+
+    def test_it_is_not_paired(self, mock_adapter, make_reconciler):
+        # Attributing it would set broker_ref='' — the pending is then skipped by the poller
+        # (no ref) AND no longer PENDING_SUBMIT, so the error-pot report that grades the
+        # session never fires and the run ends green with a blocked algo. Kraken cannot
+        # produce this shape today; the second adapter (#209) is why it is a guard.
+        pending = make_pending(
+            'pos_ethusd_47',
+            broker_ref=None,
+            in_flight_operation=PendingOperation.PENDING_SUBMIT,
+        )
+        mock_adapter.set_broker_orders([
+            make_broker_order('', client_order_id=_ckey('pos_ethusd_47')),
+        ])
+        reconciler = make_reconciler(mock_adapter, active_orders=[pending])
+
+        result = reconciler.reconcile(current_tick=1)
+
+        assert result.attributed_orders == []
+        # It stays unconfirmed — which is the honest answer: we still do not know.
+        assert len(result.unconfirmed_orders) == 1
 
 
 class TestUnconfirmedPendings:
@@ -200,6 +265,57 @@ class TestUnconfirmedPendings:
         assert len(errors) == 1, f'expected one pot error, got {len(errors)}'
         assert '#487' in errors[0]
 
+    def test_each_order_is_reported_on_its_own(self, mock_adapter, make_reconciler, logger):
+        # The edge trigger is per ORDER, not per session: with only one order in play a
+        # single global flag would pass the test above while swallowing every later order.
+        first = make_pending(
+            'pos_ethusd_51',
+            broker_ref=None,
+            in_flight_operation=PendingOperation.PENDING_SUBMIT,
+        )
+        second = make_pending(
+            'pos_ethusd_52',
+            broker_ref=None,
+            in_flight_operation=PendingOperation.PENDING_SUBMIT,
+        )
+        mock_adapter.set_broker_orders([])
+        reconciler = make_reconciler(mock_adapter, active_orders=[first, second])
+
+        logged: List[str] = []
+        logger.error = logged.append
+
+        reconciler.reconcile(current_tick=1)
+        reconciler.reconcile(current_tick=2)
+
+        # One error EACH across the two cycles. A single global "already reported" flag
+        # would report the first order and swallow the second — the assertion that
+        # separates the two implementations.
+        assert len([line for line in logged if 'pos_ethusd_51' in line]) == 1
+        assert len([line for line in logged if 'pos_ethusd_52' in line]) == 1
+
+    def test_a_repaired_order_stops_counting_as_unaccounted(
+        self, mock_adapter, make_reconciler
+    ):
+        # Reported unconfirmed on one cycle, attributed on the next: the final summary must
+        # not keep claiming it, or a session that healed itself reads as one that did not.
+        pending = make_pending(
+            'pos_ethusd_47',
+            broker_ref=None,
+            in_flight_operation=PendingOperation.PENDING_SUBMIT,
+        )
+        mock_adapter.set_broker_orders([])
+        reconciler = make_reconciler(mock_adapter, active_orders=[pending])
+        reconciler.reconcile(current_tick=1)
+
+        mock_adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-RESTING', client_order_id=_ckey('pos_ethusd_47')),
+        ])
+        result = reconciler.reconcile(current_tick=2)
+
+        assert len(result.attributed_orders) == 1
+        assert reconciler.get_display_counters()['reconcile_attributed'] == 1
+        assert reconciler.get_display_counters()['reconcile_unaccounted'] == 0
+
     def test_a_normal_submit_roundtrip_is_not_reported(self, mock_adapter, make_reconciler):
         # broker_ref=None with NO in-flight submit marker is the ordinary window between
         # sending an order and hearing back. It was never a divergence and must not become
@@ -228,6 +344,56 @@ class TestUnconfirmedPendings:
         assert result.unconfirmed_orders == []
         assert result.orphan_orders == []
         assert result.is_clean is True
+
+
+class TestDurableStatesDoNotFlood:
+    """
+    A divergence that has not CHANGED says nothing new.
+
+    Most of these states are durable — a resting order stays resting until somebody cancels
+    it — so a per-cycle warning would put tens of thousands of identical lines into the
+    session pot over a thirty-day run. The warning fires on change; an unchanged cycle says
+    so once per cycle at INFO, which keeps the poll visibly alive without burying it.
+    """
+
+    def test_the_warning_fires_once_and_the_repeat_is_info(
+        self, mock_adapter, make_reconciler, logger
+    ):
+        mock_adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-RESTING', client_order_id=_ckey('pos_ethusd_51')),
+        ])
+        reconciler = make_reconciler(mock_adapter, active_orders=[])
+
+        warnings: List[str] = []
+        infos: List[str] = []
+        logger.warning = warnings.append
+        logger.info = infos.append
+
+        for tick in range(1, 6):
+            reconciler.reconcile(current_tick=tick)
+
+        assert len([w for w in warnings if '[RECONCILE]' in w]) == 1
+        assert len([i for i in infos if 'UNCHANGED' in i]) == 4
+        # And the order is NAMED once, so the operator can act on it.
+        assert len([w for w in warnings if 'placed and forgotten' in w]) == 1
+
+    def test_a_changed_picture_reports_again(self, mock_adapter, make_reconciler, logger):
+        # One abandoned order replaced by a DIFFERENT one is a change, even at the same count.
+        mock_adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-FIRST', client_order_id=_ckey('pos_ethusd_51')),
+        ])
+        reconciler = make_reconciler(mock_adapter, active_orders=[])
+
+        warnings: List[str] = []
+        logger.warning = warnings.append
+
+        reconciler.reconcile(current_tick=1)
+        mock_adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-SECOND', client_order_id=_ckey('pos_ethusd_52')),
+        ])
+        reconciler.reconcile(current_tick=2)
+
+        assert len([w for w in warnings if '[RECONCILE]' in w]) == 2
 
 
 class TestNoSessionKey:

@@ -114,8 +114,16 @@ class Reconciler:
         self._attributed_count: int = 0          # orders reclaimed by client order id (#355)
         self._last_unaccounted_count: int = 0    # current cycle: ours, but not accounted for
         # Orders already reported as unconfirmed — the pot gets each one once, not once
-        # per cycle (#355). Never cleared: a second report says nothing the first did not.
+        # per cycle (#355). An order that is later ATTRIBUTED is removed again: it is no
+        # longer unaccounted for, and the final summary counts this set.
         self._reported_unconfirmed: Set[str] = set()
+        # Broker references already named as ours-but-unaccounted, and the fingerprint of the
+        # last divergence picture. Both exist for the same reason: most of these states are
+        # DURABLE — a resting order stays resting — so repeating them per cycle would bury the
+        # report rather than inform it.
+        self._reported_ours: Set[str] = set()
+        self._last_divergence_fingerprint: Optional[str] = None
+        self._unchanged_cycles: int = 0
         self._last_clean: bool = True
         self._state_since: float = time.monotonic()  # when the current clean/divergent state began
 
@@ -262,11 +270,17 @@ class Reconciler:
             for o in local_orders
             if self._is_reconcilable_ref(o.broker_ref)
         }
-        # Only the ref-LESS pendings are indexed by client key: one already matched by
-        # ref must not be able to fill a second bucket.
+        # Only pendings waiting for a LOST answer are indexed by client key. Two exclusions,
+        # both load-bearing: one already matched by ref must not fill a second bucket, and a
+        # pending inside its ORDINARY submit roundtrip has lost nothing — attributing it
+        # would report a repair that never happened. PENDING_SUBMIT is the precise marker;
+        # it is written only where an unresolved submit is kept (#473). This also keeps
+        # DRYRUN pendings out, whose synthetic ref is not None.
         local_orders_by_ckey: Dict[str, PendingOrder] = {}
         for o in local_orders:
-            if self._is_reconcilable_ref(o.broker_ref):
+            if o.broker_ref is not None:
+                continue
+            if o.execution_state.in_flight_operation is not PendingOperation.PENDING_SUBMIT:
                 continue
             ckey = self._executor.build_client_order_id(o.pending_order_id)
             if ckey:
@@ -276,7 +290,14 @@ class Reconciler:
             o.broker_ref: o for o in broker_orders if o.broker_ref
         }
         broker_orders_by_ckey: Dict[str, BrokerOrder] = {
-            o.client_order_id: o for o in broker_orders if o.client_order_id
+            o.client_order_id: o for o in broker_orders if o.client_order_id and o.broker_ref
+        }
+        # Orders the latency queue is still waiting on. They are OURS and they are TRACKED —
+        # just not in the resting-order list the diff compares against, so without this they
+        # would be reported as abandoned on the one cycle that catches them in flight.
+        in_flight_ckeys = {
+            self._executor.build_client_order_id(order_id)
+            for order_id in self._executor.get_in_flight_order_ids()
         }
 
         attributed_orders: List[Tuple[PendingOrder, BrokerOrder]] = [
@@ -293,6 +314,8 @@ class Reconciler:
         foreign_session_orders: List[BrokerOrder] = []
         for ref, bo in broker_orders_by_ref.items():
             if ref in local_orders_by_ref or ref in attributed_refs:
+                continue
+            if bo.client_order_id in in_flight_ckeys:
                 continue
             parsed = parse_client_order_id(bo.client_order_id)
             if parsed is None:
@@ -485,6 +508,24 @@ class Reconciler:
             return
 
         self._divergence_count += n   # cumulative session total (final summary)
+
+        # A divergence picture that has not CHANGED has nothing new to say, and most of these
+        # states are durable: a resting order stays resting until somebody cancels it, unlike
+        # a ghost that resolves on the next fill. Repeating the full warning every cycle would
+        # put up to ~43,000 identical lines into the session pot over a thirty-day run at the
+        # 60 s floor — which does not inform, it buries. So the warning fires on CHANGE, and an
+        # unchanged cycle says so in one INFO line, which keeps the poll visibly alive.
+        fingerprint = self._divergence_fingerprint(result)
+        if fingerprint == self._last_divergence_fingerprint:
+            self._unchanged_cycles += 1
+            self._logger.info(
+                f'🔍 reconcile #{self._reconcile_count}: {n} divergence(s) UNCHANGED '
+                f'(same for {self._unchanged_cycles} cycle(s)) — see the first report'
+            )
+            return
+
+        self._last_divergence_fingerprint = fingerprint
+        self._unchanged_cycles = 0
         self._logger.warning(
             f'[RECONCILE] {n} divergence(s) detected (ALERT_ONLY)\n'
             f'   orders     ghost={len(result.ghost_orders)} '
@@ -496,6 +537,65 @@ class Reconciler:
             f'orphan={len(result.orphan_positions)} stale={len(result.stale_positions)}\n'
             f'   partial_fills={len(result.partial_fills)} (observed, not a divergence)'
         )
+        self._report_our_unaccounted(result)
+
+    @staticmethod
+    def _divergence_fingerprint(result: ReconciliationResult) -> str:
+        """
+        What the divergence picture consists of, as one comparable string.
+
+        Identities rather than counts: one ghost replaced by a different ghost is a CHANGE the
+        operator needs, even though the count stayed at one.
+
+        Args:
+            result: The diff outcome for this cycle
+
+        Returns:
+            A stable fingerprint of every divergence bucket's members
+        """
+        parts = [
+            'g:' + ','.join(sorted(o.broker_ref for o in result.ghost_orders)),
+            'a:' + ','.join(sorted(o.broker_ref for o in result.abandoned_orders)),
+            'f:' + ','.join(sorted(o.broker_ref for o in result.foreign_session_orders)),
+            'u:' + ','.join(sorted(p.pending_order_id for p in result.unconfirmed_orders)),
+            'o:' + ','.join(sorted(p.pending_order_id for p in result.orphan_orders)),
+            's:' + ','.join(sorted(lo.pending_order_id for lo, _ in result.stale_orders)),
+            'gp:' + str(len(result.ghost_positions)),
+            'op:' + str(len(result.orphan_positions)),
+            'sp:' + str(len(result.stale_positions)),
+        ]
+        return '|'.join(parts)
+
+    def _report_our_unaccounted(self, result: ReconciliationResult) -> None:
+        """
+        Name each order that is OURS by key and that we cannot account for — once.
+
+        The bucket counts above say how many; this says which, and an operator cannot act on a
+        number. Once per broker reference, because the state is durable: the order is still
+        there next cycle and saying so again adds nothing.
+
+        Args:
+            result: The diff outcome for this cycle
+        """
+        for order in result.abandoned_orders:
+            if order.broker_ref in self._reported_ours:
+                continue
+            self._reported_ours.add(order.broker_ref)
+            self._logger.warning(
+                f'🔍 order {order.broker_ref} carries THIS session\'s key '
+                f'({order.client_order_id}) but we no longer track it — placed and forgotten. '
+                f'It is still resting at the broker.'
+            )
+
+        for order in result.foreign_session_orders:
+            if order.broker_ref in self._reported_ours:
+                continue
+            self._reported_ours.add(order.broker_ref)
+            self._logger.warning(
+                f'🔍 order {order.broker_ref} carries a key of our shape from ANOTHER session '
+                f'({order.client_order_id}) — an earlier run of this bot, or a lost carry-over. '
+                f'Boot adoption would have claimed it (#355); mid-session it is left alone.'
+            )
 
     def _report_attributions(self, result: ReconciliationResult) -> None:
         """
@@ -510,6 +610,9 @@ class Reconciler:
         """
         for pending, broker_order in result.attributed_orders:
             self._attributed_count += 1
+            # It was reported as unaccounted for on an earlier cycle; it is not any more,
+            # and the final summary must not keep claiming it.
+            self._reported_unconfirmed.discard(pending.pending_order_id)
             self._logger.info(
                 f'🔍 reconcile #{self._reconcile_count}: attributed — order '
                 f'{pending.pending_order_id} (client_order_id={broker_order.client_order_id}) '
@@ -633,9 +736,9 @@ class Reconciler:
             # face of "still checking".
             'reconcile_skipped': self._skipped_count,
             'reconcile_skipped_reason': self._last_skipped_reason,
-            # #355: session totals for the two order states an operator can act on — an
-            # order we placed and stopped tracking, and one we cannot account for at all.
-            # Attributions are a repair and belong in the log, not on the panel.
+            # #355: attributed is a SESSION TOTAL (a repair belongs in the log and the final
+            # summary, not on the panel); unaccounted is a CURRENT-CYCLE snapshot like the
+            # divergence count above, so it clears when the state clears.
             'reconcile_attributed': self._attributed_count,
             'reconcile_unaccounted': self._last_unaccounted_count,
         }

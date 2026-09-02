@@ -122,6 +122,24 @@ class StatePersistenceDefaults(BaseModel):
     on_stale: Literal['warn_reset', 'halt'] = 'warn_reset'     # too-old state: reset fresh or halt boot
 
 
+class ColdStartDefaults(BaseModel):
+    """
+    Cold-start recovery defaults (#355) — adopting our own resting orders on boot.
+
+    Live-only. On boot the executor's shadow state is empty while the venue still holds what
+    an earlier session left there; adoption rebuilds the ORDERS whose ownership is decidable
+    (they carry our client order id). Balances are NOT adopted — a coin carries no owner tag,
+    so what a bot may use is DECLARED capital, not a guess (see the capital-allocation issue).
+
+    adoption_mode 'operator_confirm' asks only where a terminal exists and otherwise refuses
+    loudly and stays flat: it never waits for an answer nobody is there to give. An unattended
+    run is a conscious 'auto'.
+    """
+    enabled: bool = True
+    path: str = 'data/runtime/cold_start_state'
+    adoption_mode: Literal['operator_confirm', 'auto'] = 'operator_confirm'
+
+
 class AutotraderDefaultsConfig(BaseModel):
     """
     Top-level model for app_config.json::autotrader.
@@ -135,3 +153,4 @@ class AutotraderDefaultsConfig(BaseModel):
     reconciliation: ReconciliationDefaults = ReconciliationDefaults()
     api_monitor: ApiMonitorConfig = ApiMonitorConfig()
     state_persistence: StatePersistenceDefaults = StatePersistenceDefaults()
+    cold_start: ColdStartDefaults = ColdStartDefaults()

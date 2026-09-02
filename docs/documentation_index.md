@@ -106,6 +106,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Loop Cadence](tests/autotrader/loop_cadence_tests.md) | Clock injection, heartbeat re-poll, decision ghost-pass (#360) |
 | [Algo State Persistence](tests/autotrader/state_persistence_tests.md) | Snapshot store, corrupt/stale policy, weekend-aware staleness, pre-flight (#354) |
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
+| [Cold Start](tests/autotrader/cold_start_tests.md) | Boot-time adoption of our own resting orders + the framework carry-over (#355) |
 | [Reconciliation](tests/autotrader/reconciliation_tests.md) | Broker truth-pull + Reconciler ALERT_ONLY (#151) |
 | [Session Validation](tests/autotrader/session_validation_tests.md) | The live Tier-1 channel: SessionPostRunValidator + the checks shared with the sim batch |
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |

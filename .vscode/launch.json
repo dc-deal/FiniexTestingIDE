@@ -1772,6 +1772,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Cold Start (#355)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/cold_start",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 11.5
+            }
+        },
+        {
             "name": "🧩 Pytest: Config Cascade (All)",
             "type": "debugpy",
             "request": "launch",

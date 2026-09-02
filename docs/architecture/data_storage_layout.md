@@ -1,6 +1,6 @@
 # Data Storage Layout — The Store Catalog
 
-**The map of every place this application persists bytes.** Thirteen stores, classified by kind and
+**The map of every place this application persists bytes.** Every store, classified by kind and
 by how they are read. A store that is not in this table has no read path — adding one means
 adding a row here *and* a registration in
 [`store_registrations.py`](../../python/framework/store/store_registrations.py).
@@ -19,13 +19,13 @@ INDEX     AbstractStoreIndex    what lies in one store                     ← o
 STORE     the bytes             per domain, deliberately different         ← untouched
 ```
 
-Seven stores have seven access patterns. A carry-over file swapped atomically every 60 s and a
+Different stores have different access patterns. A carry-over file swapped atomically every 60 s and a
 300 MB tick archive share nothing but the word "file"; forcing one shape on both makes one of them
 worse. What they *can* share is how they describe themselves.
 
 ---
 
-## The thirteen stores
+## The stores
 
 | # | Store | Kind | Key | Index | Retrieval |
 |---|---|---|---|---|---|
@@ -33,6 +33,7 @@ worse. What they *can* share is how they describe themselves.
 | 2 | `runs/ledger/` | RECORD | `run_id` (a column) | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
 | 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<profile>_<symbol>` | none — opened by key | A · document |
+| 4b | `data/runtime/cold_start_state/` | **CARRY-OVER** | `<profile>_<symbol>` | `cold_start_state_index.parquet` | A · document |
 | 5 | `data/processed/{broker}/ticks` | ARCHIVE | broker / symbol / file | `ticks_index.parquet` | C · bulk |
 | 6 | `data/processed/{broker}/bars` | **DERIVED** ← ticks | broker / symbol / timeframe | `bars_index.parquet` | C · bulk |
 | 7 | `data/processed/signals/` | ARCHIVE | type / symbol / day | `signals_index.parquet` | C · bulk |
@@ -206,4 +207,50 @@ just invalidated — but the reason line is what makes the remaining cases actio
    rather than going unnoticed.
 
 An index is due as soon as something **searches** the store's contents rather than opening a known
-file. `data/runtime/brokers/` and the carry-over store are opened by key, so neither has one.
+file. `data/runtime/brokers/` and the algo carry-over (4) are opened by key, so neither has one.
+
+### Two carry-overs, and why they are two stores
+
+Store 4 holds what the ALGO remembers (#354); store 4b holds what the FRAMEWORK remembers
+(#355) — the session keys this bot has sent orders under, and how far its position counter had
+run. They are separate for a structural reason rather than a tidy one: store 4 is only ever
+constructed when the decision logic opts in (`uses_state_persistence()`), while 4b has to be
+written for EVERY live bot — a bot whose algo remembers nothing still sends orders under a key,
+and its successor still has to recognise them.
+
+4b HAS an index, and by the rule above rather than against it: something does search across
+bots — *which bot carries what, since when, from which run*, the question an operator asks
+after a 03:00 restart, and the one a diagnostics layer asks across a fleet.
+
+What it deliberately does NOT hold is history. A carry-over overwrites by definition, so what a
+given boot adopted belongs to that run's RECORD (store 1), which is immutable and already
+indexed. A reader wanting "what was adopted across thirty restarts" joins the two indexes;
+bending a carry-over into a log would make it a different kind of store.
+
+#### They share exactly one thing, and the rest can diverge
+
+Both turn on the same restart, and both are keyed `<profile>_<symbol>` with the same
+sanitisation — that identity is the ONLY connection. There is no shared write, no
+transaction, no ordering guarantee. Anyone reasoning about restarts needs the differences:
+
+| | 4 · `session_state` (#354) | 4b · `cold_start_state` (#355) |
+|---|---|---|
+| Writer | `AlgoStateStore` | `ColdStartStateStore` |
+| **When** | every N ticks OR M seconds, plus shutdown | **boot + shutdown** |
+| **Gate** | the algo's own opt-in `uses_state_persistence()` | none — every live bot |
+| Payload | the algo's opaque snapshot | session keys + position-counter high-water mark |
+| **Staleness** | `max_age_trading_days` + `on_stale` → **discards** | none |
+| Index | none (opened by key) | yes (searched across bots) |
+
+Three consequences worth knowing before debugging a restart:
+
+1. **The gate splits them.** An algo that does not opt in has NO `session_state` and still
+   has `cold_start_state`. That is today's normal case, which is why one of the two roots is
+   usually absent on disk.
+2. **The staleness asymmetry is deliberate.** After the configured age the algo's memory is
+   discarded while the session keys are kept — an "already entered today" flag expires with
+   time, a resting order does not. The two therefore disagree about what "too old" means, on
+   purpose.
+3. **They are not an atomic pair.** A crash between the two writes leaves half a state. Not
+   critical — each is readable alone and each degrades to an empty payload with a warning —
+   but there is no "both or neither".

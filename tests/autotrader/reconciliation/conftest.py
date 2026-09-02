@@ -10,7 +10,7 @@ No network, no config files.
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import List, Optional
+from typing import List, Optional, Set
 
 import pytest
 
@@ -160,12 +160,15 @@ class FakeExecutor:
         positions: Optional[List[Position]] = None,
         rest_ladder: Optional[ConnectionLadder] = None,
         session_key: str = _TEST_SESSION_KEY,
+        in_flight_order_ids: Optional[List[str]] = None,
     ):
         self.broker = SimpleNamespace(adapter=adapter)
         self._positions = list(positions or [])
         self.portfolio = SimpleNamespace(get_open_positions=lambda: list(self._positions))
         self._active_orders = list(active_orders or [])
         self._session_key = session_key
+        # The latency queue's own pendings (MARKET / CLOSE) — not part of get_active_orders.
+        self._in_flight_order_ids = list(in_flight_order_ids or [])
         self._rest_ladder = rest_ladder or ConnectionLadder(
             name='broker_rest',
             policy=ConnectionPolicy(),
@@ -181,6 +184,9 @@ class FakeExecutor:
 
     def get_session_key(self) -> str:
         return self._session_key
+
+    def get_in_flight_order_ids(self) -> Set[str]:
+        return set(self._in_flight_order_ids)
 
     def build_client_order_id(self, order_id: str) -> Optional[str]:
         return build_client_order_id(self._session_key, order_id)
@@ -215,8 +221,10 @@ def make_reconciler(logger):
         config: Optional[ReconciliationDefaults] = None,
         symbol: str = 'ETHUSD',
         session_key: str = _TEST_SESSION_KEY,
+        in_flight_order_ids: Optional[List[str]] = None,
     ) -> Reconciler:
-        executor = FakeExecutor(adapter, active_orders, positions, session_key=session_key)
+        executor = FakeExecutor(adapter, active_orders, positions, session_key=session_key,
+                                in_flight_order_ids=in_flight_order_ids)
         return Reconciler(
             executor=executor,
             config=config or ReconciliationDefaults(enabled=True),
