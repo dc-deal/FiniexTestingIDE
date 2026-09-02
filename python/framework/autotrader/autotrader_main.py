@@ -21,6 +21,7 @@ from python.framework.autotrader.autotrader_startup import (
     setup_pipeline,
 )
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_cold_start
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.reporting.autotrader_report_coordinator import (
     AutotraderReportCoordinator,
@@ -89,8 +90,13 @@ class AutotraderMain:
         config: AutoTraderConfig instance
     """
 
-    def __init__(self, config: AutoTraderConfig):
+    def __init__(self, config: AutoTraderConfig, attended: bool = False):
         self._config = config
+        # #355: a human DECLARED that they are watching this start (CLI --attended). Cold-start
+        # adoption may ask only then. Inferring presence from a TTY does not work — this
+        # project's own container sets `tty: true`, so isatty() is True with nobody reading,
+        # and the prompt would block forever in exactly the unattended case it guards against.
+        self._attended = attended
         self._running = False
         self._shutdown_mode = 'normal'
         self._tick_loop_started = False
@@ -135,6 +141,11 @@ class AutotraderMain:
 
         # #354 — Algo state store (live-only, gated by config + algo opt-in)
         self._state_store: Optional[AlgoStateStore] = None
+
+        # #355 — what the cold-start boot step left behind: the carry-over, whether this
+        # session may write it, and the keys the venue is holding. An empty setup means the
+        # step did not run (disabled, Field Study, or a simulation executor).
+        self._cold_start: ColdStartSetup = ColdStartSetup()
 
         # #348 — Decision event channel (None when the decision logic subscribes to no events)
         self._decision_event_dispatcher: Optional[DecisionEventDispatcher] = None
@@ -322,6 +333,33 @@ class AutotraderMain:
                         self._session_logger.info(
                             '💾 Algo rejected restored state — starting fresh')
 
+            # === COLD-START ADOPTION (#355) ===
+            self._cold_start = setup_cold_start(
+                config=self._config,
+                executor=self._executor,
+                decision_logic=self._decision_logic,
+                logger=self._session_logger,
+                run_id=self._run_id,
+                # BOTH halves: a human said they are here, and there is a terminal to say it
+                # into. The declaration is the load-bearing one — a TTY proves nothing.
+                attended=self._attended and sys.stdin.isatty(),
+                field_study_active=isinstance(self._decision_logic, LiveFieldStudy),
+                # RESOLVED here, not re-derived there: the profile field alone would miss the
+                # broker's standing posture, which is the near miss #304 exists for.
+                dry_run=self._is_dry_run(),
+            )
+            if not self._cold_start.proceed:
+                # The loud banner is already in the session log, and therefore the pot.
+                return self._shutdown(0, 0)
+
+            # Record the key NOW, before a single order goes out — not only at shutdown. A
+            # hard kill (SIGKILL, OOM, power) is precisely the case this carry-over exists
+            # for, and a shutdown-only write loses it exactly then: the successor would find
+            # its own predecessor's orders and, unable to recognise the key, report them as a
+            # stranger's. Writing early can at worst record a key that placed nothing, which
+            # costs a fruitless lookup; writing late can lose real orders.
+            self._persist_cold_start_carry_over()
+
             # === DECISION EVENT CHANNEL (#348) ===
             # Built only when the active decision logic subscribes to events.
             self._decision_event_dispatcher = DecisionEventDispatcher.create_if_subscribed(
@@ -343,7 +381,9 @@ class AutotraderMain:
                         f"is not supported. The Live Field Study currently supports SPOT only "
                         f"(Kraken); the MARGIN variant lands with #209."
                     )
-                    self._global_logger.error(banner)
+                    # §35: the SESSION channel — the global log never reaches the summary,
+                    # and an abort the report does not know about is an abort nobody sees.
+                    self._session_logger.error(banner)
                     print(f"\n{'=' * 60}\n  ❌ {banner}\n{'=' * 60}\n")
                     return self._shutdown(0, 0)
                 self._field_study_recorder = FieldStudyRecorder(
@@ -541,6 +581,10 @@ class AutotraderMain:
                 self._api_monitor.shutdown()
             except Exception as e:
                 self._session_logger.error(f'Error during API monitor shutdown: {e}')
+
+        # #355: the SECOND carry-over write — the first ran at boot, before any order went
+        # out. This one adds the counter high-water mark the session actually reached.
+        self._persist_cold_start_carry_over()
 
         # #354 — Algo state: final snapshot on clean exit, then summary. Algo memory
         # is position-independent, so saving after the order cleanup above is fine.
@@ -764,6 +808,36 @@ class AutotraderMain:
     # HELPERS
     # =========================================================================
 
+    def _persist_cold_start_carry_over(self) -> None:
+        """
+        Write the framework carry-over: this session's key and its counter high-water mark.
+
+        Called TWICE — once at boot right after adoption, once at shutdown. The boot write is
+        the one that matters for a hard kill (SIGKILL, OOM, power): a shutdown-only write loses
+        the key exactly in the case the carry-over exists for, and the successor would then
+        report its own predecessor's resting orders as a stranger's. The shutdown write adds
+        the counter the session actually reached.
+
+        `persist` is False for a dry run — it sent no order to any venue, so recording its key
+        as one this bot "sent orders under" would be an untruth — and False for a boot that was
+        refused, which must not let a restart loop consume its own key window.
+
+        A failure is logged to the session channel and swallowed — a carry-over problem must
+        never end a live trading session.
+        """
+        if not (self._cold_start.persist
+                and self._cold_start.store
+                and isinstance(self._executor, LiveTradeExecutor)):
+            return
+        try:
+            self._cold_start.store.save(
+                session_key=self._executor.get_session_key(),
+                highest_position_counter=self._executor.portfolio.get_position_counter(),
+                keys_in_use=self._cold_start.keys_in_use,
+            )
+        except Exception as e:
+            self._session_logger.error(f'Cold-start carry-over save failed: {e}')
+
     def _field_study_preflight(self) -> bool:
         """
         Pre-flight the account before the Field Study trades (broker truth).
@@ -778,7 +852,7 @@ class AutotraderMain:
             True if clear (or reconciliation disabled), False to abort the run
         """
         if self._reconciler is None:
-            self._global_logger.warning(
+            self._session_logger.warning(
                 'Field Study preflight skipped — reconciliation is disabled'
             )
             return True
@@ -797,11 +871,11 @@ class AutotraderMain:
                 f'FIELD STUDY ABORTED — {len(flat.open_orders)} resting broker order(s) '
                 f'present; cancel them before the run'
             )
-            self._global_logger.error(banner)
+            self._session_logger.error(banner)
             print(f"\n{'=' * 60}\n  ❌ {banner}\n{'=' * 60}\n")
             return False
 
-        self._global_logger.info(
+        self._session_logger.info(
             f"✅ Field Study preflight: no resting orders "
             f"(starting balances: {flat.asset_balances or 'quote-only'})"
         )

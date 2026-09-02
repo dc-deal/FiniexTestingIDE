@@ -6,7 +6,7 @@ carry-over store writes around its payload (#486).
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -33,6 +33,32 @@ class RestoreContext:
     age_seconds: float
     trading_days: int
     weekend_aware: bool
+
+
+class ColdStartPayload(BaseModel):
+    """
+    The framework's own carry-over: what the NEXT session needs to recognise its predecessor
+    (#355 Phase 2).
+
+    Two fields, and each answers a question the successor cannot answer from broker truth alone:
+
+    `session_keys` — the discriminators this bot has sent orders under. A resting order at the
+    venue carries one of them or it does not, and that is the only thing separating "an order my
+    predecessor placed" from "an order some other client placed on this account". The venue's
+    open-order list is account-wide, so without this the classification has one usable branch.
+
+    `highest_position_counter` — the largest position counter this bot has minted. The counter
+    restarts at 0 with the process, so a successor would otherwise re-mint ids its predecessor
+    already used. Adoption recovers the counters of orders that are still resting; this recovers
+    the ones whose orders are already gone, which is what keeps ids unique per bot across a
+    restart — and unique ids are what a diagnostics reader joining run records needs.
+
+    Args:
+        session_keys: Client-order-id discriminators, newest last
+        highest_position_counter: The largest position counter minted so far
+    """
+    session_keys: List[str] = Field(default_factory=list)
+    highest_position_counter: int = 0
 
 
 class CarryOverEnvelope(BaseModel):

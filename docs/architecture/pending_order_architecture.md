@@ -250,8 +250,9 @@ worth answering explicitly. It has three exits, and the second one is why this m
 
 1. **The venue does hold it.** The reconcile truth pull joins on the client order id, finds
    the resting order, and the executor restores the `broker_ref`
-   (`apply_order_attributions`). World 2 polling resumes and the order behaves normally
-   again.
+   (`apply_order_attributions`). World 2 polling resumes. A cancel the algo PARKED while the
+   reference was missing (#361) is issued at that same moment — the missing reference was
+   its only obstacle, so the repair owes it the same duty the normal confirmation path does.
 2. **The venue does not show it — and that resolves nothing.** It may never have been
    accepted, or it may have filled. The order is therefore neither dropped nor confirmed,
    and it stays in its world. **A World-2 pending has no timeout at all** (`check_timeouts`
@@ -260,12 +261,15 @@ worth answering explicitly. It has three exits, and the second one is why this m
    that waits for its orders to settle stops trading. That is why the Reconciler reports
    each such order ONCE into the session error pot: the session must not grade green.
    Deciding it needs the closed-order / trades channel (#487).
-3. **A MARKET order in the latency queue times out** after `order_timeout_seconds` and is
-   recorded as `BROKER_UNREACHABLE` — blaming the transport, not the venue.
+3. **A MARKET or CLOSE order in the latency queue times out** after `order_timeout_seconds`
+   and is recorded as `BROKER_UNREACHABLE` — blaming the transport, not the venue.
 
-The asymmetry between 2 and 3 is real and deliberate for now: the timeout (30 s) is shorter
-than the truth-pull cadence (≥60 s), so a latency-queue order is usually gone before the
-pull could attribute it. Asking early, on the unresolved event itself, is #487.
+The asymmetry between 2 and 3 is STRUCTURAL, not a matter of timing: the truth pull compares
+against `get_active_orders()`, which carries World 2 and World 3 only. A latency-queue
+pending is not in that set at all, so it can NEVER be attributed however the cadence is
+tuned — its only exit is the timeout. (The cadence adds a second, separate limitation for
+World 2: the pull runs at most every `min_interval_seconds`, so a repair is not immediate.)
+Asking the venue directly, on the unresolved event itself, is #487.
 
 ---
 

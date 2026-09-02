@@ -1414,8 +1414,13 @@ class AbstractTradeExecutor(ABC):
                 direction=p.direction,
                 lots=p.lots,
                 entry_price=p.entry_price,
-                limit_price=p.order_kwargs.get(
-                    'limit_price') if p.order_kwargs else None,
+                # The submit path stores the limit price as `entry_price`; only an AMENDED
+                # order carries `order_kwargs['limit_price']` (written by the modify resolve).
+                # Reading the kwarg alone left this blank for every order never amended —
+                # which is most of them, so the panel column and the reconciler's price
+                # comparison both had nothing to work with.
+                limit_price=(p.order_kwargs.get('limit_price') if p.order_kwargs else None)
+                or p.entry_price,
                 stop_loss=p.order_kwargs.get(
                     'stop_loss') if p.order_kwargs else None,
                 take_profit=p.order_kwargs.get(
@@ -1432,8 +1437,13 @@ class AbstractTradeExecutor(ABC):
                 direction=p.direction,
                 lots=p.lots,
                 entry_price=p.entry_price,
-                limit_price=p.order_kwargs.get(
-                    'limit_price') if p.order_kwargs else None,
+                # The submit path stores the limit price as `entry_price`; only an AMENDED
+                # order carries `order_kwargs['limit_price']` (written by the modify resolve).
+                # Reading the kwarg alone left this blank for every order never amended —
+                # which is most of them, so the panel column and the reconciler's price
+                # comparison both had nothing to work with.
+                limit_price=(p.order_kwargs.get('limit_price') if p.order_kwargs else None)
+                or p.entry_price,
                 stop_loss=p.order_kwargs.get(
                     'stop_loss') if p.order_kwargs else None,
                 take_profit=p.order_kwargs.get(

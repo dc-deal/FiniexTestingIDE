@@ -1152,6 +1152,9 @@ class KrakenAdapter(AbstractAdapter):
                 direction=OrderDirection.LONG if kraken_type == 'buy' else OrderDirection.SHORT,
                 order_type=self._ORDERTYPE_MAP.get(kraken_ordertype, OrderType.LIMIT),
                 lots=float(info.get('vol', 0.0)),
+                # `vol` is the ORIGINAL size; `vol_exec` is what already executed. Adoption
+                # needs both, or it rebuilds a half-filled order at full size (#355).
+                filled_lots=float(info.get('vol_exec', 0.0) or 0.0),
                 status=status,
                 price=price,
                 # #473 — read our own key back. Without it a resting order we placed and a

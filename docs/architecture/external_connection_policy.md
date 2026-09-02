@@ -74,11 +74,16 @@ carrying THIS session's key is matched to the pending that lost its answer, and 
 executor restores the reference — the order returns to the poll path. Two limits are worth
 knowing rather than rediscovering:
 
-- **The pull is cadenced, the timeout is not aligned with it.** A MARKET order's in-flight
-  window is bounded by `order_timeout_seconds` (30 s) while the pull runs at
-  `reconciliation.min_interval_seconds` (≥60 s), so an unresolved MARKET order is usually
-  already timed out when the next pull arrives. Asking EARLY — a targeted order-status
-  request fired by the unresolved event itself, plus a bounded in-flight window — is #487.
+- **A latency-queue order is out of the pull's reach entirely.** The truth pull compares
+  against `get_active_orders()` — resting orders only — so an unresolved MARKET or CLOSE
+  order can never be attributed by it, whatever the cadence. Its only exit is the timeout
+  (`order_timeout_seconds`, 30 s) → `BROKER_UNREACHABLE`.
+- **And the pull is cadenced.** It fires every `interval_ticks` (100) ticks OR at most every
+  `min_interval_seconds` (60 s by default, profile-configurable) — whichever comes first, so
+  60 s is the CEILING of the wait during an idle market, not a floor. A resting order is
+  therefore repaired within one cadence, not instantly. Asking EARLY — a targeted
+  order-status request fired by the unresolved event itself, plus a bounded in-flight
+  window — is #487.
 - **Absence at the venue does not resolve anything.** An order missing from the open-order
   list may never have been accepted, or may have filled. The pull cannot tell those apart,
   so such a pending is neither dropped nor confirmed: it is reported once into the session
@@ -99,6 +104,12 @@ internal (both pipelines, unchanged)   pos_btcusd_47
 wire key (live only)                   p1641_47      1641 = 4 chars of the run id's random half
 ```
 
+**The 18 characters are KRAKEN's limit, not the framework's.** The adapter contract carries a
+neutral `client_order_id: Optional[str]` and each adapter maps it to whatever its venue
+offers — the truncation lives in the Kraken adapter, not in the shared builder. MT5 has no
+client order id at all; its equivalent is the per-EA `magic` number, an integer, which #209
+carries.
+
 Two reasons for the shape. **It fits** — Kraken allows 18 ASCII characters, which the
 readable internal id does not, so the readable form stays in our own books. And **it does
 not collide across a restart**: the internal counter restarts at 1 with the process, so
@@ -111,6 +122,14 @@ must not change it mid-session.
 An order the venue reports with *no* key of ours is not a defect: it is somebody else's
 order, and that absence is the fact that tells it apart. #349 turns it into an EXTERNAL
 order rather than a ghost.
+
+**We take this string apart, and that is a deliberate exception.** Parsing a speaking key is
+normally a smell — an identifier should be opaque, and pulling meaning out of its characters
+couples every reader to its format. It is right here for one reason: across a lost answer or
+a restart this key is the ONLY handle. The venue's own reference is exactly what did not
+arrive, and nothing else survives a new process. What keeps the exception contained is that
+the format has ONE writer and ONE reader, side by side in `run_id_utils`, and that we parse
+our own minting rather than a foreign convention.
 
 The key is read as strictly as it is written: the discriminator must have the exact minted
 width and the counter must be digits (`parse_client_order_id`). A client order id is

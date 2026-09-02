@@ -68,6 +68,7 @@ class StoreId(StrEnum):
     RUN_LEDGER = 'run_ledger'
     CERTIFICATES = 'certificates'
     SESSION_STATE = 'session_state'
+    COLD_START_STATE = 'cold_start_state'
     TICKS = 'ticks'
     BARS = 'bars'
     GENERATOR_PROFILES = 'generator_profiles'

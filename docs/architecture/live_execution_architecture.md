@@ -237,7 +237,9 @@ Live state stays correct through two distinct layers — do not conflate them:
 | `attributed` | our key, and a local pending is still waiting for its reference — the lost submit answer | no, a repair |
 | `abandoned` | our key, this session, nothing local left | yes |
 | `foreign_session` | our key shape, another session's discriminator — an earlier session of this bot | yes (boot adoption is #355 Phase 2) |
-| `ghost` | no key at all — somebody else's order, or one placed by hand | yes, unchanged |
+| `ghost` | no key **of ours** — none at all, or one that is not our shape: somebody else's order, or one placed by hand | yes, unchanged |
+
+The operator's SESSION panel aggregates `abandoned + foreign_session + unconfirmed` as "N ours, unaccounted" (current cycle). An attribution is deliberately NOT in that number: it is a repair, and it appears in the log and the final summary instead.
 
 Plus one local bucket: `unconfirmed` — a pending whose submit was never answered and which the broker does not show either. It is never dropped (the venue may still hold it) but it keeps `has_pending_orders()` true, so it is reported once into the session error pot; resolving it needs the targeted status query in #487.
 
@@ -259,7 +261,8 @@ is the single place wall-clock is read in live; decision logic and workers only 
 `get_current_time()` (§9). In simulation the injected time is the simulated tick time, keeping
 backtests reproducible.
 
-The idle heartbeat (fired when no tick arrives within `heartbeat_interval_ms`, default 1000 ms)
+The idle heartbeat (fired when no tick arrives within `heartbeat_interval_ms`, default 500 ms
+for the AutoTrader; 1000 ms is the simulation ghost-pass default)
 runs the cadence work on the **single main-loop consumer** — no second mutating thread:
 `heartbeat()` drains the inbox, checks timeouts, and **re-polls active orders** (the
 fill/cancel-confirm query fires during idle, not only on a tick); the Reconciler pulls broker
@@ -301,7 +304,8 @@ the submit response — so during submit-in-flight the order is locally visible 
 | 1 | Submit in-flight | in list, `broker_ref=None`, `PENDING_SUBMIT` | maybe not received yet | counts as active; **not cancellable**; a cancel here → **deferred** (parked, fired on confirm) ✓ |
 | 2 | Submit resp = PENDING + txid | `broker_ref` set, RESTING; a parked cancel **fires now** | order resting (open) | normal; poll for fills |
 | 3 | Submit resp = REJECTED | removed, rejection recorded, `_rejected_flag` | never created | algo sees reject (sync / #348); parked cancel = no-op (order gone) |
-| 4 | Submit TIMEOUT (no resp) | in list, `broker_ref=None`, timed out | **UNKNOWN** — may exist | `_handle_timeout` → BROKER_ERROR; risk: order rests at broker → orphan; **Reconciler #151** backstop; `cl_ord_id` would allow query-by-own-id (#355) |
+| 4a | Submit unanswered — **MARKET/CLOSE** (latency queue) | in the processor's dict, `broker_ref=None`, `PENDING_SUBMIT` | **UNKNOWN** — may exist | times out after `order_timeout_seconds` → **BROKER_UNREACHABLE** (the transport is blamed, not the venue). The truth pull can never attribute it: `get_active_orders()` does not carry it. Resolution needs a targeted query (**#487**) |
+| 4b | Submit unanswered — **resting LIMIT** (World 2) | in `_active_limit_orders`, `broker_ref=None`, `PENDING_SUBMIT` | **UNKNOWN** — may exist | **no timeout at all** — it stays. The truth pull either ATTRIBUTES it by `cl_ord_id` (reference restored, polling resumes, a parked cancel is issued) or reports it once as `unconfirmed` into the session error pot (**#355**) |
 | **Resting** | | | | |
 | 5 | Resting, no cancel | RESTING, polled | resting, may fill anytime | poll → fill |
 | 6 | Fill detected (poll/push) | removed as FILLED, position, `on_order_filled` #348 | closed (filled) | algo reacts to the position |

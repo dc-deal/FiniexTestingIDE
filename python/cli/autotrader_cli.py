@@ -37,6 +37,12 @@ def main():
     run_parser.add_argument(
         '--delay', type=int, metavar='MS',
         help='Override tick_delay_ms for mock tick source (e.g. --delay 1)')
+    run_parser.add_argument(
+        '--attended', action='store_true',
+        help='Declare that a human is watching this start, so cold-start adoption may ASK '
+             '(#355). Without it, adoption_mode=operator_confirm refuses instead of prompting '
+             '— a TTY does not prove anybody is reading it (this project\'s own container '
+             'allocates one), and a bot waiting forever at 03:00 has simply stopped.')
 
     # ─────────────────────────────────────────────────────────────────────────
     # Parse and execute
@@ -60,7 +66,7 @@ def main():
                 config.display.enabled = True
             if args.delay is not None:
                 config.tick_source.tick_delay_ms = args.delay
-            trader = AutotraderMain(config)
+            trader = AutotraderMain(config, attended=args.attended)
             result = trader.run()
 
             # The result carries the graded outcome; the CLI only maps it (#372)

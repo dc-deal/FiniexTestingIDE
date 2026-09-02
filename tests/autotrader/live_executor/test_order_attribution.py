@@ -95,6 +95,48 @@ class TestApplyOrderAttributions:
         assert executor_timeout.get_active_orders() == []
 
 
+class TestDeferredCancelSurvives:
+    """
+    A cancel parked while the reference was missing must not be lost by the repair.
+
+    `cancel_limit_order` on an order with no `broker_ref` does not refuse — it PARKS the
+    intent and answers True, because the missing reference was the only obstacle (#361).
+    Attribution is the moment that obstacle disappears, so it owes the same duty as the
+    normal confirmation path: issue the cancel. Clearing the in-flight marker and walking
+    away would hand the algo a resting order it explicitly cancelled — and a resting order
+    can fill.
+    """
+
+    def test_a_parked_cancel_is_issued_when_the_reference_arrives(
+        self, executor_timeout, mock_timeout
+    ):
+        pending = _resting_limit_order(executor_timeout, mock_timeout)
+        pending.broker_ref = None
+        pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
+        # The algo asks to cancel while the submit is unresolved — accepted, deferred.
+        assert executor_timeout.cancel_limit_order(pending.pending_order_id) is True
+        assert pending.execution_state.cancel_requested is True
+
+        executor_timeout.apply_order_attributions([
+            (pending, _broker_order('OQ7X2A-RESTING', 'p1641_1')),
+        ])
+
+        assert pending.broker_ref == 'OQ7X2A-RESTING'
+        assert pending.execution_state.cancel_requested is False
+        assert pending.execution_state.in_flight_operation is PendingOperation.PENDING_CANCEL
+
+    def test_an_order_nobody_cancelled_is_left_alone(self, executor_timeout, mock_timeout):
+        pending = _resting_limit_order(executor_timeout, mock_timeout)
+        pending.broker_ref = None
+        pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
+
+        executor_timeout.apply_order_attributions([
+            (pending, _broker_order('OQ7X2A-RESTING', 'p1641_1')),
+        ])
+
+        assert pending.execution_state.in_flight_operation is PendingOperation.NONE
+
+
 class TestPollPathResumes:
     """The point of the write: the order is polled again (the #355 counter-proof)."""
 

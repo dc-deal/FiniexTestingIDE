@@ -225,6 +225,29 @@ class PortfolioManager:
     # ============================================
 
     # Generate position ID
+    def raise_position_counter_floor(self, floor: int) -> None:
+        """
+        Lift the position counter so it cannot re-mint an id that already exists (#355).
+
+        The counter starts at 0 with the process. A session that ADOPTS a still-open
+        `pos_btcusd_1` from its predecessor would otherwise mint exactly that id for its own
+        next order. Raising only — never lowering — so calling it twice, or with a stale
+        value, cannot hand out an id twice.
+
+        Args:
+            floor: The highest counter already in use (from adoption or the carry-over)
+        """
+        self._position_counter = max(self._position_counter, floor)
+
+    def get_position_counter(self) -> int:
+        """
+        The highest position counter minted so far.
+
+        Returns:
+            The counter value; 0 when nothing has been minted
+        """
+        return self._position_counter
+
     def get_next_position_id(self, symbol) -> str:
         self._position_counter += 1
         return f'pos_{symbol.lower()}_{self._position_counter}'

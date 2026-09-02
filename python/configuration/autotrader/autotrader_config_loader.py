@@ -17,6 +17,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ApiMonitorConfig,
     AutotraderExecutionDefaults,
     ClippingMonitorDefaults,
+    ColdStartDefaults,
     DisplayDefaults,
     DriftAuditConfig,
     OrderGuardDefaults,
@@ -60,6 +61,7 @@ _KNOWN_DRIFT_AUDIT_KEYS: frozenset          = _allowlist_from(DriftAuditConfig)
 _KNOWN_RECONCILIATION_KEYS: frozenset       = _allowlist_from(ReconciliationDefaults)
 _KNOWN_API_MONITOR_KEYS: frozenset          = _allowlist_from(ApiMonitorConfig)
 _KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = _allowlist_from(StatePersistenceDefaults)
+_KNOWN_COLD_START_KEYS: frozenset           = _allowlist_from(ColdStartDefaults)
 _KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
 _KNOWN_TICK_SOURCE_KEYS: frozenset          = _allowlist_from(TickSourceConfig)
 _KNOWN_SCENARIO_SETTINGS_KEYS: frozenset    = _allowlist_from(ScenarioSettingsConfig)
@@ -119,6 +121,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     reconciliation_raw = raw.get('reconciliation', {})
     api_monitor_raw = raw.get('api_monitor', {})
     state_persistence_raw = raw.get('state_persistence', {})
+    cold_start_raw = raw.get('cold_start', {})
     performance_tracking_raw = execution_raw.get('performance_tracking', {})
 
     # Structural key validation — profile level (pre-construction, full provenance)
@@ -133,6 +136,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('reconciliation',      reconciliation_raw, _KNOWN_RECONCILIATION_KEYS)
     check_unknown_keys('api_monitor',         api_monitor_raw,  _KNOWN_API_MONITOR_KEYS)
     check_unknown_keys('state_persistence',   state_persistence_raw, _KNOWN_STATE_PERSISTENCE_KEYS)
+    check_unknown_keys('cold_start',          cold_start_raw,   _KNOWN_COLD_START_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
     if scenario_settings_raw is not None:
         check_unknown_keys('scenario_settings', scenario_settings_raw, _KNOWN_SCENARIO_SETTINGS_KEYS)
@@ -244,6 +248,11 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         api_monitor=ApiMonitorConfig(
             enabled=api_monitor_enabled_resolved,
             slow_call_threshold_ms=api_monitor_raw.get('slow_call_threshold_ms', 3000.0),
+        ),
+        cold_start=ColdStartDefaults(
+            enabled=cold_start_raw.get('enabled', True),
+            path=cold_start_raw.get('path', 'data/runtime/cold_start_state'),
+            adoption_mode=cold_start_raw.get('adoption_mode', 'operator_confirm'),
         ),
         state_persistence=StatePersistenceDefaults(
             enabled=state_persistence_enabled_resolved,
