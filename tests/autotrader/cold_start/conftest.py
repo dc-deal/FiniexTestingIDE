@@ -85,6 +85,22 @@ def executor() -> LiveTradeExecutor:
 
 
 @pytest.fixture
+def spot_executor() -> LiveTradeExecutor:
+    """
+    A live executor whose portfolio runs in SPOT mode.
+
+    The position book only exists for spot: a holding is a balance there, and a balance
+    cannot describe itself as a position (#355). A margin executor would take the other
+    branch and never touch the book at all.
+    """
+    return MockOrderExecution(
+        mode=MockExecutionMode.TIMEOUT,
+        spot_mode=True,
+        initial_balances={'USD': 1000.0, 'BTC': 0.0},
+    ).create_executor()
+
+
+@pytest.fixture
 def store(tmp_path: Path, logger: RecordingLogger) -> ColdStartStateStore:
     """A carry-over store in an isolated directory."""
     return ColdStartStateStore(

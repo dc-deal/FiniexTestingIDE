@@ -32,6 +32,10 @@ from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.autotrader_types.cold_start_types import (
+    ColdStartSituation,
+    ColdStartVerdict,
+)
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_logic_types import (
     AwarenessLevel,
@@ -255,6 +259,32 @@ class CautiousMacd(AbstractDecisionLogic):
         self.emit_event(
             '🔌 market data stale — holding until ticks resume',
             AwarenessLevel.NOTICE, 'market_data_stale')
+
+    def on_cold_start(self, situation: ColdStartSituation) -> ColdStartVerdict:
+        """
+        Programmed boot reaction (#493): decline, deliberately.
+
+        This logic places protective STOP orders whose level follows the MACD state it was in
+        when it armed them — and that state is not persisted. A stop it finds resting after a
+        restart therefore sits at a level this session cannot justify, so claiming to have
+        accounted for it would be a claim about a decision that is gone.
+
+        Declining hands the situation back to the framework: with `adoption_mode='auto'` the
+        order is adopted and the operator sees it in the boot report; otherwise the session
+        stays flat until somebody looks. Both are honest, and both are better than a bot that
+        manages a stop it cannot explain.
+
+        Args:
+            situation: What the boot found at the venue
+
+        Returns:
+            A declining verdict with the reason
+        """
+        return ColdStartVerdict(
+            False,
+            f'{len(situation.adopted)} resting stop(s) adopted, but the MACD state that set '
+            f'their level is not persisted — the framework decides',
+        )
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

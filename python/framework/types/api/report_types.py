@@ -838,6 +838,116 @@ class BrokerReport(RunScopedReport):
     units: list[BrokerInfoRow]
 
 
+
+class ColdStartOrderRow(BaseModel):
+    """
+    One resting order the boot step rebuilt into the session's shadow (#355 / #493).
+
+    Args:
+        order_id: Internal id, recovered from the client key's counter
+        client_order_id: The wire key the venue echoed back
+        broker_ref: The venue's own reference
+        direction: LONG / SHORT
+        order_type: LIMIT / STOP / STOP_LIMIT
+        lots: The size the order was placed with
+        filled_lots: How much the venue had already executed at boot
+        price: The resting price
+    """
+    order_id: str
+    client_order_id: str = ''
+    broker_ref: str = ''
+    direction: str = ''
+    order_type: str = ''
+    lots: float = 0.0
+    filled_lots: float = 0.0
+    price: Optional[float] = None
+
+
+class ColdStartSkippedRow(BaseModel):
+    """
+    One resting order at the venue the boot step left alone, and why (#493).
+
+    Args:
+        reason: foreign_key / unknown_session / in_flight / other_symbol
+        client_order_id: The key it carried, when it carried one
+        broker_ref: The venue's own reference
+        symbol: The instrument — may differ from the session's
+        order_type: What the venue reported
+        lots: Order size
+        price: The resting price
+    """
+    reason: str
+    client_order_id: str = ''
+    broker_ref: str = ''
+    symbol: str = ''
+    order_type: str = ''
+    lots: float = 0.0
+    price: Optional[float] = None
+
+
+class ColdStartPositionRow(BaseModel):
+    """
+    One position the session read back from its own carry-over (#355).
+
+    The entry price is REMEMBERED, not synthesised — which is why this row exists at all: a
+    reader has to be able to tell a position this session opened from one it inherited, since
+    the entry fee was charged to the run before it.
+
+    Args:
+        position_id: Internal position id, as minted when it was opened
+        direction: LONG / SHORT
+        lots: Currently open size
+        entry_price: The remembered entry price
+        entry_time: Entry time, ISO-8601 UTC
+        status: OPEN / PARTIALLY_CLOSED
+    """
+    position_id: str
+    direction: str = ''
+    lots: float = 0.0
+    entry_price: float = 0.0
+    entry_time: str = ''
+    status: str = ''
+
+
+class ColdStartReport(RunScopedReport):
+    """
+    What the session found at boot, and what was decided about it (#355 / #493).
+
+    Live-only. Present whenever the boot step ran and the venue reported anything; absent for
+    a simulation, a dry run (which cannot query the venue) and a Field Study (excluded).
+
+    The record exists because of the rule that no case may disappear through a yes: the
+    situation is filed whether the algo accounted for it or not, so "the algo said it was
+    fine" can never look the same as "nothing was found" thirty restarts later.
+
+    Args:
+        symbol: The instrument this session traded
+        adopted: Resting orders rebuilt into the shadow
+        skipped: Resting orders left alone, each with its reason
+        restored_positions: The book read back from the carry-over
+        book_shortfall: How much the restored book claimed beyond what the account held
+        adoption_mode: The resolved policy ('auto' / 'operator_confirm')
+        attended: Whether a human declared they were watching the start
+        carry_over_present: Whether a carry-over document was found
+        carry_over_saved_at: When it was written, ISO-8601 UTC (provenance)
+        algo_name: The decision logic that was asked, empty when none was
+        algo_accounted_for: What it answered; None when it was not asked or answered wrongly
+        algo_note: Its reason, in its own words
+    """
+    symbol: str = ''
+    adopted: list[ColdStartOrderRow] = []
+    skipped: list[ColdStartSkippedRow] = []
+    restored_positions: list[ColdStartPositionRow] = []
+    book_shortfall: float = 0.0
+    adoption_mode: str = ''
+    attended: bool = False
+    carry_over_present: bool = False
+    carry_over_saved_at: str = ''
+    algo_name: str = ''
+    algo_accounted_for: Optional[bool] = None
+    algo_note: str = ''
+
+
 class SignalUsageRow(BaseModel):
     """
     One scenario's use of a signal source: its window (archive plane) plus what the

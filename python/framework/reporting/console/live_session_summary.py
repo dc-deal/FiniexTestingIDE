@@ -13,6 +13,7 @@ from typing import Optional
 
 from python.framework.reporting.console.feed_stability_summary import format_disturbance_line
 from python.framework.types.api.report_types import (
+    ColdStartReport,
     RunSummary,
     TradeHistoryReport,
     WarningsErrorsReport,
@@ -33,6 +34,7 @@ class LiveSessionSummary:
         run_dir: Optional[Path],
         run_summary: Optional[RunSummary] = None,
         warnings_errors_report: Optional[WarningsErrorsReport] = None,
+        cold_start_report: Optional[ColdStartReport] = None,
     ):
         """
         Args:
@@ -42,17 +44,61 @@ class LiveSessionSummary:
             run_summary: Cross-section KPI summary — supplies the #451 disturbance line
             warnings_errors_report: Warnings/errors model — supplies the canonical run
                 grading (#372), so the outcome is read rather than re-asked of the result
+            cold_start_report: What the boot step inherited (#355 / #493) — absent when there
+                was nothing to inherit
         """
         self._result = result
         self._trade_report = trade_report
         self._run_dir = run_dir
         self._run_summary = run_summary
         self._warnings_errors_report = warnings_errors_report
+        self._cold_start_report = cold_start_report
 
     def render(self, renderer: ConsoleRenderer) -> None:
-        """Render the closing block (session stats + output locations)."""
+        """Render the closing block (session stats + cold start + output locations)."""
         self._render_stats(renderer)
+        self._render_cold_start(renderer)
         self._render_output_locations(renderer)
+
+    def _render_cold_start(self, renderer: ConsoleRenderer) -> None:
+        """
+        What this session INHERITED, when it inherited anything (#355 / #493).
+
+        Rendered rather than computed: every figure here is on the model. It matters for a
+        reader because two numbers in the block above mean something different when the
+        session started with a position — the entry fee of an inherited position was charged
+        to the run before this one, so the trade's net P&L carries it while this run's fee
+        total does not.
+        """
+        report = self._cold_start_report
+        if report is None:
+            return
+
+        print()
+        print('🧬 Cold Start (inherited at boot)')
+        if report.adopted:
+            print(f'  Orders adopted:  {len(report.adopted)}')
+            for row in report.adopted:
+                filled = f' ({row.filled_lots} filled)' if row.filled_lots else ''
+                print(f'    {row.order_id}  {row.direction} {row.lots} @ {row.price}'
+                      f'{filled}  ref={row.broker_ref}')
+        if report.restored_positions:
+            print(f'  Positions restored: {len(report.restored_positions)} '
+                  f'(entry prices remembered, fees charged to the earlier run)')
+            for row in report.restored_positions:
+                print(f'    {row.position_id}  {row.direction} {row.lots} '
+                      f'@ {row.entry_price}  {row.status}')
+        if report.book_shortfall:
+            print(renderer.red(
+                f'  ⚠ Book shortfall: {report.book_shortfall} — the account held less than '
+                f'the restored book claimed'))
+        if report.skipped:
+            reasons = sorted({row.reason for row in report.skipped})
+            print(f'  Left alone:      {len(report.skipped)} ({", ".join(reasons)})')
+        if report.algo_name and report.algo_accounted_for is not None:
+            verdict = 'accounted for' if report.algo_accounted_for else 'not accounted for'
+            note = f' — {report.algo_note}' if report.algo_note else ''
+            print(f'  {report.algo_name}: {verdict}{note}')
 
     def _render_stats(self, renderer: ConsoleRenderer) -> None:
         """Session outcome statistics + the #389 analytics line."""

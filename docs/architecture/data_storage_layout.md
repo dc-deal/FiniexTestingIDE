@@ -236,9 +236,9 @@ transaction, no ordering guarantee. Anyone reasoning about restarts needs the di
 | | 4 · `session_state` (#354) | 4b · `cold_start_state` (#355) |
 |---|---|---|
 | Writer | `AlgoStateStore` | `ColdStartStateStore` |
-| **When** | every N ticks OR M seconds, plus shutdown | **boot + shutdown** |
+| **When** | every N ticks OR M seconds, plus shutdown | **boot + shutdown + on a STRUCTURAL book change, plus a tick cadence for drift** |
 | **Gate** | the algo's own opt-in `uses_state_persistence()` | none — every live bot |
-| Payload | the algo's opaque snapshot | session keys + position-counter high-water mark |
+| Payload | the algo's opaque snapshot | session keys + position-counter high-water mark + the open position book |
 | **Staleness** | `max_age_trading_days` + `on_stale` → **discards** | none |
 | Index | none (opened by key) | yes (searched across bots) |
 
@@ -254,3 +254,83 @@ Three consequences worth knowing before debugging a restart:
 3. **They are not an atomic pair.** A crash between the two writes leaves half a state. Not
    critical — each is readable alone and each degrades to an empty payload with a warning —
    but there is no "both or neither".
+
+#### Why the position book is in here at all
+
+A spot position is not an object the venue holds. Kraken knows balances and orders; its
+`OpenPositions` is margin-only and empty on spot. Everything that turns `0.014 BTC` into a
+*position* — direction, entry price, fee, "still open" — is OUR record, derived from our own
+fills. **At spot you have to remember your positions; at margin they sit in the market.**
+
+So this is not adoption from broker truth (there is none to adopt) but memory plus a
+cross-check:
+
+```
+write     STRUCTURAL change → at once      which positions exist, how much is left, status
+          DRIFT             → tick cadence exit levels, excursion extrema
+restore   at BOOT, no tick needed: every field was known when the position was opened
+check     the restored book against the venue's balance — and only REPORT
+```
+
+The split is a measurement, not a preference. One carry-over write costs **11 ms** on this
+project's tree, and the store's index rebuild another **26-40 ms** (§42 — `/tmp` says 2 ms;
+the bridged mount is the difference). A structural change happens a handful of times a day
+and cannot be recovered, so it is written immediately. Drift moves on nearly every tick of a
+trend — a trailing stop follows every new high — and is either re-derived by the algo on its
+next pass or loses at most one interval of a running maximum, so it waits for
+`cold_start.book_drift_interval_ticks`. Counted in TICKS because drift is *caused* by ticks: a
+quiet market needs no writes, and a tick counter needs no clock (the first passes happen
+before the canonical clock is injected). The index rebuild is left to the writes that BOUND a
+session; an index is derived and reports itself stale until the next boot.
+
+**The shutdown write happens BEFORE the position cleanup, and the order is the point.**
+`close_all_remaining_orders` closes open positions in OUR BOOK only — it fills a synthetic
+close locally and nothing reaches the venue. A note written after that would say "this bot
+holds nothing" while the asset is still at the broker, which erases exactly what the successor
+needs. Whether a session END should flatten at the venue at all is a policy question and
+belongs to #492; until it is answered, the note describes the VENUE.
+
+The check is deliberately **one-sided**. The account is shared, so holding MORE than the book
+claims is normal and says nothing (what a bot may *use* is declared capital, #489). Holding
+LESS is not: the note then claims a position the account cannot cover, which is what happens
+when something sold outside this bot. That is reported and the book is left as written —
+shrinking it to fit would invent a number and hide the event.
+
+The note is faithful rather than minimal, and the reason is silent failure. A sparse note does
+not crash; it produces a closing trade record that looks complete and is not — excursion
+extrema (#389) back at zero, the submission slippage audit (#340) blank, the entry executions
+gone, a partially closed position returned as untouched. Fees are carried as `RestoredFee`
+(settled cost, original type) and are NOT re-counted into the new run's cost tracking: the fee
+belongs to the run that charged it, so the *trade's* net P&L carries it while this run's fee
+total does not. The cold-start report block states that, because otherwise it reads as a
+rounding error.
+
+Margin is not restored — those positions come back from the venue, where they carry our tag
+(#209) — and a dry run restores nothing, because it never queried the venue and a rehearsal
+that closes remembered REAL positions with orders that never leave the process reports a book
+it does not have.
+
+#### When an order of our shape cannot be placed — the causes, most likely first
+
+The boot step reports an order that carries a client key of OUR shape from a session the
+carry-over has no record of as an ERROR (`unknown_session`). It is rare, and every remaining
+path to it runs through a human action — which is why it is reported and left standing rather
+than handled automatically. If you ever meet it, this narrows it down:
+
+| Cause | How likely | How to tell |
+|---|---|---|
+| Someone deleted, moved or restored `data/runtime/` (a "clean start", a machine move, a backup) | the usual one | the carry-over file is missing or its `saved_at_utc` predates the order |
+| Two instances of the same bot ran at once and their key writes crossed | rare — the write is read-modify-write, so it needs overlapping saves | two run ids in `runs_index.parquet` overlapping in time for one profile |
+| The document was hand-edited or corrupted | rare | the boot log carries the "unreadable" or "payload rejected" warning |
+| A schema version bump discarded it | only right after a deploy | the boot log names the version mismatch |
+| Genuinely another client using the same key format | improbable | the key's session half matches no run id of ours |
+
+Two paths are closed by construction and can be ruled out immediately: a **container rebuild**
+cannot lose it (`./data` is a bind mount from the host), and **eviction** cannot drop a key
+whose order is still resting (eviction is by relevance before recency).
+
+⚠️ **A schema-version bump on a carry-over is not a state loss, it is a start refusal.** The
+chain: envelope discarded → empty payload → the predecessor's session keys are gone → its
+resting orders read as `unknown_session` → the start ban applies. That is defensible (trading
+blind beside your own orders is worse), but it has to be known before the deploy rather than
+discovered at 03:00.

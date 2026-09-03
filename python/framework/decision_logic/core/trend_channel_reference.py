@@ -35,6 +35,10 @@ from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.autotrader_types.cold_start_types import (
+    ColdStartSituation,
+    ColdStartVerdict,
+)
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_logic_types import (
     AwarenessLevel,
@@ -250,7 +254,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     def get_metadata(cls) -> ComponentMetadata:
         """Didactic CORE reference logic — teaching example, no profitability claim."""
         return ComponentMetadata(
-            version='1.1.0',
+            version='1.2.0',
             doc_link='docs/user_guides/trend_channel_reference_guide.md',
             recommended_markets=('forex',),
         )
@@ -273,6 +277,61 @@ class TrendChannelReference(AbstractDecisionLogic):
         self.emit_event(
             '🔌 market data stale — holding until ticks resume',
             AwarenessLevel.NOTICE, 'market_data_stale')
+
+    def on_cold_start(self, situation: ColdStartSituation) -> ColdStartVerdict:
+        """
+        Programmed boot reaction (#493): account for exactly one armed entry, nothing more.
+
+        This logic arms at most ONE resting entry at a time, in the direction the channel
+        gate produced. A boot that hands back exactly one adopted order of the configured
+        entry type is therefore the state this logic left behind, and it can carry on: the
+        polling path reports the fill, and the exit logic works off the position it then holds.
+
+        Anything else it declines — two orders it cannot have placed, a position that came
+        back without an order, a book the account no longer covers. Declining is not a
+        refusal; it hands the decision back to the framework, which applies its own policy
+        (adopt automatically, or refuse and stay flat until somebody looks).
+
+        A yes NAMES the orders it speaks for: the framework refuses to honour one that leaves
+        an adopted order unaccounted, so the list is read off the situation rather than
+        assumed.
+
+        A real bot would compare this against its own persisted memory (#354) rather than a
+        count. This one deliberately does not: a teaching example that needs two subsystems
+        to be readable teaches neither.
+
+        Args:
+            situation: What the boot found at the venue
+
+        Returns:
+            The verdict, with the reason it reached it
+        """
+        if situation.is_clean():
+            return ColdStartVerdict(True, 'nothing was resting — starting as if fresh')
+
+        expected_type = (OrderType.STOP if self.entry_mode == 'stop_breakout'
+                         else OrderType.LIMIT)
+        armed = [o for o in situation.adopted if o.order_type == expected_type]
+
+        if (len(situation.adopted) == 1 and len(armed) == 1
+                and not situation.restored_positions
+                and situation.book_shortfall == 0.0):
+            return ColdStartVerdict(
+                True,
+                f'one armed {self.entry_mode} entry ({armed[0].order_id}) — this logic holds '
+                f'at most one, so the world is as it was left',
+                # A yes has to NAME what it speaks for (#493). One order here, but it is read
+                # off the situation rather than assumed, because a constant would be exactly
+                # the reflex answer the contract exists to prevent.
+                accounted_order_ids=[order.order_id for order in situation.adopted],
+            )
+
+        return ColdStartVerdict(
+            False,
+            f'{len(situation.adopted)} adopted order(s), '
+            f'{len(situation.restored_positions)} restored position(s) — more than this '
+            f'logic can have left behind, so the framework decides',
+        )
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

@@ -27,7 +27,7 @@ Usage:
 """
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Dict, Optional
 
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
@@ -52,6 +52,8 @@ class MockOrderExecution:
         initial_balance: float = 10000.0,
         account_currency: str = 'USD',
         timeout_seconds: float = 30.0,
+        spot_mode: bool = False,
+        initial_balances: Optional[Dict[str, float]] = None,
     ):
         """
         Initialize mock execution environment.
@@ -61,6 +63,10 @@ class MockOrderExecution:
             initial_balance: Starting account balance
             account_currency: Account currency
             timeout_seconds: Order timeout threshold
+            spot_mode: Build the portfolio in spot mode (asset inventory instead of
+                margin) — needed by anything that exercises a spot holding, e.g. the
+                cold-start position book (#355)
+            initial_balances: Asset inventory for spot mode
         """
         self._mode = mode
         self._initial_balance = initial_balance
@@ -68,6 +74,8 @@ class MockOrderExecution:
         self._timeout_config = TimeoutConfig(
             order_timeout_seconds=timeout_seconds,
         )
+        self._spot_mode = spot_mode
+        self._initial_balances = initial_balances
         self._tick_counter = 0
 
     def create_executor(self) -> LiveTradeExecutor:
@@ -88,6 +96,8 @@ class MockOrderExecution:
             account_currency=self._account_currency,
             logger=logger,
             timeout_config=self._timeout_config,
+            spot_mode=self._spot_mode,
+            initial_balances=self._initial_balances,
         )
 
     def await_submit_confirmation(self, executor: LiveTradeExecutor) -> None:

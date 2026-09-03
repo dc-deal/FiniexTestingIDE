@@ -51,6 +51,7 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOperation,
     PendingOrder,
 )
+from python.framework.utils.broker_asset_utils import normalize_broker_asset
 from python.framework.utils.run_id_utils import parse_client_order_id
 
 if TYPE_CHECKING:
@@ -666,7 +667,7 @@ class Reconciler:
         asset_balances = {
             asset: amount
             for asset, amount in balances.items()
-            if self._normalize_asset(asset) != quote_currency and abs(amount) > _DUST_THRESHOLD
+            if normalize_broker_asset(asset) != quote_currency and abs(amount) > _DUST_THRESHOLD
         }
 
         reasons: List[str] = []
@@ -682,24 +683,6 @@ class Reconciler:
             reasons=reasons,
         )
 
-    @staticmethod
-    def _normalize_asset(code: str) -> str:
-        """
-        Normalize a broker asset code to a standard currency code.
-
-        Handles Kraken's legacy prefixes (X for crypto, Z for fiat on 4-char
-        codes) and the XBT→BTC alias. Best-effort; validated against the real
-        API by the Field Study (#332) / live-adapter tests.
-
-        Args:
-            code: Broker asset code (e.g. 'ZUSD', 'XETH', 'XXBT')
-
-        Returns:
-            Standard currency code (e.g. 'USD', 'ETH', 'BTC')
-        """
-        if len(code) == 4 and code[0] in ('X', 'Z'):
-            code = code[1:]
-        return 'BTC' if code == 'XBT' else code
 
     # ============================================
     # Accessors + shutdown

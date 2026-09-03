@@ -45,6 +45,7 @@ from python.framework.utils.run_id_utils import mint_run_id, session_key_from_ru
 from python.framework.validators.component_metadata_advisory import (
     surface_decision_logic_version,
 )
+from python.framework.validators.decision_logic_hook_validator import check_cold_start_hook
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -235,6 +236,11 @@ def setup_pipeline(
     logger.debug(
         f'📋 Decision logic requires: {[t.value for t in required_order_types]}'
     )
+    # #493 — a logic that can leave an order resting at a venue must answer for finding one
+    # there after a restart. Checked on the DECLARATION, before anything is built.
+    cold_start_hook_error = check_cold_start_hook(decision_logic_class, required_order_types)
+    if cold_start_hook_error:
+        raise ValueError(cold_start_hook_error)
 
     # === Phase 3: Resolve trading model ===
     market_config_manager = MarketConfigManager()

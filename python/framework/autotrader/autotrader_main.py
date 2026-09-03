@@ -459,6 +459,10 @@ class AutotraderMain:
                 reconciler=self._reconciler,
                 api_monitor=self._api_monitor,
                 state_store=self._state_store,
+                # The in-session writes leave the index alone (§42) — it is rebuilt by the
+                # boot and shutdown writes, which are not on the hot path.
+                persist_position_book=lambda: self._persist_cold_start_carry_over(
+                    refresh_index=False),
             )
             self._tick_loop_started = True
             ticks_processed, ticks_clipped = self._tick_loop.run()
@@ -553,6 +557,17 @@ class AutotraderMain:
             self._display.stop()
             self._global_logger.info('📺 Live display stopped')
 
+        # #355: the carry-over write goes BEFORE the cleanup below, and the order is the
+        # whole point. `close_all_remaining_orders` closes open positions in OUR BOOK only —
+        # it builds a synthetic close order and fills it locally; nothing reaches the venue
+        # (abstract_trade_executor._fill_close_order). So after the cleanup the portfolio
+        # reports flat while the asset is still sitting at the broker, and a carry-over
+        # written from that state would say "this bot holds nothing" — erasing the note the
+        # successor needs and re-creating exactly the blind restart #355 exists to prevent.
+        # Whether a session END should flatten at the venue at all is a policy question and
+        # belongs to #492; until it is answered, the note describes the VENUE.
+        self._persist_cold_start_carry_over()
+
         # Close all open positions
         if self._executor:
             try:
@@ -581,10 +596,6 @@ class AutotraderMain:
                 self._api_monitor.shutdown()
             except Exception as e:
                 self._session_logger.error(f'Error during API monitor shutdown: {e}')
-
-        # #355: the SECOND carry-over write — the first ran at boot, before any order went
-        # out. This one adds the counter high-water mark the session actually reached.
-        self._persist_cold_start_carry_over()
 
         # #354 — Algo state: final snapshot on clean exit, then summary. Algo memory
         # is position-independent, so saving after the order cleanup above is fine.
@@ -640,6 +651,8 @@ class AutotraderMain:
         session_duration = time.monotonic() - self._session_start
 
         result = AutoTraderResult(
+            cold_start_situation=self._cold_start.situation,
+            cold_start_verdict=self._cold_start.verdict,
             session_duration_s=session_duration,
             ticks_processed=ticks_processed,
             ticks_clipped=ticks_clipped,
@@ -808,35 +821,60 @@ class AutotraderMain:
     # HELPERS
     # =========================================================================
 
-    def _persist_cold_start_carry_over(self) -> None:
+    def _persist_cold_start_carry_over(self, refresh_index: bool = True) -> bool:
         """
-        Write the framework carry-over: this session's key and its counter high-water mark.
+        Write the framework carry-over: this session's key, its counter high-water mark and
+        the open book.
 
-        Called TWICE — once at boot right after adoption, once at shutdown. The boot write is
-        the one that matters for a hard kill (SIGKILL, OOM, power): a shutdown-only write loses
-        the key exactly in the case the carry-over exists for, and the successor would then
-        report its own predecessor's resting orders as a stranger's. The shutdown write adds
-        the counter the session actually reached.
+        Called at boot right after adoption, at shutdown, and whenever the open book changes.
+        The boot write is the one that matters for a hard kill (SIGKILL, OOM, power): a
+        shutdown-only write loses the key exactly in the case the carry-over exists for, and
+        the successor would then report its own predecessor's resting orders as a stranger's.
+        The shutdown write adds the counter the session actually reached. The change-driven
+        writes exist for the same reason one level down: a position opened at 09:00 and killed
+        at 11:00 must not be a position the successor never hears about.
 
         `persist` is False for a dry run — it sent no order to any venue, so recording its key
         as one this bot "sent orders under" would be an untruth — and False for a boot that was
         refused, which must not let a restart loop consume its own key window.
 
         A failure is logged to the session channel and swallowed — a carry-over problem must
-        never end a live trading session.
+        never end a live trading session. It is REPORTED, though: the caller that watches the
+        open book only advances its state on a write that went through, so a failed write is
+        retried on the next pass instead of being forgotten.
+
+        Args:
+            refresh_index: Whether the store rebuilds its index afterwards. The default is for
+                the writes that BOUND a session; the in-session writes pass False, because the
+                rebuild reads every bot's document and has no business in a tick loop (§42)
+
+        Returns:
+            True when the carry-over is on disk, False when there was nothing to write or the
+            write failed
         """
         if not (self._cold_start.persist
                 and self._cold_start.store
                 and isinstance(self._executor, LiveTradeExecutor)):
-            return
+            return False
         try:
+            portfolio = self._executor.portfolio
             self._cold_start.store.save(
                 session_key=self._executor.get_session_key(),
-                highest_position_counter=self._executor.portfolio.get_position_counter(),
+                highest_position_counter=portfolio.get_position_counter(),
                 keys_in_use=self._cold_start.keys_in_use,
+                # SPOT only. A spot holding is a balance the venue cannot describe as a
+                # position, so it only survives a restart if WE write it down; a margin
+                # position sits at the venue and comes back from there (#209). Passing None
+                # rather than an empty list in margin mode leaves any stored book untouched
+                # instead of erasing it.
+                open_positions=(
+                    portfolio.get_position_book() if portfolio.is_spot_mode() else None),
+                refresh_index=refresh_index,
             )
+            return True
         except Exception as e:
             self._session_logger.error(f'Cold-start carry-over save failed: {e}')
+            return False
 
     def _field_study_preflight(self) -> bool:
         """

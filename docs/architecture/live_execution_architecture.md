@@ -251,6 +251,107 @@ Plus one local bucket: `unconfirmed` — a pending whose submit was never answer
 
 ---
 
+## Cold Start — Rebuilding the Shadow at Boot (#355 / #493)
+
+On boot the executor's shadow is empty while the venue still holds what an earlier session
+left there. A bot that starts anyway trades beside its own open orders without seeing them.
+The boot step (`cold_start_setup.py` → `ColdStartAdopter`) runs once, before the tick loop:
+
+```
+BOOT
+ ├─ RECONCILIATION (#151)         the truth-pull surface exists here
+ ├─ ALGO STATE PERSISTENCE (#354) the algo's own memory is restored FIRST, so the hook
+ │                                below can read it
+ ├─ COLD START (#355) — nothing is APPLIED until the boot is allowed to proceed
+ │    ├─ pull the venue's open orders            (§43 ladder; unreachable → refuse to start)
+ │    ├─ decide what the note OFFERS             (spot only; margin comes from the venue)
+ │    ├─ pull balances, cross-check the book     (report only, never adjust)
+ │    ├─ split the orders by OWNERSHIP           (ours / unknown session / in flight / foreign)
+ │    ├─ ask the decision logic  (#493)          (may loosen the refusal, never tighten)
+ │    ├─ ── decision point ──                    a refusal leaves the executor untouched
+ │    ├─ restore the book, adopt the orders, lift the id counter
+ │    └─ file the situation in the run record    (`io/cold_start.json`)
+ ├─ FIELD STUDY                   excluded — it asserts a flat book itself (#332)
+ └─ TICK LOOP
+```
+
+### Ownership, not existence, decides
+
+| | Existence | Ownership decidable? | Consequence |
+|---|---|---|---|
+| Resting order | the venue lists it | **yes** — it carries the client order id we minted (#473) | **adopted** |
+| Spot balance | the venue lists `0.014 BTC` | **no** — a coin carries no owner tag | never adopted; a declared SHARE instead (#489) |
+| Margin position | a real object at the venue | **yes** — via MT5's `magic` | adoption is truthful there (#209) |
+
+A resting order that carries our key SHAPE from a session the carry-over cannot place is
+neither: it is reported as an ERROR and left standing. The causes, most likely first, are in
+`data_storage_layout.md` — an operator meeting this once should not have to derive them.
+
+### The position book: at spot you remember, at margin it sits in the market
+
+Kraken knows balances and orders; a *position* — direction, entry price, fee, "still open" —
+is our own record, derived from our own fills. So it is written to the framework carry-over on
+every change and materialised back at boot. No tick and no clock are needed: every field was
+known when the position was opened. Details, including the one-sided balance cross-check and
+why the note is faithful rather than minimal: `data_storage_layout.md`.
+
+### The algo's say — `on_cold_start`
+
+The framework knows what it FOUND; it does not know what the strategy can cope with. So a
+decision logic that declares a resting order type (`get_required_order_types()` → LIMIT / STOP
+/ STOP_LIMIT) must implement `on_cold_start(situation) -> ColdStartVerdict`, enforced at
+startup in both pipelines by `validators/decision_logic_hook_validator.py`. A MARKET-only
+logic is never asked — it cannot find anything resting.
+
+Two rules make it safe:
+
+- **It may only LOOSEN.** The framework's refusal is the floor. `accounted_for=True` lifts
+  exactly one refusal — `adoption_mode='operator_confirm'` with nobody declared present, the
+  only case where the framework declines for lack of an ANSWER rather than for lack of
+  knowledge. It never overrides an operator who answered in person, and it can never make the
+  framework refuse.
+- **No case DISAPPEARS through a yes.** The situation reaches the session channel and the run
+  record whether the algo accounted for it or not — a refused boot included, which is the
+  outcome that matters most to whoever reads the run afterwards. Otherwise "the algo says it
+  is fine" and "nothing was found" would look identical to a reader.
+- **A yes has to be SPECIFIC.** It must NAME every adopted order in `accounted_order_ids` and
+  carry a `note`; a yes that leaves one unaccounted, or gives no reason, is not honoured and
+  the framework falls back to its own policy. That is deliberate friction: it makes the author
+  loop over `situation.adopted` instead of returning a constant, and partial accounting is
+  not accounting.
+
+Why the decision point sits where it does: a refusal must leave the executor exactly as it was
+found. Restoring the book first meant a refused boot left positions behind for the shutdown
+cleanup — which runs before the first tick and prices its closes from the tick it does not
+have yet.
+
+The hook is asked on every boot that found anything — an order at the venue, a position read
+back from the carry-over, or a book the account no longer covers — including `auto` mode,
+where there is no refusal to lift, because `auto` is what an unattended thirty-day run uses.
+
+**The worked example is real code, not a sketch:**
+`decision_logic/core/trend_channel_reference.py` → `on_cold_start` — it arms at most one
+resting entry, so exactly one adopted order of its configured type is the state it left
+behind; anything else it declines. Note what it does NOT do: it only JUDGES, it does not
+update its own internal state from the situation. That is deliberate for a teaching example —
+a production bot compares the situation against its persisted memory (#354) — and it is the
+reason the guide says so out loud. `cautious_macd.on_cold_start` shows the other valid shape:
+a written, reasoned decline, because the MACD state that set its stop levels is not persisted.
+
+### Adoption mode
+
+```json
+"cold_start": { "enabled": true, "path": "data/runtime/cold_start_state",
+                "adoption_mode": "operator_confirm", "book_drift_interval_ticks": 500 }
+```
+
+`operator_confirm` asks only where a human DECLARED themselves present
+(`autotrader_cli.py --attended`) — presence is never inferred from a TTY, because this
+project's own container sets `tty: true` and the prompt would block forever in exactly the
+unattended case it guards. Unattended running is a conscious `"auto"`.
+
+---
+
 ## Canonical Clock & Idle Cadence (#360)
 
 `get_current_time()` is **loop-injected**, not derived from the last tick. `on_tick` sets

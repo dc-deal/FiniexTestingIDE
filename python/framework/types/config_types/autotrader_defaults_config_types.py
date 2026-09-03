@@ -134,10 +134,23 @@ class ColdStartDefaults(BaseModel):
     adoption_mode 'operator_confirm' asks only where a terminal exists and otherwise refuses
     loudly and stays flat: it never waits for an answer nobody is there to give. An unattended
     run is a conscious 'auto'.
+
+    book_drift_interval_ticks bounds the second, cheaper half of the position-book write.
+    A structural change (a position opens, closes, or is partially closed) is written at once
+    — it cannot be recovered. Exit levels and excursion extrema move far more often (a
+    trailing stop moves on every new high) and are either re-derived by the algo or lose at
+    most one interval of history, so they wait for this window. Measured on this project's
+    tree: one write costs 11 ms (§42), which is why the frequent half is not immediate.
+
+    Counted in TICKS rather than seconds, and that is not a detail: drift is CAUSED by ticks
+    (a price that does not move sets no new extreme and moves no trailing stop), so a quiet
+    market needs no writes at all. It also needs no clock, which matters because the boot and
+    the first heartbeat happen before the canonical clock is injected.
     """
     enabled: bool = True
     path: str = 'data/runtime/cold_start_state'
     adoption_mode: Literal['operator_confirm', 'auto'] = 'operator_confirm'
+    book_drift_interval_ticks: int = 500
 
 
 class AutotraderDefaultsConfig(BaseModel):

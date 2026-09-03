@@ -13,7 +13,7 @@ import time
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import Callable, Deque, Dict, List, Optional, Tuple
 
 from python.framework.autotrader.autotrader_display_exporter import AutotraderDisplayExporter
 from python.framework.autotrader.autotrader_startup import create_session_file_logger
@@ -23,6 +23,7 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
+from python.framework.persistence.position_book_watcher import PositionBookWatcher
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.process.tick_pipeline_core import (
     execute_algo_path,
@@ -100,6 +101,7 @@ class AutotraderTickLoop:
         reconciler: Optional[Reconciler] = None,
         api_monitor: Optional[ApiPerfMonitor] = None,
         state_store: Optional[AlgoStateStore] = None,
+        persist_position_book: Optional[Callable[[], None]] = None,
         signal_inbox: Optional[SignalInbox] = None,
         signal_transport: Optional[AbstractSignalTransport] = None,
     ):
@@ -132,6 +134,18 @@ class AutotraderTickLoop:
         self._reconciler = reconciler
         self._api_monitor = api_monitor
         self._state_store = state_store
+        # #355 — the open book is written when it CHANGES, in two classes. A STRUCTURAL
+        # change (a position opens, closes, is partially closed) is written at once: it cannot
+        # be recovered, and waiting out an interval is exactly the window a hard kill takes
+        # the position away in. DRIFT (exit levels, excursion extrema) waits for a cadence,
+        # because a trailing stop moves on nearly every tick of a trend and one write costs
+        # 11 ms on this project's tree (§42) — immediate would mean a 11 ms stall per tick to
+        # protect a value the algo re-derives anyway. The watcher is seeded with the book as
+        # it stands after adoption, so a session that changes nothing never writes.
+        self._persist_position_book = persist_position_book
+        self._book_watcher = PositionBookWatcher(executor.portfolio.get_open_positions())
+        self._book_drift_interval_ticks = config.cold_start.book_drift_interval_ticks
+        self._last_book_drift_tick = 0
         self._running = False
 
         # #360: idle-heartbeat cadence — max wait for a real tick before the loop
@@ -292,6 +306,8 @@ class AutotraderTickLoop:
                 self._run_decision_heartbeat(ticks_processed)
                 # #354: persist algo state on the idle timer too (hybrid cadence).
                 self._persist_state_if_due(ticks_processed)
+                # #355: a fill can resolve on the heartbeat, so the book can change here too.
+                self._persist_position_book_if_changed(ticks_processed)
                 if self._executor.is_session_end_requested():
                     self._logger.info(
                         f'🛑 Session end requested: {self._executor.get_session_end_reason()}')
@@ -400,6 +416,12 @@ class AutotraderTickLoop:
             # === 6d. Algo State Persistence (#354, hybrid cadence) ===
             # Restart-safe algo memory (Category B). Save every N ticks OR M seconds.
             self._persist_state_if_due(ticks_processed)
+
+            # === 6e. Position Book Carry-Over (#355, on change) ===
+            # A spot position only survives a restart if we wrote it down. Structural changes
+            # write at once; exit levels and extrema wait for the tick cadence (§42 — one
+            # write costs 11 ms on this tree).
+            self._persist_position_book_if_changed(ticks_processed)
 
             # === TIMING END ===
             elapsed_ns = time.perf_counter_ns() - tick_start_ns
@@ -583,6 +605,54 @@ class AutotraderTickLoop:
                 self._decision_logic.get_state_snapshot(), ticks_processed)
         except Exception as e:
             self._logger.error(f'Algo state save failed (continuing): {e}')
+
+    def _persist_position_book_if_changed(self, ticks_processed: int = 0) -> None:
+        """
+        Write the framework carry-over when the open book needs it (#355).
+
+        The watcher is advanced ONLY after a write that reported success. A watcher advanced
+        on the query would drop the trigger for good whenever a write failed: the change is
+        reported once, to a caller that could not act on it, and the position is then missing
+        from the note until something else happens to move the book.
+
+        No-op when nothing is wired (simulation, or a session without a carry-over store).
+        The write itself logs its own failures — a carry-over problem must never end a live
+        trading session.
+
+        Args:
+            ticks_processed: Current tick counter — it drives the drift cadence
+        """
+        if self._persist_position_book is None:
+            return
+
+        positions = self._executor.portfolio.get_open_positions()
+        drift_due = self._book_drift_is_due(ticks_processed)
+        if not self._book_watcher.has_changed(positions, drift_due=drift_due):
+            return
+
+        if self._persist_position_book():
+            self._book_watcher.accept(positions)
+            if drift_due:
+                self._last_book_drift_tick = ticks_processed
+
+    def _book_drift_is_due(self, ticks_processed: int) -> bool:
+        """
+        Whether the cadence window for exit levels and excursion extrema is open.
+
+        Counted in ticks, not seconds: drift is caused by ticks, so a quiet market needs no
+        writes — and a tick counter needs no clock, which matters because the first passes
+        happen before the canonical clock is injected.
+
+        Args:
+            ticks_processed: Current tick counter
+
+        Returns:
+            True when the interval has elapsed since the last drift write
+        """
+        if self._book_drift_interval_ticks <= 0:
+            return False
+
+        return ticks_processed - self._last_book_drift_tick >= self._book_drift_interval_ticks
 
     def _run_decision_heartbeat(self, ticks_processed: int) -> None:
         """

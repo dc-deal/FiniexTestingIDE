@@ -19,6 +19,10 @@ from python.framework.decision_logic.decision_logic_performance_tracker import (
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.diagnostics_csv_sink import DiagnosticsCsvSink
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
+from python.framework.types.autotrader_types.cold_start_types import (
+    ColdStartSituation,
+    ColdStartVerdict,
+)
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_event_types import (
     DecisionEventType,
@@ -610,6 +614,42 @@ class AbstractDecisionLogic(ABC):
             status: Session-level market-data health snapshot
         """
         pass
+
+    # ============================================
+    # Cold-Start Contract (#493)
+    # ============================================
+
+    def on_cold_start(self, situation: ColdStartSituation) -> ColdStartVerdict:
+        """
+        Answer for what the boot step found at the venue (#493).
+
+        MANDATORY override when get_required_order_types() declares a RESTING type
+        (LIMIT / STOP / STOP_LIMIT, startup-validated in both pipelines): a bot that
+        can leave an order at a venue across a restart has to say what it does when
+        it finds one there. A bot that only ever sends MARKET orders is not asked.
+
+        Called on every live boot at which the venue reported ANY order — adopted,
+        skipped, or somebody else's — and after the position book has been restored,
+        so the situation is complete. It is not called in a dry run (which cannot
+        query the venue at all) nor when the venue reported nothing.
+
+        The verdict may only LOOSEN. It is consulted at exactly one point: where the
+        framework would otherwise refuse to start because resting orders of ours need
+        a confirmation nobody is present to give (adoption_mode='operator_confirm',
+        unattended). It cannot make the framework refuse, it cannot cancel anything,
+        and it never overrides an operator who answered "no" in person. Everywhere
+        else the answer is recorded and changes nothing — which is deliberate: the
+        situation is reported whether the algo handled it or not, so "the algo says
+        it is fine" never becomes indistinguishable from "nothing was found".
+
+        Args:
+            situation: Read-only account-wide picture of the boot — what was adopted,
+                what was skipped and why, what came back from the carry-over
+
+        Returns:
+            A verdict; the default answers "not accounted for, the framework decides"
+        """
+        return ColdStartVerdict()
 
     # ============================================
     # State Persistence (#354) — restart-safe algo memory (Category B)

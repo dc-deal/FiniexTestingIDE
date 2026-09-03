@@ -1811,6 +1811,19 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         # Phase 2: Direct-fill open positions
         open_positions = self.get_open_positions()
+        if open_positions and self._current_tick is None:
+            # Reachable since #355: cold start puts restored positions into the portfolio
+            # before the first tick, so an abort in between (tick source failure, a startup
+            # gate further down, SIGINT) arrives here with positions and no price. The fill
+            # path needs the tick — it prices the close from it — so fabricating one is not
+            # an option, and dereferencing the tick that is not there used to take the rest
+            # of this cleanup down with it.
+            self.logger.warning(
+                f'⚠️ {len(open_positions)} position(s) open but no tick has arrived yet — '
+                f'left as they are. They are recorded in the cold-start carry-over and the '
+                f'venue still holds the asset, so the next session finds them.'
+            )
+            open_positions = []
         if open_positions:
             self.logger.warning(
                 f'{len(open_positions)} positions remain open — direct-closing (no pending)'

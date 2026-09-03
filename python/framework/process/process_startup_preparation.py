@@ -6,9 +6,6 @@ from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
-from python.framework.validators.component_metadata_advisory import (
-    surface_decision_logic_version,
-)
 from python.framework.factory.trade_simulator_factory import prepare_trade_executor_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -24,6 +21,10 @@ from python.framework.utils.process_debug_info_utils import (
     log_trade_simulator_config,
 )
 from python.framework.utils.process_serialization_utils import process_deserialize_ticks_batch
+from python.framework.validators.component_metadata_advisory import (
+    surface_decision_logic_version,
+)
+from python.framework.validators.decision_logic_hook_validator import check_cold_start_hook
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -67,6 +68,11 @@ def process_startup_preparation(
     scenario_logger.debug(
         f'📋 Decision logic requires: {[t.value for t in required_order_types]}'
     )
+    # #493 — the same contract in both pipelines: a declared resting type means the boot
+    # situation has to be answered, and a backtest is where that surfaces cheaply.
+    cold_start_hook_error = check_cold_start_hook(decision_logic_class, required_order_types)
+    if cold_start_hook_error:
+        raise ValueError(cold_start_hook_error)
 
     # === PHASE 2: Create Trade Simulator (with requirements) ===
     trade_simulator = prepare_trade_executor_for_scenario(

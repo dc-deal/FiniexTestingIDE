@@ -20,6 +20,9 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.builders.broker_report_builder import (
     build_broker_report_from_session,
 )
+from python.framework.reporting.builders.cold_start_report_builder import (
+    build_cold_start_report_from_session,
+)
 from python.framework.reporting.builders.run_unit import run_units_from_session
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_session,
@@ -37,6 +40,7 @@ from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagn
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
 from python.framework.reporting.io.artifact_specs import (
     BROKER_ARTIFACT,
+    COLD_START_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
 )
 from python.framework.reporting.io.report_artifact_io import write_artifact
@@ -177,6 +181,23 @@ class AutotraderReportCoordinator:
                 self._run_id, self._broker_config, self._config.symbol)
             write_artifact(broker_report, io_dir, BROKER_ARTIFACT)
 
+        # Cold start (#355 / #493) — what the boot step found and what was decided about it.
+        # Absent for a simulation, a dry run and a Field Study: the three cases with nothing
+        # to find. Filed whether the algo accounted for the situation or not, so a yes never
+        # makes the case invisible.
+        # An EMPTY situation is not a finding: writing an artifact and printing a header for
+        # every clean boot would bury the boots that DID inherit something under noise.
+        cold_start_report = None
+        if (result.cold_start_situation is not None
+                and not result.cold_start_situation.is_empty()):
+            cold_start_report = build_cold_start_report_from_session(
+                self._run_id,
+                result.cold_start_situation,
+                result.cold_start_verdict,
+                type(self._decision_logic).__name__ if self._decision_logic else '',
+            )
+            write_artifact(cold_start_report, io_dir, COLD_START_ARTIFACT)
+
         # Every artifact of this session is on disk now — the index records WHICH, so a consumer
         # knows what it can fetch instead of discovering it by 404 (#475).
         SharedReportCoordinator.record_run_artifacts(self._run_dir)
@@ -215,7 +236,7 @@ class AutotraderReportCoordinator:
             warnings_summary=WarningsSummary(warnings_errors_report),
             closing_block=LiveSessionSummary(
                 result, unified.trade_history, self._run_dir, unified.run_summary,
-                warnings_errors_report),
+                warnings_errors_report, cold_start_report),
         )
 
         # Render once (live always full detail); capture, print to console (with colors), and

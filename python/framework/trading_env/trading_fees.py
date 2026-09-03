@@ -7,6 +7,7 @@ Architecture:
 - SwapFee - Overnight interest (prepared, calculation deferred)
 - CommissionFee - ECN commission (prepared, calculation deferred)
 - MakerTakerFee - Crypto exchange fees (fully implemented)
+- RestoredFee - A fee incurred in an earlier session, read back from the carry-over (#355)
 
 Each Position contains List[AbstractTradingFee] that accumulate over time.
 """
@@ -373,3 +374,29 @@ class MakerTakerFee(AbstractTradingFee):
         rate = self.maker_rate if self.is_maker else self.taker_rate
         cost = self.order_value * (rate / 100)
         return abs(cost)
+
+
+@dataclass
+class RestoredFee(AbstractTradingFee):
+    """
+    A fee incurred in an EARLIER session, read back from the position carry-over (#355).
+
+    It carries a settled cost and nothing left to compute: the inputs that produced it belong
+    to the session that charged it, and that session is gone. calculate_cost() therefore
+    returns what was stored. The original fee_type is preserved, so the position's per-type
+    queries (get_fees_by_type) keep answering correctly.
+
+    Restored fees are deliberately NOT recorded into the new run's cost tracking. The cost was
+    incurred by the run that charged it; counting it again would move a fee out of one run's
+    books into another's. What they ARE needed for is the position's net P&L when it finally
+    closes — which is why they sit on the position instead of being collapsed into one number.
+    """
+
+    def calculate_cost(self, **kwargs) -> float:
+        """
+        Return the settled cost unchanged.
+
+        Returns:
+            The cost read back from the carry-over
+        """
+        return self.cost

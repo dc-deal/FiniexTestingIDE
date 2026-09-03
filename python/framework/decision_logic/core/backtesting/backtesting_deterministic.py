@@ -89,6 +89,10 @@ from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.autotrader_types.cold_start_types import (
+    ColdStartSituation,
+    ColdStartVerdict,
+)
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
@@ -292,6 +296,27 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 category='INFO',
             ),
         }
+
+    def on_cold_start(self, situation: ColdStartSituation) -> ColdStartVerdict:
+        """
+        Programmed boot reaction (#493): decline — this probe never runs live.
+
+        The determinism probe exercises every order type a scenario configures it with, so a
+        configuration that includes LIMIT or STOP brings it under the cold-start contract.
+        There is nothing behind that: a backtest has no venue holding anything, and the boot
+        step is live-only.
+
+        The answer is written rather than exempted so the declaration and the contract stay
+        in one place. When the rehearsed restart (#476) fires this path inside a backtest, a
+        deliberate answer will already be here.
+
+        Args:
+            situation: What the boot found at the venue
+
+        Returns:
+            A declining verdict with the reason
+        """
+        return ColdStartVerdict(False, 'determinism probe — no live venue to account for')
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
