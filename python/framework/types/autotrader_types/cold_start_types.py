@@ -108,6 +108,10 @@ class ColdStartSituation:
         book_shortfall: How much the restored book claims beyond what the account holds, in
             base units. 0.0 when the account covers it — which is the normal case, since a
             surplus belongs to whoever else uses the account
+        applied: Whether the boot went on to APPLY what is listed here. False while the
+            decision is still open, and False forever on a boot that refused — the lists then
+            describe what WOULD have been adopted and restored, and a record that does not say
+            so claims things that never happened
     """
     symbol: str
     adopted: List[AdoptedOrder] = field(default_factory=list)
@@ -118,6 +122,7 @@ class ColdStartSituation:
     adoption_mode: str = ''
     attended: bool = False
     book_shortfall: float = 0.0
+    applied: bool = False
 
     def is_empty(self) -> bool:
         """

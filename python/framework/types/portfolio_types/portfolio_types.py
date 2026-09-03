@@ -108,9 +108,14 @@ class Position:
     swap_accrued_until: Optional[datetime] = None
 
     def __post_init__(self):
-        # Seed excursion prices at entry → "no move" reports as 0 distance (#389).
-        self.mae_price = self.entry_price
-        self.mfe_price = self.entry_price
+        # Seed excursion prices at entry → "no move" reports as 0 distance (#389). Only
+        # where the field is still unset: a RESTORED position (#355) carries extrema from a
+        # life that already happened, and a running maximum cannot be recomputed after the
+        # fact — seeding unconditionally discarded them without a word.
+        if self.mae_price == 0.0:
+            self.mae_price = self.entry_price
+        if self.mfe_price == 0.0:
+            self.mfe_price = self.entry_price
 
         # Swap accrual starts at the position's open instant (#365).
         if self.swap_accrued_until is None:

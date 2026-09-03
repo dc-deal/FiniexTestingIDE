@@ -75,15 +75,22 @@ class LiveSessionSummary:
             return
 
         print()
-        print('🧬 Cold Start (inherited at boot)')
+        if report.applied:
+            print('🧬 Cold Start (inherited at boot)')
+        else:
+            # The boot refused, so nothing below was applied. Saying "adopted" here would
+            # describe a session that never traded as one that inherited a book.
+            print(renderer.red('🧬 Cold Start — NOT APPLIED (the boot refused to start)'))
+        verb = 'adopted' if report.applied else 'would have been adopted'
         if report.adopted:
-            print(f'  Orders adopted:  {len(report.adopted)}')
+            print(f'  Orders {verb}:  {len(report.adopted)}')
             for row in report.adopted:
                 filled = f' ({row.filled_lots} filled)' if row.filled_lots else ''
                 print(f'    {row.order_id}  {row.direction} {row.lots} @ {row.price}'
                       f'{filled}  ref={row.broker_ref}')
         if report.restored_positions:
-            print(f'  Positions restored: {len(report.restored_positions)} '
+            restored = 'restored' if report.applied else 'would have been restored'
+            print(f'  Positions {restored}: {len(report.restored_positions)} '
                   f'(entry prices remembered, fees charged to the earlier run)')
             for row in report.restored_positions:
                 print(f'    {row.position_id}  {row.direction} {row.lots} '
@@ -93,8 +100,8 @@ class LiveSessionSummary:
                 f'  ⚠ Book shortfall: {report.book_shortfall} — the account held less than '
                 f'the restored book claimed'))
         if report.skipped:
-            reasons = sorted({row.reason for row in report.skipped})
-            print(f'  Left alone:      {len(report.skipped)} ({", ".join(reasons)})')
+            print(f'  Left alone:      {len(report.skipped)} '
+                  f'({", ".join(report.skipped_reasons)})')
         if report.algo_name and report.algo_accounted_for is not None:
             verdict = 'accounted for' if report.algo_accounted_for else 'not accounted for'
             note = f' — {report.algo_note}' if report.algo_note else ''

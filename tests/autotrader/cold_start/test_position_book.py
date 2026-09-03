@@ -24,6 +24,9 @@ from python.framework.persistence.position_book_projection import (
     position_to_carry_over,
 )
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
+from python.framework.reporting.builders.cold_start_report_builder import (
+    build_cold_start_report_from_session,
+)
 from python.framework.trading_env.trading_fees import MakerTakerFee
 from python.framework.types.config_types.autotrader_defaults_config_types import ColdStartDefaults
 from python.framework.types.persistence_types import PositionCarryOver
@@ -31,7 +34,6 @@ from python.framework.types.portfolio_types.portfolio_types import Position, Pos
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
 from python.framework.utils.run_id_utils import build_client_order_id
-
 from tests.autotrader.cold_start.conftest import PREVIOUS_SESSION_KEY, make_broker_order
 
 _ENTRY_TIME = '2026-09-01T12:00:00+00:00'
@@ -133,10 +135,10 @@ class TestTheNoteLosesNothing:
         assert restored.original_lots == 0.02
 
     def test_the_excursion_extrema_survive_the_constructor(self):
-        # Position.__post_init__ seeds mae_price / mfe_price from entry_price
-        # unconditionally, so a value handed to the constructor is discarded without a word.
         # MAE/MFE cannot be recomputed after the fact — they are a running maximum over a
-        # life that already happened.
+        # life that already happened. Position.__post_init__ therefore seeds mae_price /
+        # mfe_price from entry_price only where the field is still unset; it used to do so
+        # unconditionally and discarded a restored value without a word.
         original = _live_position()
 
         restored = carry_over_to_position(position_to_carry_over(original))
@@ -417,3 +419,77 @@ class TestTheNoteCoversPosition:
         invented = set(PositionCarryOver.model_fields) - position_fields
 
         assert not invented, f'PositionCarryOver carries {sorted(invented)}, which Position has not'
+
+
+class TestARefusedBootClaimsNothing:
+    """
+    A record that lists what a boot found must say whether the boot ACTED on it.
+
+    The refusal path files its situation on purpose — it is the outcome that matters most to
+    whoever reads the run afterwards. But the lists then describe what WOULD have happened,
+    and a reader who is not told that sees a session that never traded as one that inherited
+    a book and a position.
+    """
+
+    def test_a_refused_boot_marks_the_situation_as_not_applied(
+        self, executor, store, logger
+    ):
+        store.save(session_key=PREVIOUS_SESSION_KEY, highest_position_counter=0)
+        key = build_client_order_id(PREVIOUS_SESSION_KEY, 'pos_btcusd_47')
+        executor.broker.adapter.set_broker_orders([make_broker_order('OQ7X2A-OLD', key)])
+        adopter = ColdStartAdopter(
+            executor=executor, store=store,
+            config=ColdStartDefaults(adoption_mode='operator_confirm'),
+            symbol='BTCUSD', logger=logger, dry_run=False, interactive=False)
+
+        assert adopter.run() is False
+
+        situation = adopter.get_situation()
+        assert situation is not None, 'the refusal must still file its situation'
+        assert situation.applied is False
+        # And nothing reached the executor.
+        assert executor.get_active_orders() == []
+
+    def test_a_boot_that_proceeds_marks_it_applied(self, executor, store, logger):
+        store.save(session_key=PREVIOUS_SESSION_KEY, highest_position_counter=0)
+        key = build_client_order_id(PREVIOUS_SESSION_KEY, 'pos_btcusd_47')
+        executor.broker.adapter.set_broker_orders([make_broker_order('OQ7X2A-OLD', key)])
+
+        adopter = _adopter(executor, store, logger)
+        assert adopter.run() is True
+
+        assert adopter.get_situation().applied is True
+
+    def test_the_report_carries_it(self, executor, store, logger):
+        store.save(session_key=PREVIOUS_SESSION_KEY, highest_position_counter=0)
+        executor.broker.adapter.set_broker_orders([make_broker_order('OQ9Z1B-EXT', None)])
+        adopter = _adopter(executor, store, logger)
+        adopter.run()
+
+        report = build_cold_start_report_from_session(
+            '20260903_100000_abcdef12', adopter.get_situation(), adopter.get_verdict(), '')
+
+        assert report.applied is True
+        # The distinct reasons are derived once, in the builder — a renderer formats, it
+        # does not aggregate.
+        assert report.skipped_reasons == ['foreign_key']
+
+
+class TestTheBookSurvivesADamagedNote:
+    """An unreadable carry-over is reported and treated as absent — it never ends a boot."""
+
+    def test_a_corrupt_enum_value_degrades_instead_of_crashing(
+        self, spot_executor, store, logger
+    ):
+        # The payload parses as JSON and as a Pydantic model and is still unusable: the
+        # note holds enum values as STRINGS.
+        broken = _note()
+        broken.direction = 'sideways'
+        store.save(session_key=PREVIOUS_SESSION_KEY, highest_position_counter=0,
+                   open_positions=[broken])
+        spot_executor.broker.adapter.set_broker_balances({'XXBT': 0.01})
+
+        assert _adopter(spot_executor, store, logger).run() is True
+
+        assert spot_executor.get_open_positions() == []
+        assert any('could not be rebuilt' in message for message in logger.errors)

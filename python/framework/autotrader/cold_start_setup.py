@@ -45,7 +45,6 @@ class ColdStartSetup:
             sent no order to any venue, and False for a boot that never got through
         keys_in_use: Session discriminators the venue currently shows on orders of our shape.
             Protected from eviction, so the key that owns a resting order cannot age out
-        adopted_count: How many resting orders were rebuilt
         situation: What the boot found, as the decision logic saw it — None for a dry run,
             an unreachable venue, or a session with no cold start at all
         verdict: What the decision logic answered, when it was asked
@@ -54,7 +53,6 @@ class ColdStartSetup:
     store: Optional[ColdStartStateStore] = None
     persist: bool = False
     keys_in_use: Set[str] = field(default_factory=set)
-    adopted_count: int = 0
     situation: Optional[ColdStartSituation] = None
     verdict: Optional[ColdStartVerdict] = None
 
@@ -147,7 +145,6 @@ def setup_cold_start(
         store=store,
         persist=not dry_run,
         keys_in_use=adopter.get_venue_session_keys(),
-        adopted_count=adopter.get_adopted_count(),
         situation=adopter.get_situation(),
         verdict=adopter.get_verdict(),
     )

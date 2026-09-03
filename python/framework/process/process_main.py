@@ -64,13 +64,13 @@ def process_main(
         scenario_logger.info(f'⏱️  Process started at {start_time}')
 
         # === STARTUP PREPARATION ===
-        (worker_coordinator,
-         trade_simulator,
-         bar_rendering_controller,
-         decision_logic,
-         scenario_logger,
-         ticks) = process_startup_preparation(
+        pipeline = process_startup_preparation(
             config, shared_data, scenario_logger)
+        worker_coordinator = pipeline.worker_coordinator
+        trade_simulator = pipeline.trade_simulator
+        bar_rendering_controller = pipeline.bar_rendering_controller
+        decision_logic = pipeline.decision_logic
+        ticks = pipeline.ticks
         scenario_logger.debug(
             '🔄 Process preparation finished')
 

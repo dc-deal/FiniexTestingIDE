@@ -144,7 +144,8 @@ python/framework/
 ### Startup
 
 1. Load `AutoTraderConfig` from JSON
-2. `setup_pipeline()` creates all objects (11 phases, mirrors backtesting)
+2. `setup_pipeline()` creates all objects (mirrors backtesting) and returns them as one
+   `AutotraderPipelineBundle`
 3. `setup_tick_source()` starts tick source thread
 4. Enter tick loop
 
@@ -624,7 +625,9 @@ The certificate is a release-gate item (see the Release Checklist).
 python/framework/autotrader/
   autotrader_main.py             Runner: run(), shutdown, signal handling
   autotrader_tick_loop.py        Tick processing loop (main thread, hot path)
-  autotrader_startup.py          Pipeline object creation (11 phases)
+  autotrader_startup.py          Pipeline object creation, phase by phase
+  autotrader_pipeline_bundle.py  What setup_pipeline hands back (named, not positional)
+  autotrader_logger_bundle.py    The session's three log channels + run identity
   autotrader_warmup_preparator.py  Warmup bar loading (mock: parquet, live: API)
   kraken_ohlc_bar_fetcher.py     Kraken OHLC bar fetch (public API, no auth)
   live_clipping_monitor.py       Per-tick timing, clipping detection (#197)

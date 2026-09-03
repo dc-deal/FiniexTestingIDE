@@ -4,16 +4,14 @@ from typing import Dict, Tuple
 
 from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
-from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.trade_simulator_factory import prepare_trade_executor_for_scenario
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.process.process_pipeline_bundle import ProcessPipelineBundle
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
-from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage, ProcessScenarioConfig
 from python.framework.utils.process_debug_info_utils import (
@@ -33,7 +31,7 @@ def process_startup_preparation(
     config: ProcessScenarioConfig,
     shared_data: ProcessDataPackage,
     scenario_logger: ScenarioLogger
-) -> Tuple[WorkerOrchestrator, AbstractTradeExecutor, BarRenderingController, AbstractDecisionLogic, ScenarioLogger, Tuple[TickData, ...]]:
+) -> ProcessPipelineBundle:
     """
     Create all objects needed in subprocess.
 
@@ -211,7 +209,13 @@ def process_startup_preparation(
     scenario_logger.debug(
         f'🔄 De-Serialization of {len(ticks):,} ticks finished')
 
-    return worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks
+    return ProcessPipelineBundle(
+        worker_coordinator=worker_coordinator,
+        trade_simulator=trade_simulator,
+        bar_rendering_controller=bar_rendering_controller,
+        decision_logic=decision_logic,
+        ticks=ticks,
+    )
 
 
 def inject_signal_providers(

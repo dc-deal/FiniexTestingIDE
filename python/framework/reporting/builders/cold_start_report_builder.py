@@ -47,6 +47,8 @@ def build_cold_start_report_from_session(
     return ColdStartReport(
         run_id=run_id,
         symbol=situation.symbol,
+        applied=situation.applied,
+        skipped_reasons=sorted({order.reason.value for order in situation.skipped}),
         adopted=[
             ColdStartOrderRow(
                 order_id=order.order_id,

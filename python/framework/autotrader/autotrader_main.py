@@ -188,8 +188,12 @@ class AutotraderMain:
         self._run_timestamp = run_timestamp
 
         # === LOGGERS ===
-        (self._global_logger, self._session_logger, self._summary_logger,
-         self._run_dir, self._run_id) = create_autotrader_loggers(self._config, run_timestamp)
+        loggers = create_autotrader_loggers(self._config, run_timestamp)
+        self._global_logger = loggers.global_logger
+        self._session_logger = loggers.session_logger
+        self._summary_logger = loggers.summary_logger
+        self._run_dir = loggers.run_dir
+        self._run_id = loggers.run_id
 
         self._print_startup_banner()
         self._global_logger.info(
@@ -224,14 +228,15 @@ class AutotraderMain:
             # Pipeline objects get session_logger — they produce per-tick output.
             # Startup phases are logged to console via _print_startup_phase().
             self._print_startup_phase('Creating pipeline objects...')
-            (self._executor,
-             self._bar_controller,
-             self._worker_orchestrator,
-             self._decision_logic,
-             self._clipping_monitor,
-             self._trading_model,
-             self._display_label_cache) = setup_pipeline(
+            pipeline = setup_pipeline(
                 self._config, self._session_logger, self._run_id, self._data_package)
+            self._executor = pipeline.executor
+            self._bar_controller = pipeline.bar_controller
+            self._worker_orchestrator = pipeline.worker_orchestrator
+            self._decision_logic = pipeline.decision_logic
+            self._clipping_monitor = pipeline.clipping_monitor
+            self._trading_model = pipeline.trading_model
+            self._display_label_cache = pipeline.display_label_cache
             self._print_startup_phase('Pipeline created successfully')
 
             # === ALGO CLOCK VALIDATION (#359) ===
@@ -459,10 +464,17 @@ class AutotraderMain:
                 reconciler=self._reconciler,
                 api_monitor=self._api_monitor,
                 state_store=self._state_store,
-                # The in-session writes leave the index alone (§42) — it is rebuilt by the
+                # Wired only where a write can actually happen: a dry run and a refused
+                # boot must not persist, and a MARGIN session has no book to write (those
+                # positions come from the venue, #209). Without the gate the seam would call
+                # a function that returns False on every tick for the life of the session,
+                # and the watcher — which advances only on success — would keep asking.
+                # The in-session writes leave the index alone (§42): it is rebuilt by the
                 # boot and shutdown writes, which are not on the hot path.
-                persist_position_book=lambda: self._persist_cold_start_carry_over(
-                    refresh_index=False),
+                persist_position_book=(
+                    (lambda: self._persist_cold_start_carry_over(refresh_index=False))
+                    if self._cold_start.persist and self._executor.portfolio.is_spot_mode()
+                    else None),
             )
             self._tick_loop_started = True
             ticks_processed, ticks_clipped = self._tick_loop.run()

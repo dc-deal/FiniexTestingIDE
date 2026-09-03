@@ -922,6 +922,12 @@ class ColdStartReport(RunScopedReport):
 
     Args:
         symbol: The instrument this session traded
+        applied: Whether the boot went on to APPLY what this report lists. False for a boot
+            that refused to start — the rows then describe what WOULD have been adopted and
+            restored, and a reader who is not told that reads a session that never traded as
+            one that inherited a book
+        skipped_reasons: The distinct reasons in `skipped`, derived once here so no renderer
+            has to aggregate (a renderer formats; it does not compute)
         adopted: Resting orders rebuilt into the shadow
         skipped: Resting orders left alone, each with its reason
         restored_positions: The book read back from the carry-over
@@ -935,6 +941,8 @@ class ColdStartReport(RunScopedReport):
         algo_note: Its reason, in its own words
     """
     symbol: str = ''
+    applied: bool = False
+    skipped_reasons: list[str] = []
     adopted: list[ColdStartOrderRow] = []
     skipped: list[ColdStartSkippedRow] = []
     restored_positions: list[ColdStartPositionRow] = []

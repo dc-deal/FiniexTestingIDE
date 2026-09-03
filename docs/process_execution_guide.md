@@ -123,7 +123,9 @@ for performance numbers; a `🐞 DEBUG` run is for behavior/correctness, not tim
 ### Startup Preparation Steps
 
 **Function:** `process_startup_preparation(config, shared_data, logger)`  
-**Located:** `python/framework/process/process_startup_preparation.py`
+**Located:** `python/framework/process/process_startup_preparation.py`  
+**Returns:** a `ProcessPipelineBundle` (`python/framework/process/process_pipeline_bundle.py`) —
+the wired objects as one named object rather than a positional tuple
 
 **Process:**
 
@@ -606,19 +608,14 @@ ProcessResult(
 
 ```python
 try:
-    # Startup preparation
-    (worker_coordinator,
-     trade_simulator,
-     bar_rendering_controller,
-     decision_logic,
-     scenario_logger,
-     ticks) = process_startup_preparation(...)
+    # Startup preparation — returns one ProcessPipelineBundle
+    pipeline = process_startup_preparation(config, shared_data, scenario_logger)
     
     # Tick loop execution
     tick_loop_results = execute_tick_loop(
-        config, worker_coordinator, trade_simulator,
-        bar_rendering_controller, decision_logic,
-        scenario_logger, ticks, live_queue)
+        config, pipeline.worker_coordinator, pipeline.trade_simulator,
+        pipeline.bar_rendering_controller, pipeline.decision_logic,
+        scenario_logger, pipeline.ticks, live_queue)
     
     # Build success result
     return ProcessResult(success=True, ...)
