@@ -21,13 +21,17 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Set
+from typing import List, Optional, Set
 
 from pydantic import ValidationError
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.persistence.cold_start_state_index import ColdStartStateIndex
-from python.framework.types.persistence_types import CarryOverEnvelope, ColdStartPayload
+from python.framework.types.persistence_types import (
+    CarryOverEnvelope,
+    ColdStartPayload,
+    PositionCarryOver,
+)
 from python.framework.types.store_types import StoreId
 
 # Envelope format version for THIS store's documents — independent of the algo store's.
@@ -67,6 +71,19 @@ class ColdStartStateStore:
         self._logger = logger
         self._run_id = run_id
         self._path = self._root / f'{self._sanitize(profile)}_{self._sanitize(symbol)}.json'
+        # Provenance from the last load: WHEN the document was written. Kept as the stamp and
+        # never turned into an age — deriving one needs a "now", and at boot the canonical
+        # clock is not injected yet (§9).
+        self._saved_at: Optional[str] = None
+
+    def get_saved_at(self) -> Optional[str]:
+        """
+        When the loaded document was written, ISO-8601 UTC.
+
+        Returns:
+            The envelope's stamp, or None when nothing was loaded or there was no file
+        """
+        return self._saved_at
 
     def get_state_path(self) -> Path:
         """
@@ -94,6 +111,7 @@ class ColdStartStateStore:
         Returns:
             The stored payload, or an empty one
         """
+        self._saved_at = None
         if not self._path.exists():
             return ColdStartPayload()
 
@@ -120,6 +138,8 @@ class ColdStartStateStore:
             )
             return ColdStartPayload()
 
+        self._saved_at = envelope.saved_at_utc
+
         try:
             return ColdStartPayload.model_validate(envelope.snapshot)
         except ValidationError as e:
@@ -137,9 +157,11 @@ class ColdStartStateStore:
         session_key: str,
         highest_position_counter: int,
         keys_in_use: Optional[Set[str]] = None,
+        open_positions: Optional[List[PositionCarryOver]] = None,
+        refresh_index: bool = True,
     ) -> None:
         """
-        Record this session's key and counter high-water mark for the next session.
+        Record this session's key, counter high-water mark and open book for the next session.
 
         Read-modify-write: the stored keys are extended rather than replaced, because the point
         of the list is that a successor recognises orders from ANY earlier session, not only the
@@ -157,6 +179,17 @@ class ColdStartStateStore:
             highest_position_counter: The largest position counter minted this session
             keys_in_use: Session halves the venue currently shows on orders of our shape.
                 Protected from eviction. None means "unknown", which protects nothing
+            open_positions: The open book at this moment. None means "not supplied" and leaves
+                the stored book untouched — a caller that only advances the key must not
+                silently erase what the bot holds. An empty LIST means "the book is empty",
+                which is a statement and does overwrite
+            refresh_index: Whether to rebuild the store index afterwards. False for the
+                writes that happen DURING a session: the rebuild reads every bot's document
+                and costs 26-40 ms on this project's tree (§42), which has no business inside
+                a tick loop — and the index answers a cross-BOT question ("which bot carries
+                what") that nobody asks mid-session. It is derived and disposable (§44), so a
+                session that ends without one leaves a store that reports itself stale and
+                rebuilds on the next boot or via `store_cli.py rebuild cold_start_state`
         """
         payload = self.load()
         protected = set(keys_in_use or ())
@@ -174,6 +207,8 @@ class ColdStartStateStore:
         payload.session_keys = [k for k in keys if k in protected or k in kept]
         payload.highest_position_counter = max(
             payload.highest_position_counter, highest_position_counter)
+        if open_positions is not None:
+            payload.open_positions = list(open_positions)
 
         envelope = CarryOverEnvelope(
             schema_version=_SCHEMA_VERSION,
@@ -189,7 +224,8 @@ class ColdStartStateStore:
             snapshot=payload.model_dump(),
         )
         self._atomic_write(json.dumps(envelope.model_dump(), indent=2))
-        self._refresh_index()
+        if refresh_index:
+            self._refresh_index()
 
     def _refresh_index(self) -> None:
         """

@@ -19,13 +19,13 @@ from python.configuration.import_config_manager import ImportConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
-from python.framework.persistence.cold_start_state_index import (
-    COLD_START_INDEX_FILE,
-    ColdStartStateIndex,
-)
 from python.framework.discoveries.discovery_cache_index import (
     DISCOVERY_INDEX_FILE,
     DiscoveryCacheIndex,
+)
+from python.framework.persistence.cold_start_state_index import (
+    COLD_START_INDEX_FILE,
+    ColdStartStateIndex,
 )
 from python.framework.reporting.certificates.certificate_index import (
     CERTIFICATE_INDEX_FILE,
@@ -39,7 +39,6 @@ from python.framework.reporting.store.run_ledger_index import (
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
 from python.framework.store.store_descriptor import StoreDescriptor
 from python.framework.types.log_layout_types import GLOBAL_LOG_FILE
-from python.scenario.generator.window_set_serializer import PROFILE_OUTPUT_DIR
 from python.framework.types.store_types import (
     DISCOVERY_CACHE_DIRNAME,
     RetrievalForm,
@@ -47,6 +46,7 @@ from python.framework.types.store_types import (
     StoreId,
     StoreKind,
 )
+from python.scenario.generator.window_set_serializer import PROFILE_OUTPUT_DIR
 
 # Where the certificate families live. Not configured anywhere and deliberately so: the release
 # checklist names these paths, and the certificates are the one store that is committed.
@@ -126,11 +126,14 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             index_path=cold_start_path / COLD_START_INDEX_FILE,
             index_factory=lambda: ColdStartStateIndex(cold_start_path),
             note='The FRAMEWORK carry-over beside the algo one (#355): the session keys this '
-                 'bot sent orders under, and the highest position counter it minted. Its own '
+                 'bot sent orders under, the highest position counter it minted, and the open '
+                 'position book — at spot a holding is a balance the venue cannot describe as '
+                 'a position, so it only survives a restart because we wrote it down. Its own '
                  'store rather than a section in session_state, because that one is gated '
                  'behind the algo opt-in while this must be written for every live bot. It '
                  'HAS an index because something searches ACROSS bots — which bot carries '
-                 'what, since when, from which run. History is deliberately absent: a '
+                 'what, since when, from which run. Written at boot, at shutdown, and '
+                 'whenever the open book changes. History is deliberately absent: a '
                  'carry-over overwrites, so what a given boot adopted lives in that run RECORD '
                  'and the two indexes are joined.',
         ),

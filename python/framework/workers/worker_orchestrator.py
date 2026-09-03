@@ -41,6 +41,10 @@ from python.framework.types.worker_types import (
     WorkerResult,
     WorkerState,
 )
+from python.framework.validators.decision_logic_hook_validator import (
+    check_market_data_staleness_hook,
+    check_signal_staleness_hook,
+)
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.abstract_worker import AbstractWorker
@@ -291,14 +295,9 @@ class WorkerOrchestrator:
         # per-worker SIGNAL check below). Sim never dispatches it (replay gaps
         # are data, unless a stale_data_stress window drives it); the override
         # is the uniform authoring contract: sim-validated = live-ready.
-        if type(self.decision_logic).on_market_data_stale is AbstractDecisionLogic.on_market_data_stale:
-            raise ValueError(
-                f"DecisionLogic '{self.decision_logic.__class__.__name__}' does not "
-                f"override on_market_data_stale() — the market-outage reaction "
-                f"(flat / wait-with-timeout / entries-block / deliberate pass) must "
-                f"be programmed explicitly. See "
-                f"docs/user_guides/live_outage_handling_guide.md."
-            )
+        market_data_hook_error = check_market_data_staleness_hook(self.decision_logic)
+        if market_data_hook_error:
+            raise ValueError(market_data_hook_error)
 
         # Get required workers (instance_name → WorkerRequirement: type + signals)
         required_workers = self.decision_logic.get_required_workers()
@@ -368,12 +367,9 @@ class WorkerOrchestrator:
             isinstance(self.workers.get(name), AbstractSignalWorker)
             for name in required_workers
         )
-        if consumes_signal and type(self.decision_logic).on_signal_stale is AbstractDecisionLogic.on_signal_stale:
-            errors.append(
-                'Decision logic consumes SIGNAL worker(s) but does not override '
-                'on_signal_stale() — the staleness reaction (fallback / flat / HALT / '
-                'deliberate ignore) must be programmed explicitly.'
-            )
+        signal_hook_error = check_signal_staleness_hook(self.decision_logic, consumes_signal)
+        if signal_hook_error:
+            errors.append(signal_hook_error)
 
         # Raise all errors together
         if errors:

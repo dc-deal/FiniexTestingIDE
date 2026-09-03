@@ -21,6 +21,7 @@ surface**:
 | **Partial close** ladder | a fraction of the position is closed at an R-multiple rung |
 | **Multi-position** stacking | several concurrent positions on the symbol, each managed independently |
 | Resting-order **re-price / cancel** | the resting entry follows the band, and is cancelled if the trend gate flips |
+| **Cold-start answer** (#493) | `on_cold_start` — what to do when a restart finds one of its own orders still resting at the venue |
 
 ## The strategy (mechanical, textbook)
 
@@ -102,6 +103,54 @@ The harness runs one batch per grid combination, appends each run to the run-res
 fixed window is exactly the curve-fit a single "best" number invites — the robustness validation
 above is the honest judge that keeps a sweep result from being self-deception. See
 [Parameter Optimization](../architecture/parameter_optimization_system.md).
+
+## What it answers at a restart (`on_cold_start`, #493)
+
+A resting order outlives your process. If the bot is restarted — a deploy, a crash, a
+container, the rehearsed weekly restart — the venue is still holding the entry it armed
+yesterday, and the boot step rebuilds it into the session's shadow (see
+`docs/architecture/live_execution_architecture.md`).
+
+The framework then has a question it cannot answer: **may this session start, given what it
+found?** So it asks the strategy. Any logic that declares a resting order type must implement
+the hook — a MARKET-only logic is never asked, because it cannot find anything resting:
+
+```python
+def on_cold_start(self, situation: ColdStartSituation) -> ColdStartVerdict:
+    if situation.is_clean():
+        return ColdStartVerdict(True, 'nothing was resting — starting as if fresh')
+    ...
+    return ColdStartVerdict(
+        True,
+        f'one armed {self.entry_mode} entry — this logic holds at most one',
+        # A yes must NAME every adopted order, or it is not honoured.
+        accounted_order_ids=[order.order_id for order in situation.adopted],
+    )
+```
+
+The full implementation is in `python/framework/decision_logic/core/trend_channel_reference.py`
+(`on_cold_start`) — worth reading before writing your own, because it shows the shape of the
+answer rather than only its signature.
+
+This reference logic arms at most ONE resting entry at a time, so its answer is simply: one
+adopted order of the configured entry type and nothing else → the world is as it left it,
+carry on. Two orders, a position that came back without an order, or a book the account no
+longer covers → it declines.
+
+One thing this reference deliberately does not do: it only **judges** the situation, it does
+not feed it back into its own state. A production bot would — that is what the persisted
+memory is for. Here it would mean two subsystems in one teaching example.
+
+Declining is **not** a refusal to start. It hands the decision back to the framework, which
+applies its configured policy: `adoption_mode: "auto"` adopts and logs it, `operator_confirm`
+refuses and stays flat until somebody looks. The verdict can only ever LOOSEN that policy,
+never tighten it — an algo cannot lock itself out of starting.
+
+A production bot would compare the situation against its own persisted memory
+(`docs/user_guides/algo_state_persistence_guide.md`) instead of counting orders. This one
+deliberately does not: a teaching example that needs two subsystems to be readable teaches
+neither. `cautious_macd` shows the other valid shape — a written, reasoned decline, because
+the MACD state that set its stop levels is not persisted.
 
 ## Reading the strategy's own output
 

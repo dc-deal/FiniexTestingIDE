@@ -22,6 +22,10 @@ from python.framework.persistence.cold_start_state_store import ColdStartStateSt
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.autotrader_types.cold_start_types import (
+    ColdStartSituation,
+    ColdStartVerdict,
+)
 
 
 @dataclass
@@ -42,12 +46,17 @@ class ColdStartSetup:
         keys_in_use: Session discriminators the venue currently shows on orders of our shape.
             Protected from eviction, so the key that owns a resting order cannot age out
         adopted_count: How many resting orders were rebuilt
+        situation: What the boot found, as the decision logic saw it — None for a dry run,
+            an unreachable venue, or a session with no cold start at all
+        verdict: What the decision logic answered, when it was asked
     """
     proceed: bool = True
     store: Optional[ColdStartStateStore] = None
     persist: bool = False
     keys_in_use: Set[str] = field(default_factory=set)
     adopted_count: int = 0
+    situation: Optional[ColdStartSituation] = None
+    verdict: Optional[ColdStartVerdict] = None
 
 
 def setup_cold_start(
@@ -72,7 +81,8 @@ def setup_cold_start(
     Args:
         config: The resolved profile — `cold_start` block, adapter type, dry-run flag
         executor: The session's executor; only a live one has broker truth to pull
-        decision_logic: Used only to recognise the Field Study exclusion
+        decision_logic: Recognises the Field Study exclusion, and answers for the boot
+            situation itself (#493)
         logger: Session logger — the channel that reaches the run outcome (§35)
         run_id: Recorded as PROVENANCE in the carry-over, never as its key
         attended: A human DECLARED they are watching this start (`--attended`)
@@ -113,6 +123,7 @@ def setup_cold_start(
         logger=logger,
         dry_run=dry_run,
         interactive=attended,
+        decision_logic=decision_logic,
     )
 
     if not adopter.run():
@@ -121,7 +132,15 @@ def setup_cold_start(
         # refusal grades the run non-zero, a supervisor relaunches — consumes the key window
         # with its own aborts and evicts the key that owns the very order it kept refusing
         # over, after which the bot stops refusing and trades beside it.
-        return ColdStartSetup(proceed=False, store=store)
+        # The situation and the verdict travel even here — ESPECIALLY here. A refused boot is
+        # the outcome that matters most to whoever reads the run afterwards, and dropping it
+        # would leave the run record silent about the one session that declined to trade.
+        return ColdStartSetup(
+            proceed=False,
+            store=store,
+            situation=adopter.get_situation(),
+            verdict=adopter.get_verdict(),
+        )
 
     return ColdStartSetup(
         proceed=True,
@@ -129,4 +148,6 @@ def setup_cold_start(
         persist=not dry_run,
         keys_in_use=adopter.get_venue_session_keys(),
         adopted_count=adopter.get_adopted_count(),
+        situation=adopter.get_situation(),
+        verdict=adopter.get_verdict(),
     )

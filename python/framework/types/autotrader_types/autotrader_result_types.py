@@ -7,6 +7,10 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from python.framework.types.autotrader_types.clipping_monitor_types import ClippingSessionSummary
+from python.framework.types.autotrader_types.cold_start_types import (
+    ColdStartSituation,
+    ColdStartVerdict,
+)
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
@@ -50,6 +54,10 @@ class AutoTraderResult:
             Mirrors ProcessResult.scenario_logger_buffer, so both pipelines hand the reporting
             stage the same shape and the level filter lives at DERIVE, not here
         emergency_reason: Fatal cause when shutdown_mode == 'emergency' (None otherwise)
+        cold_start_situation: What the boot step found at the venue (#355 / #493). None for
+            a simulation, a dry run and a Field Study — the three cases with nothing to find.
+            Captured raw; the report model is derived from it
+        cold_start_verdict: What the decision logic answered about that situation
         session_validation_result: Post-run advisory findings (Tier 1) — the live counterpart
             of BatchExecutionSummary.batch_validation_result
     """
@@ -70,6 +78,8 @@ class AutoTraderResult:
     operator_interrupted: bool = False
     emergency_reason: Optional[str] = None
     session_logger_buffer: List[LogRecord] = field(default_factory=list)
+    cold_start_situation: Optional[ColdStartSituation] = None
+    cold_start_verdict: Optional[ColdStartVerdict] = None
     session_validation_result: List[ValidationResult] = field(default_factory=list)
 
     def add_session_validation_result(self, result: ValidationResult) -> None:

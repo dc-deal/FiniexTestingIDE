@@ -15,6 +15,7 @@ from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
     BlockSplittingReport,
     BrokerReport,
+    ColdStartReport,
     ExecutionStatsReport,
     FeedStabilityReport,
     OrderHistoryReport,
@@ -37,6 +38,8 @@ BLOCK_SPLITTING_ARTIFACT: ArtifactSpec[BlockSplittingReport] = ArtifactSpec(
     'block_splitting.json', BlockSplittingReport)
 BROKER_ARTIFACT: ArtifactSpec[BrokerReport] = ArtifactSpec(
     'broker.json', BrokerReport)
+COLD_START_ARTIFACT: ArtifactSpec[ColdStartReport] = ArtifactSpec(
+    'cold_start.json', ColdStartReport)
 EXECUTION_STATS_ARTIFACT: ArtifactSpec[ExecutionStatsReport] = ArtifactSpec(
     'execution_stats.json', ExecutionStatsReport)
 FEED_STABILITY_ARTIFACT: ArtifactSpec[FeedStabilityReport] = ArtifactSpec(

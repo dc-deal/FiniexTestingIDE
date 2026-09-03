@@ -23,6 +23,10 @@ from python.framework.decision_logic.core.live_field_study.field_study_phase_mac
 )
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
+from python.framework.types.autotrader_types.cold_start_types import (
+    ColdStartSituation,
+    ColdStartVerdict,
+)
 from python.framework.types.autotrader_types.field_study_types import (
     FieldStudyPhase,
     PhaseAction,
@@ -144,6 +148,31 @@ class LiveFieldStudy(AbstractDecisionLogic):
     # ============================================
     # Factory interface
     # ============================================
+
+    def on_cold_start(self, situation: ColdStartSituation) -> ColdStartVerdict:
+        """
+        Programmed boot reaction (#493): unreachable by construction, and written anyway.
+
+        The Field Study is excluded from cold-start adoption: it funds both sides on purpose
+        and asserts its own flat order book at boot (#332), so the boot step skips adoption
+        entirely when it owns the session. This hook can therefore never fire.
+
+        It exists because the contract is enforced on the DECLARATION, not on the pipeline —
+        this logic declares a resting LIMIT type. Writing the answer down is cheaper than an
+        exemption, and if the exclusion is ever lifted the answer is already here rather than
+        a hole nobody notices.
+
+        Args:
+            situation: What the boot found at the venue
+
+        Returns:
+            A declining verdict with the reason
+        """
+        return ColdStartVerdict(
+            False,
+            'the Field Study asserts a flat book at boot (#332) — adoption is skipped for it, '
+            'so this answer should never be read',
+        )
 
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:

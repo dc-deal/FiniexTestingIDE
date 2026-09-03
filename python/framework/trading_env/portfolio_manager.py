@@ -10,11 +10,16 @@ from typing import Callable, Dict, List, Optional, Union
 
 from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.persistence.position_book_projection import (
+    carry_over_to_position,
+    position_to_carry_over,
+)
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.trading_fees import MakerTakerFee, SwapFee
 from python.framework.types.config_types.market_config_types import SwapRolloverConfig
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.persistence_types import PositionCarryOver
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
@@ -1009,6 +1014,44 @@ class PortfolioManager:
             Snapshot list of open Position objects
         """
         return list(self.open_positions.values())
+
+    def get_position_book(self) -> List[PositionCarryOver]:
+        """
+        Project the open positions onto the notes a carry-over can hold (#355).
+
+        Spot positions are not objects the venue holds — a holding is a balance, and a balance
+        carries no entry price and no owner. They are OUR record, derived from our own fills,
+        so if they are not written down a restarted bot reads its own holding as flat. Margin
+        positions sit at the venue and come back from there (#209).
+
+        Returns:
+            One note per open position, newest position last
+        """
+        return [position_to_carry_over(p) for p in self.open_positions.values()]
+
+    def restore_position_book(self, records: List[PositionCarryOver]) -> int:
+        """
+        Rebuild open positions from an earlier session's notes (#355).
+
+        The running marks are NOT restored — they are recomputed from the next tick — and the
+        restored fees are deliberately not fed through _record_fee_cost: that cost was incurred
+        by the run that charged it, and counting it again would move a fee out of one run's
+        books into another's. The position's own net P&L still carries it, which is what the
+        closing trade record needs.
+
+        Args:
+            records: The notes read back from the carry-over
+
+        Returns:
+            How many positions were restored
+        """
+        for record in records:
+            self.open_positions[record.position_id] = carry_over_to_position(record)
+
+        if records:
+            self._positions_dirty = True
+
+        return len(records)
 
     def get_trade_history(self) -> List[TradeRecord]:
         """
