@@ -47,7 +47,7 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
         └── 6. process_live_export(...)              # Dashboard updates (time-based)
 
     # Post-loop cleanup
-    trade_simulator.close_all_remaining_orders()
+    trade_simulator.finish_remaining_orders()
     trade_simulator.check_clean_shutdown()
 
     # Collect results

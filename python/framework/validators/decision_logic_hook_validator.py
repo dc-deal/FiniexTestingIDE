@@ -40,7 +40,7 @@ def check_market_data_staleness_hook(decision_logic: Any) -> Optional[str]:
     Returns:
         The failure message, or None when the hook is overridden
     """
-    if _overrides(type(decision_logic), 'on_market_data_stale'):
+    if overrides_hook(type(decision_logic), 'on_market_data_stale'):
         return None
 
     return (
@@ -63,7 +63,7 @@ def check_signal_staleness_hook(decision_logic: Any, consumes_signal: bool) -> O
     Returns:
         The failure message, or None when nothing is required or the hook is overridden
     """
-    if not consumes_signal or _overrides(type(decision_logic), 'on_signal_stale'):
+    if not consumes_signal or overrides_hook(type(decision_logic), 'on_signal_stale'):
         return None
 
     return (
@@ -100,7 +100,7 @@ def check_cold_start_hook(
     if not any(t in RESTING_ORDER_TYPES for t in required_order_types):
         return None
 
-    if not _overrides(decision_logic_class, 'on_cold_start'):
+    if not overrides_hook(decision_logic_class, 'on_cold_start'):
         resting = [t.value for t in required_order_types if t in RESTING_ORDER_TYPES]
         return (
             f"DecisionLogic '{decision_logic_class.__name__}' declares resting order "
@@ -124,9 +124,12 @@ def check_cold_start_hook(
     return None
 
 
-def _overrides(decision_logic_class: Type[Any], hook_name: str) -> bool:
+def overrides_hook(decision_logic_class: Type[Any], hook_name: str) -> bool:
     """
     Whether a class replaced a base-class hook with its own.
+
+    Public because the session-end policy asks the same question: leaving resting orders
+    behind is coherent when the algo accounts for them itself (#492 x #493).
 
     Identity comparison against the base: if the class's attribute IS the base's function,
     nothing was written. A class that does not have the attribute at all cannot have

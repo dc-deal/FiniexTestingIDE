@@ -20,9 +20,11 @@ import pytest
 
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.process_data_types import ProcessTickLoopResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from tests.shared.fixture_helpers import (
+    extract_open_positions,
     ScenarioExpectedValues,
     extract_execution_stats,
     extract_process_result,
@@ -274,6 +276,12 @@ def long_limit_fill_trade_history(long_limit_fill_tick_loop: ProcessTickLoopResu
 
 
 @pytest.fixture(scope='session')
+def long_limit_fill_open_positions(long_limit_fill_tick_loop: ProcessTickLoopResult) -> List[Position]:
+    """Positions still open at the scenario end for the long_limit_fill scenario (#492)."""
+    return extract_open_positions(long_limit_fill_tick_loop)
+
+
+@pytest.fixture(scope='session')
 def long_limit_fill_execution_stats(long_limit_fill_tick_loop: ProcessTickLoopResult) -> ExecutionStats:
     """Execution stats for LONG limit fill scenario."""
     return extract_execution_stats(long_limit_fill_tick_loop)
@@ -292,6 +300,12 @@ def short_limit_fill_tick_loop(batch_execution_summary: BatchExecutionSummary) -
 def short_limit_fill_trade_history(short_limit_fill_tick_loop: ProcessTickLoopResult) -> List[TradeRecord]:
     """Trade history for SHORT limit fill scenario."""
     return extract_trade_history(short_limit_fill_tick_loop)
+
+
+@pytest.fixture(scope='session')
+def short_limit_fill_open_positions(short_limit_fill_tick_loop: ProcessTickLoopResult) -> List[Position]:
+    """Positions still open at the scenario end for the short_limit_fill scenario (#492)."""
+    return extract_open_positions(short_limit_fill_tick_loop)
 
 
 @pytest.fixture(scope='session')
@@ -337,6 +351,12 @@ def modify_limit_trade_history(modify_limit_tick_loop: ProcessTickLoopResult) ->
 
 
 @pytest.fixture(scope='session')
+def modify_limit_open_positions(modify_limit_tick_loop: ProcessTickLoopResult) -> List[Position]:
+    """Positions still open at the scenario end for the modify_limit scenario (#492)."""
+    return extract_open_positions(modify_limit_tick_loop)
+
+
+@pytest.fixture(scope='session')
 def modify_limit_execution_stats(modify_limit_tick_loop: ProcessTickLoopResult) -> ExecutionStats:
     """Execution stats for modify limit price fill scenario."""
     return extract_execution_stats(modify_limit_tick_loop)
@@ -355,6 +375,12 @@ def stop_long_tick_loop(batch_execution_summary: BatchExecutionSummary) -> Proce
 def stop_long_trade_history(stop_long_tick_loop: ProcessTickLoopResult) -> List[TradeRecord]:
     """Trade history for STOP LONG trigger scenario."""
     return extract_trade_history(stop_long_tick_loop)
+
+
+@pytest.fixture(scope='session')
+def stop_long_open_positions(stop_long_tick_loop: ProcessTickLoopResult) -> List[Position]:
+    """Positions still open at the scenario end for the stop_long scenario (#492)."""
+    return extract_open_positions(stop_long_tick_loop)
 
 
 @pytest.fixture(scope='session')
@@ -379,6 +405,12 @@ def stop_short_trade_history(stop_short_tick_loop: ProcessTickLoopResult) -> Lis
 
 
 @pytest.fixture(scope='session')
+def stop_short_open_positions(stop_short_tick_loop: ProcessTickLoopResult) -> List[Position]:
+    """Positions still open at the scenario end for the stop_short scenario (#492)."""
+    return extract_open_positions(stop_short_tick_loop)
+
+
+@pytest.fixture(scope='session')
 def stop_short_execution_stats(stop_short_tick_loop: ProcessTickLoopResult) -> ExecutionStats:
     """Execution stats for STOP SHORT trigger scenario."""
     return extract_execution_stats(stop_short_tick_loop)
@@ -400,6 +432,12 @@ def stop_limit_long_trade_history(stop_limit_long_tick_loop: ProcessTickLoopResu
 
 
 @pytest.fixture(scope='session')
+def stop_limit_long_open_positions(stop_limit_long_tick_loop: ProcessTickLoopResult) -> List[Position]:
+    """Positions still open at the scenario end for the stop_limit_long scenario (#492)."""
+    return extract_open_positions(stop_limit_long_tick_loop)
+
+
+@pytest.fixture(scope='session')
 def stop_limit_long_execution_stats(stop_limit_long_tick_loop: ProcessTickLoopResult) -> ExecutionStats:
     """Execution stats for STOP_LIMIT LONG trigger scenario."""
     return extract_execution_stats(stop_limit_long_tick_loop)
@@ -418,6 +456,12 @@ def stop_limit_short_tick_loop(batch_execution_summary: BatchExecutionSummary) -
 def stop_limit_short_trade_history(stop_limit_short_tick_loop: ProcessTickLoopResult) -> List[TradeRecord]:
     """Trade history for STOP_LIMIT SHORT trigger scenario."""
     return extract_trade_history(stop_limit_short_tick_loop)
+
+
+@pytest.fixture(scope='session')
+def stop_limit_short_open_positions(stop_limit_short_tick_loop: ProcessTickLoopResult) -> List[Position]:
+    """Positions still open at the scenario end for the stop_limit_short scenario (#492)."""
+    return extract_open_positions(stop_limit_short_tick_loop)
 
 
 @pytest.fixture(scope='session')
@@ -460,6 +504,12 @@ def modify_stop_tick_loop(batch_execution_summary: BatchExecutionSummary) -> Pro
 def modify_stop_trade_history(modify_stop_tick_loop: ProcessTickLoopResult) -> List[TradeRecord]:
     """Trade history for modify stop trigger scenario."""
     return extract_trade_history(modify_stop_tick_loop)
+
+
+@pytest.fixture(scope='session')
+def modify_stop_open_positions(modify_stop_tick_loop: ProcessTickLoopResult) -> List[Position]:
+    """Positions still open at the scenario end for the modify_stop scenario (#492)."""
+    return extract_open_positions(modify_stop_tick_loop)
 
 
 @pytest.fixture(scope='session')

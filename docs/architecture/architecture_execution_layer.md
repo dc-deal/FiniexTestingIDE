@@ -188,11 +188,11 @@ Every pending order that leaves the queue (filled, rejected, timed out, or force
 - **Aggregated Portfolio (ORDER EXECUTION)**: Resolved breakdown with filled/rejected/timed_out/force-closed counts + latency stats
 - **Executive Summary**: Green latency line per scenario, yellow `"X force-closed"` / `"X timed out"` breakdown
 
-**End-of-scenario cleanup** (`close_all_remaining_orders`):
+**End-of-run cleanup** (`finish_remaining_orders`):
 
-Open positions are closed via synthetic PendingOrders that bypass the latency pipeline entirely — no pending created, no statistics impact. This is an internal cleanup, not an algo action. After direct-filling, `clear_pending()` catches any genuine stuck-in-pipeline orders (e.g. algo submitted an order right before scenario ended). Only these real anomalies are recorded as `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`, `"manual_abort"`).
+It finishes the run's **orders** only. Active orders are expired (live: cancelled at the broker first, unless the session-end policy leaves them standing), then `clear_pending()` catches any genuine stuck-in-pipeline orders (e.g. an order submitted right before the run ended). Only these real anomalies are recorded as `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`, `"manual_abort"`).
 
-Synthetic cleanup pendings carry an empty `submission` snapshot — there is no algo-initiated submission moment, so the SLIPPAGE audit channel correctly skips them. See `drift_audit.md` for the audit pipeline.
+**Open positions are not touched.** Until #492 they were closed here through a synthetic PendingOrder that bypassed the pipeline — and in live that close never reached the venue: it was filled locally, so a session ending with an open position reported a realised exit nobody executed while the asset sat in the account. In simulation it invented a trade whose exit the strategy never chose, which then counted in the trade count, the win rate and the profit factor. A position now stays open and is reported as open and valued (see [autotrader_architecture.md](../autotrader/autotrader_architecture.md) — *Session End*).
 
 ### History Retention Limits
 
@@ -250,7 +250,8 @@ The foundation. Contains all concrete fill processing and shared infrastructure.
 - `cancel_limit_order(order_id)` — Cancel an active limit order by order ID
 - `has_pipeline_orders()` — Whether orders are in latency pipeline only
 - `is_pending_close(position_id)` — Whether a specific position is being closed
-- `close_all_remaining_orders(current_tick)` — End-of-run cleanup: expire active orders, direct-fill open positions, then `clear_pending()` for stuck pipeline orders
+- `finish_remaining_orders(cancel_orders, current_msc)` — End-of-run cleanup for ORDERS: expire (live: cancel at the broker) or leave standing, then `clear_pending()` for stuck pipeline orders. Open positions are left open (#492)
+- `check_clean_shutdown(expect_flat)` — Post-cleanup check. A surviving position is an ERROR only where flatness was expected; where the policy left it standing it is a note
 - `get_pending_stats()` — Aggregated pending order statistics (latency, outcomes)
 
 ### AbstractPendingOrderManager
@@ -263,7 +264,6 @@ Shared storage and query layer for pending orders. Both execution modes need to 
 - `get_pending_count()` — Count pending orders
 - `has_pending_orders()` — Any orders in flight?
 - `is_pending_close(position_id)` — Specific position being closed?
-- `create_synthetic_close_order(position_id)` — Factory for direct-fill close orders that bypass the pipeline (used by `close_all_remaining_orders`)
 - `clear_pending(current_msc, reason)` — Cleanup at scenario end, records remaining as FORCE_CLOSED with reason
 - `record_outcome(pending_order, outcome, latency_ms, reason)` — Record resolved pending order for statistics
 - `get_pending_stats()` — Return aggregated `PendingOrderStats`
@@ -602,8 +602,8 @@ In live mode, the broker handles limit order matching server-side. `LiveTradeExe
 
 ### Cleanup
 
-At scenario end, `close_all_remaining_orders()` expires unfilled active orders:
-1. **Live**: Active limit orders are cancelled at the broker first
+At run end, `finish_remaining_orders()` expires unfilled active orders:
+1. **Live**: Active limit orders are cancelled at the broker first — unless `session_end.orders = "leave"`, which leaves them at the venue for a later session to adopt (#355) and therefore does NOT expire them locally either: an order that can still fill must not be recorded as expired
 2. **Both modes**: `_expire_active_orders()` creates `OrderResult(status=EXPIRED)` entries in `_order_history`
 3. Lists preserved for `get_pending_stats()` snapshots (reporting)
 

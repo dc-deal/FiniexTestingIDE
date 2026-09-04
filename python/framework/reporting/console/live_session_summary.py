@@ -132,7 +132,16 @@ class LiveSessionSummary:
         if result.portfolio_stats:
             pnl = result.portfolio_stats.total_profit - result.portfolio_stats.total_loss
             print(f'  Balance:        {result.portfolio_stats.current_balance:.2f} '
-                  f'(P&L: {pnl:+.2f})')
+                  f'(P&L: {pnl:+.2f} realised)')
+            # #492: a session may END holding something. The headline is what an operator
+            # reads first, so a position left standing by policy has to appear HERE and not
+            # only in the portfolio section further down — otherwise the one figure they
+            # look at describes a flat account that is not flat.
+            if result.open_positions:
+                print(f'  Still open:     {len(result.open_positions)} position(s) '
+                      f'({result.portfolio_stats.unrealized_pnl:+.2f} unrealised)'
+                      + (f' · policy {result.session_end_policy}'
+                         if result.session_end_policy else ''))
 
         if result.execution_stats:
             print(f'  Orders:         {result.execution_stats.orders_sent} sent, '

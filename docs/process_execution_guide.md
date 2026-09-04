@@ -324,7 +324,7 @@ ProcessPool uses `fork()` on Linux, which copies entire process memory including
 **Example from Code:**
 ```python
 # Close open trades
-trade_simulator.close_all_remaining_orders()
+trade_simulator.finish_remaining_orders()
 
 # Cleanup coordinator
 worker_coordinator.cleanup()

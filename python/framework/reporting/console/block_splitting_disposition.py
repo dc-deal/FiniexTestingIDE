@@ -68,12 +68,12 @@ class BlockSplittingDisposition(AbstractBatchSummarySection):
                 f'  {disp.symbol} ({mode_short}, {disp.block_count} blocks):'
             ))
 
-            # Force-close stats
-            fc_ratio_str = f'{disp.force_close_ratio:.1f}%'
+            # What the block edge left open, and the unrealised P&L riding on it
+            open_ratio_str = f'{disp.open_at_boundary_ratio:.1f}%'
             print(
-                f'    Force-closed: {disp.force_closed_trades}/{disp.total_trades} '
-                f'({fc_ratio_str})  |  '
-                f'Force-close P&L: {disp.force_closed_pnl:+.2f}'
+                f'    Open at edge: {disp.open_at_boundary_trades}/{disp.total_trades} '
+                f'({open_ratio_str})  |  '
+                f'Unrealised at edge: {disp.open_at_boundary_pnl:+.2f}'
             )
 
             # Pending orders (only if any)
@@ -102,8 +102,8 @@ class BlockSplittingDisposition(AbstractBatchSummarySection):
 
         renderer.print_separator(width=60, char='─')
         print(renderer.bold(
-            f'  Aggregate: {self._report.agg_force_closed_trades}/{self._report.agg_total_trades} '
-            f'force-closed ({self._report.agg_force_close_ratio:.1f}%)  |  '
+            f'  Aggregate: {self._report.agg_open_at_boundary_trades}/{self._report.agg_total_trades} '
+            f'open at edge ({self._report.agg_open_at_boundary_ratio:.1f}%)  |  '
             f'Disposition: {agg_pct:.1f}% {label}'
         ))
 

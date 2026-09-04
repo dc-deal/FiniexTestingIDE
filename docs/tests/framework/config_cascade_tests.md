@@ -1,6 +1,6 @@
-# Config Tests (Cascade + Merge Utility)
+# Config Tests (Cascade + Merge Utility + Loader Field Coverage)
 
-The `tests/framework/config/` suite holds two complementary test files:
+The `tests/framework/config/` suite holds complementary test files:
 
 - **`test_execution_config_cascade.py`** — black-box coverage of the 3-level
   scenario-set cascade. Drives `ScenarioConfigLoader.load_config()` against
@@ -8,11 +8,15 @@ The `tests/framework/config/` suite holds two complementary test files:
 - **`test_deep_merge_list_merge.py`** — unit coverage of the `list_merge_keys`
   feature in `deep_merge()`. Drives the helper directly with in-memory dicts —
   no fixtures, no loader involvement. See [Deep Merge List-Merge Tests](#deep-merge-list-merge-tests) below.
+- **`test_autotrader_loader_field_coverage.py`** — one property over the AutoTrader
+  profile loader: every field of every config block is reachable from JSON. See
+  [Loader Field Coverage](#loader-field-coverage) below.
 
 | Item | Value |
 |---|---|
 | Suite path | [tests/framework/config/](../../../tests/framework/config/) |
 | Cascade fixtures | [tests/fixtures/scenario_sets/cascade/](../../../tests/fixtures/scenario_sets/cascade/) |
+| Loader-coverage fixture | [tests/fixtures/autotrader_profiles/loader_coverage/](../../../tests/fixtures/autotrader_profiles/loader_coverage/) |
 | Pytest mark | `framework` (auto-applied via path) |
 | Cascade doc | [config_cascade_guide.md](../../config_cascade_guide.md) — cascade architecture |
 | user_configs/ doc | [user_configs_override_system.md](../../user_configs_override_system.md) — content-merge vs file-replace, list_merge_keys |
@@ -101,3 +105,42 @@ key broker entries by `broker_type`. Tests live in
 If `deep_merge` is touched and these stay green, the list-merge feature is intact.
 When `list_merge_keys` is extended to new configs in the future, add a fixture-free
 unit test here mirroring the brokers pattern.
+
+---
+
+## Loader Field Coverage
+
+Guards ONE property of `load_autotrader_config`: **every field of every config block is
+reachable from JSON.** Tests live in
+[`test_autotrader_loader_field_coverage.py`](../../../tests/framework/config/test_autotrader_loader_field_coverage.py).
+
+The gap it closes is invisible from outside. A field can be declared in the Pydantic model,
+mirrored in `app_config.json` (§28), allowed through `check_unknown_keys` and read at runtime
+— and still never be transferred by the loader. A profile that sets it then passes validation
+and is silently ignored. Two fields were in exactly that state, each since its own feature
+shipped: `cold_start.book_drift_interval_ticks` and `clipping_monitor.warn_above_ratio`. Both
+happened to equal their model default, so nothing looked wrong. Same shape as the `dry_run`
+near-miss (#304): declared, documented, parsed, read by nothing.
+
+The loader now builds each block from its raw dict as a whole (`Model(**raw)`) instead of
+field by field, which removed a THIRD copy of every default (model, config file, loader
+fallback) and makes forgetting a field impossible.
+
+| Test | What it verifies |
+|---|---|
+| `test_every_field_of_every_block_is_reachable_from_json` | The property itself — a profile value differing from the default arrives, for every field of every block. The field list is DERIVED from the models |
+| `test_the_two_fields_that_were_actually_lost` | Named regression for the two real cases. A generic failure says "something is unreachable"; this says which |
+| `test_the_mock_auto_disable_still_wins_when_the_profile_stays_silent` | The other half of the provenance rule — a profile that says nothing still gets the mock auto-disable for drift audit / reconciliation / API monitor / state persistence |
+
+**The field list is never written down in the test.** A static fixture would have to be
+extended for every new field, which is the maintenance trap the test exists to close — so it
+must not reproduce it. Values are generated per type: another `Literal` member, the negated
+boolean, a shifted number, a suffixed string.
+
+### When to Touch This Suite
+
+- **A new config block on `AutoTraderConfig`** — nothing to do; it is discovered automatically
+- **A new field on an existing block** — nothing to do, same reason
+- **A field type the generator cannot vary** (a dict, a list, a new nested model deeper than
+  one level) — extend `_probe_value` / the nesting branch, or the field is silently skipped
+- **A new mock-auto-disable resolution** — add it to the third test

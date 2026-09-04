@@ -229,7 +229,7 @@ The `_pending_audits` dict carries `AuditContext` snapshots between the outcome 
 - **Always popped** on `_on_trades_response`, regardless of `response.success` — prevents leaks (Risk 4)
 - On `shutdown()`: any unfinished entries are logged as a warning and the dict is cleared
 
-The `AuditContext.submission_tick_mid_price` field is `None` for synthetic cleanup pendings (scenario-end force-close — see `architecture_execution_layer.md` *End-of-scenario cleanup*). The SLIPPAGE comparison branch checks `if not None` and skips automatically — a force-close liquidation has no algo-initiated submission moment, so there is no slippage to measure.
+The `AuditContext.submission_tick_mid_price` field is `None` wherever a pending carries no algo-initiated submission moment — the SLIPPAGE comparison branch checks `if not None` and skips automatically, so there is nothing to measure and nothing to guard. The end-of-run force-close that used to produce such pendings was removed with #492 (see [session_end_policy.md](session_end_policy.md)); the field's `None` case remains for every other path that has no submission snapshot.
 
 ## Live Display Footer
 

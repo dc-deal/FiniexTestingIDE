@@ -86,7 +86,7 @@ These are NOT block-splitting problems — they are warmup problems handled enti
 
 | # | Lost State | Impact | Why unsolvable |
 |---|---|---|---|
-| 2 | **Open positions** | Swing trades cut short, artificial P&L | `close_all_remaining_orders()` is required — without it, trades exist in limbo when subprocess ends |
+| 2 | **Open positions** | Swing trades cut short — the edge's impact is UNREALISED, not an invented exit | A position open at the block edge stays open and is reported as open (#492 — [session_end_policy.md](../architecture/session_end_policy.md)). The disposition measures `open_at_boundary_*`: forcing the position closed produced a trade whose exit the strategy never chose, and it counted in every ranked KPI |
 | 3 | **Account balance** | No compounding across blocks | `initial_balance` reset is structural to subprocess isolation |
 | 4 | **Decision logic memory** | Cooldowns, sequences, state machines lost | No serialization mechanism for arbitrary decision logic state |
 | 5 | **Pending orders** | Limit orders near execution discarded | No cross-block transfer mechanism |
@@ -296,7 +296,10 @@ After a tick run with block splitting, the **Block Splitting Disposition** quant
 
 ### Data Sources
 
-- Force-closed trades (distinction from natural closes, unrealized P&L at force-close)
+- Positions still OPEN at the block edge, and the unrealised P&L riding on them — the edge's
+  impact since #492. It used to be force-closed trades; nothing produces those any more, so a
+  disposition still reading them would report a permanent `0` and grade every split GOOD while
+  the edge kept cutting the same trades
 - ATR at block boundaries (from profile metadata)
 - Balance resets (count, compounding loss estimate)
 - Discarded pending orders

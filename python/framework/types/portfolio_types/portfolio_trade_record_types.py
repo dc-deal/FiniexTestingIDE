@@ -28,7 +28,11 @@ class CloseReason(Enum):
     MANUAL: Algo/strategy close (no specific trigger)
     SL_TRIGGERED: Stop-loss price level hit
     TP_TRIGGERED: Take-profit price level hit
-    SCENARIO_END: Position auto-closed at end of simulation
+    SCENARIO_END: RESERVED, currently produced by nothing (#492). It used to mark the
+        end-of-run force-close, which was removed because in live it never reached the
+        venue and in simulation it invented a trade the strategy never chose. It is kept
+        for the real session-end close that #487 makes buildable — deleting it and
+        re-adding it later would be two API contract changes for one value.
     """
     MANUAL = ''
     SL_TRIGGERED = 'sl_triggered'

@@ -193,11 +193,33 @@ Two modes:
 
 | Mode | Trigger | Behavior |
 |------|---------|----------|
-| **Normal** | Tick source exhausted, SIGTERM | Close positions, cancel orders, collect full stats |
-| **Emergency** | SIGINT (Ctrl+C), a startup or tick-loop exception, or an EMERGENCY session-end escalation (#348) | Immediate close, best-effort stats |
+| **Normal** | Tick source exhausted, SIGTERM | Finish orders per policy, collect full stats |
+| **Emergency** | SIGINT (Ctrl+C), a startup or tick-loop exception, or an EMERGENCY session-end escalation (#348) | Same cleanup, best-effort stats |
 
-Signal handling: first Ctrl+C requests shutdown (positions are still closed); a second within 3s
-forces exit.
+Signal handling: first Ctrl+C requests shutdown; a second within 3s forces exit.
+
+The mode is a **label**, not a behaviour: both run the same cleanup. Emergency flattening —
+the case where liquidating IS right — belongs to the safety baseline (#356) and is
+deliberately not folded in here, because one code path answering both "the session is over"
+and "something went wrong" is exactly the confusion the policy below exists to end. Note also
+that an operator Ctrl+C arrives as `emergency`, so a rule keyed on the mode would fire on
+every manual stop.
+
+### Session End (#492)
+
+What the session does with resting orders and open positions when it ends is **two**
+decisions, not one — and until #492 it did a third thing that was neither: it closed
+positions in our book only, reporting an exit that never reached the venue.
+
+```json
+"session_end": { "orders": "cancel" | "leave", "positions": "close" | "leave" }
+```
+
+Defaults `orders: "cancel"` · `positions: "leave"`. `positions: "close"` is declared and
+refuses at startup until #487 makes a real close resolvable.
+
+**Full treatment — the order-type map, both pipelines, spot against margin, the incoherent
+pair with cold start, and what the report shows: [session_end_policy.md](../architecture/session_end_policy.md).**
 
 ### Session outcome and exit code (#372)
 

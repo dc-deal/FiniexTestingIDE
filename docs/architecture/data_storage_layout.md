@@ -283,12 +283,14 @@ quiet market needs no writes, and a tick counter needs no clock (the first passe
 before the canonical clock is injected). The index rebuild is left to the writes that BOUND a
 session; an index is derived and reports itself stale until the next boot.
 
-**The shutdown write happens BEFORE the position cleanup, and the order is the point.**
-`close_all_remaining_orders` closes open positions in OUR BOOK only — it fills a synthetic
-close locally and nothing reaches the venue. A note written after that would say "this bot
-holds nothing" while the asset is still at the broker, which erases exactly what the successor
-needs. Whether a session END should flatten at the venue at all is a policy question and
-belongs to #492; until it is answered, the note describes the VENUE.
+**The shutdown write happens BEFORE the order cleanup, and the note describes the VENUE.**
+This was a workaround before #492: the cleanup closed open positions in our book only — it
+filled a synthetic close locally and nothing reached the venue — so a note written afterwards
+would have said "this bot holds nothing" while the asset was still at the broker, erasing
+exactly what the successor needs. The cleanup no longer touches positions at all, so the
+ordering is now simply the honest one rather than a defence against a defect. A session that
+sells at the venue would have to write the note AFTER the sale; that path is not built, and
+`session_end.positions = 'close'` refuses at startup until #487 makes it resolvable.
 
 The check is deliberately **one-sided**. The account is shared, so holding MORE than the book
 claims is normal and says nothing (what a bot may *use* is declared capital, #489). Holding

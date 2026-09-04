@@ -1,0 +1,56 @@
+{
+  "name": "session_end_test",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "mock",
+  "strategy_config": {
+    "decision_logic_type": "CORE/aggressive_trend",
+    "worker_instances": {
+      "rsi_fast": "CORE/rsi",
+      "bollinger_main": "CORE/bollinger"
+    },
+    "workers": {
+      "rsi_fast": {
+        "periods": {
+          "M5": 14
+        }
+      },
+      "bollinger_main": {
+        "periods": {
+          "M30": 20
+        },
+        "deviation": 2
+      }
+    },
+    "decision_logic_config": {
+      "rsi_buy_threshold": 45,
+      "rsi_sell_threshold": 55,
+      "bollinger_extremes": 0.45,
+      "min_confidence": 0.1,
+      "min_free_margin": 100,
+      "lot_size": 0.01
+    }
+  },
+  "tick_source": {
+    "type": "mock"
+  },
+  "session_end": {
+    "orders": "cancel",
+    "positions": "leave"
+  },
+  "cold_start": {
+    "adoption_mode": "auto"
+  },
+  "display": {
+    "enabled": false
+  },
+  "scenario_settings": {
+    "start_date": "2026-01-24T14:19:46+00:00",
+    "max_ticks": 6000,
+    "data_mode": "realistic",
+    "balances": {
+      "USD": 10000.0,
+      "BTC": 0.0
+    }
+  }
+}

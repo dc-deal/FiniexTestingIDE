@@ -210,6 +210,42 @@ the console nor a frontend re-sums. **Ordering** (sorting the rows) is the one t
 *presentation* concern in each renderer: the model carries the rows, not a fixed sort (the console
 sorts chronologically; a frontend may sort differently).
 
+## Realised vs valued — the accounting rule (#492)
+
+A run may end while it still HOLDS something. Since #492 neither pipeline force-closes at the
+end (live never reached the venue when it tried; simulation invented an exit the strategy never
+chose), so the model has to answer two different questions without mixing them:
+
+```
+trade statistics (count, win rate, profit factor)  →  COMPLETED trades only
+account view      net_profit                       →  realised
+wealth view       final_equity                     →  realised + what is still held, valued
+```
+
+**Realised and valued are never summed into one number without the number saying so.** This is
+the mark-to-market norm every professional system follows: a position open at the period end is
+valued and never recorded as a completed trade.
+
+Three consequences worth knowing before touching a figure here:
+
+- **Valuation needs a price, and the price is the last tick.** `OpenPositionRow.valued` is False
+  where no tick ever arrived (a boot that aborted before the first one) — the row then carries
+  the entry price and no mark, never an invented one.
+- **The equity sample at run end is SPOT-AWARE, and this is a trap.** `_max_equity` /
+  `_max_drawdown` were only ever written when a position CLOSED, so the force-close used to
+  contribute the last point. `PortfolioManager.sample_equity()` replaces it — and it must use
+  the spot portfolio value, not the margin-style `balance + unrealized_pnl`: in spot mode
+  `balance` is the QUOTE balance alone, so a held coin contributes only its unrealised gain and
+  never its value. Measured on a 1000 USD account buying 0.01 BTC: **1.57 USD** the right way
+  (fee plus spread, real) against **603 USD** the wrong way — 384×, and the wrong one looks
+  like a 60 % drawdown caused by a purchase. #497 owns the definition itself.
+- **The ledger carries both.** `unrealized_pnl`, `final_equity` and `open_position_count` are
+  ledger columns, because a sweep ranking on `net_pnl` alone rates a variant still HOLDING a
+  winner below one that closed it — the same distortion the force-close caused in the other
+  direction. Which KPI a sweep ranks on by default is #32's decision.
+
+---
+
 ## Report sections — domain & migration status
 
 Every section eventually flows through the pipeline so a frontend can render it — including
@@ -224,7 +260,7 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 |---|---|---|---|---|
 | Trade History (#389 analytics) | unified | ✅ | ✅ | offload the still-inline per-currency aggregates: trade-breakdown counts · duration · slippage distribution · rejection-by-reason |
 | Order History | unified | ✅ | ✅ | — |
-| Portfolio — per-scenario | unified | ✅ | ✅ (linear, boxes removed) | — `max_dd_pct` and the spot dual-balance estimate are derived in the builder; the renderer's `symbol[-3:]` currency split was replaced by the broker-config split stamped at capture (#265) |
+| Portfolio — per-scenario | unified | ✅ | ✅ (linear, boxes removed) | — `max_dd_pct`, the spot dual-balance estimate and `final_equity` are derived in the builder; the renderer's `symbol[-3:]` currency split was replaced by the broker-config split stamped at capture (#265). Carries `open_positions` / `unrealized_pnl` / `session_end_policy` (#492) |
 | Portfolio — aggregated (by currency) | sim | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (byte-identical; `PortfolioAggregator` retired) | — |
 | Pending Orders / Active | unified (sim-populated) | ✅ | ✅ | — |
 | Execution Stats — per-scenario | unified | ✅ | ✅ | — |

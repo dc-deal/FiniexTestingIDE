@@ -360,12 +360,18 @@ def execute_tick_loop(
             scenario_logger.info(
                 f'✅ Tick loop completed: {live_setup.tick_count:,} ticks')
 
-        # === CLOSE OPEN TRADES ===
+        # === FINISH OPEN ORDERS ===
+        # The scenario's data has ended, so its active orders can never fill and are
+        # expired for the record. An open POSITION is left open and reported as open
+        # (#492): force-closing it produced a trade whose exit the strategy never chose,
+        # and that trade counted in every ranked KPI — so where the data happened to stop
+        # decided part of the result. `expect_flat=False` says the survivor is a
+        # consequence of that decision, not an orphan.
         # Use last tick's msc for latency calculation (same fallback as inter-tick interval)
         last_msc = (current_tick.collected_msc if current_tick and current_tick.collected_msc > 0
                      else current_tick.time_msc if current_tick else 0)
-        trade_simulator.close_all_remaining_orders(current_msc=last_msc)
-        trade_simulator.check_clean_shutdown()
+        trade_simulator.finish_remaining_orders(current_msc=last_msc)
+        trade_simulator.check_clean_shutdown(expect_flat=False)
         # update live the last time - to show final balance correctly
         live_updated = process_live_export(
             live_setup, config, current_index, current_tick, portfolio, worker_coordinator, current_bars)
@@ -398,6 +404,10 @@ def execute_tick_loop(
         )
 
         # collect statistics from Trader section
+        # #492: one equity sample at the end — the series behind the drawdown is otherwise
+        # written only when a position CLOSES, and the scenario end no longer closes
+        # anything. Spot-aware inside, or a purchase would read as a drawdown.
+        trade_simulator.portfolio.sample_equity()
         portfolio_stats = trade_simulator.portfolio.get_portfolio_statistics()
         portfolio_stats.symbol = config.symbol
         _symbol_spec = trade_simulator.portfolio.broker_config.get_symbol_specification(
@@ -412,11 +422,17 @@ def execute_tick_loop(
         order_history = trade_simulator.get_order_history()
         pending_stats = trade_simulator.get_pending_stats()
 
+        # #492: what the scenario's end left open. Read once — the boundary report and the
+        # result both describe it, and the second read would be a second answer.
+        open_positions = trade_simulator.get_open_positions()
+
         # Build block boundary report for Profile Runs
         block_boundary_report = None
         if config.is_profile_run:
             block_boundary_report = build_block_boundary_report(
-                trade_history, pending_stats
+                trade_history, pending_stats,
+                # The edge's impact is what it left OPEN, not what it force-closed.
+                open_positions=open_positions,
             )
 
         _print_tick_loop_finishing_log(
@@ -437,6 +453,7 @@ def execute_tick_loop(
             order_history=order_history,
             pending_stats=pending_stats,
             block_boundary_report=block_boundary_report,
+            open_positions=open_positions,
             profiling_data=ProcessProfileData(
                 profile_times=profile_times,
                 profile_counts=profile_counts,

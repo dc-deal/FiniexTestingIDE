@@ -66,6 +66,7 @@ def setup_cold_start(
     attended: bool,
     field_study_active: bool,
     dry_run: bool,
+    session_end_orders: str = 'cancel',
 ) -> ColdStartSetup:
     """
     Run the cold-start boot step and hand back what the session keeps.
@@ -90,6 +91,9 @@ def setup_cold_start(
             miss the broker's standing posture — which is precisely the near miss #304 exists
             for: a profile said `dry_run: true`, the broker override said false, and the
             profile field was read by nothing
+        session_end_orders: The resolved session-end policy for the ORDERS axis (#492). The
+            adoption prompt states what will happen to the very orders it asks about, so it
+            is told rather than left asserting the unconditional cleanup that used to exist
 
     Returns:
         A ColdStartSetup; `proceed=False` means the session must not start
@@ -122,6 +126,7 @@ def setup_cold_start(
         dry_run=dry_run,
         interactive=attended,
         decision_logic=decision_logic,
+        session_end_orders=session_end_orders,
     )
 
     if not adopter.run():

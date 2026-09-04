@@ -22,10 +22,7 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.trading_env.simulation.order_latency_simulator import OrderLatencySimulator
-from python.framework.types.portfolio_types.portfolio_trade_record_types import (
-    CloseReason,
-    EntryType,
-)
+from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
 from python.framework.types.trading_env_types.latency_simulator_types import (
     ModificationRequest,
     PendingOperation,
@@ -1263,35 +1260,31 @@ class TradeSimulator(AbstractTradeExecutor):
     # Cleanup
     # ============================================
 
-    def close_all_remaining_orders(self, current_msc: int = 0) -> None:
+    def finish_remaining_orders(self, cancel_orders: bool = True, current_msc: int = 0) -> None:
         """
-        BEFORE collecting statistics — cleanup at scenario end.
+        BEFORE collecting statistics — finish the scenario's ORDERS.
 
-        Two-phase cleanup:
-        1. Direct-fill open positions using synthetic PendingOrders.
-           These bypass the latency pipeline entirely — no pending created,
-           no FORCE_CLOSED in statistics. This is an internal cleanup,
-           not an algo-initiated action.
+        Two phases:
+        1. Active orders are expired → EXPIRED records in _order_history. The scenario's
+           data has ended, so they can never fill; this is bookkeeping, not a venue action.
         2. clear_pending() catches genuine stuck-in-pipeline orders
            (e.g. algo submitted an order right before scenario ended,
            still waiting for latency delay). These ARE real anomalies
            and correctly recorded as FORCE_CLOSED with reason="scenario_end".
 
+        Open POSITIONS are deliberately left open (#492). Force-closing them produced a
+        "trade" whose exit the strategy never chose, and it counted in the trade count, the
+        win rate and the profit factor — so where the data happened to stop decided part of
+        every ranked KPI. An open position is now reported as open and valued instead,
+        which is what LEAN, backtrader and zipline all do, and it keeps the reported figures
+        identical to a live session over the same data.
+
         Args:
+            cancel_orders: Accepted for the shared contract; a simulation always expires
+                its active orders, because "leave them at the venue" has no meaning where
+                there is no venue
             current_msc: Current millisecond timestamp for latency calculation
         """
-        open_positions = self.get_open_positions()
-        if open_positions:
-            self.logger.warning(
-                f'{len(open_positions)} positions remain open — direct-closing (no pending)'
-            )
-            # Direct fill via synthetic PendingOrder — bypasses latency pipeline
-            for pos in open_positions:
-                synthetic = self.latency_simulator.create_synthetic_close_order(
-                    pos.position_id)
-                self._fill_close_order(
-                    synthetic, close_reason=CloseReason.SCENARIO_END)
-
         # Expire active orders → EXPIRED records in _order_history.
         # Lists are NOT cleared — preserved for get_pending_stats() snapshots.
         if self._active_limit_orders:

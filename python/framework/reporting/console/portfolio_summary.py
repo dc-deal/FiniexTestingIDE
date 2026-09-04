@@ -110,8 +110,10 @@ class PortfolioSummary(AbstractBatchSummarySection):
         if unit.has_error:
             print(renderer.red('   ⚠️ CRITICAL: Errors detected'))
 
-        # No-trades case
-        if unit.total_trades == 0:
+        # Nothing to report only when nothing was CLOSED and nothing is still open. A
+        # buy-and-hold unit closes no trade and used to fall in here, which skipped its
+        # balances, its costs and the position it was holding (#492).
+        if unit.total_trades == 0 and not unit.open_positions:
             orders = self._orders_line(execution, renderer)
             print('   No trades executed' + (f' | {orders}' if orders else ''))
             active = self._active_summary(pending, renderer)
@@ -119,13 +121,19 @@ class PortfolioSummary(AbstractBatchSummarySection):
                 print(f'   {active}')
             return
 
-        print(
-            f'   Trades: {unit.total_trades} ({unit.winning_trades}W/{unit.losing_trades}L) | '
-            f'Win {unit.win_rate:.1%} | '
-            f'Long/Short {unit.total_long_trades}/{unit.total_short_trades}')
+        if unit.total_trades == 0:
+            print('   No closed trades')
+        else:
+            print(
+                f'   Trades: {unit.total_trades} ({unit.winning_trades}W/{unit.losing_trades}L) | '
+                f'Win {unit.win_rate:.1%} | '
+                f'Long/Short {unit.total_long_trades}/{unit.total_short_trades}')
 
         rate = f' @ {unit.conversion_rate:.4f}' if unit.conversion_rate is not None else ''
-        print(f'   P&L: {renderer.pnl(unit.net_profit, unit.currency)}{rate}')
+        print(f'   P&L: {renderer.pnl(unit.net_profit, unit.currency)}{rate} (realised)')
+
+        for line in self._open_position_lines(unit, renderer):
+            print(f'   {line}')
 
         for line in self._balance_lines(unit, renderer):
             if line:
@@ -152,6 +160,41 @@ class PortfolioSummary(AbstractBatchSummarySection):
         active = self._active_summary(pending, renderer)
         if active:
             print(f'   {active}')
+
+    @staticmethod
+    def _open_position_lines(
+        unit: PortfolioUnitRow, renderer: ConsoleRenderer) -> List[str]:
+        """What the unit still held when it ended, and the policy that left it there (#492).
+
+        Args:
+            unit: The unit's portfolio row
+            renderer: Console renderer for formatting
+
+        Returns:
+            The lines, empty when the unit ended flat and declared no policy
+        """
+        lines = []
+        if unit.open_positions:
+            lines.append(
+                f'Open at end: {len(unit.open_positions)} position(s) | '
+                f'{renderer.pnl(unit.unrealized_pnl, unit.currency)} unrealised')
+            for pos in unit.open_positions:
+                mark = (f'last {pos.last_price:,.5f} · '
+                        f'{renderer.pnl(pos.unrealized_pnl, unit.currency)}'
+                        if pos.valued else renderer.yellow('not valued (no tick)'))
+                lines.append(
+                    f'  {pos.position_id} {pos.direction.upper()} {pos.lots} @ '
+                    f'{pos.entry_price:,.5f} → {mark}')
+            # Only call it a valuation when it is one. Without a price the figure is the
+            # balance alone and the holding counts as zero — saying "marked to market"
+            # there would repeat the understatement this section removes.
+            label = ('marked to market' if unit.final_equity_valued
+                     else renderer.yellow('balance only — nothing could be valued'))
+            lines.append(
+                f'Final equity: {renderer.pnl(unit.final_equity, unit.currency)} ({label})')
+        if unit.session_end_policy:
+            lines.append(f'Session-end policy: {unit.session_end_policy}')
+        return lines
 
     def _balance_lines(
         self, unit: PortfolioUnitRow, renderer: ConsoleRenderer) -> List[str]:

@@ -89,12 +89,13 @@ The test scenario is specifically designed to trigger both code paths:
 - Both open and close orders flow through the latency pipeline normally
 - Validates: filled counts, latency stats
 
-**Trade 2 (Force-Closed):**
+**Trade 2 (close order stuck in the pipeline):**
 - Opens at tick 4990, hold_ticks=3, close signal at tick 4993
 - With ~5 tick latency, the close order is still in the pipeline when the scenario ends at tick 5000
-- `close_all_remaining_orders()` closes the position via synthetic order (no pending created)
-- `clear_pending()` catches the stuck close order and records it as FORCE_CLOSED with reason="scenario_end"
-- Validates: force-closed detection, anomaly records, reason field
+- The POSITION stays open — the scenario end no longer force-closes it (#492), and it is
+  reported as open and valued instead of as an exit the strategy never chose
+- `clear_pending()` catches the stuck close ORDER and records it as FORCE_CLOSED with reason="scenario_end"
+- Validates: force-closed detection on the pipeline order, anomaly records, reason field
 
 ---
 

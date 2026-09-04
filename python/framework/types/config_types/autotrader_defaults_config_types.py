@@ -153,6 +153,42 @@ class ColdStartDefaults(BaseModel):
     book_drift_interval_ticks: int = 500
 
 
+class SessionEndDefaults(BaseModel):
+    """
+    What a live session does with what it still holds when it ends (#492).
+
+    TWO decisions of very different weight, which one setting used to answer together:
+    cancelling a resting order costs nothing but a missed fill, closing a position
+    realises P&L and pays spread and fee.
+
+    `orders`
+        'cancel' cancels every resting order AT THE VENUE. 'leave' lets them stand, which
+        is what a bot meant to survive a restart usually wants (#355 adopts them back on
+        the next boot). It is also the LOOSENING value — afterwards orders sit at a venue
+        with nobody watching — so a profile may only choose it when the broker's own
+        posture allows it (market_config.json::session_end_orders), the same asymmetry
+        `dry_run` carries.
+
+    `positions`
+        'leave' lets an open position stand and reports it as OPEN and valued. That is the
+        default and it is what every professional system does: a position belongs to the
+        ACCOUNT, not to the process, and no venue offers a position counterpart to the
+        order-side Cancel-on-Disconnect. 'close' is DECLARED but NOT BUILT — a close that
+        really reaches the venue is an asynchronous live order whose fill arrives on the
+        next tick, and at session end the tick source is already stopped; it needs #487's
+        resolution discipline first, so it refuses at startup instead of pretending.
+
+    What used to happen was neither: the position was closed in OUR BOOK only, which
+    reported a realised exit that never reached the venue.
+
+    The EMERGENCY is not a third value here. One code path answering both "the session is
+    over" and "something went wrong" is the confusion this setting exists to end;
+    emergency flattening belongs to the safety baseline and stays there.
+    """
+    orders: Literal['cancel', 'leave'] = 'cancel'
+    positions: Literal['close', 'leave'] = 'leave'
+
+
 class AutotraderDefaultsConfig(BaseModel):
     """
     Top-level model for app_config.json::autotrader.
@@ -167,3 +203,4 @@ class AutotraderDefaultsConfig(BaseModel):
     api_monitor: ApiMonitorConfig = ApiMonitorConfig()
     state_persistence: StatePersistenceDefaults = StatePersistenceDefaults()
     cold_start: ColdStartDefaults = ColdStartDefaults()
+    session_end: SessionEndDefaults = SessionEndDefaults()

@@ -103,7 +103,11 @@
             "enabled": true,
             "path": "data/runtime/cold_start_state",
             "adoption_mode": "operator_confirm",
-      "book_drift_interval_ticks": 500
+            "book_drift_interval_ticks": 500
+        },
+        "session_end": {
+            "orders": "cancel",
+            "positions": "leave"
         }
     },
     "backtesting": {

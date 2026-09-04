@@ -1135,6 +1135,66 @@ class PortfolioManager:
             balances=dict(self._balances) if self._spot_mode else None,
         )
 
+    def _equity_for_curve(self) -> Optional[float]:
+        """
+        The account's value on ONE scale, for the drawdown series.
+
+        There is exactly one right formula per account model, and mixing them inside a
+        single running maximum is worse than picking the wrong one consistently. SPOT holds
+        its value in the BALANCES — `balance` is the QUOTE balance alone, so the margin-style
+        `balance + unrealized_pnl` counts a held asset's GAIN and never its VALUE, and a
+        purchase then reads as a drawdown of roughly the position size (measured: 603 USD
+        against the real 1.57 on a 1000 USD account). MARGIN holds its value in the position,
+        so there the margin-style formula is the correct one. This mirrors
+        `get_account_info`, which overrides its own equity for spot for the same reason.
+
+        Returns:
+            The equity, or None when spot mode has no price to value the holdings against —
+            an unvalued holding is not a drawdown, and guessing one would invent the number
+        """
+        self._ensure_positions_updated()
+        if not self._spot_mode:
+            return self._calculate_equity()
+        if self._current_tick is None:
+            return None
+        return self.get_spot_equity(
+            (self._current_tick.bid + self._current_tick.ask) / 2.0)
+
+    def _extend_equity_curve(self) -> None:
+        """
+        Add one point to the equity curve and carry the running maximum and drawdown.
+
+        Returns:
+            None — updates `_max_equity` / `_max_drawdown` in place
+        """
+        equity = self._equity_for_curve()
+        if equity is None:
+            return
+
+        if equity > self._max_equity:
+            self._max_equity = equity
+        drawdown = self._max_equity - equity
+        if drawdown > self._max_drawdown:
+            self._max_drawdown = drawdown
+
+    def sample_equity(self) -> None:
+        """
+        Sample the equity curve once, outside a position close (#492).
+
+        `_max_equity` / `_max_drawdown` are otherwise only written by `_update_statistics`,
+        whose callers are both position CLOSES — so the series behind the reported drawdown
+        consists of one point per closed trade. The run end used to contribute its last
+        point by force-closing everything; nothing does now, so a run holding a position at
+        the end would report the drawdown it had at its last close and nothing after.
+
+        Called at the capture point of both pipelines. The formula it samples with is
+        `_equity_for_curve`, shared with the close path so the series has ONE scale.
+
+        Returns:
+            None — updates the running maximum and drawdown in place
+        """
+        self._extend_equity_curve()
+
     def get_total_trades(self) -> int:
         """Get total number of completed trades."""
         return self._total_trades
@@ -1207,15 +1267,11 @@ class PortfolioManager:
             self._losing_trades += 1
             self._total_loss += abs(realized_pnl)
 
-        # Update max equity
-        equity = self._calculate_equity()
-        if equity > self._max_equity:
-            self._max_equity = equity
-
-        # Update max drawdown
-        drawdown = self._max_equity - equity
-        if drawdown > self._max_drawdown:
-            self._max_drawdown = drawdown
+        # Extend the equity curve. Shared with the run-end sample (#492) so the series
+        # carries ONE scale: this used to call `_calculate_equity()` directly, which in
+        # spot mode leaves a held asset's VALUE out — so the closes wrote quote-scale
+        # points into the same maximum the spot-scale sample writes to.
+        self._extend_equity_curve()
 
     def get_portfolio_statistics(self) -> PortfolioStats:
         """
@@ -1271,6 +1327,8 @@ class PortfolioManager:
             spot_mode=self._spot_mode,
             balances=self.get_balances(),
             initial_balances=dict(self._initial_balances),
+            unrealized_pnl=sum(
+                pos.unrealized_pnl for pos in self.open_positions.values()),
         )
 
     def reset(self) -> None:

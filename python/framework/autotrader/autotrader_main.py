@@ -51,6 +51,9 @@ from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    SessionEndDefaults,
+)
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.process_data_types import ProcessDataPackage
@@ -63,6 +66,7 @@ from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
 from python.framework.validators.component_metadata_advisory import check_market_fit
+from python.framework.validators.session_end_validator import resolve_session_end_policy
 from python.framework.validators.session_post_run_validator import SessionPostRunValidator
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
@@ -100,6 +104,8 @@ class AutotraderMain:
         self._running = False
         self._shutdown_mode = 'normal'
         self._tick_loop_started = False
+        # #492: resolved at startup by the session-end validator, read by the shutdown.
+        self._session_end: Optional[SessionEndDefaults] = None
         self._emergency_reason: Optional[str] = None
         self._session_start: Optional[float] = None
         self._run_timestamp: Optional[datetime] = None
@@ -338,6 +344,23 @@ class AutotraderMain:
                         self._session_logger.info(
                             '💾 Algo rejected restored state — starting fresh')
 
+            # === SESSION-END POLICY (#492) ===
+            # Resolved and validated BEFORE the cold-start step, because the two are a
+            # pair: leaving orders behind only helps if the next boot may adopt them, and
+            # a refusal has to arrive before any state is touched. The broker's posture is
+            # read here rather than inside the validator for the same reason the dry-run
+            # resolution is — one place resolves what a profile may and may not loosen.
+            self._session_end = resolve_session_end_policy(
+                config=self._config,
+                broker_posture=MarketConfigManager().get_session_end_orders(
+                    self._config.broker_type),
+                decision_logic=self._decision_logic,
+                attended=self._attended and sys.stdin.isatty(),
+            )
+            self._session_logger.info(
+                f'🧾 Session-end policy: orders={self._session_end.orders} · '
+                f'positions={self._session_end.positions}')
+
             # === COLD-START ADOPTION (#355) ===
             self._cold_start = setup_cold_start(
                 config=self._config,
@@ -352,6 +375,9 @@ class AutotraderMain:
                 # RESOLVED here, not re-derived there: the profile field alone would miss the
                 # broker's standing posture, which is the near miss #304 exists for.
                 dry_run=self._is_dry_run(),
+                # The adoption prompt tells the operator what will happen to these very
+                # orders at session end (#492) — resolved above, never assumed there.
+                session_end_orders=self._session_end.orders,
             )
             if not self._cold_start.proceed:
                 # The loud banner is already in the session log, and therefore the pot.
@@ -569,24 +595,30 @@ class AutotraderMain:
             self._display.stop()
             self._global_logger.info('📺 Live display stopped')
 
-        # #355: the carry-over write goes BEFORE the cleanup below, and the order is the
-        # whole point. `close_all_remaining_orders` closes open positions in OUR BOOK only —
-        # it builds a synthetic close order and fills it locally; nothing reaches the venue
-        # (abstract_trade_executor._fill_close_order). So after the cleanup the portfolio
-        # reports flat while the asset is still sitting at the broker, and a carry-over
-        # written from that state would say "this bot holds nothing" — erasing the note the
-        # successor needs and re-creating exactly the blind restart #355 exists to prevent.
-        # Whether a session END should flatten at the venue at all is a policy question and
-        # belongs to #492; until it is answered, the note describes the VENUE.
+        # #355 + #492: the note describes what the VENUE holds, and it is written before the
+        # cleanup because that is the state it describes. This used to be a workaround — the
+        # cleanup closed open positions in our book only, so a note written afterwards would
+        # have claimed "this bot holds nothing" while the asset sat at the broker. The
+        # cleanup no longer touches positions at all (#492), so the ordering is now simply
+        # the honest one rather than a defence against a defect.
         self._persist_cold_start_carry_over()
 
-        # Close all open positions
+        # Finish the session's orders. Positions are governed by the policy, not by this
+        # call — `expect_flat` tells the check whether a survivor is an anomaly or a
+        # decision. A session that never resolved its policy (an abort during startup) is
+        # read as the strict case: nobody decided to leave anything behind.
         if self._executor:
             try:
-                self._executor.close_all_remaining_orders()
-                self._executor.check_clean_shutdown()
+                leave_positions = (
+                    self._session_end is not None
+                    and self._session_end.positions == 'leave')
+                self._executor.finish_remaining_orders(
+                    cancel_orders=(
+                        self._session_end is None
+                        or self._session_end.orders == 'cancel'))
+                self._executor.check_clean_shutdown(expect_flat=not leave_positions)
             except Exception as e:
-                self._session_logger.error(f'Error during position cleanup: {e}')
+                self._session_logger.error(f'Error during order cleanup: {e}')
 
         # #327 — Drift auditor cleanup (surfaces unfinished audits + final summary)
         if self._drift_auditor:
@@ -671,6 +703,9 @@ class AutotraderMain:
             shutdown_mode=self._shutdown_mode,
             operator_interrupted=self._first_interrupt_time > 0,
             emergency_reason=self._emergency_reason,
+            session_end_policy=(
+                f'{self._session_end.orders}/{self._session_end.positions}'
+                if self._session_end is not None else ''),
         )
 
         # A collection failure goes to the SESSION logger (§35): the global one only reaches
@@ -678,7 +713,32 @@ class AutotraderMain:
         # — read before it, the right logger would still be too late to reach the report.
         if self._executor:
             try:
-                result.portfolio_stats = self._executor.portfolio.get_portfolio_statistics()
+                portfolio = self._executor.portfolio
+                # #492: one equity sample at the end. The series behind the drawdown is
+                # otherwise written only when a position CLOSES, and the run end no longer
+                # closes anything — so a session holding a position would report the
+                # drawdown it had at its last close and nothing after it.
+                portfolio.sample_equity()
+                result.open_positions = self._executor.get_open_positions()
+                result.portfolio_stats = portfolio.get_portfolio_statistics()
+                # The four valuation facts the sim has always stamped and live never did:
+                # without last_price the spot estimate returns early, so the live report
+                # showed no portfolio value and no currency split at all.
+                stats = result.portfolio_stats
+                stats.symbol = self._config.symbol
+                spec = self._executor.broker.get_symbol_specification(self._config.symbol)
+                stats.base_currency = spec.base_currency
+                stats.quote_currency = spec.quote_currency
+                try:
+                    bid, ask = self._executor.get_current_price(self._config.symbol)
+                    stats.last_price = (bid + ask) / 2.0
+                except ValueError:
+                    # No tick ever arrived (a boot that aborted before the first one).
+                    # last_price stays 0.0, which is how the report says "not valued" —
+                    # and this must not take the rest of the collection down with it, or
+                    # the trade and order history would be lost to a missing price.
+                    self._session_logger.info(
+                        '📌 No tick arrived — open positions are reported unvalued')
                 result.execution_stats = self._executor.get_execution_stats()
                 result.trade_history = self._executor.get_trade_history()
                 result.order_history = self._executor.get_order_history()
@@ -812,7 +872,9 @@ class AutotraderMain:
         self._first_interrupt_time = now
         self._shutdown_mode = 'emergency'
         self._running = False
-        print('\n⚠️  Shutdown initiated — closing positions (Ctrl+C again within 3s to force)')
+        # No longer "closing positions": the session end finishes ORDERS per policy and
+        # leaves open positions where they are (#492).
+        print('\n⚠️  Shutdown initiated — finishing orders (Ctrl+C again within 3s to force)')
         # Stop tick loop if running
         if self._tick_loop:
             self._tick_loop.stop()
@@ -885,7 +947,15 @@ class AutotraderMain:
             )
             return True
         except Exception as e:
-            self._session_logger.error(f'Cold-start carry-over save failed: {e}')
+            # The consequence, not only the fault: a failed write while positions are open
+            # means the successor boots blind to them. This is already an ERROR and grades
+            # the session non-zero (§35) — no Tier-1 warning is needed on top, but the
+            # message has to say what is at stake or nobody can act on it.
+            held = len(self._executor.portfolio.get_open_positions())
+            stake = (f' — {held} open position(s) would NOT be known to the next session'
+                     if held else '')
+            self._session_logger.error(
+                f'Cold-start carry-over save failed: {e}{stake}')
             return False
 
     def _field_study_preflight(self) -> bool:

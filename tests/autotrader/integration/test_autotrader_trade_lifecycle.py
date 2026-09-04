@@ -40,9 +40,17 @@ class TestNormalCycle:
             f"Expected normal shutdown, got '{session_result.shutdown_mode}'"
         )
 
-    def test_trades_executed(self, session_result):
-        """Signal-based algo produces at least one completed trade."""
-        assert len(session_result.trade_history) > 0, 'No trades executed'
+    def test_the_session_traded(self, session_result):
+        """
+        The session produced position activity — closed, still open, or both.
+
+        It used to require a COMPLETED trade, and in this profile every completed trade
+        came from the end-of-session force-close: the algo does not exit within the
+        profile's tick budget and the MockAdapter monitors no SL/TP. With that exit gone
+        (#492) the activity is an OPEN position, which is what the session really did.
+        """
+        activity = len(session_result.trade_history) + len(session_result.open_positions)
+        assert activity > 0, 'The session neither closed nor opened a position'
 
     def test_orders_recorded(self, session_result):
         assert len(session_result.order_history) > 0, 'No orders recorded'
@@ -108,7 +116,7 @@ class TestPortfolioIntegrity:
         assert session_result.portfolio_stats is not None
 
     def test_trade_count_matches_history(self, session_result):
-        """portfolio_stats.total_trades must match len(trade_history)."""
+        """portfolio_stats.total_trades must match len(trade_history) — CLOSED trades only."""
         assert session_result.portfolio_stats.total_trades == len(session_result.trade_history), (
             f'Stats says {session_result.portfolio_stats.total_trades} trades, '
             f'history has {len(session_result.trade_history)}'
@@ -133,25 +141,37 @@ class TestPortfolioIntegrity:
 
 class TestSessionEndWithOpenPosition:
     """
-    Validates that positions still open at session end are force-closed
-    with close_reason=SCENARIO_END and appear in trade_history.
+    Validates what happens to a position still open when the session ends (#492).
+
+    The old contract was the opposite of this one: such a position was force-closed and
+    appeared in trade_history with close_reason=SCENARIO_END. That close never reached the
+    venue — it was filled from the last tick and booked locally — so the session reported a
+    realised exit nobody executed while the asset stayed in the account.
     """
 
-    def test_scenario_end_closes_are_recorded(self, session_result):
-        """
-        If any position was open at shutdown, it must appear in trade_history
-        with CloseReason.SCENARIO_END — not silently dropped.
-        """
-        scenario_end_trades = [
+    def test_no_exit_is_fabricated(self, session_result):
+        """Nothing carries SCENARIO_END, because nothing produces it any more."""
+        assert not [
             t for t in session_result.trade_history
             if t.close_reason == CloseReason.SCENARIO_END
-        ]
-        # Informational — not all sessions will have scenario_end closes.
-        # If they exist, they must have valid exit prices.
-        for trade in scenario_end_trades:
-            assert trade.exit_price > 0, (
-                f'SCENARIO_END trade {trade.position_id} has no exit price'
-            )
+        ], 'A close was booked that never reached the venue'
+
+    def test_an_open_position_is_reported_and_valued(self, session_result):
+        """A surviving position is reported as open, with the mark it carried."""
+        for position in session_result.open_positions:
+            assert position.lots > 0
+            assert position.entry_price > 0, (
+                f'Position {position.position_id}: entry_price is 0 — fill path broken')
+        stats = session_result.portfolio_stats
+        if session_result.open_positions:
+            assert stats.last_price > 0, (
+                'A session with an open position must carry a price to value it against')
+
+    def test_the_policy_the_session_ran_under_is_recorded(self, session_result):
+        """An operator must be able to tell a position left by decision from a missing one."""
+        assert session_result.session_end_policy == 'cancel/leave', (
+            f'Expected the resolved default policy, got '
+            f"'{session_result.session_end_policy}'")
 
 
 class TestLogFiles:

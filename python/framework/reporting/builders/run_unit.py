@@ -22,6 +22,7 @@ from python.framework.types.performance_types.performance_stats_types import (
 )
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
@@ -43,6 +44,13 @@ class RunUnit:
     sentiment_source: str = ''      # sentiment feed label (#429 sim scenario / #431 live profile; '' if none)
     has_error: bool = False         # hybrid: partial data + error (sim) / emergency (live)
     trade_history: List[TradeRecord] = field(default_factory=list)
+    # Positions still OPEN when the unit ended (#492). A run end no longer flattens, so
+    # this is a normal outcome rather than a failure — and it is what the portfolio
+    # section reports as open and valued instead of as a realised exit.
+    open_positions: List[Position] = field(default_factory=list)
+    # The session-end policy the unit ran under (#492), 'orders/positions'. Empty on sim:
+    # a scenario has no policy, its data simply ends.
+    session_end_policy: str = ''
     order_history: List[OrderResult] = field(default_factory=list)
     portfolio_stats: Optional[PortfolioStats] = None
     execution_stats: Optional[ExecutionStats] = None
@@ -86,6 +94,7 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
             sentiment_source=scenario.data_sentiment_type,
             has_error=bool(result.error_type or result.error_message),
             trade_history=tick_loop.trade_history or [],
+            open_positions=tick_loop.open_positions or [],
             order_history=tick_loop.order_history or [],
             portfolio_stats=tick_loop.portfolio_stats,
             execution_stats=tick_loop.execution_stats,
@@ -170,6 +179,8 @@ def run_units_from_session(
         sentiment_source=sentiment_source,
         has_error=session.emergency_reason is not None,
         trade_history=session.trade_history or [],
+        open_positions=session.open_positions or [],
+        session_end_policy=session.session_end_policy,
         order_history=session.order_history or [],
         portfolio_stats=session.portfolio_stats,
         execution_stats=session.execution_stats,

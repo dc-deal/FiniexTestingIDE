@@ -710,6 +710,26 @@
             }
         },
         {
+            "name": "🤖 AutoTrader: BTCUSD Mock - Session End (#492)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/session_end_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_autotrader",
+                "order": 2.5
+            }
+        },
+        {
             "name": "🤖 AutoTrader: BTCUSD Mock - simple_consensus",
             "type": "debugpy",
             "request": "launch",
@@ -2372,6 +2392,23 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 43
+            }
+        },
+        {
+            "name": "🧩 Pytest: Session End (#492)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/session_end",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 43.4
             }
         },
         {

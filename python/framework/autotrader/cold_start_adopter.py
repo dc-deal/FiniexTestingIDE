@@ -98,6 +98,7 @@ class ColdStartAdopter:
         dry_run: bool = False,
         interactive: bool = False,
         decision_logic: Optional[AbstractDecisionLogic] = None,
+        session_end_orders: str = 'cancel',
     ):
         self._executor = executor
         self._store = store
@@ -107,6 +108,10 @@ class ColdStartAdopter:
         self._dry_run = dry_run
         self._interactive = interactive
         self._decision_logic = decision_logic
+        # #492: what this session will do with these very orders when it ends. The prompt
+        # below is the one interactive, real-money decision the boot asks, so it has to
+        # state the policy that will actually run rather than a behaviour that was removed.
+        self._session_end_orders = session_end_orders
         self._situation: Optional[ColdStartSituation] = None
         self._verdict: Optional[ColdStartVerdict] = None
         self._restored_count: int = 0
@@ -705,15 +710,23 @@ class ColdStartAdopter:
             )
             return False
 
-        # The prompt says what adoption COSTS, not only what it does. `close_all_remaining_orders`
-        # cancels every active order and closes every open position at session end — a net from
-        # before cold start existed — so confirming here and hitting any later abort ends with
-        # the orders cancelled at the venue. An operator who is not told that would read
-        # "adopt and resume" as "leave them be".
+        # The prompt says what adoption COSTS, not only what it does — and the cost now
+        # depends on the session-end policy (#492), so it is read from there rather than
+        # asserted. Open positions are no longer touched by the cleanup at all; only the
+        # orders axis decides, and both of its values are worth knowing before confirming.
+        if self._session_end_orders == 'leave':
+            consequence = (
+                'this session LEAVES resting orders at the venue when it ENDS '
+                '(session_end.orders=leave), so adopting them means they stay live and '
+                'unattended until a later session picks them up')
+        else:
+            consequence = (
+                'this session CANCELS every resting order when it ENDS (normally or by '
+                'abort, session_end.orders=cancel), so adopting them also puts them under '
+                'that cleanup')
         answer = input(
             f'  ▸ Adopt {count} resting order(s) and resume?\n'
-            f'    Note: this session cancels every active order when it ENDS (normally or by '
-            f'abort), so adopting them also puts them under that cleanup. [y/N] '
+            f'    Note: {consequence}. [y/N] '
         ).strip().lower()
         if answer not in ('y', 'yes'):
             self._logger.error(

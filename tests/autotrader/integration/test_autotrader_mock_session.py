@@ -79,11 +79,10 @@ class TestAutotraderMockSession:
         )
 
         # === Clean session — no unexpected warnings or errors ===
-        # Spot mode may leave positions open until scenario_end (no SHORT reversal)
-        unexpected_warnings = [
-            w for w in logged_messages(result, LogLevel.WARNING)
-            if 'positions remain open' not in w
-        ]
+        # A position left open at the end is a POLICY outcome now, not a warning (#492):
+        # the old 'positions remain open — direct-closing' line is gone with the
+        # force-close it announced, so nothing has to be filtered out of this list.
+        unexpected_warnings = list(logged_messages(result, LogLevel.WARNING))
         assert len(unexpected_warnings) == 0, (
             f'Unexpected warnings: {unexpected_warnings[:5]}'
         )
@@ -91,8 +90,12 @@ class TestAutotraderMockSession:
             f'Unexpected errors: {logged_messages(result, LogLevel.ERROR)[:5]}'
         )
 
-        # === Decision logic produced trades ===
-        assert len(result.trade_history) > 0, 'No trades executed'
+        # === Decision logic acted ===
+        # Closed trades OR a position still open — this profile's algo does not exit
+        # within its tick budget, so until #492 the only "trade" it ever produced was the
+        # end-of-session force-close.
+        assert len(result.trade_history) + len(result.open_positions) > 0, (
+            'The session neither closed nor opened a position')
         assert len(result.order_history) > 0, 'No orders recorded'
 
         # === Portfolio stats collected ===

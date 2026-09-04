@@ -80,7 +80,7 @@ One session is shared across all test classes (`scope='module'`) to avoid runnin
 | `TestNormalCycle` | 6 | Normal shutdown, trades produced, orders recorded, no errors, valid entry/exit prices, valid directions |
 | `TestClosePaths` | 3 | All close_reason values are valid enum members, no orphaned positions, finite P&L |
 | `TestPortfolioIntegrity` | 4 | Portfolio stats present, trade count matches history, W+L = total, balance changed after trades |
-| `TestSessionEndWithOpenPosition` | 1 | SCENARIO_END trades have valid exit prices |
+| `TestSessionEndWithOpenPosition` | 3 | No exit is fabricated; an open position is reported and valued; the policy the session ran under is recorded (#492) |
 | `TestLogFiles` | 1 | All log files and directories created |
 
 **Data Dependency:** Uses `configs/autotrader_profiles/backtesting/trade_lifecycle_test.json` — same BTCUSD parquet, `max_ticks: 3000`, display off.
@@ -93,13 +93,13 @@ Targeted scenario tests for specific AutoTrader pipeline behaviors: SL/TP level 
 
 Each class runs an independent session from its own profile. Sessions are module-scoped.
 
-> **Architectural note:** In the AutoTrader pipeline, SL/TP triggering is broker-side (live: Kraken handles it). Engine-side SL/TP monitoring (`_check_sl_tp_levels`) runs only in `ExecutorMode.SIMULATION`. `LiveTradeExecutor` uses `LIVE` mode — MockAdapter does not implement broker-side SL/TP monitoring, so positions always close via `SCENARIO_END` in these tests. The SL/TP tests verify the configuration propagation path, not the trigger path.
+> **Architectural note:** In the AutoTrader pipeline, SL/TP triggering is broker-side (live: Kraken handles it). Engine-side SL/TP monitoring runs only in `ExecutorMode.SIMULATION`; `LiveTradeExecutor` uses `LIVE` mode and the MockAdapter does not implement broker-side SL/TP, so **nothing closes these positions at all**. Until #492 they were force-closed at session end and the tests read the configured levels off that closing trade record — an exit that never reached the venue. They now read the levels from the POSITION, where they always lived, so the SL/TP tests verify the configuration propagation path without needing a trigger. See [session_end_policy.md](../../architecture/session_end_policy.md).
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
 | `TestStopLossConfiguration` | 3 | SL level flows: decision → executor → TradeRecord.stop_loss == 89200.0; entry_price > 0; no session errors |
 | `TestTakeProfitConfiguration` | 3 | TP level flows: decision → executor → TradeRecord.take_profit == 89350.0; entry_price > 0; no session errors |
-| `TestDuplicateSignalGuard` | 3 | Exactly 1 position opened despite 490 repeated BUY signals (hold_ticks=5000 > max_ticks=500); SCENARIO_END close; no errors |
+| `TestDuplicateSignalGuard` | 3 | Exactly 1 position opened despite 490 repeated BUY signals (hold_ticks=5000 > max_ticks=500); the session end fabricates no exit; no errors |
 | `TestMinimalWarmup` | 3 | Session completes without crash when bar_max_history=30 starves M30 workers; ticks processed; no errors |
 
 **Data Dependency:** All four profiles use BTCUSD parquet `BTCUSD_20260124_141946.parquet`. Profiles: `sl_triggered_test.json`, `tp_triggered_test.json`, `duplicate_signal_guard_test.json`, `minimal_warmup_test.json`.

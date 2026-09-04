@@ -46,7 +46,6 @@ from python.framework.types.live_types.live_execution_types import (
 from python.framework.types.live_types.live_request_types import QueryResponse, TradesQueryResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
-    CloseReason,
     EntryType,
 )
 from python.framework.types.trading_env_types.latency_simulator_types import (
@@ -1773,26 +1772,38 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     # Cleanup
     # ============================================
 
-    def close_all_remaining_orders(self, current_msc: int = 0) -> None:
+    def finish_remaining_orders(self, cancel_orders: bool = True, current_msc: int = 0) -> None:
         """
-        Close all open positions and expire active orders at end of run.
+        Finish the session's orders — the venue keeps whatever it still holds (#492).
 
-        Three-phase cleanup:
-        1. Cancel active limit orders at broker, expire locally (EXPIRED records).
-        2. Direct-fill open positions using synthetic PendingOrders.
-           These bypass the pending order pipeline entirely — no pending
-           created, no FORCE_CLOSED in statistics. This is an internal
-           cleanup, not an algo-initiated action.
-        3. clear_pending() catches genuine stuck-in-pipeline orders
-           (e.g. broker hasn't confirmed a fill yet when session ends).
-           These ARE real anomalies and correctly recorded as
-           FORCE_CLOSED with reason="scenario_end".
+        Three phases:
+        1. Resting orders: cancelled AT THE BROKER and expired locally, or left standing
+           when the policy says so. Left standing means left in both places — a live order
+           must not be recorded as expired while it can still fill.
+        2. clear_pending() catches genuine stuck-in-pipeline orders (e.g. the broker has
+           not confirmed a fill yet when the session ends). These ARE real anomalies and
+           are correctly recorded as FORCE_CLOSED with reason="scenario_end".
+        3. The request worker is stopped.
+
+        Open POSITIONS are deliberately untouched. This method used to direct-fill them
+        through a synthetic close order that never reached the venue, which reported a
+        realised exit nobody executed while the asset sat in the account (#492).
 
         Args:
+            cancel_orders: False leaves resting orders at the venue for a later session to
+                adopt (#355)
             current_msc: Not used in live mode (latency is time-based)
         """
-        # Phase 1: Cancel active limit orders at broker and expire locally
-        if self._active_limit_orders:
+        # Phase 1: Resting orders — cancel at the broker, or leave them where they are.
+        # LIMIT only: `_active_stop_orders` cannot hold anything in live today (STOP and
+        # STOP_LIMIT are refused by the feature gate in `open_order`), and it is deliberately
+        # not handled here rather than handled emptily — see the note on the list itself.
+        if self._active_limit_orders and not cancel_orders:
+            self.logger.info(
+                f'📋 {len(self._active_limit_orders)} active limit order(s) LEFT STANDING '
+                f'at the broker by policy — a later session adopts them back (#355). They '
+                f'are not expired locally either, because they have not expired.')
+        elif self._active_limit_orders:
             self.logger.info(
                 f'📋 {len(self._active_limit_orders)} active limit orders '
                 f'at session end — cancelling at broker')
@@ -1809,32 +1820,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                             f'{pending.pending_order_id}: {e}')
             self._expire_active_orders()
 
-        # Phase 2: Direct-fill open positions
-        open_positions = self.get_open_positions()
-        if open_positions and self._current_tick is None:
-            # Reachable since #355: cold start puts restored positions into the portfolio
-            # before the first tick, so an abort in between (tick source failure, a startup
-            # gate further down, SIGINT) arrives here with positions and no price. The fill
-            # path needs the tick — it prices the close from it — so fabricating one is not
-            # an option, and dereferencing the tick that is not there used to take the rest
-            # of this cleanup down with it.
-            self.logger.warning(
-                f'⚠️ {len(open_positions)} position(s) open but no tick has arrived yet — '
-                f'left as they are. They are recorded in the cold-start carry-over and the '
-                f'venue still holds the asset, so the next session finds them.'
-            )
-            open_positions = []
-        if open_positions:
-            self.logger.warning(
-                f'{len(open_positions)} positions remain open — direct-closing (no pending)'
-            )
-            for pos in open_positions:
-                synthetic = self._request_processor.create_synthetic_close_order(
-                    pos.position_id)
-                self._fill_close_order(
-                    synthetic, close_reason=CloseReason.SCENARIO_END)
-
-        # Phase 3: Catch genuine stuck-in-pipeline orders (real anomalies)
+        # Phase 2: Catch genuine stuck-in-pipeline orders (real anomalies)
         self._request_processor.clear_pending(reason='scenario_end')
 
         # #318 — clear pending position modifications (live tracker)
@@ -1845,5 +1831,5 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             )
             self._pending_position_modifications.clear()
 
-        # Phase 4: Stop the worker thread cleanly
+        # Phase 3: Stop the worker thread cleanly
         self._request_processor.stop_worker()

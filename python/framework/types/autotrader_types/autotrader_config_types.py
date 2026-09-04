@@ -16,6 +16,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     DriftAuditConfig,
     OrderGuardDefaults,
     ReconciliationDefaults,
+    SessionEndDefaults,
     StatePersistenceDefaults,
 )
 from python.framework.types.config_types.scenario_settings_config_types import (
@@ -93,6 +94,9 @@ class AutoTraderConfig:
         tick_source: Tick transport configuration
         execution: Execution parameters
         clipping_monitor: Clipping monitor configuration
+        session_end: What the session does with resting orders and open positions when it
+            ends (#492). Two axes; `orders: 'leave'` is the loosening one and needs the
+            broker's posture behind it, the same way `dry_run` does
         dry_run: Optional per-profile dry-run override. None = use the broker's
             market_config default. A profile may only TIGHTEN the posture: True wins
             over a live broker default, while False against a dry-run broker default
@@ -116,5 +120,6 @@ class AutoTraderConfig:
     api_monitor: ApiMonitorConfig = field(default_factory=ApiMonitorConfig)
     state_persistence: StatePersistenceDefaults = field(default_factory=StatePersistenceDefaults)
     cold_start: ColdStartDefaults = field(default_factory=ColdStartDefaults)
+    session_end: SessionEndDefaults = field(default_factory=SessionEndDefaults)
     config_path: Optional[Path] = None
     dry_run: Optional[bool] = None
