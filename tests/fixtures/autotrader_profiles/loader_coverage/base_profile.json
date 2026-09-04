@@ -1,0 +1,20 @@
+{
+  "name": "loader_field_coverage",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "mock",
+  "strategy_config": {
+    "decision_logic_type": "CORE/aggressive_trend",
+    "worker_instances": {},
+    "workers": {},
+    "decision_logic_config": {}
+  },
+  "scenario_settings": {
+    "start_date": "2026-01-24T14:19:46+00:00",
+    "end_date": "2026-01-25T14:14:00+00:00",
+    "data_mode": "realistic",
+    "balances": {
+      "USD": 10000.0
+    }
+  }
+}

@@ -209,7 +209,7 @@ class TestAsyncSubmitShutdown:
     """Worker shutdown during in-flight pending records FORCE_CLOSED cleanly."""
 
     def test_async_worker_shutdown_during_pending(self):
-        """Submit, then close_all_remaining_orders before drain: clean shutdown, FORCE_CLOSED recorded.
+        """Submit, then finish_remaining_orders before drain: clean shutdown, FORCE_CLOSED recorded.
 
         Uses DELAYED_FILL so the order stays pending (Phase-1 poll would fill
         in INSTANT mode and the shutdown path wouldn't see a stuck pending).
@@ -227,7 +227,7 @@ class TestAsyncSubmitShutdown:
         mock.await_submit_confirmation(executor)
         assert executor.has_pending_orders()
 
-        executor.close_all_remaining_orders(current_msc=0)
+        executor.finish_remaining_orders(current_msc=0)
 
         # Shutdown completed: no pending, worker thread joined
         assert not executor.has_pending_orders()

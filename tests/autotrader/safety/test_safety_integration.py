@@ -98,11 +98,18 @@ class TestSpotSafetyNoFalsePositive:
             f'Safety falsely triggered: {safety_warnings}'
         )
 
-    def test_trades_executed(self, safe_session):
-        """Algo should produce trades — safety must not have blocked them."""
-        assert len(safe_session.trade_history) > 0, (
-            'No trades executed — safety may have falsely blocked'
-        )
+    def test_the_algo_was_allowed_to_act(self, safe_session):
+        """
+        Positions were opened — the circuit breaker did not block entries.
+
+        The proxy used to be a COMPLETED trade, and in this profile every completed trade
+        came from the end-of-session force-close: the algo does not exit within the tick
+        budget and the MockAdapter monitors no SL/TP. With that exit gone (#492) the proof
+        that safety allowed trading is the position itself, which is also the more direct
+        observation — a soft stop blocks ENTRIES, so an entry disproves it.
+        """
+        acted = len(safe_session.trade_history) + len(safe_session.open_positions)
+        assert acted > 0, 'Nothing was opened or closed — safety may have falsely blocked'
 
 
 class TestSpotSafetyTriggers:
@@ -134,8 +141,10 @@ class TestSafetyDisabledNoInterference:
     def test_session_completes_normally(self, disabled_session):
         assert disabled_session.shutdown_mode == 'normal'
 
-    def test_trades_executed(self, disabled_session):
-        assert len(disabled_session.trade_history) > 0
+    def test_the_algo_was_allowed_to_act(self, disabled_session):
+        """Same reasoning as TestSpotSafetyNoFalsePositive: an entry disproves a block."""
+        acted = len(disabled_session.trade_history) + len(disabled_session.open_positions)
+        assert acted > 0
 
     def test_no_safety_warnings(self, disabled_session):
         safety_warnings = [

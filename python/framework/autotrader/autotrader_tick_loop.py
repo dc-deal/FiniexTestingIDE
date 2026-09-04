@@ -101,7 +101,7 @@ class AutotraderTickLoop:
         reconciler: Optional[Reconciler] = None,
         api_monitor: Optional[ApiPerfMonitor] = None,
         state_store: Optional[AlgoStateStore] = None,
-        persist_position_book: Optional[Callable[[], None]] = None,
+        persist_position_book: Optional[Callable[[], bool]] = None,
         signal_inbox: Optional[SignalInbox] = None,
         signal_transport: Optional[AbstractSignalTransport] = None,
     ):

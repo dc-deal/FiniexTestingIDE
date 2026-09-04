@@ -98,6 +98,7 @@ class ColdStartAdopter:
         dry_run: bool = False,
         interactive: bool = False,
         decision_logic: Optional[AbstractDecisionLogic] = None,
+        session_end_orders: str = 'cancel',
     ):
         self._executor = executor
         self._store = store
@@ -107,7 +108,10 @@ class ColdStartAdopter:
         self._dry_run = dry_run
         self._interactive = interactive
         self._decision_logic = decision_logic
-        self._adopted_count: int = 0
+        # #492: what this session will do with these very orders when it ends. The prompt
+        # below is the one interactive, real-money decision the boot asks, so it has to
+        # state the policy that will actually run rather than a behaviour that was removed.
+        self._session_end_orders = session_end_orders
         self._situation: Optional[ColdStartSituation] = None
         self._verdict: Optional[ColdStartVerdict] = None
         self._restored_count: int = 0
@@ -115,15 +119,6 @@ class ColdStartAdopter:
         # attribute it or not. The carry-over uses this to protect a key that a resting order
         # still depends on from being evicted by newer sessions.
         self._venue_session_keys: Set[str] = set()
-
-    def get_adopted_count(self) -> int:
-        """
-        How many resting orders were adopted.
-
-        Returns:
-            Count for the session summary; 0 when nothing was adopted
-        """
-        return self._adopted_count
 
     def get_situation(self) -> Optional[ColdStartSituation]:
         """
@@ -206,16 +201,21 @@ class ColdStartAdopter:
         # not have yet.
         book = self._restorable_book(payload.open_positions)
 
+        # Only asked when there is a book to hold against it. The ladder may be configured
+        # to ABORT on a give-up (§43), so an unnecessary read is not merely a wasted REST
+        # call — it is a way to end a boot over a number nobody needed.
         shortfall = 0.0
-        balances = self._pull_broker_balances()
-        if balances is None and book:
-            self._logger.error(
-                '❌ Cold start: the venue\'s balances could not be read, so the position book '
-                'was NOT held against them. The orders side was readable, so the session may '
-                'start — but nothing has confirmed that the account still covers the book.'
-            )
-        elif balances is not None:
-            shortfall = self._cross_check_book(book, balances)
+        if book:
+            balances = self._pull_broker_balances()
+            if balances is None:
+                self._logger.error(
+                    '❌ Cold start: the venue\'s balances could not be read, so the position '
+                    'book was NOT held against them. The orders side was readable, so the '
+                    'session may start — but nothing has confirmed that the account still '
+                    'covers the book.'
+                )
+            else:
+                shortfall = self._cross_check_book(book, balances)
 
         ours, skipped = self._split(broker_orders, known_keys)
         self._report_unattributable(skipped)
@@ -236,10 +236,10 @@ class ColdStartAdopter:
             )
 
         # === From here the session is allowed to start, so state may change ===
+        self._situation.applied = True
         self._restore_position_book(book)
         if ours:
             self._executor.adopt_resting_orders(ours)
-            self._adopted_count = len(ours)
             # The consequence is stated, not left to be discovered. An adopted order makes
             # `has_pending_orders()` true from the first tick, and the common algo gate
             # `if self.trading_api.has_pending_orders(): return` then does nothing at all for
@@ -297,7 +297,10 @@ class ColdStartAdopter:
                 for order_id, order in ours
             ],
             skipped=list(skipped),
-            restored_positions=list(book),
+            # Copies: these very records are handed to the portfolio afterwards, and a
+            # situation documented as read-only must not be a handle on the state that is
+            # about to be applied.
+            restored_positions=[record.model_copy(deep=True) for record in book],
             carry_over_present=self._store.get_saved_at() is not None,
             carry_over_saved_at=self._store.get_saved_at(),
             adoption_mode=self._config.adoption_mode,
@@ -421,7 +424,21 @@ class ColdStartAdopter:
         if not book:
             return
 
-        self._restored_count = self._executor.portfolio.restore_position_book(book)
+        try:
+            self._restored_count = self._executor.portfolio.restore_position_book(book)
+        except (ValueError, KeyError, TypeError) as e:
+            # The payload parses as JSON and as a Pydantic model, and can still be
+            # unusable: `direction`, `status` and `entry_type` are STRINGS in the note and
+            # enum members in the position, so one corrupt value raises here. This store's
+            # contract is that damage degrades rather than stops (an unreadable carry-over is
+            # reported and treated as absent), and a boot that dies on its own note is the
+            # opposite of that.
+            self._logger.error(
+                f'❌ Cold start: the position book could not be rebuilt ({e}) — the session '
+                f'starts WITHOUT it. The venue still holds whatever the note described, so '
+                f'check the account by hand: {self._store.get_state_path()}'
+            )
+            return
         lines = [
             f'🧬 Cold start: {self._restored_count} position(s) restored from the carry-over '
             f'— entry prices are REMEMBERED, not synthesised',
@@ -693,15 +710,23 @@ class ColdStartAdopter:
             )
             return False
 
-        # The prompt says what adoption COSTS, not only what it does. `close_all_remaining_orders`
-        # cancels every active order and closes every open position at session end — a net from
-        # before cold start existed — so confirming here and hitting any later abort ends with
-        # the orders cancelled at the venue. An operator who is not told that would read
-        # "adopt and resume" as "leave them be".
+        # The prompt says what adoption COSTS, not only what it does — and the cost now
+        # depends on the session-end policy (#492), so it is read from there rather than
+        # asserted. Open positions are no longer touched by the cleanup at all; only the
+        # orders axis decides, and both of its values are worth knowing before confirming.
+        if self._session_end_orders == 'leave':
+            consequence = (
+                'this session LEAVES resting orders at the venue when it ENDS '
+                '(session_end.orders=leave), so adopting them means they stay live and '
+                'unattended until a later session picks them up')
+        else:
+            consequence = (
+                'this session CANCELS every resting order when it ENDS (normally or by '
+                'abort, session_end.orders=cancel), so adopting them also puts them under '
+                'that cleanup')
         answer = input(
             f'  ▸ Adopt {count} resting order(s) and resume?\n'
-            f'    Note: this session cancels every active order when it ENDS (normally or by '
-            f'abort), so adopting them also puts them under that cleanup. [y/N] '
+            f'    Note: {consequence}. [y/N] '
         ).strip().lower()
         if answer not in ('y', 'yes'):
             self._logger.error(

@@ -45,7 +45,6 @@ class ColdStartSetup:
             sent no order to any venue, and False for a boot that never got through
         keys_in_use: Session discriminators the venue currently shows on orders of our shape.
             Protected from eviction, so the key that owns a resting order cannot age out
-        adopted_count: How many resting orders were rebuilt
         situation: What the boot found, as the decision logic saw it — None for a dry run,
             an unreachable venue, or a session with no cold start at all
         verdict: What the decision logic answered, when it was asked
@@ -54,7 +53,6 @@ class ColdStartSetup:
     store: Optional[ColdStartStateStore] = None
     persist: bool = False
     keys_in_use: Set[str] = field(default_factory=set)
-    adopted_count: int = 0
     situation: Optional[ColdStartSituation] = None
     verdict: Optional[ColdStartVerdict] = None
 
@@ -68,6 +66,7 @@ def setup_cold_start(
     attended: bool,
     field_study_active: bool,
     dry_run: bool,
+    session_end_orders: str = 'cancel',
 ) -> ColdStartSetup:
     """
     Run the cold-start boot step and hand back what the session keeps.
@@ -92,6 +91,9 @@ def setup_cold_start(
             miss the broker's standing posture — which is precisely the near miss #304 exists
             for: a profile said `dry_run: true`, the broker override said false, and the
             profile field was read by nothing
+        session_end_orders: The resolved session-end policy for the ORDERS axis (#492). The
+            adoption prompt states what will happen to the very orders it asks about, so it
+            is told rather than left asserting the unconditional cleanup that used to exist
 
     Returns:
         A ColdStartSetup; `proceed=False` means the session must not start
@@ -124,6 +126,7 @@ def setup_cold_start(
         dry_run=dry_run,
         interactive=attended,
         decision_logic=decision_logic,
+        session_end_orders=session_end_orders,
     )
 
     if not adopter.run():
@@ -147,7 +150,6 @@ def setup_cold_start(
         store=store,
         persist=not dry_run,
         keys_in_use=adopter.get_venue_session_keys(),
-        adopted_count=adopter.get_adopted_count(),
         situation=adopter.get_situation(),
         verdict=adopter.get_verdict(),
     )

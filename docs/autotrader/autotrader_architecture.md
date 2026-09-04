@@ -144,7 +144,8 @@ python/framework/
 ### Startup
 
 1. Load `AutoTraderConfig` from JSON
-2. `setup_pipeline()` creates all objects (11 phases, mirrors backtesting)
+2. `setup_pipeline()` creates all objects (mirrors backtesting) and returns them as one
+   `AutotraderPipelineBundle`
 3. `setup_tick_source()` starts tick source thread
 4. Enter tick loop
 
@@ -192,11 +193,33 @@ Two modes:
 
 | Mode | Trigger | Behavior |
 |------|---------|----------|
-| **Normal** | Tick source exhausted, SIGTERM | Close positions, cancel orders, collect full stats |
-| **Emergency** | SIGINT (Ctrl+C), a startup or tick-loop exception, or an EMERGENCY session-end escalation (#348) | Immediate close, best-effort stats |
+| **Normal** | Tick source exhausted, SIGTERM | Finish orders per policy, collect full stats |
+| **Emergency** | SIGINT (Ctrl+C), a startup or tick-loop exception, or an EMERGENCY session-end escalation (#348) | Same cleanup, best-effort stats |
 
-Signal handling: first Ctrl+C requests shutdown (positions are still closed); a second within 3s
-forces exit.
+Signal handling: first Ctrl+C requests shutdown; a second within 3s forces exit.
+
+The mode is a **label**, not a behaviour: both run the same cleanup. Emergency flattening —
+the case where liquidating IS right — belongs to the safety baseline (#356) and is
+deliberately not folded in here, because one code path answering both "the session is over"
+and "something went wrong" is exactly the confusion the policy below exists to end. Note also
+that an operator Ctrl+C arrives as `emergency`, so a rule keyed on the mode would fire on
+every manual stop.
+
+### Session End (#492)
+
+What the session does with resting orders and open positions when it ends is **two**
+decisions, not one — and until #492 it did a third thing that was neither: it closed
+positions in our book only, reporting an exit that never reached the venue.
+
+```json
+"session_end": { "orders": "cancel" | "leave", "positions": "close" | "leave" }
+```
+
+Defaults `orders: "cancel"` · `positions: "leave"`. `positions: "close"` is declared and
+refuses at startup until #487 makes a real close resolvable.
+
+**Full treatment — the order-type map, both pipelines, spot against margin, the incoherent
+pair with cold start, and what the report shows: [session_end_policy.md](../architecture/session_end_policy.md).**
 
 ### Session outcome and exit code (#372)
 
@@ -624,7 +647,9 @@ The certificate is a release-gate item (see the Release Checklist).
 python/framework/autotrader/
   autotrader_main.py             Runner: run(), shutdown, signal handling
   autotrader_tick_loop.py        Tick processing loop (main thread, hot path)
-  autotrader_startup.py          Pipeline object creation (11 phases)
+  autotrader_startup.py          Pipeline object creation, phase by phase
+  autotrader_pipeline_bundle.py  What setup_pipeline hands back (named, not positional)
+  autotrader_logger_bundle.py    The session's three log channels + run identity
   autotrader_warmup_preparator.py  Warmup bar loading (mock: parquet, live: API)
   kraken_ohlc_bar_fetcher.py     Kraken OHLC bar fetch (public API, no auth)
   live_clipping_monitor.py       Per-tick timing, clipping detection (#197)

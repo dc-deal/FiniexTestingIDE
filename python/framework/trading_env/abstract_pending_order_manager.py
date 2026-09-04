@@ -119,33 +119,6 @@ class AbstractPendingOrderManager(ABC):
         return any(p.pending_order_id == position_id for p in pending_closes)
 
     # ============================================
-    # Synthetic Order Factory
-    # ============================================
-
-    def create_synthetic_close_order(self, position_id: str) -> PendingOrder:
-        """
-        Create a PendingOrder for direct close — bypasses the latency pipeline.
-
-        Used by close_all_remaining_orders() for clean end-of-scenario fills.
-        The returned PendingOrder is NOT stored in _pending_orders and will
-        therefore never appear in clear_pending() or statistics.
-
-        Only sets the fields that _fill_close_order() actually needs:
-        - pending_order_id = position_id (used as portfolio lookup key)
-        - order_action = CLOSE
-
-        Args:
-            position_id: The position to close
-
-        Returns:
-            A minimal PendingOrder suitable for _fill_close_order()
-        """
-        return PendingOrder(
-            pending_order_id=position_id,
-            order_action=PendingOrderAction.CLOSE,
-        )
-
-    # ============================================
     # Pending Order Statistics
     # ============================================
 
@@ -211,9 +184,9 @@ class AbstractPendingOrderManager(ABC):
 
         Used at scenario end to prevent orders from leaking into next scenario.
         Orders still in queue are recorded as anomalies before clearing.
-        These are genuine stuck-in-pipeline orders — not the normal
-        end-of-scenario position closes (those use synthetic orders
-        via create_synthetic_close_order and bypass the pipeline entirely).
+        These are genuine stuck-in-pipeline orders. There are no end-of-scenario
+        position closes any more — a position open at the end stays open and is
+        reported as open (#492).
 
         Args:
             current_msc: Current millisecond timestamp for latency calculation (simulation).

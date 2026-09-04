@@ -161,6 +161,37 @@ class OrderHistoryReport(RunScopedReport):
     symbols: list[str]      # distinct symbols present (filter UX)
 
 
+class OpenPositionRow(BaseModel):
+    """
+    One position still OPEN at run end (#492) — the counterpart to ActiveOrderRow.
+
+    The model has always reported the orders a run left standing; it never had to report
+    the POSITIONS, because the run end used to flatten them. In live that flatten never
+    reached the venue, and in simulation it invented an exit the strategy never chose, so
+    both were removed and the position is reported as what it is.
+
+    `unrealized_pnl` is a MARK, not a result: it is what the position was worth at the last
+    tick. `valued` says whether there was a tick to value it at all — a boot that aborted
+    before the first one carries the entry price and no valuation, never an invented number.
+
+    There is deliberately no `adopted` flag. Whether a position was inherited at boot is
+    answered by the cold-start section of the same report, keyed by the same `position_id` —
+    and the one derivation available here (an empty `entry_trades`) is a constant False,
+    because every position carries its executions, whether it was opened by this run or
+    restored from the carry-over.
+    """
+    position_id: str
+    direction: str          # 'long' | 'short'
+    lots: float
+    entry_price: float
+    entry_time: str         # ISO-8601 UTC
+    last_price: float = 0.0
+    unrealized_pnl: float = 0.0
+    valued: bool = False
+    stop_loss: float | None = None
+    take_profit: float | None = None
+
+
 class PortfolioUnitRow(BaseModel):
     """Headline P&L of one run unit (sim: a scenario; live: the session)."""
     name: str               # scenario name (sim) / profile/session label (live)
@@ -213,6 +244,19 @@ class PortfolioUnitRow(BaseModel):
     balances: dict[str, float] = {}
     initial_balances: dict[str, float] = {}
     last_price: float = 0.0
+    # #492 — what the unit still HELD when it ended. `net_profit` above stays realised;
+    # these two are the wealth view and are never summed into it silently.
+    open_positions: list[OpenPositionRow] = []
+    unrealized_pnl: float = 0.0     # marked at the last tick; 0.0 when nothing was open
+    final_equity: float = 0.0       # realised balance + what the open positions are worth
+    # Whether `final_equity` is a real mark-to-market. False when something was still open
+    # that no tick could price: the figure is then the balance alone, with the holding
+    # counted at ZERO — which is the very understatement this section exists to remove, so
+    # it must not be presented as a valuation.
+    final_equity_valued: bool = True
+    # The session-end policy this unit ran under (#492), 'orders/positions'. Empty on sim:
+    # a scenario has no policy, its data simply ends.
+    session_end_policy: str = ''
 
 
 class PortfolioAggregateRow(BaseModel):
@@ -234,6 +278,11 @@ class PortfolioAggregateRow(BaseModel):
     net_profit: float
     max_drawdown: float
     total_fees: float
+    # #492 — the wealth view beside the realised one. Summed across the currency's units,
+    # never folded into net_profit.
+    unrealized_pnl: float = 0.0
+    final_equity: float = 0.0
+    open_position_count: int = 0
 
 
 class PortfolioReport(RunScopedReport):
@@ -460,6 +509,12 @@ class RunSummaryCurrency(BaseModel):
     total_trades: int
     winning_trades: int
     losing_trades: int
+    # #492 — realised and valued, kept apart. A sweep that ranks on net_pnl alone puts a
+    # variant still HOLDING a winner below one that closed it, which is the same distortion
+    # the force-close used to cause in the other direction.
+    unrealized_pnl: float = 0.0
+    final_equity: float = 0.0
+    open_position_count: int = 0
     expectancy: float       # ← TradeAnalytics.expectancy (mean R) — the sweep objective
     avg_win_r: float | None     # ← TradeAnalytics (None = no R-defined winner)
     avg_loss_r: float | None    # ← TradeAnalytics (None = no R-defined loser)
@@ -527,6 +582,9 @@ class RunResultRow(BaseModel):
     profit_factor: float | None = None  # None = undefined (no losing trade)
     win_rate: float = 0.0
     max_drawdown: float = 0.0
+    unrealized_pnl: float = 0.0
+    final_equity: float = 0.0
+    open_position_count: int = 0
     total_fees: float = 0.0
     total_trades: int = 0
     winning_trades: int = 0
@@ -614,22 +672,27 @@ class RunMetaReport(RunScopedReport):
 class BlockSplittingSymbolRow(BaseModel):
     """
     Per-symbol block-splitting disposition (Profile Runs, sim-only): how much of the symbol's
-    P&L came from force-closes at block boundaries vs. natural closes — the distortion a split
-    introduces. Facts are summed across the symbol's blocks; the ratios are derived in the builder.
+    result hangs on positions the block edge left open, against trades the strategy itself
+    closed — the distortion a split introduces. Facts are summed across the symbol's blocks;
+    the ratios are derived in the builder.
+
+    The quantity changed with #492: the edge used to force-close every position, so its
+    impact was realised P&L on `scenario_end` trades. Positions now stay open and the impact
+    is UNREALISED — the question is the same, the measure moved.
     """
     symbol: str
     generator_mode: str
     block_count: int = 0
-    force_closed_trades: int = 0
-    force_closed_pnl: float = 0.0
+    open_at_boundary_trades: int = 0
+    open_at_boundary_pnl: float = 0.0   # unrealised
     natural_closed_trades: int = 0
     natural_closed_pnl: float = 0.0
     discarded_pending_orders: int = 0
     # Derived (builder)
     total_trades: int = 0
     total_pnl: float = 0.0
-    force_close_ratio: float = 0.0      # % of trades that were force-closed
-    disposition_pct: float = 0.0        # |force-close P&L| / |total P&L| * 100
+    open_at_boundary_ratio: float = 0.0   # % of trades left open by the edge
+    disposition_pct: float = 0.0          # |unrealised at edge| / |total P&L| * 100
 
 
 class BlockSplittingReport(RunScopedReport):
@@ -639,9 +702,9 @@ class BlockSplittingReport(RunScopedReport):
     is a display class applied by the presenter — only the facts + ratios live here.
     """
     symbols: list[BlockSplittingSymbolRow] = []
-    agg_force_closed_trades: int = 0
+    agg_open_at_boundary_trades: int = 0
     agg_total_trades: int = 0
-    agg_force_close_ratio: float = 0.0
+    agg_open_at_boundary_ratio: float = 0.0
     agg_disposition_pct: float = 0.0
 
 
@@ -922,6 +985,12 @@ class ColdStartReport(RunScopedReport):
 
     Args:
         symbol: The instrument this session traded
+        applied: Whether the boot went on to APPLY what this report lists. False for a boot
+            that refused to start — the rows then describe what WOULD have been adopted and
+            restored, and a reader who is not told that reads a session that never traded as
+            one that inherited a book
+        skipped_reasons: The distinct reasons in `skipped`, derived once here so no renderer
+            has to aggregate (a renderer formats; it does not compute)
         adopted: Resting orders rebuilt into the shadow
         skipped: Resting orders left alone, each with its reason
         restored_positions: The book read back from the carry-over
@@ -935,6 +1004,8 @@ class ColdStartReport(RunScopedReport):
         algo_note: Its reason, in its own words
     """
     symbol: str = ''
+    applied: bool = False
+    skipped_reasons: list[str] = []
     adopted: list[ColdStartOrderRow] = []
     skipped: list[ColdStartSkippedRow] = []
     restored_positions: list[ColdStartPositionRow] = []

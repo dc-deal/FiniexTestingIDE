@@ -6,6 +6,7 @@ Loads AutoTraderConfig from JSON file.
 import dataclasses
 import json
 from pathlib import Path
+from typing import Any, Dict
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.autotrader_types.autotrader_config_types import (
@@ -22,6 +23,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     DriftAuditConfig,
     OrderGuardDefaults,
     ReconciliationDefaults,
+    SessionEndDefaults,
     StatePersistenceDefaults,
 )
 from python.framework.types.config_types.performance_tracking_config_types import (
@@ -30,7 +32,11 @@ from python.framework.types.config_types.performance_tracking_config_types impor
 from python.framework.types.config_types.scenario_settings_config_types import (
     ScenarioSettingsConfig,
 )
-from python.framework.utils.config_merge_utils import check_unknown_keys, deep_merge
+from python.framework.utils.config_merge_utils import (
+    check_unknown_keys,
+    deep_merge,
+    without_meta_keys,
+)
 
 # ============================================
 # Known config keys per profile section
@@ -62,10 +68,31 @@ _KNOWN_RECONCILIATION_KEYS: frozenset       = _allowlist_from(ReconciliationDefa
 _KNOWN_API_MONITOR_KEYS: frozenset          = _allowlist_from(ApiMonitorConfig)
 _KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = _allowlist_from(StatePersistenceDefaults)
 _KNOWN_COLD_START_KEYS: frozenset           = _allowlist_from(ColdStartDefaults)
+_KNOWN_SESSION_END_KEYS: frozenset          = _allowlist_from(SessionEndDefaults)
 _KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
 _KNOWN_TICK_SOURCE_KEYS: frozenset          = _allowlist_from(TickSourceConfig)
 _KNOWN_SCENARIO_SETTINGS_KEYS: frozenset    = _allowlist_from(ScenarioSettingsConfig)
 
+
+def _block(raw: Dict[str, Any], **overrides: Any) -> Dict[str, Any]:
+    """
+    The keyword arguments for one config block, built from its raw section.
+
+    Two things happen here that every block needs and no block should repeat. The
+    documentation-only keys are dropped: `check_unknown_keys` deliberately ALLOWS `_comment`
+    (it is how a config file explains itself), and the two blocks that are still dataclasses
+    rather than Pydantic models would raise a bare TypeError naming an argument the operator
+    never thinks of as one. And the values resolved before construction — the mock
+    auto-disables — ride on top rather than forcing a second, denser call shape.
+
+    Args:
+        raw: The block's raw section from the merged profile
+        overrides: Values decided by the loader, applied over the raw ones
+
+    Returns:
+        The keyword arguments, ready to splat into the block's model
+    """
+    return {**without_meta_keys(raw), **overrides}
 
 def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     """
@@ -122,6 +149,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     api_monitor_raw = raw.get('api_monitor', {})
     state_persistence_raw = raw.get('state_persistence', {})
     cold_start_raw = raw.get('cold_start', {})
+    session_end_raw = raw.get('session_end', {})
     performance_tracking_raw = execution_raw.get('performance_tracking', {})
 
     # Structural key validation — profile level (pre-construction, full provenance)
@@ -137,6 +165,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('api_monitor',         api_monitor_raw,  _KNOWN_API_MONITOR_KEYS)
     check_unknown_keys('state_persistence',   state_persistence_raw, _KNOWN_STATE_PERSISTENCE_KEYS)
     check_unknown_keys('cold_start',          cold_start_raw,   _KNOWN_COLD_START_KEYS)
+    check_unknown_keys('session_end',         session_end_raw,  _KNOWN_SESSION_END_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
     if scenario_settings_raw is not None:
         check_unknown_keys('scenario_settings', scenario_settings_raw, _KNOWN_SCENARIO_SETTINGS_KEYS)
@@ -191,77 +220,26 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             ScenarioSettingsConfig(**scenario_settings_raw)
             if scenario_settings_raw is not None else None
         ),
-        tick_source=TickSourceConfig(
-            type=tick_source_raw.get('type', 'mock'),
-            tick_delay_ms=tick_source_raw.get('tick_delay_ms', 0),
-            ws_url=tick_source_raw.get('ws_url', 'wss://ws.kraken.com/v2'),
-            reconnect_initial_delay_s=tick_source_raw.get('reconnect_initial_delay_s', 1.0),
-            reconnect_max_delay_s=tick_source_raw.get('reconnect_max_delay_s', 60.0),
-            connection_check_interval_s=tick_source_raw.get('connection_check_interval_s', 30.0),
-            connection_dead_s=tick_source_raw.get('connection_dead_s', 90.0),
-            freeze_after_ticks=tick_source_raw.get('freeze_after_ticks', 0),
-            freeze_duration_s=tick_source_raw.get('freeze_duration_s', 0.0),
-        ),
-        execution=AutotraderExecutionDefaults(
-            parallel_workers=execution_raw.get('parallel_workers', False),
-            bar_max_history=execution_raw.get('bar_max_history', 1000),
-            heartbeat_interval_ms=execution_raw.get('heartbeat_interval_ms', 500),
-            market_data_stale_after_s=execution_raw.get('market_data_stale_after_s', 300.0),
-            performance_tracking=AutoTraderPerformanceTrackingConfig(
-                worker_decision_tracking=performance_tracking_raw.get('worker_decision_tracking', False),
-            ),
-        ),
-        clipping_monitor=ClippingMonitorDefaults(
-            report_interval_s=clipping_raw.get('report_interval_s', 60.0),
-            strategy=clipping_raw.get('strategy', 'queue_all'),
-        ),
-        display=DisplayDefaults(
-            enabled=display_raw.get('enabled', True),
-            update_interval_ms=display_raw.get('update_interval_ms', 300),
-        ),
-        safety=SafetyConfig(
-            enabled=safety_raw.get('enabled', False),
-            min_balance=safety_raw.get('min_balance', 0.0),
-            min_equity=safety_raw.get('min_equity', 0.0),
-            max_drawdown_pct=safety_raw.get('max_drawdown_pct', 0.0),
-        ),
-        order_guard=OrderGuardDefaults(
-            cooldown_seconds=order_guard_raw.get('cooldown_seconds', 60.0),
-            max_consecutive_rejections=order_guard_raw.get('max_consecutive_rejections', 2),
-            block_stale_market_data=order_guard_raw.get('block_stale_market_data', True),
-        ),
-        drift_audit=DriftAuditConfig(
-            enabled=drift_audit_enabled_resolved,
-            fee_threshold_pct=drift_audit_raw.get('fee_threshold_pct', 0.5),
-            volume_threshold_pct=drift_audit_raw.get('volume_threshold_pct', 0.1),
-            price_threshold_pct=drift_audit_raw.get('price_threshold_pct', 1.0),
-            slippage_threshold_pct=drift_audit_raw.get('slippage_threshold_pct', 0.5),
-            log_all=drift_audit_raw.get('log_all', False),
-            sample_rate=drift_audit_raw.get('sample_rate', 1.0),
-        ),
-        reconciliation=ReconciliationDefaults(
-            enabled=reconciliation_enabled_resolved,
-            mode=reconciliation_raw.get('mode', 'alert_only'),
-            interval_ticks=reconciliation_raw.get('interval_ticks', 100),
-            min_interval_seconds=reconciliation_raw.get('min_interval_seconds', 60.0),
-        ),
-        api_monitor=ApiMonitorConfig(
-            enabled=api_monitor_enabled_resolved,
-            slow_call_threshold_ms=api_monitor_raw.get('slow_call_threshold_ms', 3000.0),
-        ),
-        cold_start=ColdStartDefaults(
-            enabled=cold_start_raw.get('enabled', True),
-            path=cold_start_raw.get('path', 'data/runtime/cold_start_state'),
-            adoption_mode=cold_start_raw.get('adoption_mode', 'operator_confirm'),
-        ),
-        state_persistence=StatePersistenceDefaults(
-            enabled=state_persistence_enabled_resolved,
-            path=state_persistence_raw.get('path', 'data/runtime/session_state'),
-            save_interval_ticks=state_persistence_raw.get('save_interval_ticks', 500),
-            save_interval_seconds=state_persistence_raw.get('save_interval_seconds', 60.0),
-            max_age_trading_days=state_persistence_raw.get('max_age_trading_days', 5),
-            on_corrupt=state_persistence_raw.get('on_corrupt', 'warn_reset'),
-            on_stale=state_persistence_raw.get('on_stale', 'warn_reset'),
-        ),
+        # Each block is built from its raw dict as a WHOLE, never field by field. Every
+        # transcribed field used to carry a THIRD copy of its default (model, config file,
+        # loader fallback) that §28 requires to agree with the other two and nothing
+        # enforced — and two fields had no transcription at all, so a profile could set
+        # them, pass the allowlist above, and be ignored: `book_drift_interval_ticks` and
+        # `warn_above_ratio` were declared, mirrored, read at runtime and never loaded.
+        # `_block(raw, **resolved)` cannot forget a field, and it is ONE shape for the
+        # blocks that take their section unchanged and the four whose `enabled` the loader
+        # decides above.
+        tick_source=TickSourceConfig(**_block(tick_source_raw)),
+        execution=AutotraderExecutionDefaults(**_block(execution_raw)),
+        clipping_monitor=ClippingMonitorDefaults(**_block(clipping_raw)),
+        display=DisplayDefaults(**_block(display_raw)),
+        safety=SafetyConfig(**_block(safety_raw)),
+        order_guard=OrderGuardDefaults(**_block(order_guard_raw)),
+        drift_audit=DriftAuditConfig(**_block(drift_audit_raw, enabled=drift_audit_enabled_resolved)),
+        reconciliation=ReconciliationDefaults(**_block(reconciliation_raw, enabled=reconciliation_enabled_resolved)),
+        api_monitor=ApiMonitorConfig(**_block(api_monitor_raw, enabled=api_monitor_enabled_resolved)),
+        cold_start=ColdStartDefaults(**_block(cold_start_raw)),
+        session_end=SessionEndDefaults(**_block(session_end_raw)),
+        state_persistence=StatePersistenceDefaults(**_block(state_persistence_raw, enabled=state_persistence_enabled_resolved)),
         config_path=path,
     )

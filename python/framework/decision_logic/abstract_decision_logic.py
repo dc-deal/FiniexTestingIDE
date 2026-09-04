@@ -628,10 +628,14 @@ class AbstractDecisionLogic(ABC):
         can leave an order at a venue across a restart has to say what it does when
         it finds one there. A bot that only ever sends MARKET orders is not asked.
 
-        Called on every live boot at which the venue reported ANY order — adopted,
-        skipped, or somebody else's — and after the position book has been restored,
-        so the situation is complete. It is not called in a dry run (which cannot
-        query the venue at all) nor when the venue reported nothing.
+        Called on every live boot that found ANYTHING — an order at the venue
+        (adopted, skipped or somebody else's), a position read back from the
+        carry-over, or a book the account no longer covers. It is not called in a dry
+        run (which cannot query the venue at all) nor when the boot found nothing.
+
+        Asked BEFORE any of it is applied: the situation describes what the boot is
+        about to do, and a session that then refuses leaves the executor untouched.
+        `situation.applied` is therefore False while you are being asked.
 
         The verdict may only LOOSEN. It is consulted at exactly one point: where the
         framework would otherwise refuse to start because resting orders of ours need
@@ -641,6 +645,10 @@ class AbstractDecisionLogic(ABC):
         else the answer is recorded and changes nothing — which is deliberate: the
         situation is reported whether the algo handled it or not, so "the algo says
         it is fine" never becomes indistinguishable from "nothing was found".
+
+        A yes must be SPECIFIC to be honoured: name every adopted order in
+        `accounted_order_ids` and give a reason in `note`. Naming only some of them is
+        refused — the framework cannot adopt half a book.
 
         Args:
             situation: Read-only account-wide picture of the boot — what was adopted,

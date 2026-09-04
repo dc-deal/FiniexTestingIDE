@@ -106,10 +106,6 @@ def carry_over_to_position(record: PositionCarryOver) -> Position:
     """
     Rebuild one open position from its carry-over note.
 
-    The excursion extrema are assigned AFTER construction on purpose: Position.__post_init__
-    seeds mae_price / mfe_price from entry_price unconditionally, so a value passed to the
-    constructor would be discarded without a word.
-
     Args:
         record: The note written by an earlier session
 
@@ -137,6 +133,11 @@ def carry_over_to_position(record: PositionCarryOver) -> Position:
         pip_size=record.pip_size,
         price_unit=record.price_unit,
         entry_tick_index=record.entry_tick_index,
+        mae_pnl=record.mae_pnl,
+        mfe_pnl=record.mfe_pnl,
+        # A note from before these fields carried 0.0; __post_init__ then seeds entry_price.
+        mae_price=record.mae_price,
+        mfe_price=record.mfe_price,
         swap_accrued_until=(
             parse_datetime(record.swap_accrued_until) if record.swap_accrued_until else None),
         fees=_restore_fees(record.fees),
@@ -149,10 +150,6 @@ def carry_over_to_position(record: PositionCarryOver) -> Position:
 
     if record.status:
         position.status = PositionStatus(record.status)
-    position.mae_pnl = record.mae_pnl
-    position.mfe_pnl = record.mfe_pnl
-    position.mae_price = record.mae_price or record.entry_price
-    position.mfe_price = record.mfe_price or record.entry_price
 
     return position
 

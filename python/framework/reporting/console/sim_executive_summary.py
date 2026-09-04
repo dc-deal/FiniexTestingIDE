@@ -456,6 +456,16 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         # Order pipeline status (always visible)
         self._render_order_pipeline(renderer, row)
 
+        # #492: what the run still HELD when its data ran out. Realised P&L above, the
+        # wealth view here — never folded together.
+        if h.open_position_count:
+            print('')
+            print(
+                f'Open at end:        {h.open_position_count} position(s) '
+                f'({format_currency_simple(h.unrealized_pnl, currency)} unrealised)')
+            print(
+                f'Final Equity:       {format_currency_simple(h.final_equity, currency)}')
+
         print('')
         print(
             f'Max Drawdown:       {format_currency_simple(abs(h.max_drawdown), currency)} ({row.max_dd_pct:.1f}%)')

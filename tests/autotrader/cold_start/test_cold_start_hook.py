@@ -336,7 +336,7 @@ class TestAYesHasToBeSpecific:
                            mode='operator_confirm', interactive=False).run()
 
         assert started is False
-        assert any("pos_btcusd_48" in message for message in logger.errors)
+        assert any('pos_btcusd_48' in message for message in logger.errors)
 
     def test_a_yes_without_a_reason_is_not_honoured(self, executor, store, logger):
         # A yes that cannot be read back in the run record thirty restarts later is not an

@@ -225,7 +225,7 @@ class TestBuildReport:
 
     def test_disposition_copied(self):
         boundary = BlockBoundaryReport(
-            force_closed_trades=1, force_closed_pnl=40.0,
+            open_at_boundary_trades=1, open_at_boundary_pnl=40.0,
             natural_closed_trades=1, natural_closed_pnl=10.0, discarded_pending_orders=0)
         r = build_robustness_report_from_batch(_RUN_ID, _batch([5.0, 5.0], boundaries=[boundary, None]))
         assert r.disposition_pct == pytest.approx(80.0)   # 40 / (40+10)
@@ -274,7 +274,7 @@ class TestPostRunVerdict:
 
     def test_disposition_suppresses_verdict(self):
         boundary = BlockBoundaryReport(
-            force_closed_trades=1, force_closed_pnl=80.0,
+            open_at_boundary_trades=1, open_at_boundary_pnl=80.0,
             natural_closed_trades=1, natural_closed_pnl=10.0, discarded_pending_orders=0)
         b = _batch([10.0, 10.0, 1.0, 1.0], roles=self._ROLES_4,
                    boundaries=[boundary, None, None, None])

@@ -33,7 +33,7 @@ class RunLedgerIndex(AbstractStoreIndex):
         columns: The ledger's canonical column set
     """
 
-    LOGIC_VERSION: int = 1
+    LOGIC_VERSION: int = 2
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

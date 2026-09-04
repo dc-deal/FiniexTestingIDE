@@ -50,22 +50,25 @@ class TestStopLossConfiguration:
     (TradeSimulator, ExecutorMode.SIMULATION). LiveTradeExecutor uses LIVE mode
     and relies on the broker.
 
-    These tests verify the configuration path: decision sets SL → executor stores
-    SL on position → TradeRecord captures SL. The position closes via SCENARIO_END
-    because MockAdapter does not implement broker-side SL monitoring.
+    These tests verify the configuration path: decision sets SL → executor stores SL on
+    the POSITION. They read it there rather than from a closing trade record: the MockAdapter
+    does not implement broker-side SL monitoring, so nothing closes the position, and until
+    #492 the observation channel was the end-of-session force-close — an exit that never
+    reached the venue. The level was always on the position; reading it there needs no exit
+    at all.
     """
 
-    def test_trade_opened_with_sl_level(self, sl_session):
-        assert len(sl_session.trade_history) > 0, 'Expected at least one trade'
-        trade = sl_session.trade_history[0]
-        assert trade.stop_loss == 89200.0, (
-            f'Expected stop_loss=89200.0 on trade record, got {trade.stop_loss}'
+    def test_position_opened_with_sl_level(self, sl_session):
+        assert len(sl_session.open_positions) > 0, 'Expected at least one open position'
+        position = sl_session.open_positions[0]
+        assert position.stop_loss == 89200.0, (
+            f'Expected stop_loss=89200.0 on the position, got {position.stop_loss}'
         )
 
-    def test_trade_entry_price_valid(self, sl_session):
-        trade = sl_session.trade_history[0]
-        assert trade.entry_price > 0, (
-            f'Trade {trade.position_id}: entry_price is 0 — fill path broken'
+    def test_position_entry_price_valid(self, sl_session):
+        position = sl_session.open_positions[0]
+        assert position.entry_price > 0, (
+            f'Position {position.position_id}: entry_price is 0 — fill path broken'
         )
 
     def test_no_session_errors(self, sl_session):
@@ -81,21 +84,21 @@ class TestTakeProfitConfiguration:
     Same architectural note as TestStopLossConfiguration: TP triggering is
     broker-side in AutoTrader. Engine-side triggering only in simulation pipeline.
 
-    These tests verify the configuration path: decision sets TP → executor stores
-    TP on position → TradeRecord captures TP.
+    These tests verify the configuration path: decision sets TP → executor stores TP on
+    the POSITION, and it is read there (same reasoning as TestStopLossConfiguration).
     """
 
-    def test_trade_opened_with_tp_level(self, tp_session):
-        assert len(tp_session.trade_history) > 0, 'Expected at least one trade'
-        trade = tp_session.trade_history[0]
-        assert trade.take_profit == 89350.0, (
-            f'Expected take_profit=89350.0 on trade record, got {trade.take_profit}'
+    def test_position_opened_with_tp_level(self, tp_session):
+        assert len(tp_session.open_positions) > 0, 'Expected at least one open position'
+        position = tp_session.open_positions[0]
+        assert position.take_profit == 89350.0, (
+            f'Expected take_profit=89350.0 on the position, got {position.take_profit}'
         )
 
-    def test_trade_entry_price_valid(self, tp_session):
-        trade = tp_session.trade_history[0]
-        assert trade.entry_price > 0, (
-            f'Trade {trade.position_id}: entry_price is 0 — fill path broken'
+    def test_position_entry_price_valid(self, tp_session):
+        position = tp_session.open_positions[0]
+        assert position.entry_price > 0, (
+            f'Position {position.position_id}: entry_price is 0 — fill path broken'
         )
 
     def test_no_session_errors(self, tp_session):
@@ -109,22 +112,29 @@ class TestDuplicateSignalGuard:
     Duplicate open guard: algo fires BUY every tick from tick 10 onward.
     Executor must reject all subsequent BUYs while a position is already open.
 
-    hold_ticks=5000 exceeds max_ticks=500 — session ends with SCENARIO_END.
-    Exactly one position must have been opened despite 490 repeated BUY signals.
+    hold_ticks=5000 exceeds max_ticks=500 — the session ends while the position is still
+    open. Exactly one position must have been opened despite 490 repeated BUY signals.
     """
 
-    def test_only_one_trade_opened(self, duplicate_session):
-        assert len(duplicate_session.trade_history) == 1, (
-            f'Expected exactly 1 trade (duplicate BUYs suppressed), '
-            f'got {len(duplicate_session.trade_history)}'
+    def test_only_one_position_opened(self, duplicate_session):
+        assert len(duplicate_session.open_positions) == 1, (
+            f'Expected exactly 1 position (duplicate BUYs suppressed), '
+            f'got {len(duplicate_session.open_positions)}'
         )
 
-    def test_close_reason_is_scenario_end(self, duplicate_session):
-        trade = duplicate_session.trade_history[0]
-        assert trade.close_reason == CloseReason.SCENARIO_END, (
-            f'Expected SCENARIO_END for position open at session end, '
-            f'got {trade.close_reason}'
-        )
+    def test_no_exit_is_fabricated_at_session_end(self, duplicate_session):
+        """
+        The session end books NO exit for the position it leaves open (#492).
+
+        This test used to assert the opposite — it required a trade record with
+        close_reason=SCENARIO_END. That record was a realised exit nobody executed: the
+        close was filled locally and the asset stayed at the venue.
+        """
+        assert not [
+            t for t in duplicate_session.trade_history
+            if t.close_reason == CloseReason.SCENARIO_END
+        ], 'A close was booked that never reached the venue'
+        assert len(duplicate_session.open_positions) == 1
 
     def test_no_session_errors(self, duplicate_session):
         assert len(logged_messages(duplicate_session, LogLevel.ERROR)) == 0, (

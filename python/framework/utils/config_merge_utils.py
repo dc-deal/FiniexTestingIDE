@@ -149,6 +149,24 @@ def check_unknown_keys(
         raise ValueError(f'Unknown keys in {location}: {unknown} — check for typos or add to known keys')
 
 
+def without_meta_keys(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Drop the documentation-only keys a config section is allowed to carry.
+
+    `check_unknown_keys` deliberately lets `_comment` through — it is how a config file
+    explains itself. A loader that then hands the raw dict to a model must not pass it on:
+    a Pydantic model ignores the extra key, but a DATACLASS raises a bare TypeError naming
+    an argument the operator never thinks of as one.
+
+    Args:
+        config: A raw config section
+
+    Returns:
+        A copy without the meta keys
+    """
+    return {k: v for k, v in config.items() if k not in _CONFIG_META_KEYS}
+
+
 def validate_merged_config(
     model_class: Type[BaseModel],
     config: Dict[str, Any],

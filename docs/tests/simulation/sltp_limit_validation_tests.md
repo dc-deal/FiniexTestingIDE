@@ -174,7 +174,7 @@ LONG limit order. Price dips to fill level (maker fee).
 | `test_entry_type_is_limit` | entry_type = LIMIT |
 | `test_entry_price_equals_limit` | entry_price == config limit price |
 | `test_direction_is_long` | direction = LONG |
-| `test_close_reason_scenario_end` | close_reason = SCENARIO_END |
+| `test_no_exit_is_fabricated` | the position stays OPEN and no trade carries SCENARIO_END (#492) |
 
 ### TestShortLimitFill (5 tests)
 SHORT limit order. Price rises to fill level (maker fee).
@@ -185,7 +185,7 @@ SHORT limit order. Price rises to fill level (maker fee).
 | `test_entry_type_is_limit` | entry_type = LIMIT |
 | `test_entry_price_equals_limit` | entry_price == config limit price |
 | `test_direction_is_short` | direction = SHORT |
-| `test_close_reason_scenario_end` | close_reason = SCENARIO_END |
+| `test_no_exit_is_fabricated` | the position stays OPEN and no trade carries SCENARIO_END (#492) |
 
 ### TestLimitFillThenSl (5 tests)
 LONG limit fills, then SL triggers during continued downtrend.
@@ -217,7 +217,7 @@ STOP LONG order — stop triggers when uptrend pushes price above stop_price. Fi
 | `test_entry_type_is_stop` | entry_type = STOP |
 | `test_entry_price_at_or_above_stop` | entry_price >= config stop_price |
 | `test_direction_is_long` | direction = LONG |
-| `test_close_reason_scenario_end` | close_reason = SCENARIO_END |
+| `test_no_exit_is_fabricated` | the position stays OPEN and no trade carries SCENARIO_END (#492) |
 
 ### TestStopShortTrigger (5 tests)
 STOP SHORT order — stop triggers when downtrend pushes price below stop_price. Fills at market price (taker fee).
@@ -228,7 +228,7 @@ STOP SHORT order — stop triggers when downtrend pushes price below stop_price.
 | `test_entry_type_is_stop` | entry_type = STOP |
 | `test_entry_price_at_or_below_stop` | entry_price <= config stop_price |
 | `test_direction_is_short` | direction = SHORT |
-| `test_close_reason_scenario_end` | close_reason = SCENARIO_END |
+| `test_no_exit_is_fabricated` | the position stays OPEN and no trade carries SCENARIO_END (#492) |
 
 ### TestStopLimitLongTrigger (5 tests)
 STOP_LIMIT LONG — stop triggers, then fills as LIMIT at configured limit price (maker fee).
@@ -239,7 +239,7 @@ STOP_LIMIT LONG — stop triggers, then fills as LIMIT at configured limit price
 | `test_entry_type_is_stop_limit` | entry_type = STOP_LIMIT |
 | `test_entry_price_equals_limit` | entry_price == config limit price |
 | `test_direction_is_long` | direction = LONG |
-| `test_close_reason_scenario_end` | close_reason = SCENARIO_END |
+| `test_no_exit_is_fabricated` | the position stays OPEN and no trade carries SCENARIO_END (#492) |
 
 ### TestStopLimitShortTrigger (5 tests)
 STOP_LIMIT SHORT — stop triggers, then fills as LIMIT at configured limit price (maker fee).
@@ -250,7 +250,7 @@ STOP_LIMIT SHORT — stop triggers, then fills as LIMIT at configured limit pric
 | `test_entry_type_is_stop_limit` | entry_type = STOP_LIMIT |
 | `test_entry_price_equals_limit` | entry_price == config limit price |
 | `test_direction_is_short` | direction = SHORT |
-| `test_close_reason_scenario_end` | close_reason = SCENARIO_END |
+| `test_no_exit_is_fabricated` | the position stays OPEN and no trade carries SCENARIO_END (#492) |
 
 ### TestStopLongThenTp (5 tests)
 STOP LONG triggers, position opened; then TP closes it.

@@ -213,6 +213,18 @@ class MarketConfigManager:
         """
         return self.get_broker_entry(broker_type).dry_run
 
+    def get_session_end_orders(self, broker_type: str) -> str:
+        """
+        Get the broker's standing posture on resting orders at session end (#492).
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            'cancel' or 'leave' — the ceiling a profile may tighten but not exceed
+        """
+        return self.get_broker_entry(broker_type).session_end_orders
+
     def get_all_broker_types(self) -> List[str]:
         """
         Get list of all configured broker types.

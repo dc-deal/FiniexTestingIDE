@@ -29,6 +29,7 @@ from python.framework.types.performance_types.performance_stats_types import (
 )
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalResolutionStats, SignalSeries
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -505,19 +506,27 @@ class BlockBoundaryReport:
     """
     Block boundary statistics for Profile Run disposition calculation.
 
-    Captures what happened at block end: force-closed trades, their P&L impact,
-    and discarded pending orders. Built from existing trade_history and pending_stats
-    after close_all_remaining_orders().
+    Captures what the block edge CUT: positions still open when the data ran out, the
+    unrealised P&L riding on them, and pending orders discarded from the pipeline. Built
+    from the trade history, the open positions and the pending stats after
+    finish_remaining_orders().
+
+    Until #492 this counted force-CLOSED trades instead. The block edge used to flatten
+    everything, so its impact arrived as realised P&L; now the position stays open and the
+    impact is unrealised. The question is unchanged — how much of this block's result hangs
+    on where the data happened to stop — but the quantity that answers it moved, and reading
+    the old field would have made every block look clean.
 
     Args:
-        force_closed_trades: Trades closed with CloseReason.SCENARIO_END
-        force_closed_pnl: Sum of realized P&L from force-closed trades
-        natural_closed_trades: Trades closed during normal operation (SL/TP/MANUAL)
-        natural_closed_pnl: Sum of realized P&L from naturally closed trades
+        open_at_boundary_trades: Positions still open when the block ended
+        open_at_boundary_pnl: Sum of UNREALISED P&L on those positions, 0.0 when no tick
+            ever arrived to value them
+        natural_closed_trades: Trades the strategy itself closed (SL/TP/MANUAL)
+        natural_closed_pnl: Sum of realized P&L from those trades
         discarded_pending_orders: Pending orders force-closed at scenario end
     """
-    force_closed_trades: int = 0
-    force_closed_pnl: float = 0.0
+    open_at_boundary_trades: int = 0
+    open_at_boundary_pnl: float = 0.0
     natural_closed_trades: int = 0
     natural_closed_pnl: float = 0.0
     discarded_pending_orders: int = 0
@@ -571,6 +580,9 @@ class ProcessTickLoopResult:
 
     # Block boundary report (Profile Runs only, None for normal runs)
     block_boundary_report: Optional[BlockBoundaryReport] = None
+    # Positions still OPEN when the scenario's data ran out (#492). The scenario end no
+    # longer force-closes them, so this is where the block edge's impact now lives.
+    open_positions: List[Position] = field(default_factory=list)
 
     # Error handling
     tick_loop_error: Optional[Exception] = None

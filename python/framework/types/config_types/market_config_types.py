@@ -3,7 +3,7 @@ FiniexTestingIDE - Market Configuration Types
 Enums, dataclasses and Pydantic models for market_config.json.
 """
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -100,6 +100,11 @@ class BrokerEntryConfig(BaseModel):
     config_mode: ConfigMode = ConfigMode.STATIC
     credentials_file: str = ''
     dry_run: bool = True
+    # The broker's standing posture on leaving resting orders behind after a session ends
+    # (#492). A profile may TIGHTEN this to 'cancel' freely and may only choose 'leave'
+    # when this says so — afterwards orders sit at a venue with nobody watching, and a
+    # profile is the most easily copied file in the project. Same asymmetry as dry_run.
+    session_end_orders: Literal['cancel', 'leave'] = 'cancel'
     broker_transport: BrokerTransportConfig = BrokerTransportConfig()
 
 

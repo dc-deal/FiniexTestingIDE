@@ -174,6 +174,9 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
         net_profit=total_profit - total_loss,
         max_drawdown=max_drawdown,
         total_fees=sum(r.total_fees for r in rows),
+        unrealized_pnl=sum(r.unrealized_pnl for r in rows),
+        final_equity=sum(r.final_equity for r in rows),
+        open_position_count=sum(len(r.open_positions) for r in rows),
     )
 
 

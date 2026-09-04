@@ -75,15 +75,22 @@ class LiveSessionSummary:
             return
 
         print()
-        print('🧬 Cold Start (inherited at boot)')
+        if report.applied:
+            print('🧬 Cold Start (inherited at boot)')
+        else:
+            # The boot refused, so nothing below was applied. Saying "adopted" here would
+            # describe a session that never traded as one that inherited a book.
+            print(renderer.red('🧬 Cold Start — NOT APPLIED (the boot refused to start)'))
+        verb = 'adopted' if report.applied else 'would have been adopted'
         if report.adopted:
-            print(f'  Orders adopted:  {len(report.adopted)}')
+            print(f'  Orders {verb}:  {len(report.adopted)}')
             for row in report.adopted:
                 filled = f' ({row.filled_lots} filled)' if row.filled_lots else ''
                 print(f'    {row.order_id}  {row.direction} {row.lots} @ {row.price}'
                       f'{filled}  ref={row.broker_ref}')
         if report.restored_positions:
-            print(f'  Positions restored: {len(report.restored_positions)} '
+            restored = 'restored' if report.applied else 'would have been restored'
+            print(f'  Positions {restored}: {len(report.restored_positions)} '
                   f'(entry prices remembered, fees charged to the earlier run)')
             for row in report.restored_positions:
                 print(f'    {row.position_id}  {row.direction} {row.lots} '
@@ -93,8 +100,8 @@ class LiveSessionSummary:
                 f'  ⚠ Book shortfall: {report.book_shortfall} — the account held less than '
                 f'the restored book claimed'))
         if report.skipped:
-            reasons = sorted({row.reason for row in report.skipped})
-            print(f'  Left alone:      {len(report.skipped)} ({", ".join(reasons)})')
+            print(f'  Left alone:      {len(report.skipped)} '
+                  f'({", ".join(report.skipped_reasons)})')
         if report.algo_name and report.algo_accounted_for is not None:
             verdict = 'accounted for' if report.algo_accounted_for else 'not accounted for'
             note = f' — {report.algo_note}' if report.algo_note else ''
@@ -125,7 +132,16 @@ class LiveSessionSummary:
         if result.portfolio_stats:
             pnl = result.portfolio_stats.total_profit - result.portfolio_stats.total_loss
             print(f'  Balance:        {result.portfolio_stats.current_balance:.2f} '
-                  f'(P&L: {pnl:+.2f})')
+                  f'(P&L: {pnl:+.2f} realised)')
+            # #492: a session may END holding something. The headline is what an operator
+            # reads first, so a position left standing by policy has to appear HERE and not
+            # only in the portfolio section further down — otherwise the one figure they
+            # look at describes a flat account that is not flat.
+            if result.open_positions:
+                print(f'  Still open:     {len(result.open_positions)} position(s) '
+                      f'({result.portfolio_stats.unrealized_pnl:+.2f} unrealised)'
+                      + (f' · policy {result.session_end_policy}'
+                         if result.session_end_policy else ''))
 
         if result.execution_stats:
             print(f'  Orders:         {result.execution_stats.orders_sent} sent, '

@@ -190,6 +190,13 @@ class AbstractTradeExecutor(ABC):
         self._active_limit_orders: List[PendingOrder] = []
 
         # Active stop orders waiting for trigger price (post-pipeline)
+        # NOTE (#492 / #209): the LIVE cleanup does not touch this list — it cancels and
+        # expires `_active_limit_orders` only. Harmless today, because the live executor
+        # refuses STOP and STOP_LIMIT outright (see the feature gate in
+        # `live_trade_executor.open_order`), so nothing can ever rest here in live. It stops
+        # being harmless the moment a stop-capable adapter is wired (MT5, #209) or Kraken's
+        # StopLimit is opened up: a resting stop would then stay at the venue with no
+        # decision behind it. Whoever lifts that gate extends `finish_remaining_orders`.
         self._active_stop_orders: List[PendingOrder] = []
 
         # Executor mode — subclasses override (LiveTradeExecutor → LIVE)
@@ -1332,14 +1339,23 @@ class AbstractTradeExecutor(ABC):
     # ============================================
 
     @abstractmethod
-    def close_all_remaining_orders(self, current_msc: int = 0) -> None:
+    def finish_remaining_orders(self, cancel_orders: bool = True, current_msc: int = 0) -> None:
         """
-        Close all remaining open positions at end of run.
+        Finish the run's ORDERS — open positions are no longer this method's business (#492).
 
-        TradeSimulator: Force-flushes latency queue, closes all
-        LiveTradeExecutor: Sends close orders to broker for all open positions
+        It used to close them too, and in live that close never reached the venue: it built
+        a synthetic order and filled it locally, so a session ending with an open position
+        reported a realised exit nobody executed. A position now stays open and is reported
+        as open and valued, which is what the account actually holds.
+
+        What still happens here: resting orders are cancelled (live: at the venue) or left
+        standing, genuinely stuck pipeline orders are cleared as the anomalies they are, and
+        the live request worker is stopped.
 
         Args:
+            cancel_orders: False leaves resting orders where they are — live: at the venue,
+                so a later session can adopt them back (#355). They are then NOT recorded as
+                expired either, because they have not expired
             current_msc: Current millisecond timestamp for pending latency calculation
         """
         pass
@@ -1353,12 +1369,20 @@ class AbstractTradeExecutor(ABC):
         """
         return self.has_pipeline_orders()
 
-    def check_clean_shutdown(self) -> bool:
+    def check_clean_shutdown(self, expect_flat: bool = True) -> bool:
         """
-        Post-cleanup safety check — call after close_all_remaining_orders().
+        Post-cleanup safety check — call after finish_remaining_orders().
 
         Logs errors for any orphaned positions or pending orders that
         survived cleanup. Does NOT raise — reports are still generated.
+
+        Args:
+            expect_flat: Whether a surviving open position is an ANOMALY. False when the
+                session-end policy deliberately leaves positions standing (#492) — then it
+                is a note, not an error, and the word "orphaned" would be a lie. True keeps
+                the old reading, which is the right one wherever nobody decided to leave
+                them: a boot that aborted before the first tick leaves positions behind
+                because it FAILED, and those really are orphans.
 
         Returns:
             True if shutdown was clean, False if orphaned state detected.
@@ -1366,7 +1390,13 @@ class AbstractTradeExecutor(ABC):
         clean = True
 
         open_positions = self.get_open_positions()
-        if open_positions:
+        if open_positions and not expect_flat:
+            for pos in open_positions:
+                self.logger.info(
+                    f'📌 Position left open by policy: {pos.position_id} '
+                    f'{pos.direction.value} {pos.lots} lots {pos.symbol}'
+                )
+        elif open_positions:
             clean = False
             for pos in open_positions:
                 self.logger.error(

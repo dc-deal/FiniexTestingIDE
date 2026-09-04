@@ -20,6 +20,7 @@ from python.framework.types.performance_types.performance_stats_types import (
 )
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.order_types import OrderResult
@@ -41,6 +42,9 @@ class AutoTraderResult:
         portfolio_stats: Portfolio performance statistics
         execution_stats: Order execution statistics
         trade_history: Completed trade records
+        open_positions: Positions still OPEN when the session ended (#492). Not a failure:
+            the policy may leave them standing, and the report shows them as open and
+            valued instead of claiming an exit that never reached the venue
         order_history: All order results
         clipping_summary: Clipping monitor session summary
         decision_statistics: Decision logic execution stats
@@ -67,6 +71,11 @@ class AutoTraderResult:
     portfolio_stats: Optional[PortfolioStats] = None
     execution_stats: Optional[ExecutionStats] = None
     trade_history: List[TradeRecord] = field(default_factory=list)
+    open_positions: List[Position] = field(default_factory=list)
+    # 'orders/positions' — the policy this session actually ran under (#492). An operator
+    # reading a summary must be able to tell a position left standing by decision from one
+    # that went missing, and '' says the session never got as far as resolving it.
+    session_end_policy: str = ''
     order_history: List[OrderResult] = field(default_factory=list)
     clipping_summary: ClippingSessionSummary = field(default_factory=ClippingSessionSummary)
     decision_statistics: Optional[DecisionLogicStats] = None

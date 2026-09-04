@@ -8,6 +8,7 @@ that the full pipeline handles realistic order sequences.
 
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
     OrderDirection,
@@ -129,11 +130,17 @@ class TestOpenCloseCycle:
         assert len(trade_history) >= 1
 
 
-class TestCloseAllRemaining:
-    """close_all_remaining_orders() cleanup."""
+class TestFinishRemainingOrders:
+    """finish_remaining_orders() cleanup — orders only, positions untouched (#492)."""
 
-    def test_close_all_closes_open_positions(self):
-        """close_all_remaining_orders() closes all positions (async-aware)."""
+    def test_open_positions_survive_the_session_end(self):
+        """
+        The session end does NOT close positions any more.
+
+        It used to, and the close never reached the venue: a synthetic order was filled
+        locally, so the report claimed a realised exit while the asset sat in the account.
+        A position now stays open, and the report says so.
+        """
         mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
         executor = mock.create_executor()
 
@@ -149,19 +156,22 @@ class TestCloseAllRemaining:
         assert len(executor.get_open_positions()) == 2
 
         mock.feed_tick(executor, bid=50050.0, ask=50052.0)
-        executor.close_all_remaining_orders()
+        executor.finish_remaining_orders()
 
-        assert len(executor.get_open_positions()) == 0
+        assert len(executor.get_open_positions()) == 2
+        # And no fabricated exit reached the trade history.
+        assert not [t for t in executor.get_trade_history()
+                    if t.close_reason == CloseReason.SCENARIO_END]
 
-    def test_close_all_on_empty_portfolio(self):
-        """close_all_remaining_orders() handles empty portfolio gracefully."""
+    def test_finish_on_empty_portfolio(self):
+        """finish_remaining_orders() handles an empty portfolio gracefully."""
         mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
         executor = mock.create_executor()
 
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)
 
-        # No positions open — should not raise
-        executor.close_all_remaining_orders()
+        # Nothing open — must not raise
+        executor.finish_remaining_orders()
         assert len(executor.get_open_positions()) == 0
 
 

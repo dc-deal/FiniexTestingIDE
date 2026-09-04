@@ -7,16 +7,17 @@ Mirrors process_startup_preparation.py for backtesting.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.autotrader.autotrader_broker_config_setup import create_broker_config
+from python.framework.autotrader.autotrader_logger_bundle import AutotraderLoggerBundle
+from python.framework.autotrader.autotrader_pipeline_bundle import AutotraderPipelineBundle
 from python.framework.autotrader.autotrader_warmup_preparator import AutotraderWarmupPreparator
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
-from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.factory.worker_factory import WorkerFactory
@@ -27,11 +28,9 @@ from python.framework.reporting.store.run_index import RunIndex
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
 from python.framework.signal_data.transport.signal_boot_resolver import prepare_live_signal_boot
-from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.log_layout_types import RUN_TYPE_LIVE
 from python.framework.types.market_types.market_types import TradingContext
@@ -59,7 +58,7 @@ _DEGRADED_REPLAY_WINDOW_HOURS: float = 24.0
 def create_autotrader_loggers(
     config: AutoTraderConfig,
     run_timestamp: datetime
-) -> Tuple[ScenarioLogger, ScenarioLogger, ScenarioLogger, Path]:
+) -> AutotraderLoggerBundle:
     """
     Create all loggers for an AutoTrader session.
 
@@ -152,7 +151,13 @@ def create_autotrader_loggers(
         session_logs_dir = run_dir / 'session_logs'
         session_logs_dir.mkdir(parents=True, exist_ok=True)
 
-    return global_logger, session_logger, summary_logger, run_dir, run_id
+    return AutotraderLoggerBundle(
+        global_logger=global_logger,
+        session_logger=session_logger,
+        summary_logger=summary_logger,
+        run_dir=run_dir,
+        run_id=run_id,
+    )
 
 
 def create_session_file_logger(run_dir: Path, date_suffix: str) -> FileLogger:
@@ -186,7 +191,7 @@ def setup_pipeline(
     logger: ScenarioLogger,
     run_id: str,
     package: Optional[ProcessDataPackage] = None
-) -> Tuple[AbstractTradeExecutor, BarRenderingController, WorkerOrchestrator, AbstractDecisionLogic, LiveClippingMonitor, TradingModel, DisplayLabelCache]:
+) -> AutotraderPipelineBundle:
     """
     Create all pipeline objects for AutoTrader session.
 
@@ -414,4 +419,12 @@ def setup_pipeline(
         f'report_interval={config.clipping_monitor.report_interval_s}s'
     )
 
-    return executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor, trading_model, display_label_cache
+    return AutotraderPipelineBundle(
+        executor=executor,
+        bar_controller=bar_controller,
+        worker_orchestrator=worker_orchestrator,
+        decision_logic=decision_logic,
+        clipping_monitor=clipping_monitor,
+        trading_model=trading_model,
+        display_label_cache=display_label_cache,
+    )

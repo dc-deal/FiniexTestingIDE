@@ -369,9 +369,12 @@ This matches real broker behavior — order acceptance is separate from order ex
 
 ## Scenario End Cleanup
 
-At scenario end, `close_all_remaining_orders()` handles all three worlds:
+At scenario end, `finish_remaining_orders()` handles all three worlds:
 
-1. **Open positions:** Closed via synthetic `PendingOrder` objects that bypass the latency pipeline entirely (no pending stats impact). This is internal cleanup, not an algo action.
+1. **Open positions:** **not touched.** They used to be closed here via a synthetic
+   `PendingOrder` that bypassed the pipeline — and in live that close never reached the
+   venue. A position now stays open and is reported as open and valued; see
+   [session_end_policy.md](session_end_policy.md).
 
 2. **Active limit orders** (`_active_limit_orders`): `_expire_active_orders()` creates `OrderResult(status=EXPIRED, reason="scenario_end")` entries in `_order_history` for each. Lists are **preserved** (not cleared) — `get_pending_stats()` snapshots them into `PendingOrderStats.active_limit_orders` for reporting. In live mode, active limit orders are also cancelled at the broker before expiry. A warning is logged.
 

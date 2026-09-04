@@ -25,6 +25,7 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.log_level import LogLevel
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.api.report_types import RunReporting
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
@@ -146,6 +147,21 @@ def extract_trade_history(
     """Extract trade history for P&L verification."""
     assert tick_loop_results.trade_history is not None, 'No trade history'
     return tick_loop_results.trade_history
+
+
+def extract_open_positions(
+    tick_loop_results: ProcessTickLoopResult
+) -> List[Position]:
+    """
+    Extract the positions still OPEN when the scenario's data ran out (#492).
+
+    The scenario end no longer force-closes them, so an entry-only scenario — a limit that
+    filled, a stop that triggered — leaves its position here instead of producing a closing
+    trade record. Reading the entry facts (type, price, direction) from the position is also
+    the more direct observation: they were always stored there, and the trade record only
+    ever copied them on the way out.
+    """
+    return tick_loop_results.open_positions or []
 
 
 def extract_pending_stats(

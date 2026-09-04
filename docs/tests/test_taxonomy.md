@@ -73,6 +73,8 @@ tests/
 │   ├── safety/            unit — circuit breaker (margin + spot)
 │   ├── cold_start/        unit — boot adoption of our own resting orders + carry-over (#355)
 │   ├── reconciliation/    unit — broker truth-pull + Reconciler ALERT_ONLY (#151)
+│   ├── session_end/       unit — what a session leaves standing and how it is reported (#492):
+│   │                      the policy, the cleanup, realised-vs-valued, the phantom-drawdown guard
 │   ├── session_validation/ unit — SessionPostRunValidator: the live Tier-1 channel, shared stress/slow-component checks
 │   ├── api_monitor/       unit — broker REST latency/error telemetry (#351)
 │   ├── field_study_machine/  unit — Field Study phase state machine (#332)
@@ -83,7 +85,8 @@ tests/
 ├── framework/
 │   ├── bar_rendering/     unit — BarRenderingController consistency
 │   ├── batch_validations/ unit — ScenarioValidator, BrokerDataPreparator, PostRunValidator, market-fit advisory (Phase 0 batch pipeline)
-│   ├── config/            unit — execution_config 3-level cascade (#137)
+│   ├── config/            unit — execution_config 3-level cascade (#137) · deep_merge list-merge ·
+│   │                      AutoTrader loader field coverage (every block field reachable from JSON)
 │   ├── connection_ladder/ unit — shared retry decision for every external connection: classification, backoff, jitter, budget, give-up (#473)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141), outage contract + episode capture (#434/#451)

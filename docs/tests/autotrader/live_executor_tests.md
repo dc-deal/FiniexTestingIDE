@@ -224,8 +224,8 @@ Multi-order scenarios: multiple orders tracked, open+close cycles, close_all_rem
 
 | Test | Description |
 |------|-------------|
-| `test_close_all_closes_open_positions` | `close_all_remaining_orders()` closes all positions |
-| `test_close_all_on_empty_portfolio` | `close_all_remaining_orders()` handles empty portfolio |
+| `test_open_positions_survive_the_session_end` | `finish_remaining_orders()` leaves positions OPEN and books no `scenario_end` exit (#492) |
+| `test_finish_on_empty_portfolio` | `finish_remaining_orders()` handles an empty portfolio |
 
 #### TestStatsConsistency
 
@@ -288,7 +288,7 @@ Asserts that are unique to this file:
 - `pending.broker_ref is None` in the in-flight window between submit and drain
 - `pending.broker_ref` confirmed to `MOCK-NNNNNN` after `await_submit_confirmation` drains
 - The multi-listener outcome chain fires on the main thread post-drain
-- Worker thread joins cleanly on `close_all_remaining_orders()`
+- Worker thread joins cleanly on `finish_remaining_orders()`
 
 #### TestAsyncSubmitInstantFill
 
@@ -321,7 +321,7 @@ Asserts that are unique to this file:
 
 | Test | Description |
 |------|-------------|
-| `test_async_worker_shutdown_during_pending` | Submit, then `close_all_remaining_orders` before drain: clean shutdown, worker thread joined |
+| `test_async_worker_shutdown_during_pending` | Submit, then `finish_remaining_orders` before drain: clean shutdown, worker thread joined |
 
 #### TestAsyncSubmitTimeout
 
@@ -493,7 +493,8 @@ MockOrderExecution
               Phase 0: processor.drain_inbox()    (worker responses)
               Phase 1: query_order_sync per pending  (MARKET in processor)
               Phase 2: query_order_sync per active   (LIMIT in _active_limit_orders)
-        +-- close_all_remaining_orders → cancels active LIMIT, direct-fills open positions, clear_pending, processor.stop_worker
+        +-- finish_remaining_orders → cancels active LIMIT (or leaves them, per policy), clear_pending, processor.stop_worker
+                                       open positions are NOT touched (#492)
 ```
 
 ### MockBrokerAdapter Modes

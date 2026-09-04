@@ -50,6 +50,7 @@
 | [External Connection Policy](architecture/external_connection_policy.md) | One retry ladder, one give-up rule, one classification for all seven outbound connections — TRANSIENT / TERMINAL / INADMISSIBLE, why a write is resolved by asking rather than retried, the `cl_ord_id` wire key, who owns the wait (#473) |
 | [Drift Audit](architecture/drift_audit.md) | Read-only local-vs-broker drift telemetry (#327) — FEE / VOLUME / PRICE counters, async trades-query consumer, live-display footer |
 | [Decision Event Channel](architecture/decision_event_channel.md) | Typed ordered event channel — order/fill/cancel/partial-close/session-end hooks for decision logic, drain-at-boundary, request_session_end (#348) |
+| [Session End Policy](architecture/session_end_policy.md) | What a run leaves behind (#492): which order types rest, what the run end does with them, spot against margin, and the incoherent pair with cold start |
 | [Reporting Pipeline](architecture/reporting_pipeline.md) | One result model for console/file/API across sim + live — capture → derive (postprocessor) → present; trade-history / order-history / portfolio slices, section taxonomy, ReportStore, /reports endpoints (#391) |
 | [Parameter Optimization System](architecture/parameter_optimization_system.md) | Grid sweep over strategy params + run-results ledger (parquet) + objective ranking + one-factor sensitivity; sweep spec, dotted-path overrides, pluggable generator seam (#390) |
 | [Swap / Overnight-Funding Cost Model](trading_realism/swap_cost_model.md) | Overnight swap accrual — signed debit/credit, triple-swap (T+2), DST-aware rollover, MarketClock awareness, per-trade reporting (#365) |
@@ -108,6 +109,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
 | [Cold Start](tests/autotrader/cold_start_tests.md) | Boot-time adoption of our own resting orders + the framework carry-over (#355) |
 | [Reconciliation](tests/autotrader/reconciliation_tests.md) | Broker truth-pull + Reconciler ALERT_ONLY (#151) |
+| [Session End](tests/autotrader/session_end_tests.md) | What a session leaves standing and how it is reported (#492): the two axes, the incoherent pair, realised vs valued, the phantom-drawdown guard |
 | [Session Validation](tests/autotrader/session_validation_tests.md) | The live Tier-1 channel: SessionPostRunValidator + the checks shared with the sim batch |
 | [API Monitor](tests/autotrader/api_monitor_tests.md) | Per-endpoint broker REST latency/error telemetry (#351) |
 | [Kraken Adapter Nonce](tests/autotrader/kraken_adapter_tests.md) | Private-call nonce monotonicity + lock (#332) |
@@ -139,7 +141,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Tick Processing Budget](tests/data/tick_processing_budget_tests.md) | Virtual clock filtering, ClippingStats |
 | [Scenario Generator](generator/tests_scenario_generator_docs.md) | Block generation tests |
 | [Batch Validations](tests/framework/batch_validations_tests.md) | Phase 0 validation: ScenarioValidator, BrokerDataPreparator map filtering |
-| [Config Tests (Cascade + Merge Utility)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests |
+| [Config Tests (Cascade + Merge Utility + Loader Field Coverage)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests, every AutoTrader config-block field reachable from JSON |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
 | [Live Telemetry Tests](tests/framework/live_telemetry_tests.md) | Frame serialization + the signal-transport block in the operator's CONNECTION panel |
 | [Reporting Pipeline Tests](tests/framework/reporting_tests.md) | Unified reporting (#391–#403): builders, IO/store, console renderers — including the two signal planes and what a live run may not claim |

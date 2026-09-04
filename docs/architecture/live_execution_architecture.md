@@ -257,6 +257,16 @@ On boot the executor's shadow is empty while the venue still holds what an earli
 left there. A bot that starts anyway trades beside its own open orders without seeing them.
 The boot step (`cold_start_setup.py` → `ColdStartAdopter`) runs once, before the tick loop:
 
+> **This pairs with the session-end policy (#492), and the pair is checked at startup.**
+> Adoption only has something to adopt if the previous session LEFT it — so
+> `session_end.orders` and `cold_start.adoption_mode` are two halves of one decision.
+> `orders: "leave"` together with `adoption_mode: "operator_confirm"` and nobody declared
+> present means the orders stay at the venue and the next boot refuses to touch them:
+> `session_end_validator.py` refuses that combination before the session starts, naming both
+> settings. An `on_cold_start` that accounts for the inherited orders (#493) lifts the
+> refusal, so a correctly built bot is not caught by it. See
+> [autotrader_architecture.md](../autotrader/autotrader_architecture.md) — *Session End*.
+
 ```
 BOOT
  ├─ RECONCILIATION (#151)         the truth-pull surface exists here

@@ -62,6 +62,11 @@ class PortfolioStats(BasePortfolioStats):
     current_balance: float
     initial_balance: float
 
+    # What the unit still HELD when it ended (#492) — a MARK at the last tick, not a
+    # result. Stamped at capture because the portfolio already knows it; the wealth view
+    # that combines it with the balance is derived in the report builder.
+    unrealized_pnl: float = 0.0
+
     # Spot mode fields (empty/zero for margin — no display change)
     spot_mode: bool = False
     balances: Dict[str, float] = field(default_factory=dict)

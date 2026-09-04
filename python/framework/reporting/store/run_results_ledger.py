@@ -33,6 +33,10 @@ LEDGER_COLUMNS: List[str] = [
     'decision_logic_type', 'decision_version', 'worker_versions',
     'config_snapshot', 'symbols', 'data_broker_type', 'currency',
     'net_pnl', 'expectancy', 'profit_factor', 'win_rate', 'max_drawdown',
+    # #492 — realised (net_pnl) and valued (final_equity) side by side. A ranking on
+    # net_pnl alone rates a variant still HOLDING a winner below one that closed it, and
+    # a run end no longer closes anything. Appended, so older fragments stay readable.
+    'unrealized_pnl', 'final_equity', 'open_position_count',
     'total_fees', 'total_trades', 'winning_trades', 'losing_trades',
     'avg_win_r', 'avg_loss_r', 'r_trade_count', 'r_win_count', 'r_loss_count',
     'orders_sent', 'orders_executed', 'orders_rejected', 'sl_tp_triggered',
@@ -174,6 +178,9 @@ class RunResultsLedger:
             'profit_factor': currency.profit_factor,
             'win_rate': currency.win_rate,
             'max_drawdown': currency.max_drawdown,
+            'unrealized_pnl': currency.unrealized_pnl,
+            'final_equity': currency.final_equity,
+            'open_position_count': currency.open_position_count,
             'total_fees': currency.total_fees,
             'total_trades': currency.total_trades,
             'winning_trades': currency.winning_trades,
