@@ -367,6 +367,16 @@ class HybridSentimentReference(AbstractDecisionLogic):
                     self.emit_event(
                         f'Long opened: {self.lot_size} lots',
                         AwarenessLevel.INFO, 'order_submitted')
+                elif order_result.is_rejected:
+                    # A refusal reaches the algo as this RETURN VALUE, not as an event:
+                    # on_order_rejected fires only from the asynchronous resolution paths,
+                    # so a submission-time refusal (#489 committed funds, lot size, a closed
+                    # market) is invisible to a bot that reads the status alone.
+                    self.logger.warning(
+                        f"✗ Order rejected: "
+                        f"{order_result.rejection_reason.value if order_result.rejection_reason else 'Unknown'} - "
+                        f'{order_result.rejection_message}'
+                    )
                 return order_result
             except Exception:
                 self.logger.error(

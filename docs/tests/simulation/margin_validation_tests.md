@@ -68,8 +68,8 @@ tests/
 │   ├── test_margin_validation.py ← Exhaustion, recovery, execution stats
 │   ├── test_order_rejection.py   ← Lot validation, close errors, rejection tracking
 │   ├── test_zero_balance.py      ← Zero balance scenario (own fixtures, separate config)
-│   ├── test_pnl_calculation.py   ← Shared import
-│   └── test_tick_count.py        ← Shared import
+│   ├── test_margin_validation_pnl_calculation.py   ← Shared import
+│   └── test_margin_validation_tick_count.py        ← Shared import
 ```
 
 **Why exclude TestTradeExecution and TestLatencyDeterminism?**
@@ -217,7 +217,7 @@ Tick  200: Open SHORT 0.01 lot → REJECTED  insufficient margin (balance=0)
 
 ---
 
-### test_pnl_calculation.py (16 Tests) — Shared
+### test_margin_validation_pnl_calculation.py (16 Tests) — Shared
 
 Imported from `tests/shared/shared_pnl.py`. Validates P&L calculations for successfully executed trades only.
 
@@ -249,7 +249,7 @@ Imported from `tests/shared/shared_pnl.py`. Validates P&L calculations for succe
 
 ---
 
-### test_tick_count.py (4 Tests) — Shared
+### test_margin_validation_tick_count.py (4 Tests) — Shared
 
 Imported from `tests/shared/shared_tick_count.py`.
 

@@ -115,31 +115,9 @@ def pytest_collection_modifyitems(items):
         if '/tests/live_signal_feed/' in path:
             item.add_marker(pytest.mark.live_signal_feed)
 
-        # Integration: full-pipeline end-to-end runs
-        if '/integration/' in path:
-            item.add_marker(pytest.mark.integration)
-
-        # Unit: isolated component tests (no full pipeline)
-        _UNIT_PATHS = (
-            '/tests/autotrader/order_guard/',
-            '/tests/autotrader/live_executor/',
-            '/tests/autotrader/loop_cadence/',
-            '/tests/autotrader/safety/',
-            '/tests/autotrader/state_persistence/',
-            '/tests/framework/algo_clock_validator/',
-            '/tests/framework/bar_rendering/',
-            '/tests/framework/live_telemetry/',
-            '/tests/framework/batch_validations/',
-            '/tests/framework/worker_tests/',
-            '/tests/framework/market_compatibility/',
-            '/tests/framework/signal_coverage/',
-            '/tests/framework/discovery_validity/',
-            '/tests/framework/static_analysis/',
-            '/tests/framework/store/',
-            '/tests/framework/tick_parquet_reader/',
-            '/tests/framework/user_namespace/',
-            '/tests/simulation/optimization/',
-            '/tests/simulation/robustness/',
-        )
-        if any(p in path for p in _UNIT_PATHS):
-            item.add_marker(pytest.mark.unit)
+        # `unit` and `integration` used to be applied here too. They were the only two rules
+        # that needed a maintained LIST rather than falling out of the tree, they were the only
+        # two that were measurably wrong (8 of 14 autotrader suites were missing from the unit
+        # list, so `-m unit` silently under-reported), and nothing ever selected on them — not
+        # the runner, which picks by directory, not test_config.json, not launch.json. A mark
+        # with no consumer and a list that goes stale on every new suite is dead config (§19).

@@ -71,6 +71,7 @@ def build_cold_start_report_from_session(
                 order_type=order.order_type.value,
                 lots=order.lots,
                 price=order.price,
+                key_is_ours=order.key_is_ours,
             )
             for order in situation.skipped
         ],

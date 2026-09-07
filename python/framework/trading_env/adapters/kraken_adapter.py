@@ -20,6 +20,7 @@ import json
 import threading
 import time
 import urllib.parse
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -97,6 +98,12 @@ class KrakenAdapter(AbstractAdapter):
     # the tag and delegates to DryRunOrderSimulator for the synthetic
     # BrokerResponse so the response timestamp matches the parse stage.
     _DRY_RUN_SENTINEL = '__dry_run_op__'
+    # The venue's own answer to the validate call, carried through the same handoff. It is
+    # the ONLY thing that says what Kraken UNDERSTOOD of the order — its `descr` names the
+    # resolved pair, the effective order type and any conditional close. Without it a
+    # dry-run test can observe nothing but "the call did not raise", which is why one named
+    # `..._with_sltp_dryrun` passed while the levels reached nothing.
+    _DRY_RUN_VALIDATED = '__dry_run_validated__'
 
     def __init__(self, broker_config: Dict[str, Any]):
         """
@@ -591,7 +598,21 @@ class KrakenAdapter(AbstractAdapter):
         """
         pair = self._resolve_kraken_pair(symbol)
         kraken_type = 'buy' if direction == OrderDirection.LONG else 'sell'
-        kraken_ordertype = 'market' if order_type == OrderType.MARKET else 'limit'
+        # Only the two types this builder knows are mapped. Anything else used to fall through
+        # to 'limit' silently — so a STOP_LIMIT, had the executor's gate ever let one through,
+        # would have gone on the wire as a plain LIMIT at its limit price. Refusing here is the
+        # second line behind that gate, and it is what makes widening the gate safe to attempt:
+        # the wire cannot receive a type the builder has not been taught.
+        if order_type == OrderType.MARKET:
+            kraken_ordertype = 'market'
+        elif order_type == OrderType.LIMIT:
+            kraken_ordertype = 'limit'
+        else:
+            raise ValueError(
+                f'KrakenAdapter cannot build an AddOrder payload for {order_type.value}: '
+                f'only MARKET and LIMIT are mapped to a Kraken ordertype. A resting type needs '
+                f'its own mapping (stop-loss-limit …) before the executor may route it.'
+            )
 
         data: Dict[str, str] = {
             'pair': pair,
@@ -711,12 +732,13 @@ class KrakenAdapter(AbstractAdapter):
             Raw Kraken result dict (sentinel-tagged in dry-run)
         """
         if self._dry_run:
-            self._fetch_private(
+            validated = self._fetch_private(
                 '/0/private/AddOrder',
                 {**payload, 'validate': 'true'},
             )
             return {
                 self._DRY_RUN_SENTINEL: 'submit',
+                self._DRY_RUN_VALIDATED: validated,
                 'lots': float(payload['volume']),
                 'price': float(payload['price']) if 'price' in payload else None,
             }
@@ -849,11 +871,15 @@ class KrakenAdapter(AbstractAdapter):
             simulator-issued synthetic ref
         """
         if raw.get(self._DRY_RUN_SENTINEL) == 'submit':
-            return self._dry_run_simulator.submit(
+            response = self._dry_run_simulator.submit(
                 lots=raw['lots'],
                 price=raw['price'],
                 timestamp=timestamp,
             )
+            # The simulator issues the synthetic ref; the VENUE said what it made of the
+            # order. Both belong on the response — the ref is ours, the description is
+            # Kraken's, and only the second one can be asserted against.
+            return replace(response, raw_response=raw.get(self._DRY_RUN_VALIDATED))
 
         txid_list = raw.get('txid', [])
         broker_ref = txid_list[0] if txid_list else ''

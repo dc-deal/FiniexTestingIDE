@@ -4,7 +4,7 @@ Reusable test classes for trade execution validation across test suites.
 
 Used by: baseline, multi_position
 NOTE: margin_validation has its own execution tests (rejections expected).
-Import these classes into suite-specific test_trade_execution.py files.
+Import these classes into suite-specific test_<suite>_trade_execution.py files.
 """
 
 

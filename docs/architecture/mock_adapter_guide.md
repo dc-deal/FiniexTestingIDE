@@ -7,7 +7,7 @@ The MockBrokerAdapter simulates broker responses for testing the LiveTradeExecut
 **Key principle:** Same code pipeline as live trading, deterministic and local.
 
 ```
-open_order() → adapter.execute_order() → BrokerResponse → LiveOrderTracker → _fill_open_order() → Portfolio
+open_order() → adapter.execute_order() → BrokerResponse → LiveRequestProcessor → _fill_open_order() → Portfolio
      │                  │                       │                  │                    │
      │              MockBroker              configurable        time-based          INHERITED
      │              (no network)            (4 modes)           tracking            (shared core)
@@ -49,7 +49,7 @@ open_order() → adapter.execute_order() → BrokerResponse → LiveOrderTracker
 `execute_order()` returns `BrokerResponse(status=PENDING)`.
 `check_order_status()` always returns `PENDING` (never fills).
 - Simulates: Unresponsive broker, network issues
-- Use for: Timeout detection via `LiveOrderTracker.check_timeouts()`
+- Use for: Timeout detection via `LiveRequestProcessor.check_timeouts()`
 
 ---
 
@@ -165,7 +165,7 @@ adapter.set_mode(MockExecutionMode.REJECT_ALL)
 ## Verification Strategies
 
 ### 1. Pipeline Verification (does data flow correctly?)
-- Order → Adapter → LiveOrderTracker → Fill Processing → Portfolio → Order History
+- Order → Adapter → LiveRequestProcessor → Fill Processing → Portfolio → Order History
 - Check: `get_open_positions()`, `get_order_history()`, `get_execution_stats()`
 
 ### 2. Error Path Verification (do rejections propagate?)
@@ -206,19 +206,20 @@ Default mock config uses real Kraken BTCUSD specification:
 
 ## Test Suite
 
-Full pytest test suite available at `tests/autotrader/live_executor/` (47 tests):
+The suite lives at `tests/autotrader/live_executor/`. Its three mock-facing levels:
 
-| File | Tests | Scope |
-|------|-------|-------|
-| `test_live_order_tracker.py` | 21 | LiveOrderTracker isolated (submit, fill, reject, timeout, cleanup) |
-| `test_live_executor_mock.py` | 19 | LiveTradeExecutor + MockAdapter integration (all 4 modes) |
-| `test_live_executor_multi_order.py` | 7 | Multi-order scenarios (open+close, close_all, stats consistency) |
+| File | Scope |
+|------|-------|
+| `test_live_request_processor.py` | LiveRequestProcessor isolated (submit, fill, reject, timeout, cleanup) |
+| `test_live_executor_mock.py` | LiveTradeExecutor + MockAdapter integration (all 4 modes) |
+| `test_live_executor_multi_order.py` | Multi-order scenarios (open+close, close_all, stats consistency) |
 
 ```bash
 pytest tests/autotrader/live_executor/ -v
 ```
 
-Full test documentation: `docs/tests/autotrader/live_executor_tests.md`
+The full file map — including the async lifecycle, polling-cadence and attribution levels — is
+in the suite's own doc: `docs/tests/autotrader/live_executor_tests.md`
 
 ---
 
@@ -232,7 +233,7 @@ python/framework/
   trading_env/
     live/
       live_trade_executor.py     ← LiveTradeExecutor (uses adapter)
-      live_order_tracker.py      ← LiveOrderTracker (time-based pending)
+      live_request_processor.py      ← LiveRequestProcessor (time-based pending)
     adapters/
       abstract_adapter.py        ← Tier 3: execute_order, check_order_status, cancel_order
   types/

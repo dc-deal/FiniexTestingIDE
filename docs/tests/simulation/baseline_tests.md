@@ -34,12 +34,12 @@ tests/
 │   ├── __init__.py
 │   ├── conftest.py             ← BASELINE_CONFIG = "backtesting/backtesting_validation_test.json"
 │   ├── test_bar_snapshots.py
-│   ├── test_latency_determinism.py
+│   ├── test_baseline_latency_determinism.py
 │   ├── test_order_history.py
-│   ├── test_pnl_calculation.py
-│   ├── test_tick_count.py
-│   ├── test_trade_execution.py
-│   ├── test_warmup_validation.py
+│   ├── test_baseline_pnl_calculation.py
+│   ├── test_baseline_tick_count.py
+│   ├── test_baseline_trade_execution.py
+│   ├── test_baseline_warmup_validation.py
 │   └── test_event_stream_minimal.py   ← Smoke-level event-stream CSV check (#330)
 └── multi_position/             ← Separate suite, same fixture pattern
     ├── conftest.py             ← MULTI_POSITION_CONFIG = "backtesting/multi_position_test.json"
@@ -133,7 +133,7 @@ Tests bar rendering functionality by validating snapshots captured during the ti
 
 ---
 
-### test_latency_determinism.py (3 Tests)
+### test_baseline_latency_determinism.py (3 Tests)
 
 Tests that order execution latency is deterministic and reproducible when using the same seeds.
 
@@ -147,7 +147,7 @@ Tests that order execution latency is deterministic and reproducible when using 
 
 ---
 
-### test_pnl_calculation.py (16 Tests)
+### test_baseline_pnl_calculation.py (16 Tests)
 
 Validates profit/loss calculations through internal consistency checks using TradeRecord data.
 
@@ -179,7 +179,7 @@ Validates profit/loss calculations through internal consistency checks using Tra
 
 ---
 
-### test_tick_count.py (4 Tests)
+### test_baseline_tick_count.py (4 Tests)
 
 Validates tick processing counts across different system components.
 
@@ -194,7 +194,7 @@ Validates tick processing counts across different system components.
 
 ---
 
-### test_trade_execution.py (7 Tests)
+### test_baseline_trade_execution.py (7 Tests)
 
 Validates trade execution against the deterministic trade sequence.
 
@@ -212,7 +212,7 @@ Validates trade execution against the deterministic trade sequence.
 
 ---
 
-### test_warmup_validation.py (3 Tests)
+### test_baseline_warmup_validation.py (3 Tests)
 
 Validates that warmup data was correctly loaded before tick processing.
 
@@ -236,7 +236,7 @@ pytest tests/simulation/baseline/ -v
 pytest tests/ -v
 
 # Specific test file
-pytest tests/simulation/baseline/test_pnl_calculation.py -v
+pytest tests/simulation/baseline/test_baseline_pnl_calculation.py -v
 ```
 
 **VS Code:** Use launch configuration `🧪 Pytest (baseline)`.

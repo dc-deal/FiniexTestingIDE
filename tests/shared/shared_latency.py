@@ -3,7 +3,7 @@ FiniexTestingIDE - Shared Latency Determinism Tests
 Reusable test classes for latency validation across test suites.
 
 Used by: baseline, multi_position, margin_validation
-Import these classes into suite-specific test_latency_determinism.py files.
+Import these classes into suite-specific test_<suite>_latency_determinism.py files.
 """
 
 from typing import Dict

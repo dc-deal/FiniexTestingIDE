@@ -502,37 +502,6 @@ class TickRangeStats:
 
 
 @dataclass
-class BlockBoundaryReport:
-    """
-    Block boundary statistics for Profile Run disposition calculation.
-
-    Captures what the block edge CUT: positions still open when the data ran out, the
-    unrealised P&L riding on them, and pending orders discarded from the pipeline. Built
-    from the trade history, the open positions and the pending stats after
-    finish_remaining_orders().
-
-    Until #492 this counted force-CLOSED trades instead. The block edge used to flatten
-    everything, so its impact arrived as realised P&L; now the position stays open and the
-    impact is unrealised. The question is unchanged — how much of this block's result hangs
-    on where the data happened to stop — but the quantity that answers it moved, and reading
-    the old field would have made every block look clean.
-
-    Args:
-        open_at_boundary_trades: Positions still open when the block ended
-        open_at_boundary_pnl: Sum of UNREALISED P&L on those positions, 0.0 when no tick
-            ever arrived to value them
-        natural_closed_trades: Trades the strategy itself closed (SL/TP/MANUAL)
-        natural_closed_pnl: Sum of realized P&L from those trades
-        discarded_pending_orders: Pending orders force-closed at scenario end
-    """
-    open_at_boundary_trades: int = 0
-    open_at_boundary_pnl: float = 0.0
-    natural_closed_trades: int = 0
-    natural_closed_pnl: float = 0.0
-    discarded_pending_orders: int = 0
-
-
-@dataclass
 class ProcessTickLoopResult:
     """
     Result info from Tick Loop, after execution.
@@ -578,10 +547,9 @@ class ProcessTickLoopResult:
     profiling_data: ProcessProfileData = None
     tick_range_stats: TickRangeStats = None
 
-    # Block boundary report (Profile Runs only, None for normal runs)
-    block_boundary_report: Optional[BlockBoundaryReport] = None
     # Positions still OPEN when the scenario's data ran out (#492). The scenario end no
-    # longer force-closes them, so this is where the block edge's impact now lives.
+    # longer force-closes them, so this is where the block edge's impact now lives — the
+    # block-splitting builder derives the disposition from here, off the run.
     open_positions: List[Position] = field(default_factory=list)
 
     # Error handling

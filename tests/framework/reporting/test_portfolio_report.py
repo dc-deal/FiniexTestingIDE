@@ -216,3 +216,72 @@ class TestDerivedInBuilder:
         stats.last_price = 0.0
         unit = build_portfolio_report(_RUN_ID, run_units_from_batch(_single_unit_batch(stats))).units[0]
         assert (unit.spot_est_current, unit.spot_est_pnl_pct) == (0.0, 0.0)
+
+class TestTheCommittedFundsRecord:
+    """
+    What unfilled orders still claim reaches the report, and `usable` is DERIVED (#489).
+
+    The claim lives on the EXECUTOR's order book while these stats come from the portfolio,
+    so it is stamped at capture. What matters here is the other half of the rule: the
+    difference `balance − claim` is computed ONCE in the builder, because the console, the
+    JSON artifact and the API all read it and three subtractions are three chances to
+    disagree.
+    """
+
+    def _spot_stats(self, committed: dict) -> PortfolioStats:
+        """
+        Spot stats holding 400 USD and 0.014 BTC, with a given claim.
+
+        Args:
+            committed: currency → what unfilled orders claim
+
+        Returns:
+            The stats
+        """
+        stats = _stats()
+        stats.spot_mode = True
+        stats.base_currency, stats.quote_currency = 'BTC', 'USD'
+        stats.balances = {'USD': 400.0, 'BTC': 0.014}
+        stats.initial_balances = {'USD': 1000.0, 'BTC': 0.0}
+        stats.committed_funds = committed
+        return stats
+
+    def _row(self, committed: dict):
+        """The unit row the builder produces. Args: committed: the claim. Returns: the row."""
+        stats = self._spot_stats(committed)
+        return build_portfolio_report(
+            _RUN_ID, run_units_from_batch(_single_unit_batch(stats))).units[0]
+
+    def test_the_claim_is_carried_verbatim(self):
+        row = self._row({'USD': 600.0, 'BTC': 0.0})
+
+        assert row.committed_funds == {'USD': 600.0, 'BTC': 0.0}
+
+    def test_usable_is_the_balance_minus_the_claim(self):
+        row = self._row({'USD': 250.0, 'BTC': 0.0})
+
+        assert row.usable_funds['USD'] == pytest.approx(150.0)   # 400 − 250
+
+    def test_a_claim_beyond_the_balance_goes_NEGATIVE_rather_than_clamping(self):
+        """
+        The over-commit state is the one worth seeing, so it is not floored at zero.
+
+        Adoption can inherit it: #355 rebuilds a resting order whose reserve the venue still
+        holds while the balance moved on in an earlier session. A clamp to 0.00 would render
+        that indistinguishable from a fully-spent balance.
+        """
+        row = self._row({'USD': 600.0, 'BTC': 0.0})
+
+        assert row.usable_funds['USD'] == pytest.approx(-200.0)   # 400 − 600
+
+    def test_a_currency_nothing_claims_gets_no_second_number(self):
+        """A balance nothing is holding needs no `usable` line of its own."""
+        row = self._row({'USD': 600.0, 'BTC': 0.0})
+
+        assert 'BTC' not in row.usable_funds
+
+    def test_a_run_with_no_unfilled_order_carries_nothing(self):
+        """The regression guard: today's runs report exactly what they reported before."""
+        row = self._row({})
+
+        assert row.committed_funds == {} and row.usable_funds == {}

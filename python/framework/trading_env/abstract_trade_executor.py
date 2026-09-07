@@ -36,7 +36,7 @@ from abc import ABC, abstractmethod
 from collections import deque
 from datetime import datetime
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, FrozenSet, List, Optional, Tuple, Union
 
 from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.factory.trading_fee_factory import (
@@ -84,6 +84,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderResult,
     OrderSide,
     OrderStatus,
+    OrderType,
     RejectionReason,
     create_rejection_result,
     direction_to_side,
@@ -613,6 +614,72 @@ class AbstractTradeExecutor(ABC):
         request.take_profit = self._round_price(request.take_profit, digits)
         return request
 
+    def _reject_if_funds_committed(
+        self,
+        request: OpenOrderRequest,
+        order_id: str
+    ) -> Optional[OrderResult]:
+        """
+        Refuse an order the account cannot fund once its own unfilled orders are counted.
+
+        A venue reserves the asset at PLACEMENT, so this runs at submission and not only at
+        fill (#489). Without it a bot holding one resting BUY can submit a second order the
+        venue will refuse, and that refusal comes back as a broker rejection the bot cannot
+        explain to itself — while our own books still showed the money. Subclasses call this
+        in open_order() AFTER the lot-size and tradeable validations: a malformed order must
+        be rejected as malformed, not as underfunded.
+
+        Spot only. Margin has the same gap and it is NOT a mirror of this: free margin
+        ignores unfilled orders too, but a CLOSE order RELEASES margin rather than spending
+        it, so reusing this shape there would double-charge every in-flight close. Deferred
+        with that reasoning to #209.
+
+        Args:
+            request: The incoming order
+            order_id: The id the rejection is recorded under
+
+        Returns:
+            The rejection for open_order() to return, or None when the order may proceed
+        """
+        if not self._spot_mode:
+            return None
+
+        currency, required = self._outflow_for(
+            symbol=request.symbol,
+            direction=request.direction,
+            lots=request.lots,
+            order_type=request.order_type,
+            price=request.price if request.price is not None else request.stop_price,
+        )
+        if currency is None:
+            return None
+
+        balance = self.portfolio.get_asset_balance(currency)
+        committed = self.get_committed_funds(currency)
+        available = balance - committed
+        if required <= available:
+            return None
+
+        side = 'BUY' if request.direction == OrderDirection.LONG else 'SELL'
+        self._orders_rejected += 1
+        rejection = create_rejection_result(
+            order_id=order_id,
+            reason=RejectionReason.INSUFFICIENT_FUNDS,
+            message=(
+                f'{side} requires {required:.6f} {currency}, '
+                f'available: {available:.6f} {currency} '
+                f'(balance {balance:.6f}, committed by unfilled orders {committed:.6f})'
+            )
+        )
+        self._check_order_history_limit()
+        self._order_history.append(rejection)
+        self.logger.warning(
+            f'Order {order_id} rejected at submission: {side} requires '
+            f'{required:.6f} {currency}, available {available:.6f} '
+            f'(balance {balance:.6f}, committed {committed:.6f})'
+        )
+        return rejection
+
     # ============================================
     # Fill Processing (concrete — shared by all modes)
     # ============================================
@@ -713,11 +780,17 @@ class AbstractTradeExecutor(ABC):
                 )
                 return
         elif self._spot_mode:
-            # Spot mode: check sufficient balance for asset exchange
+            # Spot mode: check sufficient balance for asset exchange — net of what this
+            # bot's OTHER unfilled orders already claim (#489). The order being filled is
+            # still in its own collection here, hence the exclusion.
             fee_cost = entry_fee.cost if entry_fee else 0.0
             if pending_order.direction == OrderDirection.LONG:
                 required = pending_order.lots * entry_price + fee_cost
-                available = self.portfolio.get_asset_balance(symbol_spec.quote_currency)
+                balance = self.portfolio.get_asset_balance(symbol_spec.quote_currency)
+                committed = self.get_committed_funds(
+                    symbol_spec.quote_currency,
+                    exclude_order_id=pending_order.pending_order_id)
+                available = balance - committed
                 if required > available:
                     self._orders_rejected += 1
                     rejection = create_rejection_result(
@@ -725,7 +798,9 @@ class AbstractTradeExecutor(ABC):
                         reason=RejectionReason.INSUFFICIENT_FUNDS,
                         message=(
                             f'BUY requires {required:.6f} {symbol_spec.quote_currency}, '
-                            f'available: {available:.6f} {symbol_spec.quote_currency}'
+                            f'available: {available:.6f} {symbol_spec.quote_currency} '
+                            f'(balance {balance:.6f}, committed by unfilled orders '
+                            f'{committed:.6f})'
                         )
                     )
                     self._check_order_history_limit()
@@ -734,11 +809,16 @@ class AbstractTradeExecutor(ABC):
                     self.logger.warning(
                         f'Order {pending_order.pending_order_id} rejected: '
                         f'BUY requires {required:.6f} {symbol_spec.quote_currency}, '
-                        f'available: {available:.6f} {symbol_spec.quote_currency}'
+                        f'available: {available:.6f} {symbol_spec.quote_currency} '
+                        f'(balance {balance:.6f}, committed {committed:.6f})'
                     )
                     return
             else:
-                available = self.portfolio.get_asset_balance(symbol_spec.base_currency)
+                balance = self.portfolio.get_asset_balance(symbol_spec.base_currency)
+                committed = self.get_committed_funds(
+                    symbol_spec.base_currency,
+                    exclude_order_id=pending_order.pending_order_id)
+                available = balance - committed
                 if pending_order.lots > available:
                     self._orders_rejected += 1
                     rejection = create_rejection_result(
@@ -746,7 +826,9 @@ class AbstractTradeExecutor(ABC):
                         reason=RejectionReason.INSUFFICIENT_FUNDS,
                         message=(
                             f'SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, '
-                            f'available: {available:.6f} {symbol_spec.base_currency}'
+                            f'available: {available:.6f} {symbol_spec.base_currency} '
+                            f'(balance {balance:.6f}, committed by unfilled orders '
+                            f'{committed:.6f})'
                         )
                     )
                     self._check_order_history_limit()
@@ -755,7 +837,8 @@ class AbstractTradeExecutor(ABC):
                     self.logger.warning(
                         f'Order {pending_order.pending_order_id} rejected: '
                         f'SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, '
-                        f'available: {available:.6f} {symbol_spec.base_currency}'
+                        f'available: {available:.6f} {symbol_spec.base_currency} '
+                        f'(balance {balance:.6f}, committed {committed:.6f})'
                     )
                     return
 
@@ -1145,6 +1228,132 @@ class AbstractTradeExecutor(ABC):
         """
         return self._active_limit_orders + self._active_stop_orders
 
+    def get_committed_funds(
+        self,
+        currency: str,
+        exclude_order_id: Optional[str] = None
+    ) -> float:
+        """
+        What this bot's own unfilled orders already claim of one currency (spot).
+
+        A venue reserves the asset when an order is PLACED; our balances move only on FILL
+        (`PortfolioManager.open_position`), so without this the funds check reads a balance
+        that two unfilled orders can each spend in full — and the second one is refused by
+        the venue for insufficient funds while our own books still showed the money.
+
+        Mirrors the fill's OUTFLOW exactly, because an inflow needs no reserve:
+
+            OPEN  LONG   → quote, lots * price + fee     OPEN  SHORT  → base,  lots
+            CLOSE LONG   → base,  close_lots             CLOSE SHORT  → quote, lots * price + fee
+
+        Derived on demand and never stored: the claim is a running fact about the order
+        book, and a cached one would need invalidating on every fill, cancel and modify.
+
+        Args:
+            currency: The asset to total, e.g. 'USD' or 'BTC'
+            exclude_order_id: An order to leave out — the one being filled is still in its
+                collection while the fill runs, and counting it would reserve it twice
+
+        Returns:
+            The claimed amount. 0.0 in margin mode — the equivalent quantity is free margin,
+            which has the same gap, but a CLOSE order releases margin instead of spending it
+            so the rule differs; #209 owns it
+        """
+        if not self._spot_mode:
+            return 0.0
+
+        total = 0.0
+        for pending in self.get_active_orders() + self.get_pipeline_orders():
+            if pending.pending_order_id == exclude_order_id:
+                continue
+            outflow_currency, amount = self._pending_outflow(pending)
+            if outflow_currency == currency:
+                total += amount
+        return total
+
+    def _outflow_for(
+        self,
+        symbol: str,
+        direction: OrderDirection,
+        lots: Optional[float],
+        order_type: Optional[OrderType],
+        price: Optional[float],
+        is_close: bool = False
+    ) -> Tuple[Optional[str], float]:
+        """
+        Which asset an order will SPEND, and how much — the one calculation both sides use.
+
+        Fee and tick value come from the same helpers the fill uses, so a reserve and the
+        eventual charge cannot drift apart. Where no price is given, the current ask prices
+        it: the quote side is spent only when we are BUYING (an OPEN LONG, or a CLOSE of a
+        SHORT), and buying pays the ask.
+
+        Args:
+            symbol: The instrument
+            direction: LONG or SHORT — for a CLOSE this is the POSITION's direction
+            lots: Size, or None
+            order_type: MARKET / LIMIT / STOP / STOP_LIMIT, for the maker-taker fee side
+            price: The price the order will pay, or None to take it from the current tick
+            is_close: True when the order closes a position rather than opening one
+
+        Returns:
+            (currency, amount), or (None, 0.0) when nothing can be priced yet — an
+            unpriceable order reserves nothing rather than an invented number
+        """
+        if not lots:
+            return None, 0.0
+
+        symbol_spec = self.broker.get_symbol_specification(symbol)
+        # A CLOSE reverses its position's direction: closing a LONG sells the base.
+        spends_quote = (direction == OrderDirection.SHORT) if is_close \
+            else (direction == OrderDirection.LONG)
+        if not spends_quote:
+            return symbol_spec.base_currency, lots
+
+        if price is None:
+            if self._current_tick is None:
+                return None, 0.0
+            price = self._current_tick.ask
+
+        fee_cost = 0.0
+        if self._current_tick is not None:
+            tick_value = self._calculate_tick_value(symbol_spec, self._current_tick.mid)
+            is_maker = order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT)
+            fee_cost = self._create_entry_fee(
+                symbol_spec=symbol_spec, lots=lots, entry_price=price,
+                tick_value=tick_value, is_maker=is_maker).cost
+        return symbol_spec.quote_currency, lots * price + fee_cost
+
+    def _pending_outflow(self, pending: PendingOrder) -> Tuple[Optional[str], float]:
+        """
+        What an unfilled order will spend — `_outflow_for` read off a PendingOrder.
+
+        The price is the one that order will actually pay: a LIMIT and a STOP carry it in
+        `entry_price` (the limit, and the stop's trigger the market fill is estimated at), a
+        STOP_LIMIT carries its limit in `order_kwargs`, and a MARKET order in transit has
+        none yet.
+
+        Args:
+            pending: The unfilled order
+
+        Returns:
+            (currency, amount), or (None, 0.0) when it cannot be priced
+        """
+        if not pending.symbol or not pending.direction:
+            return None, 0.0
+
+        is_close = pending.order_action == PendingOrderAction.CLOSE
+        price = (pending.order_kwargs or {}).get('limit_price') \
+            if pending.order_type == OrderType.STOP_LIMIT else pending.entry_price
+        return self._outflow_for(
+            symbol=pending.symbol,
+            direction=pending.direction,
+            lots=pending.close_lots if is_close else pending.lots,
+            order_type=pending.order_type,
+            price=price,
+            is_close=is_close,
+        )
+
     # ============================================
     # Queries (concrete - same for all executors)
     # ============================================
@@ -1235,6 +1444,39 @@ class AbstractTradeExecutor(ABC):
 
         TradeSimulator: Checks latency queue only (excludes active limits/stops)
         LiveTradeExecutor: Checks broker tracker for unconfirmed orders
+        """
+        pass
+
+    @abstractmethod
+    def get_supported_order_types(self) -> FrozenSet[OrderType]:
+        """
+        The order types THIS executor can actually carry — distinct from what the venue offers.
+
+        An adapter declares what the VENUE accepts (`get_order_capabilities`); this declares
+        what the pipeline has IMPLEMENTED for it. The two disagree today: Kraken declares
+        STOP_LIMIT, the live path carries only MARKET and LIMIT. The pre-flight gate in
+        `DecisionTradingApi` checks a strategy's needs against the INTERSECTION, so a logic
+        that declares STOP_LIMIT on live is refused at startup instead of having every order
+        rejected at 03:14. The gate in `open_order()` reads the same set, so the two cannot
+        drift apart.
+
+        Returns:
+            The types `open_order()` will route rather than reject
+        """
+        pass
+
+    @abstractmethod
+    def get_pipeline_orders(self) -> List[PendingOrder]:
+        """
+        The orders has_pipeline_orders() answers for — the ones still in transit.
+
+        Needed because an order in transit ALREADY claims funds: the venue reserves the
+        asset when the order is placed, not when it fills. get_active_orders() deliberately
+        excludes these, so committed funds cannot be derived from that list alone.
+
+        Returns:
+            The pipeline's PendingOrders — the latency queue (sim) or the request
+            processor's unconfirmed orders (live)
         """
         pass
 
@@ -1504,6 +1746,7 @@ class AbstractTradeExecutor(ABC):
                     'entry_price': pending.entry_price,
                 }
             )
+            self._check_order_history_limit()
             self._order_history.append(result)
         for pending in self._active_stop_orders:
             result = OrderResult(
@@ -1518,6 +1761,7 @@ class AbstractTradeExecutor(ABC):
                     'entry_price': pending.entry_price,
                 }
             )
+            self._check_order_history_limit()
             self._order_history.append(result)
 
     def get_execution_stats(self) -> ExecutionStats:

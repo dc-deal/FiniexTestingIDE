@@ -729,6 +729,15 @@ class AutotraderMain:
                 spec = self._executor.broker.get_symbol_specification(self._config.symbol)
                 stats.base_currency = spec.base_currency
                 stats.quote_currency = spec.quote_currency
+                # #489 — what unfilled orders still claim. Stamped here because the claim
+                # lives on the executor's order book and these stats come from the
+                # portfolio; this is where the two meet.
+                stats.committed_funds = {
+                    spec.quote_currency: self._executor.get_committed_funds(
+                        spec.quote_currency),
+                    spec.base_currency: self._executor.get_committed_funds(
+                        spec.base_currency),
+                }
                 try:
                     bid, ask = self._executor.get_current_price(self._config.symbol)
                     stats.last_price = (bid + ask) / 2.0

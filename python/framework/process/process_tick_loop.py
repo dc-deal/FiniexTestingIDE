@@ -27,7 +27,6 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
-from python.framework.process.process_block_boundary import build_block_boundary_report
 from python.framework.process.process_live_export import process_live_export, process_live_setup
 from python.framework.process.tick_pipeline_core import (
     execute_algo_path,
@@ -414,6 +413,14 @@ def execute_tick_loop(
             config.symbol)
         portfolio_stats.base_currency = _symbol_spec.base_currency
         portfolio_stats.quote_currency = _symbol_spec.quote_currency
+        # #489 — the same claim the live session stamps, from the same shared executor
+        # method, so both pipelines report the figure identically.
+        portfolio_stats.committed_funds = {
+            _symbol_spec.quote_currency: trade_simulator.get_committed_funds(
+                _symbol_spec.quote_currency),
+            _symbol_spec.base_currency: trade_simulator.get_committed_funds(
+                _symbol_spec.base_currency),
+        }
         if current_tick:
             portfolio_stats.last_price = (current_tick.bid + current_tick.ask) / 2
         execution_stats = trade_simulator.get_execution_stats()
@@ -422,18 +429,9 @@ def execute_tick_loop(
         order_history = trade_simulator.get_order_history()
         pending_stats = trade_simulator.get_pending_stats()
 
-        # #492: what the scenario's end left open. Read once — the boundary report and the
-        # result both describe it, and the second read would be a second answer.
+        # #492: what the scenario's end left open — the block edge's impact. Handed over
+        # raw; the block-splitting builder derives the disposition from it off the run.
         open_positions = trade_simulator.get_open_positions()
-
-        # Build block boundary report for Profile Runs
-        block_boundary_report = None
-        if config.is_profile_run:
-            block_boundary_report = build_block_boundary_report(
-                trade_history, pending_stats,
-                # The edge's impact is what it left OPEN, not what it force-closed.
-                open_positions=open_positions,
-            )
 
         _print_tick_loop_finishing_log(
             live_update_count, scenario_logger, portfolio_stats
@@ -452,7 +450,6 @@ def execute_tick_loop(
             trade_history=trade_history,
             order_history=order_history,
             pending_stats=pending_stats,
-            block_boundary_report=block_boundary_report,
             open_positions=open_positions,
             profiling_data=ProcessProfileData(
                 profile_times=profile_times,

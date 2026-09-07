@@ -331,8 +331,11 @@ Two paths are closed by construction and can be ruled out immediately: a **conta
 cannot lose it (`./data` is a bind mount from the host), and **eviction** cannot drop a key
 whose order is still resting (eviction is by relevance before recency).
 
-⚠️ **A schema-version bump on a carry-over is not a state loss, it is a start refusal.** The
-chain: envelope discarded → empty payload → the predecessor's session keys are gone → its
-resting orders read as `unknown_session` → the start ban applies. That is defensible (trading
-blind beside your own orders is worse), but it has to be known before the deploy rather than
-discovered at 03:00.
+⚠️ **A schema-version bump on a carry-over does not lose state quietly — it makes the session
+trade beside its own forgotten orders.** The chain: envelope discarded → empty payload → the
+predecessor's session keys are gone → its resting orders read as `unknown_session` → they are
+NOT adopted. And there is no start ban: the boot reports this as an ERROR in the session pot and
+the session **starts anyway**, deliberately, because refusing forever would leave the operator no
+way out and would abandon whatever this bot already holds at the venue. So the consequence is not
+a bot that will not run; it is a bot that runs while its own resting orders are invisible to it.
+That has to be known before the deploy rather than discovered at 03:00.

@@ -77,3 +77,7 @@ class PortfolioStats(BasePortfolioStats):
     # never derived from the symbol string.
     base_currency: str = ''
     quote_currency: str = ''
+    # What this bot's own unfilled orders still claim, per currency (#489). Stamped at
+    # capture because the claim lives on the EXECUTOR's order book while these stats come
+    # from the portfolio — the two only meet where the run ends. Empty in margin mode.
+    committed_funds: Dict[str, float] = field(default_factory=dict)

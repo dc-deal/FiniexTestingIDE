@@ -9,7 +9,7 @@ For tick flow comparison (Backtesting vs Live): see [simulation_vs_live_flow.md]
 
 ## LiveTradeExecutor (extends AbstractTradeExecutor)
 
-Live execution via broker adapter API. Delegates pending order management to LiveOrderTracker.
+Live execution via broker adapter API. Delegates pending order management to LiveRequestProcessor.
 
 **Key characteristic:** Routes orders through `adapter.execute_order()`, polls broker via `adapter.check_order_status()`, and calls the *same* `_fill_open_order(pending_order, fill_price=broker_price)` / `_fill_close_order(pending_order, fill_price=broker_price)` from the base — identical portfolio logic, zero duplication.
 
@@ -17,10 +17,10 @@ Live execution via broker adapter API. Delegates pending order management to Liv
 
 **Order flow:**
 1. `open_order()` — Validates, calls `adapter.execute_order()`, routes by type:
-   - **MARKET** → `LiveOrderTracker` (short-lived pipeline tracking)
+   - **MARKET** → `LiveRequestProcessor` (short-lived pipeline tracking)
    - **LIMIT** → `_active_limit_orders` (shadow state, inherited from base)
 2. `_process_pending_orders()` — Two-phase polling:
-   - **Phase 1**: Polls `LiveOrderTracker` for MARKET order fills/rejections/timeouts
+   - **Phase 1**: Polls `LiveRequestProcessor` for MARKET order fills/rejections/timeouts
    - **Phase 2**: `_process_active_orders()` — polls broker for active LIMIT order fills
 3. `_handle_broker_response()` — Dispatches FILLED → `_fill_open_order()`, REJECTED → `_order_history`
 4. `_handle_timeout()` — Cancels at broker, records BROKER_ERROR rejection
@@ -32,7 +32,7 @@ Live execution via broker adapter API. Delegates pending order management to Liv
 
 ---
 
-## LiveOrderTracker (extends AbstractPendingOrderManager)
+## LiveRequestProcessor (extends AbstractPendingOrderManager)
 
 Live-specific pending order manager. Adds broker reference tracking, timeout detection, and fill/rejection marking from broker responses.
 
@@ -128,7 +128,7 @@ LiveTradeExecutor:
 Error handling follows the same patterns as simulation, using the shared infrastructure from AbstractTradeExecutor:
 
 ```
-1. open_order() → adapter.execute_order() → PendingOrder in LiveOrderTracker
+1. open_order() → adapter.execute_order() → PendingOrder in LiveRequestProcessor
 2. Broker doesn't respond / rejects
 3. _process_pending_orders() polls adapter → detects timeout / rejection
 4. Same handling logic as simulation stress test
@@ -205,7 +205,7 @@ modify_limit_order(order_id, new_price, new_sl, new_tp)
 - **Local shadow state update** — after successful broker modify, the `PendingOrder` in `_active_limit_orders` is updated with new price/SL/TP values. This keeps the local state consistent for `get_pending_stats()` snapshots and `get_active_order_counts()`.
 - **Broker ref update** — Kraken uses `AmendOrder` (in-place), so the `broker_ref` stays the same across a modify. The swap path remains defensive for brokers that return a new ref on modify.
 - **UNSET sentinel** — The `_UnsetType`/`UNSET` pattern from `PortfolioManager` is translated to `None` at the adapter boundary. Adapters don't know about UNSET.
-- **Order lookup** — broker_ref is resolved by scanning `_active_limit_orders` (O(n), typically very small list). `LiveOrderTracker` is no longer involved in LIMIT order tracking.
+- **Order lookup** — broker_ref is resolved by scanning `_active_limit_orders` (O(n), typically very small list). `LiveRequestProcessor` is no longer involved in LIMIT order tracking.
 
 ### MockBrokerAdapter.modify_order()
 
@@ -457,7 +457,7 @@ Kraken. The real-broker contract is the separate `tests/live_adapters/` release 
 
 | Term | Meaning |
 |------|---------|
-| **LiveOrderTracker** | Live-specific pending order manager with broker tracking |
+| **LiveRequestProcessor** | Live-specific pending order manager with broker tracking |
 | **Shadow State** | Local portfolio tracking what we believe the broker state to be |
 | **Reconciliation** | Comparing shadow state with actual broker state and resolving differences |
 | **BrokerResponse** | Standardized response from broker adapter (fill, rejection, status) |

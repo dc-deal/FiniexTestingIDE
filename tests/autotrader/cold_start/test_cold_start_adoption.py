@@ -18,10 +18,10 @@ venue must stop the boot rather than let it start blind.
 
 from python.framework.autotrader.cold_start_adopter import ColdStartAdopter
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
+from python.framework.types.autotrader_types.cold_start_types import SkipReason
 from python.framework.types.config_types.autotrader_defaults_config_types import ColdStartDefaults
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.utils.run_id_utils import build_client_order_id
-
 from tests.autotrader.cold_start.conftest import PREVIOUS_SESSION_KEY, make_broker_order
 
 
@@ -219,6 +219,179 @@ class TestUnattributable:
         assert _adopter(executor, store, logger).run() is True
         assert executor.get_active_orders() == []
         assert any('ETHUSD' in w for w in logger.warnings)
+
+
+class TestWhoseKeyItWas:
+    """
+    The skip bucket records OWNERSHIP, not just a reason (#489).
+
+    `_split` tests the symbol BEFORE the session key, so an `other_symbol` order may carry
+    either our own key or a stranger's — and the reason string answers neither. Anything that
+    reasons about ownership needs the fact: a sibling bot of this framework on another
+    instrument is a shared account, our own re-pointed profile is not.
+    """
+
+    def _skipped(self, executor, store, logger):
+        """
+        The single skipped order of a boot. Args: the fixtures. Returns: the SkippedOrder.
+        """
+        adopter = _adopter(executor, store, logger)
+        adopter.run()
+        skipped = adopter.get_situation().skipped
+        assert len(skipped) == 1
+        return skipped[0]
+
+    def test_our_own_key_on_another_symbol_is_recorded_as_ours(self, executor, store, logger):
+        _remember_previous_session(store)
+        executor.broker.adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-ETH',
+                              build_client_order_id(PREVIOUS_SESSION_KEY, 'pos_ethusd_3'),
+                              symbol='ETHUSD'),
+        ])
+
+        order = self._skipped(executor, store, logger)
+
+        assert order.reason is SkipReason.OTHER_SYMBOL
+        assert order.key_is_ours is True
+        # The log says whose it is, because that is what an operator needs to act on.
+        assert any('OUR OWN' in w for w in logger.warnings)
+
+    def test_a_stranger_key_on_another_symbol_is_recorded_as_foreign(
+            self, executor, store, logger):
+        """The shared-account case: another instance of this framework, another instrument."""
+        _remember_previous_session(store)
+        executor.broker.adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-ETH',
+                              build_client_order_id('f00d', 'pos_ethusd_3'),
+                              symbol='ETHUSD'),
+        ])
+
+        order = self._skipped(executor, store, logger)
+
+        assert order.reason is SkipReason.OTHER_SYMBOL
+        assert order.key_is_ours is False
+        assert any('another session' in w for w in logger.warnings)
+
+    def test_an_order_with_no_key_of_our_shape_judges_nothing(self, executor, store, logger):
+        """There is no key to compare, so the answer is None rather than a guessed False."""
+        _remember_previous_session(store)
+        executor.broker.adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-HUMAN', 'somebody-elses-format'),
+        ])
+
+        order = self._skipped(executor, store, logger)
+
+        assert order.reason is SkipReason.FOREIGN_KEY
+        assert order.key_is_ours is None
+
+    def test_an_unknown_session_is_recorded_as_not_ours(self, executor, store, logger):
+        """Our shape, a session we cannot place — still an ERROR, still not a refusal."""
+        _remember_previous_session(store)
+        executor.broker.adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-LOST', build_client_order_id('c0de', 'pos_btcusd_9')),
+        ])
+
+        order = self._skipped(executor, store, logger)
+
+        assert order.reason is SkipReason.UNKNOWN_SESSION
+        assert order.key_is_ours is False
+
+
+class TestADeclaredExclusiveAccount:
+    """
+    What `capital.exclusive_account: true` changes, and what it deliberately does not (#489).
+
+    The declaration is the operator's, because a framework cannot read exclusivity off a
+    venue — a balance carries no owner tag. What the framework does with it is graded by
+    CONSEQUENCE: a stranger's order on the instrument this bot trades is the case where the
+    two exposures merge into one balance no tag can split; a stranger elsewhere means the
+    declaration is wrong, which is worth an alert and not worth dying over.
+    """
+
+    def _run(self, executor, store, logger, exclusive: bool) -> bool:
+        """
+        Boot with or without the declaration.
+
+        Args:
+            executor, store, logger: the fixtures
+            exclusive: what the profile declares
+
+        Returns:
+            Whether the boot allowed the session to start
+        """
+        _remember_previous_session(store)
+        return _adopter(executor, store, logger).run() if not exclusive else ColdStartAdopter(
+            executor=executor, store=store, config=ColdStartDefaults(adoption_mode='auto'),
+            symbol='BTCUSD', logger=logger, exclusive_account=True,
+        ).run()
+
+    def test_a_stranger_on_our_own_symbol_reaches_the_error_pot_and_starts(
+            self, executor, store, logger):
+        """
+        The loudest case, and it still STARTS — refusing is not the safe outcome.
+
+        A refusal would abandon this bot's own position and its protective resting order at
+        the venue with nothing reconciling them, and on spot the SL/TP level lives in the
+        very process that declined to start. It would also deadlock two sibling bots and
+        loop against a supervisor. #499 turns this into a HALT that keeps managing what is
+        ours while placing nothing new; until that state exists, the honest answer is an
+        ERROR the operator cannot miss.
+        """
+        executor.broker.adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-HUMAN', 'somebody-elses-format', symbol='BTCUSD'),
+        ])
+
+        assert self._run(executor, store, logger, exclusive=True) is True
+        assert any('exclusive_account=true' in e for e in logger.errors)
+        # Both ways out are named, because the operator has to pick one.
+        assert any('cancel those orders' in e for e in logger.errors)
+        # And the issue that will change this is named, so nobody re-derives the reasoning.
+        assert any('#499' in e for e in logger.errors)
+
+    def test_the_same_stranger_says_nothing_without_the_declaration(
+            self, executor, store, logger):
+        """The default: nothing changes for any profile that never declared exclusivity."""
+        executor.broker.adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-HUMAN', 'somebody-elses-format', symbol='BTCUSD'),
+        ])
+
+        assert self._run(executor, store, logger, exclusive=False) is True
+        assert not any('exclusive_account' in e for e in logger.errors)
+
+    def test_a_stranger_on_another_symbol_is_a_warning_not_an_error(
+            self, executor, store, logger):
+        """
+        Graded: elsewhere means the DECLARATION is wrong, which is worth an alert.
+
+        It is not the same weight as a stranger on our own instrument, where the two
+        exposures merge into one balance no tag can split.
+        """
+        executor.broker.adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-ETH', 'somebody-elses-format', symbol='ETHUSD'),
+        ])
+
+        assert self._run(executor, store, logger, exclusive=True) is True
+        assert any('declaration' in w for w in logger.warnings)
+        assert not any('exclusive_account=true' in e for e in logger.errors)
+
+    def test_an_unknown_session_of_our_shape_still_does_not_refuse(
+            self, executor, store, logger):
+        """
+        Its key HAS our shape, so on an exclusive account it is more likely OURS, not less.
+
+        Refusing would be the self-lockout `_report_unattributable` already argues against:
+        the carry-over may simply have been lost, and refusing forever leaves no way out.
+        """
+        executor.broker.adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-LOST', build_client_order_id('c0de', 'pos_btcusd_9')),
+        ])
+
+        assert self._run(executor, store, logger, exclusive=True) is True
+
+    def test_a_clean_exclusive_account_starts_untouched(self, executor, store, logger):
+        executor.broker.adapter.set_broker_orders([])
+
+        assert self._run(executor, store, logger, exclusive=True) is True
 
 
 class TestPositionCounter:

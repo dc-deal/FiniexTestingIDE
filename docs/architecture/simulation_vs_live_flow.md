@@ -87,7 +87,7 @@ AutotraderTickLoop.run()
         │
         ├── 1. executor.on_tick(tick)                # AbstractTradeExecutor (sets clock from tick)
         │       ├── Update prices (bid/ask)
-        │       ├── _process_pending_orders()         # LiveOrderTracker: poll broker for fills
+        │       ├── _process_pending_orders()         # LiveRequestProcessor: poll broker for fills
         │       └── _check_sl_tp_triggers(tick)       # Live: broker handles SL/TP server-side (no-op)
         │
         ├── 2. render_bars_for_tick(tick, ...)        # SHARED CORE (#303)
@@ -149,7 +149,7 @@ monitor, step 5 `execute_decision` with its per-runner error handling, the
 | **Tick source** | Pre-loaded list (finite) | WebSocket / REST (real-time, infinite) |
 | **Loop type** | `for tick in ticks` | `while running` / event-driven |
 | **Runner** | `execute_tick_loop()` | `AutotraderTickLoop.run()` |
-| **Pending orders** | OrderLatencySimulator (ms-timestamp, seeded delay) | LiveOrderTracker → broker polling |
+| **Pending orders** | OrderLatencySimulator (ms-timestamp, seeded delay) | LiveRequestProcessor → broker polling |
 | **SL/TP check** | `_check_sl_tp_triggers()` local price check | Broker server-side (no local check) |
 | **Fill detection** | Tick timestamp `collected_msc` >= `broker_fill_msc` | Broker response via polling (#320); WebSocket push primary in V1.4 (#331) |
 | **Fill price** | Current tick bid/ask at fill time | Broker's actual execution price |
@@ -200,11 +200,11 @@ Portfolio (shared)
 
 **ExecutionHandler:**
 - Simulation: TradeSimulator with OrderLatencySimulator
-- Live: LiveTradeExecutor with LiveOrderTracker
+- Live: LiveTradeExecutor with LiveRequestProcessor
 
 **PendingOrderManager:**
 - Simulation: OrderLatencySimulator (tick-based fill detection)
-- Live: LiveOrderTracker (broker-response fill detection)
+- Live: LiveRequestProcessor (broker-response fill detection)
 - Both inherit from AbstractPendingOrderManager (shared storage/query)
 
 **Fill Processing:**

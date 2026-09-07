@@ -99,6 +99,10 @@ class DecisionTradingApi:
         """
         self._executor = executor
         self._capabilities = executor.broker.get_order_capabilities()
+        # What the PIPELINE implements, beside what the VENUE accepts. A type must pass both:
+        # Kraken declares STOP_LIMIT, the live path does not carry it, and before this check
+        # such a logic passed pre-flight and had every order rejected (#500 sibling).
+        self._executor_supports = executor.get_supported_order_types()
 
         # CRITICAL: Validate order types BEFORE scenario starts!
         self._validate_order_types(required_order_types)
@@ -141,21 +145,22 @@ class DecisionTradingApi:
             # → Clear error message to user
             # → No wasted computation on invalid scenario
         """
-        unsupported = []
+        venue_lacks = [t for t in required_types
+                       if not self._capabilities.supports_order_type(t)]
+        pipeline_lacks = [t for t in required_types
+                          if t not in self._executor_supports and t not in venue_lacks]
 
-        for order_type in required_types:
-            if not self._capabilities.supports_order_type(order_type):
-                unsupported.append(order_type)
-
-        if unsupported:
+        if venue_lacks or pipeline_lacks:
             supported_types = self._get_supported_order_types()
+            executor_name = type(self._executor).__name__
             raise ValueError(
-                f"❌ Broker '{self._executor.broker.adapter.get_broker_name()}' "
-                f"does not support required order types!\n"
+                f"❌ Required order types cannot be carried on this pipeline!\n"
                 f"Required: {[t.value for t in required_types]}\n"
-                f"Unsupported: {[t.value for t in unsupported]}\n"
-                f"Broker supports: {[t.value for t in supported_types]}\n"
-                f"→ Change Decision Logic or use different broker config!"
+                f"Venue '{self._executor.broker.adapter.get_broker_name()}' does not offer: "
+                f"{[t.value for t in venue_lacks]}\n"
+                f"{executor_name} has not implemented: {[t.value for t in pipeline_lacks]}\n"
+                f"Usable here (venue AND pipeline): {[t.value for t in supported_types]}\n"
+                f"→ Change the Decision Logic, or a broker config / pipeline that carries them."
             )
 
     def _get_supported_order_types(self) -> List[OrderType]:
@@ -163,7 +168,8 @@ class DecisionTradingApi:
         supported = []
 
         for order_type in OrderType:
-            if self._capabilities.supports_order_type(order_type):
+            if (self._capabilities.supports_order_type(order_type)
+                    and order_type in self._executor_supports):
                 supported.append(order_type)
 
         return supported

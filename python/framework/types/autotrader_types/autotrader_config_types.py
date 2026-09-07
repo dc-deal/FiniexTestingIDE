@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     ApiMonitorConfig,
     AutotraderExecutionDefaults,
+    CapitalDefaults,
     ClippingMonitorDefaults,
     ColdStartDefaults,
     DisplayDefaults,
@@ -94,6 +95,9 @@ class AutoTraderConfig:
         tick_source: Tick transport configuration
         execution: Execution parameters
         clipping_monitor: Clipping monitor configuration
+        capital: What the bot may assume about the account it trades (#489) — whether the
+            operator has DECLARED it exclusive, which is what makes account-level risk
+            limits measure the bot's own denominator
         session_end: What the session does with resting orders and open positions when it
             ends (#492). Two axes; `orders: 'leave'` is the loosening one and needs the
             broker's posture behind it, the same way `dry_run` does
@@ -121,5 +125,6 @@ class AutoTraderConfig:
     state_persistence: StatePersistenceDefaults = field(default_factory=StatePersistenceDefaults)
     cold_start: ColdStartDefaults = field(default_factory=ColdStartDefaults)
     session_end: SessionEndDefaults = field(default_factory=SessionEndDefaults)
+    capital: CapitalDefaults = field(default_factory=CapitalDefaults)
     config_path: Optional[Path] = None
     dry_run: Optional[bool] = None

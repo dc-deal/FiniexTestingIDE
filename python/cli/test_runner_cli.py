@@ -38,13 +38,6 @@ class TestRunnerCli:
     CLI handler for unified test execution.
     """
 
-    _SUMMARY_PATTERN = re.compile(
-        r'(\d+) passed'
-        r'(?:, (\d+) failed)?'
-        r'(?:, (\d+) error)?'
-        r'(?:, (\d+) skipped)?'
-    )
-
     _SEPARATOR = '\u2500' * 50
 
     def __init__(self):

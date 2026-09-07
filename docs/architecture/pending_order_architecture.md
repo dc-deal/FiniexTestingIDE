@@ -96,7 +96,7 @@ New fields land in their sub-type — no further widening of the parent surface.
 
 **Simulation:** `OrderLatencySimulator` extends `AbstractPendingOrderManager`. Uses `SeededDelayGenerator` (`utils/seeded_generators/`) to assign a deterministic `broker_fill_msc` (millisecond timestamp) to each order. On each tick, `process_tick()` compares the tick's `collected_msc` (or `time_msc` fallback) against `broker_fill_msc` and returns orders whose inbound latency has elapsed. See [Design Decision: Inbound-Only Fill Timing](#design-decision-inbound-only-fill-timing) below.
 
-**Live:** `LiveOrderTracker` extends `AbstractPendingOrderManager`. Tracks orders by `broker_ref` (O(1) lookup). Fill/rejection arrives via broker polling, not tick counting.
+**Live:** `LiveRequestProcessor` extends `AbstractPendingOrderManager`. Tracks orders by `broker_ref` (O(1) lookup). Fill/rejection arrives via broker polling, not tick counting.
 
 **What exits the queue:**
 - `PendingOrder` objects with `order_type`, `order_action`, `direction`, `entry_price`, `order_kwargs`

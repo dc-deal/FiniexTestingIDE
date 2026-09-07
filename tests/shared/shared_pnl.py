@@ -3,7 +3,7 @@ FiniexTestingIDE - Shared P&L Calculation Tests
 Reusable test classes for P&L validation across test suites.
 
 Used by: baseline, multi_position, margin_validation
-Import these classes into suite-specific test_pnl_calculation.py files.
+Import these classes into suite-specific test_<suite>_pnl_calculation.py files.
 """
 
 from typing import List

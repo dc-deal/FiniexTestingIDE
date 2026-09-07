@@ -225,11 +225,11 @@ These test files are identical to the baseline suite. They validate generic prop
 
 | File | Tests | Validates |
 |------|-------|-----------|
-| `test_pnl_calculation.py` | 16 | P&L formulas, fee breakdown, aggregation, trade completeness |
-| `test_trade_execution.py` | 7 | Trade count, directions, signal ticks, order execution |
-| `test_latency_determinism.py` | 7 | Seeded delays reproducible, within bounds, total delay formula |
-| `test_tick_count.py` | 4 | Tick count matches config, decision/worker call counts |
-| `test_warmup_validation.py` | 3 | No warmup errors, errors list accessible |
+| `test_multi_position_pnl_calculation.py` | 16 | P&L formulas, fee breakdown, aggregation, trade completeness |
+| `test_multi_position_trade_execution.py` | 7 | Trade count, directions, signal ticks, order execution |
+| `test_multi_position_latency_determinism.py` | 7 | Seeded delays reproducible, within bounds, total delay formula |
+| `test_multi_position_tick_count.py` | 4 | Tick count matches config, decision/worker call counts |
+| `test_multi_position_warmup_validation.py` | 3 | No warmup errors, errors list accessible |
 
 **Not reused:** `test_bar_snapshots.py` — the multi-position config has empty `bar_snapshot_checks` (bar validation is not the focus of this suite), so `test_snapshots_not_empty` would fail.
 

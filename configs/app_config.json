@@ -108,6 +108,9 @@
         "session_end": {
             "orders": "cancel",
             "positions": "leave"
+        },
+        "capital": {
+            "exclusive_account": false
         }
     },
     "backtesting": {

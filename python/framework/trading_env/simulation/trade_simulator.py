@@ -14,7 +14,7 @@ Key Simulation Features:
 - Fill processing: Inherited from AbstractTradeExecutor (shared with live)
 """
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Union
+from typing import Dict, FrozenSet, List, Optional, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.stress_test.stress_test_rejection import StressTestRejection
@@ -363,6 +363,7 @@ class TradeSimulator(AbstractTradeExecutor):
             return False
 
         self._orders_rejected += 1
+        self._check_order_history_limit()
         self._order_history.append(rejection)
         return True
 
@@ -402,6 +403,7 @@ class TradeSimulator(AbstractTradeExecutor):
                 reason=RejectionReason.INVALID_LOT_SIZE,
                 message=error
             )
+            self._check_order_history_limit()
             self._order_history.append(result)
             return result
 
@@ -413,8 +415,14 @@ class TradeSimulator(AbstractTradeExecutor):
                 reason=RejectionReason.SYMBOL_NOT_TRADEABLE,
                 message=f'Symbol {request.symbol} not tradeable'
             )
+            self._check_order_history_limit()
             self._order_history.append(result)
             return result
+
+        # Funds, net of what this bot's own unfilled orders already claim (#489)
+        funds_rejection = self._reject_if_funds_committed(request, order_id)
+        if funds_rejection:
+            return funds_rejection
 
         # Execute based on order type
         if request.order_type == OrderType.MARKET:
@@ -445,6 +453,7 @@ class TradeSimulator(AbstractTradeExecutor):
                     reason=RejectionReason.INVALID_PRICE,
                     message=f'Limit order requires positive price, got: {request.price}'
                 )
+                self._check_order_history_limit()
                 self._order_history.append(result)
                 return result
 
@@ -476,6 +485,7 @@ class TradeSimulator(AbstractTradeExecutor):
                     reason=RejectionReason.INVALID_PRICE,
                     message=f'Stop order requires positive stop_price, got: {request.stop_price}'
                 )
+                self._check_order_history_limit()
                 self._order_history.append(result)
                 return result
 
@@ -506,6 +516,7 @@ class TradeSimulator(AbstractTradeExecutor):
                     reason=RejectionReason.INVALID_PRICE,
                     message=f'Stop-Limit order requires positive stop_price, got: {request.stop_price}'
                 )
+                self._check_order_history_limit()
                 self._order_history.append(result)
                 return result
             if request.price is None or request.price <= 0:
@@ -515,6 +526,7 @@ class TradeSimulator(AbstractTradeExecutor):
                     reason=RejectionReason.INVALID_PRICE,
                     message=f'Stop-Limit order requires positive limit price, got: {request.price}'
                 )
+                self._check_order_history_limit()
                 self._order_history.append(result)
                 return result
 
@@ -547,6 +559,7 @@ class TradeSimulator(AbstractTradeExecutor):
             )
 
         # Store in order history
+        self._check_order_history_limit()
         self._order_history.append(result)
 
         return result
@@ -1232,6 +1245,26 @@ class TradeSimulator(AbstractTradeExecutor):
     def has_pipeline_orders(self) -> bool:
         """Check latency queue only — active limit/stop are intentionally preserved."""
         return self.latency_simulator.has_pending_orders()
+
+    def get_supported_order_types(self) -> FrozenSet[OrderType]:
+        """
+        The four types `open_order()` dispatches; anything else it rejects.
+
+        Returns:
+            MARKET, LIMIT, STOP, STOP_LIMIT
+        """
+        return frozenset({
+            OrderType.MARKET, OrderType.LIMIT, OrderType.STOP, OrderType.STOP_LIMIT,
+        })
+
+    def get_pipeline_orders(self) -> List[PendingOrder]:
+        """
+        The latency queue's orders — in transit, not yet filled.
+
+        Returns:
+            The queued PendingOrders
+        """
+        return self.latency_simulator.get_pending_orders()
 
     def is_pending_close(self, position_id: str) -> bool:
         """Check if a specific position has a pending close order."""

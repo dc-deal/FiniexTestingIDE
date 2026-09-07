@@ -153,6 +153,38 @@ class ColdStartDefaults(BaseModel):
     book_drift_interval_ticks: int = 500
 
 
+class CapitalDefaults(BaseModel):
+    """
+    What the bot may assume about the account it trades (#489).
+
+    `exclusive_account`
+        The operator's declaration that this account holds nothing but this bot's own money
+        and orders. It is a DECLARATION and not a default, and both halves of that matter.
+
+        A framework cannot read exclusivity off a venue: a balance carries no owner tag, so
+        "these coins are mine" is a belief no query settles. What the framework CAN do is
+        check a premise the operator stated — which is ordinary fail-fast engineering, and
+        honestly describable in a run record, whereas a framework declining to start because
+        it met a stranger is something no established system does.
+
+        It defaults to FALSE because the shared account is what every existing profile,
+        document and test in this repo assumes, and because the safe direction for a
+        premise nobody stated is to assume less. Declaring it TRUE is what makes the
+        account-level risk limits of #356/#314 meaningful: they measure against account
+        equity, and that is only the bot's own denominator if the account is only the
+        bot's.
+
+        What it changes is graded by CONSEQUENCE rather than by category. A foreign order on
+        the bot's OWN instrument is the hard case — at spot the exposures merge into one
+        balance no tag can split, so the bot's own pre-trade arithmetic and the venue's view
+        of the same asset diverge irreconcilably. A foreign order on another instrument is
+        reported and does not stop the boot: it means the DECLARATION is wrong, which is
+        worth an alert and is not made safer by the bot dying. Two sibling bots that each
+        refused over the other would deadlock, and neither would run.
+    """
+    exclusive_account: bool = False
+
+
 class SessionEndDefaults(BaseModel):
     """
     What a live session does with what it still holds when it ends (#492).
@@ -195,6 +227,7 @@ class AutotraderDefaultsConfig(BaseModel):
     Provides global defaults merged into every AutoTrader profile at load time.
     """
     execution: AutotraderExecutionDefaults = AutotraderExecutionDefaults()
+    capital: CapitalDefaults = CapitalDefaults()
     clipping_monitor: ClippingMonitorDefaults = ClippingMonitorDefaults()
     display: DisplayDefaults = DisplayDefaults()
     order_guard: OrderGuardDefaults = OrderGuardDefaults()

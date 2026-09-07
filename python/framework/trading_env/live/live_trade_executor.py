@@ -30,7 +30,7 @@ Feature gating: MARKET + LIMIT orders supported. Limit order modification is bro
 
 import time
 from datetime import datetime, timezone
-from typing import Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor, ExecutorMode
@@ -501,6 +501,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 reason=RejectionReason.BROKER_ERROR,
                 message=f"Broker rejected: {response.rejection_reason or 'unknown'}",
             )
+            self._check_order_history_limit()
             self._order_history.append(rejection)
             self._notify_outcome(rejected.direction, rejection, rejected)
 
@@ -555,6 +556,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 if unresolved else
                 f'Order timed out after {self._timeout_config.order_timeout_seconds}s'),
         )
+        self._check_order_history_limit()
         self._order_history.append(rejection)
         self._notify_outcome(pending.direction, rejection, pending)
 
@@ -588,6 +590,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             rejection: The OrderResult with status=REJECTED
         """
         self._orders_rejected += 1
+        self._check_order_history_limit()
         self._order_history.append(rejection)
         self._notify_outcome(direction, rejection, None)
 
@@ -723,6 +726,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # Record without removing from active list — the order is still
             # working at the broker, just the modify failed.
             self._orders_rejected += 1
+            self._check_order_history_limit()
             self._order_history.append(rejection)
             self._notify_outcome(pending.direction, rejection, pending)
         else:
@@ -1095,6 +1099,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 message=f"Broker {broker_response.status.value}: "
                         f"{broker_response.rejection_reason or 'unknown'}",
             )
+            self._check_order_history_limit()
             self._order_history.append(rejection)
             self._notify_outcome(pending.direction, rejection, pending)
             self.logger.warning(
@@ -1141,14 +1146,15 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._order_counter += 1
         order_id = self.portfolio.get_next_position_id(request.symbol)
 
-        # Feature gate: only MARKET and LIMIT orders
-        if request.order_type not in (OrderType.MARKET, OrderType.LIMIT):
+        # Feature gate — reads the declaration below, so pre-flight and this check agree.
+        if request.order_type not in self.get_supported_order_types():
             self._orders_rejected += 1
             result = create_rejection_result(
                 order_id=order_id,
                 reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
                 message=f'Order type {request.order_type.value} not supported in live',
             )
+            self._check_order_history_limit()
             self._order_history.append(result)
             return result
 
@@ -1162,8 +1168,16 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 reason=RejectionReason.INVALID_LOT_SIZE,
                 message=error,
             )
+            self._check_order_history_limit()
             self._order_history.append(result)
             return result
+
+        # Funds, net of what this bot's own unfilled orders already claim (#489). The venue
+        # reserves at placement, so this must refuse here rather than take the rejection
+        # back from the broker.
+        funds_rejection = self._reject_if_funds_committed(request, order_id)
+        if funds_rejection:
+            return funds_rejection
 
         # Build order kwargs for adapter and tracker
         order_kwargs = {}
@@ -1215,6 +1229,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     'broker_ref': None,
                 },
             )
+            self._check_order_history_limit()
             self._order_history.append(result)
             return result
 
@@ -1270,6 +1285,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 'broker_ref': None,
             },
         )
+        self._check_order_history_limit()
         self._order_history.append(result)
         return result
 
@@ -1722,6 +1738,28 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     def has_pipeline_orders(self) -> bool:
         """Check if any orders are in the broker tracker (MARKET orders in transit)."""
         return self._request_processor.has_pending_orders()
+
+    def get_supported_order_types(self) -> FrozenSet[OrderType]:
+        """
+        MARKET and LIMIT — the two types the live path has built end to end.
+
+        STOP and STOP_LIMIT are not here on purpose: the Kraken payload builder maps every
+        non-MARKET type to 'limit', so opening this set before that builder knows the type
+        would put a STOP_LIMIT on the wire as a plain LIMIT at its limit price. #164 / #209.
+
+        Returns:
+            The live executor's routable types
+        """
+        return frozenset({OrderType.MARKET, OrderType.LIMIT})
+
+    def get_pipeline_orders(self) -> List[PendingOrder]:
+        """
+        The request processor's unconfirmed orders — in transit, not yet resting or filled.
+
+        Returns:
+            The processor's PendingOrders
+        """
+        return self._request_processor.get_pending_orders()
 
     def is_pending_close(self, position_id: str) -> bool:
         """Check if a specific position has a pending close order."""
