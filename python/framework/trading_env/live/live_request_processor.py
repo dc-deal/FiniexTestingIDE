@@ -74,6 +74,7 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrderTiming,
 )
 from python.framework.types.trading_env_types.order_types import (
+    RESTING_ORDER_TYPES,
     OrderDirection,
     OrderResult,
     OrderType,
@@ -140,16 +141,16 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # Registered by LiveTradeExecutor in its __init__ via
         # set_executor_hooks(). All hooks run on the main thread.
         # MARKET responses are dispatched inside the processor (fill_open
-        # / fill_close / rejection hooks). LIMIT responses are forwarded
-        # to limit_response_hook so the executor can update its
-        # _active_limit_orders list (Hybrid pattern — shared storage).
+        # / fill_close / rejection hooks). RESTING responses are forwarded
+        # to resting_response_hook so the executor can update its
+        # _active_limit_orders / _active_stop_orders (Hybrid pattern — shared storage).
         # #318 — modify/cancel/position-modify responses forwarded to
         # their respective hooks since the target order/position lives in
         # the executor's _active_*_orders / portfolio (Hybrid pattern).
         self._fill_open_hook: Optional[Callable[[PendingOrder, float], None]] = None
         self._fill_close_hook: Optional[Callable[[PendingOrder, float], None]] = None
         self._rejection_hook: Optional[Callable[[OrderDirection, OrderResult], None]] = None
-        self._limit_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
+        self._resting_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
         self._modify_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
         self._cancel_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
         self._position_modify_response_hook: Optional[Callable[[str, 'BrokerResponse'], None]] = None
@@ -189,9 +190,16 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             symbol: Trading symbol
             direction: LONG or SHORT
             lots: Order size
-            order_type: MARKET or LIMIT
+            order_type: MARKET, LIMIT, STOP or STOP_LIMIT
             adapter: Live-capable adapter (must implement Tier-3 layers)
-            **kwargs: price (LIMIT), stop_loss, take_profit, comment, expected_price
+            **kwargs: the WIRE-side names, which are not the strategy-facing ones —
+                `limit_price` (LIMIT and STOP_LIMIT) and `stop_price` (STOP and
+                STOP_LIMIT), where an `OpenOrderRequest` calls the first one `price`.
+                `open_order` performs that translation; a caller reaching this method
+                directly does it itself. Plus stop_loss, take_profit, comment,
+                expected_price. A wrong name here used to be invisible — the payload
+                builder omitted the field and the venue refused the order naming its OWN
+                parameter; it now raises (#500)
 
         Returns:
             BrokerResponse from the adapter (REJECTED on transport error)
@@ -602,7 +610,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         fill_open: Callable[[PendingOrder, float], None],
         fill_close: Callable[[PendingOrder, float], None],
         on_rejection: Callable[[OrderDirection, OrderResult], None],
-        limit_response: Optional[Callable[[str, BrokerResponse], None]] = None,
+        resting_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         modify_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         cancel_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         position_modify_response: Optional[Callable[[str, BrokerResponse], None]] = None,
@@ -625,10 +633,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             on_rejection: _record_async_rejection(direction, OrderResult) —
                           handles MARKET broker-side rejection (counter,
                           history, listener notification)
-            limit_response: Optional — _handle_limit_submit_response(order_id,
-                            broker_response). Invoked for LIMIT submit
-                            responses so the executor can update its
-                            _active_limit_orders list (Hybrid pattern).
+            resting_response: Optional — _handle_resting_submit_response(order_id,
+                            broker_response). Invoked for LIMIT / STOP / STOP_LIMIT
+                            submit responses so the executor can update its
+                            _active_limit_orders / _active_stop_orders (Hybrid pattern).
             modify_response: Optional (#318) — _handle_modify_response(order_id,
                             broker_response). Invoked for EditResponse so the
                             executor can apply the modification to the target
@@ -656,7 +664,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._fill_open_hook = fill_open
         self._fill_close_hook = fill_close
         self._rejection_hook = on_rejection
-        self._limit_response_hook = limit_response
+        self._resting_response_hook = resting_response
         self._modify_response_hook = modify_response
         self._cancel_response_hook = cancel_response
         self._position_modify_response_hook = position_modify_response
@@ -833,7 +841,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             payload = job.adapter._build_modify_payload(
                 broker_ref=job.broker_ref,
                 symbol=job.symbol,
+                order_type=job.order_type,
                 new_price=job.new_price,
+                new_limit_price=job.new_limit_price,
                 new_stop_loss=job.new_stop_loss,
                 new_take_profit=job.new_take_profit,
             )
@@ -1037,9 +1047,13 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         Main-thread handler for a SubmitResponse from the worker.
 
-        LIMIT responses are delegated to the executor via limit_response_hook
-        because LIMIT pendings live in AbstractTradeExecutor._active_limit_orders
-        (shared sim/live storage per Hybrid pattern), not in the processor.
+        RESTING responses (LIMIT, STOP, STOP_LIMIT) are delegated to the executor via
+        resting_response_hook because those pendings live in the executor's
+        _active_limit_orders / _active_stop_orders (shared sim/live storage per Hybrid
+        pattern), not in the processor. Routing only LIMIT here left a STOP's broker_ref
+        unconfirmed forever: it fell through to the MARKET branch, found nothing in
+        _pending_orders, and logged an unknown-order warning while the pending rested with
+        broker_ref=None — which blocks has_pending_orders() for the rest of the session.
 
         MARKET responses are dispatched inside the processor with three branches:
           REJECTED → remove local pending + invoke rejection hook
@@ -1049,14 +1063,14 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Args:
             item: The SubmitResponse delivered via _http_inbox
         """
-        # LIMIT path: executor owns the storage in _active_limit_orders
-        if item.order_type == OrderType.LIMIT:
-            if self._limit_response_hook is not None:
-                self._limit_response_hook(item.order_id, item.broker_response)
+        # RESTING path: executor owns the storage in _active_limit_orders / _active_stop_orders
+        if item.order_type in RESTING_ORDER_TYPES:
+            if self._resting_response_hook is not None:
+                self._resting_response_hook(item.order_id, item.broker_response)
             else:
                 self.logger.warning(
-                    f'drain_inbox: LIMIT SubmitResponse for {item.order_id} '
-                    f'but no limit_response_hook registered'
+                    f'drain_inbox: {item.order_type.value} SubmitResponse for '
+                    f'{item.order_id} but no resting_response_hook registered'
                 )
             return
 
@@ -1237,7 +1251,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         For LIMIT orders, the caller (LiveTradeExecutor) must instead append
         a PendingOrder to its _active_limit_orders list (broker_ref=None).
         drain_inbox routes the LIMIT response to the executor's
-        _limit_response_hook for that storage to be updated.
+        _resting_response_hook for that storage to be updated.
 
         Args:
             order_id: Internal order identifier
@@ -1315,10 +1329,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         order_id: str,
         broker_ref: str,
         symbol: str,
+        order_type: OrderType,
         new_price: Optional[float],
         new_stop_loss: Optional[float],
         new_take_profit: Optional[float],
         adapter: AbstractAdapter,
+        new_limit_price: Optional[float] = None,
     ) -> None:
         """
         Enqueue an EditJob for the worker thread.
@@ -1339,14 +1355,18 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             broker_ref: Current broker ref (some brokers return a NEW ref;
                         the hook handles update_broker_ref)
             symbol: Trading symbol (required by some adapters on modify)
+            order_type: The type being amended — decides what new_price means at the venue
             new_price, new_stop_loss, new_take_profit: New values (None = no change)
             adapter: Live-capable adapter
+            new_limit_price: New limit price of a STOP_LIMIT (None = no change)
         """
         self._http_outbox.put(EditJob(
             order_id=order_id,
             broker_ref=broker_ref,
             symbol=symbol,
+            order_type=order_type,
             new_price=new_price,
+            new_limit_price=new_limit_price,
             new_stop_loss=new_stop_loss,
             new_take_profit=new_take_profit,
             adapter=adapter,
@@ -1473,10 +1493,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self,
         broker_ref: str,
         symbol: str,
+        order_type: OrderType,
         new_price: Optional[float],
         new_stop_loss: Optional[float],
         new_take_profit: Optional[float],
         adapter: AbstractAdapter,
+        new_limit_price: Optional[float] = None,
     ) -> BrokerResponse:
         """
         Synchronously modify an order via the adapter's Tier-3 layers.
@@ -1492,10 +1514,13 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Args:
             broker_ref: Current broker order reference
             symbol: Trading symbol (some brokers require it on modify)
-            new_price: New limit price (None=no change)
+            order_type: The type being amended — decides what new_price means
+            new_price: New limit price, or the new TRIGGER of a triggered type
+                (None=no change)
             new_stop_loss: New stop loss (None=no change)
             new_take_profit: New take profit (None=no change)
             adapter: Live-capable adapter
+            new_limit_price: New limit price of a STOP_LIMIT (None=no change)
 
         Returns:
             BrokerResponse (REJECTED on transport error, PENDING with new
@@ -1505,7 +1530,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         payload = adapter._build_modify_payload(
             broker_ref=broker_ref,
             symbol=symbol,
+            order_type=order_type,
             new_price=new_price,
+            new_limit_price=new_limit_price,
             new_stop_loss=new_stop_loss,
             new_take_profit=new_take_profit,
         )

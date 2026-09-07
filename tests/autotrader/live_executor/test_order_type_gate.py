@@ -73,10 +73,27 @@ def _sim_with(adapter: MockBrokerAdapter) -> TradeSimulator:
 class TestWhatEachPipelineDeclares:
     """The two sets are the contract; everything else reads them."""
 
-    def test_the_live_path_carries_market_and_limit_only(self):
+    def test_the_live_path_carries_the_four_types_it_has_built(self):
         executor = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL).create_executor()
 
-        assert executor.get_supported_order_types() == {OrderType.MARKET, OrderType.LIMIT}
+        assert executor.get_supported_order_types() == {
+            OrderType.MARKET, OrderType.LIMIT, OrderType.STOP, OrderType.STOP_LIMIT}
+
+    def test_neither_pipeline_declares_a_type_it_cannot_place(self):
+        """
+        TRAILING_STOP and ICEBERG stay out of BOTH sets.
+
+        Kraken declares both as venue capabilities, and this is the assertion that keeps a
+        venue declaration from leaking into a pipeline one — the confusion #500 found in
+        the other direction.
+        """
+        executor = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL).create_executor()
+        sim = _sim_with(MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL))
+
+        for declared in (executor.get_supported_order_types(), sim.get_supported_order_types()):
+            assert OrderType.TRAILING_STOP not in declared
+            assert OrderType.ICEBERG not in declared
+            assert OrderType.UNKNOWN not in declared
 
     def test_the_simulation_carries_the_resting_types_too(self):
         sim = _sim_with(MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL))
@@ -127,13 +144,19 @@ class TestTheSubmissionGateReadsTheSameSet:
     """The gate in open_order() and the pre-flight cannot disagree — they read one set."""
 
     def test_the_live_path_rejects_what_it_does_not_declare(self):
+        """
+        ICEBERG, fully formed. It was STOP_LIMIT until the live path learned that type.
+
+        The order carries a price, so a rejection cannot come from the price gate — the
+        only thing that can refuse it is the declared set.
+        """
         mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
         executor = mock.create_executor()
         mock.feed_tick(executor, symbol='BTCUSD', bid=49999.0, ask=50001.0)
 
         result = executor.open_order(OpenOrderRequest(
-            symbol='BTCUSD', order_type=OrderType.STOP_LIMIT,
-            direction=OrderDirection.LONG, lots=0.01, price=49000.0, stop_price=49500.0))
+            symbol='BTCUSD', order_type=OrderType.ICEBERG,
+            direction=OrderDirection.LONG, lots=0.01, price=49000.0))
 
         assert result.status == OrderStatus.REJECTED
         assert result.rejection_reason == RejectionReason.ORDER_TYPE_NOT_SUPPORTED
@@ -142,29 +165,51 @@ class TestTheSubmissionGateReadsTheSameSet:
         """
         The consistency property: a declared type is never rejected as unsupported.
 
-        Checked on the live path for its two types — a MARKET and a LIMIT must not come back
-        ORDER_TYPE_NOT_SUPPORTED, whatever else happens to them.
+        Every declared type must not come back ORDER_TYPE_NOT_SUPPORTED, whatever else
+        happens to it.
+
+        Each type is supplied with the prices ITS shape needs. That is not convenience: with
+        `price=None` for everything, a STOP is refused as INVALID_PRICE and the assertion
+        below still holds — so the test would pass while proving nothing about the types it
+        was widened to cover. The assertion is also strengthened to ACCEPTANCE, because
+        "rejected for some other reason" was the loophole.
         """
+        prices = {
+            OrderType.MARKET: {},
+            OrderType.LIMIT: {'price': 49000.0},
+            OrderType.STOP: {'stop_price': 51000.0},
+            OrderType.STOP_LIMIT: {'stop_price': 51000.0, 'price': 51100.0},
+        }
         mock = MockOrderExecution(mode=MockExecutionMode.INSTANT_FILL)
         executor = mock.create_executor()
         mock.feed_tick(executor, symbol='BTCUSD', bid=49999.0, ask=50001.0)
 
         for order_type in executor.get_supported_order_types():
+            assert order_type in prices, (
+                f'{order_type.value} was added to the declared set without telling this '
+                f'test which prices it needs — see the docstring')
             result = executor.open_order(OpenOrderRequest(
                 symbol='BTCUSD', order_type=order_type, direction=OrderDirection.LONG,
-                lots=0.01, price=49000.0 if order_type == OrderType.LIMIT else None))
-            assert result.rejection_reason != RejectionReason.ORDER_TYPE_NOT_SUPPORTED, (
-                f'{order_type.value} is declared but the gate rejected it')
+                lots=0.01, **prices[order_type]))
+            assert result.status != OrderStatus.REJECTED, (
+                f'{order_type.value} is declared but was rejected: '
+                f'{result.rejection_reason}')
 
 
 class TestTheWireRefusesWhatItCannotMap:
     """
-    The second line behind the gate: the Kraken payload builder maps MARKET and LIMIT only.
+    The second line behind the gate: the Kraken payload builder maps only what it knows.
 
     It used to fall through to 'limit' for anything else — so had the executor's gate ever
     let a STOP_LIMIT through, it would have gone to the venue as a plain LIMIT at its limit
     price. Now it raises, which is what makes widening the gate safe to attempt at all: the
     wire cannot receive a type the builder has not been taught.
+
+    The unmapped type asserted here MOVES as the builder learns types. It was STOP_LIMIT
+    until #500 taught the builder the two stop types; ICEBERG is the next one Kraken offers
+    and this project has not built, so it is the honest stand-in. If ICEBERG is ever routed,
+    point this at the type that is then still unmapped rather than deleting the test — the
+    refusal is the contract, not the type.
 
     Exercised through the processor's public submit path, offline: the builder runs BEFORE any
     network call, so an adapter that was never enabled for live is enough.
@@ -185,10 +230,11 @@ class TestTheWireRefusesWhatItCannotMap:
         with pytest.raises(ValueError) as refused:
             processor.submit_open_order(
                 symbol='BTCUSD', direction=OrderDirection.LONG, lots=0.01,
-                order_type=OrderType.STOP_LIMIT, adapter=self._kraken_offline(),
-                price=49000.0, stop_price=49500.0)
+                order_type=OrderType.ICEBERG, adapter=self._kraken_offline(),
+                price=49000.0)
 
         message = str(refused.value)
-        assert 'stop_limit' in message
+        assert 'iceberg' in message
         # It names what IS mapped, so the reader knows the boundary rather than guessing it.
         assert 'MARKET' in message and 'LIMIT' in message
+        assert 'STOP' in message and 'STOP_LIMIT' in message

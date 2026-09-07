@@ -133,7 +133,7 @@ class TestKrakenAdapterOrderLifecycle:
             lots=0.1,
             order_type=OrderType.LIMIT,
             adapter=live_adapter,
-            price=100.0,
+            limit_price=100.0,
         )
         assert response.status == BrokerOrderStatus.PENDING
         assert response.broker_ref.startswith('DRYRUN-'), (
@@ -148,7 +148,7 @@ class TestKrakenAdapterOrderLifecycle:
             lots=0.1,
             order_type=OrderType.LIMIT,
             adapter=live_adapter,
-            price=100.0,
+            limit_price=100.0,
             stop_loss=50.0,
             take_profit=200.0,
         )
@@ -172,7 +172,7 @@ class TestKrakenAdapterOrderLifecycle:
             lots=0.1,
             order_type=OrderType.LIMIT,
             adapter=live_adapter,
-            price=100.0,
+            limit_price=100.0,
         )
 
         assert response.raw_response is not None, (
@@ -183,22 +183,59 @@ class TestKrakenAdapterOrderLifecycle:
         )
         assert response.raw_response['descr'].get('order'), 'Expected an order description'
 
+    def test_a_standalone_stop_reaches_the_venue(self, live_adapter, processor):
+        """
+        Kraken's own words for a stop order we placed — the mapping, proven at the venue.
+
+        Costs nothing: `validate=true` has Kraken parse and describe the order without
+        creating it. It is the only way to see whether our `price` / `price2` assignment
+        means to Kraken what the documentation says it means, and the assertion is on the
+        venue's rendering rather than on our payload (the offline suite pins that half).
+
+        Deliberately loose on the wording. Kraken's AddOrder response carries only a
+        rendered `descr.order` string and no `ordertype` key, and the exact phrasing is
+        theirs to change — so this asserts that the description names a stop and carries
+        both numbers, not that it matches a format we guessed.
+        """
+        response = processor.submit_open_order(
+            symbol='ETHUSD',
+            direction=OrderDirection.LONG,
+            lots=0.1,
+            order_type=OrderType.STOP_LIMIT,
+            adapter=live_adapter,
+            stop_price=100.0,
+            limit_price=99.0,
+        )
+
+        described = (response.raw_response or {}).get('descr', {}).get('order', '')
+        assert 'stop loss' in described.lower(), (
+            f'Kraken did not describe this as a stop order: {described!r}'
+        )
+        assert '100' in described and '99' in described, (
+            f'Both the trigger and the limit must appear in the venue description, '
+            f'got: {described!r}'
+        )
+
     @pytest.mark.xfail(
         strict=True,
-        reason='The venue-side attach is not built. Our own process now enforces a '
-               'declared level (#500), so a live stop is no longer enforced by nobody — '
-               'but it still does not reach Kraken, so it cannot survive our process '
-               'dying. Attaching it is the conditional-close work, tracked separately. '
-               'Strict, so this flips loudly the moment the payload carries a level.')
+        raises=AssertionError,
+        reason='A level DECLARED on an order still does not reach Kraken. Since #500 our '
+               'own process enforces it, so it is no longer enforced by nobody, and the '
+               'live path can now place a standalone STOP / STOP_LIMIT — but turning a '
+               'declared stop_loss into such an order is the remaining work, and it needs '
+               'the decision about which half of a declared pair may rest at the venue. '
+               'Strict + raises=AssertionError, so it flips loudly the moment the payload '
+               'carries a level and does NOT swallow a credentials or transport fault.')
     def test_a_declared_stop_loss_reaches_the_venue(self, live_adapter, processor):
         """
-        The crossing question: does a level the strategy declared ever reach Kraken?
+        The crossing question: does a level the strategy DECLARED ever reach Kraken?
 
-        Asserted against the VENUE's own words rather than our payload — Kraken's `descr`
-        carries a `close` field describing the conditional close it understood, e.g.
-        `close position @ stop loss 22000.0`. Absent means the level never left this
-        process: our own tick check enforces it while we are running and connected, and
-        nothing protects the position once we are not.
+        Asserted against the venue's own words rather than our payload. A stop_loss
+        declared beside a LIMIT entry has to show up in Kraken's description of the order
+        — as a conditional close, or as the separate protective order the framework would
+        place for it. Absent means the level never left this process: our own tick check
+        enforces it while we are running and connected, and nothing protects the position
+        once we are not.
         """
         response = processor.submit_open_order(
             symbol='ETHUSD',
@@ -206,14 +243,15 @@ class TestKrakenAdapterOrderLifecycle:
             lots=0.1,
             order_type=OrderType.LIMIT,
             adapter=live_adapter,
-            price=100.0,
+            limit_price=100.0,
             stop_loss=50.0,
         )
 
         descr = (response.raw_response or {}).get('descr', {})
-        assert descr.get('close'), (
-            'The declared stop_loss reached neither the venue nor a local check. '
-            f'Kraken described only: {descr.get("order")!r}'
+        described = f"{descr.get('order', '')} {descr.get('close', '')}"
+        assert 'stop' in described.lower(), (
+            'The declared stop_loss never reached the venue — only this process enforces '
+            f'it. Kraken described: {descr.get("order")!r}'
         )
 
     def test_invalid_symbol_rejected(self, live_adapter, processor):

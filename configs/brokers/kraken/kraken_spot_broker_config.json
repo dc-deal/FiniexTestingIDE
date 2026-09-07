@@ -23,13 +23,7 @@
   },
   "trading_permissions": {
     "trade_allowed": true,
-    "limit_orders": 1000,
-    "order_types": {
-      "market": true,
-      "limit": true,
-      "stop": true,
-      "stop_limit": true
-    }
+    "limit_orders": 1000
   },
   "symbols": {
     "DOTUSD": {

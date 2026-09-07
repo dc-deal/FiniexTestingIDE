@@ -88,7 +88,7 @@ AutotraderTickLoop.run()
         ├── 1. executor.on_tick(tick)                # AbstractTradeExecutor (sets clock from tick)
         │       ├── Update prices (bid/ask)
         │       ├── _process_pending_orders()         # LiveRequestProcessor: poll broker for fills
-        │       └── _check_sl_tp_triggers(tick)       # Live: broker handles SL/TP server-side (no-op)
+        │       └── _check_sl_tp_triggers(tick)       # Live: runs too (#500) — closes via close_position()
         │
         ├── 2. render_bars_for_tick(tick, ...)        # SHARED CORE (#303)
         │
@@ -115,7 +115,7 @@ AutotraderTickLoop.run()
 
 **Key characteristics:**
 - Ticks arrive in real-time via WebSocket, buffered through a thread-safe queue
-- SL/TP handled server-side by broker (MT5, Kraken) — `_check_sl_tp_triggers` is a no-op in live mode
+- SL/TP is enforced by THIS process, not by the broker (#500) — `_check_sl_tp_triggers` runs in live too, and `get_protective_level_enforcement()` names who holds the level. No adapter carries a level to the venue on a submit, so the answer is `LOCAL` everywhere today
 - Pending orders resolved by broker polling today (#320 cadence); WebSocket push is the V1.4 primary (#331)
 - Fills on the fast path reach the algo immediately via the #348 Decision Event Channel — drained each tick AND during idle heartbeats
 - The Reconciler (#151) runs as a separate trust layer (ALERT_ONLY) — it verifies broker truth, it does not learn fills
@@ -150,7 +150,7 @@ monitor, step 5 `execute_decision` with its per-runner error handling, the
 | **Loop type** | `for tick in ticks` | `while running` / event-driven |
 | **Runner** | `execute_tick_loop()` | `AutotraderTickLoop.run()` |
 | **Pending orders** | OrderLatencySimulator (ms-timestamp, seeded delay) | LiveRequestProcessor → broker polling |
-| **SL/TP check** | `_check_sl_tp_triggers()` local price check | Broker server-side (no local check) |
+| **SL/TP check** | `_check_sl_tp_triggers()` local price check | The same check (#500) — but the close is asynchronous, so the exit lands at the broker's next price instead of at the level |
 | **Fill detection** | Tick timestamp `collected_msc` >= `broker_fill_msc` | Broker response via polling (#320); WebSocket push primary in V1.4 (#331) |
 | **Fill price** | Current tick bid/ask at fill time | Broker's actual execution price |
 | **Latency model** | Seeded random (deterministic, reproducible) | Real network latency |

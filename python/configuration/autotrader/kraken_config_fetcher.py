@@ -429,15 +429,12 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
                 'taker_fee': 0.40,
                 'fee_currency': 'quote',
             },
+            # No 'order_types' here: an adapter's get_order_capabilities() is the one
+            # declaration of what a venue accepts, and a second list in the fetched config
+            # was read by nobody while disagreeing with it (#500).
             'trading_permissions': {
                 'trade_allowed': True,
                 'limit_orders': 1000,
-                'order_types': {
-                    'market': True,
-                    'limit': True,
-                    'stop': True,
-                    'stop_limit': True,
-                },
             },
             'symbols': {
                 symbol: symbol_config,

@@ -65,6 +65,23 @@ _LIMIT_FAMILY = frozenset({
     PhaseType.MULTI_CANCEL,
 })
 
+# Stop-family phases require broker STOP support — auto-skipped without it. Separate from
+# the limit family on purpose: a venue or a pipeline can carry one and not the other, and
+# for most of this project's life the live path carried limits and refused stops (#500).
+_STOP_FAMILY = frozenset({
+    PhaseType.STOP_CANCEL,
+})
+
+# Which order type each submit action places. A dict rather than a chain of conditionals,
+# so a new submit kind fails with a KeyError at its first use instead of silently becoming
+# whatever the final `else` happens to be — the shape that let a STOP go on the wire as a
+# priceless LIMIT (#500).
+_SUBMIT_KIND_TO_TYPE = {
+    PhaseActionKind.SUBMIT_MARKET: OrderType.MARKET,
+    PhaseActionKind.SUBMIT_LIMIT: OrderType.LIMIT,
+    PhaseActionKind.SUBMIT_STOP: OrderType.STOP,
+}
+
 
 class LiveFieldStudy(AbstractDecisionLogic):
     """
@@ -180,18 +197,15 @@ class LiveFieldStudy(AbstractDecisionLogic):
         # limit phase — so a limit-free sequence (e.g. the mock dress-rehearsal) can run
         # against a MARKET-only adapter.
         types = [OrderType.MARKET]
-        limit_phase_types = {
-            PhaseType.LIMIT_OPEN, PhaseType.LIMIT_MODIFY, PhaseType.LIMIT_CANCEL,
-            PhaseType.MULTI_LIMIT, PhaseType.MULTI_CANCEL,
-        }
         for raw in decision_logic_config.get('phase_sequence', []):
             try:
                 phase_type = PhaseType(raw.get('phase_type'))
             except ValueError:
                 continue
-            if phase_type in limit_phase_types:
+            if phase_type in _LIMIT_FAMILY and OrderType.LIMIT not in types:
                 types.append(OrderType.LIMIT)
-                break
+            if phase_type in _STOP_FAMILY and OrderType.STOP not in types:
+                types.append(OrderType.STOP)
         return types
 
     def get_required_workers(self) -> Dict[str, WorkerRequirement]:
@@ -397,6 +411,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
             mid_price=mid,
             open_position_count=len(positions),
             active_limit_count=counts.get('active_limits', 0),
+            active_stop_count=counts.get('active_stops', 0),
             has_pending=self.trading_api.has_pipeline_orders(),
             filled_since_submit=self._filled_flag,
             rejected_since_submit=self._rejected_flag,
@@ -426,7 +441,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
 
         # Submits route through the standard BUY/SELL action so the safety circuit
         # breaker can suppress them (it overrides BUY/SELL → FLAT when blocked).
-        if action.kind in (PhaseActionKind.SUBMIT_MARKET, PhaseActionKind.SUBMIT_LIMIT):
+        if action.kind in _SUBMIT_KIND_TO_TYPE:
             dl_action = (
                 DecisionLogicAction.BUY if action.side == PhaseSide.LONG
                 else DecisionLogicAction.SELL
@@ -454,7 +469,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
 
         action = self._pending_action
 
-        if action.kind in (PhaseActionKind.SUBMIT_MARKET, PhaseActionKind.SUBMIT_LIMIT):
+        if action.kind in _SUBMIT_KIND_TO_TYPE:
             # Respect a safety override: BUY/SELL turned to FLAT means the circuit
             # breaker blocked new entries — skip the submit (the machine times out).
             if decision.action not in (DecisionLogicAction.BUY, DecisionLogicAction.SELL):
@@ -495,10 +510,11 @@ class LiveFieldStudy(AbstractDecisionLogic):
 
     def _submit(self, action: PhaseAction) -> Optional[OrderResult]:
         side = OrderSide.BUY if action.side == PhaseSide.LONG else OrderSide.SELL
-        order_type = (
-            OrderType.MARKET if action.kind == PhaseActionKind.SUBMIT_MARKET
-            else OrderType.LIMIT
-        )
+        order_type = _SUBMIT_KIND_TO_TYPE[action.kind]
+        # A stop's price is its TRIGGER, and it travels in a different argument. Passing it
+        # as `price` would submit a stop with no trigger — refused by the executor's own
+        # price gate, which is the right answer but the wrong reason (#500).
+        is_stop = order_type == OrderType.STOP
         # Fresh await window before submitting — a stale event from a prior phase
         # must not leak into this phase's observation.
         self._reset_flags()
@@ -507,14 +523,16 @@ class LiveFieldStudy(AbstractDecisionLogic):
             order_type=order_type,
             side=side,
             lots=action.lots,
-            price=action.price,
+            price=None if is_stop else action.price,
+            stop_price=action.price if is_stop else None,
             comment=f'FieldStudy {action.phase_id}',
         )
         if result is not None and result.is_rejected:
             # Synchronous rejection (invalid lot, immediate broker reject) — the #348
             # channel only carries async outcomes, so surface it to the machine directly.
             self._rejected_flag = True
-        elif order_type == OrderType.LIMIT and result is not None and result.order_id:
+        elif order_type != OrderType.MARKET and result is not None and result.order_id:
+            # Every RESTING type needs its order id remembered — the phase cancels by id.
             self._phase_order_ids.append(result.order_id)
         # Submit trace — pins which order each phase actually placed (#13/#15 forensics).
         oid = result.order_id if result is not None else None
@@ -645,14 +663,20 @@ class LiveFieldStudy(AbstractDecisionLogic):
             return
 
         caps = self.trading_api.get_order_capabilities()
-        limit_supported = caps.supports_order_type(OrderType.LIMIT)
-        for phase in self._phases:
-            if phase.phase_type in _LIMIT_FAMILY and not limit_supported:
-                phase.enabled = False
-                self.logger.info(
-                    f"Field Study phase '{phase.phase_id}' auto-skipped "
-                    f"(broker lacks LIMIT support)"
-                )
+        unsupported = {
+            OrderType.LIMIT: _LIMIT_FAMILY,
+            OrderType.STOP: _STOP_FAMILY,
+        }
+        for order_type, family in unsupported.items():
+            if caps.supports_order_type(order_type):
+                continue
+            for phase in self._phases:
+                if phase.phase_type in family:
+                    phase.enabled = False
+                    self.logger.info(
+                        f"Field Study phase '{phase.phase_id}' auto-skipped "
+                        f'(broker lacks {order_type.value.upper()} support)'
+                    )
 
         self._machine = FieldStudyPhaseMachine(
             phases=self._phases,

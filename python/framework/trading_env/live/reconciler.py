@@ -405,16 +405,34 @@ class Reconciler:
         """
         Whether a broker_ref-matched order pair diverges on price or lots.
 
+        A conditional order carries TWO prices and both are compared (#500). Only the limit
+        price was, which left a moved TRIGGER undetectable — and the trigger is the half a
+        trailing stop changes, so the one price this layer could not see was the one most
+        likely to have been amended.
+
+        Each comparison is skipped where either side has no such price, because "absent"
+        and "different" are not the same fact: a plain stop has no limit price at all.
+
         Args:
             local: Local resting PendingOrder
             broker: Broker-reported BrokerOrder
 
         Returns:
-            True if the limit price or lots differ beyond tolerance
+            True if a price or the lots differ beyond tolerance
         """
-        local_price = (local.order_kwargs or {}).get('limit_price')
-        if local_price is not None and broker.price is not None and not self._within_tol(local_price, broker.price):
-            return True
+        kwargs = local.order_kwargs or {}
+        # One key per price in both pipelines since #500. This read `limit_price` while the
+        # live LIMIT path wrote `price`, so for a live limit order it found nothing and the
+        # comparison was inert on the one pipeline it exists for.
+        pairs = (
+            (kwargs.get('limit_price'), broker.price),
+            (kwargs.get('stop_price'), broker.stop_price),
+        )
+        for local_price, broker_price in pairs:
+            if local_price is None or broker_price is None:
+                continue
+            if not self._within_tol(local_price, broker_price):
+                return True
         if local.lots is not None and not self._within_tol(local.lots, broker.lots):
             return True
         return False

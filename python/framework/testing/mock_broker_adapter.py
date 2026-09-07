@@ -160,6 +160,10 @@ class MockBrokerAdapter(AbstractAdapter):
         self._order_counter = 0
         # Track pending orders for delayed_fill mode
         self._mock_pending: Dict[str, Dict[str, Any]] = {}
+        # Every broker_ref a cancel reached, in call order. A cancel is a VENUE action, and
+        # without a record of it a test can only observe that our own book forgot the order
+        # — which is exactly what a cleanup that never reached the venue also looks like.
+        self._cancelled_refs: List[str] = []
         # Configurable fill price offset (simulates slippage)
         self._slippage_points: float = 0.0
         # Last-seen tick per symbol (fed via on_tick) — used to fill
@@ -445,14 +449,18 @@ class MockBrokerAdapter(AbstractAdapter):
         self,
         broker_ref: str,
         symbol: str,
+        order_type: OrderType,
         new_price: Optional[float] = None,
+        new_limit_price: Optional[float] = None,
         new_stop_loss: Optional[float] = None,
         new_take_profit: Optional[float] = None,
     ) -> Dict[str, Any]:
         return {
             'broker_ref': broker_ref,
             'symbol': symbol,
+            'order_type': order_type,
             'new_price': new_price,
+            'new_limit_price': new_limit_price,
             'new_stop_loss': new_stop_loss,
             'new_take_profit': new_take_profit,
         }
@@ -561,6 +569,7 @@ class MockBrokerAdapter(AbstractAdapter):
         """
         broker_ref = payload['broker_ref']
         self._mock_pending.pop(broker_ref, None)
+        self._cancelled_refs.append(broker_ref)
         return {
             'status': 'CANCELLED',
             'broker_ref': broker_ref,
@@ -786,6 +795,15 @@ class MockBrokerAdapter(AbstractAdapter):
     # transport for a test double). Tests seed broker truth via the setters and
     # choose a MockDivergenceMode; the Reconciler reconciles this against the
     # local shadow state.
+
+    def get_cancelled_refs(self) -> List[str]:
+        """
+        Every broker_ref this mock was asked to cancel, in call order.
+
+        Returns:
+            The cancelled references (empty when nothing was cancelled)
+        """
+        return list(self._cancelled_refs)
 
     def set_broker_orders(self, orders: List[BrokerOrder]) -> None:
         """

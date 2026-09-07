@@ -727,9 +727,18 @@ What this does and does not buy:
 | The venue gaps past the level | partly — the exit is market-on-trigger, so it fills below a long's stop |
 
 Closing the second row means putting the level AT the venue, where it rests as an order of its own
-and outlives us. Kraken offers that as a conditional close (OTO). It is not built: the order it
-mints is one we never submitted, so cold start, the reconciler, the session-end policy and the
-committed-funds accounting each need an answer for it first.
+and outlives us. Kraken offers two ways and only one of them is worth having. Its *conditional
+close* (OTO) attaches an exit to a submit — but it can only be set WITH the primary order, can
+never be adjusted, and therefore cannot protect an inventory already held or a position adopted at
+cold start, which are the two states an unattended month is in most of the time. A **standalone
+stop order** has none of those limits, and Kraken Spot accepts one: since #500 the live path routes
+`STOP` and `STOP_LIMIT`, so a strategy can place its own protective order at the venue.
+
+What is still not built is the framework doing it FOR a declared `stop_loss`. A level declared on an
+order remains ours to watch; turning it into an order of its own is the larger change, and it needs
+one decision first — the pair cannot both rest at Kraken. There is no OCO and no bracket, and a cash
+account reserves the whole holding for each resting exit, so the second is refused. The stop is the
+half worth placing: it bounds the loss, while a lost target costs an opportunity.
 
 `get_protective_level_enforcement()` on the executor is the single place that answers who holds a
 level, and every open position in the run report carries the answer beside its levels — an

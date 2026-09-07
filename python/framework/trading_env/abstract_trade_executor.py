@@ -75,6 +75,7 @@ from python.framework.types.trading_env_types.latency_simulator_types import (
 )
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
+    RESTING_ORDER_TYPES,
     CloseType,
     FillType,
     ModificationResult,
@@ -192,13 +193,13 @@ class AbstractTradeExecutor(ABC):
         self._active_limit_orders: List[PendingOrder] = []
 
         # Active stop orders waiting for trigger price (post-pipeline)
-        # NOTE (#492 / #209): the LIVE cleanup does not touch this list — it cancels and
-        # expires `_active_limit_orders` only. Harmless today, because the live executor
-        # refuses STOP and STOP_LIMIT outright (see the feature gate in
-        # `live_trade_executor.open_order`), so nothing can ever rest here in live. It stops
-        # being harmless the moment a stop-capable adapter is wired (MT5, #209) or Kraken's
-        # StopLimit is opened up: a resting stop would then stay at the venue with no
-        # decision behind it. Whoever lifts that gate extends `finish_remaining_orders`.
+        # The LIVE session-end cleanup covers this list since #500. It used to read
+        # `_active_limit_orders` alone, on the grounds that the live submit gate refused STOP
+        # and STOP_LIMIT so nothing could rest here — which was true of the SUBMIT path and
+        # false of the situation: boot adoption files a venue-reported stop straight into it.
+        # A resting stop left at the venue with no decision behind it is a naked order, and
+        # Kraken says so itself: a stop-loss-limit is not linked to a position and has to be
+        # cancelled by hand once the position is gone.
         self._active_stop_orders: List[PendingOrder] = []
 
         # Executor mode — subclasses override (LiveTradeExecutor → LIVE)
@@ -442,7 +443,7 @@ class AbstractTradeExecutor(ABC):
         return
 
     # ============================================
-    # SL/TP Trigger Detection (per-tick, simulation only)
+    # SL/TP Trigger Detection (per-tick, BOTH pipelines since #500)
     # ============================================
 
     def get_protective_level_enforcement(self) -> ProtectiveLevelEnforcement:
@@ -673,6 +674,77 @@ class AbstractTradeExecutor(ABC):
         request.take_profit = self._round_price(request.take_profit, digits)
         return request
 
+    def _reject_if_resting_prices_invalid(
+        self,
+        request: OpenOrderRequest,
+        order_id: str
+    ) -> Optional[OrderResult]:
+        """
+        Refuse a resting order that carries no usable price. Both pipelines (#500).
+
+        A LIMIT needs a positive limit price, a STOP a positive trigger, a STOP_LIMIT both.
+        The rule lived twice — inline in the simulation's own submit, and not at all in
+        live, where `order_guard` does not know the field either, so a missing trigger
+        reached the payload builder and the venue's answer was the first thing to notice it.
+        One method on the shared base is what both executors call now.
+
+        It is NOT in `framework/validators/` on purpose: every unit there validates a run,
+        a scenario or a startup once, while this runs per ORDER on the submit path. The
+        rejection plumbing (counter, history, OrderResult) is executor state anyway, so
+        splitting the predicate away from it would put one rule in two files.
+
+        NOT checked here: whether a trigger sits on the correct side of the market. A
+        trigger already passed means "enter now", and that is what BOTH pipelines do with
+        it — the simulation fills such an order immediately at market on the same pass, and
+        Kraken executes it immediately as a market order rather than refusing it. Refusing
+        it locally would be the only place in the system that behaves differently.
+
+        Args:
+            request: The incoming order
+            order_id: The id the rejection is recorded under
+
+        Returns:
+            An INVALID_PRICE rejection, or None when the prices are usable
+        """
+        if request.order_type not in RESTING_ORDER_TYPES:
+            return None
+
+        type_label = request.order_type.value
+        needs_trigger = request.order_type in (OrderType.STOP, OrderType.STOP_LIMIT)
+        needs_limit = request.order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT)
+
+        if needs_trigger and (request.stop_price is None or request.stop_price <= 0):
+            return self._record_price_rejection(
+                order_id,
+                f'{type_label} order requires a positive stop_price, '
+                f'got: {request.stop_price}')
+        if needs_limit and (request.price is None or request.price <= 0):
+            return self._record_price_rejection(
+                order_id,
+                f'{type_label} order requires a positive limit price, got: {request.price}')
+        return None
+
+    def _record_price_rejection(self, order_id: str, message: str) -> OrderResult:
+        """
+        Count, record and return an INVALID_PRICE rejection.
+
+        Args:
+            order_id: The id the rejection is recorded under
+            message: What was wrong with the price
+
+        Returns:
+            The rejection result, already appended to the order history
+        """
+        self._orders_rejected += 1
+        result = create_rejection_result(
+            order_id=order_id,
+            reason=RejectionReason.INVALID_PRICE,
+            message=message,
+        )
+        self._check_order_history_limit()
+        self._order_history.append(result)
+        return result
+
     def _reject_if_funds_committed(
         self,
         request: OpenOrderRequest,
@@ -794,7 +866,14 @@ class AbstractTradeExecutor(ABC):
         tick_value = self._calculate_tick_value(
             symbol_spec, self._current_tick.mid)
 
-        # Create entry fee based on broker fee model
+        # Create entry fee based on broker fee model.
+        # Derived from the ENTRY TYPE, which is an approximation with a known bias: a
+        # limit-class order that crossed the book on arrival is a TAKER at a real venue,
+        # and both LIMIT_IMMEDIATE and an immediately-triggered STOP_LIMIT are exactly that
+        # — booked here as makers. `fill_type` can already tell the two apart, so the fix is
+        # reachable; it is not made here because it moves backtest P&L and belongs with the
+        # cost-realism work (#244 / #327). LIVE runs are unaffected either way: their
+        # BrokerTrades carry the venue's own `maker` flag (#326).
         is_maker = entry_type in (EntryType.LIMIT, EntryType.STOP_LIMIT)
         entry_fee = self._create_entry_fee(
             symbol_spec=symbol_spec,
@@ -1395,6 +1474,10 @@ class AbstractTradeExecutor(ABC):
         fee_cost = 0.0
         if self._current_tick is not None:
             tick_value = self._calculate_tick_value(symbol_spec, self._current_tick.mid)
+            # An estimate for a RESERVATION, not a booked fee — the same approximation as
+            # the entry fee above, and here its bias is in the safe direction: a maker fee
+            # is the lower one, so a taker fill reserves slightly less than it spends,
+            # bounded by the fee difference on one order.
             is_maker = order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT)
             fee_cost = self._create_entry_fee(
                 symbol_spec=symbol_spec, lots=lots, entry_price=price,
@@ -1530,12 +1613,18 @@ class AbstractTradeExecutor(ABC):
         The order types THIS executor can actually carry — distinct from what the venue offers.
 
         An adapter declares what the VENUE accepts (`get_order_capabilities`); this declares
-        what the pipeline has IMPLEMENTED for it. The two disagree today: Kraken declares
-        STOP_LIMIT, the live path carries only MARKET and LIMIT. The pre-flight gate in
-        `DecisionTradingApi` checks a strategy's needs against the INTERSECTION, so a logic
-        that declares STOP_LIMIT on live is refused at startup instead of having every order
+        what the pipeline has IMPLEMENTED for it. The two are allowed to disagree, and the
+        disagreement is the point: Kraken declares ICEBERG, no pipeline places one. The
+        pre-flight gate in `DecisionTradingApi` checks a strategy's needs against the
+        INTERSECTION, so such a logic is refused at startup instead of having every order
         rejected at 03:14. The gate in `open_order()` reads the same set, so the two cannot
         drift apart.
+
+        Widening a set is the LAST step of routing a type, never the first — every layer
+        between the strategy and the wire has to carry it already. Measured on the live path
+        before #500: `open_order` hardcoded `OrderType.LIMIT` on its non-MARKET branch, so a
+        STOP would have gone out as a priceless limit and the payload builder's own refusal
+        could never have fired.
 
         Returns:
             The types `open_order()` will route rather than reject

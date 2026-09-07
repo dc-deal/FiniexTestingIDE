@@ -427,6 +427,12 @@ class TradeSimulator(AbstractTradeExecutor):
         if funds_rejection:
             return funds_rejection
 
+        # A resting type needs its price(s). Shared with live on the base since #500 — the
+        # rule used to be written out per branch below, and live had no version of it at all.
+        price_rejection = self._reject_if_resting_prices_invalid(request, order_id)
+        if price_rejection:
+            return price_rejection
+
         # Execute based on order type
         if request.order_type == OrderType.MARKET:
             # Submit to latency simulator (fill happens later)
@@ -448,18 +454,6 @@ class TradeSimulator(AbstractTradeExecutor):
                 }
             )
         elif request.order_type == OrderType.LIMIT:
-            # Validate limit price
-            if request.price is None or request.price <= 0:
-                self._orders_rejected += 1
-                result = create_rejection_result(
-                    order_id=order_id,
-                    reason=RejectionReason.INVALID_PRICE,
-                    message=f'Limit order requires positive price, got: {request.price}'
-                )
-                self._check_order_history_limit()
-                self._order_history.append(result)
-                return result
-
             # Submit to latency simulator with limit price
             self.latency_simulator.submit_open_order(
                 order_id=order_id,
@@ -480,18 +474,6 @@ class TradeSimulator(AbstractTradeExecutor):
                 }
             )
         elif request.order_type == OrderType.STOP:
-            # Validate stop price
-            if request.stop_price is None or request.stop_price <= 0:
-                self._orders_rejected += 1
-                result = create_rejection_result(
-                    order_id=order_id,
-                    reason=RejectionReason.INVALID_PRICE,
-                    message=f'Stop order requires positive stop_price, got: {request.stop_price}'
-                )
-                self._check_order_history_limit()
-                self._order_history.append(result)
-                return result
-
             # Submit to latency simulator (stop_price as entry_price for trigger check)
             self.latency_simulator.submit_open_order(
                 order_id=order_id,
@@ -511,28 +493,6 @@ class TradeSimulator(AbstractTradeExecutor):
                 }
             )
         elif request.order_type == OrderType.STOP_LIMIT:
-            # Validate both prices
-            if request.stop_price is None or request.stop_price <= 0:
-                self._orders_rejected += 1
-                result = create_rejection_result(
-                    order_id=order_id,
-                    reason=RejectionReason.INVALID_PRICE,
-                    message=f'Stop-Limit order requires positive stop_price, got: {request.stop_price}'
-                )
-                self._check_order_history_limit()
-                self._order_history.append(result)
-                return result
-            if request.price is None or request.price <= 0:
-                self._orders_rejected += 1
-                result = create_rejection_result(
-                    order_id=order_id,
-                    reason=RejectionReason.INVALID_PRICE,
-                    message=f'Stop-Limit order requires positive limit price, got: {request.price}'
-                )
-                self._check_order_history_limit()
-                self._order_history.append(result)
-                return result
-
             # Submit to latency simulator (stop_price as entry_price, limit_price in kwargs)
             self.latency_simulator.submit_open_order(
                 order_id=order_id,

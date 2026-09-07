@@ -195,6 +195,76 @@ class TestOrdersAxis:
         assert not expired, f'an order left at the venue was recorded as expired: {expired}'
 
 
+class TestAStopIsNotAnAfterthought:
+    """
+    The policy has to reach a resting STOP too, and until #500 it reached nothing.
+
+    Phase 1 was written for `_active_limit_orders` alone AND its guard read that list's
+    truthiness in BOTH branches — so a session holding only stops ran neither: nothing
+    cancelled at the venue, nothing expired locally, not even a log line. It was documented
+    as harmless because the live submit gate refused STOP, which was true of the SUBMIT
+    path and false of the situation: boot adoption files a venue-reported stop into that
+    world by design.
+
+    Kraken states the consequence themselves — a `stop-loss-limit` is not linked to a
+    position and must be cancelled by hand once the position is gone. A stop left standing
+    after its position went out by another route is a naked order.
+    """
+
+    def _executor_with_resting_stop(self):
+        """
+        A live executor holding one resting STOP order and nothing else.
+
+        The empty limit list is the point of the fixture, not an accident: that is the
+        state in which the old guard did nothing at all.
+
+        Returns:
+            (mock, executor)
+        """
+        mock = MockOrderExecution(mode=MockExecutionMode.DELAYED_FILL)
+        executor = mock.create_executor()
+        mock.feed_tick(executor, bid=59999.0, ask=60001.0)
+        executor.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.STOP,
+            direction=OrderDirection.LONG, lots=0.01, stop_price=65000.0))
+        mock.await_submit_confirmation(executor)
+
+        counts = executor.get_active_order_counts()
+        assert counts['active_stops'] == 1, f'fixture failed to place a stop: {counts}'
+        assert counts['active_limits'] == 0, 'the empty limit list IS the fixture'
+        return mock, executor
+
+    def test_cancel_reaches_the_venue_and_expires_it_locally(self):
+        """
+        Both halves, and the venue half is the one that used to be missing silently.
+
+        Read from the mock's own cancellation record rather than from our book: a cleanup
+        that only forgot the order locally looks identical from our side.
+        """
+        mock, executor = self._executor_with_resting_stop()
+        resting = executor.get_active_orders()[0]
+
+        executor.finish_remaining_orders(cancel_orders=True)
+
+        cancelled = executor.broker.adapter.get_cancelled_refs()
+        assert resting.broker_ref in cancelled, (
+            f'the stop was not cancelled at the venue — refs seen: {cancelled}')
+        expired = [o for o in executor.get_order_history()
+                   if getattr(o.status, 'value', o.status) == 'expired']
+        assert expired, 'a cancelled resting stop must leave an EXPIRED record'
+
+    def test_leave_keeps_it_in_both_places(self):
+        mock, executor = self._executor_with_resting_stop()
+
+        executor.finish_remaining_orders(cancel_orders=False)
+
+        assert not executor.broker.adapter.get_cancelled_refs(), (
+            'a stop left standing by policy must not be cancelled at the venue')
+        expired = [o for o in executor.get_order_history()
+                   if getattr(o.status, 'value', o.status) == 'expired']
+        assert not expired, f'a stop left at the venue was recorded as expired: {expired}'
+
+
 class TestTheEmergencyIsNotFoldedIn:
     """
     #492 gives the emergency mode no behaviour, and that boundary is worth pinning.

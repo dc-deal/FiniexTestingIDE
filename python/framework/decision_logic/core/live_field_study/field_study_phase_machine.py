@@ -78,6 +78,7 @@ class FieldStudyPhaseMachine:
             PhaseType.LIMIT_OPEN: self._handle_limit_open,
             PhaseType.LIMIT_MODIFY: self._handle_limit_modify,
             PhaseType.LIMIT_CANCEL: self._handle_limit_cancel,
+            PhaseType.STOP_CANCEL: self._handle_stop_cancel,
             PhaseType.MULTI_LIMIT: self._handle_multi_limit,
             PhaseType.MULTI_CANCEL: self._handle_multi_cancel,
             PhaseType.PARTIAL_CLOSE: self._handle_partial_close,
@@ -192,6 +193,28 @@ class FieldStudyPhaseMachine:
     def _lots(self, phase: FieldStudyPhase) -> float:
         """Resolve the order size for a phase (phase override or default)."""
         return phase.lots if phase.lots is not None else self._default_lot
+
+    def _stop_price(self, phase: FieldStudyPhase, mid: float, offset: float) -> float:
+        """
+        Resting-stop trigger: ABOVE market for LONG (buy stop), below for SHORT.
+
+        The mirror of _limit_price, and the mirroring is the point — a stop is a breakout
+        entry, so the side that makes a limit rest is the side that would make a stop fire
+        immediately. Kraken does not refuse a mis-sided trigger, it executes it as a market
+        order (and our simulation does the same), so getting this backwards would turn a
+        resting-order phase into an unintended real fill.
+
+        Args:
+            phase: The phase (side)
+            mid: Current mid price
+            offset: Fractional distance from market
+
+        Returns:
+            Trigger price
+        """
+        if phase.side == PhaseSide.SHORT:
+            return mid * (1.0 - offset)
+        return mid * (1.0 + offset)
 
     def _limit_price(self, phase: FieldStudyPhase, mid: float, offset: float) -> float:
         """
@@ -354,6 +377,57 @@ class FieldStudyPhaseMachine:
 
         # POST_CLOSE_WAIT
         if ctx.active_limit_count == 0 and ctx.open_position_count == 0:
+            return self._finish(phase, PhaseOutcome.PASS, 'cancelled, no position', ctx.now)
+        if self._timed_out(phase, ctx):
+            return self._finish(phase, PhaseOutcome.FAIL, 'cancel not confirmed', ctx.now)
+        return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
+
+    def _handle_stop_cancel(self, phase: FieldStudyPhase, ctx: PhaseContext) -> PhaseAction:
+        """
+        Place a resting STOP at the venue, confirm it rests, cancel it (#500).
+
+        The stop mirror of _handle_limit_cancel, and it is the phase that puts the live stop
+        path under real money: the payload's trigger mapping (Kraken's `price` carries the
+        trigger, not a limit), the submit-response route that confirms the broker reference,
+        the poll loop reading the stop world, and the cancel path that has to find the order
+        in that world rather than among the limits. None of it can be proven by a mock, and
+        a fill is not needed to prove it — an accepted, resting, then cancelled stop
+        exercises every one of those and costs no fee at all.
+
+        Args:
+            phase: The phase being driven
+            ctx: This tick's observation
+
+        Returns:
+            The action to perform
+        """
+        if self._state == PhaseState.PENDING:
+            self._state = PhaseState.AWAIT_FILL
+            price = self._stop_price(phase, ctx.mid_price, self._cur_offset)
+            return self._act(ctx, PhaseAction(
+                PhaseActionKind.SUBMIT_STOP, phase.phase_id,
+                side=phase.side, lots=self._lots(phase), price=price,
+                reason='stop rest (to cancel)',
+            ))
+
+        if self._state == PhaseState.AWAIT_FILL:
+            if ctx.filled_since_submit or ctx.open_position_count > 0:
+                # A resting stop that fills is a mis-sided trigger, not bad luck: the
+                # offset put it on the wrong side of the market and the venue took it.
+                return self._finish(phase, PhaseOutcome.FAIL, 'filled before cancel', ctx.now)
+            if ctx.rejected_since_submit:
+                return self._finish(phase, PhaseOutcome.FAIL, 'venue refused the stop', ctx.now)
+            if ctx.active_stop_count >= 1:
+                self._state = PhaseState.POST_CLOSE_WAIT
+                return self._act(ctx, PhaseAction(
+                    PhaseActionKind.CANCEL, phase.phase_id,
+                    reason='cancel resting stop'))
+            if self._timed_out(phase, ctx):
+                return self._finish(phase, PhaseOutcome.FAIL, 'never rested', ctx.now)
+            return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
+
+        # POST_CLOSE_WAIT
+        if ctx.active_stop_count == 0 and ctx.open_position_count == 0:
             return self._finish(phase, PhaseOutcome.PASS, 'cancelled, no position', ctx.now)
         if self._timed_out(phase, ctx):
             return self._finish(phase, PhaseOutcome.FAIL, 'cancel not confirmed', ctx.now)

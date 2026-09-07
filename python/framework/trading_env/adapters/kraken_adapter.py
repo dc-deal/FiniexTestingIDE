@@ -23,7 +23,7 @@ import urllib.parse
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import requests
 
@@ -84,6 +84,11 @@ class KrakenAdapter(AbstractAdapter):
     }
 
     # Kraken descr.ordertype → OrderType (broker truth-pull, #151)
+    # The take-profit pair maps onto STOP because this project has no inverted-trigger type;
+    # both are "wait for a price, then act". The trailing pair collapses onto TRAILING_STOP
+    # for the same reason — a read at this granularity says "a trailing stop", which is true,
+    # and nothing routable accepts the type anyway. `settle-position` is deliberately absent:
+    # it is a margin instrument and cannot occur on a spot account.
     _ORDERTYPE_MAP: Dict[str, OrderType] = {
         'market': OrderType.MARKET,
         'limit': OrderType.LIMIT,
@@ -91,7 +96,19 @@ class KrakenAdapter(AbstractAdapter):
         'stop-loss-limit': OrderType.STOP_LIMIT,
         'take-profit': OrderType.STOP,
         'take-profit-limit': OrderType.STOP_LIMIT,
+        'trailing-stop': OrderType.TRAILING_STOP,
+        'trailing-stop-limit': OrderType.TRAILING_STOP,
+        'iceberg': OrderType.ICEBERG,
     }
+
+    # Types whose `descr.price` is a TRIGGER rather than a limit price, and whose
+    # `descr.price2` carries the limit where they have one.
+    _TRIGGER_PRICED_ORDERTYPES = frozenset({
+        'stop-loss', 'stop-loss-limit', 'take-profit', 'take-profit-limit',
+    })
+    # Types whose price fields are RELATIVE offsets to the last traded price, not prices.
+    # Reading either as an absolute number produces a plausible-looking wrong level.
+    _OFFSET_PRICED_ORDERTYPES = frozenset({'trailing-stop', 'trailing-stop-limit'})
 
     # Sentinel key marking a raw response as a dry-run handoff. The
     # _do_request_* layer tags the raw dict; _parse_*_response detects
@@ -182,17 +199,29 @@ class KrakenAdapter(AbstractAdapter):
 
     def get_order_capabilities(self) -> OrderCapabilities:
         """
-        Get Kraken order capabilities.
+        Get Kraken order capabilities — what the VENUE offers, not what we route.
 
-        Kraken supports:
+        Kraken Spot supports:
         - Common: Market, Limit
-        - Extended: StopLimit, Iceberg
-        - NOT supported: Pure Stop orders (Kraken uses StopLimit)
+        - Extended: Stop, StopLimit, Iceberg
+        - NOT supported: trailing stops through this adapter (Kraken offers
+          `trailing-stop` on spot, but nothing here builds or triggers one)
+
+        `stop_orders` said False until #500, with the reason "Kraken uses StopLimit
+        instead" — which is not true: Kraken offers a plain `stop-loss` that triggers to
+        market, and this adapter's own READ side has always mapped it to OrderType.STOP.
+        The write half denied what the read half accepted. Declaring the venue truthfully
+        is separate from declaring what the pipeline has built: the pre-flight intersects
+        this with the executor's own set and names whichever side is short.
+
+        `iceberg_orders` stays True for the same reason — AddOrder carries `iceberg` and
+        `displayvol` — even though no executor branch places one. That is the pipeline
+        being short, and the intersection already says so.
         """
         return OrderCapabilities(
             market_orders=True,
             limit_orders=True,
-            stop_orders=False,  # Kraken uses StopLimit instead
+            stop_orders=True,
             stop_limit_orders=True,
             trailing_stop=False,
             iceberg_orders=True,
@@ -590,28 +619,37 @@ class KrakenAdapter(AbstractAdapter):
             symbol: Trading symbol (e.g., 'BTCUSD')
             direction: LONG or SHORT
             lots: Order size
-            order_type: MARKET or LIMIT
-            **kwargs: price (required for LIMIT), client_order_id (#473)
+            order_type: MARKET, LIMIT, STOP or STOP_LIMIT
+            **kwargs: limit_price (LIMIT and STOP_LIMIT), stop_price (STOP/STOP_LIMIT
+                trigger), client_order_id (#473)
 
         Returns:
             Kraken-formatted POST data dict
         """
         pair = self._resolve_kraken_pair(symbol)
         kraken_type = 'buy' if direction == OrderDirection.LONG else 'sell'
-        # Only the two types this builder knows are mapped. Anything else used to fall through
+        # Only the types this builder knows are mapped. Anything else used to fall through
         # to 'limit' silently — so a STOP_LIMIT, had the executor's gate ever let one through,
         # would have gone on the wire as a plain LIMIT at its limit price. Refusing here is the
-        # second line behind that gate, and it is what makes widening the gate safe to attempt:
-        # the wire cannot receive a type the builder has not been taught.
+        # second line behind the executor's own gate: the wire cannot receive a type the
+        # builder has not been taught.
+        #
+        # STOP maps to Kraken's `stop-loss` rather than `take-profit`: this project's STOP is
+        # a breakout entry (buy above the market, sell below), which is exactly how Kraken
+        # defines stop-loss. `take-profit` is the inverted side and has no type here.
         if order_type == OrderType.MARKET:
             kraken_ordertype = 'market'
         elif order_type == OrderType.LIMIT:
             kraken_ordertype = 'limit'
+        elif order_type == OrderType.STOP:
+            kraken_ordertype = 'stop-loss'
+        elif order_type == OrderType.STOP_LIMIT:
+            kraken_ordertype = 'stop-loss-limit'
         else:
             raise ValueError(
                 f'KrakenAdapter cannot build an AddOrder payload for {order_type.value}: '
-                f'only MARKET and LIMIT are mapped to a Kraken ordertype. A resting type needs '
-                f'its own mapping (stop-loss-limit …) before the executor may route it.'
+                f'MARKET, LIMIT, STOP and STOP_LIMIT are mapped to a Kraken ordertype. '
+                f'Another type needs its own mapping before the executor may route it.'
             )
 
         data: Dict[str, str] = {
@@ -621,11 +659,28 @@ class KrakenAdapter(AbstractAdapter):
             'volume': str(lots),
         }
 
-        # Limit orders require a price
+        # Kraken's two price fields, and their meaning depends on the ordertype:
+        #   limit             price = limit
+        #   stop-loss         price = TRIGGER
+        #   stop-loss-limit   price = TRIGGER, price2 = limit
+        # There is no `stopprice` request parameter — that name exists only in Kraken's
+        # RESPONSES (OpenOrders / QueryOrders), and sending it would be silently ignored.
+        # A resting type with no price is OUR defect, and it must not be posted. Kraken
+        # answers `EGeneral:Invalid arguments:price`, which costs a round trip and reads
+        # like a venue problem — while the real cause is a caller that named the key
+        # something else. The executor's own gate refuses this first; this is the second
+        # line behind it, for the same reason the unmapped-type branch raises.
         if order_type == OrderType.LIMIT:
-            price = kwargs.get('price')
-            if price is not None:
-                data['price'] = str(price)
+            self._require_price(data, 'price', kwargs.get('limit_price'),
+                                order_type, 'limit_price')
+        elif order_type == OrderType.STOP:
+            self._require_price(data, 'price', kwargs.get('stop_price'),
+                                order_type, 'stop_price')
+        elif order_type == OrderType.STOP_LIMIT:
+            self._require_price(data, 'price', kwargs.get('stop_price'),
+                                order_type, 'stop_price')
+            self._require_price(data, 'price2', kwargs.get('limit_price'),
+                                order_type, 'limit_price')
 
         # #473 — a key we chose ourselves, so a submit whose answer was lost can still be
         # ASKED about: the txid is exactly what did not arrive. Kraken accepts free-format
@@ -635,6 +690,70 @@ class KrakenAdapter(AbstractAdapter):
             data['cl_ord_id'] = str(client_order_id)[:_CL_ORD_ID_MAX_LEN]
 
         return data
+
+    @classmethod
+    def _require_price(
+        cls,
+        data: Dict[str, str],
+        key: str,
+        value: Optional[float],
+        order_type: OrderType,
+        kwarg_name: str,
+    ) -> None:
+        """
+        Write a price field a resting type cannot go on the wire without. Pure.
+
+        `_put_price` treats None as "omit the field", which is right for an optional price.
+        For a resting type the price is not optional, and omitting it silently produced an
+        order the venue refused for a reason that named its own parameter rather than our
+        missing kwarg. Measured 2026-09-07 against the live API: renaming the LIMIT kwarg
+        left a caller passing the old name, and the only symptom was
+        `EGeneral:Invalid arguments:price` from Kraken.
+
+        Args:
+            data: The payload being built, mutated in place
+            key: The Kraken field to write
+            value: The price, or None — which is the error
+            order_type: The type being built, for the message
+            kwarg_name: The kwarg this price was expected under, for the message
+
+        Returns:
+            None
+        """
+        if value is None:
+            raise ValueError(
+                f'KrakenAdapter cannot build an AddOrder payload for '
+                f'{order_type.value}: no {kwarg_name} was passed, so Kraken\'s "{key}" '
+                f'field would be missing. The venue would refuse this naming its own '
+                f'parameter, which hides that the caller used a different kwarg name.'
+            )
+        cls._put_price(data, key, value)
+
+    @staticmethod
+    def _put_price(data: Dict[str, str], key: str, value: Optional[float]) -> None:
+        """
+        Write a price field, refusing anything Kraken would read as an offset. Pure.
+
+        Kraken's `price` and `price2` accept a leading `+`, `-` or `#`, and a trailing `%`,
+        to mean an amount RELATIVE to the last traded price. So `str(-1.5)` is not an error
+        the venue reports back — it is a valid order 1.5 below the last trade, at a price
+        nobody chose. A non-positive number can only be a defect on our side, and it has to
+        fail here rather than execute there.
+
+        Args:
+            data: The payload being built, mutated in place
+            key: 'price' or 'price2'
+            value: The absolute price to send, or None to omit the field
+        """
+        if value is None:
+            return
+        if value <= 0:
+            raise ValueError(
+                f'KrakenAdapter refuses to send {key}={value!r}: Kraken reads a signed or '
+                f'percentage-suffixed price as an offset from the last traded price, so a '
+                f'non-positive value would place a valid order at an unintended price.'
+            )
+        data[key] = str(value)
 
     def _build_query_payload(self, broker_ref: str) -> Dict[str, str]:
         """
@@ -668,7 +787,9 @@ class KrakenAdapter(AbstractAdapter):
         self,
         broker_ref: str,
         symbol: str,
+        order_type: OrderType,
         new_price: Optional[float] = None,
+        new_limit_price: Optional[float] = None,
         new_stop_loss: Optional[float] = None,
         new_take_profit: Optional[float] = None,
     ) -> Dict[str, str]:
@@ -681,10 +802,19 @@ class KrakenAdapter(AbstractAdapter):
         does not modify SL/TP — those kwargs are accepted for interface
         symmetry and silently ignored here.
 
+        AmendOrder has TWO price fields and they are not interchangeable:
+        `trigger_price` activates a triggered type, `limit_price` is what it fills at.
+        Everything used to go into `limit_price`, so amending a resting stop's trigger
+        would have moved its limit instead — and a STOP_LIMIT's limit amend never left
+        the process at all (#500).
+
         Args:
             broker_ref: Current Kraken txid (the order to amend)
             symbol: Trading symbol — unused (AmendOrder targets by txid)
-            new_price: New limit price (None=no change)
+            order_type: The type being amended — decides which field new_price goes to
+            new_price: New limit price, or the new TRIGGER of a triggered type
+                (None=no change)
+            new_limit_price: New limit price of a STOP_LIMIT (None=no change)
             new_stop_loss: Ignored — Kraken AmendOrder does not modify SL
             new_take_profit: Ignored — Kraken AmendOrder does not modify TP
 
@@ -692,8 +822,11 @@ class KrakenAdapter(AbstractAdapter):
             POST data dict
         """
         data: Dict[str, str] = {'txid': broker_ref}
-        if new_price is not None:
-            data['limit_price'] = str(new_price)
+        if order_type in (OrderType.STOP, OrderType.STOP_LIMIT):
+            self._put_price(data, 'trigger_price', new_price)
+            self._put_price(data, 'limit_price', new_limit_price)
+        else:
+            self._put_price(data, 'limit_price', new_price)
         return data
 
     def _build_trades_query_payload(self, broker_ref: str) -> Dict[str, str]:
@@ -1034,11 +1167,7 @@ class KrakenAdapter(AbstractAdapter):
         trades_raw: Dict[str, Any] = raw.get('trades_raw', {}) or {}
         out: List[BrokerTrade] = []
         for trade_id, trade_data in trades_raw.items():
-            ordertype = str(trade_data.get('ordertype', ''))
-            is_maker = (
-                ordertype.startswith('limit')
-                or ordertype in ('take-profit-limit', 'stop-loss-limit')
-            )
+            is_maker = self._maker_from_trade(trade_data)
             # Kraken returns 'buy'/'sell' natively — direct mapping to OrderSide.
             side = (
                 OrderSide.BUY
@@ -1150,11 +1279,48 @@ class KrakenAdapter(AbstractAdapter):
             return {self._DRY_RUN_SENTINEL: 'openpositions'}
         return self._fetch_private('/0/private/OpenPositions', payload)
 
+    @staticmethod
+    def _maker_from_trade(trade_data: Dict[str, Any]) -> bool:
+        """
+        Whether a fill provided liquidity — the VENUE's answer where it gives one. Pure.
+
+        Kraken's QueryTrades carries a `maker` boolean per fill. It used to be ignored in
+        favour of inferring from the ordertype, which is wrong in a way that cannot be seen
+        from our side: a `stop-loss-limit` whose limit crosses the book the moment it
+        triggers is a TAKER, and every one of them was booked as a maker. Our own synthetic
+        fee derives maker-ness the same way, so a fee-drift audit (#327) compared a wrong
+        estimate against a wrongly-parsed truth and saw agreement.
+
+        The ordertype inference stays as the fallback for a payload that carries no flag —
+        a limit-class order rests more often than not, so it is the better guess, but it
+        IS a guess and the venue's own field wins.
+
+        Args:
+            trade_data: One Kraken trade record
+
+        Returns:
+            True when the fill provided liquidity
+        """
+        declared = trade_data.get('maker')
+        if isinstance(declared, bool):
+            return declared
+
+        ordertype = str(trade_data.get('ordertype', ''))
+        return (
+            ordertype.startswith('limit')
+            or ordertype in ('take-profit-limit', 'stop-loss-limit')
+        )
+
     def _parse_openorders_response(self, raw: Dict[str, Any]) -> List[BrokerOrder]:
         """
         Parse Kraken OpenOrders response into List[BrokerOrder]. Pure.
 
         Kraken shape: {'open': {txid: {status, descr:{pair,type,ordertype,price}, vol, ...}}}.
+
+        An ordertype this adapter cannot name becomes OrderType.UNKNOWN rather than LIMIT.
+        The row is still returned — the venue reported it, and the exclusive-account check
+        (#489) asks whether a stranger is working our symbol, so dropping it would hide the
+        one order most worth seeing.
 
         Args:
             raw: Raw Kraken result dict (output of _do_request_openorders)
@@ -1169,26 +1335,64 @@ class KrakenAdapter(AbstractAdapter):
         for txid, info in (raw.get('open', {}) or {}).items():
             descr = info.get('descr', {}) or {}
             kraken_type = descr.get('type', 'buy')
-            kraken_ordertype = descr.get('ordertype', 'limit')
+            # A MISSING ordertype used to default to 'limit', which is the same lie as the
+            # unknown-type fallback and harder to notice — there is nothing to name in the
+            # report either.
+            kraken_ordertype = descr.get('ordertype') or ''
             status = self._STATUS_MAP.get(info.get('status', 'open'), BrokerOrderStatus.PENDING)
-            price = float(descr.get('price', 0.0) or 0.0) or None
+            price, stop_price = self._prices_from_descr(kraken_ordertype, descr)
             out.append(BrokerOrder(
                 broker_ref=txid,
                 symbol=self._resolve_symbol_from_pair(descr.get('pair', '')),
                 direction=OrderDirection.LONG if kraken_type == 'buy' else OrderDirection.SHORT,
-                order_type=self._ORDERTYPE_MAP.get(kraken_ordertype, OrderType.LIMIT),
+                order_type=self._ORDERTYPE_MAP.get(kraken_ordertype, OrderType.UNKNOWN),
                 lots=float(info.get('vol', 0.0)),
                 # `vol` is the ORIGINAL size; `vol_exec` is what already executed. Adoption
                 # needs both, or it rebuilds a half-filled order at full size (#355).
                 filled_lots=float(info.get('vol_exec', 0.0) or 0.0),
                 status=status,
                 price=price,
+                stop_price=stop_price,
                 # #473 — read our own key back. Without it a resting order we placed and a
                 # resting order somebody else placed are the same unknown row.
                 client_order_id=info.get('cl_ord_id') or None,
                 raw=info,
             ))
         return out
+
+    @classmethod
+    def _prices_from_descr(
+        cls, kraken_ordertype: str, descr: Dict[str, Any]
+    ) -> Tuple[Optional[float], Optional[float]]:
+        """
+        Split Kraken's two price fields into a limit price and a trigger price. Pure.
+
+        Kraken reports both in one family and their meaning depends on the ordertype:
+        `descr.price` is the limit price of a `limit` order but the TRIGGER of every
+        stop / take-profit type, and `descr.price2` is the limit price of the `-limit`
+        variants. A trailing type reports OFFSETS in the same fields, so neither is a
+        price at all and both are left unread — a trailing offset taken for a level is
+        wrong by the whole distance to the market and looks entirely plausible.
+
+        Args:
+            kraken_ordertype: Raw `descr.ordertype` string as the venue reported it
+            descr: The raw `descr` block
+
+        Returns:
+            (limit price or None, trigger price or None)
+        """
+        if kraken_ordertype in cls._OFFSET_PRICED_ORDERTYPES:
+            return None, None
+
+        primary = float(descr.get('price', 0.0) or 0.0) or None
+        secondary = float(descr.get('price2', 0.0) or 0.0) or None
+
+        if kraken_ordertype in cls._TRIGGER_PRICED_ORDERTYPES:
+            return secondary, primary
+        if kraken_ordertype in cls._ORDERTYPE_MAP:
+            return primary, None
+        # An ordertype we cannot name: the fields exist but their meaning does not.
+        return None, None
 
     def _parse_balance_response(self, raw: Dict[str, Any]) -> Dict[str, float]:
         """

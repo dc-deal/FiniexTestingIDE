@@ -324,6 +324,37 @@ The gatekeeper. DecisionLogic interacts *only* through this API. It provides:
 - Pending order awareness (`has_pending_orders`, `has_pipeline_orders`, `is_pending_close`)
 - Executor-agnostic: works identically with TradeSimulator and LiveTradeExecutor
 
+#### Which order types are allowed: TWO declarations, one intersection
+
+An order type is routable only when both sides say so, and the two sides answer different
+questions:
+
+| Declaration | Asked of | Answers |
+|---|---|---|
+| `adapter.get_order_capabilities()` | the ADAPTER | what the **venue** accepts |
+| `executor.get_supported_order_types()` | the EXECUTOR | what **this pipeline has built** for its path |
+
+`DecisionTradingApi` checks a strategy's declared needs against the **intersection** at startup, and
+`open_order()`'s own gate reads the executor's set — the same value, so the pre-flight and the
+submission gate cannot drift apart. When a type is refused, the message names which side is short,
+because "the venue does not offer it" and "we have not built it" call for opposite responses.
+
+Two rules follow, and both were learned by getting them wrong:
+
+- **An adapter declares the VENUE, never its own progress.** Kraken's `stop_orders` said `False`
+  with the comment "Kraken uses StopLimit instead", which is not true — and the same adapter's read
+  side had always mapped Kraken's plain `stop-loss`. A capability wrongly denied is worse than a
+  gap: #491 certifies DECLARED paths, so a denied capability has no path to certify and the hole is
+  invisible from every side. Where the PIPELINE is the short side, say so in a comment beside a
+  `True`; the intersection already refuses the order.
+- **An executor declares what its whole path can carry, not what one layer knows.** Before #500 the
+  live set was `{MARKET, LIMIT}` while Kraken declared STOP_LIMIT, so a strategy declaring
+  STOP_LIMIT passed pre-flight (which read only the adapter) and had every order rejected at
+  submission — a checked-in live profile sat in that state. Widening a set is the LAST step of
+  routing a type, never the first: `open_order` used to hardcode `OrderType.LIMIT` on the non-MARKET
+  path, so the payload builder's own refusal could not fire and a STOP would have gone out as a
+  priceless limit.
+
 #### OrderSide → OrderDirection Resolution
 
 Decision logics express intent using `OrderSide.BUY` / `OrderSide.SELL` — they describe *what the algo wants to do*, independent of market type. The executor resolves this to an internal `OrderDirection` via `resolve_order_side()`:
@@ -589,7 +620,7 @@ Limit orders follow a **two-phase lifecycle** in simulation. The order is first 
 
 ### Entry Types and Fees
 
-Each fill carries an `EntryType` (MARKET or LIMIT) that flows through to `TradeRecord.entry_type` for history/reporting. Limit fills use **maker fees** (lower cost for providing liquidity), market fills use **taker fees**. This distinction only matters for maker/taker fee models (e.g. Kraken). Spread-based brokers (MT5) are unaffected.
+Each fill carries an `EntryType` (MARKET, LIMIT, STOP or STOP_LIMIT) that flows through to `TradeRecord.entry_type` for history/reporting. Limit fills use **maker fees** (lower cost for providing liquidity), market fills use **taker fees**. This distinction only matters for maker/taker fee models (e.g. Kraken). Spread-based brokers (MT5) are unaffected.
 
 ### Live Mode
 
@@ -670,7 +701,7 @@ See [live_execution_architecture.md](live_execution_architecture.md): Reconcilia
 | **EntryType** | How a position was opened: MARKET or LIMIT — stored on TradeRecord for history |
 | **FillType** | How an order was filled: MARKET, LIMIT, or LIMIT_IMMEDIATE — stored in OrderResult.metadata |
 | **Active Limit Order** | A limit order waiting for price trigger — sits in `AbstractTradeExecutor._active_limit_orders`. Sim: passed latency, waiting for local trigger. Live: broker-accepted, tracked as shadow state, polled each tick |
-| **Active Stop Order** | A stop/stop-limit order waiting for trigger — sits in `AbstractTradeExecutor._active_stop_orders`. Currently sim-only (STOP not in live feature gate) |
+| **Active Stop Order** | A stop/stop-limit order waiting for trigger — sits in `AbstractTradeExecutor._active_stop_orders`. Both pipelines since #500: the simulation triggers it itself, live leaves the trigger to the venue and holds the entry as shadow state |
 | **Pipeline Orders** | Orders in the latency/submission pipeline (not yet broker-accepted). Queried via `has_pipeline_orders()` — excludes active limit/stop orders |
 | **ActiveOrderSnapshot** | Dataclass exposing order_id, type, symbol, direction, lots, prices for active limit/stop orders in stats |
 | **History Limits** | Configurable `deque(maxlen)` caps on order_history, trade_history, bar_history — set via `app_config.json` |

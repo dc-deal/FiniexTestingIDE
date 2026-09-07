@@ -44,6 +44,25 @@ it. A test that cannot tell a working stop from a decorative one is worse than n
 | `test_the_simulation_still_answers_local` | The sim's answer is unchanged |
 | `test_a_simulated_stop_fills_at_the_level_itself` | And so is its mechanism: AT the level, in-tick. This is the difference from live, pinned rather than smoothed over |
 | `test_a_strategy_partial_close_holds_the_stop_off_while_it_flies` | The guard matches ANY close in flight, so a partial close suppresses the level for one round trip. Conservative on purpose: a partial takes some lots and a stop takes all of them |
+| `test_a_real_adapter_still_answers_local` | Parametrised over the REAL Kraken and MT5 adapters built from the checked-in broker JSON. The two LOCAL assertions above run over the mock — the one adapter that can never trip — while 110 of 120 checked-in backtest scenarios declare `mt5`, so this is the case that would actually break |
+| `test_no_adapter_declares_a_venue_held_level_yet` | The precondition under the constant, asserted instead of assumed: no adapter declares `native_position_sl_tp`. It goes red the day one does, and then the RESOLVER is the thing to look at |
+
+### Why the resolver is still a constant
+
+`get_protective_level_enforcement()` returns `LOCAL` unconditionally, and #500 item 3 asks for it
+to ask the adapter instead. The only existing flag cannot answer the question. `native_position_sl_tp`
+means *who performs a MODIFY on an open position*, and on the two venues that exist the two answers
+point in opposite directions: #209 declares it `True` for MT5 while MT5's submit still attaches no
+level (so `VENUE` would be claimed with nobody holding it — this issue's original defect, one level
+up), and Kraken keeps it `False` by decision while a standalone stop order at the venue genuinely
+does hold one.
+
+What the resolver needs is a SUBMIT-side declaration, which nothing can make truthfully yet. So the
+constant stays and the two tests above are what fail when somebody wires it to the wrong field. One
+further thing is already known about the eventual answer: **one boolean per executor cannot describe
+a mixed run.** Kraken's conditional close carries only one of a declared pair, and a trailing stop
+migrates one position's level mid-life — so the enforcement site eventually belongs on the
+`Position`, stamped from the venue's own confirmation rather than from our declaration.
 
 ## The difference between the two pipelines is real
 
@@ -66,10 +85,14 @@ Both are narrow, both are real, and neither is a defect to be fixed by loosening
 
 ## What this suite does NOT cover
 
-A level enforced by this process does not survive this process. Putting it at the venue, where
-it rests as an order of its own, is the conditional-close work and is tracked separately — the
-release-gate test `test_a_declared_stop_loss_reaches_the_venue` is a strict `xfail` until then,
-so it flips loudly the moment the payload carries a level.
+A level enforced by this process does not survive this process. Putting it at the venue means the
+level becomes an ORDER — and since #500 the live path can place one: `STOP` and `STOP_LIMIT` route
+to Kraken, so a STRATEGY may rest its own protective order there. What is not built is the
+framework doing that for a declared `stop_loss`, and it needs one decision first: the pair cannot
+both rest at Kraken (no OCO, no brackets, and a cash account reserves the whole holding for each
+resting exit), so only one of the two can be venue-held. The release-gate test
+`test_a_declared_stop_loss_reaches_the_venue` remains a strict `xfail` until that lands, and it
+asserts the standalone route rather than the abandoned conditional close.
 
 ## Running it
 

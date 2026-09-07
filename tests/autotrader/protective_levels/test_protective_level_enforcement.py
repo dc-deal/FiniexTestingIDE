@@ -13,6 +13,7 @@ is real and must not be smoothed over — the simulation closes AT the level, in
 live closes at whatever the venue gives it a round trip later.
 """
 
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -20,6 +21,8 @@ import pytest
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
+from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
+from python.framework.trading_env.adapters.mt5_adapter import Mt5Adapter
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.market_types.market_data_types import TickData
@@ -91,6 +94,83 @@ class TestSomebodyEnforcesIt:
         _, live = _live_with_protected_long()
 
         assert live.get_protective_level_enforcement() == ProtectiveLevelEnforcement.LOCAL
+
+
+class TestTheAnswerIsPinnedForTheREALAdapters:
+    """
+    Both LOCAL assertions above run over MockBrokerAdapter — the one adapter that can
+    never trip. That matters: the resolver is a CONSTANT with no override anywhere, so the
+    only thing that can make it wrong is somebody wiring it to a capability, and the
+    obvious candidate is the wrong field.
+
+    `native_position_sl_tp` answers "who performs a MODIFY on an open position". It is not
+    "who HOLDS this level", and on the two venues that exist the two answers point in
+    opposite directions: #209 declares it True for MT5 while MT5's submit still attaches no
+    level (VENUE would be claimed with nobody holding it — this issue's original defect one
+    level up), and Kraken keeps it False by decision while a standalone stop order at the
+    venue genuinely does hold one. What the resolver needs is a submit-side declaration
+    (#500 calls it `native_order_attached_sl_tp`); nothing can declare it truthfully yet,
+    so the constant stays and this test is what fails when it changes.
+
+    Built from the REAL broker JSON, so it exercises the adapters a backtest actually runs
+    on — 110 of 120 checked-in scenario declarations are `mt5`, and the sim reads a real
+    Mt5Adapter object whose declarations it does not control.
+    """
+
+    _CONFIGS = (
+        ('kraken_spot', BrokerType.KRAKEN_SPOT,
+         'configs/brokers/kraken/kraken_spot_broker_config.json'),
+        ('mt5', BrokerType.MT5_FOREX, 'configs/brokers/mt5/mt5_broker_config.json'),
+    )
+
+    @pytest.mark.parametrize('name,broker_type,config_path', _CONFIGS)
+    def test_a_real_adapter_still_answers_local(self, name, broker_type, config_path):
+        """
+        Every adapter in the tree must answer LOCAL, and for a stated reason.
+
+        No submit path attaches a protective level to an order, on any adapter, so LOCAL is
+        not a default here — it is the only truthful answer available.
+        """
+        with open(config_path, encoding='utf-8') as handle:
+            config = json.load(handle)
+        adapter = (KrakenAdapter(config) if broker_type == BrokerType.KRAKEN_SPOT
+                   else Mt5Adapter(config))
+
+        simulator = TradeSimulator(
+            broker_config=BrokerConfig(broker_type, adapter),
+            initial_balance=10000.0,
+            account_currency='USD',
+            logger=GlobalLogger('ProtectiveLevelsRealAdapter'),
+            seeds={'inbound_latency_seed': 42},
+            inbound_latency_min_ms=0,
+            inbound_latency_max_ms=0,
+        )
+
+        assert simulator.get_protective_level_enforcement() == (
+            ProtectiveLevelEnforcement.LOCAL), (
+            f'{name} makes the simulation answer something other than LOCAL. If a '
+            f'capability was just wired into the resolver, check it is a SUBMIT-side one — '
+            f'native_position_sl_tp is about who performs a modify, and reading it here '
+            f'switches off simulated SL/TP enforcement for every mt5 backtest.')
+
+    def test_no_adapter_declares_a_venue_held_level_yet(self):
+        """
+        The precondition under the constant, asserted directly rather than assumed.
+
+        The day an adapter can carry a level to the venue on a submit, this goes red and
+        the resolver is the thing to fix — not this test.
+        """
+        for _, _, config_path in self._CONFIGS:
+            with open(config_path, encoding='utf-8') as handle:
+                config = json.load(handle)
+            adapter = (KrakenAdapter(config) if 'kraken' in config_path
+                       else Mt5Adapter(config))
+            caps = adapter.get_order_capabilities()
+
+            assert not caps.native_position_sl_tp, (
+                f'{config_path} declares native_position_sl_tp. That flag routes '
+                f'modify_position server-side; it does NOT mean the venue holds a level '
+                f'declared at submit. Read #500 item 3 before touching the resolver.')
 
 
 class TestTheLiveStopActs:

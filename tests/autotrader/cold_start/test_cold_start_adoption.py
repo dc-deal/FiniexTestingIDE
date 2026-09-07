@@ -132,6 +132,52 @@ class TestOnlyRestingOrdersAreAdopted:
         assert len(executor.get_active_orders()) == 1
 
 
+    def test_a_stop_order_is_adopted_into_the_stop_world(self, executor, store, logger):
+        """
+        A stop is not a limit, and filing it as one makes it unmanageable (#500).
+
+        Every adopted order used to land in `_active_limit_orders` regardless of type,
+        while the type filter here admits STOP and STOP_LIMIT on purpose. The consequences
+        were all silent: `cancel_stop_order` and `modify_stop_order` search the stop world
+        and would not find it, `modify_limit_order` WOULD and would amend its TRIGGER as a
+        limit price, and the session-end cleanup read only the limit list.
+        """
+        _remember_previous_session(store)
+        order = make_broker_order(
+            'OQ7X2A-STOP',
+            build_client_order_id(PREVIOUS_SESSION_KEY, 'pos_btcusd_47'))
+        order.order_type = OrderType.STOP
+        order.price = None
+        order.stop_price = 65000.0
+        executor.broker.adapter.set_broker_orders([order])
+
+        assert _adopter(executor, store, logger).run() is True
+
+        counts = executor.get_active_order_counts()
+        assert counts['active_stops'] == 1, f'adopted into the wrong world: {counts}'
+        assert counts['active_limits'] == 0
+        adopted = executor.get_active_orders()[0]
+        assert adopted.entry_price == 65000.0, (
+            'a resting stop is held at its TRIGGER, the same convention the simulation uses')
+
+    def test_a_stop_limit_carries_both_of_its_prices(self, executor, store, logger):
+        """The trigger rests, the limit rides along — and neither may take the other's slot."""
+        _remember_previous_session(store)
+        order = make_broker_order(
+            'OQ7X2A-STOPLIMIT',
+            build_client_order_id(PREVIOUS_SESSION_KEY, 'pos_btcusd_47'))
+        order.order_type = OrderType.STOP_LIMIT
+        order.stop_price = 65000.0
+        order.price = 65100.0
+        executor.broker.adapter.set_broker_orders([order])
+
+        assert _adopter(executor, store, logger).run() is True
+
+        adopted = executor.get_active_orders()[0]
+        assert adopted.entry_price == 65000.0, 'the trigger is what it rests on'
+        assert adopted.order_kwargs['limit_price'] == 65100.0
+
+
 class TestAdoptionStatesItsConsequence:
     """An adopted order blocks the usual algo gate, and the operator must be able to read that."""
 

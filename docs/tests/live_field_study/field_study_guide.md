@@ -82,12 +82,29 @@ Phases are config (`phase_sequence` in the profile) — the engine is generic. E
 | 11 | `limit_modify_test` | LIMIT + modify | LONG | AmendOrder in-place (txid stable), modify toward market | modified, filled | rests far, then modifies closer |
 | 12 | `limit_modify_close` | CLOSE_ALL | — | cleanup | flat | — |
 | 13 | `limit_cancel_test` | LIMIT + cancel | LONG | cancel before fill, no position created | cancelled | rests, then cancels |
-| 14 | `multi_concurrent_limits` | 3× LIMIT | LONG | per-order throttle + in-flight isolation | all resting | far from market — submitted one per tick |
-| 15 | `multi_cancel_all` | cancel all | — | multi-cancel correctness | all cancelled | — |
-| 16 | `partial_close_test` | MARKET → 50% → rest | LONG | partial-close path end-to-end live | half, then flat | multi-step; lots-polling detects the partial |
-| 17 | `idle_heartbeat_test` | IDLE | — | display pulse + heartbeat drain during a quiet period | pulse frame | no orders — wall-clock wait only |
-| 18 | `force_close_all` | force-close | — | kill-switch / safety cleanup | account flat | cancels resting + closes positions |
-| 19 | `final_summary` | session end | — | clean exit via `request_session_end` (#348) | session ends | no operator Ctrl+C needed |
+| 14 | `stop_cancel_test` | STOP + cancel | LONG | the live STOP path (#500) — trigger on the wire, resting in the STOP world, cancelled there | cancelled | rests ABOVE market; **a fill here fails** |
+| 15 | `multi_concurrent_limits` | 3× LIMIT | LONG | per-order throttle + in-flight isolation | all resting | far from market — submitted one per tick |
+| 16 | `multi_cancel_all` | cancel all | — | multi-cancel correctness | all cancelled | — |
+| 17 | `partial_close_test` | MARKET → 50% → rest | LONG | partial-close path end-to-end live | half, then flat | multi-step; lots-polling detects the partial |
+| 18 | `idle_heartbeat_test` | IDLE | — | display pulse + heartbeat drain during a quiet period | pulse frame | no orders — wall-clock wait only |
+| 19 | `force_close_all` | force-close | — | kill-switch / safety cleanup | account flat | cancels resting + closes positions |
+| 20 | `final_summary` | session end | — | clean exit via `request_session_end` (#348) | session ends | no operator Ctrl+C needed |
+
+### Why phase 14 exists, and why it costs nothing
+
+The live STOP path was built in #500, and four of its layers cannot be proven by a mock: the
+trigger mapping on the wire (Kraken's `price` field carries a stop's TRIGGER, not a limit — and
+there is no `stopprice` request parameter, that name appears only in the responses), the
+submit-response route that confirms the broker reference, the poll loop reading the stop world,
+and the cancel path finding the order THERE rather than among the limits. A resting order
+exercises all four, and a resting order that is cancelled pays no fee.
+
+Two properties of the phase are deliberate. It rests **above** the market for a LONG, the mirror
+of a resting buy limit — a stop is a breakout entry, so the side that makes a limit rest is the
+side that makes a stop fire. And a **fill FAILS the phase**: Kraken does not refuse a mis-sided
+trigger, it executes it immediately as a market order (our simulation does the same), so a fill
+here means the offset put the order on the wrong side and the phase would otherwise report an
+unintended real trade as a success.
 
 **Cross-cutting behaviors:**
 - **Safety integration** — submits route through the standard BUY/SELL decision action, so the safety circuit breaker can suppress new entries (override → FLAT); closes/cancels are never suppressed.

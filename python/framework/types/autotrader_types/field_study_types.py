@@ -20,6 +20,7 @@ class PhaseType(StrEnum):
     LIMIT_OPEN = 'limit_open'
     LIMIT_MODIFY = 'limit_modify'
     LIMIT_CANCEL = 'limit_cancel'
+    STOP_CANCEL = 'stop_cancel'
     MULTI_LIMIT = 'multi_limit'
     MULTI_CANCEL = 'multi_cancel'
     PARTIAL_CLOSE = 'partial_close'
@@ -62,6 +63,7 @@ class PhaseActionKind(StrEnum):
     NONE = 'none'                    # nothing to do this tick (waiting)
     SUBMIT_MARKET = 'submit_market'
     SUBMIT_LIMIT = 'submit_limit'
+    SUBMIT_STOP = 'submit_stop'
     CLOSE_ALL = 'close_all'
     CLOSE_PARTIAL = 'close_partial'
     CANCEL = 'cancel'
@@ -168,6 +170,8 @@ class PhaseContext:
         mid_price: Current mid price (limit pricing reference)
         open_position_count: Open positions right now (shadow state)
         active_limit_count: Resting limit orders right now
+        active_stop_count: Resting stop orders right now — a separate world with its own
+            cancel and modify paths, so a stop phase cannot read the limit count (#500)
         has_pending: Any order in flight (pipeline / in-flight op)
         filled_since_submit: A fill was observed since the current phase's last submit
         rejected_since_submit: A rejection was observed since the last submit
@@ -179,6 +183,7 @@ class PhaseContext:
     mid_price: float
     open_position_count: int
     active_limit_count: int
+    active_stop_count: int
     has_pending: bool
     filled_since_submit: bool
     rejected_since_submit: bool

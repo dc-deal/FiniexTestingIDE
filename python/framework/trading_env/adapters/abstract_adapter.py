@@ -491,7 +491,9 @@ class AbstractAdapter(ABC):
         self,
         broker_ref: str,
         symbol: str,
+        order_type: OrderType,
         new_price: Optional[float] = None,
+        new_limit_price: Optional[float] = None,
         new_stop_loss: Optional[float] = None,
         new_take_profit: Optional[float] = None,
     ) -> Dict[str, Any]:
@@ -503,7 +505,11 @@ class AbstractAdapter(ABC):
         Args:
             broker_ref: Current broker order reference
             symbol: Trading symbol (required by some brokers)
-            new_price: New limit price (None=no change)
+            order_type: The type being amended — it decides what new_price MEANS
+            new_price: New limit price, or the new TRIGGER of a triggered type
+                (None=no change)
+            new_limit_price: New limit price of a STOP_LIMIT, beside its trigger
+                (None=no change)
             new_stop_loss: New stop loss (None=no change)
             new_take_profit: New take profit (None=no change)
 

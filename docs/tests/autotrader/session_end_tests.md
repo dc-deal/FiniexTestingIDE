@@ -61,12 +61,24 @@ no exit at all.
 | `test_a_flat_session_is_clean_either_way` | — |
 | `test_cancel_expires_the_order_locally` | A cancelled resting order leaves an EXPIRED record |
 | `test_leave_does_not_expire_it` | Left standing means left in BOTH places — an order that can still fill is not expired |
+| `test_cancel_reaches_the_venue_and_expires_it_locally` | The same for a resting STOP, and read from the mock's own cancellation record rather than from our book — a cleanup that only forgot the order locally looks identical from our side |
+| `test_leave_keeps_it_in_both_places` | A stop left standing by policy is neither cancelled at the venue nor expired here |
 | `test_the_cleanup_does_not_take_a_shutdown_mode` | The #356 scope boundary, pinned structurally |
 | `test_the_shutdown_check_only_asks_about_flatness` | — |
 
 **The resting-order fixture uses `DELAYED_FILL`, not `INSTANT_FILL`.** The instant mode fills a
 LIMIT on submission, so the order would never rest and both orders-axis tests would pass with
 nothing to act on — the fixture asserts it actually placed one.
+
+**The stop fixture holds a stop and NO limit, and that is the whole point of it (#500).** Phase 1
+of the live cleanup was written for `_active_limit_orders` alone, and its guard read that list's
+truthiness in *both* branches — so a session holding only stops ran neither: nothing cancelled at
+the venue, nothing expired locally, not even a log line. It was documented as harmless because the
+live submit gate refused STOP, which was true of the SUBMIT path and false of the situation: boot
+adoption files a venue-reported stop into that world by design. The lesson generalises past this
+branch — a guard written on one of two collections reports nothing when only the other is
+populated. Kraken states the consequence themselves: a `stop-loss-limit` is not linked to a
+position and must be cancelled by hand once the position is gone.
 
 ### `test_session_end_accounting.py` — realised and valued, kept apart
 
