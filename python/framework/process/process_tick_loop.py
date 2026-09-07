@@ -421,6 +421,8 @@ def execute_tick_loop(
             _symbol_spec.base_currency: trade_simulator.get_committed_funds(
                 _symbol_spec.base_currency),
         }
+        portfolio_stats.protective_level_enforcement = (
+            trade_simulator.get_protective_level_enforcement().value)
         if current_tick:
             portfolio_stats.last_price = (current_tick.bid + current_tick.ask) / 2
         execution_stats = trade_simulator.get_execution_stats()

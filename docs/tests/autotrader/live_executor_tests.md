@@ -183,10 +183,17 @@ Integration tests for the full execution pipeline: `open_order()` → broker res
 
 #### TestFeatureGating
 
+Both tests here used to assert that STOP and STOP_LIMIT were REFUSED. That was the live path's
+honest state until #500; what survives is the shape of the guarantee — an unbuilt type is refused
+on the TYPE, a conditional order with no usable price is refused on the PRICE, and a fully formed
+stop is accepted and rests.
+
 | Test | Description |
 |------|-------------|
-| `test_stop_order_rejected` | STOP order rejected with ORDER_TYPE_NOT_SUPPORTED |
-| `test_stop_limit_order_rejected` | STOP_LIMIT order rejected with ORDER_TYPE_NOT_SUPPORTED |
+| `test_a_type_the_pipeline_has_not_built_is_rejected` | ICEBERG → ORDER_TYPE_NOT_SUPPORTED |
+| `test_a_stop_without_a_trigger_is_rejected_on_the_price` | INVALID_PRICE. Live had NO price validation of any kind before #500 — `order_guard` does not know the field — so a stop with no trigger would have reached the payload builder |
+| `test_a_stop_limit_without_a_limit_price_is_rejected_too` | Both prices are required; the trigger alone is not enough |
+| `test_a_fully_formed_stop_is_accepted_and_rests` | The capability the issue exists for: it comes back PENDING and lands in the STOP world, not among the limits |
 
 #### TestValidation
 
@@ -756,18 +763,27 @@ order is resting at the broker and we have forgotten it — we manufactured the 
 ### test_order_type_gate.py — #500 sibling: declared vs built
 
 An adapter declares what the VENUE accepts; an executor declares what the PIPELINE has built.
-Kraken declares STOP_LIMIT, the live path carries MARKET and LIMIT — and a strategy declaring
+Kraken declares STOP_LIMIT, the live path carried MARKET and LIMIT — and a strategy declaring
 STOP_LIMIT passed pre-flight, then had every order rejected at submission. A checked-in live
 profile sat in exactly that state. Pre-flight now checks the INTERSECTION of both declarations,
 and `open_order()`'s gate reads the same set, so the two cannot drift apart.
 
+Since #500 the live set carries STOP and STOP_LIMIT too, so the type asserted as *unbuilt* moved
+to ICEBERG. It will move again when the pipeline learns another type — the REFUSAL is the
+contract here, never a particular type, and the tests say so in their own docstrings.
+
 | Test | Description |
 |---|---|
-| `test_the_live_path_carries_market_and_limit_only` | The live executor's declared set is exactly `{MARKET, LIMIT}` |
-| `test_the_simulation_carries_the_resting_types_too` | The sim's set adds STOP and STOP_LIMIT — what its dispatch routes |
+| `test_the_live_path_carries_the_four_types_it_has_built` | The live executor's declared set is exactly `{MARKET, LIMIT, STOP, STOP_LIMIT}` |
+| `test_neither_pipeline_declares_a_type_it_cannot_place` | TRAILING_STOP, ICEBERG and UNKNOWN stay out of BOTH sets — the assertion that keeps a VENUE capability from leaking into a PIPELINE declaration |
+| `test_the_simulation_carries_the_resting_types_too` | The sim's set — what its dispatch routes |
 | `test_a_venue_declared_type_the_pipeline_lacks_is_refused_before_trading` | ICEBERG: venue yes, pipeline no → refused at STARTUP, message names the pipeline side |
 | `test_a_type_both_sides_carry_passes` | STOP_LIMIT on the sim: declared and routed → allowed |
 | `test_a_type_the_venue_lacks_is_named_as_the_venue_side` | The message distinguishes "venue does not offer" from "pipeline has not implemented" |
-| `test_the_live_path_rejects_what_it_does_not_declare` | A STOP_LIMIT on live → `ORDER_TYPE_NOT_SUPPORTED`, read from the declared set |
-| `test_every_declared_type_is_one_the_gate_lets_through` | The consistency property: no declared type ever comes back unsupported |
+| `test_the_live_path_rejects_what_it_does_not_declare` | A fully-formed ICEBERG on live → `ORDER_TYPE_NOT_SUPPORTED`. It carries a price on purpose, so the price gate cannot be what refused it |
+| `test_every_declared_type_is_one_the_gate_lets_through` | The consistency property, strengthened to ACCEPTANCE. Each type is given the prices ITS shape needs — with `price=None` for everything, a STOP comes back INVALID_PRICE and the old "not ORDER_TYPE_NOT_SUPPORTED" assertion would still have held, so the test would have passed while proving nothing |
 | `test_a_type_the_builder_cannot_map_raises_instead_of_becoming_a_limit` | The wire-side line behind the gate: Kraken's payload builder raises for a type it cannot map, instead of silently sending it as a LIMIT — offline, through the processor's public submit |
+
+The payload MAPPING itself is asserted in [kraken_adapter_tests.md](kraken_adapter_tests.md) —
+offline, in the daily suite, because `tests/live_adapters/` is a release gate and runs too rarely
+to be the only guard on which Kraken field carries a trigger.

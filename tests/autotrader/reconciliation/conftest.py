@@ -44,6 +44,27 @@ _TEST_SESSION_KEY = '1641'
 # Builders
 # =============================================================================
 
+def _resting_kwargs(limit_price: float, stop_price: Optional[float]) -> dict:
+    """
+    The order_kwargs a resting order carries.
+
+    Both pipelines name a limit price `limit_price` and a trigger `stop_price` since #500;
+    the live LIMIT path used to write `price`, which is why the reconciler's comparison
+    found nothing for a live limit order.
+
+    Args:
+        limit_price: The limit price to carry
+        stop_price: The trigger price of a conditional order, or None
+
+    Returns:
+        The order_kwargs dict
+    """
+    kwargs = {'limit_price': limit_price}
+    if stop_price is not None:
+        kwargs['stop_price'] = stop_price
+    return kwargs
+
+
 def make_pending(
     order_id: str,
     broker_ref: Optional[str],
@@ -54,6 +75,7 @@ def make_pending(
     order_type: OrderType = OrderType.LIMIT,
     cumulative_filled_lots: float = 0.0,
     in_flight_operation: PendingOperation = PendingOperation.NONE,
+    stop_price: Optional[float] = None,
 ) -> PendingOrder:
     """
     Build a local resting PendingOrder (what get_active_orders returns).
@@ -68,7 +90,7 @@ def make_pending(
         symbol=symbol,
         direction=direction,
         lots=lots,
-        order_kwargs={'limit_price': limit_price},
+        order_kwargs=_resting_kwargs(limit_price, stop_price),
         fills=PendingOrderFills(cumulative_filled_lots=cumulative_filled_lots),
         execution_state=PendingOrderExecutionState(in_flight_operation=in_flight_operation),
     )
@@ -83,6 +105,7 @@ def make_broker_order(
     order_type: OrderType = OrderType.LIMIT,
     status: BrokerOrderStatus = BrokerOrderStatus.PENDING,
     client_order_id: Optional[str] = None,
+    stop_price: Optional[float] = None,
 ) -> BrokerOrder:
     """
     Build a broker-truth BrokerOrder.
@@ -98,6 +121,7 @@ def make_broker_order(
         lots=lots,
         status=status,
         price=price,
+        stop_price=stop_price,
         client_order_id=client_order_id,
     )
 

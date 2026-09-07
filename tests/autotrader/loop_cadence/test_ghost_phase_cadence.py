@@ -43,12 +43,14 @@ def _machine(fill_timeout_s: float = 30.0) -> FieldStudyPhaseMachine:
     )
 
 
-def _ctx(elapsed_s: float, active_limit_count: int) -> PhaseContext:
+def _ctx(elapsed_s: float, active_limit_count: int,
+         active_stop_count: int = 0) -> PhaseContext:
     return PhaseContext(
         now=_T0 + timedelta(seconds=elapsed_s),
         mid_price=50000.0,
         open_position_count=0,
         active_limit_count=active_limit_count,
+        active_stop_count=active_stop_count,
         has_pending=False,
         filled_since_submit=False,
         rejected_since_submit=False,

@@ -22,13 +22,14 @@ _T0 = datetime(2026, 6, 2, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def _ctx(secs, open_pos=0, limits=0, pending=False, filled=False,
-         rejected=False, lots=None, budget_ok=True):
+         rejected=False, lots=None, budget_ok=True, stops=0):
     """Build a synthetic per-tick observation at T0 + secs."""
     return PhaseContext(
         now=_T0 + timedelta(seconds=secs),
         mid_price=2000.0,
         open_position_count=open_pos,
         active_limit_count=limits,
+        active_stop_count=stops,
         has_pending=pending,
         filled_since_submit=filled,
         rejected_since_submit=rejected,
@@ -132,6 +133,77 @@ def test_limit_open_fills_pass():
     m.advance(_ctx(2, limits=1))            # resting
     m.advance(_ctx(3, open_pos=1, filled=True))  # filled
     assert m.get_results()[0].outcome == PhaseOutcome.PASS
+
+
+def test_stop_cancel_rests_then_cancels_pass():
+    """
+    The live stop path under real money (#500): accepted, resting, cancelled.
+
+    A fill is not needed to prove it — the payload's trigger mapping, the submit-response
+    route that confirms the broker reference, the poll loop reading the stop world and the
+    cancel path finding the order THERE rather than among the limits are all exercised by a
+    resting order, and a resting order costs no fee.
+    """
+    m = _machine([_phase('p', 'stop_cancel', side='long')])
+
+    assert m.advance(_ctx(1)).kind == PhaseActionKind.SUBMIT_STOP
+    # It must read the STOP world. A limit count of 1 is another phase's order.
+    assert m.advance(_ctx(2, limits=1)).kind == PhaseActionKind.NONE
+    assert m.advance(_ctx(3, stops=1)).kind == PhaseActionKind.CANCEL
+    m.advance(_ctx(4))
+    assert m.get_results()[0].outcome == PhaseOutcome.PASS
+
+
+def test_stop_cancel_trigger_sits_above_market_for_a_long():
+    """
+    A buy stop rests ABOVE the market — the mirror of a resting buy limit.
+
+    Getting this backwards does not produce a rejection: Kraken executes a mis-sided
+    trigger immediately as a market order, and our simulation fills it on the same pass.
+    So the wrong side turns a resting-order phase into an unintended real fill, which is
+    exactly what this phase must never do.
+    """
+    long_action = _machine([_phase('p', 'stop_cancel', side='long')]).advance(_ctx(1))
+    short_action = _machine([_phase('p', 'stop_cancel', side='short')]).advance(_ctx(1))
+
+    assert long_action.price > 2000.0, 'a buy stop must trigger above the market'
+    assert short_action.price < 2000.0, 'a sell stop must trigger below the market'
+
+
+def test_stop_cancel_fails_when_it_fills_before_the_cancel():
+    """A resting stop that fills is a mis-sided trigger, not bad luck — so it FAILS."""
+    m = _machine([_phase('p', 'stop_cancel', side='long')])
+    m.advance(_ctx(1))
+
+    m.advance(_ctx(2, open_pos=1, filled=True))
+
+    assert m.get_results()[0].outcome == PhaseOutcome.FAIL
+
+
+def test_stop_cancel_fails_when_the_venue_refuses_it():
+    """
+    A refusal is the report this phase exists to produce.
+
+    It is the answer that would have come back for the whole life of the project before
+    #500 — the live path declared no STOP type — and a certificate has to say so rather
+    than record an inconclusive timeout.
+    """
+    m = _machine([_phase('p', 'stop_cancel', side='long')])
+    m.advance(_ctx(1))
+
+    m.advance(_ctx(2, rejected=True))
+
+    assert m.get_results()[0].outcome == PhaseOutcome.FAIL
+
+
+def test_stop_cancel_fails_when_it_never_rests():
+    """A stop that neither rests nor fills within the window is a mechanical failure."""
+    m = _machine([_phase('p', 'stop_cancel', side='long', timeout_s=5)])
+    m.advance(_ctx(1))
+
+    m.advance(_ctx(99))
+
+    assert m.get_results()[0].outcome == PhaseOutcome.FAIL
 
 
 def test_multi_limit_all_watching_pass():

@@ -1808,6 +1808,7 @@
                 "order": 11.2
             }
         },
+        
         {
             "name": "🧩 Pytest: Cold Start (#355)",
             "type": "debugpy",
@@ -1964,6 +1965,24 @@
             }
         },
         {
+            "name": "🧩 Pytest: Field Study Machine (#332)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/field_study_machine/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 18.5
+            }
+        },
+        {
             "name": "🧩 Pytest: Import Pipeline (All)",
             "type": "debugpy",
             "request": "launch",
@@ -1998,7 +2017,7 @@
             }
         },
         {
-            "name": "🧩 Pytest: Kraken Adapter (#332 nonce)",
+            "name": "🧩 Pytest: Kraken Adapter (Offline)",
             "type": "debugpy",
             "request": "launch",
             "module": "pytest",
@@ -2307,6 +2326,23 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 37
+            }
+        },
+        {
+            "name": "🧩 Pytest: Protective Levels (#500)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/protective_levels",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 37.5
             }
         },
         {
@@ -3351,6 +3387,7 @@
             "args": [
                 "tests/live_adapters/",
                 "--ignore=tests/live_adapters/test_live_adapter_certificate.py",
+                "--place-real-orders",
                 "-v",
                 "--tb=short"
             ],

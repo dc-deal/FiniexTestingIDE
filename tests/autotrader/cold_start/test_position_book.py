@@ -39,12 +39,16 @@ from tests.autotrader.cold_start.conftest import PREVIOUS_SESSION_KEY, make_brok
 _ENTRY_TIME = '2026-09-01T12:00:00+00:00'
 
 
-def _note(position_id: str = 'pos_btcusd_47', lots: float = 0.01) -> PositionCarryOver:
+def _note(
+    position_id: str = 'pos_btcusd_47',
+    lots: float = 0.01,
+    direction: str = 'long',
+) -> PositionCarryOver:
     """One remembered spot position, as an earlier session wrote it down."""
     return PositionCarryOver(
         position_id=position_id,
         symbol='BTCUSD',
-        direction='long',
+        direction=direction,
         lots=lots,
         original_lots=lots,
         entry_price=61200.0,
@@ -324,6 +328,76 @@ class TestTheCrossCheckOnlyReports:
         # Reported, NOT adjusted: shrinking the note to fit would invent a number, and the
         # operator would never learn that something sold outside this bot.
         assert spot_executor.get_open_positions()[0].lots == 0.01
+
+
+    def test_a_sold_holding_is_not_counted_as_a_claim_on_the_coin(
+        self, spot_executor, store, logger
+    ):
+        """
+        A spot SHORT means the coin LEFT the account — the sign used to be inverted.
+
+        At spot a SELL spends the base currency, so an open SHORT is the position that
+        REMOVED the holding. Summing it as a claim ON the holding made a bot that ended a
+        session having sold boot into a fabricated shortfall, as an ERROR in the session
+        pot, on every restart. The Field Study's short phase produces exactly this state,
+        so it sat on the release-gate path.
+        """
+        store.save(
+            session_key=PREVIOUS_SESSION_KEY,
+            highest_position_counter=47,
+            open_positions=[_note(lots=0.01, direction='short')],
+        )
+        # The coin is gone precisely BECAUSE of that position.
+        spot_executor.broker.adapter.set_broker_balances({'XXBT': 0.0, 'ZUSD': 1000.0})
+
+        _adopter(spot_executor, store, logger).run()
+
+        assert not any('short' in message for message in logger.errors), (
+            f'a sold holding was reported as a shortfall: {logger.errors}')
+
+    def test_a_long_beside_a_short_is_measured_on_the_long_alone(
+        self, spot_executor, store, logger
+    ):
+        """
+        The mixed book, which is where a direction-blind sum goes wrong quietly.
+
+        LONG 0.01 and SHORT 0.01: the account should hold the long's coin and nothing for
+        the short. Summed blind that reads as a claim of 0.02 against 0.01 held — a
+        shortfall of exactly the size of the position that caused the coin to be sold.
+        """
+        store.save(
+            session_key=PREVIOUS_SESSION_KEY,
+            highest_position_counter=48,
+            open_positions=[
+                _note(position_id='pos_btcusd_47', lots=0.01, direction='long'),
+                _note(position_id='pos_btcusd_48', lots=0.01, direction='short'),
+            ],
+        )
+        spot_executor.broker.adapter.set_broker_balances({'XXBT': 0.01, 'ZUSD': 1000.0})
+
+        _adopter(spot_executor, store, logger).run()
+
+        assert not any('short' in message for message in logger.errors), (
+            f'the long is covered; only the blind sum says otherwise: {logger.errors}')
+
+    def test_a_long_that_really_is_uncovered_is_still_reported(
+        self, spot_executor, store, logger
+    ):
+        """The counter-case, so the fix cannot have silenced the check it was meant to keep."""
+        store.save(
+            session_key=PREVIOUS_SESSION_KEY,
+            highest_position_counter=48,
+            open_positions=[
+                _note(position_id='pos_btcusd_47', lots=0.01, direction='long'),
+                _note(position_id='pos_btcusd_48', lots=0.01, direction='short'),
+            ],
+        )
+        spot_executor.broker.adapter.set_broker_balances({'XXBT': 0.004, 'ZUSD': 1000.0})
+
+        _adopter(spot_executor, store, logger).run()
+
+        assert any('short' in message for message in logger.errors), (
+            'a LONG the account cannot cover must still be reported')
 
 
 class TestTheIdCounterCannotCollide:

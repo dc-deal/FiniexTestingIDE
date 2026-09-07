@@ -126,7 +126,7 @@ class TestTheDispositionStillDistinguishes:
     realised P&L on `scenario_end` trades. Nothing produces that mark any more — so a
     disposition still reading it would report `0` for every block and grade every split
     GOOD, while the edge kept cutting the same trades. That is a silent constant wearing
-    the face of a clean result, which is why these three cases must come out DIFFERENT.
+    the face of a clean result, which is why every case below must come out DIFFERENT.
     """
 
     def test_a_block_that_ends_flat_shows_no_impact(self):

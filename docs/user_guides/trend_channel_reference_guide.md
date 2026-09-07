@@ -23,6 +23,17 @@ surface**:
 | Resting-order **re-price / cancel** | the resting entry follows the band, and is cancelled if the trend gate flips |
 | **Cold-start answer** (#493) | `on_cold_start` — what to do when a restart finds one of its own orders still resting at the venue |
 
+> **Who enforces what, if you run this live.** The two RESTING ENTRIES are real orders at the
+> venue: `stop_breakout` places a Kraken `stop-loss` and `limit_pullback` a `limit`, so both
+> survive this process dying and both are cancelled or left standing by the session-end policy.
+> The **SL/TP and the trailing stop are not.** They are levels on the position, enforced by this
+> framework against the tick stream — in live exactly as in a backtest (#500) — so a position is
+> unprotected while the process is not running. The run report names the enforcer beside every
+> level, and one more asymmetry is worth knowing before reading a backtest of `stop_breakout`: the
+> simulation triggers a stop on ask/bid while Kraken triggers on the last traded price, and it
+> fills at the triggering tick with no slippage model, so a **stop ENTRY is the one order type
+> whose backtest is optimistic by construction.**
+
 ## The strategy (mechanical, textbook)
 
 ```

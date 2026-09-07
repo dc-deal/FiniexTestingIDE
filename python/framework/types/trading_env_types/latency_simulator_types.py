@@ -17,6 +17,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Dict, List, Optional
 
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
@@ -208,6 +209,10 @@ class PendingOrder:
 
     # === For CLOSE orders ===
     close_lots: Optional[float] = None
+    # Why this close was requested. Set at registration and read back at fill, because
+    # a live close is asynchronous: the trigger and the fill are separated by a broker
+    # round trip, and the reason is only known at the trigger (#500).
+    close_reason: Optional[CloseReason] = None
 
     # === Composed sub-concerns (#345) ===
     timing: PendingOrderTiming = field(default_factory=PendingOrderTiming)

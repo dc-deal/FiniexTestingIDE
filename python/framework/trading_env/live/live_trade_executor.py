@@ -46,6 +46,7 @@ from python.framework.types.live_types.live_execution_types import (
 from python.framework.types.live_types.live_request_types import QueryResponse, TradesQueryResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
+    CloseReason,
     EntryType,
 )
 from python.framework.types.trading_env_types.latency_simulator_types import (
@@ -200,15 +201,16 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # _fill_open_order / _fill_close_order already append the
         # EXECUTED result to order_history and notify listeners, so
         # they can be used directly as hooks — no wrapper needed.
-        # limit_response routes LIMIT submit responses back here so we
-        # can update _active_limit_orders (Hybrid pattern — shared storage).
+        # resting_response routes LIMIT / STOP / STOP_LIMIT submit responses back here so
+        # we can update _active_limit_orders / _active_stop_orders (Hybrid pattern —
+        # shared storage).
         # #318 — modify/cancel/position-modify responses route to handlers
         # that mutate _active_*_orders / portfolio (Hybrid pattern).
         self._request_processor.set_executor_hooks(
             fill_open=self._fill_open_order,
             fill_close=self._fill_close_order,
             on_rejection=self._record_async_rejection,
-            limit_response=self._handle_limit_submit_response,
+            resting_response=self._handle_resting_submit_response,
             modify_response=self._handle_modify_response,
             cancel_response=self._handle_cancel_response,
             position_modify_response=self._handle_position_modify_response,
@@ -287,10 +289,26 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         The order lands in the resting-order world with its reference already set, so the
         normal poll path picks it up on the first pass and a fill is processed like any other.
 
+        WHICH resting world depends on the type. A stop is not a limit: its own cancel and
+        modify paths look in `_active_stop_orders`, so a stop filed among the limits is
+        adoptable but not manageable — `modify_limit_order` would find it and amend its
+        TRIGGER as a limit price. `_RESTING_ORDER_TYPES` in the adopter admits STOP and
+        STOP_LIMIT on purpose (#500), so this is reachable as soon as one rests.
+
         Args:
             adoptions: (recovered internal order id, broker order) pairs
         """
         for order_id, broker_order in adoptions:
+            is_stop = broker_order.order_type in (OrderType.STOP, OrderType.STOP_LIMIT)
+            # Same convention as the simulation: for a stop the resting price IS the
+            # trigger, and a stop-limit carries its limit price beside it.
+            entry_price = broker_order.stop_price if is_stop else broker_order.price
+            order_kwargs = {
+                'stop_loss': broker_order.stop_loss,
+                'take_profit': broker_order.take_profit,
+            }
+            if broker_order.order_type == OrderType.STOP_LIMIT:
+                order_kwargs['limit_price'] = broker_order.price
             pending = PendingOrder(
                 pending_order_id=order_id,
                 order_action=PendingOrderAction.OPEN,
@@ -300,28 +318,28 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 symbol=broker_order.symbol,
                 direction=broker_order.direction,
                 lots=broker_order.lots,
-                entry_price=broker_order.price,
+                entry_price=entry_price,
                 # The venue reports the ORIGINAL size and the executed part separately, so an
                 # already partly-filled resting order has to be adopted as partly filled.
                 # Carrying only `lots` would rebuild it at full size and overstate the shadow
                 # by exactly the part that already traded.
                 fills=PendingOrderFills(cumulative_filled_lots=broker_order.filled_lots),
-                order_kwargs={
-                    'stop_loss': broker_order.stop_loss,
-                    'take_profit': broker_order.take_profit,
-                },
+                order_kwargs=order_kwargs,
                 submission=SubmissionMetadata(),
             )
-            self._active_limit_orders.append(pending)
+            if is_stop:
+                self._active_stop_orders.append(pending)
+            else:
+                self._active_limit_orders.append(pending)
             # An adopted order was SENT — by a predecessor of this session, but sent. Counting
             # it keeps the executed/sent ratio meaningful; without it a fill would raise the
             # execution rate above 100 %.
             self._orders_sent += 1
             self.logger.info(
-                f'🧬 Adopted resting order {order_id} from broker truth '
-                f'(client_order_id={broker_order.client_order_id}, '
+                f'🧬 Adopted resting {broker_order.order_type.value} order {order_id} from '
+                f'broker truth (client_order_id={broker_order.client_order_id}, '
                 f'broker_ref={broker_order.broker_ref}, {broker_order.direction.value} '
-                f'{broker_order.lots} {broker_order.symbol} @ {broker_order.price})'
+                f'{broker_order.lots} {broker_order.symbol} @ {entry_price})'
             )
 
     def apply_order_attributions(
@@ -341,7 +359,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         correction, and correction is #349's decision, not this one.
 
         This is the SECOND place a broker_ref goes from None to set, and it therefore owes
-        the same duty as the first (_handle_limit_submit_response): a cancel the algo asked
+        the same duty as the first (_handle_resting_submit_response): a cancel the algo asked
         for while the reference was missing was PARKED, not refused (#361), and the missing
         reference was the only reason it could not be sent. Restoring the reference without
         issuing it would hand the order back to the poll path as if nothing had been asked —
@@ -594,22 +612,22 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._order_history.append(rejection)
         self._notify_outcome(direction, rejection, None)
 
-    def _handle_limit_submit_response(
+    def _handle_resting_submit_response(
         self,
         order_id: str,
         response: BrokerResponse,
     ) -> None:
         """
-        Drain-inbox hook for LIMIT submit responses.
+        Drain-inbox hook for RESTING submit responses (LIMIT, STOP, STOP_LIMIT).
 
-        LIMIT orders live in _active_limit_orders (Hybrid pattern shared
-        with sim) rather than in the processor's _pending_orders dict.
-        When the worker delivers a SubmitResponse for a LIMIT order, the
-        processor delegates here so we can update that list directly.
+        Resting orders live in _active_limit_orders / _active_stop_orders (Hybrid pattern
+        shared with sim) rather than in the processor's _pending_orders dict. When the
+        worker delivers a SubmitResponse for one, the processor delegates here so we can
+        update the list that holds it.
 
         Four branches:
           UNRESOLVED → keep it, mark in-flight (#473 — the venue may hold it)
-          REJECTED → remove from _active_limit_orders + record rejection
+          REJECTED → remove from its list + record rejection
           FILLED   → remove + _fill_open_order (sync-fill broker, rare)
           PENDING  → confirm broker_ref (polling Phase 2 takes over)
 
@@ -617,16 +635,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             order_id: Internal order id (matches PendingOrder.pending_order_id)
             response: BrokerResponse from the worker
         """
-        pending = None
-        for p in self._active_limit_orders:
-            if p.pending_order_id == order_id:
-                pending = p
-                break
+        pending = self._find_active_order(order_id)
         if pending is None:
             self.logger.warning(
-                f'drain_inbox: LIMIT SubmitResponse for unknown order_id {order_id}'
+                f'drain_inbox: resting SubmitResponse for unknown order_id {order_id}'
             )
             return
+        order_label = pending.order_type.value if pending.order_type else 'resting'
 
         if response.is_unresolved:
             # #473 — no answer is not a refusal. Keep the order and leave broker_ref
@@ -634,28 +649,29 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # lose the only handle a later query could use.
             pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
             self.logger.error(
-                f'📡 LIMIT order {order_id} UNRESOLVED — the broker did not answer '
+                f'📡 {order_label} order {order_id} UNRESOLVED — the broker did not answer '
                 f'({response.rejection_reason}). Kept in flight for resolution by query.'
             )
             return
 
         if response.is_rejected:
-            self._active_limit_orders.remove(pending)
+            self._drop_active_order(pending)
             rejection = create_rejection_result(
                 order_id=order_id,
                 reason=RejectionReason.BROKER_ERROR,
-                message=f"Broker rejected LIMIT: {response.rejection_reason or 'unknown'}",
+                message=(f'Broker rejected {order_label}: '
+                         f"{response.rejection_reason or 'unknown'}"),
             )
             self._record_async_rejection(pending.direction, rejection)
             return
 
-        # Non-rejected: confirm broker_ref on the active-limit pending
+        # Non-rejected: confirm broker_ref on the resting pending
         pending.broker_ref = response.broker_ref
 
         if response.is_filled:
-            # Sync-fill LIMIT (rare — e.g. price already crossed at submit).
+            # Sync-fill (rare — e.g. price already crossed at submit).
             # FILLED-precedence: a fill wins over any deferred cancel (#361).
-            self._active_limit_orders.remove(pending)
+            self._drop_active_order(pending)
             self._fill_open_order(pending, fill_price=response.fill_price)
         elif pending.execution_state.cancel_requested:
             # Deferred cancel (#361): a cancel was requested while this submit was
@@ -669,10 +685,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 adapter=self.broker.adapter,
             )
             self.logger.info(
-                f'❌ Limit order {order_id} deferred cancel issued '
+                f'❌ {order_label} order {order_id} deferred cancel issued '
                 f'(broker_ref={pending.broker_ref})'
             )
-        # else: PENDING — pending stays in _active_limit_orders,
+        # else: PENDING — pending stays in its resting list,
         # _process_active_orders Phase 2 polls it for fills.
 
     # ============================================
@@ -688,6 +704,46 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             if p.pending_order_id == order_id:
                 return p
         return None
+
+    @staticmethod
+    def _resting_fill_classification(
+        pending: PendingOrder
+    ) -> Tuple[EntryType, FillType]:
+        """
+        How a filled resting order is booked — by its own type, not by assumption.
+
+        The three live fill paths hardcoded LIMIT for both, which was right while LIMIT was
+        the only resting type live could hold. It decides the FEE: LIMIT and STOP_LIMIT are
+        booked as maker, MARKET and STOP as taker, so a filled stop booked as a limit
+        understates the cost of every stop entry.
+
+        Args:
+            pending: The resting order that filled
+
+        Returns:
+            (entry type for the trade record, fill type for the order result)
+        """
+        if pending.order_type == OrderType.STOP:
+            return EntryType.STOP, FillType.STOP
+        if pending.order_type == OrderType.STOP_LIMIT:
+            return EntryType.STOP_LIMIT, FillType.STOP_LIMIT
+        return EntryType.LIMIT, FillType.LIMIT
+
+    def _drop_active_order(self, pending: PendingOrder) -> None:
+        """
+        Remove a resting order from whichever of the two lists holds it.
+
+        Callers that resolve an order by id must not need to know which world it lives in;
+        every one of them that hardcoded `_active_limit_orders.remove` was correct only
+        while a stop could not rest in live (#500).
+
+        Args:
+            pending: The resting order to drop
+        """
+        if pending in self._active_limit_orders:
+            self._active_limit_orders.remove(pending)
+        elif pending in self._active_stop_orders:
+            self._active_stop_orders.remove(pending)
 
     def _handle_modify_response(
         self,
@@ -795,10 +851,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # algo's discipline pattern (has_pending_orders / has_in_flight_operation)
         # observes the state transition naturally. Order_history is reserved
         # for EXECUTED / REJECTED-by-broker, not for algo-initiated cancels.
-        if pending in self._active_limit_orders:
-            self._active_limit_orders.remove(pending)
-        elif pending in self._active_stop_orders:
-            self._active_stop_orders.remove(pending)
+        self._drop_active_order(pending)
 
         pending.execution_state.in_flight_operation = PendingOperation.NONE
         self.logger.info(
@@ -961,11 +1014,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
             # Finalize the fill if cumulative volume populated (post-§8 distribution)
             if pending.fills.cumulative_filled_lots > 0:
-                self._active_limit_orders.remove(pending)
+                entry_type, _ = self._resting_fill_classification(pending)
+                self._drop_active_order(pending)
                 self._fill_open_order(
                     pending,
                     fill_price=pending.fills.cumulative_avg_price,
-                    entry_type=EntryType.LIMIT,
+                    entry_type=entry_type,
                     fill_type=FillType.LIMIT,
                 )
                 self.logger.info(
@@ -993,14 +1047,17 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
     def _process_active_orders(self) -> None:
         """
-        Schedule async status polls for active LIMIT orders.
+        Schedule async status polls for every RESTING order (limit and stop).
 
-        Active limit orders are broker-accepted orders waiting for a price
-        trigger (shadow state). For each order whose throttle window has
-        elapsed and that has no in-flight query, this enqueues a QueryJob
-        to the worker thread. The worker performs the broker roundtrip;
-        the response is consumed on the main thread in _handle_query_response
+        Resting orders are broker-accepted orders waiting for a price trigger (shadow
+        state). For each order whose throttle window has elapsed and that has no in-flight
+        query, this enqueues a QueryJob to the worker thread. The worker performs the broker
+        roundtrip; the response is consumed on the main thread in _handle_query_response
         (via drain_inbox / heartbeat).
+
+        Both lists, since #500. Reading `_active_limit_orders` alone was correct only while
+        a stop could not rest in live — and a stop that rests unpolled is worse than one
+        that never existed: it can fill at the venue while our book still shows it waiting.
 
         Four gates, all silent skips:
           - no tick has arrived yet (see below)
@@ -1020,11 +1077,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         execution at the venue and no local record of it. Waiting for the first tick costs
         nothing: the algo is not running before it either.
         """
-        if not self._active_limit_orders or self._current_tick is None:
+        resting = self._active_limit_orders + self._active_stop_orders
+        if not resting or self._current_tick is None:
             return
 
         now_ms = time.time() * 1000.0
-        for pending in self._active_limit_orders:
+        for pending in resting:
             if not pending.broker_ref:
                 continue
             if pending.execution_state.in_flight_query:
@@ -1078,20 +1136,21 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             return
 
         if broker_response.status == BrokerOrderStatus.FILLED:
-            self._active_limit_orders.remove(pending)
+            entry_type, fill_type = self._resting_fill_classification(pending)
+            self._drop_active_order(pending)
             self._fill_open_order(
                 pending,
                 fill_price=broker_response.fill_price,
-                entry_type=EntryType.LIMIT,
-                fill_type=FillType.LIMIT,
+                entry_type=entry_type,
+                fill_type=fill_type,
             )
             self.logger.info(
-                f'🎯 Active limit order {order_id} filled at '
+                f'🎯 Active {entry_type.value} order {order_id} filled at '
                 f'{broker_response.fill_price} (broker_ref={pending.broker_ref})'
             )
         elif broker_response.is_terminal:
             # REJECTED / CANCELLED / EXPIRED by broker
-            self._active_limit_orders.remove(pending)
+            self._drop_active_order(pending)
             self._orders_rejected += 1
             rejection = create_rejection_result(
                 order_id=order_id,
@@ -1179,6 +1238,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         if funds_rejection:
             return funds_rejection
 
+        price_rejection = self._reject_if_resting_prices_invalid(request, order_id)
+        if price_rejection:
+            return price_rejection
+
         # Build order kwargs for adapter and tracker
         order_kwargs = {}
         if request.stop_loss is not None:
@@ -1187,8 +1250,17 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             order_kwargs['take_profit'] = request.take_profit
         if request.comment:
             order_kwargs['comment'] = request.comment
-        if request.order_type == OrderType.LIMIT and request.price is not None:
-            order_kwargs['price'] = request.price
+        # One name per price, shared with the simulation, so a single reader serves both
+        # pipelines: the trigger is `stop_price` and a limit price is `limit_price` —
+        # whether it belongs to a LIMIT or to the limit half of a STOP_LIMIT. The LIMIT
+        # branch wrote `price` until #500, which is why the reconciler's own comparison
+        # found nothing for a live limit order and was inert on the one pipeline it exists
+        # for.
+        if request.order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT) \
+                and request.price is not None:
+            order_kwargs['limit_price'] = request.price
+        if request.order_type in (OrderType.STOP, OrderType.STOP_LIMIT):
+            order_kwargs['stop_price'] = request.stop_price
 
         # MARKET: async submit via the processor worker thread.
         # 1) Register the pending in the processor with broker_ref=None
@@ -1233,39 +1305,50 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self._order_history.append(result)
             return result
 
-        # LIMIT: async submit via the processor worker thread.
-        # Storage stays in _active_limit_orders (Hybrid pattern shared
-        # with sim — the resting-order list is conceptually identical in
-        # both pipelines). The processor's drain_inbox routes the LIMIT
-        # SubmitResponse back via _handle_limit_submit_response so the
-        # broker_ref gets confirmed (or the entry removed on rejection /
-        # filled on sync-fill).
+        # RESTING (LIMIT / STOP / STOP_LIMIT): async submit via the processor worker
+        # thread. Storage is the matching list in the executor (Hybrid pattern shared with
+        # sim — the resting-order lists are conceptually identical in both pipelines). The
+        # processor's drain_inbox routes the SubmitResponse back via
+        # _handle_resting_submit_response so the broker_ref gets confirmed (or the entry
+        # removed on rejection / filled on sync-fill).
+        #
+        # The TYPE is carried through rather than assumed. Both of these lines used to say
+        # OrderType.LIMIT, which was invisible while the feature gate above admitted
+        # nothing else — and would have put a STOP on the wire as a plain limit while the
+        # payload builder's own refusal never fired, because it was handed LIMIT (#500).
+        #
         # 1) Append placeholder PendingOrder with broker_ref=None so the
         #    algo's has_pending_orders() blocks during the in-flight window.
+        is_stop = request.order_type in (OrderType.STOP, OrderType.STOP_LIMIT)
         pending = PendingOrder(
             pending_order_id=order_id,
             order_action=PendingOrderAction.OPEN,
-            order_type=OrderType.LIMIT,
+            order_type=request.order_type,
             timing=PendingOrderTiming(submitted_at=datetime.now(timezone.utc)),
             broker_ref=None,
             symbol=request.symbol,
             direction=request.direction,
             lots=request.lots,
-            entry_price=request.price,
+            # For a stop the resting price IS the trigger — same convention as the
+            # simulation, whose trigger check reads entry_price.
+            entry_price=request.stop_price if is_stop else request.price,
             entry_time=self.get_current_time(),
             order_kwargs=order_kwargs,
             submission=self._current_submission(),
         )
-        self._active_limit_orders.append(pending)
+        if is_stop:
+            self._active_stop_orders.append(pending)
+        else:
+            self._active_limit_orders.append(pending)
 
         # 2) Enqueue the SubmitJob — worker handles HTTP, drain_inbox
-        #    routes the response to _handle_limit_submit_response.
+        #    routes the response to _handle_resting_submit_response.
         self._request_processor.submit_open_order_async(
             order_id=order_id,
             symbol=request.symbol,
             direction=request.direction,
             lots=request.lots,
-            order_type=OrderType.LIMIT,
+            order_type=request.order_type,
             adapter=self.broker.adapter,
             client_order_id=self.build_client_order_id(order_id),
             **order_kwargs,
@@ -1297,6 +1380,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self,
         position_id: str,
         lots: Optional[float] = None,
+        close_reason: CloseReason = CloseReason.MANUAL,
     ) -> OrderResult:
         """
         Send close order to broker.
@@ -1304,6 +1388,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Args:
             position_id: Position to close
             lots: Lots to close (None = close all)
+            close_reason: Why — stored on the pending close and read back at the
+                fill, since the two are a round trip apart (#500)
 
         Returns:
             OrderResult with PENDING or REJECTED status
@@ -1333,6 +1419,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             broker_ref=None,
             close_lots=close_lots,
             submission=self._current_submission(),
+            close_reason=close_reason,
         )
         self._request_processor.submit_close_order_async(
             position_id=position_id,
@@ -1522,6 +1609,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             order_id=order_id,
             broker_ref=target_pending.broker_ref,
             symbol=target_pending.symbol,
+            order_type=target_pending.order_type,
             new_price=adapter_price,
             new_stop_loss=adapter_sl,
             new_take_profit=adapter_tp,
@@ -1552,9 +1640,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Schedule modification of a pending stop order via async pattern (#318).
 
         Capability-gated: returns ORDER_TYPE_NOT_SUPPORTED if the adapter
-        doesn't declare stop_orders or stop_limit_orders. Today (#318) the
-        path is wired but _active_stop_orders stays empty in live — the
-        SUBMIT path is added by #209 (MT5 Live Adapter).
+        doesn't declare stop_orders or stop_limit_orders. A stop can rest in live since
+        #500 — from the boot adoption of a venue-reported one, and from a submit once the
+        executor declares the type.
 
         Args:
             order_id: Pending stop order ID
@@ -1606,12 +1694,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         adapter_sl = self._round_price(adapter_sl, digits)
         adapter_tp = self._round_price(adapter_tp, digits)
 
-        # Note: the EditJob currently carries only new_price/new_sl/new_tp.
-        # For STOP modify, new_price maps to the stop trigger price; the
-        # new_limit_price is stored in pending_modification.new_limit_price
-        # for the drain handler to apply to order_kwargs['limit_price'].
-        # #209 may extend EditJob with a dedicated new_limit_price slot if
-        # MT5's ORDER_MODIFY differentiates the two prices.
+        # For a STOP modify, new_price IS the trigger; a STOP_LIMIT's limit price travels
+        # beside it as new_limit_price. The EditJob used to carry only new_price, so the
+        # limit half was applied to our own order_kwargs and never sent — the venue kept
+        # the old limit while our book showed the new one (#500).
         target_pending.execution_state.in_flight_operation = PendingOperation.PENDING_MODIFY
         target_pending.execution_state.pending_modification = ModificationRequest(
             new_price=adapter_stop,
@@ -1625,7 +1711,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             order_id=order_id,
             broker_ref=target_pending.broker_ref,
             symbol=target_pending.symbol,
+            order_type=target_pending.order_type,
             new_price=adapter_stop,
+            new_limit_price=adapter_limit,
             new_stop_loss=adapter_sl,
             new_take_profit=adapter_tp,
             adapter=self.broker.adapter,
@@ -1664,7 +1752,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 continue
             if pending.broker_ref is None:
                 # Submit still in-flight: defer the cancel (#361) — park the intent and
-                # auto-issue it once _handle_limit_submit_response confirms the broker_ref.
+                # auto-issue it once _handle_resting_submit_response confirms the broker_ref.
                 # Dropping it here orphaned the order (#13/#15 cert blocker, proven live).
                 pending.execution_state.cancel_requested = True
                 self.logger.debug(
@@ -1696,9 +1784,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Schedule cancellation of an active stop order via async pattern (#318).
 
         Capability-gated: returns False if the adapter doesn't declare
-        stop_orders or stop_limit_orders support. Today (#318) the path is
-        wired but _active_stop_orders stays empty in live — the SUBMIT path
-        for STOP orders is added by #209 (MT5 Live Adapter).
+        stop_orders or stop_limit_orders support. A stop can rest in live since #500 —
+        from the boot adoption of a venue-reported one, and from a submit once the
+        executor declares the type.
 
         Args:
             order_id: Order ID to cancel
@@ -1741,16 +1829,27 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
     def get_supported_order_types(self) -> FrozenSet[OrderType]:
         """
-        MARKET and LIMIT — the two types the live path has built end to end.
+        The four types the live path has built end to end (#500).
 
-        STOP and STOP_LIMIT are not here on purpose: the Kraken payload builder maps every
-        non-MARKET type to 'limit', so opening this set before that builder knows the type
-        would put a STOP_LIMIT on the wire as a plain LIMIT at its limit price. #164 / #209.
+        STOP and STOP_LIMIT joined MARKET and LIMIT once every layer between the strategy
+        and the wire had learned them: the submit carries the requested type instead of
+        hardcoding LIMIT, the trigger and limit prices are validated and forwarded, the
+        drain routes their submit response so the broker reference gets confirmed, the poll
+        loop and the session-end cleanup cover the stop list, and the Kraken builder maps
+        them with Kraken's own price semantics. Widening this set BEFORE those layers would
+        not have failed loudly: the non-MARKET branch of open_order passed LIMIT to the
+        builder, so the builder's refusal could never fire.
+
+        TRAILING_STOP and ICEBERG stay out. Both are venue capabilities Kraken declares and
+        neither has a payload mapping or a trigger path here, so the intersection with the
+        adapter refuses them at pre-flight and names this side as the short one. #164 / #209.
 
         Returns:
             The live executor's routable types
         """
-        return frozenset({OrderType.MARKET, OrderType.LIMIT})
+        return frozenset({
+            OrderType.MARKET, OrderType.LIMIT, OrderType.STOP, OrderType.STOP_LIMIT,
+        })
 
     def get_pipeline_orders(self) -> List[PendingOrder]:
         """
@@ -1833,19 +1932,22 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             current_msc: Not used in live mode (latency is time-based)
         """
         # Phase 1: Resting orders — cancel at the broker, or leave them where they are.
-        # LIMIT only: `_active_stop_orders` cannot hold anything in live today (STOP and
-        # STOP_LIMIT are refused by the feature gate in `open_order`), and it is deliberately
-        # not handled here rather than handled emptily — see the note on the list itself.
-        if self._active_limit_orders and not cancel_orders:
+        # BOTH lists. This used to read `_active_limit_orders` alone, on the stated grounds
+        # that a stop can never rest in live — and the guard was on that list's truthiness in
+        # both branches, so a session holding only stops ran NEITHER: nothing cancelled at
+        # the venue, nothing expired locally, not even a log line. A stop can rest here as
+        # soon as one is adopted at boot (#500).
+        resting = self._active_limit_orders + self._active_stop_orders
+        if resting and not cancel_orders:
             self.logger.info(
-                f'📋 {len(self._active_limit_orders)} active limit order(s) LEFT STANDING '
+                f'📋 {len(resting)} active resting order(s) LEFT STANDING '
                 f'at the broker by policy — a later session adopts them back (#355). They '
                 f'are not expired locally either, because they have not expired.')
-        elif self._active_limit_orders:
+        elif resting:
             self.logger.info(
-                f'📋 {len(self._active_limit_orders)} active limit orders '
+                f'📋 {len(resting)} active resting orders '
                 f'at session end — cancelling at broker')
-            for pending in self._active_limit_orders:
+            for pending in resting:
                 if pending.broker_ref:
                     try:
                         self._request_processor.cancel_order_sync(
@@ -1854,7 +1956,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                         )
                     except Exception as e:
                         self.logger.warning(
-                            f'Failed to cancel active limit '
+                            f'Failed to cancel resting '
+                            f'{pending.order_type.value if pending.order_type else "order"} '
                             f'{pending.pending_order_id}: {e}')
             self._expire_active_orders()
 

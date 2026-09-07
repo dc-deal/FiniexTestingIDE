@@ -169,6 +169,10 @@ New fields land in their sub-type — no further widening of the parent surface.
 **Modification:** `modify_stop_order(order_id, new_stop_price, new_limit_price, new_stop_loss, new_take_profit)`
 **Cancellation:** `cancel_stop_order(order_id)` — removes from list, returns `True`
 
+**Live mode: the trigger lives at the VENUE, not here.** The trigger logic above is the simulator's; the live executor has no price-trigger predicate of its own and does not want one — a resting stop is an order Kraken holds, and `ordertype=stop-loss` / `stop-loss-limit` is how it is placed (`price` carries the trigger, `price2` the limit). `LiveTradeExecutor` maintains `_active_stop_orders` as **shadow state** exactly as World 2 does: each tick, `_process_active_orders()` polls both lists for fills, the session-end cleanup cancels or leaves both, and boot adoption files a venue-reported stop into this world by type (#500).
+
+Two consequences worth stating, because they are asymmetries rather than bugs. A live STOP triggers on Kraken's **last traded price** (their `trigger` parameter defaults to `last`) while the simulator triggers on ask/bid — since `ask > last > bid`, the backtest fires slightly early on both sides and fills at the triggering tick with no slippage model, so a **stop ENTRY is the one order type whose backtest is optimistic by construction**. And a triggered STOP_LIMIT changes identity in the simulation (it converts to a LIMIT and moves to World 2) while at the venue it stays one order in this world.
+
 ---
 
 ## Order ID Chain

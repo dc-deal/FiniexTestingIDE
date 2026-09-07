@@ -157,15 +157,25 @@ class TestSessionEndWithOpenPosition:
         ], 'A close was booked that never reached the venue'
 
     def test_an_open_position_is_reported_and_valued(self, session_result):
-        """A surviving position is reported as open, with the mark it carried."""
+        """
+        A surviving position is reported as open, with the mark it carried.
+
+        The precondition is asserted FIRST and on purpose: the body is a loop plus a
+        conditional, so on a session that ended flat every assertion below would be
+        skipped and the test would pass having checked nothing. This profile is the one
+        that must end holding — that is the whole point of the class it sits in — so a
+        flat session is a real failure here rather than a case to tolerate.
+        """
+        assert session_result.open_positions, (
+            'This profile must end holding a position — the session-end policy leaves it '
+            'standing. A flat session means the entry or the leave-policy path broke, and '
+            'the assertions below would otherwise pass vacuously.')
         for position in session_result.open_positions:
             assert position.lots > 0
             assert position.entry_price > 0, (
                 f'Position {position.position_id}: entry_price is 0 — fill path broken')
-        stats = session_result.portfolio_stats
-        if session_result.open_positions:
-            assert stats.last_price > 0, (
-                'A session with an open position must carry a price to value it against')
+        assert session_result.portfolio_stats.last_price > 0, (
+            'A session with an open position must carry a price to value it against')
 
     def test_the_policy_the_session_ran_under_is_recorded(self, session_result):
         """An operator must be able to tell a position left by decision from a missing one."""

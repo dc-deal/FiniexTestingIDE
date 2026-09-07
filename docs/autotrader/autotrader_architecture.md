@@ -703,6 +703,47 @@ single-process bot on one spot account has none of those four escapes, which is 
 declared precondition defensible here — and why the semantics are argued on their own terms
 rather than borrowed.
 
+## Protective levels — who enforces a stop
+
+A `stop_loss` or `take_profit` declared on an order is evaluated by **this process**, against the
+tick stream, in both pipelines. When the level is breached the position is closed: in live through
+the normal asynchronous close, so the exit fills at the venue's next price; in simulation through a
+synthetic close at exactly the level, which is what keeps a backtest deterministic. A backtest
+therefore reports protected exits slightly better than live can deliver them.
+
+**Until #500 a live level was enforced by nobody.** The engine skipped its own check outside the
+simulation, on the stated assumption that the broker enforced it server-side — but the submit
+payload never carried a level, so the assumption was never true. The level was recorded on the
+position, shown to the strategy, printed on the console and carried into the run report, and
+nothing acted on it. Kraken's own answer to a submit carrying `stop_loss` confirmed it: the order
+came back described without any conditional close.
+
+What this does and does not buy:
+
+| | Covered |
+|---|---|
+| The price moves while we are running and connected | ✅ live ticks come from the venue's trade channel, so every price it printed reaches the check |
+| Our process dies, or the connection drops | ❌ nothing watches the level until we are back |
+| The venue gaps past the level | partly — the exit is market-on-trigger, so it fills below a long's stop |
+
+Closing the second row means putting the level AT the venue, where it rests as an order of its own
+and outlives us. Kraken offers two ways and only one of them is worth having. Its *conditional
+close* (OTO) attaches an exit to a submit — but it can only be set WITH the primary order, can
+never be adjusted, and therefore cannot protect an inventory already held or a position adopted at
+cold start, which are the two states an unattended month is in most of the time. A **standalone
+stop order** has none of those limits, and Kraken Spot accepts one: since #500 the live path routes
+`STOP` and `STOP_LIMIT`, so a strategy can place its own protective order at the venue.
+
+What is still not built is the framework doing it FOR a declared `stop_loss`. A level declared on an
+order remains ours to watch; turning it into an order of its own is the larger change, and it needs
+one decision first — the pair cannot both rest at Kraken. There is no OCO and no bracket, and a cash
+account reserves the whole holding for each resting exit, so the second is refused. The stop is the
+half worth placing: it bounds the loss, while a lost target costs an opportunity.
+
+`get_protective_level_enforcement()` on the executor is the single place that answers who holds a
+level, and every open position in the run report carries the answer beside its levels — an
+operator reading a stop can always read who is behind it.
+
 ## Safety Circuit Breaker
 
 A soft-stop mechanism that blocks new position entries when configurable risk thresholds are exceeded. Existing open positions continue to run — SL, TP, and signal-based closes are not affected.
@@ -711,7 +752,7 @@ A soft-stop mechanism that blocks new position entries when configurable risk th
 
 ```
 Tick rein
-  → executor.on_tick()    ← SL/TP checks run (always, unaffected)
+  → executor.on_tick()    ← SL/TP checks run against the tick (see below)
   → Workers → Decision    ← produces BUY / SELL / FLAT
   → [SAFETY CHECK]        ← evaluates thresholds against equity (spot) or balance (margin)
   → if blocked: decision.action = FLAT  ← override, no trade opened

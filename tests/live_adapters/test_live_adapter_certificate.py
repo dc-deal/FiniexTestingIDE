@@ -111,6 +111,23 @@ class TestLiveAdapterCertificate:
         ) if f not in certificate]
         assert not missing, f'Certificate missing identity fields: {missing}'
 
+    def test_a_known_broken_path_is_named_not_folded_into_skips(self, certificate):
+        """
+        An expected failure is a declared capability that does not work, and the
+        certificate has to say WHICH one.
+
+        pytest reports an xfail as a skip, so folding the two together would let a
+        certificate read "9 passed, 1 skipped" over a path known to be broken — which is
+        the blindness #500 found in this suite in the first place. Older certificates
+        predate the field and are exempt.
+        """
+        if 'tests_expected_to_fail' not in certificate:
+            pytest.skip('Certificate predates the expected-failure field')
+        assert isinstance(certificate['tests_expected_to_fail'], list)
+        for name in certificate['tests_expected_to_fail']:
+            assert name in certificate['tests_run'], (
+                f'{name} is marked as an expected failure but is not in tests_run')
+
     def test_declared_release_matches_the_tree(self, certificate):
         """
         A declared release must agree with the version the tree carried.

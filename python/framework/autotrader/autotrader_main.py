@@ -738,6 +738,8 @@ class AutotraderMain:
                     spec.base_currency: self._executor.get_committed_funds(
                         spec.base_currency),
                 }
+                stats.protective_level_enforcement = (
+                    self._executor.get_protective_level_enforcement().value)
                 try:
                     bid, ask = self._executor.get_current_price(self._config.symbol)
                     stats.last_price = (bid + ask) / 2.0

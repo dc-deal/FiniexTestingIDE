@@ -38,6 +38,8 @@
         {"phase_id": "limit_modify_test", "phase_type": "limit_modify", "side": "long", "limit_offset_pct": 0.004, "fill_timeout_s": 45},
         {"phase_id": "limit_modify_close", "phase_type": "market_close_all", "fill_timeout_s": 30},
         {"phase_id": "limit_cancel_test", "phase_type": "limit_cancel", "side": "long", "limit_offset_pct": 0.004, "fill_timeout_s": 30},
+        {"_comment": "The live STOP path (#500). A buy stop rests ABOVE the market, so the offset mirrors the limit phases. It is accepted, confirmed resting, then cancelled at the venue — no fill, therefore no fee. What it proves cannot be proven by a mock: the trigger mapping on the wire (Kraken's `price` carries the trigger, not a limit), the submit-response route that confirms the broker reference, the poll loop reading the stop world, and the cancel path finding the order there rather than among the limits.",
+         "phase_id": "stop_cancel_test", "phase_type": "stop_cancel", "side": "long", "limit_offset_pct": 0.004, "fill_timeout_s": 30},
         {"phase_id": "multi_concurrent_limits", "phase_type": "multi_limit", "side": "long", "order_count": 3, "limit_offset_pct": 0.005, "fill_timeout_s": 30},
         {"phase_id": "multi_cancel_all", "phase_type": "multi_cancel", "fill_timeout_s": 30},
         {"phase_id": "partial_close_test", "phase_type": "partial_close", "side": "long", "fill_timeout_s": 30},

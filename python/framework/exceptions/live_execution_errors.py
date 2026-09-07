@@ -23,13 +23,22 @@ class DryRunConflictError(FiniexError):
 
 class SessionEndPolicyConflictError(FiniexError):
     """
-    A profile tried to leave resting orders at a venue that the broker's setting forbids.
+    A profile asked for `session_end.orders: 'leave'` where nothing would manage them.
 
-    `session_end.orders: 'leave'` is the LOOSENING value — afterwards orders sit at a
-    venue with nobody watching. A profile may TIGHTEN the posture ('cancel' against a
-    'leave' broker default) and never loosen it, exactly as with dry_run: profiles are
-    copied, shared and edited quickly, so leaving live orders behind is a deliberate act
-    on the broker's own configuration.
+    'leave' is the LOOSENING value — afterwards orders sit at a venue with nobody
+    watching — and it is refused in three distinct situations, not one:
+
+    - The broker's own setting forbids it. A profile may TIGHTEN the posture ('cancel'
+      against a 'leave' broker default) and never loosen it, exactly as with dry_run:
+      profiles are copied, shared and edited quickly, so leaving live orders behind is a
+      deliberate act on the broker's own configuration.
+    - Cold start is off, so no later session would ever adopt the orders back.
+    - Cold start would adopt them but its mode is 'operator_confirm' on an unattended
+      start, so the next boot could not ask anyone and would refuse — the bot meant to
+      manage the orders would not start.
+
+    All three say the same thing: an order may only be left standing when something is
+    going to pick it up again.
     """
     pass
 

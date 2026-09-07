@@ -32,6 +32,17 @@ class OrderType(Enum):
         STOP_LIMIT: Wait for trigger price, then place LIMIT order
         TRAILING_STOP: Dynamic stop that follows price movement
         ICEBERG: Large order split into smaller visible chunks
+
+    Read-only:
+        UNKNOWN: A resting order the venue reports under a type this project cannot name.
+            It exists so a truth-pull never has to choose between dropping the row and
+            mislabelling it — both are worse. Dropping it hides the order from the
+            exclusive-account check, which asks whether a stranger is working our symbol;
+            calling it a LIMIT puts a number the venue meant as an offset into a field the
+            whole codebase reads as a limit price. An UNKNOWN row carries no prices, and
+            nothing routable admits the type, so it can be reported and not acted upon.
+            Never valid on an OpenOrderRequest — the request gates refuse it like any type
+            the pipeline has not built.
     """
     MARKET = 'market'
     LIMIT = 'limit'
@@ -39,6 +50,16 @@ class OrderType(Enum):
     STOP_LIMIT = 'stop_limit'
     TRAILING_STOP = 'trailing_stop'
     ICEBERG = 'iceberg'
+    UNKNOWN = 'unknown'
+
+
+# Order types that actually REST at a venue — a placed order waiting for a price rather
+# than one in flight. A MARKET order in a venue's open list is in transit, not resting, and
+# adopting one would put it into a world where nothing triggers it. Declared here because
+# both the boot adopter and the live drain need the same answer, and two copies of it drift.
+RESTING_ORDER_TYPES = frozenset({
+    OrderType.LIMIT, OrderType.STOP, OrderType.STOP_LIMIT,
+})
 
 
 class OrderDirection(StrEnum):
@@ -167,6 +188,25 @@ class RejectionReason(Enum):
     # calling that a broker error would put our transport fault on their account.
     BROKER_UNREACHABLE = 'broker_unreachable'
 
+
+
+class ProtectiveLevelEnforcement(Enum):
+    """
+    Who actually enforces a stop_loss / take_profit declared on an order (#500).
+
+    The level used to be recorded on the Position and enforced by nobody: the payload
+    carried no field for it and the engine's check skipped every non-simulation executor,
+    on the assumption that the venue had taken it. The assumption was never true, so the
+    console showed a stop that did not exist. This says who holds it.
+
+    LOCAL: our own process evaluates it against the tick stream and closes the position
+        when it is breached. Protects while we are running and connected; a process that
+        dies leaves the position unprotected.
+    VENUE: the level rests at the broker as an order of its own and survives our process
+        dying. No adapter answers this yet — the Kraken conditional close is its own issue.
+    """
+    LOCAL = 'local'
+    VENUE = 'venue'
 
 # ============================================
 # Order Capability System

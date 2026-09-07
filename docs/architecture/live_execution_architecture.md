@@ -26,7 +26,7 @@ Live execution via broker adapter API. Delegates pending order management to Liv
 4. `_handle_timeout()` — Cancels at broker, records BROKER_ERROR rejection
 5. `cancel_limit_order()` — Cancels at broker + removes from `_active_limit_orders`
 
-**Feature gating:** MARKET and LIMIT orders supported. Extended order types (STOP, STOP_LIMIT) are rejected.
+**Feature gating:** MARKET, LIMIT, STOP and STOP_LIMIT supported (#500). TRAILING_STOP and ICEBERG are rejected — Kraken offers both, this pipeline builds neither, and the pre-flight intersects the adapter's declaration with the executor's own set so the message names whichever side is short.
 
 **Testable via MockBrokerAdapter** — no real broker needed for pipeline verification.
 

@@ -93,12 +93,14 @@ Targeted scenario tests for specific AutoTrader pipeline behaviors: SL/TP level 
 
 Each class runs an independent session from its own profile. Sessions are module-scoped.
 
-> **Architectural note:** In the AutoTrader pipeline, SL/TP triggering is broker-side (live: Kraken handles it). Engine-side SL/TP monitoring runs only in `ExecutorMode.SIMULATION`; `LiveTradeExecutor` uses `LIVE` mode and the MockAdapter does not implement broker-side SL/TP, so **nothing closes these positions at all**. Until #492 they were force-closed at session end and the tests read the configured levels off that closing trade record — an exit that never reached the venue. They now read the levels from the POSITION, where they always lived, so the SL/TP tests verify the configuration propagation path without needing a trigger. See [session_end_policy.md](../../architecture/session_end_policy.md).
+> **Architectural note:** SL/TP is enforced by THIS process in both pipelines since #500 — `_check_sl_tp_triggers` used to return immediately outside `ExecutorMode.SIMULATION`, on the assumption that the broker held the level, and nothing ever sent one. So these two profiles are named after a trigger that had never happened, and the tests asserted that the level was STORED. They now assert that it ACTED.
+>
+> Two properties of the live close shape what they may assert. The exit goes through the asynchronous `close_position()`, so it lands at the broker's next price and **never at the level** — one of the tests pins exactly that. And the number of exits is not a fixed 1: a close still in flight at session end is recorded as an anomaly and cleared rather than filled (`clear_pending`), and a partially filled close leaves lots that trigger again. The tests therefore assert the OUTCOME — something closed for the right reason and nothing is left open — not a count. See [session_end_policy.md](../../architecture/session_end_policy.md) and [protective_level_tests.md](protective_level_tests.md).
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
-| `TestStopLossConfiguration` | 3 | SL level flows: decision → executor → TradeRecord.stop_loss == 89200.0; entry_price > 0; no session errors |
-| `TestTakeProfitConfiguration` | 3 | TP level flows: decision → executor → TradeRecord.take_profit == 89350.0; entry_price > 0; no session errors |
+| `TestStopLossConfiguration` | 3 | The stop ACTED: an exit carries `SL_TRIGGERED` and nothing is left open; the exit price is a real fill at or below the 89200.0 level, never the level itself; no session errors |
+| `TestTakeProfitConfiguration` | 3 | The target ACTED: an exit carries `TP_TRIGGERED` and nothing is left open; the exit price is a real fill at or above the 89350.0 level; no session errors |
 | `TestDuplicateSignalGuard` | 3 | Exactly 1 position opened despite 490 repeated BUY signals (hold_ticks=5000 > max_ticks=500); the session end fabricates no exit; no errors |
 | `TestMinimalWarmup` | 3 | Session completes without crash when bar_max_history=30 starves M30 workers; ticks processed; no errors |
 

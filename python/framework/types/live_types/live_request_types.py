@@ -111,7 +111,8 @@ class EditJob:
     Modify-order job carried via _http_outbox to the worker thread.
 
     The worker uses the adapter's Tier-3 modify-layer:
-        adapter._build_modify_payload(broker_ref, symbol, new_price, sl, tp)
+        adapter._build_modify_payload(broker_ref, symbol, order_type,
+                                      new_price, new_limit_price, sl, tp)
         adapter._do_request_modify(payload) → raw
         adapter._parse_modify_response(raw, broker_ref, timestamp) → BrokerResponse
 
@@ -122,7 +123,14 @@ class EditJob:
                     brokers (Kraken EditOrder) return a NEW ref in the
                     response — the drain handler swaps refs in that case.
         symbol: Trading symbol (some brokers need this on modify, e.g. Kraken)
-        new_price: New limit / stop_limit price (None = no change)
+        order_type: What kind of order is being amended. A venue needs it to know what
+                    `new_price` MEANS: for a triggered type it is the trigger, for a limit
+                    it is the limit price, and the two go to different API fields
+        new_price: New limit price, or the new TRIGGER price of a triggered type
+                   (None = no change)
+        new_limit_price: New limit price of a STOP_LIMIT, beside its trigger
+                   (None = no change). Applied locally only until #500 wired it through:
+                   a limit amend that never left the process is a divergence we authored
         new_stop_loss: New SL (None = no change in this batch — UNSET-to-None
                        translation happens at the executor boundary)
         new_take_profit: New TP (analog)
@@ -131,7 +139,9 @@ class EditJob:
     order_id: str
     broker_ref: str
     symbol: str
+    order_type: OrderType
     new_price: Optional[float]
+    new_limit_price: Optional[float]
     new_stop_loss: Optional[float]
     new_take_profit: Optional[float]
     adapter: AbstractAdapter

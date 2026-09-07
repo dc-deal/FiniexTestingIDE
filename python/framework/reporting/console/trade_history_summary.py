@@ -298,6 +298,10 @@ class TradeHistorySummary(AbstractBatchSummarySection):
 
         sl_closes = sum(1 for r in rows if r.close_reason == 'sl_triggered')
         tp_closes = sum(1 for r in rows if r.close_reason == 'tp_triggered')
+        # Zero today by construction: CloseReason.SCENARIO_END is RESERVED for the real
+        # session-end close #487 makes buildable, and nothing produces it in between. The
+        # line below prints only when the count is non-zero, so a dead-code sweep should
+        # leave both standing rather than trade one deletion for one re-addition.
         scenario_closes = sum(1 for r in rows if r.close_reason == 'scenario_end')
         manual_closes = total_trades - sl_closes - tp_closes - scenario_closes
 

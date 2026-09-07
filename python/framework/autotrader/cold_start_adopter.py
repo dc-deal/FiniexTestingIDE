@@ -34,16 +34,14 @@ from python.framework.types.autotrader_types.cold_start_types import (
 from python.framework.types.config_types.autotrader_defaults_config_types import ColdStartDefaults
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.persistence_types import PositionCarryOver
-from python.framework.types.trading_env_types.order_types import OrderType
+from python.framework.types.trading_env_types.order_types import (
+    RESTING_ORDER_TYPES,
+    OrderDirection,
+)
 from python.framework.utils.broker_asset_utils import normalize_broker_asset
 from python.framework.utils.connection_ladder import run_with_ladder
 from python.framework.utils.run_id_utils import parse_client_order_id
 
-# Order types that actually REST at a venue. A MARKET order in the open list is in flight, not
-# resting, and adopting one would put it into a world where nothing triggers it. STOP types are
-# here because the venue can hold them even though this project's live submit path for them
-# arrives with #209 — the guard should not have to be revisited then.
-_RESTING_ORDER_TYPES = (OrderType.LIMIT, OrderType.STOP, OrderType.STOP_LIMIT)
 
 # Below this, a difference between the book and the venue's balance is float noise rather
 # than a fact. One satoshi is the smallest unit any supported venue settles in, so a real
@@ -479,13 +477,25 @@ class ColdStartAdopter:
         sold by hand between the sessions. Adjusting the book to fit would be inventing a
         number; the divergence is reported and the note stays as written.
 
+        Only LONG positions claim the base asset, and the direction used to be ignored here.
+        That is not a rounding error, it is a sign inversion: at spot a SELL SPENDS the base
+        currency (`portfolio_manager.open_position_portfolio`, spot branch), so an open SHORT
+        means the coin has LEFT the account. Summing it as a claim ON the coin made a bot that
+        ended a session holding a sold holding boot into a fabricated shortfall — an ERROR in
+        the session pot, on every restart, and the Field Study's short phase produces exactly
+        that state.
+
+        A spot SHORT is not cross-checked at all, and cannot be by this measure: closing it
+        BUYS the base back, so it is a claim on the QUOTE balance, which is shared with
+        everything else in the account and says nothing on its own.
+
         Args:
             book: The restored notes
             balances: Asset → amount as the venue reports it
 
         Returns:
-            How much the book claims beyond what the account holds, in base units; 0.0 when
-            the account covers it
+            How much the book's LONG positions claim beyond what the account holds, in base
+            units; 0.0 when the account covers it
         """
         if not book:
             return 0.0
@@ -495,11 +505,15 @@ class ColdStartAdopter:
             amount for asset, amount in balances.items()
             if normalize_broker_asset(asset) == base
         )
-        booked = sum(record.lots * record.contract_size for record in book)
+        booked = sum(
+            record.lots * record.contract_size for record in book
+            if record.direction == OrderDirection.LONG.value
+        )
 
         if booked - held > _BOOK_DUST:
             self._logger.error(
-                f'❌ Cold start: the restored book claims {booked} {base} but the account '
+                f'❌ Cold start: the restored book\'s LONG positions claim {booked} {base} '
+                f'but the account '
                 f'holds {held} — {booked - held} short. Something sold outside this bot '
                 f'between the sessions. The book is NOT adjusted: closing against it will '
                 f'fail or partially fill. Check the account by hand.'
@@ -561,7 +575,7 @@ class ColdStartAdopter:
             # carries is not evidence of ownership; this is.
             key_is_ours = parsed[0] in known_keys
 
-            if order.order_type not in _RESTING_ORDER_TYPES:
+            if order.order_type not in RESTING_ORDER_TYPES:
                 # A MARKET order in the venue's open list is IN FLIGHT, not resting — it has
                 # been accepted and not yet filled. Adopting it would put a market order into
                 # the resting-order world, where nothing ever triggers it. It is also the one

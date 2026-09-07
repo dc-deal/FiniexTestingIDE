@@ -23,6 +23,9 @@ Strategy in one paragraph:
   ATR worker needed): SL/TP at submission, an always-on trailing stop that only
   ratchets in the profit direction, and a one-rung partial close at a configured
   R-multiple. Up to `max_positions` concurrent positions stack on the symbol.
+  The levels and the trail are enforced by the FRAMEWORK against the tick stream,
+  in live as well as in a backtest (#500) — they are not held at the venue, so a
+  position is unprotected while this process is not running.
 
 Multi-position note: the backtest engine runs ONE symbol per scenario today
 (portfolio multi-symbol is #369 / V1.5), so multi-position here means several

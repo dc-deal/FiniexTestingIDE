@@ -56,12 +56,15 @@ def _spot_estimate(stats) -> tuple:
 
 
 def _open_position_rows(
-    positions: List[Position], last_price: float) -> List[OpenPositionRow]:
+    positions: List[Position], last_price: float,
+    enforcement: str = '') -> List[OpenPositionRow]:
     """Project the positions a unit still held onto their report rows (#492).
 
     Args:
         positions: The unit's open positions at run end
         last_price: The unit's last mid price — 0.0 when no tick ever arrived
+        enforcement: Who enforces a protective level in the executor that produced these
+            positions, stamped at capture — carried only onto rows that HAVE a level (#500)
 
     Returns:
         One row per position; `valued` is False where there was no price to mark against
@@ -78,6 +81,12 @@ def _open_position_rows(
             valued=last_price > 0,
             stop_loss=position.stop_loss,
             take_profit=position.take_profit,
+            # Only where there is something to enforce — an empty string on a position
+            # without levels reads correctly as "nothing to hold".
+            protective_level_enforcement=(
+                enforcement
+                if position.stop_loss is not None or position.take_profit is not None
+                else ''),
         )
         for position in positions
     ]
@@ -129,7 +138,8 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
     """Map a unit's portfolio stats to the full per-unit projection row."""
     stats = unit.portfolio_stats
     est_current, est_initial, est_pnl, est_pnl_pct = _spot_estimate(stats)
-    open_rows = _open_position_rows(unit.open_positions, stats.last_price)
+    open_rows = _open_position_rows(
+        unit.open_positions, stats.last_price, stats.protective_level_enforcement)
     return PortfolioUnitRow(
         name=unit.name,
         symbol=unit.symbol,

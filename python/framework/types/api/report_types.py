@@ -190,6 +190,12 @@ class OpenPositionRow(BaseModel):
     valued: bool = False
     stop_loss: float | None = None
     take_profit: float | None = None
+    # Who enforces the two levels above (#500). 'local' — our own process watches the tick
+    # stream and closes on a breach, so a process that dies leaves the position unprotected.
+    # 'venue' — the level rests at the broker and outlives us. Empty where no level is set.
+    # A level was reported for a long time with nobody behind it; this is what makes the
+    # difference readable instead of assumed.
+    protective_level_enforcement: str = ''
 
 
 class PortfolioUnitRow(BaseModel):

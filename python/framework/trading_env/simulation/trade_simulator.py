@@ -22,7 +22,10 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.trading_env.simulation.order_latency_simulator import OrderLatencySimulator
-from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
+from python.framework.types.portfolio_types.portfolio_trade_record_types import (
+    CloseReason,
+    EntryType,
+)
 from python.framework.types.trading_env_types.latency_simulator_types import (
     ModificationRequest,
     PendingOperation,
@@ -424,6 +427,12 @@ class TradeSimulator(AbstractTradeExecutor):
         if funds_rejection:
             return funds_rejection
 
+        # A resting type needs its price(s). Shared with live on the base since #500 — the
+        # rule used to be written out per branch below, and live had no version of it at all.
+        price_rejection = self._reject_if_resting_prices_invalid(request, order_id)
+        if price_rejection:
+            return price_rejection
+
         # Execute based on order type
         if request.order_type == OrderType.MARKET:
             # Submit to latency simulator (fill happens later)
@@ -445,18 +454,6 @@ class TradeSimulator(AbstractTradeExecutor):
                 }
             )
         elif request.order_type == OrderType.LIMIT:
-            # Validate limit price
-            if request.price is None or request.price <= 0:
-                self._orders_rejected += 1
-                result = create_rejection_result(
-                    order_id=order_id,
-                    reason=RejectionReason.INVALID_PRICE,
-                    message=f'Limit order requires positive price, got: {request.price}'
-                )
-                self._check_order_history_limit()
-                self._order_history.append(result)
-                return result
-
             # Submit to latency simulator with limit price
             self.latency_simulator.submit_open_order(
                 order_id=order_id,
@@ -477,18 +474,6 @@ class TradeSimulator(AbstractTradeExecutor):
                 }
             )
         elif request.order_type == OrderType.STOP:
-            # Validate stop price
-            if request.stop_price is None or request.stop_price <= 0:
-                self._orders_rejected += 1
-                result = create_rejection_result(
-                    order_id=order_id,
-                    reason=RejectionReason.INVALID_PRICE,
-                    message=f'Stop order requires positive stop_price, got: {request.stop_price}'
-                )
-                self._check_order_history_limit()
-                self._order_history.append(result)
-                return result
-
             # Submit to latency simulator (stop_price as entry_price for trigger check)
             self.latency_simulator.submit_open_order(
                 order_id=order_id,
@@ -508,28 +493,6 @@ class TradeSimulator(AbstractTradeExecutor):
                 }
             )
         elif request.order_type == OrderType.STOP_LIMIT:
-            # Validate both prices
-            if request.stop_price is None or request.stop_price <= 0:
-                self._orders_rejected += 1
-                result = create_rejection_result(
-                    order_id=order_id,
-                    reason=RejectionReason.INVALID_PRICE,
-                    message=f'Stop-Limit order requires positive stop_price, got: {request.stop_price}'
-                )
-                self._check_order_history_limit()
-                self._order_history.append(result)
-                return result
-            if request.price is None or request.price <= 0:
-                self._orders_rejected += 1
-                result = create_rejection_result(
-                    order_id=order_id,
-                    reason=RejectionReason.INVALID_PRICE,
-                    message=f'Stop-Limit order requires positive limit price, got: {request.price}'
-                )
-                self._check_order_history_limit()
-                self._order_history.append(result)
-                return result
-
             # Submit to latency simulator (stop_price as entry_price, limit_price in kwargs)
             self.latency_simulator.submit_open_order(
                 order_id=order_id,
@@ -571,7 +534,8 @@ class TradeSimulator(AbstractTradeExecutor):
     def close_position(
         self,
         position_id: str,
-        lots: Optional[float] = None
+        lots: Optional[float] = None,
+        close_reason: CloseReason = CloseReason.MANUAL
     ) -> OrderResult:
         """
         Submit close position order with delay.
@@ -581,6 +545,7 @@ class TradeSimulator(AbstractTradeExecutor):
         Args:
             position_id: Position to close
             lots: Lots to close (None = close all)
+            close_reason: Why — recorded on the trade when the close fills
 
         Returns:
             OrderResult with PENDING status
@@ -598,7 +563,8 @@ class TradeSimulator(AbstractTradeExecutor):
         order_id = self.latency_simulator.submit_close_order(
             position_id=position_id,
             tick=self._current_tick,
-            close_lots=lots
+            close_lots=lots,
+            close_reason=close_reason
         )
 
         # Return PENDING result (order not filled yet!)

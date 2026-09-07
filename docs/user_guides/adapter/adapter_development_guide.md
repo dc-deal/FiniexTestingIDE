@@ -62,21 +62,23 @@ Same contract, three different transports, zero changes to `LiveRequestProcessor
 
 ### Capability Declaration
 
-`get_order_capabilities()` declares which order types the **venue** accepts. It is one of two declarations, and the pipeline reads their intersection: the executor declares what has actually been built for its path (`get_supported_order_types()` — the live path carries MARKET and LIMIT), and pre-flight checks a strategy's needs against both. So declaring STOP_LIMIT here does not by itself let one through — an algo that wants a type either side lacks is refused at startup, and the message names which side is short.
+`get_order_capabilities()` declares which order types the **venue** accepts — nothing about what this project routes. It is one of two declarations, and the pipeline reads their intersection: the executor declares what has actually been built for its path (`get_supported_order_types()` — the live path carries MARKET, LIMIT, STOP and STOP_LIMIT), and pre-flight checks a strategy's needs against both. So declaring a type here does not by itself let one through — an algo that wants a type either side lacks is refused at startup, and the message names which side is short.
 
 ```python
 def get_order_capabilities(self) -> OrderCapabilities:
     return OrderCapabilities(
         market_orders=True,
         limit_orders=True,
-        stop_orders=False,             # Kraken uses StopLimit instead
+        stop_orders=True,
         stop_limit_orders=True,
-        trailing_stop=False,
-        iceberg_orders=True,
+        trailing_stop=False,           # Kraken offers it; nothing here builds one
+        iceberg_orders=True,           # venue-true; no executor branch places one
         hedging_allowed=self._hedging_allowed,
         partial_fills_supported=True,
     )
 ```
+
+**Declare the venue, not your progress.** `stop_orders` said `False` here for a long time with the comment *"Kraken uses StopLimit instead"*, which is not true — Kraken offers a plain `stop-loss` that triggers to market, and this same adapter's READ side always mapped it. A capability that under-declares the venue is not a safe error: it is invisible to a certificate built from the declaration (#491 certifies DECLARED paths, so a capability wrongly denied has no path to certify), and it hides the gap behind an apparently deliberate `False`. If the pipeline is the short side, say so in a comment beside a `True` — the intersection already refuses the order.
 
 If a Tier-3 operation is declared but not implementable for some order type, the `_build_<op>_payload` layer should raise — fail fast at build time rather than send a malformed payload.
 

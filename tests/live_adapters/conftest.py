@@ -19,6 +19,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List
 
+import pytest
+
 from python.framework.reporting.certificates.certificate_identity_builder import (
     build_certificate_identity,
 )
@@ -40,6 +42,15 @@ class _ResultCollector:
         self.passed: int = 0
         self.failed: int = 0
         self.skipped: int = 0
+        # A KNOWN-BROKEN path, counted apart from a skip. pytest reports both as `skipped`,
+        # so a certificate that folds them together says "not run" about a capability it
+        # knows does not work — the same blindness #500 found in this suite.
+        self.expected_failures: List[str] = []
+        # WHICH tests failed, not merely how many. A count says a capability is broken
+        # without saying which one, so a reader has to go find the run's output — and a
+        # strict xfail that starts PASSING lands here too, which is the one failure whose
+        # cause nobody would guess from a number.
+        self.failures: List[str] = []
         self.tests_run: List[str] = []
         self.observed_phases: List[Dict[str, Any]] = []
 
@@ -53,8 +64,12 @@ class _ResultCollector:
             self.passed += 1
         elif report.failed:
             self.failed += 1
+            self.failures.append(test_name)
         elif report.skipped:
-            self.skipped += 1
+            if hasattr(report, 'wasxfail'):
+                self.expected_failures.append(test_name)
+            else:
+                self.skipped += 1
 
     def record_phase(self, phase: str, dry_run: bool, api_base_url: str) -> None:
         """
@@ -94,6 +109,25 @@ def pytest_configure(config):
     config.pluginmanager.register(config._live_adapter_results)
 
 
+@pytest.fixture(scope='module')
+def real_orders_authorised(request) -> None:
+    """
+    Gate the phases that place REAL orders behind an explicit flag.
+
+    The credentials check alone is not a gate — on a machine that HAS credentials it always
+    passes, so a bare `pytest tests/` would place two real orders (a LIMIT far below market
+    that reserves ~$10 until cancelled, and a 0.001 ETHUSD buy-and-sell costing ~$0.01 in
+    fees). The pytest marks here cannot help: they are path synonyms by design, so
+    `live_adapter` says WHERE a test lives and never that somebody meant to run it.
+
+    Any fixture that builds an adapter with dry_run=False requests this first.
+    """
+    if not request.config.getoption('place_real_orders', default=False):
+        pytest.skip(
+            'Places REAL orders on a funded account — pass --place-real-orders to run it. '
+            'Skipped so that a whole-tree pytest run cannot trade by accident.')
+
+
 def pytest_addoption(parser):
     """Add the certificate options for report generation."""
     parser.addoption(
@@ -101,6 +135,15 @@ def pytest_addoption(parser):
         action='store',
         default='dev',
         help='Release version for the live adapter certificate (e.g. 1.2.2). Defaults to "dev".',
+    )
+    parser.addoption(
+        '--place-real-orders',
+        action='store_true',
+        default=False,
+        help='Required to run the phases that place REAL orders on a funded account. '
+             'Without it those tests skip. The marks in this directory fall out of the '
+             'filesystem path, so they cannot express intent — and a bare `pytest tests/` '
+             'with credentials present would otherwise trade.',
     )
     parser.addoption(
         '--comment',
@@ -113,7 +156,12 @@ def pytest_addoption(parser):
 def pytest_sessionfinish(session, exitstatus):
     """Write the release certificate after the session completes."""
     results = session.config._live_adapter_results
-    total = results.passed + results.failed + results.skipped
+    # Expected failures count as RUN. They are reported by pytest as skips, and leaving them
+    # out of the total made a session consisting only of known-broken paths look like a
+    # session in which nothing happened — no certificate at all — and left the arithmetic
+    # visibly short of `tests_run`.
+    total = (results.passed + results.failed + results.skipped
+             + len(results.expected_failures))
 
     # Skip report when no tests ran (e.g. collection errors, wrong directory)
     if total == 0:
@@ -168,7 +216,12 @@ def _write_report(release_version: str, comment: str, results: _ResultCollector)
         'overall_status': status.value,
         'tests_passed': results.passed,
         'tests_failed': results.failed,
+        # Named for the same reason as the expected failures below: a count cannot be acted on.
+        'tests_failed_names': results.failures,
         'tests_skipped': results.skipped,
+        # Named, not counted: a reader has to be able to see WHICH capability is known
+        # not to work, not merely that one of them is.
+        'tests_expected_to_fail': results.expected_failures,
         'tests_run': results.tests_run,
         # What the fixtures actually built, per phase. Registered by them at construction;
         # never re-read from configs/broker_settings/ at write time.

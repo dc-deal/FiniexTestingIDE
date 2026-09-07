@@ -60,7 +60,14 @@ class BrokerOrder:
         order_type: Order type (LIMIT, etc.)
         lots: Order size
         status: Broker-side order status
-        price: Limit price, if applicable
+        price: Limit price, if applicable — the price the order would FILL at
+        stop_price: Trigger price of a conditional order, if applicable — the price that
+            ACTIVATES it. Kept apart from `price` because a venue reports both in one field
+            family and they mean opposite things: a stop-loss carries only a trigger, a
+            stop-loss-limit carries a trigger and a limit. Folding the two lost the
+            distinction, and a trigger recorded as a limit price is read as a fill price by
+            adoption, by the reconciler's price comparison and by the committed-funds
+            reservation (#500)
         stop_loss: Attached stop-loss, if provided
         take_profit: Attached take-profit, if provided
         client_order_id: The key WE chose for this order, echoed back by the venue (#473).
@@ -79,6 +86,7 @@ class BrokerOrder:
     lots: float
     status: BrokerOrderStatus
     price: Optional[float] = None
+    stop_price: Optional[float] = None
     filled_lots: float = 0.0
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None

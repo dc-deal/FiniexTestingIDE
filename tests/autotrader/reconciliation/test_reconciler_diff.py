@@ -7,6 +7,7 @@ async submit roundtrip and dry-run never read as false orphans.
 """
 
 from python.framework.testing.mock_broker_adapter import MockDivergenceMode
+from python.framework.types.trading_env_types.order_types import OrderType
 from tests.autotrader.reconciliation.conftest import make_broker_order, make_pending
 
 
@@ -54,6 +55,43 @@ def test_stale_order_price_mismatch(mock_adapter, make_reconciler):
     assert len(result.stale_orders) == 1
     local, broker = result.stale_orders[0]
     assert broker.price == 2100.0
+
+
+def test_a_moved_trigger_reads_as_stale(mock_adapter, make_reconciler):
+    """
+    A stop carries two prices, and the TRIGGER is the one a trailing stop moves.
+
+    Only the limit price was compared, so the one price most likely to have been amended
+    was the one this layer could not see (#500).
+    """
+    mock_adapter.set_broker_orders([
+        make_broker_order('O1', order_type=OrderType.STOP, price=None, stop_price=2200.0)])
+    rec = make_reconciler(mock_adapter, active_orders=[
+        make_pending('o1', 'O1', order_type=OrderType.STOP, stop_price=2100.0)])
+
+    result = rec.reconcile()
+
+    assert len(result.stale_orders) == 1, (
+        'a stop whose trigger moved at the venue must read as stale')
+
+
+def test_a_stop_with_no_limit_price_is_not_stale_for_that_reason(
+        mock_adapter, make_reconciler):
+    """
+    Absent is not different. A plain stop has no limit price on either side.
+
+    Comparing an absent local limit against an absent broker limit must skip, not fire —
+    otherwise every resting stop reads as permanently diverged and the cumulative
+    divergence total inflates on every cycle.
+    """
+    mock_adapter.set_broker_orders([
+        make_broker_order('O1', order_type=OrderType.STOP, price=None, stop_price=2100.0)])
+    rec = make_reconciler(mock_adapter, active_orders=[
+        make_pending('o1', 'O1', order_type=OrderType.STOP, stop_price=2100.0)])
+
+    result = rec.reconcile()
+
+    assert result.is_clean, f'a matching stop must reconcile clean: {result.stale_orders}'
 
 
 def test_inflight_order_without_broker_ref_skipped(mock_adapter, make_reconciler):

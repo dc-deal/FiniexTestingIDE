@@ -1,4 +1,5 @@
 {
+  "_comment": "REAL MONEY. This is the only live profile that declares use_stop_limit, so it is the one whose behaviour changed when the live path learned STOP and STOP_LIMIT (#500): it used to be refused at STARTUP and now starts and places STOP_LIMIT entries at the venue. Two values need an owner's eye before it runs. min_free_margin is 1000 here while the other three live profiles carry 0.001-0.01 - at spot that figure is derived from a margin-style equity, so the gate is on a scale that does not describe this account and the bot may simply never enter. And lot_size 2.0 SOL is the size of every entry.",
   "name": "solusd_live",
   "symbol": "SOLUSD",
   "broker_type": "kraken_spot",

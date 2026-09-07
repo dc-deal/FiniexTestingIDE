@@ -200,28 +200,80 @@ class TestRejection:
 
 
 class TestFeatureGating:
-    """Feature gating: only MARKET and LIMIT orders allowed."""
+    """
+    Feature gating: MARKET, LIMIT, STOP and STOP_LIMIT are routable; nothing else is.
 
-    def test_stop_order_rejected(self, mock_instant, executor_instant):
-        """STOP order type is rejected with ORDER_TYPE_NOT_SUPPORTED."""
+    These two tests used to assert that STOP and STOP_LIMIT were REFUSED, which was the
+    live path's honest state until #500 taught every layer between the strategy and the
+    wire to carry them. What survives is the shape of the guarantee: a type the pipeline
+    has not built comes back ORDER_TYPE_NOT_SUPPORTED, and a conditional order with no
+    usable trigger comes back INVALID_PRICE rather than reaching a payload builder.
+    """
+
+    def test_a_type_the_pipeline_has_not_built_is_rejected(self, mock_instant, executor_instant):
+        """ICEBERG: the venue offers it, nothing here places one."""
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         result = executor_instant.open_order(OpenOrderRequest(
-            symbol='BTCUSD', order_type=OrderType.STOP, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.ICEBERG,
+            direction=OrderDirection.LONG, lots=0.001
         ))
 
         assert result.status == OrderStatus.REJECTED
         assert result.rejection_reason == RejectionReason.ORDER_TYPE_NOT_SUPPORTED
 
-    def test_stop_limit_order_rejected(self, mock_instant, executor_instant):
-        """STOP_LIMIT order type is rejected."""
+    def test_a_stop_without_a_trigger_is_rejected_on_the_price(
+            self, mock_instant, executor_instant):
+        """
+        The type is routable now, so the refusal moves to the price — and it must.
+
+        Live had NO price validation of any kind before #500 (`order_guard` does not know
+        the field), so a stop with no trigger would have reached the payload builder and
+        the venue's own answer would have been the first thing to notice.
+        """
         mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
 
         result = executor_instant.open_order(OpenOrderRequest(
-            symbol='BTCUSD', order_type=OrderType.STOP_LIMIT, direction=OrderDirection.LONG, lots=0.001
+            symbol='BTCUSD', order_type=OrderType.STOP,
+            direction=OrderDirection.LONG, lots=0.001
         ))
 
         assert result.status == OrderStatus.REJECTED
+        assert result.rejection_reason == RejectionReason.INVALID_PRICE
+
+    def test_a_stop_limit_without_a_limit_price_is_rejected_too(
+            self, mock_instant, executor_instant):
+        """A stop-limit needs BOTH prices — the trigger alone is not enough."""
+        mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
+
+        result = executor_instant.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.STOP_LIMIT,
+            direction=OrderDirection.LONG, lots=0.001, stop_price=51000.0
+        ))
+
+        assert result.status == OrderStatus.REJECTED
+        assert result.rejection_reason == RejectionReason.INVALID_PRICE
+
+    def test_a_fully_formed_stop_is_accepted_and_rests(self, mock_instant, executor_instant):
+        """
+        The capability this issue exists for: a stop entry can be placed live.
+
+        It rests rather than filling — the venue holds the trigger — so the observable is
+        the executor's own resting-order count, not a position.
+        """
+        mock_instant.feed_tick(executor_instant, bid=49999.0, ask=50001.0)
+
+        result = executor_instant.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.STOP,
+            direction=OrderDirection.LONG, lots=0.001, stop_price=51000.0
+        ))
+
+        assert result.status == OrderStatus.PENDING, (
+            f'A declared stop must be accepted, got {result.rejection_reason}')
+        counts = executor_instant.get_active_order_counts()
+        assert counts['active_stops'] == 1, (
+            f'A live stop rests in the stop world, not among the limits: {counts}')
+        assert counts['active_limits'] == 0
 
 
 class TestValidation:

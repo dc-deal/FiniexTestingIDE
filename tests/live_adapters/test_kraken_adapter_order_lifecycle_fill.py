@@ -41,7 +41,7 @@ _POLL_MAX = 10  # max query_order_sync attempts before giving up
 
 
 @pytest.fixture(scope='module')
-def live_adapter_fill(request):
+def live_adapter_fill(request, real_orders_authorised):
     """
     KrakenAdapter with dry_run=False for fill validation.
 
