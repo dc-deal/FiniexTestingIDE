@@ -17,14 +17,13 @@ from pathlib import Path
 
 import pytest
 
-from tests.live_adapters.conftest import record_observed_adapter
-
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
 from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, TimeoutConfig
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
+from tests.live_adapters.conftest import record_observed_adapter
 
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
 _BROKER_SETTINGS_PATH = Path('configs/broker_settings/kraken_spot.json')
@@ -184,15 +183,22 @@ class TestKrakenAdapterOrderLifecycle:
         )
         assert response.raw_response['descr'].get('order'), 'Expected an order description'
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason='The venue-side attach is not built. Our own process now enforces a '
+               'declared level (#500), so a live stop is no longer enforced by nobody — '
+               'but it still does not reach Kraken, so it cannot survive our process '
+               'dying. Attaching it is the conditional-close work, tracked separately. '
+               'Strict, so this flips loudly the moment the payload carries a level.')
     def test_a_declared_stop_loss_reaches_the_venue(self, live_adapter, processor):
         """
         The crossing question: does a level the strategy declared ever reach Kraken?
 
         Asserted against the VENUE's own words rather than our payload — Kraken's `descr`
         carries a `close` field describing the conditional close it understood, e.g.
-        `close position @ stop loss 22000.0`. Absent means the level exists nowhere: the
-        submit payload does not carry it, and the engine skips its own SL/TP check outside
-        SIMULATION, so nothing at all would act on it.
+        `close position @ stop loss 22000.0`. Absent means the level never left this
+        process: our own tick check enforces it while we are running and connected, and
+        nothing protects the position once we are not.
         """
         response = processor.submit_open_order(
             symbol='ETHUSD',

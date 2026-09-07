@@ -1,0 +1,56 @@
+{
+  "record_kind": "certificate",
+  "release_version": "dev",
+  "app_version": "1.4.0",
+  "timestamp": "2026-09-07T10:21:58.414720+00:00",
+  "valid_until": "2026-12-06T10:21:58.414720+00:00",
+  "git_commit": "41533bc",
+  "git_branch": "dev-v-1-4",
+  "git_dirty": true,
+  "uncommitted_count": 28,
+  "comment": null,
+  "isolation_active": true,
+  "workspace_overrides": {
+    "files_present": [
+      "app_config.json",
+      "market_config.json",
+      "sentiment_config.json"
+    ],
+    "unnamed_files": 0,
+    "applied": false
+  },
+  "overall_status": "PASSED",
+  "tests_passed": 9,
+  "tests_failed": 0,
+  "tests_skipped": 0,
+  "tests_expected_to_fail": [
+    "test_a_declared_stop_loss_reaches_the_venue"
+  ],
+  "tests_run": [
+    "test_market_buy_dryrun",
+    "test_market_sell_dryrun",
+    "test_limit_buy_dryrun",
+    "test_limit_buy_with_sltp_dryrun",
+    "test_the_venues_own_description_is_preserved",
+    "test_a_declared_stop_loss_reaches_the_venue",
+    "test_invalid_symbol_rejected",
+    "test_below_minimum_lot_rejected",
+    "test_market_order_fill_roundtrip",
+    "test_limit_order_lifecycle"
+  ],
+  "observed": {
+    "phases": [
+      {
+        "phase": "validate_only",
+        "dry_run": true,
+        "api_base_url": "https://api.kraken.com"
+      },
+      {
+        "phase": "real_orders",
+        "dry_run": false,
+        "api_base_url": "https://api.kraken.com"
+      }
+    ]
+  },
+  "warnings": []
+}

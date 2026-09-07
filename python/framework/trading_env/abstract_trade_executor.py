@@ -85,6 +85,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderSide,
     OrderStatus,
     OrderType,
+    ProtectiveLevelEnforcement,
     RejectionReason,
     create_rejection_result,
     direction_to_side,
@@ -444,25 +445,46 @@ class AbstractTradeExecutor(ABC):
     # SL/TP Trigger Detection (per-tick, simulation only)
     # ============================================
 
+    def get_protective_level_enforcement(self) -> ProtectiveLevelEnforcement:
+        """
+        Who enforces a stop_loss / take_profit declared on an order in THIS executor (#500).
+
+        Asked in one place and read everywhere — by the tick check that acts on it and by
+        the report that states it, so the operator can never read a level without reading
+        who holds it. Today both pipelines answer LOCAL: no adapter can carry a level to
+        the venue on a submit, which is its own issue.
+
+        Returns:
+            The enforcement site for levels this executor accepts
+        """
+        return ProtectiveLevelEnforcement.LOCAL
+
     def _check_sl_tp_triggers(self, tick: TickData) -> None:
         """
         Check all open positions for SL/TP trigger conditions.
 
-        Only active in SIMULATION mode — in LIVE mode, the broker handles
-        SL/TP execution server-side. Engine-triggered closes would cause
-        double-close risk.
+        Runs in BOTH pipelines since #500. It used to return immediately unless the
+        executor was a simulation, on the stated assumption that a live broker enforced
+        the level server-side — but nothing ever sent one, so a live stop was recorded on
+        the position, printed on the console, carried into the run report, and enforced by
+        nobody.
 
-        Triggered positions are closed immediately via synthetic PendingOrder
-        (bypasses latency pipeline). Fill price = SL/TP level (deterministic).
+        Live ticks arrive from the venue's trade channel, so every price the venue printed
+        reaches this check. What it cannot cover is our process being gone, which is what a
+        venue-held level is for.
 
         Args:
             tick: Current tick data with bid/ask prices
         """
-        if self._executor_mode != ExecutorMode.SIMULATION:
+        if self.get_protective_level_enforcement() == ProtectiveLevelEnforcement.VENUE:
+            # The venue holds the level as an order of its own and will act on it. Checking
+            # here as well would put TWO enforcers on one position: the venue's order can
+            # fill while our own close is still in flight, and the position is sold twice.
+            # No executor answers VENUE yet; the branch is the contract an adapter that can
+            # carry a level to the wire will rely on, and it is covered by its own test.
             return
 
-        open_positions = self.get_open_positions()
-        for position in open_positions:
+        for position in self.get_open_positions():
             if position.symbol != tick.symbol:
                 continue
 
@@ -472,16 +494,8 @@ class AbstractTradeExecutor(ABC):
                     f'{position.direction.value} @ SL={position.stop_loss:.5f} '
                     f'(bid={tick.bid:.5f}, ask={tick.ask:.5f})'
                 )
-                synthetic = PendingOrder(
-                    pending_order_id=position.position_id,
-                    order_action=PendingOrderAction.CLOSE
-                )
-                self._fill_close_order(
-                    synthetic,
-                    fill_price=position.stop_loss,
-                    close_reason=CloseReason.SL_TRIGGERED
-                )
-                self._sl_tp_triggered += 1
+                self._close_on_protective_level(
+                    position, position.stop_loss, CloseReason.SL_TRIGGERED)
 
             elif position.is_tp_triggered(tick.bid, tick.ask):
                 self.logger.info(
@@ -489,16 +503,54 @@ class AbstractTradeExecutor(ABC):
                     f'{position.direction.value} @ TP={position.take_profit:.5f} '
                     f'(bid={tick.bid:.5f}, ask={tick.ask:.5f})'
                 )
-                synthetic = PendingOrder(
-                    pending_order_id=position.position_id,
-                    order_action=PendingOrderAction.CLOSE
-                )
-                self._fill_close_order(
-                    synthetic,
-                    fill_price=position.take_profit,
-                    close_reason=CloseReason.TP_TRIGGERED
-                )
-                self._sl_tp_triggered += 1
+                self._close_on_protective_level(
+                    position, position.take_profit, CloseReason.TP_TRIGGERED)
+
+    def _close_on_protective_level(
+        self,
+        position: Position,
+        level: float,
+        close_reason: CloseReason
+    ) -> None:
+        """
+        Close a position whose protective level was breached — mode-specific exit.
+
+        The two pipelines have to differ here, and the difference is not a parity break but
+        the honest reading of each. The simulation fills a synthetic close AT the level,
+        in-tick and deterministic, which is what every backtest assertion rests on. Live has
+        no such price on offer: it goes through the real close, which is asynchronous, so
+        the exit lands at whatever the venue gives us a round trip later. A backtest
+        therefore reports protected exits slightly better than live can deliver them.
+
+        Args:
+            position: The position whose level was breached
+            level: The level itself — the simulation's deterministic fill price
+            close_reason: SL_TRIGGERED or TP_TRIGGERED, recorded on the trade
+        """
+        if self._executor_mode == ExecutorMode.SIMULATION:
+            synthetic = PendingOrder(
+                pending_order_id=position.position_id,
+                order_action=PendingOrderAction.CLOSE
+            )
+            self._fill_close_order(synthetic, fill_price=level, close_reason=close_reason)
+            self._sl_tp_triggered += 1
+            return
+
+        # A live close takes a round trip. Without this the next tick — which in a breach
+        # is usually moving further the wrong way — would submit a second close for the
+        # same position, and the double close is exactly what the old early return was
+        # (wrongly) protecting against.
+        if self.is_pending_close(position.position_id):
+            return
+
+        result = self.close_position(position.position_id, close_reason=close_reason)
+        if result.status == OrderStatus.REJECTED:
+            self.logger.error(
+                f'❗ Protective close REFUSED for {position.position_id} '
+                f'({close_reason.value} @ {level:.5f}): {result.rejection_message}. '
+                f'The position is still open and still unprotected.')
+            return
+        self._sl_tp_triggered += 1
 
     # ============================================
     # Order Side Resolution (DecisionTradingApi → executor)
@@ -548,13 +600,20 @@ class AbstractTradeExecutor(ABC):
     def close_position(
         self,
         position_id: str,
-        lots: Optional[float] = None
+        lots: Optional[float] = None,
+        close_reason: CloseReason = CloseReason.MANUAL
     ) -> OrderResult:
         """
         Close a position (full or partial).
 
         TradeSimulator: Submits close to latency queue
         LiveTradeExecutor: Sends close to broker API
+
+        Args:
+            position_id: Position to close
+            lots: Lots to close (None = close all)
+            close_reason: Why — recorded on the trade. Carried on the PendingOrder so it
+                survives the round trip a live close takes (#500)
         """
         pass
 
@@ -754,9 +813,18 @@ class AbstractTradeExecutor(ABC):
             f'tick_value={tick_value:.5f}'
         )
 
-        # Check margin / balance available
-        leverage = self.broker.get_max_leverage()
-        if leverage > 1:
+        # Check margin / balance available.
+        #
+        # This branches on the ACCOUNT MODEL, not on leverage. It used to read
+        # `if self.broker.get_max_leverage() > 1: <margin> elif self._spot_mode: <spot>`,
+        # with no else — and the two switches come from different config files with nothing
+        # binding them. A margin broker at leverage 1 fell through both branches and got NO
+        # funds check at all, and a leveraged spot account took the margin branch and lost
+        # its balance check. The two shipped brokers happen to agree, so neither case has
+        # fired; the model is the authoritative switch and asking it directly removes the
+        # gap. At leverage 1 the margin arithmetic requires the full notional, which is the
+        # correct answer for an unleveraged margin account.
+        if not self._spot_mode:
             # Margin mode: check free margin
             margin_required = self.broker.calculate_margin(
                 pending_order.symbol, pending_order.lots,
@@ -779,7 +847,7 @@ class AbstractTradeExecutor(ABC):
                     f'margin {margin_required:.2f} > free {free_margin:.2f}'
                 )
                 return
-        elif self._spot_mode:
+        else:
             # Spot mode: check sufficient balance for asset exchange — net of what this
             # bot's OTHER unfilled orders already claim (#489). The order being filled is
             # still in its own collection here, hence the exclusion.
@@ -927,7 +995,10 @@ class AbstractTradeExecutor(ABC):
         Called by subclasses when their execution mechanism confirms a close:
         - TradeSimulator: after latency delay completes (fill_price=None → use tick)
         - LiveTradeExecutor: after broker confirms close (fill_price=broker's price)
-        - _check_sl_tp_triggers: synthetic close with fill_price=SL/TP level
+        - _check_sl_tp_triggers, SIMULATION only: a synthetic close with
+          fill_price=SL/TP level. In live the same check goes through the real
+          close_position(), so it arrives here by the LiveTradeExecutor route
+          above and fills at the broker's price rather than at the level (#500)
 
         This is the SHARED fill logic — identical for simulation and live.
 
@@ -937,6 +1008,12 @@ class AbstractTradeExecutor(ABC):
                         current tick (bid for LONG close, ask for SHORT close).
             close_reason: Why the position was closed
         """
+        # A live close is asynchronous, so the reason is known at the TRIGGER and the fill
+        # happens a round trip later. It travels on the PendingOrder; an explicit argument
+        # still wins, which is how the simulation's synthetic close passes it directly.
+        if pending_order.close_reason is not None and close_reason == CloseReason.MANUAL:
+            close_reason = pending_order.close_reason
+
         self.logger.info(
             f'📋 Fill close order {pending_order.pending_order_id}, '
             f'at tick: {self._tick_counter}')

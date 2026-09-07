@@ -1809,6 +1809,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Protective Levels (#500)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/protective_levels",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 11.25
+            }
+        },
+        {
             "name": "🧩 Pytest: Cold Start (#355)",
             "type": "debugpy",
             "request": "launch",

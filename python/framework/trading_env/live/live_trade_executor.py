@@ -46,6 +46,7 @@ from python.framework.types.live_types.live_execution_types import (
 from python.framework.types.live_types.live_request_types import QueryResponse, TradesQueryResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
+    CloseReason,
     EntryType,
 )
 from python.framework.types.trading_env_types.latency_simulator_types import (
@@ -1297,6 +1298,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self,
         position_id: str,
         lots: Optional[float] = None,
+        close_reason: CloseReason = CloseReason.MANUAL,
     ) -> OrderResult:
         """
         Send close order to broker.
@@ -1304,6 +1306,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Args:
             position_id: Position to close
             lots: Lots to close (None = close all)
+            close_reason: Why — stored on the pending close and read back at the
+                fill, since the two are a round trip apart (#500)
 
         Returns:
             OrderResult with PENDING or REJECTED status
@@ -1333,6 +1337,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             broker_ref=None,
             close_lots=close_lots,
             submission=self._current_submission(),
+            close_reason=close_reason,
         )
         self._request_processor.submit_close_order_async(
             position_id=position_id,
@@ -1743,9 +1748,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         MARKET and LIMIT — the two types the live path has built end to end.
 
-        STOP and STOP_LIMIT are not here on purpose: the Kraken payload builder maps every
-        non-MARKET type to 'limit', so opening this set before that builder knows the type
-        would put a STOP_LIMIT on the wire as a plain LIMIT at its limit price. #164 / #209.
+        STOP and STOP_LIMIT are not here on purpose: no payload builder maps them yet. The
+        Kraken builder used to fall through to 'limit' for anything else, which would have
+        put a STOP_LIMIT on the wire as a plain LIMIT at its limit price; it now raises
+        instead, so widening this set fails loudly rather than silently. #164 / #209.
 
         Returns:
             The live executor's routable types

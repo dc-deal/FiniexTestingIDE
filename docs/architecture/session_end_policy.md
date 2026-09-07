@@ -8,8 +8,8 @@ decisions rather than one.** Layer b (architecture / flow) per #323.
 | Config block | `session_end` in a profile · defaults in [app_config.json](../../configs/app_config.json) |
 | Broker posture | `brokers[].session_end_orders` in [market_config.json](../../configs/market_config.json) |
 | Policy resolution | [session_end_validator.py](../../python/framework/validators/session_end_validator.py) |
-| Live cleanup | [live_trade_executor.py:1775](../../python/framework/trading_env/live/live_trade_executor.py#L1775) |
-| Sim cleanup | [trade_simulator.py:1263](../../python/framework/trading_env/simulation/trade_simulator.py#L1263) |
+| Live cleanup | [live_trade_executor.py:1813](../../python/framework/trading_env/live/live_trade_executor.py#L1813) |
+| Sim cleanup | [trade_simulator.py:1296](../../python/framework/trading_env/simulation/trade_simulator.py#L1296) |
 | Accounting rule | [reporting_pipeline.md](reporting_pipeline.md) — *Realised vs valued* |
 | Tests | [session_end_tests.md](../tests/autotrader/session_end_tests.md) |
 
@@ -28,7 +28,7 @@ the run end **does** with them, and what a **position** even is in this account 
 |---|---|---|---|
 | MARKET | fills, never rests | fills (instant / delayed) | fills after latency |
 | LIMIT | **rests at the venue** | **rests locally** | **rests locally** |
-| STOP | refused — framework feature gate ([live_trade_executor.py:1144](../../python/framework/trading_env/live/live_trade_executor.py#L1144)); Kraken declares `stop_orders=False` anyway | refused | **rests locally** |
+| STOP | refused — framework feature gate ([live_trade_executor.py:1150](../../python/framework/trading_env/live/live_trade_executor.py#L1150)); Kraken declares `stop_orders=False` anyway | refused | **rests locally** |
 | STOP_LIMIT | refused by the same gate, although Kraken supports it | refused | **rests locally** |
 
 **So in live, LIMIT is the only order type `session_end.orders` ever touches.**
@@ -46,7 +46,7 @@ the run end **does** with them, and what a **position** even is in this account 
 
 | | LONG | SHORT | at the end |
 |---|---|---|---|
-| **Spot** | owning the base asset (a balance) | **no naked short** — a SELL without the holding is rejected with `INSUFFICIENT_FUNDS` ([abstract_trade_executor.py:732](../../python/framework/trading_env/abstract_trade_executor.py#L732)); a "SHORT" is only the sale of a holding | the asset stays in the account and the **position book remembers** the entry (#355) |
+| **Spot** | owning the base asset (a balance) | **no naked short** — a SELL without the holding is rejected with `INSUFFICIENT_FUNDS` ([abstract_trade_executor.py:822](../../python/framework/trading_env/abstract_trade_executor.py#L822)); a "SHORT" is only the sale of a holding | the asset stays in the account and the **position book remembers** the entry (#355) |
 | **Margin** | a real position at the broker | a real position at the broker | the position stays in the market; MT5 returns it on the next boot (#209) |
 
 That last row is why the position book exists only at spot: at margin you **ask** the broker,
@@ -193,31 +193,36 @@ rather than a warning, which is stronger and needs no second channel.
 
 ## Known limit — the stop branch
 
-`finish_remaining_orders` handles `_active_limit_orders` only. `_active_stop_orders`
+The LIVE cleanup reaches `_active_stop_orders`
 ([abstract_trade_executor.py:193](../../python/framework/trading_env/abstract_trade_executor.py#L193))
-is neither cancelled, expired nor deliberately left.
+only by accident. The shared expiry helper does cover both lists — it writes an EXPIRED record for
+every entry of each ([abstract_trade_executor.py:1751](../../python/framework/trading_env/abstract_trade_executor.py#L1751))
+— but the live path calls it inside the branch that handles resting LIMIT orders. So a stop resting
+with an empty limit list would be neither cancelled at the venue nor expired locally, and one
+resting beside a limit order is expired as a side effect rather than by decision. The simulation has
+no such branch: it always calls the same helper, so both lists are expired there.
 
-Harmless **today**: the live executor refuses STOP and STOP_LIMIT outright, so nothing can
-ever rest in that list in live, and the simulation expires it through its own path. It stops
-being harmless the moment a stop-capable adapter is wired (MT5, #209) or Kraken's StopLimit is
-opened up — a resting stop would then stay at the venue with no decision behind it. Whoever
-lifts that gate extends the cleanup; the note sits on the list itself so it is found there.
+Harmless **today**, and deliberately left that way rather than handled emptily: the live executor
+refuses STOP and STOP_LIMIT outright, so nothing can ever rest in that list in live. It stops being
+harmless the moment a stop-capable adapter is wired (MT5, #209) or Kraken's StopLimit is opened up —
+a resting stop would then need a decision of its own. Whoever lifts that gate extends the cleanup;
+the note sits on the list itself so it is found there.
 
 ## Code anchors
 
 | What | Where |
 |---|---|
-| The config block | [autotrader_defaults_config_types.py:156](../../python/framework/types/config_types/autotrader_defaults_config_types.py#L156) |
+| The config block | [autotrader_defaults_config_types.py:188](../../python/framework/types/config_types/autotrader_defaults_config_types.py#L188) |
 | The broker posture | [market_config_types.py:107](../../python/framework/types/config_types/market_config_types.py#L107) · [market_config_manager.py:216](../../python/configuration/market_config_manager.py#L216) |
 | Policy resolution + the three refusals | [session_end_validator.py:36](../../python/framework/validators/session_end_validator.py#L36) |
 | The incoherent pair | [session_end_validator.py:80](../../python/framework/validators/session_end_validator.py#L80) |
 | Resolved at startup, before anything is touched | [autotrader_main.py:347](../../python/framework/autotrader/autotrader_main.py#L347) |
-| The shutdown call site | [autotrader_main.py:603](../../python/framework/autotrader/autotrader_main.py#L603) |
-| The contract | [abstract_trade_executor.py:1335](../../python/framework/trading_env/abstract_trade_executor.py#L1335) |
-| `check_clean_shutdown(expect_flat)` | [abstract_trade_executor.py:1365](../../python/framework/trading_env/abstract_trade_executor.py#L1365) |
+| The shutdown call site | [autotrader_main.py:615](../../python/framework/autotrader/autotrader_main.py#L615) |
+| The contract | [abstract_trade_executor.py:1584](../../python/framework/trading_env/abstract_trade_executor.py#L1584) |
+| `check_clean_shutdown(expect_flat)` | [abstract_trade_executor.py:1614](../../python/framework/trading_env/abstract_trade_executor.py#L1614) |
 | The open-position report row | [report_types.py:164](../../python/framework/types/api/report_types.py#L164) |
 | The equity curve, one scale for both writers | [portfolio_manager.py:1138](../../python/framework/trading_env/portfolio_manager.py#L1138) |
-| The adoption prompt that states this policy | [cold_start_adopter.py:715](../../python/framework/autotrader/cold_start_adopter.py#L715) |
+| The adoption prompt that states this policy | [cold_start_adopter.py:816](../../python/framework/autotrader/cold_start_adopter.py#L816) |
 
 ## Related
 

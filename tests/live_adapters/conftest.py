@@ -40,6 +40,10 @@ class _ResultCollector:
         self.passed: int = 0
         self.failed: int = 0
         self.skipped: int = 0
+        # A KNOWN-BROKEN path, counted apart from a skip. pytest reports both as `skipped`,
+        # so a certificate that folds them together says "not run" about a capability it
+        # knows does not work — the same blindness #500 found in this suite.
+        self.expected_failures: List[str] = []
         self.tests_run: List[str] = []
         self.observed_phases: List[Dict[str, Any]] = []
 
@@ -54,7 +58,10 @@ class _ResultCollector:
         elif report.failed:
             self.failed += 1
         elif report.skipped:
-            self.skipped += 1
+            if hasattr(report, 'wasxfail'):
+                self.expected_failures.append(test_name)
+            else:
+                self.skipped += 1
 
     def record_phase(self, phase: str, dry_run: bool, api_base_url: str) -> None:
         """
@@ -169,6 +176,9 @@ def _write_report(release_version: str, comment: str, results: _ResultCollector)
         'tests_passed': results.passed,
         'tests_failed': results.failed,
         'tests_skipped': results.skipped,
+        # Named, not counted: a reader has to be able to see WHICH capability is known
+        # not to work, not merely that one of them is.
+        'tests_expected_to_fail': results.expected_failures,
         'tests_run': results.tests_run,
         # What the fixtures actually built, per phase. Registered by them at construction;
         # never re-read from configs/broker_settings/ at write time.

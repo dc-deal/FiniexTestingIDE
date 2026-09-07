@@ -43,33 +43,60 @@ warmup_session = _make_session_fixture(_PROFILE_WARMUP)
 
 class TestStopLossConfiguration:
     """
-    Stop loss level flows correctly through the AutoTrader pipeline.
+    A stop loss declared in live is enforced, and by us (#500).
 
-    In the AutoTrader, SL/TP triggering is broker-side (Kraken handles it in
-    live mode). Engine-side SL/TP monitoring runs only in the simulation pipeline
-    (TradeSimulator, ExecutorMode.SIMULATION). LiveTradeExecutor uses LIVE mode
-    and relies on the broker.
+    These tests used to assert the opposite state and say why: "SL/TP triggering is
+    broker-side (Kraken handles it in live mode)". Nothing ever made that true — the submit
+    payload had no field for a level and the engine's check skipped every non-simulation
+    executor, so the level sat on the position, was displayed, and was enforced by nobody.
+    The profile is named `sl_triggered_test` and nothing had ever triggered in it.
 
-    These tests verify the configuration path: decision sets SL → executor stores SL on
-    the POSITION. They read it there rather than from a closing trade record: the MockAdapter
-    does not implement broker-side SL monitoring, so nothing closes the position, and until
-    #492 the observation channel was the end-of-session force-close — an exit that never
-    reached the venue. The level was always on the position; reading it there needs no exit
-    at all.
+    Now the live executor evaluates the level against its own tick stream and closes through
+    the real asynchronous close path. So the observable moved from "the level is stored" to
+    "the level acted", which is the only version that can tell a working stop from a
+    decorative one.
+
+    Profile: LONG at tick 10 with `hold_ticks` far beyond `max_ticks`, so the strategy never
+    closes it itself. Whatever closed the position was the stop.
     """
 
-    def test_position_opened_with_sl_level(self, sl_session):
-        assert len(sl_session.open_positions) > 0, 'Expected at least one open position'
-        position = sl_session.open_positions[0]
-        assert position.stop_loss == 89200.0, (
-            f'Expected stop_loss=89200.0 on the position, got {position.stop_loss}'
-        )
+    def test_the_stop_closed_the_position(self, sl_session):
+        """
+        The stop acted, and the position is gone.
 
-    def test_position_entry_price_valid(self, sl_session):
-        position = sl_session.open_positions[0]
-        assert position.entry_price > 0, (
-            f'Position {position.position_id}: entry_price is 0 — fill path broken'
-        )
+        Deliberately NOT asserting a count of exactly one. A live protective close is
+        asynchronous, and two real properties of that path can change the count without
+        changing the outcome: a close still in flight when the session ends is recorded as an
+        anomaly and cleared rather than filled, and a partially filled close leaves lots that
+        trigger again. Pinning the count made this test flaky in the suite runner while it
+        passed on every repeat — a count is not what this scenario is here to prove.
+        """
+        closed = [t for t in sl_session.trade_history
+                  if t.close_reason == CloseReason.SL_TRIGGERED]
+        assert closed, (
+            f'The stop never acted. Exit reasons seen: '
+            f'{[t.close_reason for t in sl_session.trade_history]}')
+        assert not sl_session.open_positions, (
+            'The stop fired, so nothing may still be open on this profile')
+
+    def test_the_exit_is_a_real_fill_and_not_the_level_itself(self, sl_session):
+        """
+        The live exit lands at the venue's next price, never at the level.
+
+        This is the honest difference from the simulation, which fills a synthetic close AT
+        the level. A live stop is market-on-trigger: by the time our close is confirmed the
+        price has moved. Asserting the direction rather than a number keeps the test about
+        the property.
+        """
+        exits = [t for t in sl_session.trade_history
+                 if t.close_reason == CloseReason.SL_TRIGGERED]
+        assert exits, 'No stop exit to inspect — see test_the_stop_closed_the_position'
+        trade = exits[0]
+        assert trade.entry_price > 0, (
+            f'Position {trade.position_id}: entry_price is 0 — fill path broken')
+        assert trade.exit_price > 0, 'A live exit carries the price it actually filled at'
+        assert trade.exit_price <= 89200.0, (
+            f'A LONG stop at 89200.0 cannot fill above itself, got {trade.exit_price}')
 
     def test_no_session_errors(self, sl_session):
         assert len(logged_messages(sl_session, LogLevel.ERROR)) == 0, (
@@ -79,27 +106,40 @@ class TestStopLossConfiguration:
 
 class TestTakeProfitConfiguration:
     """
-    Take profit level flows correctly through the AutoTrader pipeline.
+    A take profit declared in live is enforced too — the same change, the other direction.
 
-    Same architectural note as TestStopLossConfiguration: TP triggering is
-    broker-side in AutoTrader. Engine-side triggering only in simulation pipeline.
-
-    These tests verify the configuration path: decision sets TP → executor stores TP on
-    the POSITION, and it is read there (same reasoning as TestStopLossConfiguration).
+    Same architectural note as TestStopLossConfiguration: until #500 the level was recorded
+    and never acted on, and this profile's name promised a trigger that could not happen.
     """
 
-    def test_position_opened_with_tp_level(self, tp_session):
-        assert len(tp_session.open_positions) > 0, 'Expected at least one open position'
-        position = tp_session.open_positions[0]
-        assert position.take_profit == 89350.0, (
-            f'Expected take_profit=89350.0 on the position, got {position.take_profit}'
-        )
+    def test_the_target_closed_the_position(self, tp_session):
+        """
+        The target acted, and the position is gone.
 
-    def test_position_entry_price_valid(self, tp_session):
-        position = tp_session.open_positions[0]
-        assert position.entry_price > 0, (
-            f'Position {position.position_id}: entry_price is 0 — fill path broken'
-        )
+        Deliberately NOT asserting a count of exactly one. A live protective close is
+        asynchronous, and two real properties of that path can change the count without
+        changing the outcome: a close still in flight when the session ends is recorded as an
+        anomaly and cleared rather than filled, and a partially filled close leaves lots that
+        trigger again. Pinning the count made this test flaky in the suite runner while it
+        passed on every repeat — a count is not what this scenario is here to prove.
+        """
+        closed = [t for t in tp_session.trade_history
+                  if t.close_reason == CloseReason.TP_TRIGGERED]
+        assert closed, (
+            f'The target never acted. Exit reasons seen: '
+            f'{[t.close_reason for t in tp_session.trade_history]}')
+        assert not tp_session.open_positions, (
+            'The target fired, so nothing may still be open on this profile')
+
+    def test_the_exit_is_a_real_fill_and_not_the_level_itself(self, tp_session):
+        exits = [t for t in tp_session.trade_history
+                 if t.close_reason == CloseReason.TP_TRIGGERED]
+        assert exits, 'No target exit to inspect — see test_the_target_closed_the_position'
+        trade = exits[0]
+        assert trade.entry_price > 0, (
+            f'Position {trade.position_id}: entry_price is 0 — fill path broken')
+        assert trade.exit_price >= 89350.0, (
+            f'A LONG target at 89350.0 cannot fill below itself, got {trade.exit_price}')
 
     def test_no_session_errors(self, tp_session):
         assert len(logged_messages(tp_session, LogLevel.ERROR)) == 0, (

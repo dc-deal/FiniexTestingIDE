@@ -81,3 +81,7 @@ class PortfolioStats(BasePortfolioStats):
     # capture because the claim lives on the EXECUTOR's order book while these stats come
     # from the portfolio — the two only meet where the run ends. Empty in margin mode.
     committed_funds: Dict[str, float] = field(default_factory=dict)
+    # Who enforces a declared stop_loss / take_profit in the executor that produced these
+    # stats (#500). Stamped at capture, because it is the EXECUTOR's answer and these stats
+    # come from the portfolio. An operator reading a level must be able to read who holds it.
+    protective_level_enforcement: str = ''

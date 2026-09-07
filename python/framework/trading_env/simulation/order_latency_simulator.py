@@ -34,6 +34,7 @@ from typing import Dict, List, Optional
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOrder,
     PendingOrderAction,
@@ -226,7 +227,8 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         self,
         position_id: str,
         tick: TickData,
-        close_lots: Optional[float] = None
+        close_lots: Optional[float] = None,
+        close_reason: Optional[CloseReason] = None
     ) -> str:
         """
         Submit CLOSE order for execution with delay.
@@ -237,6 +239,8 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             position_id: Position to close
             tick: Current tick data (for timestamp extraction)
             close_lots: Lots to close (None = close all)
+            close_reason: Why the close was requested, or None for a plain strategy
+                close — it rides on the PendingOrder to the fill (#500)
 
         Returns:
             position_id: Same as input (for chaining)
@@ -255,6 +259,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
                 broker_fill_msc=broker_fill_msc,
             ),
             order_action=PendingOrderAction.CLOSE,
+            close_reason=close_reason,
             close_lots=close_lots,
             submission=SubmissionMetadata(
                 tick_mid_price=tick.mid,

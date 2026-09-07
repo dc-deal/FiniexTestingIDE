@@ -79,6 +79,7 @@ tests/
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   ├── safety/            unit — circuit breaker (margin + spot)
 │   ├── cold_start/        unit — boot adoption of our own resting orders + carry-over (#355)
+│   ├── protective_levels/ unit — who enforces a declared stop/target, and the sim/live difference (#500)
 │   ├── reconciliation/    unit — broker truth-pull + Reconciler ALERT_ONLY (#151)
 │   ├── session_end/       unit — what a session leaves standing and how it is reported (#492):
 │   │                      the policy, the cleanup, realised-vs-valued, the phantom-drawdown guard

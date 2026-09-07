@@ -22,7 +22,10 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.trading_env.simulation.order_latency_simulator import OrderLatencySimulator
-from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
+from python.framework.types.portfolio_types.portfolio_trade_record_types import (
+    CloseReason,
+    EntryType,
+)
 from python.framework.types.trading_env_types.latency_simulator_types import (
     ModificationRequest,
     PendingOperation,
@@ -571,7 +574,8 @@ class TradeSimulator(AbstractTradeExecutor):
     def close_position(
         self,
         position_id: str,
-        lots: Optional[float] = None
+        lots: Optional[float] = None,
+        close_reason: CloseReason = CloseReason.MANUAL
     ) -> OrderResult:
         """
         Submit close position order with delay.
@@ -581,6 +585,7 @@ class TradeSimulator(AbstractTradeExecutor):
         Args:
             position_id: Position to close
             lots: Lots to close (None = close all)
+            close_reason: Why — recorded on the trade when the close fills
 
         Returns:
             OrderResult with PENDING status
@@ -598,7 +603,8 @@ class TradeSimulator(AbstractTradeExecutor):
         order_id = self.latency_simulator.submit_close_order(
             position_id=position_id,
             tick=self._current_tick,
-            close_lots=lots
+            close_lots=lots,
+            close_reason=close_reason
         )
 
         # Return PENDING result (order not filled yet!)

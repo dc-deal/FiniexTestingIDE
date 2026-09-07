@@ -66,6 +66,7 @@ from python.framework.types.live_types.live_request_types import (
     TradesQueryJob,
     TradesQueryResponse,
 )
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOperation,
     PendingOrder,
@@ -332,6 +333,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         broker_ref: Optional[str],
         close_lots: Optional[float] = None,
         submission: Optional[SubmissionMetadata] = None,
+        close_reason: Optional[CloseReason] = None,
     ) -> str:
         """
         Track a submitted CLOSE order with broker reference.
@@ -347,6 +349,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             submission: Submission-moment snapshot for the SLIPPAGE audit
                         channel (#340/#345). Each partial close captures its
                         own submission tick.
+            close_reason: Why the close was requested. Stored here because a
+                          live close is asynchronous — the trigger and the fill
+                          are a broker round trip apart (#500).
 
         Returns:
             position_id for chaining
@@ -360,6 +365,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             timing=PendingOrderTiming(submitted_at=now, timeout_at=timeout_at),
             broker_ref=broker_ref,
             close_lots=close_lots,
+            close_reason=close_reason,
             submission=submission if submission else SubmissionMetadata(),
         )
 

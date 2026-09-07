@@ -19,12 +19,14 @@ from python.framework.types.api.report_types import (
     AggregatedPortfolioRow,
     ExecutionStatsReport,
     ExecutionStatsRow,
+    OpenPositionRow,
     PendingOrdersReport,
     PendingOrdersUnitRow,
     PortfolioReport,
     PortfolioUnitRow,
 )
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
+from python.framework.types.trading_env_types.order_types import ProtectiveLevelEnforcement
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.utils.math_utils import force_negative, force_positive
 
@@ -185,6 +187,11 @@ class PortfolioSummary(AbstractBatchSummarySection):
                 lines.append(
                     f'  {pos.position_id} {pos.direction.upper()} {pos.lots} @ '
                     f'{pos.entry_price:,.5f} → {mark}')
+                # A protective level is never printed without its holder (#500). It used to
+                # be shown alone, and nobody was enforcing it.
+                level = PortfolioSummary._protective_level_line(pos, renderer)
+                if level:
+                    lines.append(f'    {level}')
             # Only call it a valuation when it is one. Without a price the figure is the
             # balance alone and the holding counts as zero — saying "marked to market"
             # there would repeat the understatement this section removes.
@@ -195,6 +202,33 @@ class PortfolioSummary(AbstractBatchSummarySection):
         if unit.session_end_policy:
             lines.append(f'Session-end policy: {unit.session_end_policy}')
         return lines
+
+    @staticmethod
+    def _protective_level_line(
+        pos: OpenPositionRow, renderer: ConsoleRenderer) -> str:
+        """The position's stop and target, and who actually enforces them (#500).
+
+        Args:
+            pos: The open-position row
+            renderer: Console renderer for formatting
+
+        Returns:
+            The line, empty when the position declares no level
+        """
+        parts = []
+        if pos.stop_loss is not None:
+            parts.append(f'stop {pos.stop_loss:,.5f}')
+        if pos.take_profit is not None:
+            parts.append(f'target {pos.take_profit:,.5f}')
+        if not parts:
+            return ''
+        if pos.protective_level_enforcement == ProtectiveLevelEnforcement.VENUE.value:
+            held = 'held at the venue — survives a restart'
+        elif pos.protective_level_enforcement == ProtectiveLevelEnforcement.LOCAL.value:
+            held = renderer.yellow('watched by this process only')
+        else:
+            held = renderer.red('ENFORCED BY NOBODY')
+        return ' · '.join(parts) + f'  [{held}]'
 
     def _balance_lines(
         self, unit: PortfolioUnitRow, renderer: ConsoleRenderer) -> List[str]:

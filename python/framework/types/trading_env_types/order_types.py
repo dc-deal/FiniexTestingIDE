@@ -168,6 +168,25 @@ class RejectionReason(Enum):
     BROKER_UNREACHABLE = 'broker_unreachable'
 
 
+
+class ProtectiveLevelEnforcement(Enum):
+    """
+    Who actually enforces a stop_loss / take_profit declared on an order (#500).
+
+    The level used to be recorded on the Position and enforced by nobody: the payload
+    carried no field for it and the engine's check skipped every non-simulation executor,
+    on the assumption that the venue had taken it. The assumption was never true, so the
+    console showed a stop that did not exist. This says who holds it.
+
+    LOCAL: our own process evaluates it against the tick stream and closes the position
+        when it is breached. Protects while we are running and connected; a process that
+        dies leaves the position unprotected.
+    VENUE: the level rests at the broker as an order of its own and survives our process
+        dying. No adapter answers this yet — the Kraken conditional close is its own issue.
+    """
+    LOCAL = 'local'
+    VENUE = 'venue'
+
 # ============================================
 # Order Capability System
 # ============================================

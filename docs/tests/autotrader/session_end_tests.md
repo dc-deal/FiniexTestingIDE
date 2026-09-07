@@ -96,9 +96,6 @@ nothing to act on — the fixture asserts it actually placed one.
 | `test_an_unvalued_position_is_marked_as_such` | — |
 | `test_the_equity_is_not_called_marked_to_market_when_nothing_was_marked` | Two lines that used to contradict each other |
 | `test_it_is_called_marked_to_market_when_it_is_one` | The other direction, so the label is not simply removed |
-| `test_an_open_position_becomes_the_edge_impact` | The block-edge disposition reads the open positions (#214) |
-| `test_a_flat_block_reports_no_impact` | — |
-| `test_an_unvalued_position_contributes_zero_rather_than_a_guess` | — |
 
 ## The two guards worth knowing about
 
@@ -136,7 +133,7 @@ nothing at all — and the case only became reachable once the run end stopped f
 
 | Where | What |
 |---|---|
-| [tests/framework/reporting/test_block_splitting_report.py](../../../tests/framework/reporting/test_block_splitting_report.py) | `TestTheDispositionStillDistinguishes` — the block-edge disposition must keep ANSWERING, not just run: three cases that have to come out different, so a silently constant "GOOD" is caught |
+| [tests/framework/reporting/test_block_splitting_report.py](../../../tests/framework/reporting/test_block_splitting_report.py) | `TestTheDispositionStillDistinguishes` — the block-edge disposition must keep ANSWERING, not just run: a flat block, a holding block, two symbols cutting differently, the unrealised P&L at the edge and an unvalued position all have to come out different, so a silently constant "GOOD" is caught. The block-edge cases moved here when `process_block_boundary` was retired |
 | [tests/autotrader/integration/](../../../tests/autotrader/integration/) | The rewritten session-level contracts — SL/TP read from the position, and `test_no_exit_is_fabricated_at_session_end` |
 | [tests/framework/config/](../../../tests/framework/config/) | The loader field-coverage guard added alongside this work |
 | [tests/framework/reporting/test_live_session_summary.py](../../../tests/framework/reporting/test_live_session_summary.py) | The closing block names an open position in the HEADLINE, and says nothing about one when the session ended flat |
