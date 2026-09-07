@@ -224,6 +224,22 @@ class PortfolioSummary(AbstractBatchSummarySection):
             f'Bal: {format_currency_simple(quote_bal, quote)} | {base} {base_fmt}',
             f'Init: {format_currency_simple(quote_init, quote)} | {base} {base_init_fmt}',
         ]
+        # Only when something is actually claimed (#489): a run that ended with no unfilled
+        # order has nothing to say here, and a line reading `committed 0.00` would be noise
+        # on every clean run. A NEGATIVE usable figure is the one worth seeing — adoption can
+        # inherit a reserve the balance has already moved past — so it is called out.
+        quote_committed = unit.committed_funds.get(quote, 0.0)
+        base_committed = unit.committed_funds.get(base, 0.0)
+        if quote_committed or base_committed:
+            usable_quote = unit.usable_funds.get(quote, quote_bal)
+            usable_base = unit.usable_funds.get(base, base_bal)
+            warn = ' ⚠' if min(usable_quote, usable_base) < 0 else ''
+            lines.append(
+                f'Committed: {format_currency_simple(quote_committed, quote)} | '
+                f'{base} {base_committed:,.4f}')
+            lines.append(
+                f'Usable: {format_currency_simple(usable_quote, quote)} | '
+                f'{base} {usable_base:,.4f}{warn}')
         if unit.last_price > 0:
             sign = '+' if unit.spot_est_pnl >= 0 else ''
             price_str = format_currency_simple(unit.last_price, quote)

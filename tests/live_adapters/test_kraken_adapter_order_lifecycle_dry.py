@@ -158,6 +158,58 @@ class TestKrakenAdapterOrderLifecycle:
             f'Expected DRYRUN ref, got: {response.broker_ref}'
         )
 
+    def test_the_venues_own_description_is_preserved(self, live_adapter, processor):
+        """
+        A dry run must carry back what the VENUE made of the order, not only our ref.
+
+        `validate=true` costs nothing and Kraken answers with a `descr` block naming the
+        resolved pair and the effective order type. Without it a dry-run assertion can only
+        ever observe that the call did not raise — which is exactly how a level that reached
+        nothing passed a test named after it.
+        """
+        response = processor.submit_open_order(
+            symbol='ETHUSD',
+            direction=OrderDirection.LONG,
+            lots=0.1,
+            order_type=OrderType.LIMIT,
+            adapter=live_adapter,
+            price=100.0,
+        )
+
+        assert response.raw_response is not None, (
+            'The validate answer was discarded — nothing about this order can be asserted'
+        )
+        assert 'descr' in response.raw_response, (
+            f'Expected a descr block, got: {sorted(response.raw_response)}'
+        )
+        assert response.raw_response['descr'].get('order'), 'Expected an order description'
+
+    def test_a_declared_stop_loss_reaches_the_venue(self, live_adapter, processor):
+        """
+        The crossing question: does a level the strategy declared ever reach Kraken?
+
+        Asserted against the VENUE's own words rather than our payload — Kraken's `descr`
+        carries a `close` field describing the conditional close it understood, e.g.
+        `close position @ stop loss 22000.0`. Absent means the level exists nowhere: the
+        submit payload does not carry it, and the engine skips its own SL/TP check outside
+        SIMULATION, so nothing at all would act on it.
+        """
+        response = processor.submit_open_order(
+            symbol='ETHUSD',
+            direction=OrderDirection.LONG,
+            lots=0.1,
+            order_type=OrderType.LIMIT,
+            adapter=live_adapter,
+            price=100.0,
+            stop_loss=50.0,
+        )
+
+        descr = (response.raw_response or {}).get('descr', {})
+        assert descr.get('close'), (
+            'The declared stop_loss reached neither the venue nor a local check. '
+            f'Kraken described only: {descr.get("order")!r}'
+        )
+
     def test_invalid_symbol_rejected(self, live_adapter, processor):
         """Unknown symbol reaches Kraken API — expects REJECTED response."""
         response = processor.submit_open_order(

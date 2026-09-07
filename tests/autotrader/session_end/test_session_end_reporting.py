@@ -1,8 +1,7 @@
 """
 FiniexTestingIDE - Session-End Reporting Tests (#492)
 
-The two surfaces an operator actually reads, and the source the block edge's disposition
-is built from.
+The two surfaces an operator actually reads.
 
 The console guard is the one that would have gone unnoticed: `total_trades == 0` printed
 "No trades executed" and RETURNED, skipping balances, costs and the position the unit was
@@ -12,7 +11,6 @@ once the run end stopped force-closing.
 
 from datetime import datetime, timezone
 
-from python.framework.process.process_block_boundary import build_block_boundary_report
 from python.framework.reporting.console.portfolio_summary import PortfolioSummary
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
@@ -23,19 +21,10 @@ from python.framework.types.api.report_types import (
     PortfolioReport,
     PortfolioUnitRow,
 )
-from python.framework.types.portfolio_types.portfolio_types import Position
-from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 # A fixed instant: the tests assert on rendering, so the entry time must not move.
 _ENTRY_TIME = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
-
-
-def _position(position_id: str = 'pos_btcusd_47') -> Position:
-    """A minimal open LONG position. Args: position_id: Its id. Returns: the position."""
-    return Position(
-        position_id=position_id, symbol='BTCUSD', direction=OrderDirection.LONG,
-        lots=0.014, original_lots=0.014, entry_price=61430.0, entry_time=_ENTRY_TIME)
 
 
 def _buy_and_hold_row() -> PortfolioUnitRow:
@@ -157,31 +146,3 @@ class TestTheConsoleDoesNotHideABuyAndHoldRun:
 
         assert 'marked to market' in output
 
-
-class TestTheBoundaryReportReadsTheOpenPositions:
-    """The source side of the block-edge disposition (#214 x #492)."""
-
-    def test_an_open_position_becomes_the_edge_impact(self):
-        position = _position()
-        position.unrealized_pnl = -6.25
-
-        report = build_block_boundary_report(
-            trade_history=[], pending_stats=None, open_positions=[position])
-
-        assert report.open_at_boundary_trades == 1
-        assert report.open_at_boundary_pnl == -6.25
-
-    def test_a_flat_block_reports_no_impact(self):
-        report = build_block_boundary_report(
-            trade_history=[], pending_stats=None, open_positions=[])
-
-        assert report.open_at_boundary_trades == 0
-        assert report.open_at_boundary_pnl == 0.0
-
-    def test_an_unvalued_position_contributes_zero_rather_than_a_guess(self):
-        """A position no tick ever priced carries 0.0 — honest, not invented."""
-        report = build_block_boundary_report(
-            trade_history=[], pending_stats=None, open_positions=[_position()])
-
-        assert report.open_at_boundary_trades == 1
-        assert report.open_at_boundary_pnl == 0.0

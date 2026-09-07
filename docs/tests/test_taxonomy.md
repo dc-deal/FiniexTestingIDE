@@ -17,25 +17,32 @@ All tests are classified by **pipeline domain** and **test type**. pytest marks 
 | `live_adapter` | `tests/live_adapters/` | excluded from normal runner — requires real account |
 | `live_field_study` | `tests/live_field_study/` | excluded from normal runner — operator-driven live release gate (#332) |
 | `live_signal_feed` | `tests/live_signal_feed/` | excluded from normal runner — operator-driven producer contract gate (#466) |
-| `integration` | any path containing `/integration/` | `pytest -m integration` |
-| `unit` | order_guard, live_executor, safety, bar_rendering, workers, etc. | `pytest -m unit` |
+
+Every mark above is a **path synonym**: it falls out of the tree, so it cannot drift from the
+suites it claims to cover. A `unit` / `integration` pair used to sit here too and was removed —
+those two were the only ones that needed a maintained list of directories, the list was wrong
+(eight suites were missing from it), and nothing ever selected on them. Where this document says
+*unit* or *integration* below, it is describing what a suite DOES; there is no mark behind it.
 
 ---
 
 ## Test Matrix
 
 ```
-                      unit   integration   parity   live-api   benchmark
-simulation             ✓          ✓                               ✓
-autotrader             ✓          ✓            ✓        ✓
-framework              ✓
-data                   ✓          ✓
-live_adapters                                            ✓
+                      parity   live-api   benchmark
+simulation                                     ✓
+autotrader              ✓          ✓
+framework
+data
+live_adapters                      ✓
 ```
 
 **Axes:**
-- **Horizontal (test type):** unit → isolated component; integration → full pipeline end-to-end; parity → sim vs. AT identical output; live-api → real broker contract (not in normal runner); benchmark → throughput regression
+- **Horizontal (test type):** parity → sim vs. AT identical output; live-api → real broker contract (not in normal runner); benchmark → throughput regression. Each column is a mark that exists
 - **Vertical (pipeline domain):** which world(s) the test exercises
+
+Whether a suite is isolated or drives the whole pipeline is described per suite in the map below,
+in prose — it is a useful thing to know and a poor thing to select on.
 
 ---
 

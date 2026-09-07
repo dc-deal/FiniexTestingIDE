@@ -3,7 +3,7 @@ FiniexTestingIDE - Shared Warmup Validation Tests
 Reusable test classes for warmup validation across test suites.
 
 Used by: baseline, multi_position, margin_validation
-Import these classes into suite-specific test_warmup_validation.py files.
+Import these classes into suite-specific test_<suite>_warmup_validation.py files.
 """
 
 

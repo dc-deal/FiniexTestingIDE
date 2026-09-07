@@ -17,6 +17,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import (
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     ApiMonitorConfig,
     AutotraderExecutionDefaults,
+    CapitalDefaults,
     ClippingMonitorDefaults,
     ColdStartDefaults,
     DisplayDefaults,
@@ -69,6 +70,7 @@ _KNOWN_API_MONITOR_KEYS: frozenset          = _allowlist_from(ApiMonitorConfig)
 _KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = _allowlist_from(StatePersistenceDefaults)
 _KNOWN_COLD_START_KEYS: frozenset           = _allowlist_from(ColdStartDefaults)
 _KNOWN_SESSION_END_KEYS: frozenset          = _allowlist_from(SessionEndDefaults)
+_KNOWN_CAPITAL_KEYS: frozenset              = _allowlist_from(CapitalDefaults)
 _KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
 _KNOWN_TICK_SOURCE_KEYS: frozenset          = _allowlist_from(TickSourceConfig)
 _KNOWN_SCENARIO_SETTINGS_KEYS: frozenset    = _allowlist_from(ScenarioSettingsConfig)
@@ -150,6 +152,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     state_persistence_raw = raw.get('state_persistence', {})
     cold_start_raw = raw.get('cold_start', {})
     session_end_raw = raw.get('session_end', {})
+    capital_raw = raw.get('capital', {})
     performance_tracking_raw = execution_raw.get('performance_tracking', {})
 
     # Structural key validation — profile level (pre-construction, full provenance)
@@ -166,6 +169,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('state_persistence',   state_persistence_raw, _KNOWN_STATE_PERSISTENCE_KEYS)
     check_unknown_keys('cold_start',          cold_start_raw,   _KNOWN_COLD_START_KEYS)
     check_unknown_keys('session_end',         session_end_raw,  _KNOWN_SESSION_END_KEYS)
+    check_unknown_keys('capital',             capital_raw,      _KNOWN_CAPITAL_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
     if scenario_settings_raw is not None:
         check_unknown_keys('scenario_settings', scenario_settings_raw, _KNOWN_SCENARIO_SETTINGS_KEYS)
@@ -240,6 +244,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         api_monitor=ApiMonitorConfig(**_block(api_monitor_raw, enabled=api_monitor_enabled_resolved)),
         cold_start=ColdStartDefaults(**_block(cold_start_raw)),
         session_end=SessionEndDefaults(**_block(session_end_raw)),
+        capital=CapitalDefaults(**_block(capital_raw)),
         state_persistence=StatePersistenceDefaults(**_block(state_persistence_raw, enabled=state_persistence_enabled_resolved)),
         config_path=path,
     )

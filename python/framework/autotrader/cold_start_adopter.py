@@ -99,6 +99,7 @@ class ColdStartAdopter:
         interactive: bool = False,
         decision_logic: Optional[AbstractDecisionLogic] = None,
         session_end_orders: str = 'cancel',
+        exclusive_account: bool = False,
     ):
         self._executor = executor
         self._store = store
@@ -112,6 +113,10 @@ class ColdStartAdopter:
         # below is the one interactive, real-money decision the boot asks, so it has to
         # state the policy that will actually run rather than a behaviour that was removed.
         self._session_end_orders = session_end_orders
+        # #489: the operator's DECLARATION that this account holds nothing but this bot's.
+        # Not an inference — a balance carries no owner tag — and False by default, because
+        # the shared account is what every existing profile assumes.
+        self._exclusive_account = exclusive_account
         self._situation: Optional[ColdStartSituation] = None
         self._verdict: Optional[ColdStartVerdict] = None
         self._restored_count: int = 0
@@ -223,6 +228,13 @@ class ColdStartAdopter:
         self._situation = self._build_situation(ours, skipped, book, shortfall)
         verdict = self._consult_algo(self._situation)
         self._verdict = verdict
+
+        # Checked AFTER the situation is filed and the algo has seen it, so a refused boot
+        # still leaves a full record — and deliberately WITHOUT consulting the verdict: the
+        # hook may only lift the one refusal the framework makes for lack of an ANSWER
+        # (#493), and this one is made for lack of exclusivity, which no algo can supply.
+        if not self._check_exclusivity(skipped):
+            return False
 
         if ours:
             self._announce(ours, skipped)
@@ -458,9 +470,11 @@ class ColdStartAdopter:
         """
         Hold the restored book against the venue's balance — and only report.
 
-        The check is deliberately one-sided. The account is shared: coins beyond what our book
-        claims may be the operator's or another bot's, so holding MORE than we booked is normal
-        and says nothing (what a bot may use is declared capital, #489). Holding LESS is not:
+        The check is deliberately one-sided, and it stays one-sided under either account
+        model. Where the account is shared, coins beyond what our book claims may be the
+        operator's or another bot's. Where it is declared exclusive (#489), they are this
+        bot's own untraded capital — the bot takes what is there. So holding MORE than we
+        booked is normal in both readings and says nothing. Holding LESS is not:
         our note then claims a position the account cannot cover, which happens when someone
         sold by hand between the sessions. Adjusting the book to fit would be inventing a
         number; the divergence is reported and the note stays as written.
@@ -542,6 +556,10 @@ class ColdStartAdopter:
                 continue
 
             self._venue_session_keys.add(parsed[0])
+            # Decided HERE, before the type and symbol branches, because those answer a
+            # different question and used to consume the order first. The reason a bucket
+            # carries is not evidence of ownership; this is.
+            key_is_ours = parsed[0] in known_keys
 
             if order.order_type not in _RESTING_ORDER_TYPES:
                 # A MARKET order in the venue's open list is IN FLIGHT, not resting — it has
@@ -556,19 +574,23 @@ class ColdStartAdopter:
                     f'in flight at the venue rather than resting, so it is not adopted. '
                     f'Check whether it filled.'
                 )
-                skipped.append(self._skipped(order, SkipReason.IN_FLIGHT))
+                skipped.append(self._skipped(order, SkipReason.IN_FLIGHT, key_is_ours))
                 continue
 
             if order.symbol != self._symbol:
+                whose = 'one of OUR OWN sessions' if key_is_ours else 'another session'
                 self._logger.warning(
                     f'🧬 Cold start: a key of our shape ({order.client_order_id}) sits on a '
-                    f'{order.symbol} order, but this bot trades {self._symbol} — left alone.'
+                    f'{order.symbol} order, but this bot trades {self._symbol} — left alone. '
+                    f'The key belongs to {whose}.'
                 )
-                skipped.append(self._skipped(order, SkipReason.OTHER_SYMBOL))
+                skipped.append(
+                    self._skipped(order, SkipReason.OTHER_SYMBOL, key_is_ours))
                 continue
 
-            if parsed[0] not in known_keys:
-                skipped.append(self._skipped(order, SkipReason.UNKNOWN_SESSION))
+            if not key_is_ours:
+                skipped.append(
+                    self._skipped(order, SkipReason.UNKNOWN_SESSION, key_is_ours))
                 continue
 
             ours.append((f'pos_{self._symbol.lower()}_{parsed[1]}', order))
@@ -576,13 +598,19 @@ class ColdStartAdopter:
         return ours, skipped
 
     @staticmethod
-    def _skipped(order: BrokerOrder, reason: SkipReason) -> SkippedOrder:
+    def _skipped(
+        order: BrokerOrder,
+        reason: SkipReason,
+        key_is_ours: Optional[bool] = None,
+    ) -> SkippedOrder:
         """
         Describe one order that was left alone.
 
         Args:
             order: The venue's order
             reason: Why it was not adopted
+            key_is_ours: Whether its key names a session this bot has used; None when it
+                carries no key of our shape
 
         Returns:
             The read-only view handed to the algo and to the report
@@ -596,7 +624,78 @@ class ColdStartAdopter:
             order_type=order.order_type,
             lots=order.lots,
             price=order.price,
+            key_is_ours=key_is_ours,
         )
+
+    def _check_exclusivity(self, skipped: List[SkippedOrder]) -> bool:
+        """
+        Hold a declared-exclusive account against what the venue actually reports (#489).
+
+        REPORTS, and does not refuse. That is one answer rather than two, and the reason
+        is the same in both halves — a refusal is not the safe outcome here:
+
+        - It leaves a state that is not "flat and safe" but **exposed and unmanaged**. This
+          bot may hold a spot position and a protective resting order; a refusal abandons
+          both at the venue with nothing reconciling them. Worse than it sounds, because a
+          live SL/TP is not enforced venue-side on spot — the level lives in the process
+          that just declined to start.
+        - It can DEADLOCK. Two sibling bots on one account each see the other's order, both
+          refuse, and neither runs. The condition is symmetric and nothing outside resolves
+          it.
+        - It can LOOP. A refused boot leaves the carry-over untouched and exits non-zero, so
+          a supervisor relaunches into the same refusal.
+
+        The graded answer is louder for the case that carries the most consequence — a
+        stranger on the instrument this bot TRADES, where at spot the exposures merge into
+        one balance no tag can split and the bot cannot size an order against what is
+        actually its own. That is an ERROR into the session pot rather than a warning, and
+        it is what **#499** turns into a boot-time HALT once #349 has built the state to
+        hold it: start, manage what is ours, place nothing new until an operator clears it.
+        Withholding new risk is the institutional answer; refusing to run is not.
+
+        UNKNOWN_SESSION is not judged at all. Its key HAS our shape, and on an account
+        declared exclusive nobody else uses our key format, so it is more likely ours rather
+        than less — and `_report_unattributable` already argues the rest: refusing forever
+        leaves the operator no way out.
+
+        Args:
+            skipped: Everything the split left alone, each with its reason and ownership
+
+        Returns:
+            True — always, today. The signature keeps the boolean because #499 makes this
+            decidable, and a caller that already honours it needs no change then
+        """
+        if not self._exclusive_account:
+            return True
+
+        strangers = [o for o in skipped if o.reason == SkipReason.FOREIGN_KEY]
+        on_our_symbol = [o for o in strangers if o.symbol == self._symbol]
+        elsewhere = [o for o in skipped if o not in on_our_symbol and o.key_is_ours is not True]
+
+        if elsewhere:
+            self._logger.warning(
+                f"⚠️ Cold start: {len(elsewhere)} order(s) at the venue are not this bot's, "
+                f'and this profile declares capital.exclusive_account=true. The declaration '
+                f'is therefore wrong — the account is shared. Every account-level risk limit '
+                f"(#356/#314) is measuring a denominator that is not this bot's: "
+                f"{', '.join(f'{o.symbol} {o.broker_ref}' for o in elsewhere)}"
+            )
+
+        if on_our_symbol:
+            refs = ', '.join(o.broker_ref for o in on_our_symbol)
+            self._logger.error(
+                f'❌ Cold start: {len(on_our_symbol)} order(s) carrying no key of ours rest '
+                f'on {self._symbol} — the very instrument this bot trades — while this '
+                f'profile declares capital.exclusive_account=true. At spot both exposures '
+                f'merge into one balance that no tag can separate, so this bot cannot size '
+                f'an order against what is actually its own: {refs}. The session STARTS '
+                f"anyway, because refusing would abandon this bot's own exposure at the "
+                f'venue — #499 turns this into a HALT that keeps managing what is ours while '
+                f'placing nothing new. Until then: cancel those orders at the venue, or set '
+                f'capital.exclusive_account=false.'
+            )
+
+        return True
 
     def _report_unattributable(self, skipped: List[SkippedOrder]) -> None:
         """

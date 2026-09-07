@@ -127,6 +127,7 @@ def setup_cold_start(
         interactive=attended,
         decision_logic=decision_logic,
         session_end_orders=session_end_orders,
+        exclusive_account=config.capital.exclusive_account,
     )
 
     if not adopter.run():

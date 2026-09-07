@@ -164,6 +164,42 @@ Ensure:
 - Your account has sufficient balance for the configured `lot_size`
 - You understand the minimum order sizes for your trading pair (e.g., BTCUSD minimum ~0.0001 BTC)
 - You have tested the full pipeline in dry-run mode first
+- You know **whose account this is** — see below
+
+### Account topology — one account per bot
+
+The framework hands the bot the account's balances and measures every risk threshold against
+them: the safety baseline, the drawdown cap, the daily loss limit. Those numbers describe the
+bot only if the account holds nothing but the bot's own money and orders.
+
+Nothing about that can be read off the venue. An ORDER carries the client order id this bot
+minted, so ownership is a fact — a restart adopts its own resting orders on that key. A BALANCE
+carries no owner tag at all, so "these coins are mine" is a belief no query settles.
+
+**The practical rule is therefore one account per bot.** Two bots on one Kraken account will each
+size positions against capital that is partly the other's, and each will measure its drawdown
+against a denominator that includes the other's money — quietly, with no error anywhere.
+
+If the account is exclusively this bot's, say so and let the boot check it:
+
+```json
+"capital": { "exclusive_account": true }
+```
+
+The boot then **reports** what contradicts the declaration — an error when an order it cannot
+recognise rests on the instrument this bot trades, a warning when one sits elsewhere — and the
+session starts either way. Left at its default (`false`) nothing is checked and nothing is said;
+the thresholds simply measure whatever is on the account.
+
+> **Reported, not refused — on purpose.** A refusal would stop the session, and a stopped session
+> is not a safe one: this bot may hold a position and a protective resting order at the venue, and
+> refusing abandons both with nothing reconciling them until somebody looks. Withholding new risk
+> while continuing to manage what is already open is the institutional answer, and that state is
+> tracked as #499. Until it exists, the boot tells you loudly and keeps running — so **read the
+> session log after a restart if you declared exclusivity.**
+
+A minimum-order check runs either way: a bot whose account can neither buy nor sell one
+minimum volume refuses at boot rather than at its first signal.
 
 ## Troubleshooting
 

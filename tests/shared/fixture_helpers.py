@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - Shared Fixture Helpers
-Plain functions for scenario execution and data extraction.
+Plain functions for scenario execution, data extraction and domain-object fixtures.
 
 Used by suite-specific conftest.py files to avoid duplication.
 Each suite's conftest.py creates pytest fixtures from these helpers
@@ -15,24 +15,87 @@ Convention:
 import json
 import shutil
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
+from python.framework.types.api.report_types import RunReporting
 from python.framework.types.backtesting_metadata_types import BacktestingMetadata
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.log_level import LogLevel
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
+from python.framework.types.portfolio_types.portfolio_trade_record_types import (
+    CloseType,
+    TradeRecord,
+)
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
-from python.framework.types.api.report_types import RunReporting
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
-from python.framework.types.trading_env_types.order_types import OrderResult
+from python.framework.types.trading_env_types.order_types import OrderDirection, OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
+
+# =============================================================================
+# DOMAIN OBJECT FIXTURES
+# =============================================================================
+
+# A fixed instant — the factories below need a time, nothing asserts on it.
+_FIXTURE_TIME = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
+
+
+def make_open_positions(count: int, total_pnl: float) -> List[Position]:
+    """
+    Open positions whose UNREALISED P&L sums to a given total.
+
+    Args:
+        count: How many positions to build
+        total_pnl: The sum to distribute across them
+
+    Returns:
+        The positions, the whole sum riding on the first — a position no tick ever priced
+        keeps 0.0, which is what an unvalued holding really carries
+    """
+    positions = []
+    for i in range(count):
+        position = Position(
+            position_id=f'pos_{i}', symbol='BTCUSD', direction=OrderDirection.LONG,
+            lots=0.1, original_lots=0.1, entry_price=61430.0, entry_time=_FIXTURE_TIME)
+        position.unrealized_pnl = total_pnl if i == 0 else 0.0
+        positions.append(position)
+    return positions
+
+
+def make_closed_trades(count: int, total_pnl: float) -> List[TradeRecord]:
+    """
+    Closed trade records whose NET P&L sums to a given total.
+
+    Args:
+        count: How many trades to build
+        total_pnl: The sum to distribute across them
+
+    Returns:
+        The trade records, the whole sum on the first
+    """
+    return [
+        TradeRecord(
+            position_id=f't{i}', symbol='BTCUSD', direction=OrderDirection.LONG, lots=0.1,
+            close_type=CloseType.FULL,
+            entry_price=61430.0, entry_time=_FIXTURE_TIME, entry_tick_value=1.0,
+            entry_bid=61429.0, entry_ask=61431.0,
+            exit_price=61500.0, exit_time=_FIXTURE_TIME + timedelta(minutes=30),
+            exit_tick_value=1.0,
+            entry_tick_index=0, exit_tick_index=100,
+            digits=2, contract_size=1,
+            spread_cost=0.0, commission_cost=0.0, swap_cost=0.0, total_fees=0.0,
+            gross_pnl=(total_pnl if i == 0 else 0.0),
+            net_pnl=(total_pnl if i == 0 else 0.0),
+        )
+        for i in range(count)
+    ]
+
 
 # =============================================================================
 # SCENARIO EXECUTION

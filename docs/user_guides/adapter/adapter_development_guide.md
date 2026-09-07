@@ -62,7 +62,7 @@ Same contract, three different transports, zero changes to `LiveRequestProcessor
 
 ### Capability Declaration
 
-`get_order_capabilities()` declares which order types the adapter actually supports. The executor's feature gate consults this — an algo that wants STOP_LIMIT will be rejected at the gate if the adapter doesn't declare it.
+`get_order_capabilities()` declares which order types the **venue** accepts. It is one of two declarations, and the pipeline reads their intersection: the executor declares what has actually been built for its path (`get_supported_order_types()` — the live path carries MARKET and LIMIT), and pre-flight checks a strategy's needs against both. So declaring STOP_LIMIT here does not by itself let one through — an algo that wants a type either side lacks is refused at startup, and the message names which side is short.
 
 ```python
 def get_order_capabilities(self) -> OrderCapabilities:
@@ -265,10 +265,16 @@ def is_live_capable(self) -> bool:
 
 ```python
 def _build_submit_payload(self, symbol, direction, lots, order_type, **kwargs):
+    ordertypes = {OrderType.MARKET: 'market', OrderType.LIMIT: 'limit'}
+    if order_type not in ordertypes:
+        # Never fall through to 'limit' here: an unmapped type would reach the venue as a
+        # plain LIMIT at its limit price. Raise — the executor's supported-types gate is
+        # what keeps such an order from arriving in the first place.
+        raise ValueError(f'{order_type.value} has no payload mapping in this adapter')
     return {
         'pair': self._resolve_broker_pair(symbol),
         'side': 'buy' if direction == OrderDirection.LONG else 'sell',
-        'type': 'market' if order_type == OrderType.MARKET else 'limit',
+        'type': ordertypes[order_type],
         'volume': str(lots),
         **({'price': str(kwargs['price'])} if order_type == OrderType.LIMIT else {}),
     }

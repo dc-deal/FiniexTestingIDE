@@ -26,19 +26,22 @@ Unlike backtesting suites, live executor tests do NOT use shared fixture_helpers
 
 ```
 tests/autotrader/live_executor/
-├── __init__.py
-├── conftest.py                         ← Fixtures: mock modes, executor instances, processor
-├── test_live_request_processor.py      ← Level 1: LiveRequestProcessor storage layer isolated
-├── test_live_executor_mock.py          ← Level 2: LiveTradeExecutor + MockAdapter integration
-├── test_live_executor_multi_order.py   ← Level 3: Multi-order scenarios
-├── test_live_executor_modify.py        ← Level 4: Limit order modification via broker
-├── test_async_submit.py                ← Level 5: Async submit lifecycle regressions (#321)
-├── test_async_modify.py                ← Level 6: Async modify lifecycle regressions (#318)
-├── test_async_cancel.py                ← Level 7: Async cancel lifecycle regressions (#318)
-├── test_broker_trade_records.py        ← Level 8: BrokerTrade aggregation + async trades_query (#326)
-├── test_polling_cadence.py             ← Level 9: Heartbeat, async polling, throttle, in-flight (#320)
-└── test_order_attribution.py           ← Level 10: adopting the venue's reference for an order of ours (#355)
-                                          (the deferred-cancel duty lives here too)
+├── conftest.py                          ← Fixtures: mock modes, executor instances, processor
+├── test_live_request_processor.py       ← Level 1: LiveRequestProcessor storage layer isolated
+├── test_live_executor_mock.py           ← Level 2: LiveTradeExecutor + MockAdapter integration
+├── test_live_executor_multi_order.py    ← Level 3: Multi-order scenarios
+├── test_live_executor_modify.py         ← Level 4: Limit order modification via broker
+├── test_async_submit.py                 ← Level 5: Async submit lifecycle regressions (#321)
+├── test_async_modify.py                 ← Level 6: Async modify lifecycle regressions (#318)
+├── test_async_cancel.py                 ← Level 7: Async cancel lifecycle regressions (#318)
+├── test_broker_trade_records.py         ← Level 8: BrokerTrade aggregation + async trades_query (#326)
+├── test_polling_cadence.py              ← Level 9: Heartbeat, async polling, throttle, in-flight (#320)
+├── test_drift_auditor.py                ← Level 10: local-vs-broker drift telemetry (#327) + slippage (#340)
+├── test_order_attribution.py            ← Level 11: adopting the venue's reference for an order of ours (#355)
+│                                           (the deferred-cancel duty lives here too)
+├── test_decision_event_dispatcher.py    ← Level 12: the decision event channel's mechanics (#348)
+├── test_unresolved_order_outcome.py     ← Level 13: a transport fault is not a venue rejection (#473)
+└── test_order_type_gate.py              ← Level 14: what the pipeline has BUILT vs what the venue offers (#500 sibling)
 ```
 
 **Why this pattern?**
@@ -86,7 +89,7 @@ tests/autotrader/live_executor/
 
 ## Test Files
 
-### test_live_request_processor.py (20 Tests)
+### test_live_request_processor.py
 
 Tests the `LiveRequestProcessor` storage layer independently from `LiveTradeExecutor`. Validates pending order storage, broker reference index, fill/rejection marking, timeout detection, and cleanup. The orchestration surface (`submit_open_order`, `submit_open_order_async`, `modify_order_sync`, etc.) is covered by the executor-level tests; this suite focuses on the inherited `AbstractPendingOrderManager` storage layer extended with broker-ref tracking.
 
@@ -142,7 +145,7 @@ Tests the `LiveRequestProcessor` storage layer independently from `LiveTradeExec
 
 ---
 
-### test_live_executor_mock.py (18 Tests)
+### test_live_executor_mock.py
 
 Integration tests for the full execution pipeline: `open_order()` → broker response → fill processing → order_history / portfolio update. All MARKET submits are async post-#319 step 6 — `open_order()` returns PENDING immediately and the fill arrives via `drain_inbox()` on the next tick.
 
@@ -201,7 +204,7 @@ Integration tests for the full execution pipeline: `open_order()` → broker res
 
 ---
 
-### test_live_executor_multi_order.py (8 Tests)
+### test_live_executor_multi_order.py
 
 Multi-order scenarios: multiple orders tracked, open+close cycles, close_all_remaining, stats consistency.
 
@@ -235,7 +238,7 @@ Multi-order scenarios: multiple orders tracked, open+close cycles, close_all_rem
 
 ---
 
-### test_live_executor_modify.py (11 Tests)
+### test_live_executor_modify.py
 
 Limit order modification via broker adapter: successful modify, non-existent order, broker rejection, adapter exceptions, and `get_broker_ref()` reverse lookup. All modification tests use `OrderType.LIMIT` with `price=49000.0` to place orders into `_active_limit_orders` (Hybrid Architecture shadow state — shared sim/live).
 
@@ -279,7 +282,7 @@ LIMIT submit is async post-#319 step 7 (`broker_ref=None` immediately after `ope
 
 ---
 
-### test_async_submit.py (10 Tests) — #321 Regression Coverage
+### test_async_submit.py — #321 Regression Coverage
 
 Locks down the SHAPE of the async submit lifecycle introduced by #319 step 6. The other test files cover outcomes; this file specifically asserts the lifecycle itself so a regression to a sync-via-shortcut (which would pass outcome tests) cannot slip through.
 
@@ -337,7 +340,7 @@ Asserts that are unique to this file:
 
 ---
 
-### test_async_modify.py (11 Tests) — #318 Modify Regression Coverage
+### test_async_modify.py — #318 Modify Regression Coverage
 
 Locks down the shape of the async modify lifecycle introduced by #318:
 - `modify_limit_order` returns `success=True, status=PENDING` immediately
@@ -391,7 +394,7 @@ Uses `await_submit_confirmation` for drain isolation (no Phase-2 polling that wo
 
 ---
 
-### test_async_cancel.py (9 Tests) — #318 Cancel Regression Coverage
+### test_async_cancel.py — #318 Cancel Regression Coverage
 
 Locks down the shape of the async cancel lifecycle:
 - `cancel_limit_order` returns True (scheduled) immediately
@@ -517,7 +520,7 @@ For test isolation, `MockOrderExecution` provides two drain helpers:
 - `feed_tick(executor, ...)` — flushes outbox, triggers `on_tick` (Phase 0 drain + Phase 1+2 polling)
 - `await_submit_confirmation(executor)` — flushes outbox, calls `drain_inbox` only (no `on_tick`, no polling) — used when a test needs broker_ref confirmation without racing the Phase-1 fill
 
-### test_broker_trade_records.py (9 Tests) — #326 BrokerTrade Layer
+### test_broker_trade_records.py — #326 BrokerTrade Layer
 
 Validates the order ↔ executions pairing model: `BrokerTrade` aggregation on `PendingOrder`, the polling-path synthesis baseline, the async `submit_trades_query_async` roundtrip via worker + drain, the stale-broker_ref guard, and the `trade_level_reporting` capability flag.
 
@@ -555,7 +558,7 @@ Validates the order ↔ executions pairing model: `BrokerTrade` aggregation on `
 |---|---|
 | `test_mock_reports_trade_level_capability` | `MockBrokerAdapter.get_order_capabilities().trade_level_reporting is True` |
 
-### test_polling_cadence.py (12 Tests) — #320 Live Polling Cadence
+### test_polling_cadence.py — #320 Live Polling Cadence
 
 Validates the three coordinated fixes introduced by #320: side-effect-free `heartbeat()` for idle ticks, async per-order polling via the worker thread, and the in-flight guard + wall-clock throttle on `_process_active_orders`. All tests exercise the LIMIT-order polling path; MARKET stays sync (out of scope).
 
@@ -598,7 +601,7 @@ Validates the three coordinated fixes introduced by #320: side-effect-free `hear
 
 ---
 
-### test_drift_auditor.py (17 Tests) — #327 Drift Audit + #340 Slippage
+### test_drift_auditor.py — #327 Drift Audit + #340 Slippage
 
 Validates the read-only drift telemetry pipeline established by #327: outcome-listener captures synthetic snapshot, async trades-query roundtrip, multi-consumer fan-out, comparison + counter classification, currency-aware FEE skip, coexistence with OrderGuard, leak-free response handling, and consumer-exception isolation. The SLIPPAGE channel added by #340 reuses the same pipeline pattern with a fourth `DriftType` comparison branch.
 
@@ -675,7 +678,7 @@ Validates the fourth audit channel: trade-channel tick mid-price captured at sub
 
 ---
 
-## test_order_attribution.py (5 Tests) — #355 Phase 1
+### test_order_attribution.py — #355 Phase 1
 
 `apply_order_attributions()` is the write half of the client-order-id join. The Reconciler
 matches a resting broker order to a local pending that lost its submit answer (#473) and
@@ -700,3 +703,71 @@ regardless, so an algo waiting for its orders to settle waits for the rest of th
 | `test_after_attribution_the_order_is_polled_again` | The cure: with the reference restored, the next heartbeat schedules a query |
 | `test_a_parked_cancel_is_issued_when_the_reference_arrives` | A cancel the algo parked while the reference was missing (#361) is ISSUED by the repair, not discarded — otherwise the algo gets back a resting order it cancelled, and a resting order can fill |
 | `test_an_order_nobody_cancelled_is_left_alone` | No parked intent → the in-flight marker simply clears |
+
+---
+
+### test_decision_event_dispatcher.py — #348 Decision Event Channel
+
+The channel's mechanics in isolation, with a fake executor and a recording logic. Two
+properties carry the weight. A logic that subscribes to nothing gets **no dispatcher at all**
+rather than one that filters everything — the channel costs nothing when unused. And `drain()`
+is drain-to-completion plus re-entrancy safe: an event emitted from inside a hook lands in the
+NEXT drain, so a hook that reacts by placing an order cannot extend the pass it is running in.
+
+| Test | Description |
+|---|---|
+| `test_create_if_subscribed_returns_none_when_empty` | No subscriptions → no dispatcher is built |
+| `test_create_if_subscribed_wires_executor` | With subscriptions → the dispatcher is wired to the executor |
+| `test_executed_outcome_maps_to_order_filled` | An executed order outcome arrives as `ORDER_FILLED` |
+| `test_rejected_outcome_maps_to_order_rejected` | A rejected outcome arrives as `ORDER_REJECTED` |
+| `test_unsubscribed_event_is_filtered` | An event type nobody subscribed to never reaches a hook |
+| `test_fifo_ordering_across_sources` | Buffered events reach the hooks in arrival order |
+| `test_drain_is_reentrancy_safe` | An event emitted inside a hook lands in the next drain, not the current one |
+| `test_drain_empty_buffer_is_noop` | Draining nothing does nothing |
+
+---
+
+### test_unresolved_order_outcome.py — #473 Transport Fault ≠ Rejection
+
+Every exception on the order path used to become `BrokerOrderStatus.REJECTED` with the
+transport error as the reason: the executor dropped the order from its books and told the algo
+the venue had refused it. If the request reached the venue and only the ANSWER was lost, that
+order is resting at the broker and we have forgotten it — we manufactured the very divergence
+#349 exists to resolve, out of our own error handling. A write is therefore never retried but
+**resolved by asking** (§43), and `UNRESOLVED` is the state that keeps it askable.
+
+| Test | Description |
+|---|---|
+| `test_transport_fault_is_unresolved` | A transport exception classifies as `UNRESOLVED`, not `REJECTED` |
+| `test_venue_answer_stays_a_rejection` | A real venue refusal is still a rejection |
+| `test_refused_credential_is_a_rejection_not_a_blip` | An auth refusal is terminal, never a transient blip |
+| `test_unresolved_is_not_terminal` | `UNRESOLVED` does not end the order's life |
+| `test_unresolved_keeps_the_pending_order` | The PendingOrder survives, so the order stays ours to ask about |
+| `test_unresolved_does_not_notify_the_algo` | `on_order_rejected` does NOT fire — nothing was refused |
+| `test_unresolved_does_not_overwrite_the_broker_ref` | An existing reference is left intact |
+| `test_rejection_still_removes_the_pending_order` | A genuine rejection clears the pending as before |
+| `test_unresolved_timeout_reason_names_the_transport` | The timeout reason says transport, not refusal |
+| `test_failed_submit_reaches_the_error_pot` | A failed submit is an ERROR (§35 pot) — the operator must see it |
+| `test_failed_status_poll_is_only_a_warning` | A failed status poll is a WARNING; the next cadence retries |
+| `test_a_venue_answer_is_logged_by_neither` | A normal venue answer is neither error nor warning |
+
+---
+
+### test_order_type_gate.py — #500 sibling: declared vs built
+
+An adapter declares what the VENUE accepts; an executor declares what the PIPELINE has built.
+Kraken declares STOP_LIMIT, the live path carries MARKET and LIMIT — and a strategy declaring
+STOP_LIMIT passed pre-flight, then had every order rejected at submission. A checked-in live
+profile sat in exactly that state. Pre-flight now checks the INTERSECTION of both declarations,
+and `open_order()`'s gate reads the same set, so the two cannot drift apart.
+
+| Test | Description |
+|---|---|
+| `test_the_live_path_carries_market_and_limit_only` | The live executor's declared set is exactly `{MARKET, LIMIT}` |
+| `test_the_simulation_carries_the_resting_types_too` | The sim's set adds STOP and STOP_LIMIT — what its dispatch routes |
+| `test_a_venue_declared_type_the_pipeline_lacks_is_refused_before_trading` | ICEBERG: venue yes, pipeline no → refused at STARTUP, message names the pipeline side |
+| `test_a_type_both_sides_carry_passes` | STOP_LIMIT on the sim: declared and routed → allowed |
+| `test_a_type_the_venue_lacks_is_named_as_the_venue_side` | The message distinguishes "venue does not offer" from "pipeline has not implemented" |
+| `test_the_live_path_rejects_what_it_does_not_declare` | A STOP_LIMIT on live → `ORDER_TYPE_NOT_SUPPORTED`, read from the declared set |
+| `test_every_declared_type_is_one_the_gate_lets_through` | The consistency property: no declared type ever comes back unsupported |
+| `test_a_type_the_builder_cannot_map_raises_instead_of_becoming_a_limit` | The wire-side line behind the gate: Kraken's payload builder raises for a type it cannot map, instead of silently sending it as a LIMIT — offline, through the processor's public submit |

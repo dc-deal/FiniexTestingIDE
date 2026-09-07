@@ -22,7 +22,7 @@ cumulative_fee         = 0.0026
 
 ## Domain Type
 
-[BrokerTrade](python/framework/types/trading_env_types/broker_trade_types.py):
+[BrokerTrade](../../python/framework/types/trading_env_types/broker_trade_types.py):
 
 | Field | Meaning |
 |---|---|
@@ -37,7 +37,7 @@ cumulative_fee         = 0.0026
 | `side` | LONG / SHORT |
 | `is_maker` | True for LIMIT/maker fills, False for MARKET/taker |
 
-`PendingOrder` (see [latency_simulator_types.py](python/framework/types/trading_env_types/latency_simulator_types.py)) carries the executions:
+`PendingOrder` (see [latency_simulator_types.py](../../python/framework/types/trading_env_types/latency_simulator_types.py)) carries the executions:
 
 ```python
 trades: List[BrokerTrade]
@@ -138,9 +138,9 @@ The async path (`submit_trades_query_async` → drain → `_handle_trades_respon
 
 | File | Scope |
 |---|---|
-| [tests/autotrader/live_executor/test_broker_trade_records.py](tests/autotrader/live_executor/test_broker_trade_records.py) | append_trade aggregation, async path roundtrip via processor, stale-response guard, multi-trade mock |
-| [tests/simulation/trade_emission/test_trade_emission.py](tests/simulation/trade_emission/test_trade_emission.py) | Sim `_fill_open_order` / `_fill_close_order` synthesis on the shared abstract path |
-| [tests/parity/test_trade_records_parity.py](tests/parity/test_trade_records_parity.py) | Sim/live agreement on post-fill state (position, history, synthesis shape) |
+| [tests/autotrader/live_executor/test_broker_trade_records.py](../../tests/autotrader/live_executor/test_broker_trade_records.py) | append_trade aggregation, async path roundtrip via processor, stale-response guard, multi-trade mock |
+| [tests/simulation/trade_emission/test_trade_emission.py](../../tests/simulation/trade_emission/test_trade_emission.py) | Sim `_fill_open_order` / `_fill_close_order` synthesis on the shared abstract path |
+| [tests/parity/test_trade_records_parity.py](../../tests/parity/test_trade_records_parity.py) | Sim/live agreement on post-fill state (position, history, synthesis shape) |
 
 ## Related Issues
 

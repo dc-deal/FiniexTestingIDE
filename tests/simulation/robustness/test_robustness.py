@@ -22,17 +22,14 @@ from python.framework.types.config_types.robustness_config_types import (
     RobustnessRole,
 )
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.process_data_types import (
-    BlockBoundaryReport,
-    ProcessResult,
-    ProcessTickLoopResult,
-)
+from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.validators.post_run_validator import PostRunValidator
 from python.framework.validators.scenario_validator import ScenarioValidator
 from python.scenario.generator.role_assignment import assign_roles_time_ordered
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
+from tests.shared.fixture_helpers import make_closed_trades, make_open_positions
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -59,30 +56,52 @@ def _stats(net: float, currency: str = 'USD') -> PortfolioStats:
     )
 
 
-def _result(name: str, idx: int, net: float, boundary: BlockBoundaryReport = None) -> ProcessResult:
+def _edge(open_trades=0, open_pnl=0.0, nat_trades=0, nat_pnl=0.0) -> dict:
+    """
+    The block edge's raw material for one window — what it left open vs. what closed itself.
+
+    Args:
+        open_trades: Positions the edge left open
+        open_pnl: Unrealised P&L riding on them
+        nat_trades: Trades the strategy closed itself
+        nat_pnl: Realised P&L from those
+
+    Returns:
+        The values `_result` builds the positions and trades from
+    """
+    return dict(open_trades=open_trades, open_pnl=open_pnl,
+                nat_trades=nat_trades, nat_pnl=nat_pnl)
+
+
+def _result(name: str, idx: int, net: float, edge: dict = None) -> ProcessResult:
+    edge = edge or {}
     return ProcessResult(
         success=True, scenario_name=name, scenario_index=idx,
         tick_loop_results=ProcessTickLoopResult(
-            portfolio_stats=_stats(net), block_boundary_report=boundary))
+            portfolio_stats=_stats(net),
+            open_positions=make_open_positions(
+                edge.get('open_trades', 0), edge.get('open_pnl', 0.0)),
+            trade_history=make_closed_trades(
+                edge.get('nat_trades', 0), edge.get('nat_pnl', 0.0))))
 
 
 def _scenario(name, idx, role=RobustnessRole.UNASSIGNED, regime='', strategy=None) -> SingleScenario:
     s = SingleScenario(
         name=name, scenario_index=idx, symbol='ETHUSD', data_broker_type='kraken_spot',
-        start_date=_DT, role=role, regime=regime)
+        start_date=_DT, role=role, regime=regime, is_profile_run=True)
     if strategy is not None:
         s.strategy_config = strategy
     return s
 
 
 def _batch(nets, roles=None, regimes=None, metric=RobustnessMetric.NET_PNL,
-           strategies=None, boundaries=None, **cfg) -> BatchExecutionSummary:
+           strategies=None, edges=None, **cfg) -> BatchExecutionSummary:
     """Build a real batch with one window per net value + the robustness config."""
     roles = roles or [RobustnessRole.UNASSIGNED] * len(nets)
     regimes = regimes or [''] * len(nets)
     strategies = strategies or [{'decision_logic_type': 'CORE/x'}] * len(nets)
-    boundaries = boundaries or [None] * len(nets)
-    results = [_result(f'ETHUSD_vol_{i:02d}', i, nets[i], boundaries[i]) for i in range(len(nets))]
+    edges = edges or [None] * len(nets)
+    results = [_result(f'ETHUSD_vol_{i:02d}', i, nets[i], edges[i]) for i in range(len(nets))]
     scenarios = [
         _scenario(f'ETHUSD_vol_{i:02d}', i, roles[i], regimes[i], strategies[i])
         for i in range(len(nets))]
@@ -224,10 +243,8 @@ class TestBuildReport:
         assert r.params_constant is False and r.drifting_windows == ['ETHUSD_vol_01']
 
     def test_disposition_copied(self):
-        boundary = BlockBoundaryReport(
-            open_at_boundary_trades=1, open_at_boundary_pnl=40.0,
-            natural_closed_trades=1, natural_closed_pnl=10.0, discarded_pending_orders=0)
-        r = build_robustness_report_from_batch(_RUN_ID, _batch([5.0, 5.0], boundaries=[boundary, None]))
+        edge = _edge(open_trades=1, open_pnl=40.0, nat_trades=1, nat_pnl=10.0)
+        r = build_robustness_report_from_batch(_RUN_ID, _batch([5.0, 5.0], edges=[edge, None]))
         assert r.disposition_pct == pytest.approx(80.0)   # 40 / (40+10)
 
 
@@ -273,11 +290,9 @@ class TestPostRunVerdict:
         assert 'robustness_low_windows' in _verdicts(b)
 
     def test_disposition_suppresses_verdict(self):
-        boundary = BlockBoundaryReport(
-            open_at_boundary_trades=1, open_at_boundary_pnl=80.0,
-            natural_closed_trades=1, natural_closed_pnl=10.0, discarded_pending_orders=0)
+        edge = _edge(open_trades=1, open_pnl=80.0, nat_trades=1, nat_pnl=10.0)
         b = _batch([10.0, 10.0, 1.0, 1.0], roles=self._ROLES_4,
-                   boundaries=[boundary, None, None, None])
+                   edges=[edge, None, None, None])
         out = _verdicts(b)
         assert 'robustness_low_trust' in out
         assert 'robustness_overfit' not in out   # suppressed when distortion is high

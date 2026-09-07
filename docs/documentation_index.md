@@ -42,7 +42,7 @@
 |----------|-------------|
 | [Execution Layer](architecture/architecture_execution_layer.md) | Core Sim/Live hybrid architecture, shared portfolio logic |
 | [Simulation vs Live Flow](architecture/simulation_vs_live_flow.md) | Side-by-side tick flow comparison |
-| [Live Execution](architecture/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveOrderTracker |
+| [Live Execution](architecture/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveRequestProcessor |
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
 | [Broker Trade Records](architecture/broker_trade_records.md) | Order ↔ executions pairing model, BrokerTrade type, Tier-3 trades-query layer |
 | [Trade Execution Visibility](architecture/trade_execution_visibility.md) | Trigger / BrokerOrder / Fills three-level model, Position.entry_trades + TradeRecord.entry_trades / exit_trades propagation, sub-line rendering, long-format event-stream CSV (#330) |
@@ -108,6 +108,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Algo State Persistence](tests/autotrader/state_persistence_tests.md) | Snapshot store, corrupt/stale policy, weekend-aware staleness, pre-flight (#354) |
 | [Order Guard](tests/autotrader/order_guard_tests.md) | Rejection cooldown, async callback |
 | [Cold Start](tests/autotrader/cold_start_tests.md) | Boot-time adoption of our own resting orders + the framework carry-over (#355) |
+| [Capital](tests/autotrader/capital_tests.md) | What the bot may actually spend (#489): committed funds on both check sites, the minimum-order boot refusal |
 | [Reconciliation](tests/autotrader/reconciliation_tests.md) | Broker truth-pull + Reconciler ALERT_ONLY (#151) |
 | [Session End](tests/autotrader/session_end_tests.md) | What a session leaves standing and how it is reported (#492): the two axes, the incoherent pair, realised vs valued, the phantom-drawdown guard |
 | [Session Validation](tests/autotrader/session_validation_tests.md) | The live Tier-1 channel: SessionPostRunValidator + the checks shared with the sim batch |

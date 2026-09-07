@@ -33,6 +33,7 @@ from python.framework.types.api.report_types import RunHeader
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.log_layout_types import RUN_TYPE_LIVE
+from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.signal_data_types import (
@@ -41,6 +42,10 @@ from python.framework.types.signal_data_types import (
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
+from python.framework.validators.capital_validator import (
+    check_account_sufficiency,
+    describe_missing_reference_price,
+)
 from python.framework.validators.component_metadata_advisory import (
     surface_decision_logic_version,
 )
@@ -186,6 +191,31 @@ def create_session_file_logger(run_dir: Path, date_suffix: str) -> FileLogger:
 
 
 
+def _newest_bar_close(bar_controller: BarRenderingController, symbol: str) -> Optional[float]:
+    """
+    The most recent close across whatever timeframes carry bars, or None.
+
+    Read from the warmup bars rather than from a tick: at boot no tick has arrived, and the
+    adapter contract has no price read at all. Any timeframe will do — the newest close of
+    each is the same last traded price, so the highest one wins only by arriving latest.
+
+    Args:
+        bar_controller: The controller, after warmup injection
+        symbol: The instrument
+
+    Returns:
+        The close, or None when warmup produced no bars (a strategy with no bar workers)
+    """
+    newest: Optional[Bar] = None
+    for bars in bar_controller.get_all_bar_history(symbol).values():
+        if not bars:
+            continue
+        candidate = bars[-1]
+        if newest is None or candidate.timestamp > newest.timestamp:
+            newest = candidate
+    return newest.close if newest is not None else None
+
+
 def setup_pipeline(
     config: AutoTraderConfig,
     logger: ScenarioLogger,
@@ -216,7 +246,7 @@ def setup_pipeline(
             into SIGNAL workers; None for live
 
     Returns:
-        (executor, bar_controller, worker_orchestrator, decision_logic, clipping_monitor, trading_model, display_label_cache)
+        The pipeline bundle — every object the session needs, wired
     """
     # === Phase 1: Broker Config ===
     # Balances source (#438): the mock replays a scenario → its scenario_settings.balances
@@ -408,6 +438,19 @@ def setup_pipeline(
             if config.scenario_settings else ''
         ),
     )
+
+    # #489 — a bot that can fund no order at all has nothing to do, and the boot is where
+    # it should say so rather than the first signal. Placed HERE because the check needs a
+    # price and this is the first point one exists: no tick has arrived yet and the adapter
+    # contract carries no price read. When warmup produced none the buy side stays unjudged,
+    # and that is SAID rather than swallowed — a check that silently does not run reads
+    # exactly like one that ran and passed.
+    reference_price = _newest_bar_close(bar_controller, config.symbol)
+    sufficiency_error = check_account_sufficiency(balances, symbol_spec, reference_price)
+    if sufficiency_error:
+        raise ValueError(sufficiency_error)
+    if reference_price is None:
+        logger.warning(describe_missing_reference_price(config.symbol))
 
     # === Phase 10: LiveClippingMonitor ===
     clipping_monitor = LiveClippingMonitor(

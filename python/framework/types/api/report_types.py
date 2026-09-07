@@ -243,6 +243,10 @@ class PortfolioUnitRow(BaseModel):
     # Spot mode — dual-balance + estimated portfolio value
     balances: dict[str, float] = {}
     initial_balances: dict[str, float] = {}
+    # What unfilled orders still claim, and what is left of the balance after them (#489).
+    # `usable` is derived here in the builder, never in a renderer.
+    committed_funds: dict[str, float] = {}
+    usable_funds: dict[str, float] = {}
     last_price: float = 0.0
     # #492 — what the unit still HELD when it ended. `net_profit` above stays realised;
     # these two are the wealth view and are never summed into it silently.
@@ -938,6 +942,9 @@ class ColdStartSkippedRow(BaseModel):
         order_type: What the venue reported
         lots: Order size
         price: The resting price
+        key_is_ours: Whether its key names a session this bot has used; None when it carries
+            no key of our shape. Recorded because `reason` cannot answer it — an
+            `other_symbol` order may be our own or a stranger's
     """
     reason: str
     client_order_id: str = ''
@@ -946,6 +953,7 @@ class ColdStartSkippedRow(BaseModel):
     order_type: str = ''
     lots: float = 0.0
     price: Optional[float] = None
+    key_is_ours: Optional[bool] = None
 
 
 class ColdStartPositionRow(BaseModel):

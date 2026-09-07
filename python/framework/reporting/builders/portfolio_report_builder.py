@@ -17,6 +17,7 @@ from python.framework.types.api.report_types import (
     PortfolioReport,
     PortfolioUnitRow,
 )
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_types import Position
 
 
@@ -103,6 +104,27 @@ def _final_equity(stats, unrealized_pnl: float, est_current: float) -> float:
     return stats.current_balance + unrealized_pnl
 
 
+def _usable_funds(stats: PortfolioStats) -> dict:
+    """
+    What is left of each balance once this bot's own unfilled orders are counted (#489).
+
+    Derived here rather than in a renderer: the same difference is read by the console, the
+    JSON artifact and the API, and three subtractions are three chances to disagree. Only
+    currencies with a claim appear — a balance nothing is holding needs no second number.
+
+    Args:
+        stats: The unit's portfolio stats, carrying the captured committed figure
+
+    Returns:
+        currency → balance minus claim; empty when nothing is committed
+    """
+    return {
+        currency: stats.balances.get(currency, 0.0) - claimed
+        for currency, claimed in stats.committed_funds.items()
+        if claimed
+    }
+
+
 def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
     """Map a unit's portfolio stats to the full per-unit projection row."""
     stats = unit.portfolio_stats
@@ -141,6 +163,8 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         has_error=unit.has_error,
         balances=stats.balances,
         initial_balances=stats.initial_balances,
+        committed_funds=dict(stats.committed_funds),
+        usable_funds=_usable_funds(stats),
         last_price=stats.last_price,
         base_currency=stats.base_currency,
         quote_currency=stats.quote_currency,

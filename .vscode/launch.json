@@ -1792,6 +1792,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Capital Allocation (#489)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/capital",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 11.2
+            }
+        },
+        {
             "name": "🧩 Pytest: Cold Start (#355)",
             "type": "debugpy",
             "request": "launch",
@@ -3306,13 +3323,16 @@
                 "order": 1
             }
         },
+        // Live adapter certificate — THREE steps, deliberately separate. The certificate is
+        // written in pytest_sessionfinish, so a validator in the same invocation would judge
+        // the PREVIOUS run's artifact and skips itself. Step 1 costs nothing (validate=true).
         {
-            "name": "🧩 Pytest: Live Adapters (All) - real money",
+            "name": "🧩 Pytest: Live Adapters — 1 dry-run only (free, validate=true)",
             "type": "debugpy",
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/live_adapters/",
+                "tests/live_adapters/test_kraken_adapter_order_lifecycle_dry.py",
                 "-v",
                 "--tb=short"
             ],
@@ -3321,6 +3341,41 @@
             "presentation": {
                 "group": "12_release_gate",
                 "order": 2
+            }
+        },
+        {
+            "name": "🧩 Pytest: Live Adapters — 2 generate certificate (real money)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/live_adapters/",
+                "--ignore=tests/live_adapters/test_live_adapter_certificate.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "12_release_gate",
+                "order": 2.3
+            }
+        },
+        {
+            "name": "🧩 Pytest: Live Adapters — 3 validate certificate",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/live_adapters/test_live_adapter_certificate.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "12_release_gate",
+                "order": 2.6
             }
         },
         {

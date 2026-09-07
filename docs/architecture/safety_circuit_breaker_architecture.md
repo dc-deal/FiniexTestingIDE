@@ -1,5 +1,14 @@
 # Safety Circuit Breaker Architecture
 
+> **The denominator this measures against is a premise, not a fact (#489).** Every threshold
+> below compares against the ACCOUNT — its balance, its equity, its drawdown. That is the bot's
+> own denominator only if the account is only the bot's, and a framework cannot read that off a
+> venue. The operator declares it with `capital.exclusive_account`, and the boot then checks it:
+> a stranger's order on the bot's own instrument refuses the start, one elsewhere is a Tier-1
+> warning. Left at its default (`false`), the thresholds here still work — they simply measure a
+> denominator that may include capital this bot does not own. See
+> [autotrader_architecture.md](../autotrader/autotrader_architecture.md) — *Whose account is it*.
+
 ## Overview
 
 The Safety Circuit Breaker is an account-level protection mechanism in the AutoTrader tick loop. It monitors balance/equity and drawdown thresholds on every tick and blocks all new position entries when thresholds are breached.

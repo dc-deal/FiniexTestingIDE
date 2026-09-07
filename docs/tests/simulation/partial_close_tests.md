@@ -174,7 +174,7 @@ Partial-close specific tests organized in 7 groups.
 | `test_partial_closes_before_final` | Partial exit ticks < final full close tick |
 | `test_partial_close_ticks_near_config` | Exit ticks ≈ configured tick_numbers (±15 latency) |
 
-### test_pnl_calculation.py (16 Tests) — Reused from Baseline
+### test_partial_close_pnl_calculation.py (16 Tests) — Reused from Baseline
 
 Generic P&L validation from `tests/shared/shared_pnl.py`. Validates formulas, fee breakdowns, trade completeness across all 4 trade records.
 

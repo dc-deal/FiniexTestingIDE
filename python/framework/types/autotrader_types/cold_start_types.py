@@ -74,6 +74,12 @@ class SkippedOrder:
         order_type: What the venue reports it as
         lots: Order size
         price: The resting price
+        key_is_ours: Whether the key names a session THIS bot has sent orders under, or None
+            when there is no key of our shape to judge (FOREIGN_KEY). The reason alone cannot
+            answer it: the symbol is tested BEFORE the session key, so an OTHER_SYMBOL order
+            may carry either our own key or a stranger's and the bucket used to record
+            neither. Anything that reasons about ownership — an algo hook, a report, a
+            refusal — needs the fact rather than the string compare it was inferred from
     """
     reason: SkipReason
     client_order_id: Optional[str]
@@ -83,6 +89,7 @@ class SkippedOrder:
     order_type: OrderType
     lots: float
     price: Optional[float] = None
+    key_is_ours: Optional[bool] = None
 
 
 @dataclass
@@ -106,8 +113,10 @@ class ColdStartSituation:
         adoption_mode: The resolved policy ('auto' / 'operator_confirm')
         attended: Whether a human DECLARED they are watching this start
         book_shortfall: How much the restored book claims beyond what the account holds, in
-            base units. 0.0 when the account covers it — which is the normal case, since a
-            surplus belongs to whoever else uses the account
+            base units. 0.0 when the account covers it, which is the normal case. A SURPLUS
+            is never reported: on a shared account it belongs to whoever else uses it, and
+            on one declared exclusive (#489) it is this bot's own untraded capital — the bot
+            takes what is there. Either way there is nothing to correct
         applied: Whether the boot went on to APPLY what is listed here. False while the
             decision is still open, and False forever on a boot that refused — the lists then
             describe what WOULD have been adopted and restored, and a record that does not say

@@ -7,7 +7,7 @@ This document describes the architecture of the trade execution layer — the sy
 The core insight: **Backtesting and live trading share the same portfolio logic.** The only difference is *how* orders reach the market and *how* fills are confirmed. Everything else — portfolio tracking, fee calculations, P&L accounting, margin checks — is identical.
 
 > **Tick flow comparison (Backtesting vs Live):** see [simulation_vs_live_flow.md](simulation_vs_live_flow.md)
-> **Live execution details (LiveTradeExecutor, broker polling, LiveOrderTracker):** see [live_execution_architecture.md](live_execution_architecture.md)
+> **Live execution details (LiveTradeExecutor, broker polling, LiveRequestProcessor):** see [live_execution_architecture.md](live_execution_architecture.md)
 > **Pending order lifecycle (3 worlds: latency, limit, stop):** see [pending_order_architecture.md](pending_order_architecture.md)
 
 ---
@@ -60,7 +60,7 @@ The solution is a **shared-core architecture** where common logic lives in base 
 │  (Simulation)    │    (Live)                      │
 │                  │                               │
 │  has-a:          │    has-a:                      │
-│  OrderLatency    │    LiveOrderTracker            │
+│  OrderLatency    │    LiveRequestProcessor            │
 │  Simulator       │                               │
 └──────────────────┴──────────────────────────────┘
 
@@ -72,7 +72,7 @@ The solution is a **shared-core architecture** where common logic lives in base 
 │  is_pending_close, clear                         │
 ├──────────────────┬──────────────────────────────┤
 │                  │                               │
-│  OrderLatency    │    LiveOrderTracker            │
+│  OrderLatency    │    LiveRequestProcessor            │
 │  Simulator       │                               │
 │                  │                               │
 │  - SeededDelay   │    - Broker ref tracking       │
@@ -278,7 +278,7 @@ Simulation-specific pending order manager. Adds tick-based latency modeling with
 
 Uses `SeededDelayGenerator` (`utils/seeded_generators/`) for deterministic inbound latency delays.
 
-### LiveOrderTracker (extends AbstractPendingOrderManager)
+### LiveRequestProcessor (extends AbstractPendingOrderManager)
 
 > Full documentation: [live_execution_architecture.md](live_execution_architecture.md)
 
@@ -297,7 +297,7 @@ Simulated execution. Delegates pending order management to OrderLatencySimulator
 
 > Full documentation: [live_execution_architecture.md](live_execution_architecture.md)
 
-Live execution via broker adapter API. Routes orders through `adapter.execute_order()`, polls broker via `adapter.check_order_status()`, calls the *same* shared fill methods from the base. MARKET orders are tracked via `LiveOrderTracker` (short-lived pipeline). LIMIT orders are tracked as shadow state in inherited `_active_limit_orders` — polled each tick via `_process_active_orders()`. Supports `modify_limit_order()` (broker + local state update) and `cancel_limit_order()` (broker cancel + local removal).
+Live execution via broker adapter API. Routes orders through `adapter.execute_order()`, polls broker via `adapter.check_order_status()`, calls the *same* shared fill methods from the base. MARKET orders are tracked via `LiveRequestProcessor` (short-lived pipeline). LIMIT orders are tracked as shadow state in inherited `_active_limit_orders` — polled each tick via `_process_active_orders()`. Supports `modify_limit_order()` (broker + local state update) and `cancel_limit_order()` (broker cancel + local removal).
 
 ### AbstractAdapter (Tiered Interface)
 Abstract interface for all broker adapters. Methods are organized in tiers:
@@ -654,7 +654,7 @@ See [live_execution_architecture.md](live_execution_architecture.md): Reconcilia
 | **Pending Order** | An order submitted but not yet filled (PendingOrder dataclass, shared) |
 | **PendingOrderManager** | Abstract storage/query layer for pending orders (AbstractPendingOrderManager) |
 | **OrderLatencySimulator** | Simulation-specific pending order manager with seeded tick delays |
-| **LiveOrderTracker** | Live-specific pending order manager — see [live_execution_architecture.md](live_execution_architecture.md) |
+| **LiveRequestProcessor** | Live-specific pending order manager — see [live_execution_architecture.md](live_execution_architecture.md) |
 | **Pseudo-Position** | (Removed) A fake position representing a pending order — now replaced by explicit API |
 | **Tick Loop** | The main processing loop that feeds ticks to all components |
 | **DecisionLogic** | Trading strategy that produces buy/sell/flat decisions |
