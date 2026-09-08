@@ -272,8 +272,16 @@ class TestCapabilityGateParity:
         assert sim_result.success == live_result.success == False
         assert sim_result.rejection_reason == live_result.rejection_reason == ModificationRejectionReason.ORDER_TYPE_NOT_SUPPORTED
 
-    def test_cancel_stop_order_unsupported_in_both(self):
-        """Mock declares stop_orders=False → cancel_stop_order returns False in both."""
+    def test_cancel_stop_order_unknown_id_refused_in_both(self):
+        """
+        An id neither pipeline holds is refused in both — the parity that survives.
+
+        It used to be a CAPABILITY parity: the mock declares no stop support and both
+        refused before looking. The live side no longer gates the cancel on capability
+        (an order in the stop list was already accepted by the venue, and refusing to
+        cancel it is how an orphan is made), so what both still agree on is the honest
+        reason: we do not hold this order.
+        """
         sim = _build_sim_executor()
         _feed_sim_tick(sim, msc=1000)
         sim_ok = sim.cancel_stop_order(order_id='x')

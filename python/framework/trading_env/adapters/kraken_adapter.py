@@ -1053,11 +1053,17 @@ class KrakenAdapter(AbstractAdapter):
         kraken_status = order_info.get('status', 'pending')
         status = self._STATUS_MAP.get(kraken_status, BrokerOrderStatus.PENDING)
 
-        fill_price = None
-        filled_lots = None
-        if status == BrokerOrderStatus.FILLED:
-            fill_price = float(order_info.get('price', 0))
-            filled_lots = float(order_info.get('vol_exec', 0))
+        # `vol_exec` is read on EVERY status, not only FILLED. Kraken has no
+        # PARTIALLY_FILLED: a half-filled order stays `open` and reports what already
+        # executed alongside it — so reading the field only on FILLED made a partial fill
+        # not merely unhandled but unrepresentable, and the executed half invisible until
+        # the rest filled. A CANCELLED or EXPIRED order can carry one too, which is the
+        # dangerous form: the venue took part of it and then the order ended.
+        # `price` is Kraken's average execution price and is meaningless at zero volume.
+        executed = float(order_info.get('vol_exec', 0.0) or 0.0)
+        filled_lots = executed if executed > 0.0 else None
+        fill_price = (float(order_info.get('price', 0.0) or 0.0)
+                      if filled_lots is not None else None)
 
         return BrokerResponse(
             broker_ref=broker_ref,

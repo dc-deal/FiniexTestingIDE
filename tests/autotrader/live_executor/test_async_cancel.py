@@ -136,11 +136,18 @@ class TestCancelLimitOrderNotFound:
         assert scheduled is False
 
 
-class TestCancelStopOrderCapabilityGate:
-    """cancel_stop_order rejected when adapter doesn't declare STOP capability."""
+class TestCancellingAnOrderWeDoNotHold:
+    """
+    A cancel for an id that is not resting here is refused — and that is the ONLY reason left.
 
-    def test_cancel_stop_order_returns_false_for_kraken_profile(self, mock_delayed, executor_delayed):
-        """Mock adapter declares stop_orders=False → cancel_stop_order returns False."""
+    This class used to assert a CAPABILITY gate: the mock declares no stop support, so
+    `cancel_stop_order` returned False before looking at anything. The test passed with an id
+    that does not exist, so it never distinguished the two reasons — and the gate itself was
+    wrong. The only orders in the stop list are ones we placed or adopted, which means the
+    venue already accepted the type; refusing to cancel one is how an orphan is made.
+    """
+
+    def test_an_unknown_id_is_refused(self, mock_delayed, executor_delayed):
         scheduled = executor_delayed.cancel_stop_order(order_id='anything')
         assert scheduled is False
 

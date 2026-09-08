@@ -36,7 +36,7 @@ from abc import ABC, abstractmethod
 from collections import deque
 from datetime import datetime
 from enum import Enum
-from typing import Callable, Dict, FrozenSet, List, Optional, Tuple, Union
+from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.factory.trading_fee_factory import (
@@ -1891,15 +1891,25 @@ class AbstractTradeExecutor(ABC):
             for p in self._active_stop_orders
         ]
 
-    def _expire_active_orders(self) -> None:
+    def _expire_active_orders(self, skip: Optional[Set[str]] = None) -> None:
         """
         Record EXPIRED status for never-triggered active orders at session end.
 
-        Creates OrderResult(status=EXPIRED) entries in _order_history for all
-        active limit and stop orders. Lists are NOT cleared — preserved for
-        get_pending_stats() snapshots.
+        Creates OrderResult(status=EXPIRED) entries in _order_history for the resting orders
+        of BOTH worlds. Lists are NOT cleared — preserved for get_pending_stats() snapshots.
+
+        `skip` exists because EXPIRED is a claim about the VENUE, not about our bookkeeping.
+        An order whose cancellation the broker did not confirm may still be working there, and
+        recording it as expired is how a live order becomes invisible to the next session's
+        boot adoption.
+
+        Args:
+            skip: Order ids the venue did not confirm as cancelled; None expires everything
         """
-        for pending in self._active_limit_orders:
+        skipped = skip or set()
+        for pending in self._active_limit_orders + self._active_stop_orders:
+            if pending.pending_order_id in skipped:
+                continue
             result = OrderResult(
                 order_id=pending.pending_order_id,
                 status=OrderStatus.EXPIRED,
@@ -1908,22 +1918,7 @@ class AbstractTradeExecutor(ABC):
                 symbol=pending.symbol,
                 metadata={
                     'reason': 'scenario_end',
-                    'order_type': pending.order_type.value if pending.order_type else 'limit',
-                    'entry_price': pending.entry_price,
-                }
-            )
-            self._check_order_history_limit()
-            self._order_history.append(result)
-        for pending in self._active_stop_orders:
-            result = OrderResult(
-                order_id=pending.pending_order_id,
-                status=OrderStatus.EXPIRED,
-                execution_time=self.get_current_time(),
-                action=OrderAction.OPEN,
-                symbol=pending.symbol,
-                metadata={
-                    'reason': 'scenario_end',
-                    'order_type': pending.order_type.value if pending.order_type else 'stop',
+                    'order_type': pending.order_type.value if pending.order_type else 'resting',
                     'entry_price': pending.entry_price,
                 }
             )

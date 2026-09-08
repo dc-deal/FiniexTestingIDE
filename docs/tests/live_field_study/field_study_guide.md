@@ -82,7 +82,7 @@ Phases are config (`phase_sequence` in the profile) — the engine is generic. E
 | 11 | `limit_modify_test` | LIMIT + modify | LONG | AmendOrder in-place (txid stable), modify toward market | modified, filled | rests far, then modifies closer |
 | 12 | `limit_modify_close` | CLOSE_ALL | — | cleanup | flat | — |
 | 13 | `limit_cancel_test` | LIMIT + cancel | LONG | cancel before fill, no position created | cancelled | rests, then cancels |
-| 14 | `stop_cancel_test` | STOP + cancel | LONG | the live STOP path (#500) — trigger on the wire, resting in the STOP world, cancelled there | cancelled | rests ABOVE market; **a fill here fails** |
+| 14 | `stop_cancel_test` | STOP + cancel | LONG | the live STOP path (#500) — trigger on the wire, resting in the STOP world, cancelled there | cancelled | rests 3% ABOVE market, own `lots`; **a fill here fails** |
 | 15 | `multi_concurrent_limits` | 3× LIMIT | LONG | per-order throttle + in-flight isolation | all resting | far from market — submitted one per tick |
 | 16 | `multi_cancel_all` | cancel all | — | multi-cancel correctness | all cancelled | — |
 | 17 | `partial_close_test` | MARKET → 50% → rest | LONG | partial-close path end-to-end live | half, then flat | multi-step; lots-polling detects the partial |
@@ -105,6 +105,14 @@ side that makes a stop fire. And a **fill FAILS the phase**: Kraken does not ref
 trigger, it executes it immediately as a market order (our simulation does the same), so a fill
 here means the offset put the order on the wrong side and the phase would otherwise report an
 unintended real trade as a success.
+
+Both of its numbers therefore differ from the limit phases, and neither is a typo. A buy stop's
+order value is `lots × TRIGGER`, so at the default 0.002 with the limit phases' 0.4% offset it
+lands on about **$5.00 — exactly Kraken's cost minimum**, and a small downward move fails the
+phase for arithmetic rather than for a defect (measured 2026-09-07: `EOrder:Cost minimum not
+met`). It carries its own `lots: 0.004` and a **3%** offset: ~$10 briefly reserved, no fill, and
+far enough away that a thirty-second window cannot reach it. A limit phase wants to fill and
+re-arms toward the market; this one wants the opposite.
 
 **Cross-cutting behaviors:**
 - **Safety integration** — submits route through the standard BUY/SELL decision action, so the safety circuit breaker can suppress new entries (override → FLAT); closes/cancels are never suppressed.
@@ -132,6 +140,28 @@ One JSON object per line, append-only, flushed per event (crash-safe, tail-able 
   `reconcile_alert`, `api_perf`, `session_end`.
 
 ---
+
+## Which profile the certificate is about
+
+There are two field-study profiles and only ONE of them is on the release path:
+
+| Profile | On the release path | Why it exists |
+|---|---|---|
+| `kraken_spot_ethusd_field_study.json` | **yes** | #332 names it primary, the release checklist runs it by name, and it is the only one with a launch entry |
+| `kraken_spot_btcusd_field_study.json` | **no** | a second PAIR, run by hand |
+
+The second profile is not redundancy. Venue behaviour is per **pair**, not per adapter — lot
+minimum, tick size, decimals, liquidity — so a certificate over ETHUSD certifies ETHUSD and
+nothing else. Exactly three values differ from the primary: the symbol, `lot_size` (0.0001 BTC
+meets Kraken's ~$5 order minimum at that unit price where ETH needs 0.002), and
+`max_rearm_attempts` (6 against 0, which means *unbounded* — the primary re-prices toward market
+until the limit phases fill, so they end conclusive rather than timing out).
+
+> ⚠️ **`--latest` picks the newest run by TIMESTAMP, not by profile.** A BTCUSD run started after
+> an ETHUSD one becomes the certified run. The certificate records `profile` and `symbol` and
+> prints both at generation, so the evidence is right there — but nothing asserts which one was
+> expected. **Read the profile line the generator prints before committing the certificate**, or
+> pass `--jsonl` explicitly.
 
 ## Certificate
 

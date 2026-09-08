@@ -164,6 +164,11 @@ class MockBrokerAdapter(AbstractAdapter):
         # without a record of it a test can only observe that our own book forgot the order
         # — which is exactly what a cleanup that never reached the venue also looks like.
         self._cancelled_refs: List[str] = []
+        # When set, every cancel raises as a transport fault would. The realistic case is a
+        # venue outage at shutdown, and it is the one a test cannot otherwise produce: the
+        # sync cancel catches its own exception and returns a failure RESPONSE, so nothing
+        # downstream ever sees a raise.
+        self._cancel_transport_error: Optional[str] = None
         # Configurable fill price offset (simulates slippage)
         self._slippage_points: float = 0.0
         # Last-seen tick per symbol (fed via on_tick) — used to fill
@@ -568,6 +573,10 @@ class MockBrokerAdapter(AbstractAdapter):
         pending state for the broker_ref and returns CANCELLED.
         """
         broker_ref = payload['broker_ref']
+        if self._cancel_transport_error is not None:
+            # Nothing is popped and nothing is recorded: the venue was never reached, so it
+            # still holds the order.
+            raise ConnectionError(self._cancel_transport_error)
         self._mock_pending.pop(broker_ref, None)
         self._cancelled_refs.append(broker_ref)
         return {
@@ -795,6 +804,15 @@ class MockBrokerAdapter(AbstractAdapter):
     # transport for a test double). Tests seed broker truth via the setters and
     # choose a MockDivergenceMode; the Reconciler reconciles this against the
     # local shadow state.
+
+    def set_cancel_transport_error(self, message: Optional[str]) -> None:
+        """
+        Make every cancel fail as a transport fault, or clear it with None.
+
+        Args:
+            message: The error text the fault carries, or None to cancel normally
+        """
+        self._cancel_transport_error = message
 
     def get_cancelled_refs(self) -> List[str]:
         """
