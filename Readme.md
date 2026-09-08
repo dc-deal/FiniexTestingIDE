@@ -87,7 +87,7 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 - **Order Lifecycle** - PENDING → EXECUTED status tracking (Market, Limit, Stop, Stop-Limit)
 - **Limit Orders** - Two-phase lifecycle: latency simulation → price trigger monitoring
 - **Stop Orders** - Breakout entry with market fill (STOP) or limit conversion (STOP_LIMIT)
-- **Multi-Broker Fees** - Spread-based (MT5) and maker/taker (Kraken, maker fee for limit fills)
+- **Multi-Broker Fees** - Spread-based (MT5, charged once at entry) and maker/taker (Kraken, charged on every fill so a round trip pays twice; maker fee for limit fills)
 - **Mock Testing** - MockBrokerAdapter for deterministic pipeline verification
 
 ### Signal Data (External / Model-Produced Input)

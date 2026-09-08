@@ -570,8 +570,11 @@ It mirrors the fill's OUTFLOW exactly, because an inflow needs no reserve:
 | CLOSE of a LONG | base | `close_lots` |
 | CLOSE of a SHORT | quote | `close_lots × price + fee` |
 
-Fee and tick value come from the same helpers the fill uses (`_create_entry_fee`,
-`_calculate_tick_value`), so a reserve and the eventual charge cannot drift apart. The price is
+Fee and tick value come from the same helpers the fill uses (`_create_entry_fee` /
+`_create_exit_fee`, `_calculate_tick_value`), so a reserve and the eventual charge cannot
+drift apart. That holds because a close is a MARKET order today and therefore always a taker;
+a venue-held LIMIT exit (#503) would be reserved at one rate and charged at another unless the
+value comes from the closing order. The price is
 the one the order will actually pay — a LIMIT its own, a STOP its trigger, a MARKET in transit
 the current ask — and an order nothing can price yet reserves **nothing** rather than a guessed
 number.

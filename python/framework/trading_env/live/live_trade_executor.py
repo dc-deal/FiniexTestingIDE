@@ -74,7 +74,7 @@ from python.framework.types.trading_env_types.order_types import (
 )
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
-from python.framework.utils.connection_ladder import ConnectionLadder
+from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
 from python.framework.utils.run_id_utils import build_client_order_id
 
 
@@ -242,6 +242,26 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             The ConnectionLadder this executor was built with
         """
         return self._rest_ladder
+
+    def pull_broker_balances(self) -> Optional[Dict[str, float]]:
+        """
+        The venue's FULL balance sheet, under the shared REST ladder (§43).
+
+        Unfiltered on purpose, quote currency included: a FLATNESS answer is not a balance
+        sheet, and reusing one as the other is how the Field Study's truth plane came to
+        record the two balances that had not moved while omitting the one that had (#506).
+        Whoever needs "is this account flat" asks the Reconciler; whoever needs "what does
+        the venue hold" asks here.
+
+        It lives on the executor because this is the only place that owns both the adapter
+        and the ladder — the pairing was previously re-derived by every caller, which is
+        also why the flat check itself has no ladder at all.
+
+        Returns:
+            Asset → amount as the venue reports it, or None when the ladder gave up
+        """
+        return run_with_ladder(
+            self.broker.adapter.get_broker_balances, self.get_rest_ladder())
 
     def get_session_key(self) -> str:
         """

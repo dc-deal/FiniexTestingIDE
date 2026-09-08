@@ -13,9 +13,14 @@ PASS criteria (hard):
 - every phase in the run reached a non-failing outcome (pass / expected_rejection / skipped /
   inconclusive — the last is a market-dependent non-fill, not a mechanical failure)
 - no phase is missing a result (a missing result means the run aborted mid-sequence)
-- the account is flat at session end (last broker-truth snapshot)
+- the account is flat at session end (the broker-truth snapshot of the `session_end` PHASE —
+  never simply the last one recorded, or a session-end snapshot that failed to be written
+  would let the PREFLIGHT state answer the gate)
 
-Informational (not pass-gating): realized cost, slippage distribution, detected-via mix,
+Informational (not pass-gating): realized cost (read from the run's own stamp, with its
+source named — a reconstruction from per-event commissions cannot see a full close), the
+account delta (venue-side movement between the first and the session-end snapshot, which is
+the only figure that can contradict our booking), slippage distribution, detected-via mix,
 reconciliation alert count.
 """
 
@@ -102,19 +107,45 @@ class FieldStudyCertificate:
         # End-state gate is "no resting orders" — a both-sided-funded study intentionally
         # holds base at the end (balances restored ~to the start), so order-book flatness
         # (no resting orders), not a zero base balance, is the criterion.
-        last_order_count = (
-            (broker_snapshots[-1].get('extra') or {}).get('order_count', 1)
-            if broker_snapshots else 1
+        #
+        # The END snapshot is selected by PHASE, not by position. `[-1]` was the last snapshot
+        # of any kind, so a session-end snapshot that never got written — every exception in
+        # the shutdown try-block does that — silently promoted the PREFLIGHT snapshot, and the
+        # gate then answered from the account state BEFORE the run. A gate must not pass on a
+        # measurement it does not have.
+        end_snapshot = next(
+            (s for s in reversed(broker_snapshots) if s.get('phase') == 'session_end'),
+            None,
         )
-        flat_at_end = bool(broker_snapshots) and last_order_count == 0
+        last_order_count = (
+            (end_snapshot.get('extra') or {}).get('order_count', 1)
+            if end_snapshot else 1
+        )
+        flat_at_end = end_snapshot is not None and last_order_count == 0
+
+        account_delta = FieldStudyCertificate._account_delta(
+            broker_snapshots, end_snapshot)
 
         reconcile_alerts = [e for e in events if e.get('event_type') == 'reconcile_alert']
 
-        commissions = [
-            (e.get('extra') or {}).get('commission', 0.0)
-            for e in events if e.get('event_type') in ('order_filled', 'partial_close')
-        ]
-        realized_cost = sum(c for c in commissions if c)
+        # The run stamps its own total (#506). Summing the per-event `commission` values is
+        # only a fallback, and a KNOWN-partial one: a FULL close emits no decision event, so
+        # the reconstruction misses every full-close leg. `realized_cost_source` says which
+        # of the two the number is, because a partial figure that looks authoritative is the
+        # failure this field already had — four certificates recorded 0.
+        stamped = next(
+            (e for e in reversed(events) if e.get('event_type') == 'session_cost'), None)
+        if stamped is not None:
+            extra = stamped.get('extra') or {}
+            realized_cost = float(extra.get('realized_cost', 0.0) or 0.0)
+            realized_cost_source = extra.get('source', 'session_cost')
+        else:
+            commissions = [
+                (e.get('extra') or {}).get('commission', 0.0)
+                for e in events if e.get('event_type') in ('order_filled', 'partial_close')
+            ]
+            realized_cost = sum(c for c in commissions if c)
+            realized_cost_source = 'event_sum_partial'
 
         slip_points = [
             (e.get('slippage') or {}).get('slippage_points')
@@ -140,7 +171,9 @@ class FieldStudyCertificate:
             'failed_phases': failed,
             'missing_phases': missing,
             'flat_at_session_end': flat_at_end,
+            'account_delta': account_delta,
             'realized_cost': realized_cost,
+            'realized_cost_source': realized_cost_source,
             'slippage_points': {
                 'count': len(slip_points),
                 'max': max(slip_points) if slip_points else 0.0,
@@ -205,6 +238,50 @@ class FieldStudyCertificate:
     # ============================================
 
     @staticmethod
+    def _account_delta(
+        broker_snapshots: List[Dict[str, Any]],
+        end_snapshot: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        What the ACCOUNT moved between the first snapshot and the session-end one (#506).
+
+        The venue-side counterpart to `realized_cost`: one figure is our booking, the other
+        is the account, and their DIFFERENCE is how well we model the venue — which is the
+        question the certificate exists to answer. It is a MEASUREMENT, never a gate: a cost
+        the run cannot explain must be visible, not fatal.
+
+        `status` is part of the answer rather than an afterthought. An absent or unreadable
+        snapshot has to say so, because a silent empty delta reads as "nothing moved" — the
+        exact failure a `realized_cost` of zero already had.
+
+        Args:
+            broker_snapshots: Every broker-truth snapshot of the run, in order
+            end_snapshot: The session-end snapshot, or None when it was never written
+
+        Returns:
+            {'status': ..., 'per_asset': {asset: delta}} — `per_asset` empty unless 'ok'
+        """
+        if not broker_snapshots or end_snapshot is None:
+            return {'status': 'no_end_snapshot', 'per_asset': {}}
+        if broker_snapshots[0] is end_snapshot:
+            return {'status': 'single_snapshot', 'per_asset': {}}
+
+        start_balances = (broker_snapshots[0].get('extra') or {}).get('balances')
+        end_balances = (end_snapshot.get('extra') or {}).get('balances')
+        if start_balances is None or end_balances is None:
+            return {'status': 'balances_unreadable', 'per_asset': {}}
+
+        # An asset listed on one side only appeared or vanished — that is a movement from or
+        # to zero, not a reason to drop it.
+        per_asset = {}
+        for asset in sorted(set(start_balances) | set(end_balances)):
+            moved = float(end_balances.get(asset, 0.0) or 0.0) - float(
+                start_balances.get(asset, 0.0) or 0.0)
+            if moved:
+                per_asset[asset] = moved
+        return {'status': 'ok', 'per_asset': per_asset}
+
+    @staticmethod
     def _print_summary(out_path: Path, cert: Dict[str, Any]) -> None:
         """Print a concise operator-facing certificate summary."""
         status = cert['overall_status']
@@ -218,10 +295,28 @@ class FieldStudyCertificate:
             print(f"  failed:  {cert['failed_phases']}")
         if cert['missing_phases']:
             print(f"  missing: {cert['missing_phases']}")
+        # The source is printed beside the figure on purpose: a reconstructed total is
+        # known-partial (it cannot see a full close), and a partial number that looks
+        # authoritative is the failure this field already had.
+        # Only the FALLBACK is flagged. Which stamp produced an authoritative figure is
+        # provenance and travels in the field; what the reader has to see at a glance is
+        # whether the number was READ or RECONSTRUCTED — the reconstruction cannot see a
+        # full close, so it is always an undercount.
+        source = cert.get('realized_cost_source', 'event_sum_partial')
+        source_tag = '  [reconstructed — partial]' if source == 'event_sum_partial' else ''
         print(
-            f"  realized cost: {cert['realized_cost']:.6f}  "
+            f"  realized cost: {cert['realized_cost']:.6f}{source_tag}  "
             f"|  reconcile alerts: {cert['reconcile_alert_count']}"
         )
+        # The account's own movement beside our booking — a missing measurement is printed
+        # as such rather than as a silent absence.
+        delta = cert.get('account_delta') or {}
+        if delta.get('status') == 'ok':
+            moved = '  '.join(
+                f'{asset} {amount:+.8f}' for asset, amount in delta['per_asset'].items())
+            print(f"  account delta: {moved or 'nothing moved'}")
+        else:
+            print(f"  account delta: {delta.get('status', 'unknown')}")
         print(f'  certificate: {out_path}')
         print(f"{'=' * 60}\n")
 

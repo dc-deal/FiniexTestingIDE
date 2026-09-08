@@ -121,7 +121,7 @@ Both pipelines route through `AbstractTradeExecutor._synthesize_pending_trade` w
 
 ## V1 Limitation — Synthetic Fee
 
-The polling-path synthesis in V1 uses the locally-computed entry fee (`entry_fee.cost`) as the BrokerTrade.fee value — not the broker-reported fee. Drift Audit (#327) consumes `pending.cumulative_fee` to compare against `KrakenFeeModel.compute_fee` and surface divergence. As long as V1 polling drives `pending.trades`, that comparison is tautologically zero. Real divergence detection requires async trades_query against the live broker, which #327 may trigger independently as a post-outcome consumer.
+The polling-path synthesis in V1 uses the locally-computed fee as the BrokerTrade.fee value — `entry_fee.cost` on an open and `exit_fee.cost` on a close (#506), both ours rather than broker-reported — not the broker-reported fee. Drift Audit (#327) consumes `pending.cumulative_fee` to compare against `KrakenFeeModel.compute_fee` and surface divergence. As long as V1 polling drives `pending.trades`, that comparison is tautologically zero. Real divergence detection requires async trades_query against the live broker, which #327 may trigger independently as a post-outcome consumer.
 
 The async path (`submit_trades_query_async` → drain → `_handle_trades_response`) is fully wired and tested. It is not invoked from the V1 polling code path by default; that activation is deferred to:
 

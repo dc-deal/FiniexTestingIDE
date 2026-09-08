@@ -1009,6 +1009,40 @@ class AbstractAdapter(ABC):
         return self._resolve_pip_mode()
 
     # ============================================
+    # Fees — only a maker/taker venue has to answer
+    # ============================================
+
+    def get_maker_fee(self) -> float:
+        """
+        Percentage charged when this venue's fill PROVIDED liquidity.
+
+        Declared here rather than left to the concrete adapters because both fee factories
+        call it (#506): a maker/taker adapter that does not define it used to fail with an
+        AttributeError at the first fill, which names the missing method but not the reason.
+        Only reached when `fee_structure.model` is `maker_taker`, so a spread broker never
+        answers and does not implement it.
+
+        Returns:
+            The maker percentage — e.g. 0.40 for 0.40 %
+        """
+        raise NotImplementedError(
+            f'{type(self).__name__} declares a maker/taker fee model but does not provide '
+            f'get_maker_fee(). Either implement both rate getters or declare '
+            f'fee_structure.model as "spread".')
+
+    def get_taker_fee(self) -> float:
+        """
+        Percentage charged when this venue's fill REMOVED liquidity.
+
+        Returns:
+            The taker percentage — e.g. 0.80 for 0.80 %
+        """
+        raise NotImplementedError(
+            f'{type(self).__name__} declares a maker/taker fee model but does not provide '
+            f'get_taker_fee(). Either implement both rate getters or declare '
+            f'fee_structure.model as "spread".')
+
+    # ============================================
     # Required: Margin & Leverage
     # ============================================
 

@@ -116,7 +116,7 @@ re-arms toward the market; this one wants the opposite.
 
 **Cross-cutting behaviors:**
 - **Safety integration** — submits route through the standard BUY/SELL decision action, so the safety circuit breaker can suppress new entries (override → FLAT); closes/cancels are never suppressed.
-- **Budget / session guard** — the run self-aborts (cancel + close-all + graceful end) if realized cost breaches `max_session_cost_usd` or the wall-clock exceeds `session_timeout_s`.
+- **Budget / session guard** — the run self-aborts (cancel + close-all + graceful end) if realized cost breaches `max_session_cost_usd` or the wall-clock exceeds `session_timeout_s`. The COST half of that guard only became effective with #506: `OrderResult.commission` was a literal `0.0` before it, so every certificate up to 2026-09-08 records `realized_cost = 0` — because the field could not carry a figure, not because the run was free. The cost is now read from the order history, which is the only list that carries every leg (a full close emits no decision event).
 - **Step mode** — `halt_after_phase: <phase_id>` ends the session cleanly after a named phase (for incremental, partial-cost dry runs).
 
 ## JSONL Schema
@@ -179,7 +179,7 @@ The certificate is written to `tests/live_field_study/reports/field_study_report
 **PASS criteria (hard):**
 - every phase reached a non-failing outcome (`pass` / `expected_rejection` / `skipped`)
 - no phase is missing a result (a missing result means the run aborted mid-sequence)
-- **no resting orders at session end** (last broker-truth snapshot); balances restored ~to the start minus fees — the account holds base by design, so order-book flatness (not a zero base balance) is the gate
+- **no resting orders at session end** — read from the broker-truth snapshot of the `session_end` PHASE, never simply the last one recorded: a session-end snapshot that failed to be written would otherwise let the PREFLIGHT state answer the gate. The account holds base by design, so order-book flatness (not a zero base balance) is the criterion; what the account actually MOVED is the certificate's `account_delta`, derived from the two snapshots rather than asserted in prose
 
 **Informational (not pass-gating):** realized cost, slippage distribution, detected-via
 mix, reconciliation alert count.
@@ -220,8 +220,32 @@ truth = df[df.plane == 'broker_truth']
 |---|---|---|
 | Submit-to-trades-query latency | ~2000 ms | polling-only baseline; #331 push → sub-second |
 | Sub-threshold FEE drift | ~0.04 % | float rounding, Tier-0 ETHUSD |
-| Cost per min-lot round-trip | ~$0.008 | budget anchor |
-| Full run cost | ~$0.08–0.20 | Kraken ETHUSD min-lot |
+| Cost per min-lot round-trip | ~$0.008 | **stale — pre-#506 booking, half the rate and one leg** |
+| Full run cost | ~$0.08–0.20 | **stale — see below** |
+
+**Re-measured 2026-09-08 against the venue's own charges** (probe:
+`python/experiments/venue_probes/probe_kraken_charged_vs_booked.py`), twice — before and after
+#506:
+
+| 20-phase run | booked | venue charged | account moved | ratio |
+|---|---|---|---|---|
+| before #506 | $0.0841 | $0.3761 | — (not recorded) | **4.47 x** |
+| after #506 | **$0.1820** | **$0.3542** | **ZUSD −$0.3584** | **1.95 x** |
+
+The first factor was two independent causes multiplying: the exit leg was never booked (#506,
+fixed) and the declared rates are half the account's real tier (#337, open — measured taker
+0.8000 % / maker 0.4000 %). With the leg count corrected the remaining factor is the rate
+alone, and it is almost exactly 2.
+
+The account figure reconciles to the cent: charged $0.35424 plus the run's gross P&L of
+−$0.00416 is the $0.3584 the quote balance moved. **A min-lot round trip costs about $0.07 at
+the venue**, not the $0.008 the pre-#506 anchor claimed.
+
+`max_session_cost_usd` was **re-chosen to 1.00** from this measurement (both field-study
+profiles). It is checked against OUR booking, so it moves with #337: at the old 0.5 a post-#337
+run would sit at 71 % of the ceiling and one re-armed limit phase could self-abort a release
+gate with no defect present. At 1.00 a normal run sits at 35 % and the brake still trips at
+2.8x a normal run.
 
 ---
 

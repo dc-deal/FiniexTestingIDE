@@ -1,0 +1,150 @@
+{
+  "record_kind": "certificate",
+  "release_version": "dev",
+  "app_version": "1.4.0",
+  "timestamp": "2026-09-08T14:05:46.330898+00:00",
+  "valid_until": "2026-12-07T14:05:46.330898+00:00",
+  "git_commit": "7e05f78",
+  "git_branch": "dev-v-1-4",
+  "git_dirty": true,
+  "uncommitted_count": 24,
+  "comment": "post-#506: exit fee booked, cost read from the portfolio breakdown, full balance snapshot",
+  "isolation_active": false,
+  "workspace_overrides": {
+    "files_present": [
+      "app_config.json",
+      "market_config.json",
+      "sentiment_config.json"
+    ],
+    "unnamed_files": 0,
+    "applied": true
+  },
+  "source_jsonl": "runs/live/kraken_spot_ethusd_field_study/20260908_135741_c80997d4/field_study.jsonl",
+  "profile": "kraken_spot_ethusd_field_study",
+  "symbol": "ETHUSD",
+  "started_utc": "2026-09-08T13:57:41.804953+00:00",
+  "overall_status": "PASSED",
+  "phase_count": 20,
+  "phases": [
+    {
+      "phase": "market_long_open",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "market_long_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "market_short_open",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "market_short_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "reject_below_min",
+      "outcome": "expected_rejection",
+      "reason": "rejected as expected"
+    },
+    {
+      "phase": "reject_oversized",
+      "outcome": "expected_rejection",
+      "reason": "rejected as expected"
+    },
+    {
+      "phase": "limit_long_near_price",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "limit_long_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "limit_short_near_price",
+      "outcome": "pass",
+      "reason": "filled"
+    },
+    {
+      "phase": "limit_short_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "limit_modify_test",
+      "outcome": "inconclusive",
+      "reason": "no fill after modify"
+    },
+    {
+      "phase": "limit_modify_close",
+      "outcome": "pass",
+      "reason": "flat"
+    },
+    {
+      "phase": "limit_cancel_test",
+      "outcome": "pass",
+      "reason": "cancelled, no position"
+    },
+    {
+      "phase": "stop_cancel_test",
+      "outcome": "pass",
+      "reason": "cancelled, no position"
+    },
+    {
+      "phase": "multi_concurrent_limits",
+      "outcome": "pass",
+      "reason": "all watching"
+    },
+    {
+      "phase": "multi_cancel_all",
+      "outcome": "pass",
+      "reason": "all cancelled"
+    },
+    {
+      "phase": "partial_close_test",
+      "outcome": "pass",
+      "reason": "half then flat"
+    },
+    {
+      "phase": "idle_heartbeat_test",
+      "outcome": "pass",
+      "reason": "idle complete"
+    },
+    {
+      "phase": "force_close_all",
+      "outcome": "skipped",
+      "reason": "already flat"
+    },
+    {
+      "phase": "final_summary",
+      "outcome": "pass",
+      "reason": "session end requested"
+    }
+  ],
+  "failed_phases": [],
+  "missing_phases": [],
+  "flat_at_session_end": true,
+  "account_delta": {
+    "status": "ok",
+    "per_asset": {
+      "ZUSD": -0.3583999999999996
+    }
+  },
+  "realized_cost": 0.18204292,
+  "realized_cost_source": "order_history",
+  "slippage_points": {
+    "count": 5,
+    "max": 0.0,
+    "avg": 0.0
+  },
+  "detected_via": {
+    "poll": 21
+  },
+  "reconcile_alert_count": 0
+}

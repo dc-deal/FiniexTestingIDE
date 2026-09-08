@@ -41,6 +41,7 @@ from python.framework.types.decision_event_types import (
     OrderFilledEvent,
     OrderRejectedEvent,
     PartialCloseEvent,
+    SessionEndEvent,
     SessionEndSeverity,
 )
 from python.framework.types.decision_logic_types import (
@@ -131,6 +132,11 @@ class LiveFieldStudy(AbstractDecisionLogic):
         self._recorder: Optional[FieldStudyRecorder] = None
 
         # Session guards (budget + wall-clock) — enforced on every machine advance.
+        # Deliberately NOT an accumulator any more (#506). Accumulating from decision events
+        # missed every FULL close: `_notify_outcome` fires only for opens, and the only event a
+        # close emits is the partial one — so a study whose exits are `market_close_all` counted
+        # entry fees and one partial. The order history is the authoritative list, the same one
+        # the run report is built from, and it carries every leg.
         self._realized_cost = 0.0
         self._session_started_at: Optional[datetime] = None
         self._safe_abort_active = False
@@ -283,6 +289,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
             DecisionEventType.ORDER_REJECTED,
             DecisionEventType.ORDER_CANCELLED,
             DecisionEventType.PARTIAL_CLOSE,
+            DecisionEventType.SESSION_END,
         }
 
     def wants_heartbeat(self) -> bool:
@@ -310,7 +317,6 @@ class LiveFieldStudy(AbstractDecisionLogic):
 
     def on_order_filled(self, event: OrderFilledEvent) -> None:
         self._filled_flag = True
-        self._realized_cost += event.result.commission
         if self._recorder:
             self._recorder.record_order_event(
                 'order_filled', order_id=event.order_id, side=event.direction.name,
@@ -331,6 +337,22 @@ class LiveFieldStudy(AbstractDecisionLogic):
                 },
             )
 
+    def on_session_end(self, event: SessionEndEvent) -> None:
+        """
+        Stamp the session's realized cost into the capture (#506).
+
+        Recorded here rather than reconstructed by the certificate: the per-event commissions
+        the certificate used to sum cannot see a FULL close, and the study's exits are full
+        closes. This is the same figure the budget ceiling is checked against.
+
+        Args:
+            event: Session-end detail (reason, severity)
+        """
+        self._refresh_realized_cost()
+        if self._recorder:
+            self._recorder.record_session_cost(
+                self._realized_cost, source='portfolio_cost_breakdown')
+
     def on_order_cancelled(self, event: OrderCancelledEvent) -> None:
         self._cancelled_flag = True
         if self._recorder:
@@ -342,7 +364,6 @@ class LiveFieldStudy(AbstractDecisionLogic):
 
     def on_partial_close(self, event: PartialCloseEvent) -> None:
         # Lots-polling drives the machine; the event is recorded for the analysis stream.
-        self._realized_cost += event.result.commission
         if self._recorder:
             self._recorder.record_order_event(
                 'partial_close', order_id=event.position_id, side=event.direction.name,
@@ -731,10 +752,27 @@ class LiveFieldStudy(AbstractDecisionLogic):
         side_str = side.name if side != PhaseSide.NONE else None
         self._recorder.record_phase_start(phase_id, idx, side_str)
 
+    def _refresh_realized_cost(self) -> None:
+        """
+        Re-derive the session's realized cost from the portfolio's cost tracking (#506).
+
+        The authoritative figure, and the reason it is READ rather than accumulated: the
+        portfolio books every fee through one categorising site, so `total_fees` carries both
+        legs of a round trip — entry and exit, full close and partial — whether or not a
+        decision event was emitted. Accumulating from this logic's own hooks could only ever
+        see an OPEN fill and a PARTIAL close, because a FULL close emits no event at all, and
+        this study's exits are full closes.
+
+        Not the order history: `get_order_history()` is declared but raises in V1. Reaching
+        for it cost a live run seven seconds in.
+        """
+        self._realized_cost = self.trading_api.get_cost_breakdown().total_fees
+
     def _budget_ok(self) -> bool:
         """Whether realized session cost is still under the ceiling (re-arm gate)."""
         if self._max_session_cost_usd <= 0.0:
             return True
+        self._refresh_realized_cost()
         return self._realized_cost < self._max_session_cost_usd
 
     def _session_guard_breached(self, now: datetime) -> bool:
@@ -743,6 +781,8 @@ class LiveFieldStudy(AbstractDecisionLogic):
             if (now - self._session_started_at).total_seconds() > self._session_timeout_s:
                 self._abort_reason = 'session wall-clock timeout'
                 return True
+        if self._max_session_cost_usd > 0.0:
+            self._refresh_realized_cost()
         if self._max_session_cost_usd > 0.0 and self._realized_cost >= self._max_session_cost_usd:
             self._abort_reason = (
                 f'budget exceeded (${self._realized_cost:.4f} ≥ ${self._max_session_cost_usd:.4f})'

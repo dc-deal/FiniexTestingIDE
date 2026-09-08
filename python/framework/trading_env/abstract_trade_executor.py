@@ -1037,7 +1037,13 @@ class AbstractTradeExecutor(ABC):
             executed_price=entry_price,
             executed_lots=pending_order.lots,
             execution_time=self.get_current_time(),
-            commission=0.0,
+            # The entry fee was booked into the portfolio and reported in `metadata` below,
+            # but this field — the one every cost reader uses — was zero (#506). Four Field
+            # Study certificates in a row therefore recorded `realized_cost = 0`, and the
+            # `max_session_cost_usd` self-abort could never fire.
+            # NOT model-specific: on a SPREAD broker this carries the spread cost, so
+            # "commission" here means "what this fill cost", not "a per-side commission".
+            commission=entry_fee.cost,
             position_id=position.position_id,
             action=OrderAction.OPEN,
             symbol=pending_order.symbol,
@@ -1162,10 +1168,23 @@ class AbstractTradeExecutor(ABC):
         # in place, so the partial-close event (#348) reports remaining correctly.
         pre_close_total_lots = position.lots
 
+        # The exit fee, on the lots actually being closed (#506). A maker/taker venue charges
+        # every fill, so a round trip pays twice; a spread broker charges nothing per side and
+        # gets None, because its round-trip price is the spread and that is already booked at
+        # entry. `is_maker=False` because every close is a MARKET order today — the same fact
+        # `EntryType.MARKET` states below. That changes with #503: a firing venue stop is also
+        # a taker, but a venue-held LIMIT exit would be a maker, and then the value has to come
+        # from the closing order rather than being a constant here.
+        exit_fee = self._create_exit_fee(
+            symbol_spec=symbol_spec,
+            lots=executed_lots,
+            exit_price=close_price,
+            is_maker=False,
+        )
+
         # #326: synthesize a BrokerTrade for the close execution if not yet
-        # populated. Exit fee is 0.0 in V1 (no exit commission), matching the
-        # portfolio call below; real broker exit fees become available via
-        # async trades_query in a future enhancement.
+        # populated. It carries the exit fee so the event stream and the trade history show
+        # the charge too — they used to report the exit leg at zero (#506).
         if not pending_order.fills.trades:
             self._synthesize_pending_trade(
                 pending_order=pending_order,
@@ -1173,7 +1192,7 @@ class AbstractTradeExecutor(ABC):
                 filled_lots=executed_lots,
                 entry_type=EntryType.MARKET,  # closes are market in V1
                 symbol_spec=symbol_spec,
-                fee_cost=0.0,
+                fee_cost=exit_fee.cost if exit_fee else 0.0,
             )
 
         # Execute close
@@ -1184,7 +1203,7 @@ class AbstractTradeExecutor(ABC):
                 exit_price=close_price,
                 exit_tick_value=exit_tick_value,
                 exit_tick_index=self._tick_counter,
-                exit_fee=None,  # V1: No exit commission
+                exit_fee=exit_fee,
                 close_reason=close_reason,
                 exit_trades=list(pending_order.fills.trades),
                 exit_submission=pending_order.submission,
@@ -1199,7 +1218,7 @@ class AbstractTradeExecutor(ABC):
                 exit_price=close_price,
                 exit_tick_value=exit_tick_value,
                 exit_tick_index=self._tick_counter,
-                exit_fee=None,  # V1: No exit commission
+                exit_fee=exit_fee,
                 close_reason=close_reason,
                 exit_trades=list(pending_order.fills.trades),
                 exit_submission=pending_order.submission,
@@ -1216,7 +1235,16 @@ class AbstractTradeExecutor(ABC):
             executed_price=close_price,
             executed_lots=executed_lots,
             execution_time=self.get_current_time(),
-            commission=0.0,
+            # The field that CARRIES the cost used to be zero while the real figure sat in
+            # metadata beside it (#506). It reaches the order history and the order report
+            # from here.
+            # It does NOT yet reach the Field Study's session-cost ceiling or its
+            # certificate, and that is not this line's doing: a FULL close notifies nobody
+            # — `_notify_outcome` is called only from `_fill_open_order`, and the only event
+            # a close emits is the PartialCloseEvent below. So the ceiling still sees entry
+            # fees plus partial-close fees and misses every full close. Closing that gap
+            # needs a full-close outcome, which is #503's new POSITION_CLOSED event.
+            commission=exit_fee.cost if exit_fee else 0.0,
             position_id=pending_order.pending_order_id,
             action=OrderAction.CLOSE,
             symbol=position.symbol,
@@ -2032,6 +2060,22 @@ class AbstractTradeExecutor(ABC):
                 f"For cross-currency, external exchange rates would be required (Post-V1)."
             )
 
+    def _fee_model(self) -> FeeType:
+        """
+        Resolve the broker's fee model from its config.
+
+        Read by both fee factories, which is why it does not live inside either of them:
+        the entry and the exit have to agree about which world they are in, and one lookup
+        is what guarantees it.
+
+        Returns:
+            The declared FeeType, defaulting to SPREAD when the config says nothing
+        """
+        fee_model_str = self.broker.adapter.broker_config.get(
+            'fee_structure', {}
+        ).get('model', 'spread')
+        return FeeType(fee_model_str)
+
     def _create_entry_fee(
         self,
         symbol_spec: SymbolSpecification,
@@ -2053,13 +2097,7 @@ class AbstractTradeExecutor(ABC):
             tick_value: Current tick value for spread calculation
             is_maker: True for limit orders (maker fee), False for market (taker fee)
         """
-        fee_model_str = self.broker.adapter.broker_config.get(
-            'fee_structure', {}
-        ).get('model', 'spread')
-
-        fee_model = FeeType(fee_model_str)
-
-        if fee_model == FeeType.MAKER_TAKER:
+        if self._fee_model() == FeeType.MAKER_TAKER:
             return create_maker_taker_fee(
                 lots=lots,
                 contract_size=symbol_spec.contract_size,
@@ -2075,6 +2113,49 @@ class AbstractTradeExecutor(ABC):
             lots=lots,
             tick_value=tick_value,
             digits=symbol_spec.digits
+        )
+
+    def _create_exit_fee(
+        self,
+        symbol_spec: SymbolSpecification,
+        lots: float,
+        exit_price: float,
+        is_maker: bool = False
+    ) -> Optional[AbstractTradingFee]:
+        """
+        Create the exit fee, or None where the model does not charge one (#506).
+
+        The two fee models answer this differently, and the difference is the whole point.
+        On a MAKER/TAKER venue every fill is charged, so a round trip pays TWICE — booking
+        nothing at the exit made every completed trade cost half of what it says. Measured
+        2026-09-08 on Kraken spot: our session booked $0.0840 while the venue charged
+        $0.1581, and the events log showed the shape without any arithmetic — every position
+        had two fills and only the first carried a fee.
+
+        A SPREAD model charges nothing per side: the spread IS the round-trip price and it is
+        already booked once at entry. Returning a fee here would double-count it, which is
+        why `exit_fee=None` was correct for MT5 and only for MT5.
+
+        Args:
+            symbol_spec: Symbol specification with contract details
+            lots: Lots being closed — the PARTIAL amount on a partial close, never the
+                  position size, or the fee would be charged on volume that stays open
+            exit_price: The price the close filled at
+            is_maker: True when the closing order provided liquidity
+
+        Returns:
+            The exit fee, or None when the model has no per-side charge
+        """
+        if self._fee_model() != FeeType.MAKER_TAKER:
+            return None
+
+        return create_maker_taker_fee(
+            lots=lots,
+            contract_size=symbol_spec.contract_size,
+            entry_price=exit_price,
+            maker_rate=self.broker.adapter.get_maker_fee(),
+            taker_rate=self.broker.adapter.get_taker_fee(),
+            is_maker=is_maker
         )
 
     def _synthesize_pending_trade(

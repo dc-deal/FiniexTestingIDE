@@ -136,23 +136,33 @@ Mt5Adapter / KrakenAdapter  → Broker-specific implementation
 
 The `fee_structure.model` field determines which fee calculation is used:
 
-| Model | FeeType Enum | Adapter | Calculation |
-|-------|--------------|---------|-------------|
-| `"spread"` | `FeeType.SPREAD` | MT5 | `spread_points * tick_value * lots` |
-| `"maker_taker"` | `FeeType.MAKER_TAKER` | Kraken | `order_value * (rate / 100)` |
+| Model | FeeType Enum | Adapter | Calculation | Charged |
+|-------|--------------|---------|-------------|---------|
+| `"spread"` | `FeeType.SPREAD` | MT5 | `spread_points * tick_value * lots` | **once**, at entry — the spread IS the round-trip price |
+| `"maker_taker"` | `FeeType.MAKER_TAKER` | Kraken | `order_value * (rate / 100)` | **on every fill** — a round trip pays twice |
 
-### TradeSimulator Flow
+The `Charged` column is the part that decides money rather than magnitude (#506): booking an
+exit fee on a spread broker would double-count its round-trip price, and NOT booking one on a
+maker/taker venue makes every completed trade cost half of what it says.
+
+### Fee Flow (both executors)
 
 ```
-_check_and_open_order_in_portfolio()
-    ↓
-_create_entry_fee()
-    ↓
-fee_model = FeeType(config['fee_structure']['model'])
-    ↓
-if FeeType.MAKER_TAKER → create_maker_taker_fee()
-if FeeType.SPREAD     → create_spread_fee_from_tick()
+_fee_model()                       ← ONE lookup: fee_structure.model, default 'spread'
+    │                                 read by both factories so the two legs cannot disagree
+    ├── _create_entry_fee()   (from _fill_open_order)
+    │       if MAKER_TAKER → create_maker_taker_fee()
+    │       else           → create_spread_fee_from_tick()
+    │
+    └── _create_exit_fee()    (from _fill_close_order)
+            if MAKER_TAKER → create_maker_taker_fee()   ← on close_lots, taker rate
+            else           → None                       ← nothing to charge per side
 ```
+
+**The declared rates must match the account.** They are static in this file, and a wrong tier
+is not conservative in either direction — measured 2026-09-08, this project's Kraken account is
+charged taker 0.8000 % / maker 0.4000 % while the config declared 0.40 / 0.25, so every
+maker/taker estimate was half the charge. Asking the venue for its own schedule is #337.
 
 ---
 

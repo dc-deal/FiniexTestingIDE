@@ -20,7 +20,8 @@
     "decision_logic_config": {
       "lot_size": 0.002,
       "limit_offset_pct": 0.002,
-      "max_session_cost_usd": 0.5,
+      "_comment": "max_session_cost_usd re-chosen 2026-09-08 from the first correctly-measured run, not inherited. A full 20-phase run books $0.182 today and will book ~$0.354 once #337 corrects the fee rates — the venue charged exactly $0.35424 and the account moved $0.3584. At the old 0.5 that is 71 % of the ceiling after #337, so one re-armed limit phase would self-abort a release gate with no defect present. At 1.00 a normal run sits at 35 % and the brake still trips at 2.8x a normal run, which is what it is for. The ceiling is checked against OUR booking, so it moves with #337; the account-side figure lives in the certificate as `account_delta`.",
+    "max_session_cost_usd": 1.0,
       "max_rearm_attempts": 0,
       "rearm_offset_pct": 0.25,
       "session_timeout_s": 1800,

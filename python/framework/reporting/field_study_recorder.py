@@ -167,7 +167,7 @@ class FieldStudyRecorder:
     def record_broker_truth(
         self,
         order_count: int,
-        balances: Dict[str, float],
+        balances: Optional[Dict[str, float]],
         is_flat: bool,
         reconcile: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -176,7 +176,11 @@ class FieldStudyRecorder:
 
         Args:
             order_count: Resting broker orders right now
-            balances: Broker balances by asset
+            balances: Broker balances by asset as the venue reports them — quote currency
+                included and unfiltered; the contract was always the full sheet, and passing
+                a flat-check answer instead is what hid the only balance that moved (#506).
+                None when the venue could not be read — never {} for that case, because an
+                empty sheet is the statement that the account holds nothing
             is_flat: Whether the account is flat by broker truth
             reconcile: Reconciliation counters block (#151), when available
         """
@@ -204,6 +208,25 @@ class FieldStudyRecorder:
             snapshot: Per-endpoint latency/error block
         """
         self._emit(PLANE_BOT, 'api_perf', api_perf=snapshot)
+
+    def record_session_cost(self, realized_cost: float, source: str) -> None:
+        """
+        Record the session's realized cost as ONE authoritative figure (#506).
+
+        The certificate used to add up the per-event `commission` values instead, which can
+        only ever see the legs that emit an event — and a FULL close emits none. This is the
+        study's own total, derived from the order history, so the artifact carries the number
+        the cost ceiling was actually checked against rather than a partial reconstruction.
+
+        Args:
+            realized_cost: Total cost of the session in the account currency
+            source: Where the figure came from, recorded so a future reader can tell an
+                authoritative total from a reconstructed one
+        """
+        self._emit(
+            PLANE_BOT, 'session_cost',
+            extra={'realized_cost': realized_cost, 'source': source},
+        )
 
     # ============================================
     # Lifecycle

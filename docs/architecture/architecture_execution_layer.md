@@ -540,8 +540,10 @@ The method is void because both success and failure are side effects: results go
 1. Look up position in portfolio
 2. Determine close price: `fill_price` if provided (live), else bid/ask from tick (simulation)
 3. Calculate exit tick value
-4. Close position in PortfolioManager (realizes P&L)
-5. Append `OrderResult` to `_order_history`
+4. Create the exit fee — **maker/taker only**; a spread broker charges nothing per side and
+   gets `None` (#506)
+5. Close position in PortfolioManager (realizes P&L, including that fee)
+6. Append `OrderResult` to `_order_history` — its `commission` carries the fee
 
 The `fill_price` parameter enables the sim→live transition: simulation determines price locally (current tick bid/ask), live receives the actual price from the broker. The rest of the logic is identical.
 
@@ -621,6 +623,16 @@ Limit orders follow a **two-phase lifecycle** in simulation. The order is first 
 ### Entry Types and Fees
 
 Each fill carries an `EntryType` (MARKET, LIMIT, STOP or STOP_LIMIT) that flows through to `TradeRecord.entry_type` for history/reporting. Limit fills use **maker fees** (lower cost for providing liquidity), market fills use **taker fees**. This distinction only matters for maker/taker fee models (e.g. Kraken). Spread-based brokers (MT5) are unaffected.
+
+**How often each model charges** is the other half of the same question, and the two answer
+differently (#506). A maker/taker venue charges **every fill**, so a completed round trip pays
+**twice** — entry and exit. A spread broker charges **once**: the spread IS the round-trip price
+and it is booked at entry, which is why the exit fee is `None` there and a second charge would
+double-count it.
+
+A close is a MARKET order today, so its exit fee is always the **taker** rate
+(`is_maker=False`). That stops being a constant when a venue-held exit order can fill as a maker
+(#503) — the value then has to come from the closing order rather than from this assumption.
 
 ### Live Mode
 
