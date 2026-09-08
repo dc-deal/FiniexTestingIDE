@@ -1599,6 +1599,18 @@
                 "order": 5
             }
         },
+        {
+            "name": "🔭 Venue Probe: Kraken txid retention (READ-ONLY)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/venue_probes/probe_kraken_txid_retention.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_experiments",
+                "order": 6
+            }
+        },
         // ====================================================
         // 🧩 PYTEST VALIDATION
         // ====================================================

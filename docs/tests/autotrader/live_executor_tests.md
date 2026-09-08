@@ -606,6 +606,20 @@ Validates the three coordinated fixes introduced by #320: side-effect-free `hear
 |---|---|
 | `test_partially_filled_keeps_polling` | PARTIALLY_FILLED → no state mutation, order stays active, `in_flight_query` cleared. Per-execution accumulation lands with #326's async `trades_query`. |
 
+#### TestTheVenueNamingNoSuchOrder
+
+An UNKNOWN query answer means the venue replied and described no such order. It is an ABSENCE, not
+a state, and the executor must not turn it into one — measured 2026-09-08, Kraken answers a
+QueryOrders for a txid it never minted with an empty result. Prework for #503, whose boot resolver
+asks about a protective order that may have fired while the process was down.
+
+| Test | Description |
+|---|---|
+| `test_the_order_is_kept_rather_than_dropped` | Dropping on an absence is how an orphan is made — the venue may hold it after all |
+| `test_nothing_is_booked_off_it` | No position, no rejection, no fill: nothing was described to book |
+| `test_it_is_said_once_not_every_poll_cycle` | A re-poll gives the same non-answer, so the ERROR is said once per order (§35) |
+| `test_the_in_flight_query_flag_is_still_cleared` | The dispatched query IS resolved — an absence is an answer for that purpose |
+
 ---
 
 ### test_drift_auditor.py — #327 Drift Audit + #340 Slippage

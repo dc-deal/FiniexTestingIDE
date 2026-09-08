@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
+from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.live_types.live_execution_types import (
@@ -455,3 +456,102 @@ class TestPartialFillPreservedBehavior:
         assert pending in executor._active_limit_orders
         assert pending.execution_state.in_flight_query is False
         assert len(executor.get_open_positions()) == 0
+
+
+# =============================================================================
+# 6. An answer that names no order
+# =============================================================================
+
+
+class TestTheVenueNamingNoSuchOrder:
+    """
+    A query answer that does not describe the order is an ABSENCE, not a state (#503 prework).
+
+    Measured 2026-09-08: Kraken answers a QueryOrders for a txid it never minted with an
+    empty result, and the adapter used to read that as PENDING — so a forgotten order looked
+    exactly like a working one. The status now says UNKNOWN, and this is what the executor
+    must do with it: keep the order, say so ONCE, book nothing.
+    """
+
+    def test_the_order_is_kept_rather_than_dropped(self):
+        """Dropping on an absence is how an orphan is made — the venue may hold it after all."""
+        mock = MockOrderExecution(mode=MockExecutionMode.TIMEOUT)
+        executor = mock.create_executor()
+        order_id = _submit_limit_and_confirm(mock, executor)
+        pending = executor._active_limit_orders[0]
+
+        executor._handle_query_response(QueryResponse(
+            order_id=order_id,
+            broker_response=BrokerResponse(
+                broker_ref=pending.broker_ref,
+                status=BrokerOrderStatus.UNKNOWN,
+                timestamp=datetime.now(timezone.utc),
+            ),
+        ))
+
+        assert len(executor._active_limit_orders) == 1
+        assert executor._active_limit_orders[0].pending_order_id == order_id
+
+    def test_nothing_is_booked_off_it(self):
+        """No position, no rejection, no fill — the venue described nothing to book."""
+        mock = MockOrderExecution(mode=MockExecutionMode.TIMEOUT)
+        executor = mock.create_executor()
+        order_id = _submit_limit_and_confirm(mock, executor)
+        pending = executor._active_limit_orders[0]
+        rejected_before = executor._orders_rejected
+
+        executor._handle_query_response(QueryResponse(
+            order_id=order_id,
+            broker_response=BrokerResponse(
+                broker_ref=pending.broker_ref,
+                status=BrokerOrderStatus.UNKNOWN,
+                timestamp=datetime.now(timezone.utc),
+            ),
+        ))
+
+        assert len(executor.get_open_positions()) == 0
+        assert executor._orders_rejected == rejected_before
+
+    def test_it_is_said_once_not_every_poll_cycle(self, capsys):
+        """
+        A re-poll produces the same non-answer, so repeating it would bury the session
+        channel this has to reach (§35).
+        """
+        mock = MockOrderExecution(mode=MockExecutionMode.TIMEOUT)
+        executor = mock.create_executor()
+        order_id = _submit_limit_and_confirm(mock, executor)
+        pending = executor._active_limit_orders[0]
+        answer = QueryResponse(
+            order_id=order_id,
+            broker_response=BrokerResponse(
+                broker_ref=pending.broker_ref,
+                status=BrokerOrderStatus.UNKNOWN,
+                timestamp=datetime.now(timezone.utc),
+            ),
+        )
+
+        capsys.readouterr()
+        for _ in range(3):
+            executor._handle_query_response(answer)
+        printed = capsys.readouterr().out
+
+        assert printed.count('naming no such order') == 1
+
+    def test_the_in_flight_query_flag_is_still_cleared(self):
+        """The dispatched query IS resolved — an absence is an answer for that purpose."""
+        mock = MockOrderExecution(mode=MockExecutionMode.TIMEOUT)
+        executor = mock.create_executor()
+        order_id = _submit_limit_and_confirm(mock, executor)
+        pending = executor._active_limit_orders[0]
+        pending.execution_state.in_flight_query = True
+
+        executor._handle_query_response(QueryResponse(
+            order_id=order_id,
+            broker_response=BrokerResponse(
+                broker_ref=pending.broker_ref,
+                status=BrokerOrderStatus.UNKNOWN,
+                timestamp=datetime.now(timezone.utc),
+            ),
+        ))
+
+        assert not pending.execution_state.in_flight_query

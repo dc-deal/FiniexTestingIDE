@@ -163,6 +163,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._unresolved_report_after_s: float = (
             self._timeout_config.order_timeout_seconds)
         self._reported_unresolved: Set[str] = set()
+        # An order the venue answers about by naming nothing is a standing condition too, and
+        # it is said once for the same reason (see _handle_query_response).
+        self._reported_unknown: Set[str] = set()
         self._session_key = session_key
         # #473 — one ladder for the broker's REST endpoint, shared with the Reconciler so
         # both classify a 502 the same way. A transport fault must never reach the trading
@@ -1179,6 +1182,21 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f'QueryResponse stale broker_ref for {order_id}: '
                 f'response={broker_response.broker_ref} current={pending.broker_ref}'
             )
+            return
+
+        if broker_response.is_unknown:
+            # The venue answered and named no such order. It is NOT dropped — dropping on an
+            # absence is exactly how an orphan is made, and the venue may hold it after all.
+            # Said once per order: a re-poll produces the same non-answer, so repeating it
+            # every cycle would bury the session channel this has to reach (§35).
+            if order_id not in self._reported_unknown:
+                self._reported_unknown.add(order_id)
+                self.logger.error(
+                    f'❓ The venue answered about {order_id} '
+                    f'(broker_ref={pending.broker_ref}) by naming no such order. That is not '
+                    f'"still working" — it is an absence, and this order is kept rather than '
+                    f'booked or dropped. Check the account by hand; a reference lookup cannot '
+                    f'resolve it, only a time-ranged history read can.')
             return
 
         if broker_response.status == BrokerOrderStatus.FILLED:

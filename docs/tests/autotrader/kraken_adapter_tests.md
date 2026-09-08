@@ -56,6 +56,7 @@ no trigger at all.
 | `TestASignedPriceNeverReachesTheVenue` | a negative or zero price raises; an ABSENT price is simply omitted |
 | `TestAmendingAStopMovesItsTrigger` | AmendOrder routes a stop's new price to `trigger_price`, a limit's to `limit_price`, and a stop-limit carries both |
 | `TestTheReadSideKeepsTheTwoPricesApart` | a resting stop reports its trigger as `stop_price` and no limit price; a trailing type reports NEITHER price; an unnameable ordertype becomes `OrderType.UNKNOWN` and is still reported |
+| `TestAnAnswerThatNamesNoOrderIsNotAState` | a QueryOrders result that does not mention the txid becomes `BrokerOrderStatus.UNKNOWN`, not PENDING — and UNKNOWN is not terminal, so nothing is booked off it |
 
 Three Kraken behaviours are worth knowing before reading the assertions, because each one turns a
 mistake on our side into a real order rather than an error:
@@ -72,6 +73,14 @@ mistake on our side into a real order rather than an error:
   exclusive-account check, which asks whether a stranger is working our symbol. Calling it a LIMIT
   hands a number of unknown meaning to everything that reads a limit price. `OrderType.UNKNOWN`
   carries the row with no prices.
+- **An answer that names no order is an absence, not a state.** Measured 2026-09-08: a QueryOrders
+  for a txid Kraken never minted returns `{}`, and reading a status off the absent entry used to
+  produce PENDING — so "the venue has never heard of this order" and "the order is resting" arrived
+  as the same answer. They are opposite facts and only one is safe to act on. `BrokerOrderStatus.UNKNOWN`
+  says which one it is, and it is deliberately NOT terminal: booking a cancel or an expiry off an
+  empty answer would invent a fact. Resolving it needs a WIDER read — a time-ranged history rather
+  than a reference lookup — which is why #503's boot resolver carries a `ClosedOrders` fallback.
+  Probe: `python/experiments/venue_probes/probe_kraken_txid_retention.py`.
 
 ## Run
 

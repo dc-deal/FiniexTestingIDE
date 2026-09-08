@@ -25,10 +25,12 @@ No network here: the payload builders are pure.
 """
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
+from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
 _KRAKEN_CONFIG = 'configs/brokers/kraken/kraken_spot_broker_config.json'
@@ -272,3 +274,62 @@ class TestTheReadSideKeepsTheTwoPricesApart:
 
         assert parsed[0].order_type == OrderType.UNKNOWN
         assert parsed[0].price is None
+
+
+class TestAnAnswerThatNamesNoOrderIsNotAState:
+    """
+    A QueryOrders result that does not mention the txid used to become PENDING.
+
+    Measured 2026-09-08 against the live API: asking Kraken about a txid it never minted
+    returns an empty result. The parse then read a status off the absent entry and defaulted
+    it to 'pending', so "the venue has never heard of this order" and "the order is resting"
+    arrived as the same answer. They are opposite facts, and only one of them is safe to act
+    on: a bot that reads the first as the second starts believing in a protection that does
+    not exist — which is precisely what #503's boot resolver has to decide.
+
+    An unmapped status WORD is the same mistake with a different cause: we cannot name the
+    state, so we must not name one.
+    """
+
+    _TS = datetime(2026, 9, 8, 8, 33, tzinfo=timezone.utc)
+
+    def test_an_empty_answer_is_unknown_not_pending(self, adapter):
+        response = adapter._parse_query_response({}, 'OZZZZZ-ZZZZZ-ZZZZZZ', self._TS)
+
+        assert response.status == BrokerOrderStatus.UNKNOWN
+        assert response.is_unknown
+
+    def test_an_answer_about_a_different_order_is_unknown_too(self, adapter):
+        raw = {'OOTHER-11111-222222': {'status': 'open', 'vol_exec': '0.0'}}
+
+        response = adapter._parse_query_response(raw, 'OZZZZZ-ZZZZZ-ZZZZZZ', self._TS)
+
+        assert response.status == BrokerOrderStatus.UNKNOWN
+
+    def test_unknown_is_not_terminal_so_nothing_gets_booked_off_it(self, adapter):
+        """
+        Terminal would be worse than the PENDING it replaces: it would invent a cancel or an
+        expiry for an order the venue did not describe.
+        """
+        response = adapter._parse_query_response({}, 'OZZZZZ-ZZZZZ-ZZZZZZ', self._TS)
+
+        assert not response.is_terminal
+        assert not response.is_filled
+        assert response.filled_lots is None
+
+    def test_a_status_word_we_do_not_map_is_unknown_rather_than_pending(self, adapter):
+        raw = {'OABC-123': {'status': 'something-kraken-invented', 'vol_exec': '0.0'}}
+
+        response = adapter._parse_query_response(raw, 'OABC-123', self._TS)
+
+        assert response.status == BrokerOrderStatus.UNKNOWN
+
+    def test_a_described_order_still_parses_as_before(self, adapter):
+        """The guard must not cost the ordinary answer its reading."""
+        raw = {'OABC-123': {'status': 'closed', 'vol_exec': '0.002', 'price': '2467.94'}}
+
+        response = adapter._parse_query_response(raw, 'OABC-123', self._TS)
+
+        assert response.status == BrokerOrderStatus.FILLED
+        assert response.filled_lots == pytest.approx(0.002)
+        assert response.fill_price == pytest.approx(2467.94)

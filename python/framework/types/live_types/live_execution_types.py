@@ -32,6 +32,15 @@ class BrokerOrderStatus(Enum):
     because "the venue refused this order" and "we could not reach the venue" are
     different facts, and reporting the second as the first is how an orphan is born —
     we forget an order that is resting at the broker.
+
+    UNKNOWN is the third fact in that family and the one that was missing: the venue
+    ANSWERED, and its answer says nothing about this order. Measured 2026-09-08 against
+    Kraken — a QueryOrders for a txid it never minted returns an empty result, and reading
+    a status off the absent entry produced PENDING, i.e. "it is still working". "The venue
+    has never heard of this order" and "the order is resting" are opposite facts, and only
+    one of them is safe to act on. Like UNRESOLVED it is NOT terminal, but for the opposite
+    reason: asking again the same way will give the same non-answer, so what it calls for is
+    a WIDER read (a time-ranged history rather than a reference lookup), never a booking.
     """
     PENDING = 'pending'
     FILLED = 'filled'
@@ -40,6 +49,7 @@ class BrokerOrderStatus(Enum):
     CANCELLED = 'cancelled'
     EXPIRED = 'expired'
     UNRESOLVED = 'unresolved'
+    UNKNOWN = 'unknown'
 
 
 @dataclass
@@ -84,12 +94,20 @@ class BrokerResponse:
         return self.status == BrokerOrderStatus.UNRESOLVED
 
     @property
+    def is_unknown(self) -> bool:
+        """The venue answered and named no such order — not a state, an absence."""
+        return self.status == BrokerOrderStatus.UNKNOWN
+
+    @property
     def is_terminal(self) -> bool:
         """
         Order reached a final state (no further updates expected).
 
         UNRESOLVED is deliberately NOT terminal: it is the absence of an answer, so the
-        one thing that must still happen is asking again.
+        one thing that must still happen is asking again. UNKNOWN is not terminal either,
+        and treating it as one would be worse than the PENDING it replaces: booking a
+        cancel or an expiry off an empty answer invents a fact about an order the venue
+        did not describe.
         """
         return self.status in (
             BrokerOrderStatus.FILLED,

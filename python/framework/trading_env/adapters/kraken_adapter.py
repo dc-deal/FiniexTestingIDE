@@ -1049,9 +1049,23 @@ class KrakenAdapter(AbstractAdapter):
         if raw.get(self._DRY_RUN_SENTINEL) == 'query':
             return self._dry_run_simulator.query(broker_ref, timestamp)
 
-        order_info = raw.get(broker_ref, {})
-        kraken_status = order_info.get('status', 'pending')
-        status = self._STATUS_MAP.get(kraken_status, BrokerOrderStatus.PENDING)
+        # An answer that does not mention the txid is not a state, and it used to become
+        # one: `raw.get(broker_ref, {})` then `.get('status', 'pending')` turned "Kraken has
+        # never heard of this order" into "it is still working". Measured 2026-09-08 —
+        # QueryOrders for a txid Kraken never minted returns `{}`, and the parse reported
+        # PENDING with is_terminal False. The same applies to a status WORD we do not map:
+        # we cannot name the state, so we must not name one. Both become UNKNOWN.
+        order_info = raw.get(broker_ref)
+        if order_info is None:
+            return BrokerResponse(
+                broker_ref=broker_ref,
+                status=BrokerOrderStatus.UNKNOWN,
+                timestamp=timestamp,
+                raw_response=raw,
+            )
+
+        kraken_status = order_info.get('status', '')
+        status = self._STATUS_MAP.get(kraken_status, BrokerOrderStatus.UNKNOWN)
 
         # `vol_exec` is read on EVERY status, not only FILLED. Kraken has no
         # PARTIALLY_FILLED: a half-filled order stays `open` and reports what already
