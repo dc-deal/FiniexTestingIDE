@@ -990,6 +990,11 @@ create_broker_config(config, logger)   (autotrader_broker_config_setup.py)
        cache 7–30 days     → try GET /0/public/AssetPairs; on failure: warn + use cache
        cache > 30 days     → try GET /0/public/AssetPairs; on failure: strong stale warning + use cache
        no cache at all     → GET /0/public/AssetPairs; on failure: hard error (first run)
+  → fee_structure ← the git-tracked seed, replacing whatever the cache carried (#337)
+  → POST /0/private/TradeVolume → the account's real fee tier
+       auto_detect_fee_tier=true   → applied for this session
+       auto_detect_fee_tier=false  → NOT applied; a divergence still WARNS, naming both rates
+       fetcher cannot answer        → nothing happens, the declared rates stand
   → POST /0/private/Balance → account balance (live: the profile declares none; fetched for the symbol's base/quote)
   → BrokerConfigFactory.from_serialized_dict(config_dict)
   → adapter.enable_live(credentials_file, dry_run, transport)  ← Tier 3 activation
@@ -997,7 +1002,7 @@ create_broker_config(config, logger)   (autotrader_broker_config_setup.py)
 ```
 
 **Cache location:** `data/runtime/brokers/<broker_type>/` (gitignored, auto-refreshed weekly).  
-**Static seed:** `configs/brokers/kraken/kraken_spot_broker_config.json` — git-tracked, used by `config_mode=static` brokers and backtesting. Never auto-overwritten.  
+**Static seed:** `configs/brokers/kraken/kraken_spot_broker_config.json` — git-tracked, never auto-overwritten. Used by `config_mode=static` brokers, and its `fee_structure` is the declared rate for EVERY reader: a backtest takes it whole, and a dynamic live session starts from it before the venue is asked (#337).  
 **Balance fetch failure** is **fatal** — a 0.0 balance in live mode is dangerous.
 
 **Mock mode**: Completely unchanged. No API calls, no credentials needed, `enable_live()` never called.
@@ -1060,7 +1065,18 @@ Private Kraken endpoints use HMAC-SHA512 signing: `API-Sign = base64(HMAC-SHA512
 
 ### Fee Handling
 
-Fees are **hardcoded** at the default Kraken tier (maker 0.16%, taker 0.26%) rather than fetched from the API. Kraken fee tiers depend on 30-day rolling trading volume, which changes constantly. Static defaults are safer for risk management.
+The declared rate lives in ONE place — the broker's git-tracked seed — and every other reader points at it (#337). A backtest reads it and nothing else, so a run stays reproducible from a commit; a live session starts from the same number, then asks the venue.
+
+Asking is `POST /0/private/TradeVolume`, and what happens with the answer is split in two on purpose:
+
+| | `auto_detect_fee_tier: false` (default) | `auto_detect_fee_tier: true` |
+|---|---|---|
+| the session prices with | the declared rate | the venue's rate |
+| a divergence from the seed | WARNS | WARNS |
+
+The warning fires either way, because the failure this replaces was silent: measured 2026-09-08 the declared 0.25/0.40 were exactly HALF what the account was charged (0.40/0.80 on `XETHZUSD`), and no run said so. A static default is not automatically the safe one — this one was optimistic, which is the dangerous direction for a backtest.
+
+Note that the tier depends on 30-day rolling volume, which the bot's own trading moves. So no fetch can give the "right" rate for a run that has not happened yet: the declared rate is an ASSUMPTION the record has to pin, which is why `config_hash` covers `fee_structure`. Re-freezing the seed is a deliberate, dated act — see `docs/broker_config_guide.md`.
 
 ## KrakenAdapter Tier 3 — Live Order Execution (#133 Step 3)
 

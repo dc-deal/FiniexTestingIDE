@@ -1717,6 +1717,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: AutoTrader Config (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/config/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 6.5
+            }
+        },
+        {
             "name": "🧩 Pytest: AutoTrader Integration (All)",
             "type": "debugpy",
             "request": "launch",

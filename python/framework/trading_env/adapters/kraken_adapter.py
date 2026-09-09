@@ -131,11 +131,7 @@ class KrakenAdapter(AbstractAdapter):
         """
         super().__init__(broker_config)
 
-        # Cache fee structure
-        self._maker_fee = self._get_config_value(
-            'fee_structure.maker_fee', 0.16)
-        self._taker_fee = self._get_config_value(
-            'fee_structure.taker_fee', 0.26)
+        # The fee rates are deliberately NOT cached here — see get_maker_fee (#337).
 
         # Tier 3 state (disabled until enable_live() is called)
         self._live_enabled: bool = False
@@ -520,10 +516,18 @@ class KrakenAdapter(AbstractAdapter):
 
         Maker = adds liquidity (limit orders that don't immediately fill)
 
+        Read LIVE from the config rather than cached at construction (#337). Nothing mutates
+        the block after construction TODAY — every writer runs before the adapter exists — so
+        this is not a fix for a live defect; it removes a second copy of a value that already
+        has an owner, and `MockBrokerAdapter` has always read it this way, so the two adapters
+        no longer disagree about the mechanism. A per-fill read costs one dict walk.
+
+        The default is unreachable: `_validate_config` refuses a config without the key.
+
         Returns:
-            Maker fee as percentage (e.g., 0.16 for 0.16%)
+            Maker fee as percentage (e.g., 0.40 for 0.40%)
         """
-        return self._maker_fee
+        return self._get_config_value('fee_structure.maker_fee', 0.25)
 
     def get_taker_fee(self) -> float:
         """
@@ -532,9 +536,9 @@ class KrakenAdapter(AbstractAdapter):
         Taker = removes liquidity (market orders, limit orders that fill immediately)
 
         Returns:
-            Taker fee as percentage (e.g., 0.26 for 0.26%)
+            Taker fee as percentage (e.g., 0.80 for 0.80%)
         """
-        return self._taker_fee
+        return self._get_config_value('fee_structure.taker_fee', 0.40)
 
     # ============================================
     # Live Execution — Tier 3 Setup

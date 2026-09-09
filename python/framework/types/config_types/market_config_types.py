@@ -5,11 +5,10 @@ Enums, dataclasses and Pydantic models for market_config.json.
 from enum import Enum
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel
-
 from python.framework.types.config_types.connection_policy_config_types import (
     ConnectionPolicy,
 )
+from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
 
 class MarketType(Enum):
@@ -48,14 +47,14 @@ class ConfigMode(Enum):
     DYNAMIC = 'dynamic'
 
 
-class ProfileDefaultsConfig(BaseModel):
+class ProfileDefaultsConfig(StrictConfigModel):
     """Generator profile defaults per market type."""
     min_block_hours: int = 2
     max_block_hours: int = 24
     atr_percentile_threshold: int = 10
 
 
-class SwapRolloverConfig(BaseModel):
+class SwapRolloverConfig(StrictConfigModel):
     """
     Daily swap / overnight-funding rollover anchor for a market.
 
@@ -68,7 +67,7 @@ class SwapRolloverConfig(BaseModel):
     timezone: str = 'America/New_York'
 
 
-class MarketRulesConfig(BaseModel):
+class MarketRulesConfig(StrictConfigModel):
     """Market rules entry as loaded from JSON."""
     weekend_closure: bool
     session_bucketing: bool
@@ -79,7 +78,7 @@ class MarketRulesConfig(BaseModel):
     swap_rollover: Optional[SwapRolloverConfig] = None
 
 
-class BrokerTransportConfig(BaseModel):
+class BrokerTransportConfig(StrictConfigModel):
     """Per-broker transport-layer tuning (HTTP endpoint, rate limits, polling cadence)."""
     api_base_url: str = ''
     rate_limit_interval_s: float = 1.0
@@ -91,7 +90,7 @@ class BrokerTransportConfig(BaseModel):
     connection: ConnectionPolicy = ConnectionPolicy()
 
 
-class BrokerEntryConfig(BaseModel):
+class BrokerEntryConfig(StrictConfigModel):
     """Broker entry as loaded from JSON."""
     broker_type: str
     market_type: MarketType
@@ -105,10 +104,21 @@ class BrokerEntryConfig(BaseModel):
     # when this says so — afterwards orders sit at a venue with nobody watching, and a
     # profile is the most easily copied file in the project. Same asymmetry as dry_run.
     session_end_orders: Literal['cancel', 'leave'] = 'cancel'
+    # #337 — APPLY the fee tier the venue reports for this ACCOUNT, instead of pricing the
+    # session from the rate written into the broker config. It does NOT gate the ASK: a live
+    # session always asks, because the answer is what produces the divergence warning, and a
+    # seed nobody is told about is a seed that silently rots. Off, the warning still fires
+    # and the declared rates stand.
+    # LIVE ONLY by construction: the fetcher runs on the AutoTrader path, and a BACKTEST
+    # deliberately reads its rates from the git-tracked seed so a run stays reproducible from
+    # a commit (see BrokerDataPreparator). Opt-in, because turning a declared number into a
+    # fetched one should be a decision — a live/dry-run asymmetry belongs in the resolver,
+    # never in a second default.
+    auto_detect_fee_tier: bool = False
     broker_transport: BrokerTransportConfig = BrokerTransportConfig()
 
 
-class MarketConfigModel(BaseModel):
+class MarketConfigModel(StrictConfigModel):
     """Top-level model for market_config.json."""
     version: str
     description: str = ''

@@ -6,8 +6,9 @@ Unit tests for batch pipeline validation and configuration components:
 `ScenarioValidator` (symbol detection and registration checks),
 `BrokerDataPreparator` (`get_valid_broker_scenario_map` filtering),
 `MarketConfigManager` (`ConfigMode` parsing),
-`BrokerConfigFactory` (symbol integrity validation and config hash computation), and
-`KrakenConfigFetcher` (runtime cache merge behavior and lazy symbol addition).
+`BrokerConfigFactory` (symbol integrity validation and the two identity hashes), and
+`KrakenConfigFetcher` (runtime cache merge behavior, lazy symbol addition, and the
+account's fee tier).
 
 ## What Is Tested
 
@@ -95,7 +96,7 @@ Uses `unittest.mock.patch` on `MarketConfigFileLoader.get_config` — no file I/
 
 #### `TestConfigHashComputation`
 
-`_inject_symbols_hash()` computes a stable 8-char SHA256 of the symbols block.
+`_inject_config_hashes()` computes a stable 8-char SHA256 of the symbols block.
 
 | Test | Description |
 |------|-------------|
@@ -104,7 +105,41 @@ Uses `unittest.mock.patch` on `MarketConfigFileLoader.get_config` — no file I/
 | `test_hash_changes_when_symbol_spec_changes` | `volume_min` change → different hash |
 | `test_hash_stable_when_only_meta_changes` | Different `last_fetched` timestamps → same hash |
 
+#### `TestTheReproducibilityHashCoversTheFees`
+
+The second hash, and why there are two (#337). `config_hash` covers `symbols` **and**
+`fee_structure`, because a fee rate moves realised P&L on every trade — two runs at different
+rates are different runs, and under the old single hash their recorded identity was identical.
+`symbols_hash` keeps its narrower meaning: whether a cache still describes the same instruments.
+
+| Test | Description |
+|------|-------------|
+| `test_a_changed_fee_rate_moves_the_config_hash` | Taker 0.40 → 0.80 → different `config_hash` |
+| `test_a_changed_fee_rate_leaves_the_SYMBOLS_hash_alone` | The two must not blur into one |
+| `test_it_is_stable_when_nothing_that_matters_changed` | A meta-only difference changes neither |
+| `test_the_fee_covering_hash_is_the_one_reported` | Both present → `config_hash` wins |
+| `test_a_config_written_before_the_split_still_reports_an_identity` | Only `symbols_hash` → falls back |
+
 All tests call static methods directly with in-memory dicts — no file I/O.
+
+### `test_broker_data_preparator.py` — `TestTheBacktestReadsItsFeesFromTheSeed`
+
+The determinism seam (#337). `kraken_spot` runs in `config_mode: dynamic`, so a backtest loads
+its broker config from a gitignored, machine-local cache. Fee rates arriving that way make two
+runs over identical data disagree with nothing in either run able to say why. Fees therefore come
+from the git-tracked seed; symbol specifications keep coming from the cache, because they are
+expensive to fetch and really do change at the venue.
+
+| Test | Description |
+|------|-------------|
+| `test_a_cache_claiming_other_rates_does_not_reach_the_backtest` | Cache says 9.99/9.99 → the run uses the seed |
+| `test_the_symbols_still_come_from_the_cache` | A `volume_min` only the cache declares survives into the built config |
+| `test_a_seed_without_a_fee_structure_refuses_rather_than_falling_back` | No seed fee block → the run stops instead of pricing itself from the cache |
+
+### `test_market_config_manager.py` — `TestATypoInMarketConfigIsRefused`
+
+`market_config.json` had no unknown-key guard, so a misspelled key in the file carrying
+`dry_run` and `credentials_file` was silently ignored. The models now forbid extras.
 
 ### `test_kraken_config_fetcher.py`
 
@@ -128,6 +163,25 @@ Symbol-presence check added to `fetch_broker_config_with_cache()`.
 | `test_fresh_cache_with_symbol_skips_api` | Cache fresh + symbol present → no API call |
 | `test_fresh_cache_missing_symbol_triggers_fetch` | Cache fresh + symbol absent → API called, symbol merged, existing symbols preserved |
 
+#### `TestFetchFeeTier`
+
+`fetch_fee_tier()` over `/0/private/TradeVolume` (#337). The trap it pins: the venue keys its
+answer by its OWN canonical pair name, so `pair=ETHUSD` comes back under `XETHZUSD` and indexing
+by the symbol raises `KeyError`. Measured against the real account 2026-09-08.
+
+| Test | Description |
+|------|-------------|
+| `test_the_answer_is_read_although_it_is_keyed_by_the_VENUE_s_pair_name` | `pair=ETHUSD` → `fees['XETHZUSD']` is read positionally |
+| `test_the_forward_looking_half_is_carried` | Next tier and its volume threshold survive onto `FeeTierInfo` |
+| `test_a_transport_failure_is_never_fatal` | A raising transport → `None` + a warning, the declared rates stand |
+| `test_an_unusable_answer_is_declined_rather_than_guessed` | A malformed block → `None`, never a half-read rate |
+
+#### `TestTheCapabilityIsByOverride`
+
+| Test | Description |
+|------|-------------|
+| `test_the_abstract_default_declines` | A fetcher for a venue without tiers (MT5, #209) inherits `None` — no flag, no `isinstance` |
+
 ---
 
 ## Why This Matters
@@ -141,9 +195,10 @@ symbols from invalid scenarios.
 schema drift in refreshed runtime cache files — both would silently produce wrong P&L
 calculations if base/quote currencies are mismatched against the symbol key.
 
-The config hash provides a reproducibility anchor: batch summaries and the AutoTrader
-live header show an 8-char seed ID so it is always clear which exact symbol specification
-version was active during a session.
+The two hashes provide the reproducibility anchor: batch summaries and the AutoTrader live
+header show an 8-char id, so it is clear which specification a session ran against.
+`config_hash` covers the fee structure as well, because a rate change is a change to what the
+run produces — the narrower `symbols_hash` reported two differently-priced runs as identical.
 
 ## Test Approach
 

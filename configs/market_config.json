@@ -49,6 +49,7 @@
             "credentials_file": "kraken_credentials.json",
             "dry_run": true,
             "session_end_orders": "cancel",
+            "auto_detect_fee_tier": false,
             "broker_transport": {
                 "api_base_url": "https://api.kraken.com",
                 "rate_limit_interval_s": 1.0,

@@ -33,14 +33,16 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.portfolio_manager import PortfolioManager
+from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.trading_env.trading_fees import MakerTakerFee
-from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.trading_env_types.broker_types import BrokerType, FeeType
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
 _MT5_CONFIG = 'configs/brokers/mt5/mt5_broker_config.json'
+_KRAKEN_SEED = 'configs/brokers/kraken/kraken_spot_broker_config.json'
 
 # The fee-factory tests run over the MOCK adapter, whose config carries BTCUSD.
 _SYMBOL = 'BTCUSD'
@@ -362,3 +364,70 @@ class TestTheSessionCostIsReadableThroughTheApi:
         breakdown.total_fees = 999.0
 
         assert api.get_cost_breakdown().total_fees == pytest.approx(2.0)
+
+
+class TestTheDeclaredRateIsTheRateCharged:
+    """
+    The link between the file and the money (#337).
+
+    Everything else about the fee rate was pinned except the part that matters: that the
+    number a broker's seed DECLARES is the number a fill is actually charged. Measured
+    2026-09-09 — re-freezing the Kraken seed from 0.25/0.40 to 0.40/0.80 doubled a real
+    backtest's cost (fees $0.16 -> $0.32, P&L -$0.17 -> -$0.33) and the whole suite stayed
+    green, because no test connected the two ends.
+
+    The expectation is READ from the config, never repeated here. So a deliberate re-freeze
+    does not break this test — the tier moves and the assertion moves with it — while a break
+    in the path from the file to the charge does.
+    """
+
+    def _executor_on_the_seed(self) -> TradeSimulator:
+        """
+        An executor over the real git-tracked Kraken seed — the file a backtest reads.
+
+        Returns:
+            A TradeSimulator whose adapter carries the seed's declared fee structure — the
+            BACKTEST side, which is the reader this seam was built for
+        """
+        return TradeSimulator(
+            broker_config=BrokerConfigFactory.build_broker_config(_KRAKEN_SEED),
+            initial_balance=10_000.0,
+            account_currency='USD',
+            logger=GlobalLogger(name='DeclaredRateTest'),
+            spot_mode=True)
+
+    def test_a_taker_exit_is_charged_the_rate_the_seed_declares(self):
+        executor = self._executor_on_the_seed()
+        spec = executor.broker.get_symbol_specification('ETHUSD')
+        declared = executor.broker.adapter.get_taker_fee()
+
+        fee = executor._create_exit_fee(
+            symbol_spec=spec, lots=1.0, exit_price=4000.0, is_maker=False)
+
+        notional = 1.0 * spec.contract_size * 4000.0
+        assert fee is not None
+        assert fee.cost == pytest.approx(notional * declared / 100.0)
+
+    def test_a_maker_exit_is_charged_the_other_declared_rate(self):
+        """The two rates are distinct in the seed, so a swap between them has to show."""
+        executor = self._executor_on_the_seed()
+        spec = executor.broker.get_symbol_specification('ETHUSD')
+        maker, taker = (executor.broker.adapter.get_maker_fee(),
+                        executor.broker.adapter.get_taker_fee())
+        assert maker != taker, 'the seed must declare two different rates for this to prove anything'
+
+        fee = executor._create_exit_fee(
+            symbol_spec=spec, lots=1.0, exit_price=4000.0, is_maker=True)
+
+        notional = 1.0 * spec.contract_size * 4000.0
+        assert fee.cost == pytest.approx(notional * maker / 100.0)
+
+    def test_the_seed_declares_a_maker_taker_venue_at_all(self):
+        """
+        A seed that quietly became `spread` would make every assertion above vacuous — the
+        exit fee would be None and a Kraken round trip would silently cost one leg again.
+        """
+        executor = self._executor_on_the_seed()
+
+        assert executor._fee_model() == FeeType.MAKER_TAKER
+

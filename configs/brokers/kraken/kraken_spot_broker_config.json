@@ -1,5 +1,11 @@
 {
   "_comment": "Live broker config fetched from Kraken API",
+  "_fee_structure_frozen": {
+    "date": "2026-09-08",
+    "source": "/0/private/TradeVolume, pair=ETHUSD -> XETHZUSD",
+    "measured": "maker 0.4000 % / taker 0.8000 %; next tier 0.30/0.60 at 30-day volume 2500",
+    "note": "Re-freeze when a live session warns that the account tier has moved. The rate is a DECLARED assumption a backtest is reproducible against, not a fact fetched at run time."
+  },
   "_version": "1.1",
   "export_info": {
     "timestamp": "2026-05-04T18:49:02.239693+00:00",
@@ -17,8 +23,8 @@
   },
   "fee_structure": {
     "model": "maker_taker",
-    "maker_fee": 0.25,
-    "taker_fee": 0.40,
+    "maker_fee": 0.4,
+    "taker_fee": 0.8,
     "fee_currency": "quote"
   },
   "trading_permissions": {

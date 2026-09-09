@@ -11,14 +11,18 @@ and the vocabulary, not the values.
 §28: every default here is mirrored with the identical value in its config file.
 """
 
-from pydantic import BaseModel
-
+from python.framework.types.config_types.strict_config_model import StrictConfigModel
 from python.framework.types.connection_types import GiveUpAction
 
 
-class ConnectionPolicy(BaseModel):
+class ConnectionPolicy(StrictConfigModel):
     """
     Retry ladder and give-up rule for one external connection.
+
+    Strict about unknown keys, and this is the block where it matters most: `attempt_budget`
+    is 0 = never give up, so a misspelled key here reads as absent and the ladder silently
+    runs the default instead of the operator's number (§43). It is nested inside three
+    different config files, none of which could see a typo one level down.
 
     Args:
         initial_delay_s: Delay before the first retry; doubles from there

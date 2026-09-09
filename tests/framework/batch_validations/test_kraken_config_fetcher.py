@@ -184,3 +184,101 @@ class TestFetchWithCacheSymbolCheck:
         mock_fetch.assert_called_once_with('DOTUSD', 'kraken_spot')
         assert 'DOTUSD' in result['symbols'], 'DOTUSD must be in result after fetch.'
         assert 'ETHUSD' in result['symbols'], 'ETHUSD must be preserved (no tombstoning).'
+
+
+class TestFetchFeeTier:
+    """
+    fetch_fee_tier — ask the account which schedule it is actually on (#337).
+
+    The rate written into a config file is a guess about which tier the account sits in.
+    Measured 2026-09-08 against this project's own Kraken account: charged taker 0.8000 % /
+    maker 0.4000 % while the config declared 0.40 / 0.25 — half of both, and in the direction
+    that makes every maker/taker backtest look cheaper than it is.
+    """
+
+    _RESPONSE = {
+        'currency': 'ZUSD',
+        'volume': '267.01908',
+        # Asked as ETHUSD, answered under Kraken's canonical name for the pair.
+        'fees': {'XETHZUSD': {
+            'fee': '0.8000', 'minfee': '0.0500', 'maxfee': '0.8000',
+            'nextfee': '0.6000', 'nextvolume': '2500.0000',
+        }},
+        'fees_maker': {'XETHZUSD': {
+            'fee': '0.4000', 'minfee': '0.0000', 'maxfee': '0.4000',
+            'nextfee': '0.3000', 'nextvolume': '2500.0000',
+        }},
+    }
+
+    def test_the_answer_is_read_although_it_is_keyed_by_the_VENUE_s_pair_name(self):
+        """
+        The trap this closes: `pair=ETHUSD` comes back under `XETHZUSD`, so indexing the
+        response by the symbol raises KeyError. Measured, not assumed.
+        """
+        fetcher = _make_fetcher()
+
+        with patch.object(fetcher, '_fetch_private', return_value=self._RESPONSE):
+            tier = fetcher.fetch_fee_tier('ETHUSD')
+
+        assert tier is not None
+        assert tier.pair == 'XETHZUSD'
+        assert tier.maker_pct == 0.4
+        assert tier.taker_pct == 0.8
+
+    def test_the_forward_looking_half_is_carried(self):
+        """`next_*` is the only part that says when the cost drops — it is not decoration."""
+        fetcher = _make_fetcher()
+
+        with patch.object(fetcher, '_fetch_private', return_value=self._RESPONSE):
+            tier = fetcher.fetch_fee_tier('ETHUSD')
+
+        assert tier.next_maker_pct == 0.3
+        assert tier.next_taker_pct == 0.6
+        assert tier.next_volume_threshold == 2500.0
+        assert tier.volume == 267.01908
+
+    def test_a_transport_failure_is_never_fatal(self):
+        """
+        The session keeps its declared rates — which is exactly the state before this method
+        existed, so a venue outage must not be able to stop a run.
+        """
+        fetcher = _make_fetcher()
+
+        with patch.object(fetcher, '_fetch_private', side_effect=ConnectionError('down')):
+            assert fetcher.fetch_fee_tier('ETHUSD') is None
+
+    def test_an_unusable_answer_is_declined_rather_than_guessed(self):
+        """
+        More than one pair, or a block without a rate, means the shape is not the one that was
+        measured — and inventing a number from it is worse than keeping the declared one.
+        """
+        fetcher = _make_fetcher()
+
+        for raw in (
+            {},
+            {'fees': {}, 'fees_maker': {}},
+            {'fees': {'A': {'fee': '0.8'}, 'B': {'fee': '0.4'}},
+             'fees_maker': {'A': {'fee': '0.4'}}},
+            {'fees': {'XETHZUSD': {'minfee': '0.05'}},
+             'fees_maker': {'XETHZUSD': {'fee': '0.4'}}},
+        ):
+            with patch.object(fetcher, '_fetch_private', return_value=raw):
+                assert fetcher.fetch_fee_tier('ETHUSD') is None, raw
+
+
+class TestTheCapabilityIsByOverride:
+    """A venue without account tiers answers None and its caller needs no branch."""
+
+    def test_the_abstract_default_declines(self):
+        from python.configuration.autotrader.abstract_broker_config_fetcher import (
+            AbstractBrokerConfigFetcher,
+        )
+
+        class _SpreadBrokerFetcher(AbstractBrokerConfigFetcher):
+            def fetch_broker_config(self, symbol, broker_type):
+                return {}
+
+            def fetch_account_balance(self, currency):
+                return None
+
+        assert _SpreadBrokerFetcher().fetch_fee_tier('EURUSD') is None

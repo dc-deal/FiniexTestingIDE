@@ -6,8 +6,11 @@ Loads the session's broker config and attaches the right adapter
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
+from python.configuration.autotrader.abstract_broker_config_fetcher import (
+    AbstractBrokerConfigFetcher,
+)
 from python.configuration.autotrader.broker_config_fetcher_factory import BrokerConfigFetcherFactory
 from python.configuration.autotrader.kraken_config_fetcher import get_runtime_cache_path
 from python.configuration.market_config_manager import MarketConfigManager
@@ -16,7 +19,10 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.config_types.market_config_types import ConfigMode
+from python.framework.types.config_types.market_config_types import (
+    BrokerEntryConfig,
+    ConfigMode,
+)
 from python.framework.types.trading_env_types.broker_types import BrokerType
 
 
@@ -61,6 +67,79 @@ def create_broker_config(
     if config_mode == ConfigMode.DYNAMIC:
         return _create_live_broker_config_dynamic(config, logger, balances)
     return _create_live_broker_config_static(config, logger, balances)
+
+
+def _apply_fee_tier(
+    config_dict: Dict[str, Any],
+    entry: BrokerEntryConfig,
+    fetcher: AbstractBrokerConfigFetcher,
+    symbol: str,
+    logger: ScenarioLogger,
+) -> None:
+    """
+    Ask the venue which fee tier this account is on, and say so when it disagrees (#337).
+
+    TWO separate jobs, and the second one runs even when the first is switched off:
+
+    APPLY — with `auto_detect_fee_tier` on, the fetched rates replace the declared ones for
+    this session. A venue that prices per account volume knows the answer; a number written
+    into a config file is a guess about which tier the account sits in.
+
+    REPORT — whether or not they are applied, a divergence from the declared rates is a
+    WARNING. That is the whole reason this is not silent: measured 2026-09-08, the declared
+    0.40/0.25 were HALF the account's real 0.80/0.40, and nothing in any run said so. The
+    warning names both numbers and what to do, because the backtest reads the git-tracked
+    seed on purpose and only a human can re-freeze it.
+
+    A fetcher that cannot answer returns None and nothing happens — the session keeps its
+    declared rates, which is the state this function was added to.
+
+    Args:
+        config_dict: The broker config under construction; its `fee_structure` is updated
+            in place when the rates are applied
+        entry: The broker's market_config entry, carrying the opt-in
+        fetcher: The broker's config fetcher — answers only if its venue has account tiers
+        symbol: The symbol this session trades
+        logger: Session channel for the divergence warning (§35)
+    """
+    tier = fetcher.fetch_fee_tier(symbol)
+    if tier is None:
+        return
+
+    declared = config_dict.get('fee_structure', {})
+    declared_maker = declared.get('maker_fee')
+    declared_taker = declared.get('taker_fee')
+    diverges = (declared_maker != tier.maker_pct) or (declared_taker != tier.taker_pct)
+
+    if diverges:
+        action = (
+            'applied for this session'
+            if entry.auto_detect_fee_tier
+            else 'NOT applied — auto_detect_fee_tier is off, so this session still prices '
+                 'with the declared rates'
+        )
+        logger.warning(
+            f'⚠️ Fee tier mismatch on {symbol} ({tier.pair}): the account is charged '
+            f'maker {tier.maker_pct}% / taker {tier.taker_pct}%, the config declares '
+            f'maker {declared_maker}% / taker {declared_taker}% — {action}. '
+            f'The BACKTEST reads the git-tracked seed, so it keeps the declared rates '
+            f'until someone re-freezes them: update '
+            f'configs/brokers/<broker>/<broker>_broker_config.json and commit.'
+        )
+
+    if not entry.auto_detect_fee_tier:
+        return
+
+    declared['maker_fee'] = tier.maker_pct
+    declared['taker_fee'] = tier.taker_pct
+    config_dict['fee_structure'] = declared
+    logger.info(
+        f'💱 Fee tier applied for {symbol} ({tier.pair}): '
+        f'maker {tier.maker_pct}% / taker {tier.taker_pct}%'
+        + (f' — next tier {tier.next_maker_pct}% / {tier.next_taker_pct}% '
+           f'above a 30-day volume of {tier.next_volume_threshold}'
+           if tier.next_volume_threshold else '')
+    )
 
 
 def _create_live_broker_config_dynamic(
@@ -113,6 +192,15 @@ def _create_live_broker_config_dynamic(
         symbol=config.symbol,
         broker_type=config.broker_type,
     )
+
+    # ONE declared source for both pipelines (#337). The runtime cache's own fee block comes
+    # from a literal inside the config fetcher, so a re-frozen seed would never have reached a
+    # live session. Starting from the seed means live and the backtest agree about what was
+    # EXPECTED, and the venue's answer below is the only thing that may differ from it.
+    config_dict['fee_structure'] = BrokerConfigFactory.fee_structure_from(
+        MarketConfigManager().get_broker_config_path(config.broker_type))
+
+    _apply_fee_tier(config_dict, entry, fetcher, config.symbol, logger)
 
     # Build BrokerConfig from fetched dict
     broker_config = BrokerConfigFactory.from_serialized_dict(
@@ -208,7 +296,9 @@ def _log_broker_config_loaded(broker_config: BrokerConfig, source: str, logger: 
         1 for s in symbols.values()
         if s.get('_active', True)  # missing _active defaults to active (legacy format)
     )
-    hash_tag = f' [{config_hash}]' if config_hash else ''
+    # Labelled, because the fetcher prints `symbols_hash` in the same bracket shape a few
+    # lines earlier. The two used to be one value and diverge as soon as a fee block exists.
+    hash_tag = f' [config {config_hash}]' if config_hash else ''
 
     # Fee rates currently in effect (drift-audit empirics revealed cache-vs-actual
     # mismatches were silent before this line existed).

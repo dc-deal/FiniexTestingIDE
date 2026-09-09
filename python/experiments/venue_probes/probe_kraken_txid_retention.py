@@ -41,12 +41,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
-from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 
 _ROOT = Path(__file__).resolve().parents[3]
 _BROKER_CONFIG = _ROOT / 'configs/brokers/kraken/kraken_spot_broker_config.json'
-_BROKER_SETTINGS = _ROOT / 'configs/broker_settings/kraken_spot.json'
 _RUNS_DIR = _ROOT / 'runs/live'
 
 # Kraken's own reference shape, as it appears in every live session log.
@@ -82,12 +81,15 @@ def _build_adapter() -> KrakenAdapter:
         KrakenAdapter with Tier-3 enabled and dry_run off
     """
     broker_config = json.loads(_BROKER_CONFIG.read_text())
-    settings = json.loads(_BROKER_SETTINGS.read_text())
+    # The LIVE source, not a mirror: `configs/broker_settings/` was a leftover that
+    # production stopped reading, so a probe against a real account could have run with a
+    # credentials file or a transport the session itself no longer uses.
+    entry = MarketConfigManager().get_broker_entry('kraken_spot')
     adapter = KrakenAdapter(broker_config)
     adapter.enable_live(
-        credentials_file=settings['credentials_file'],
+        credentials_file=entry.credentials_file,
         dry_run=False,
-        transport=BrokerTransportConfig(**settings['broker_transport']),
+        transport=entry.broker_transport,
     )
     return adapter
 

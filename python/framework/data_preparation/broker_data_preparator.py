@@ -207,16 +207,30 @@ class BrokerDataPreparator:
         All requested symbols must be present in the cache. If any are missing,
         raises ValueError with instructions on how to populate the cache.
 
+        SYMBOL SPECIFICATIONS come from the cache — they are expensive to fetch and they
+        genuinely change at the venue. The FEE STRUCTURE does not: it is taken from the
+        git-tracked seed instead, so the source is split by CONCERN rather than by config
+        mode (#337). Reason, and it is the framework's central claim rather than a
+        preference: a backtest must be reproducible from a COMMIT. The cache is gitignored
+        and machine-local, so a fee rate arriving through it makes two runs over identical
+        data disagree with nothing in either run able to say why — and `broker_config_cli.py
+        sync` is all it takes. A rate that moves P&L has to be a written-down decision.
+
+        This is also what `docs/broker_config_guide.md` has always promised ("git-tracked
+        seed → used by backtesting, stable, reproducible"). The doc and the dynamic branch
+        landed in the same change; until now only the doc said it.
+
         Args:
             broker_type: Broker type identifier (e.g., 'kraken_spot')
             symbols: Symbols that must be present in the cache
 
         Returns:
-            BrokerConfig built from the runtime cache
+            BrokerConfig with cached symbols and the seed's fee structure
 
         Raises:
             FileNotFoundError: If no runtime cache exists
-            ValueError: If any requested symbol is not in the cache
+            ValueError: If any requested symbol is not in the cache, or if the seed carries
+                no fee structure to freeze
         """
         cache_path = get_runtime_cache_path(broker_type)
         cached = load_runtime_cache(broker_type)  # raises FileNotFoundError if missing
@@ -233,7 +247,23 @@ class BrokerDataPreparator:
                 f"             python python/cli/broker_config_cli.py sync --broker {broker_type}"
             )
 
+        cached['fee_structure'] = BrokerDataPreparator._seed_fee_structure(broker_type)
+
         return BrokerConfigFactory.build_from_dict(cached, str(cache_path))
+
+    @staticmethod
+    def _seed_fee_structure(broker_type: str) -> Dict[str, Any]:
+        """
+        The fee structure the git-tracked seed declares for this broker (#337).
+
+        Args:
+            broker_type: Broker type identifier (e.g., 'kraken_spot')
+
+        Returns:
+            The seed's `fee_structure` block
+        """
+        seed_path = MarketConfigManager().get_broker_config_path(broker_type)
+        return BrokerConfigFactory.fee_structure_from(seed_path)
 
     def _serialize_broker_configs(self) -> Dict[BrokerType, Dict[str, Any]]:
         """
