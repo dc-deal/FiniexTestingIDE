@@ -265,6 +265,76 @@ class TestAStopIsNotAnAfterthought:
         assert not expired, f'a stop left at the venue was recorded as expired: {expired}'
 
 
+class TestAnUnconfirmedCancelIsNotAnExpiry:
+    """
+    EXPIRED is a claim about the VENUE, and it was being made without asking.
+
+    `cancel_order_sync` catches its own transport fault and returns a failure RESPONSE rather
+    than raising, so the `except` this loop relied on could never fire — and the expiry ran
+    unconditionally afterwards. A venue outage at shutdown therefore left the order working at
+    Kraken while our books recorded it finished, and the next boot adopted nothing because the
+    carry-over said there was nothing to adopt.
+
+    The failure mode is worth naming precisely: a `try` around a call that cannot raise reads
+    exactly like a handled error.
+    """
+
+    def _executor_with_resting_order(self):
+        """A live executor holding one resting LIMIT order. Returns: (mock, executor)."""
+        mock = MockOrderExecution(mode=MockExecutionMode.DELAYED_FILL)
+        executor = mock.create_executor()
+        mock.feed_tick(executor, bid=59999.0, ask=60001.0)
+        executor.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
+            direction=OrderDirection.LONG, lots=0.01, price=50000.0))
+        mock.await_submit_confirmation(executor)
+        assert executor.get_pending_stats().active_limit_orders, 'fixture placed no order'
+        return mock, executor
+
+    def test_a_refused_cancel_leaves_no_expired_record(self):
+        mock, executor = self._executor_with_resting_order()
+        executor.broker.adapter.set_cancel_transport_error('venue unreachable at shutdown')
+
+        executor.finish_remaining_orders(cancel_orders=True)
+
+        expired = [o for o in executor.get_order_history()
+                   if getattr(o.status, 'value', o.status) == 'expired']
+        assert not expired, (
+            f'an order the venue never confirmed cancelled was recorded EXPIRED: {expired}')
+
+    def test_a_refused_cancel_is_reported_as_an_error(self, capsys):
+        """
+        It must be an ERROR, not a warning: the run ends holding something it believes is gone.
+
+        Read from the console rather than from a buffer. The executor writes to the logger it
+        was GIVEN — in a real session that is the session channel, which is what the summary
+        and the §35 error pot read; this harness injects a GlobalLogger, which prints instead
+        of buffering. What the test can still pin is the level and the wording, and both are
+        what an operator acts on.
+        """
+        mock, executor = self._executor_with_resting_order()
+        executor.broker.adapter.set_cancel_transport_error('venue unreachable at shutdown')
+
+        executor.finish_remaining_orders(cancel_orders=True)
+
+        printed = capsys.readouterr().out
+        assert 'did NOT confirm the cancel' in printed, (
+            'a cancel the venue never confirmed must be reported')
+        assert 'ERROR' in printed, 'it is an error, not a warning — the run ends inconsistent'
+        assert 'may still be working at the broker' in printed, (
+            'the message has to say what the operator should now expect to find')
+
+    def test_a_confirmed_cancel_still_expires_normally(self):
+        """The counter-case, so the guard cannot have silenced the ordinary path."""
+        mock, executor = self._executor_with_resting_order()
+
+        executor.finish_remaining_orders(cancel_orders=True)
+
+        expired = [o for o in executor.get_order_history()
+                   if getattr(o.status, 'value', o.status) == 'expired']
+        assert expired, 'a confirmed cancel must still leave an EXPIRED record'
+
+
 class TestTheEmergencyIsNotFoldedIn:
     """
     #492 gives the emergency mode no behaviour, and that boundary is worth pinning.

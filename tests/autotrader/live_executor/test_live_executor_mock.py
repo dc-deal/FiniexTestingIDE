@@ -276,6 +276,73 @@ class TestFeatureGating:
         assert counts['active_limits'] == 0
 
 
+class TestCancellingDuringTheSubmitWindow:
+    """
+    A cancel asked for before the broker reference arrives must be PARKED, not refused.
+
+    #361 built this for limit orders and calls the missing version a proven live-certificate
+    blocker: dropping the intent orphans the order, because the submit lands afterwards and
+    nobody asks for the cancel again. The stop twin was a shorter copy that returned a bare
+    False in exactly this situation — and every cancel-then-close and cancel-resize-replace
+    sequence a venue-held protective stop needs begins here.
+
+    TIMEOUT mode is the fixture: the submit never confirms, so `broker_ref` stays None and the
+    window stays open for the whole test.
+    """
+
+    def _resting_order_awaiting_confirmation(self, mock, executor, order_type, **prices):
+        """A submitted resting order whose broker_ref has not arrived. Returns: the order id."""
+        mock.feed_tick(executor, bid=49999.0, ask=50001.0)
+        result = executor.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=order_type,
+            direction=OrderDirection.LONG, lots=0.01, **prices))
+        assert result.status == OrderStatus.PENDING, result.rejection_reason
+        return result.order_id
+
+    def test_a_limit_cancel_is_deferred(self, mock_timeout, executor_timeout):
+        """The behaviour #361 built — asserted here so the stop twin has a stated model."""
+        order_id = self._resting_order_awaiting_confirmation(
+            mock_timeout, executor_timeout, OrderType.LIMIT, price=45000.0)
+
+        assert executor_timeout.cancel_limit_order(order_id) is True
+
+    def test_a_stop_cancel_is_deferred_too(self, mock_timeout, executor_timeout):
+        """
+        The gap this closes. It returned a bare False, so the caller believed the order could
+        not be cancelled — while it was on its way to the venue and would rest there.
+        """
+        order_id = self._resting_order_awaiting_confirmation(
+            mock_timeout, executor_timeout, OrderType.STOP, stop_price=55000.0)
+
+        assert executor_timeout.cancel_stop_order(order_id) is True, (
+            'a stop cancelled during its own submit window must park the intent, not refuse')
+
+    def test_the_parked_intent_is_recorded_on_the_order(self, mock_timeout, executor_timeout):
+        """
+        Parking is only useful if the confirmation path can find it.
+
+        `_handle_resting_submit_response` reads `cancel_requested` and issues the cancel once
+        the broker reference lands; it has been type-agnostic since #500, so the stop needs no
+        second implementation — only the flag.
+        """
+        order_id = self._resting_order_awaiting_confirmation(
+            mock_timeout, executor_timeout, OrderType.STOP, stop_price=55000.0)
+
+        executor_timeout.cancel_stop_order(order_id)
+
+        parked = [p for p in executor_timeout.get_active_orders()
+                  if p.pending_order_id == order_id]
+        assert parked, 'the order must stay in its resting world while the cancel is parked'
+        assert parked[0].execution_state.cancel_requested is True
+
+    def test_an_unknown_order_is_still_refused(self, mock_timeout, executor_timeout):
+        """The counter-case: parking must not become a blanket True."""
+        mock_timeout.feed_tick(executor_timeout, bid=49999.0, ask=50001.0)
+
+        assert executor_timeout.cancel_stop_order('pos_btcusd_999') is False
+        assert executor_timeout.cancel_limit_order('pos_btcusd_999') is False
+
+
 class TestValidation:
     """Order validation against broker limits."""
 

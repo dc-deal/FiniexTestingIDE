@@ -79,7 +79,7 @@ Launch.json entry: `🧩 Pytest: Broker Trade Records (#326)` (runs this suite t
 
 ### Shared Synthesis Path
 
-Sim and live converge on `AbstractTradeExecutor._synthesize_pending_trade(...)` — invoked from `_fill_open_order` and `_fill_close_order` when `pending.trades` is empty. The synthesis builds a single BrokerTrade with the locally-computed fee (`entry_fee.cost` for opens, `0.0` for closes in V1) and appends it via `pending.append_trade(...)`.
+Sim and live converge on `AbstractTradeExecutor._synthesize_pending_trade(...)` — invoked from `_fill_open_order` and `_fill_close_order` when `pending.trades` is empty. The synthesis builds a single BrokerTrade with the locally-computed fee (`entry_fee.cost` for opens, `exit_fee.cost` for closes — `0.0` only on a SPREAD broker, which has no per-side charge, #506) and appends it via `pending.append_trade(...)`.
 
 The conditional check `if not pending_order.trades` preserves any per-execution data that an earlier consumer already populated (e.g. real broker QueryTrades response in a future async-polling path). Sim always finds the list empty at fill time; the synthesis fires unconditionally.
 

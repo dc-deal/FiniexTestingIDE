@@ -131,11 +131,7 @@ class KrakenAdapter(AbstractAdapter):
         """
         super().__init__(broker_config)
 
-        # Cache fee structure
-        self._maker_fee = self._get_config_value(
-            'fee_structure.maker_fee', 0.16)
-        self._taker_fee = self._get_config_value(
-            'fee_structure.taker_fee', 0.26)
+        # The fee rates are deliberately NOT cached here — see get_maker_fee (#337).
 
         # Tier 3 state (disabled until enable_live() is called)
         self._live_enabled: bool = False
@@ -520,10 +516,18 @@ class KrakenAdapter(AbstractAdapter):
 
         Maker = adds liquidity (limit orders that don't immediately fill)
 
+        Read LIVE from the config rather than cached at construction (#337). Nothing mutates
+        the block after construction TODAY — every writer runs before the adapter exists — so
+        this is not a fix for a live defect; it removes a second copy of a value that already
+        has an owner, and `MockBrokerAdapter` has always read it this way, so the two adapters
+        no longer disagree about the mechanism. A per-fill read costs one dict walk.
+
+        The default is unreachable: `_validate_config` refuses a config without the key.
+
         Returns:
-            Maker fee as percentage (e.g., 0.16 for 0.16%)
+            Maker fee as percentage (e.g., 0.40 for 0.40%)
         """
-        return self._maker_fee
+        return self._get_config_value('fee_structure.maker_fee', 0.25)
 
     def get_taker_fee(self) -> float:
         """
@@ -532,9 +536,9 @@ class KrakenAdapter(AbstractAdapter):
         Taker = removes liquidity (market orders, limit orders that fill immediately)
 
         Returns:
-            Taker fee as percentage (e.g., 0.26 for 0.26%)
+            Taker fee as percentage (e.g., 0.80 for 0.80%)
         """
-        return self._taker_fee
+        return self._get_config_value('fee_structure.taker_fee', 0.40)
 
     # ============================================
     # Live Execution — Tier 3 Setup
@@ -1049,15 +1053,35 @@ class KrakenAdapter(AbstractAdapter):
         if raw.get(self._DRY_RUN_SENTINEL) == 'query':
             return self._dry_run_simulator.query(broker_ref, timestamp)
 
-        order_info = raw.get(broker_ref, {})
-        kraken_status = order_info.get('status', 'pending')
-        status = self._STATUS_MAP.get(kraken_status, BrokerOrderStatus.PENDING)
+        # An answer that does not mention the txid is not a state, and it used to become
+        # one: `raw.get(broker_ref, {})` then `.get('status', 'pending')` turned "Kraken has
+        # never heard of this order" into "it is still working". Measured 2026-09-08 —
+        # QueryOrders for a txid Kraken never minted returns `{}`, and the parse reported
+        # PENDING with is_terminal False. The same applies to a status WORD we do not map:
+        # we cannot name the state, so we must not name one. Both become UNKNOWN.
+        order_info = raw.get(broker_ref)
+        if order_info is None:
+            return BrokerResponse(
+                broker_ref=broker_ref,
+                status=BrokerOrderStatus.UNKNOWN,
+                timestamp=timestamp,
+                raw_response=raw,
+            )
 
-        fill_price = None
-        filled_lots = None
-        if status == BrokerOrderStatus.FILLED:
-            fill_price = float(order_info.get('price', 0))
-            filled_lots = float(order_info.get('vol_exec', 0))
+        kraken_status = order_info.get('status', '')
+        status = self._STATUS_MAP.get(kraken_status, BrokerOrderStatus.UNKNOWN)
+
+        # `vol_exec` is read on EVERY status, not only FILLED. Kraken has no
+        # PARTIALLY_FILLED: a half-filled order stays `open` and reports what already
+        # executed alongside it — so reading the field only on FILLED made a partial fill
+        # not merely unhandled but unrepresentable, and the executed half invisible until
+        # the rest filled. A CANCELLED or EXPIRED order can carry one too, which is the
+        # dangerous form: the venue took part of it and then the order ended.
+        # `price` is Kraken's average execution price and is meaningless at zero volume.
+        executed = float(order_info.get('vol_exec', 0.0) or 0.0)
+        filled_lots = executed if executed > 0.0 else None
+        fill_price = (float(order_info.get('price', 0.0) or 0.0)
+                      if filled_lots is not None else None)
 
         return BrokerResponse(
             broker_ref=broker_ref,

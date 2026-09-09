@@ -56,6 +56,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 )
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
+from python.framework.types.live_types.reconciliation_types import FlatCheckResult
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.framework.types.signal_data_types import (
@@ -653,23 +654,8 @@ class AutotraderMain:
         # #332 — Field Study recorder: final broker-truth snapshot + close
         if self._field_study_recorder:
             try:
-                if self._reconciler:
-                    flat = self._reconciler.is_account_flat()
-                    self._field_study_recorder.set_phase('session_end', -1)
-                    self._field_study_recorder.record_broker_truth(
-                        order_count=len(flat.open_orders),
-                        balances=flat.asset_balances,
-                        is_flat=flat.is_flat,
-                    )
-                else:
-                    # No reconciler (e.g. mock dress-rehearsal) — record the executor's own
-                    # order-book view so the certificate's end-criterion still resolves.
-                    counts = self._executor.get_active_order_counts()
-                    resting = counts.get('active_limits', 0) + counts.get('active_stops', 0)
-                    self._field_study_recorder.set_phase('session_end', -1)
-                    self._field_study_recorder.record_broker_truth(
-                        order_count=resting, balances={}, is_flat=(resting == 0),
-                    )
+                flat = self._reconciler.is_account_flat() if self._reconciler else None
+                self._record_field_study_broker_truth('session_end', flat)
                 self._field_study_recorder.close('session end')
             except Exception as e:
                 self._session_logger.error(f'Error during Field Study recorder shutdown: {e}')
@@ -969,6 +955,51 @@ class AutotraderMain:
                 f'Cold-start carry-over save failed: {e}{stake}')
             return False
 
+    def _record_field_study_broker_truth(
+        self,
+        phase: str,
+        flat: Optional[FlatCheckResult],
+    ) -> None:
+        """
+        Record one Field Study broker-truth snapshot (#332, #506).
+
+        The BALANCES come from the venue's full sheet, not from the flat check: that check
+        excludes the quote currency by design — holding cash is not a position — so reusing
+        its answer as a balance sheet recorded the two balances that had not moved and
+        omitted the one that had. Both real runs of 2026-09-08 show it, and it is why the
+        certificate could not contradict a `realized_cost` of zero.
+
+        ORDER COUNT still comes from the flat check where there is one; without a reconciler
+        (a mock dress rehearsal) the executor's own order book answers, so the certificate's
+        end-criterion still resolves.
+
+        Args:
+            phase: 'preflight' or 'session_end' — the certificate selects the end snapshot
+                by this, never by position
+            flat: The flat-check answer, or None when reconciliation is disabled
+        """
+        if self._field_study_recorder is None:
+            return
+
+        if flat is not None:
+            order_count = len(flat.open_orders)
+            is_flat = flat.is_flat
+        else:
+            counts = self._executor.get_active_order_counts()
+            order_count = counts.get('active_limits', 0) + counts.get('active_stops', 0)
+            is_flat = order_count == 0
+
+        # None when the ladder gave up — recorded as such rather than as an empty sheet,
+        # because "{}" is a statement that the venue holds nothing.
+        balances = self._executor.pull_broker_balances()
+
+        self._field_study_recorder.set_phase(phase, -1)
+        self._field_study_recorder.record_broker_truth(
+            order_count=order_count,
+            balances=balances,
+            is_flat=is_flat,
+        )
+
     def _field_study_preflight(self) -> bool:
         """
         Pre-flight the account before the Field Study trades (broker truth).
@@ -989,13 +1020,7 @@ class AutotraderMain:
             return True
 
         flat = self._reconciler.is_account_flat()
-        if self._field_study_recorder:
-            self._field_study_recorder.set_phase('preflight', -1)
-            self._field_study_recorder.record_broker_truth(
-                order_count=len(flat.open_orders),
-                balances=flat.asset_balances,
-                is_flat=flat.is_flat,
-            )
+        self._record_field_study_broker_truth('preflight', flat)
 
         if flat.open_orders:
             banner = (

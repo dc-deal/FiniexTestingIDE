@@ -1599,6 +1599,18 @@
                 "order": 5
             }
         },
+        {
+            "name": "🔭 Venue Probe: Kraken txid retention (READ-ONLY)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/venue_probes/probe_kraken_txid_retention.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_experiments",
+                "order": 6
+            }
+        },
         // ====================================================
         // 🧩 PYTEST VALIDATION
         // ====================================================
@@ -1702,6 +1714,23 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 6
+            }
+        },
+        {
+            "name": "🧩 Pytest: AutoTrader Config (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/config/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 6.5
             }
         },
         {

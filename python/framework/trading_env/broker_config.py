@@ -60,8 +60,20 @@ class BrokerConfig:
 
     @property
     def config_hash(self) -> str:
-        """8-char SHA256 hash of the symbols block. Empty string if not available."""
-        return self.adapter.broker_config.get('_config_meta', {}).get('symbols_hash') or ''
+        """
+        The run's broker-config identity — symbols AND fee structure (#337).
+
+        It used to be `symbols_hash`, which covers the instruments alone. A fee rate moves
+        realised P&L on every trade, so two runs with different rates are different runs and
+        the record has to be able to tell them apart; under the old reading their hashes were
+        identical. Falls back to `symbols_hash` for a config written before the split, so an
+        older cache still reports an identity rather than nothing.
+
+        Returns:
+            The 8-char hash, or an empty string when none is available
+        """
+        meta = self.adapter.broker_config.get('_config_meta', {})
+        return meta.get('config_hash') or meta.get('symbols_hash') or ''
 
     @staticmethod
     def _detect_broker_type(config: Dict[str, Any], path: Path) -> BrokerType:

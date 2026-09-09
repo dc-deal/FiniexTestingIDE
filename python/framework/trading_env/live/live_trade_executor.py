@@ -74,7 +74,7 @@ from python.framework.types.trading_env_types.order_types import (
 )
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
-from python.framework.utils.connection_ladder import ConnectionLadder
+from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
 from python.framework.utils.run_id_utils import build_client_order_id
 
 
@@ -157,6 +157,15 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         self._timeout_config = timeout_config or TimeoutConfig()
         self._poll_interval_ms = poll_interval_ms
+        # A resting order whose submit answer never arrived has no reference to poll with and
+        # is not covered by check_timeouts (that sees the processor's dict only). It is kept
+        # deliberately (#473) — this is only how long we wait before SAYING so, once per order.
+        self._unresolved_report_after_s: float = (
+            self._timeout_config.order_timeout_seconds)
+        self._reported_unresolved: Set[str] = set()
+        # An order the venue answers about by naming nothing is a standing condition too, and
+        # it is said once for the same reason (see _handle_query_response).
+        self._reported_unknown: Set[str] = set()
         self._session_key = session_key
         # #473 — one ladder for the broker's REST endpoint, shared with the Reconciler so
         # both classify a 502 the same way. A transport fault must never reach the trading
@@ -233,6 +242,26 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             The ConnectionLadder this executor was built with
         """
         return self._rest_ladder
+
+    def pull_broker_balances(self) -> Optional[Dict[str, float]]:
+        """
+        The venue's FULL balance sheet, under the shared REST ladder (§43).
+
+        Unfiltered on purpose, quote currency included: a FLATNESS answer is not a balance
+        sheet, and reusing one as the other is how the Field Study's truth plane came to
+        record the two balances that had not moved while omitting the one that had (#506).
+        Whoever needs "is this account flat" asks the Reconciler; whoever needs "what does
+        the venue hold" asks here.
+
+        It lives on the executor because this is the only place that owns both the adapter
+        and the ladder — the pairing was previously re-derived by every caller, which is
+        also why the flat check itself has no ladder at all.
+
+        Returns:
+            Asset → amount as the venue reports it, or None when the ladder gave up
+        """
+        return run_with_ladder(
+            self.broker.adapter.get_broker_balances, self.get_rest_ladder())
 
     def get_session_key(self) -> str:
         """
@@ -729,6 +758,38 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             return EntryType.STOP_LIMIT, FillType.STOP_LIMIT
         return EntryType.LIMIT, FillType.LIMIT
 
+    def _report_stuck_unresolved(self, pending: PendingOrder) -> None:
+        """
+        Report a resting order that has no broker reference and no way to get one.
+
+        Said ONCE per order: it is a standing condition, not an event, and repeating it every
+        poll cycle would bury the session channel it needs to reach. The order is deliberately
+        NOT dropped — #473 exists to stop exactly that, and #487 is what will resolve it by
+        asking the venue about our own client order id.
+
+        Args:
+            pending: The resting order whose submit answer never arrived
+        """
+        if pending.execution_state.in_flight_operation != PendingOperation.PENDING_SUBMIT:
+            return
+        if pending.pending_order_id in self._reported_unresolved:
+            return
+        submitted_at = pending.timing.submitted_at
+        if submitted_at is None:
+            return
+        waited_s = (datetime.now(timezone.utc) - submitted_at).total_seconds()
+        if waited_s < self._unresolved_report_after_s:
+            return
+
+        self._reported_unresolved.add(pending.pending_order_id)
+        self.logger.error(
+            f'📡 Resting {pending.order_type.value if pending.order_type else "order"} '
+            f'{pending.pending_order_id} has been UNRESOLVED for {waited_s:.0f}s — the '
+            f'submit answer never arrived, so there is no broker reference to poll with. '
+            f'It is kept rather than dropped, because the venue may be holding it (#473), '
+            f'and it blocks the algo\'s pending gate for as long as it sits here. Check the '
+            f'account by hand, or wait for the targeted status query (#487).')
+
     def _drop_active_order(self, pending: PendingOrder) -> None:
         """
         Remove a resting order from whichever of the two lists holds it.
@@ -1084,6 +1145,14 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         now_ms = time.time() * 1000.0
         for pending in resting:
             if not pending.broker_ref:
+                # #473 kept this order rather than dropping it, which is right: the venue may
+                # hold it and calling that a rejection would forget a live order. But nothing
+                # ever picks it up again — there is no reference to poll WITH, and
+                # check_timeouts only sees the processor's dict, never the resting lists. So
+                # it sits here forever while has_pending_orders() stays true and blocks the
+                # algo. Reporting it is the least we owe the operator until #487 can ASK the
+                # venue by our own client order id. Once per order, not once per tick.
+                self._report_stuck_unresolved(pending)
                 continue
             if pending.execution_state.in_flight_query:
                 continue
@@ -1133,6 +1202,21 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f'QueryResponse stale broker_ref for {order_id}: '
                 f'response={broker_response.broker_ref} current={pending.broker_ref}'
             )
+            return
+
+        if broker_response.is_unknown:
+            # The venue answered and named no such order. It is NOT dropped — dropping on an
+            # absence is exactly how an orphan is made, and the venue may hold it after all.
+            # Said once per order: a re-poll produces the same non-answer, so repeating it
+            # every cycle would bury the session channel this has to reach (§35).
+            if order_id not in self._reported_unknown:
+                self._reported_unknown.add(order_id)
+                self.logger.error(
+                    f'❓ The venue answered about {order_id} '
+                    f'(broker_ref={pending.broker_ref}) by naming no such order. That is not '
+                    f'"still working" — it is an absence, and this order is kept rather than '
+                    f'booked or dropped. Check the account by hand; a reference lookup cannot '
+                    f'resolve it, only a time-ranged history read can.')
             return
 
         if broker_response.status == BrokerOrderStatus.FILLED:
@@ -1731,23 +1815,34 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             order_id=order_id,
         )
 
-    def cancel_limit_order(self, order_id: str) -> bool:
+    def _cancel_resting_order(
+        self,
+        order_id: str,
+        orders: List[PendingOrder],
+        label: str,
+    ) -> bool:
         """
-        Schedule cancellation of an active limit order via async pattern (#318).
+        Schedule cancellation of one resting order via the async pattern (#318).
 
-        Sets in_flight_operation=PENDING_CANCEL on the target PendingOrder
-        and enqueues a CancelJob to the worker thread. The order is removed
-        from _active_limit_orders only when the broker's CancelResponse
+        Sets in_flight_operation=PENDING_CANCEL on the target and enqueues a CancelJob to
+        the worker thread. The order leaves its list only when the broker's CancelResponse
         arrives via drain_inbox.
+
+        Shared by both resting worlds. It used to exist only for limits, and the stop twin
+        was a shorter copy that returned a bare False in the deferred case below — so a stop
+        could not be cancelled during its own submit window, which is where every
+        cancel-then-close sequence begins.
 
         Args:
             order_id: Order ID to cancel
+            orders: The resting list to search (limit world or stop world)
+            label: What to call the order in the log
 
         Returns:
-            True if cancellation was scheduled. False if order not found,
-            still in submit-in-flight (broker_ref=None), or busy.
+            True if the cancellation was scheduled or deferred. False if the order is not in
+            that list, or is busy with another operation.
         """
-        for pending in self._active_limit_orders:
+        for pending in orders:
             if pending.pending_order_id != order_id:
                 continue
             if pending.broker_ref is None:
@@ -1771,53 +1866,45 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 adapter=self.broker.adapter,
             )
             self.logger.info(
-                f'❌ Limit order {order_id} cancel scheduled '
+                f'❌ {label} order {order_id} cancel scheduled '
                 f'(broker_ref={pending.broker_ref})'
             )
             return True
         self.logger.debug(
-            f'[CANCEL_SKIP] order={order_id} reason=not_in_active_limits scheduled=0')
+            f'[CANCEL_SKIP] order={order_id} reason=not_in_active_{label.lower()}s scheduled=0')
         return False
 
-    def cancel_stop_order(self, order_id: str) -> bool:
+    def cancel_limit_order(self, order_id: str) -> bool:
         """
-        Schedule cancellation of an active stop order via async pattern (#318).
-
-        Capability-gated: returns False if the adapter doesn't declare
-        stop_orders or stop_limit_orders support. A stop can rest in live since #500 —
-        from the boot adoption of a venue-reported one, and from a submit once the
-        executor declares the type.
+        Schedule cancellation of an active limit order via async pattern (#318).
 
         Args:
             order_id: Order ID to cancel
 
         Returns:
-            True if cancellation was scheduled. False otherwise.
+            True if cancellation was scheduled or deferred. False if order not found or busy.
         """
-        caps = self.broker.adapter.get_order_capabilities()
-        if not (caps.stop_orders or caps.stop_limit_orders):
-            return False
+        return self._cancel_resting_order(order_id, self._active_limit_orders, 'Limit')
 
-        for pending in self._active_stop_orders:
-            if pending.pending_order_id != order_id:
-                continue
-            if pending.broker_ref is None:
-                return False
-            if pending.execution_state.in_flight_operation != PendingOperation.NONE:
-                return False
+    def cancel_stop_order(self, order_id: str) -> bool:
+        """
+        Schedule cancellation of an active stop order via async pattern (#318).
 
-            pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
-            self._request_processor.submit_cancel_order_async(
-                order_id=order_id,
-                broker_ref=pending.broker_ref,
-                adapter=self.broker.adapter,
-            )
-            self.logger.info(
-                f'❌ Stop order {order_id} cancel scheduled '
-                f'(broker_ref={pending.broker_ref})'
-            )
-            return True
-        return False
+        NOT capability-gated, deliberately. It used to refuse when the adapter declared no
+        stop support — but the only orders in this list are ones we PLACED or ADOPTED, so the
+        venue has already accepted the type by the time anyone can ask to cancel one.
+        Refusing to cancel an order that exists is how an orphan is made, which is the thing a
+        protective order must never become. A capability belongs on the SUBMIT, where it can
+        still prevent something.
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            True if cancellation was scheduled or deferred. False if the order is not resting
+            here, or it is busy with another operation.
+        """
+        return self._cancel_resting_order(order_id, self._active_stop_orders, 'Stop')
 
     # ============================================
     # Pending Order Awareness
@@ -1947,19 +2034,38 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self.logger.info(
                 f'📋 {len(resting)} active resting orders '
                 f'at session end — cancelling at broker')
+            # The venue's ANSWER decides what we may record. `cancel_order_sync` catches its
+            # own transport fault and returns a failure response rather than raising, so the
+            # `except` this loop used to rely on could never fire — and `_expire_active_orders`
+            # then booked EXPIRED regardless. A venue outage at shutdown left the order working
+            # at Kraken while our books called it finished, and the next boot adopted nothing.
+            unconfirmed = []
             for pending in resting:
-                if pending.broker_ref:
-                    try:
-                        self._request_processor.cancel_order_sync(
-                            broker_ref=pending.broker_ref,
-                            adapter=self.broker.adapter,
-                        )
-                    except Exception as e:
-                        self.logger.warning(
-                            f'Failed to cancel resting '
-                            f'{pending.order_type.value if pending.order_type else "order"} '
-                            f'{pending.pending_order_id}: {e}')
-            self._expire_active_orders()
+                if not pending.broker_ref:
+                    continue
+                label = pending.order_type.value if pending.order_type else 'order'
+                try:
+                    response = self._request_processor.cancel_order_sync(
+                        broker_ref=pending.broker_ref,
+                        adapter=self.broker.adapter,
+                    )
+                except Exception as e:                       # noqa: BLE001 — reported below
+                    unconfirmed.append((pending, label, str(e)))
+                    continue
+                if response.status != BrokerOrderStatus.CANCELLED:
+                    unconfirmed.append(
+                        (pending, label, response.rejection_reason or response.status.value))
+
+            if unconfirmed:
+                # §35: the session channel, not the global log — this has to reach the summary.
+                for pending, label, reason in unconfirmed:
+                    self.logger.error(
+                        f'❌ Session end: the venue did NOT confirm the cancel of {label} '
+                        f'{pending.pending_order_id} (broker_ref={pending.broker_ref}): '
+                        f'{reason}. It may still be working at the broker — it is NOT recorded '
+                        f'as expired, and the next session will find it.')
+            self._expire_active_orders(
+                skip={p.pending_order_id for p, _, _ in unconfirmed})
 
         # Phase 2: Catch genuine stuck-in-pipeline orders (real anomalies)
         self._request_processor.clear_pending(reason='scenario_end')

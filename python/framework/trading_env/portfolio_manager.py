@@ -460,7 +460,16 @@ class PortfolioManager:
                 exit_price, exit_price, exit_tick_value, position.digits)
             realized_pnl = position.unrealized_pnl
         else:
-            # Margin mode — existing logic
+            # Margin mode — existing logic, plus the exit fee (#506). The pre-close refresh
+            # at the top of this method ran BEFORE the fee was attached, so `unrealized_pnl`
+            # was still gross of it — and `_create_trade_record` reads `total_fees` (which
+            # HAS the fee) beside `net_pnl` (which did not), so the record contradicted
+            # itself and the balance moved by the figure without it. Re-marking against the
+            # same prices the refresh uses puts the fee into the money and into the record as
+            # one number. Only when there IS an exit fee: a spread broker passes None and
+            # takes the untouched path.
+            if exit_fee:
+                self._remark_position(position)
             realized_pnl = position.unrealized_pnl
             self.balance += realized_pnl
 
@@ -977,29 +986,44 @@ class PortfolioManager:
 
         # Update all positions with current prices
         for position in self.open_positions.values():
-            symbol = position.symbol
-
-            # Skip if no price data for this symbol yet
-            if symbol not in self._current_prices:
-                continue
-
-            # Get cached symbol spec (BrokerConfig already caches!)
-            spec = self.broker_config.get_symbol_specification(symbol)
-
-            # Calculate tick_value
-            bid, ask = self._current_prices[symbol]
-            current_price = (bid + ask) / 2.0
-            tick_value = self._calculate_tick_value(spec, current_price)
-
-            # Update position P&L
-            position.update_current_price(
-                bid=bid,
-                ask=ask,
-                tick_value=tick_value,
-                digits=spec.digits
-            )
+            self._remark_position(position)
 
         self._positions_dirty = False
+
+    def _remark_position(self, position: Position) -> None:
+        """
+        Recompute ONE position's P&L against the latest prices.
+
+        Extracted from the lazy refresh above because the close path needs the same
+        recomputation on its own: a fee attached AFTER the refresh is invisible until the
+        position is marked again, and `update_current_price` is what folds the fee list into
+        `unrealized_pnl`. Re-marking with unchanged prices is idempotent — the same gross
+        P&L, so the excursion extrema do not move either.
+
+        Args:
+            position: The open position to re-mark; a no-op while its symbol has no price yet
+        """
+        symbol = position.symbol
+
+        # Skip if no price data for this symbol yet
+        if symbol not in self._current_prices:
+            return
+
+        # Get cached symbol spec (BrokerConfig already caches!)
+        spec = self.broker_config.get_symbol_specification(symbol)
+
+        # Calculate tick_value
+        bid, ask = self._current_prices[symbol]
+        current_price = (bid + ask) / 2.0
+        tick_value = self._calculate_tick_value(spec, current_price)
+
+        # Update position P&L
+        position.update_current_price(
+            bid=bid,
+            ask=ask,
+            tick_value=tick_value,
+            digits=spec.digits
+        )
 
     def get_open_positions(self) -> List[Position]:
         """

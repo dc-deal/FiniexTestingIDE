@@ -15,7 +15,7 @@ one intent becomes two positions); the order stays ours, marked in flight, and t
 path resolves it — which is what FIX has done with an Order Status Request since 1992.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -26,7 +26,11 @@ from python.framework.types.live_types.live_execution_types import (
     TimeoutConfig,
 )
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation
-from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.trading_env_types.order_types import (
+    OpenOrderRequest,
+    OrderDirection,
+    OrderType,
+)
 
 
 @pytest.fixture
@@ -259,3 +263,81 @@ class TestLogLevelMatchesConsequence:
             ConnectionError('Kraken API error: [EOrder:Insufficient funds]'),
             broker_ref='', timestamp=datetime.now(timezone.utc), operation='submit')
         assert recorder.levels == []
+
+
+class TestAStuckUnresolvedRestingOrderIsReported:
+    """
+    Keeping an unresolved order is right. Saying nothing about it forever is not.
+
+    #473 keeps a resting order whose submit answer was lost, and leaves its broker_ref None
+    so a later query can still claim it. But then nothing picks it up: the poll loop skips
+    every order without a reference — correctly, there is nothing to poll WITH — and
+    check_timeouts iterates only the processor's dict, which resting orders never enter.
+
+    So the order sits in the shadow for the rest of the session while `has_pending_orders()`
+    stays true and blocks a single-position algo. Until #487 can ASK the venue by our own
+    client order id, the least the operator is owed is being told.
+    """
+
+    def _stuck_resting_order(self, mock, executor):
+        """A resting order kept in flight with no broker reference. Returns: the order id."""
+        mock.feed_tick(executor, bid=49999.0, ask=50001.0)
+        result = executor.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
+            direction=OrderDirection.LONG, lots=0.01, price=45000.0))
+        pending = executor.get_active_orders()[0]
+        pending.broker_ref = None
+        pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
+        pending.timing.submitted_at = (
+            datetime.now(timezone.utc) - timedelta(seconds=3600))
+        return result.order_id
+
+    def test_it_is_reported_as_an_error(self, mock_timeout, executor_timeout, capsys):
+        self._stuck_resting_order(mock_timeout, executor_timeout)
+        capsys.readouterr()
+
+        executor_timeout.heartbeat()
+
+        printed = capsys.readouterr().out
+        assert 'UNRESOLVED' in printed, 'a stuck resting order must be reported'
+        assert 'ERROR' in printed, 'it blocks the algo for the rest of the session'
+        assert '#487' in printed, 'the message must name what will resolve it'
+
+    def test_it_is_said_once_not_every_tick(self, mock_timeout, executor_timeout, capsys):
+        """
+        A standing condition, not an event.
+
+        Repeating it per poll cycle would bury the channel it needs to reach — the same
+        reasoning as the reconciler's first-fingerprint rule.
+        """
+        self._stuck_resting_order(mock_timeout, executor_timeout)
+        capsys.readouterr()
+
+        for _ in range(4):
+            executor_timeout.heartbeat()
+
+        assert capsys.readouterr().out.count('UNRESOLVED') == 1
+
+    def test_the_order_is_kept_not_dropped(self, mock_timeout, executor_timeout):
+        """Reporting must not become deleting — that is what #473 exists to prevent."""
+        order_id = self._stuck_resting_order(mock_timeout, executor_timeout)
+
+        executor_timeout.heartbeat()
+
+        assert [p for p in executor_timeout.get_active_orders()
+                if p.pending_order_id == order_id], 'the order must stay ours'
+
+    def test_a_young_order_is_not_reported_yet(self, mock_timeout, executor_timeout, capsys):
+        """An answer that has not arrived YET is not the same as one that never will."""
+        mock_timeout.feed_tick(executor_timeout, bid=49999.0, ask=50001.0)
+        executor_timeout.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
+            direction=OrderDirection.LONG, lots=0.01, price=45000.0))
+        pending = executor_timeout.get_active_orders()[0]
+        pending.broker_ref = None
+        pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
+        capsys.readouterr()
+
+        executor_timeout.heartbeat()
+
+        assert 'UNRESOLVED' not in capsys.readouterr().out

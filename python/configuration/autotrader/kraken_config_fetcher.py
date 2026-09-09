@@ -22,7 +22,10 @@ from python.configuration.autotrader.abstract_broker_config_fetcher import (
     AbstractBrokerConfigFetcher,
 )
 from python.configuration.credential_guard import assert_real_credential
+from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.trading_env_types.broker_types import FeeTierInfo
 
 # Mirrors BrokerTransportConfig.request_timeout_s, which is where an operator tunes it.
 # A constant here only for the direct-construction paths (the broker-config CLI) that
@@ -149,7 +152,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             merged = _merge_with_cache(fresh_dict, cache_path)
             _write_cache(merged, cache_path)
             config_hash = merged.get('_config_meta', {}).get('symbols_hash', '')
-            hash_tag = f' [{config_hash}]' if config_hash else ''
+            hash_tag = f' [symbols {config_hash}]' if config_hash else ''
             active_count = sum(1 for s in merged.get('symbols', {}).values() if s.get('_active', True))
             self._log_info(
                 f'💱 Broker config refreshed: {broker_type}{hash_tag} — {active_count} active symbols\n'
@@ -211,6 +214,106 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             f"Available: {list(balance_data.keys())}"
         )
         return None
+
+    def fetch_fee_tier(self, symbol: str) -> Optional[FeeTierInfo]:
+        """
+        Fetch the fee schedule this account is on for a symbol (#337).
+
+        Kraken prices per account 30-day volume, so the rates in a config file are a guess
+        about which tier the account sits in. Measured 2026-09-08 against this project's own
+        account: charged taker 0.8000 % / maker 0.4000 % while the config declared 0.40 /
+        0.25 — half of both, and the published eleven-tier table does not describe this pair
+        at all (its entry level is 0.40/0.80 with the next step at a 30-day volume of 2500).
+        That is why the rate is ASKED FOR rather than looked up.
+
+        **The answer is keyed by the venue's CANONICAL pair name, not by the symbol asked
+        about** — measured the same day: `pair=ETHUSD` comes back under `XETHZUSD`. Indexing
+        the response by `symbol` raises KeyError, so the single entry per block is taken and
+        its key is recorded as the pair.
+
+        A failure is never fatal: the caller keeps its configured rates, which is the same
+        state as before this method existed.
+
+        Args:
+            symbol: Trading symbol (e.g., 'ETHUSD')
+
+        Returns:
+            The account's current rates, or None when the venue did not answer usably
+        """
+        self._log_info(f'Fetching fee tier ({symbol}) from Kraken API...')
+
+        try:
+            raw = self._fetch_private('/0/private/TradeVolume', {'pair': symbol})
+        except Exception as e:                                # noqa: BLE001 — reported below
+            self._log_warning(
+                f'Fee-tier fetch failed for {symbol}: {e} — keeping the configured rates')
+            return None
+
+        taker = self._single_fee_entry(raw.get('fees'))
+        maker = self._single_fee_entry(raw.get('fees_maker'))
+        if taker is None or maker is None:
+            self._log_warning(
+                f'Fee-tier response for {symbol} carried no usable rates '
+                f'(keys: {sorted(raw.keys())}) — keeping the configured rates')
+            return None
+
+        pair, taker_block = taker
+        _, maker_block = maker
+
+        info = FeeTierInfo(
+            maker_pct=float(maker_block['fee']),
+            taker_pct=float(taker_block['fee']),
+            next_maker_pct=self._optional_float(maker_block.get('nextfee')),
+            next_taker_pct=self._optional_float(taker_block.get('nextfee')),
+            next_volume_threshold=self._optional_float(taker_block.get('nextvolume')),
+            volume=self._optional_float(raw.get('volume')),
+            pair=pair,
+        )
+        self._log_info(
+            f'✅ Fee tier for {symbol} ({info.pair}): '
+            f'maker {info.maker_pct}% / taker {info.taker_pct}%'
+        )
+        return info
+
+    @staticmethod
+    def _single_fee_entry(block: Optional[Dict[str, Any]]) -> Optional[tuple]:
+        """
+        Take the one pair entry a TradeVolume fee block carries.
+
+        Asked for one pair, Kraken answers with one entry — under ITS name for the pair, not
+        the one asked about. Reading it positionally is therefore more correct than looking
+        up the symbol, and it is what makes the canonical-name difference a non-issue.
+
+        Args:
+            block: The `fees` or `fees_maker` mapping from the response
+
+        Returns:
+            (pair name, entry), or None when the block is absent, empty or shaped otherwise
+        """
+        if not isinstance(block, dict) or len(block) != 1:
+            return None
+        pair, entry = next(iter(block.items()))
+        if not isinstance(entry, dict) or 'fee' not in entry:
+            return None
+        return pair, entry
+
+    @staticmethod
+    def _optional_float(value: Any) -> Optional[float]:
+        """
+        Read a numeric field the venue may omit.
+
+        Args:
+            value: The raw field, possibly absent or an empty string
+
+        Returns:
+            The value as a float, or None when it is absent or unreadable
+        """
+        if value in (None, ''):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     # =========================================================================
     # HTTP HELPERS
@@ -391,9 +494,10 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         """
         Build complete broker config dict from fetched symbol data.
 
-        Uses hardcoded fee structure (maker 0.25%, taker 0.40%) — Kraken
-        Tier-0 published rates. Account-tier auto-detection via
-        /0/private/TradeVolume is tracked in a separate issue.
+        The fee structure is READ from the broker's git-tracked seed, never written here
+        (#337). It used to be a literal in this method, which made three places declare the
+        same rate — the seed, this code and the cache file it writes — and a re-freeze of the
+        seed could not reach two of them. One declaration, everything else points at it.
 
         Args:
             symbol: Standard symbol (e.g., 'BTCUSD')
@@ -423,12 +527,8 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
                 'leverage': 1,
                 'hedging_allowed': False,
             },
-            'fee_structure': {
-                'model': 'maker_taker',
-                'maker_fee': 0.25,
-                'taker_fee': 0.40,
-                'fee_currency': 'quote',
-            },
+            'fee_structure': BrokerConfigFactory.fee_structure_from(
+                MarketConfigManager().get_broker_config_path(broker_type)),
             # No 'order_types' here: an adapter's get_order_capabilities() is the one
             # declaration of what a venue accepts, and a second list in the fetched config
             # was read by nobody while disagreeing with it (#500).

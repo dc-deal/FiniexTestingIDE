@@ -88,7 +88,7 @@ class BrokerConfigCli:
                 1 for s in last_result.get('symbols', {}).values()
                 if s.get('_active', True)
             )
-            print(f'\n  ✅  {broker_type}: cache updated [{config_hash}] — {active_count} active symbols\n')
+            print(f'\n  ✅  {broker_type}: cache updated [symbols {config_hash}] — {active_count} active symbols\n')
 
 
 if __name__ == '__main__':

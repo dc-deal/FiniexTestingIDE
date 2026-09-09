@@ -49,6 +49,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     RejectionReason,
 )
+from python.framework.types.trading_env_types.trading_env_stats_types import CostBreakdown
 
 from .abstract_trade_executor import AbstractTradeExecutor
 from .order_guard import OrderGuard
@@ -348,6 +349,23 @@ class DecisionTradingApi:
             Available balance as float (0.0 if not held)
         """
         return self._executor.portfolio.get_asset_balance(currency)
+
+    def get_cost_breakdown(self) -> CostBreakdown:
+        """
+        What this session has spent in trading costs so far, by category.
+
+        The AUTHORITATIVE figure: the portfolio records every fee it books through one
+        categorising site, so this carries both legs of a round trip — entry and exit, full
+        close and partial — whether or not a decision event was emitted for them. A logic that
+        accumulates costs from its own event hooks instead cannot see a FULL close, because
+        that path emits none (#506).
+
+        Returns an immutable copy, so a logic cannot disturb the portfolio's own tracking.
+
+        Returns:
+            CostBreakdown with the per-category totals and `total_fees`
+        """
+        return self._executor.portfolio.get_cost_breakdown()
 
     def get_open_positions(self, symbol: Optional[str] = None) -> List[Position]:
         """
@@ -776,7 +794,9 @@ class DecisionTradingApi:
         Get historical orders (executed + rejected).
 
         Post-V1: Will provide full order history for analysis.
-        V1: Not implemented.
+        V1: NOT IMPLEMENTED — this raises. It is declared so the contract is visible, and a
+        caller that wants the session's trading COST wants get_cost_breakdown() instead: the
+        history was reached for that once and the run died on this line seven seconds in.
 
         Args:
             symbol: Filter by symbol (None = all orders)
@@ -786,5 +806,5 @@ class DecisionTradingApi:
         """
         raise NotImplementedError(
             'Order history is Post-V1 feature. '
-            'Use get_open_positions() for V1.'
+            'Use get_open_positions() for V1, or get_cost_breakdown() for session costs.'
         )

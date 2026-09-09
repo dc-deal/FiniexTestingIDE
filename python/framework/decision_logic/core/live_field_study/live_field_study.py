@@ -41,6 +41,7 @@ from python.framework.types.decision_event_types import (
     OrderFilledEvent,
     OrderRejectedEvent,
     PartialCloseEvent,
+    SessionEndEvent,
     SessionEndSeverity,
 )
 from python.framework.types.decision_logic_types import (
@@ -76,6 +77,10 @@ _STOP_FAMILY = frozenset({
 # so a new submit kind fails with a KeyError at its first use instead of silently becoming
 # whatever the final `else` happens to be — the shape that let a STOP go on the wire as a
 # priceless LIMIT (#500).
+# Which types live in the STOP resting world. Their cancel and modify paths are separate
+# from the limit world's, and sending one through the other silently does nothing.
+_STOP_WORLD_TYPES = frozenset({OrderType.STOP, OrderType.STOP_LIMIT})
+
 _SUBMIT_KIND_TO_TYPE = {
     PhaseActionKind.SUBMIT_MARKET: OrderType.MARKET,
     PhaseActionKind.SUBMIT_LIMIT: OrderType.LIMIT,
@@ -127,6 +132,11 @@ class LiveFieldStudy(AbstractDecisionLogic):
         self._recorder: Optional[FieldStudyRecorder] = None
 
         # Session guards (budget + wall-clock) — enforced on every machine advance.
+        # Deliberately NOT an accumulator any more (#506). Accumulating from decision events
+        # missed every FULL close: `_notify_outcome` fires only for opens, and the only event a
+        # close emits is the partial one — so a study whose exits are `market_close_all` counted
+        # entry fees and one partial. The order history is the authoritative list, the same one
+        # the run report is built from, and it carries every leg.
         self._realized_cost = 0.0
         self._session_started_at: Optional[datetime] = None
         self._safe_abort_active = False
@@ -279,6 +289,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
             DecisionEventType.ORDER_REJECTED,
             DecisionEventType.ORDER_CANCELLED,
             DecisionEventType.PARTIAL_CLOSE,
+            DecisionEventType.SESSION_END,
         }
 
     def wants_heartbeat(self) -> bool:
@@ -306,7 +317,6 @@ class LiveFieldStudy(AbstractDecisionLogic):
 
     def on_order_filled(self, event: OrderFilledEvent) -> None:
         self._filled_flag = True
-        self._realized_cost += event.result.commission
         if self._recorder:
             self._recorder.record_order_event(
                 'order_filled', order_id=event.order_id, side=event.direction.name,
@@ -327,6 +337,22 @@ class LiveFieldStudy(AbstractDecisionLogic):
                 },
             )
 
+    def on_session_end(self, event: SessionEndEvent) -> None:
+        """
+        Stamp the session's realized cost into the capture (#506).
+
+        Recorded here rather than reconstructed by the certificate: the per-event commissions
+        the certificate used to sum cannot see a FULL close, and the study's exits are full
+        closes. This is the same figure the budget ceiling is checked against.
+
+        Args:
+            event: Session-end detail (reason, severity)
+        """
+        self._refresh_realized_cost()
+        if self._recorder:
+            self._recorder.record_session_cost(
+                self._realized_cost, source='portfolio_cost_breakdown')
+
     def on_order_cancelled(self, event: OrderCancelledEvent) -> None:
         self._cancelled_flag = True
         if self._recorder:
@@ -338,7 +364,6 @@ class LiveFieldStudy(AbstractDecisionLogic):
 
     def on_partial_close(self, event: PartialCloseEvent) -> None:
         # Lots-polling drives the machine; the event is recorded for the analysis stream.
-        self._realized_cost += event.result.commission
         if self._recorder:
             self._recorder.record_order_event(
                 'partial_close', order_id=event.position_id, side=event.direction.name,
@@ -558,30 +583,55 @@ class LiveFieldStudy(AbstractDecisionLogic):
         self.trading_api.close_position(pos.position_id, lots=pos.lots * fraction)
 
     def _cancel_resting(self) -> None:
-        # Cancel the orders ACTUALLY resting at the broker, not a per-phase id
-        # list. The phase machine re-issues CANCEL_ALL each tick until
-        # active_limit_count reaches 0, so a cancel that returns False (order
-        # still submit-in-flight) is retried naturally on the next call — never
-        # dropped. This also makes force_close a true safety-net: it clears every
-        # resting order, including any leaked from an earlier phase.
+        # Cancel the orders ACTUALLY resting at the broker, not a per-phase id list. This
+        # also makes force_close a true safety-net: it clears every resting order, including
+        # any leaked from an earlier phase.
+        #
+        # ROUTED BY TYPE. A stop lives in its own resting world with its own cancel path, so
+        # sending it through cancel_limit_order returns `not_in_active_limits` and the order
+        # stays armed. Measured in the live Field Study of 2026-09-08: the stop phase issued
+        # its cancel, the limit path did not find the order, and the phase timed out after
+        # 30 s with the stop still working at Kraken.
         resting = self.trading_api.get_active_orders()
         self.logger.debug(
             f'[FS_CANCEL] event=cancel_all {self._resting_snapshot_str(resting)}')
         for order in resting:
-            scheduled = self.trading_api.cancel_limit_order(order.pending_order_id)
-            # scheduled=0 with ref=NONE → the cancel was dropped (broker_ref in-flight);
-            # limit_cancel/multi_cancel do NOT re-issue, so this order orphans (#13/#15).
+            scheduled = self._cancel_one(order)
             self.logger.debug(
                 f"[FS_CANCEL] order={order.pending_order_id} ref={order.broker_ref or 'NONE'} "
+                f"type={order.order_type.value if order.order_type else 'none'} "
                 f"op={order.execution_state.in_flight_operation.name} q={int(order.execution_state.in_flight_query)} "
                 f"scheduled={int(scheduled)}")
         self._phase_order_ids = []
 
+    def _cancel_one(self, order: PendingOrder) -> bool:
+        """
+        Cancel one resting order through the path that owns its world.
+
+        Args:
+            order: The resting order to cancel
+
+        Returns:
+            True if the cancel was scheduled or parked for the submit confirmation
+        """
+        if order.order_type in _STOP_WORLD_TYPES:
+            return self.trading_api.cancel_stop_order(order.pending_order_id)
+        return self.trading_api.cancel_limit_order(order.pending_order_id)
+
     def _modify_resting(self, action: PhaseAction) -> None:
-        if self._phase_order_ids and action.price is not None:
-            self.trading_api.modify_limit_order(
-                order_id=self._phase_order_ids[-1], price=action.price
-            )
+        if not self._phase_order_ids or action.price is None:
+            return
+        order_id = self._phase_order_ids[-1]
+        # Same split as the cancel above: a stop's price is its TRIGGER and it is amended
+        # through its own path, which reaches Kraken's `trigger_price` rather than
+        # `limit_price` (#500).
+        target = next((o for o in self.trading_api.get_active_orders()
+                       if o.pending_order_id == order_id), None)
+        if target is not None and target.order_type in _STOP_WORLD_TYPES:
+            self.trading_api.modify_stop_order(
+                order_id=order_id, new_stop_price=action.price)
+            return
+        self.trading_api.modify_limit_order(order_id=order_id, price=action.price)
 
     # ============================================
     # Diagnostic trace (#13/#15 forensics — machine-parseable key=value)
@@ -702,10 +752,27 @@ class LiveFieldStudy(AbstractDecisionLogic):
         side_str = side.name if side != PhaseSide.NONE else None
         self._recorder.record_phase_start(phase_id, idx, side_str)
 
+    def _refresh_realized_cost(self) -> None:
+        """
+        Re-derive the session's realized cost from the portfolio's cost tracking (#506).
+
+        The authoritative figure, and the reason it is READ rather than accumulated: the
+        portfolio books every fee through one categorising site, so `total_fees` carries both
+        legs of a round trip — entry and exit, full close and partial — whether or not a
+        decision event was emitted. Accumulating from this logic's own hooks could only ever
+        see an OPEN fill and a PARTIAL close, because a FULL close emits no event at all, and
+        this study's exits are full closes.
+
+        Not the order history: `get_order_history()` is declared but raises in V1. Reaching
+        for it cost a live run seven seconds in.
+        """
+        self._realized_cost = self.trading_api.get_cost_breakdown().total_fees
+
     def _budget_ok(self) -> bool:
         """Whether realized session cost is still under the ceiling (re-arm gate)."""
         if self._max_session_cost_usd <= 0.0:
             return True
+        self._refresh_realized_cost()
         return self._realized_cost < self._max_session_cost_usd
 
     def _session_guard_breached(self, now: datetime) -> bool:
@@ -714,6 +781,8 @@ class LiveFieldStudy(AbstractDecisionLogic):
             if (now - self._session_started_at).total_seconds() > self._session_timeout_s:
                 self._abort_reason = 'session wall-clock timeout'
                 return True
+        if self._max_session_cost_usd > 0.0:
+            self._refresh_realized_cost()
         if self._max_session_cost_usd > 0.0 and self._realized_cost >= self._max_session_cost_usd:
             self._abort_reason = (
                 f'budget exceeded (${self._realized_cost:.4f} ≥ ${self._max_session_cost_usd:.4f})'

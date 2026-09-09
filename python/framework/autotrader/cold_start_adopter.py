@@ -378,11 +378,13 @@ class ColdStartAdopter:
         """
         Read the venue's balances under the shared REST ladder (§43).
 
+        Delegates rather than re-deriving the (adapter, ladder) pairing: the executor owns
+        both, and this was the second copy of the same rule before a third was needed (§19).
+
         Returns:
             Asset → amount, or None when the ladder gave up
         """
-        adapter = self._executor.broker.adapter
-        return run_with_ladder(adapter.get_broker_balances, self._executor.get_rest_ladder())
+        return self._executor.pull_broker_balances()
 
     def _restorable_book(self, book: List[PositionCarryOver]) -> List[PositionCarryOver]:
         """

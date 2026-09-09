@@ -13,6 +13,7 @@ Architecture:
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Optional
 
 
 class SwapMode(Enum):
@@ -117,6 +118,38 @@ class SymbolSpecification:
     # Minimum distance for SL/TP in points (0 = no restriction)
     stops_level: int
     freeze_level: int        # Freeze distance in points (0 = no restriction)
+
+
+@dataclass(frozen=True)
+class FeeTierInfo:
+    """
+    The fee schedule an account is ACTUALLY on, as the venue reports it (#337).
+
+    A volume-tiered venue prices per account, so a rate written into a config file is a guess
+    about which tier that account sits in. Measured 2026-09-08 on this project's Kraken
+    account: charged taker 0.8000 % / maker 0.4000 % while the config declared 0.40 / 0.25 —
+    half of both, in the profitable direction for every backtest.
+
+    `next_*` is carried because it is the only forward-looking part of the answer: it says
+    what the rate becomes and at what 30-day volume, so a drop in cost can be anticipated
+    rather than discovered.
+
+    Args:
+        maker_pct: Current maker percentage for the pair (e.g. 0.40 for 0.40 %)
+        taker_pct: Current taker percentage for the pair
+        next_maker_pct: Maker percentage at the next volume tier, when the venue names one
+        next_taker_pct: Taker percentage at the next volume tier, when the venue names one
+        next_volume_threshold: 30-day volume at which the next tier applies
+        volume: The account's current 30-day volume, in the venue's own currency
+        pair: The venue's CANONICAL name for the pair, which is what it keyed its answer by
+    """
+    maker_pct: float
+    taker_pct: float
+    next_maker_pct: Optional[float] = None
+    next_taker_pct: Optional[float] = None
+    next_volume_threshold: Optional[float] = None
+    volume: Optional[float] = None
+    pair: str = ''
 
 
 @dataclass(frozen=True)

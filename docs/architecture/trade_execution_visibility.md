@@ -70,7 +70,7 @@ For a partial-close TradeRecord, the aggregate `lots` field and the underlying `
 | `TradeRecord.lots` | 0.01 | The portion closed by *this* TradeRecord event |
 | `TradeRecord.entry_trades[0].volume` | 0.03 | The original BrokerTrade that opened the *whole* position (un-scaled) |
 | `TradeRecord.exit_trades[0].volume` | 0.01 | The actual close BrokerTrade for *this* event |
-| `TradeRecord.total_fees` | proportional | Scaled to close ratio (e.g. 1/3 of original fee) |
+| `TradeRecord.total_fees` | proportional **plus the exit fee** | The closed ratio's share of the entry fee, plus the exit fee charged on `close_lots` (maker/taker only) — so it is not a pure scaling, and the partials can sum to more than the entry fee (#506) |
 
 The sub-line `entry` shows the **broker-truth** of the original execution; the aggregate row shows the per-record share. Both numbers are correct; they describe different things.
 

@@ -104,3 +104,96 @@ class TestConfigModeParsing:
         manager = _make_manager(_CONFIG_STATIC_AND_DYNAMIC)
         with pytest.raises(ValueError, match='Unknown broker_type'):
             manager.get_config_mode('unknown_broker')
+
+
+class TestATypoInMarketConfigIsRefused:
+    """
+    `market_config.json` had no unknown-key guard of any kind — and it is the file that
+    carries the real-money posture.
+
+    `check_unknown_keys` is called for the AutoTrader profile and the scenario set, never for
+    this file, and the models did not forbid extras. So a misspelled key was silently dropped
+    in the one place that declares `dry_run`, `credentials_file` and `session_end_orders`: a
+    posture setting reading as ABSENT because of a typo, with nothing to say so. The §28 guard
+    test covers only the profile lane, so nothing else would catch it either.
+    """
+
+    def _entry(self, **overrides) -> dict:
+        """
+        A minimal broker entry, optionally with extra or misspelled keys.
+
+        Args:
+            overrides: Keys to add or replace on the entry
+
+        Returns:
+            The broker entry dict
+        """
+        entry = {'broker_type': 'kraken_spot', 'market_type': 'crypto'}
+        entry.update(overrides)
+        return entry
+
+    def _config(self, entry: dict) -> dict:
+        return {
+            'version': '1.0',
+            'market_rules': {
+                'crypto': {
+                    'weekend_closure': False, 'session_bucketing': False,
+                    'primary_activity_metric': 'volume', 'pip_mode': 'tick',
+                },
+            },
+            'brokers': [entry],
+        }
+
+    def test_a_misspelled_posture_key_raises_instead_of_vanishing(self):
+        config = self._config(self._entry(dry_runn=False))
+
+        with pytest.raises(ValidationError):
+            _make_manager(config)
+
+    def test_an_unknown_key_in_a_nested_block_raises_too(self):
+        """The guard has to reach the transport block, not just the entry."""
+        config = self._config(self._entry(
+            broker_transport={'api_base_url': 'https://x', 'rate_limit_intervall_s': 1.0}))
+
+        with pytest.raises(ValidationError):
+            _make_manager(config)
+
+    def test_the_guard_reaches_the_connection_block_two_levels_down(self):
+        """
+        The deepest block in the file, and the one where a typo is worst.
+
+        `attempt_budget: 0` means NEVER GIVE UP (§43). A misspelled key there reads as absent,
+        so the ladder silently runs the default instead of the operator's number — in the
+        block that decides how a real-money session behaves when the venue stops answering.
+        The strict base stopped one level above this until the guard was shared.
+        """
+        config = self._config(self._entry(broker_transport={
+            'api_base_url': 'https://x',
+            'connection': {'initial_delay_s': 1.0, 'attempt_budgett': 9},
+        }))
+
+        with pytest.raises(ValidationError):
+            _make_manager(config)
+
+    def test_a_comment_still_explains_the_file(self):
+        """
+        §28 makes `_comment` the way a config file documents itself, and the whitelist comes
+        from the same helper `check_unknown_keys` honours — so the two cannot drift apart.
+        """
+        config = self._config(self._entry(_comment='why this broker is configured this way'))
+        config['_comment'] = 'top level too'
+
+        manager = _make_manager(config)
+
+        assert manager.get_broker_entry('kraken_spot').broker_type == 'kraken_spot'
+
+    def test_the_shipped_config_still_loads_and_mirrors_its_defaults(self):
+        """
+        The mirror check §28 asks for: a field declared in the model must be reachable from
+        the real JSON. Nothing else covers `market_config.json` — the loader-coverage test
+        walks `AutoTraderConfig` only.
+        """
+        entry = MarketConfigManager().get_broker_entry('kraken_spot')
+
+        assert entry.config_mode is ConfigMode.DYNAMIC
+        assert entry.credentials_file, 'declared in the model and set in the shipped JSON'

@@ -153,9 +153,11 @@ class TestTheEquitySampleIsSpotAware:
         assert stats.max_equity > 2000.0, (
             f'the peak is on the quote scale ({stats.max_equity:.2f}) — the sample is not '
             f'seeing the portfolio')
-        # Measured, both directions: 151.58 with one scale, 1251.58 with two. The window
-        # has to be closed on BOTH sides — a one-sided `> 100` passes against the mixed
-        # version as well, which is how the first two attempts at this test slipped through.
+        # Measured, both directions: ~151.6 with one scale, ~1251.6 with two — the exact
+        # figures moved slightly with #506, which books the exit fee on a maker/taker close,
+        # so the window is what is pinned and not a point value. It has to be closed on BOTH
+        # sides — a one-sided `> 100` passes against the mixed version as well, which is how
+        # the first two attempts at this test slipped through.
         assert 100.0 < stats.max_drawdown < 300.0, (
             f'drawdown {stats.max_drawdown:.2f} on a portfolio that fell ~150: above the '
             f'window means the close wrote a quote-scale point under a portfolio-scale '
