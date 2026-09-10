@@ -6,8 +6,6 @@ The import pipeline test suite validates the full tick data import lifecycle: JS
 
 **Test Location:** `tests/data/import_pipeline/`
 **Config Source:** `configs/import_config.json` (offset registry, paths, processing)
-**Total Tests:** 80
-
 ---
 
 ## Fixtures (conftest.py)

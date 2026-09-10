@@ -3444,6 +3444,32 @@
                 "order": 2.6
             }
         },
+        // #505 probe — a dry-run RESTING order against the real venue. Places NOTHING
+        // (validate=true), so it costs no fees, but it uses real credentials and reads a
+        // funded account. Run it TWICE: the second start is the one that meets the refusal
+        // path, because the simulator's reference counter restarts with the process.
+        // --attended because a probe is watched by definition, and the second start meets
+        // cold-start adoption (#355), which refuses to ask when nobody has said they are there.
+        // No --delay: that flag is for the mock tick source, and this one is the real Kraken feed.
+        {
+            "name": "🧪 AutoTrader: Dry-run resting probe (Kraken, places nothing)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/dry_run_resting_probe.json",
+                "--display",
+                "--attended"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "12_release_gate",
+                "order": 2.5
+            }
+        },
         {
             "name": "🧪 AutoTrader: Field Study (Kraken Spot ETHUSD) - real money",
             "type": "debugpy",

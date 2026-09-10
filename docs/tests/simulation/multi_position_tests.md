@@ -14,7 +14,7 @@ This suite proves that the engine's `TradeSimulator`, `PortfolioManager`, and `O
 - Seeds: inbound_latency=12345
 - Max Ticks: 20,500
 
-**Total Tests:** 65 (28 multi-position specific + 37 reused from baseline)
+**Coverage:** multi-position specific cases plus the baseline suite, reused
 
 ---
 
@@ -121,11 +121,11 @@ All fixture logic (run_scenario, extract_process_result, etc.) lives in `fixture
 
 ## Test Files
 
-### test_multi_position.py (28 Tests)
+### test_multi_position.py
 
 Multi-position specific tests organized in 6 groups.
 
-#### TestConcurrentPositions (5 Tests)
+#### TestConcurrentPositions
 
 Validates that multiple positions can be open simultaneously.
 
@@ -141,7 +141,7 @@ Validates that multiple positions can be open simultaneously.
 
 ---
 
-#### TestSelectiveClose (3 Tests)
+#### TestSelectiveClose
 
 Validates that positions close individually, not as a blanket operation.
 
@@ -155,7 +155,7 @@ Validates that positions close individually, not as a blanket operation.
 
 ---
 
-#### TestHedging (3 Tests)
+#### TestHedging
 
 Validates opposite-direction positions on the same symbol simultaneously.
 
@@ -169,7 +169,7 @@ Validates opposite-direction positions on the same symbol simultaneously.
 
 ---
 
-#### TestPositionIsolation (6 Tests)
+#### TestPositionIsolation
 
 Validates per-position P&L correctness and portfolio aggregation.
 
@@ -186,7 +186,7 @@ Validates per-position P&L correctness and portfolio aggregation.
 
 ---
 
-#### TestRecoveryAfterGap (3 Tests)
+#### TestRecoveryAfterGap
 
 Validates clean position opening after all previous positions are closed.
 
@@ -200,7 +200,7 @@ Validates clean position opening after all previous positions are closed.
 
 ---
 
-#### TestMultiPositionMetadata (8 Tests)
+#### TestMultiPositionMetadata
 
 Validates BacktestingMetadata tracking from the decision logic.
 
@@ -219,7 +219,7 @@ Validates BacktestingMetadata tracking from the decision logic.
 
 ---
 
-### Reused Tests from Baseline (37 Tests)
+### Reused Tests from Baseline
 
 These test files are identical to the baseline suite. They validate generic properties that must hold for ANY scenario — single or multi-position.
 

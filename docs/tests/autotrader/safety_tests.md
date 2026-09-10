@@ -21,7 +21,7 @@ tests/autotrader/safety/
 └── test_margin_safety_integration.py    ← Level 2: Margin mock sessions (mt5/EURUSD)
 ```
 
-### Level 1 — Unit Tests (22 tests)
+### Level 1 — Unit Tests
 
 Direct tests against `_check_safety` using a lightweight stub that mirrors the instance attributes the method reads/writes. No executor, no tick source, no bar rendering — pure logic validation.
 
@@ -34,7 +34,7 @@ Direct tests against `_check_safety` using a lightweight stub that mirrors the i
 | `TestDisabled` | Zero thresholds disabled, `enabled=False` skips all checks |
 | `TestDisplayState` | `_safety_current_value` stored, `_safety_drawdown_pct` stored, drawdown floored at 0% (profit case) |
 
-### Level 2 — Integration Tests: Spot (8 tests)
+### Level 2 — Integration Tests: Spot
 
 End-to-end tests that run full AutoTrader mock sessions in **spot mode** with overridden safety configs. Uses `btcusd_mock_safety.json` (kraken_spot/BTCUSD, 15K ticks, display off, INSTANT_FILL mock adapter, `simple_consensus` decision logic). Three session scenarios, each run once and shared across all tests in the module.
 
@@ -44,7 +44,7 @@ End-to-end tests that run full AutoTrader mock sessions in **spot mode** with ov
 | `TestSpotSafetyTriggers` | `min_equity=9999, max_drawdown_pct=0.01` | Circuit breaker triggers (spread cost alone exceeds threshold), session completes (soft stop) |
 | `TestSafetyDisabledNoInterference` | `enabled=False` | Trades execute, no safety warnings, no interference |
 
-### Level 2 — Integration Tests: Margin (10 tests)
+### Level 2 — Integration Tests: Margin
 
 End-to-end tests that run full AutoTrader mock sessions in **margin mode** with overridden safety configs. Uses `margin_safety_test.json` (mt5/EURUSD, 15K ticks, display off, INSTANT_FILL mock adapter, `backtesting_margin_stress` with deterministic `trade_sequence`). Three session scenarios.
 

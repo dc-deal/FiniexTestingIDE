@@ -67,6 +67,12 @@ class BrokerResponse:
         fill_price: Execution price (set when status=FILLED)
         filled_lots: Actual filled volume (set when status=FILLED)
         rejection_reason: Broker's rejection message (set when status=REJECTED)
+        undecided_reason: Why this poll produced no decision — set only by the DRY-RUN
+            simulator, which plays the venue and can run out of the facts it needs (#505).
+            It is never a venue answer: a real broker either knows the order's state or
+            cannot be reached, and the second case is UNRESOLVED. A response carrying this
+            stays PENDING, and the executor is what makes it visible (§35), because the
+            adapter has no logger by design
         timestamp: Broker response timestamp (UTC)
         raw_response: Preserved broker-specific response for debugging
     """
@@ -75,6 +81,7 @@ class BrokerResponse:
     fill_price: Optional[float] = None
     filled_lots: Optional[float] = None
     rejection_reason: Optional[str] = None
+    undecided_reason: Optional[str] = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     raw_response: Optional[Dict[str, Any]] = None
 

@@ -28,8 +28,6 @@ The benchmark test suite validates performance regression against registered sys
 - Total Ticks: 1,496,267
 - Baseline System: AMD Ryzen 7 8845HS (16 cores, 28+ GB RAM)
 
-**Total Tests:** 13
-
 ---
 
 ## Fixtures (conftest.py)
@@ -67,7 +65,7 @@ The benchmark test suite validates performance regression against registered sys
 
 ## Test Files
 
-### test_environment_check.py (2 Tests)
+### test_environment_check.py
 
 Pre-flight validation before benchmark execution. Ensures the environment is suitable for performance measurement.
 
@@ -85,7 +83,7 @@ Pre-flight validation before benchmark execution. Ensures the environment is sui
 
 ---
 
-### test_throughput_regression.py (7 Tests)
+### test_throughput_regression.py
 
 Main benchmark tests comparing measured performance against baseline. Only runs on registered systems.
 
@@ -113,7 +111,7 @@ Main benchmark tests comparing measured performance against baseline. Only runs 
 
 ---
 
-### test_benchmark_certificate.py (13 Tests)
+### test_benchmark_certificate.py
 
 CI-friendly tests that validate benchmark certificates without running the actual benchmark. They read the committed artifacts only, so they cost nothing and run in the daily suite.
 

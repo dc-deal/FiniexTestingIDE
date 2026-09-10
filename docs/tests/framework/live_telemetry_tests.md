@@ -6,8 +6,6 @@ encoder turns a live-telemetry frame (the throttled per-run feed behind the live
 dashboards) into a JSON-safe dict so the same model can later feed a viewer push transport
 (#379/#380). All frames are built from real framework types so a structural drift fails the test.
 
-**Total Tests:** 4
-
 | Test | Description |
 |------|-------------|
 | `test_frame_to_json_is_json_dumpable` | all three frame kinds (sim progress, sim status, live session) encode to a `json.dumps`-able dict |
@@ -34,8 +32,6 @@ merged into the existing feed line:
 
 A healthy transport with a stale signal is a quiet producer. A dead transport with a fresh signal is
 a session about to go blind without noticing.
-
-**Total Tests:** 24
 
 | Group | What it pins |
 |---|---|

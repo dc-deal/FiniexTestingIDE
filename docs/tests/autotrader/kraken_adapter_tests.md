@@ -8,6 +8,7 @@ rarely to be the only guard on how our payloads reach the venue.
 | File | Covers |
 |---|---|
 | `test_nonce.py` | private-call nonce monotonicity and thread safety (#332) |
+| `test_dry_run_fill_rules.py` | what the simulated venue does with an order in dry-run mode (#505) |
 | `test_client_order_id.py` | the key WE choose, on the wire and read back (#473) |
 | `test_conditional_order_payloads.py` | stop / stop-limit price semantics, both directions (#500) |
 
@@ -81,6 +82,28 @@ mistake on our side into a real order rather than an error:
   empty answer would invent a fact. Resolving it needs a WIDER read — a time-ranged history rather
   than a reference lookup — which is why #503's boot resolver carries a `ClosedOrders` fallback.
   Probe: `python/experiments/venue_probes/probe_kraken_txid_retention.py`.
+
+## Dry-run fill rules — `test_dry_run_fill_rules.py`
+
+In dry-run nothing at the venue holds the order, so `DryRunOrderSimulator` plays the venue. It
+used to play it blind: every order flipped to FILLED after two polls and a MARKET order filled at
+`0.0`. With `poll_interval_ms = 5000` that meant every resting order "filled" about ten seconds
+after placement at a price nobody chose — and `dry_run: true` is the shipped default for
+kraken_spot, so a rehearsal reported a stop that had fired at zero.
+
+| Test class | Pins |
+|---|---|
+| `TestAMarketOrderFillsAtARealPrice` | a buy pays the ask, a sell receives the bid, and the price is the one at the poll that FILLS it — not the one at submit, which showed zero round-trip slippage |
+| `TestARestingOrderWaitsForItsPrice` | a limit or stop the market never reaches never fills, twenty polls or not; a triggered stop fills at the MARKET rather than at its trigger; and a stop-limit the market gapped past never fills at all, which is the real risk of one |
+| `TestWhatItCannotDecideItRefuses` | no quote, an order type nothing models, or a reference it never issued → PENDING plus a reason, never an invented price |
+| `TestTheLifecycleShapeIsUnchanged` | the ref format, non-colliding refs, idempotent cancel, in-place amend, and a re-query after the fill still reading FILLED |
+
+Neither the comparison nor the book side is duplicated here: both live in
+`utils/trading_math/price_trigger.py`, the same module the backtest uses, so a rehearsal and a
+backtest cannot disagree about WHEN or AT WHAT an order fills. The refusal's VISIBILITY and the
+quote's journey to the simulator are a different suite —
+`tests/autotrader/live_executor/test_undecided_dry_run_poll.py`, because the executor is what
+logs the one and starts the other.
 
 ## Run
 

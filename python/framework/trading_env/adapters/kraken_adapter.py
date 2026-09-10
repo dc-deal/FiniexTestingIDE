@@ -32,6 +32,7 @@ from python.framework.exceptions.connection_errors import ConnectionAttemptFaile
 from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import (
     BrokerSpecification,
@@ -877,7 +878,14 @@ class KrakenAdapter(AbstractAdapter):
                 self._DRY_RUN_SENTINEL: 'submit',
                 self._DRY_RUN_VALIDATED: validated,
                 'lots': float(payload['volume']),
+                # Kraken's two price fields mean different things per ordertype (see
+                # _build_submit_payload): limit → price is the limit; stop-loss → price is
+                # the TRIGGER; stop-loss-limit → price is the trigger and price2 the limit.
+                # Split here, where the ordertype is known, so the simulator never receives
+                # one field meaning two things.
+                'ordertype': payload.get('ordertype'),
                 'price': float(payload['price']) if 'price' in payload else None,
+                'price2': float(payload['price2']) if 'price2' in payload else None,
             }
         return self._fetch_private('/0/private/AddOrder', payload)
 
@@ -942,7 +950,12 @@ class KrakenAdapter(AbstractAdapter):
             return {
                 self._DRY_RUN_SENTINEL: 'modify',
                 'broker_ref': broker_ref,
-                'new_price': float(payload['limit_price']) if 'limit_price' in payload else None,
+                # BOTH legs. Reading only `limit_price` meant an amended STOP trigger never
+                # reached the simulator, so a rehearsal kept watching the old level (#505).
+                'new_limit_price': (
+                    float(payload['limit_price']) if 'limit_price' in payload else None),
+                'new_trigger_price': (
+                    float(payload['trigger_price']) if 'trigger_price' in payload else None),
             }
         return self._fetch_private('/0/private/AmendOrder', payload)
 
@@ -990,7 +1003,42 @@ class KrakenAdapter(AbstractAdapter):
 
     # --- Parse responses (pure) ---
 
-    def _parse_submit_response(self, raw: Dict[str, Any], timestamp: datetime) -> BrokerResponse:
+    @staticmethod
+    def _dry_run_prices(
+        order_type: OrderType,
+        raw: Dict[str, Any],
+    ) -> Tuple[Optional[float], Optional[float]]:
+        """
+        Split Kraken's two AddOrder price fields into the two the simulator names (#505).
+
+        `price` means the limit of a LIMIT and the TRIGGER of a triggered type; `price2` is
+        the limit of a stop-limit. One field meaning two things is what let an amend cross a
+        STOP_LIMIT's legs, so the meaning is resolved here, where the ordertype is known.
+
+        Args:
+            order_type: The order type being submitted
+            raw: The sentinel-tagged dry-run dict carrying `price` and `price2`
+
+        Returns:
+            (limit_price, trigger_price) — either may be None
+        """
+        price = raw.get('price')
+        price2 = raw.get('price2')
+        if order_type == OrderType.LIMIT:
+            return price, None
+        if order_type == OrderType.STOP:
+            return None, price
+        if order_type == OrderType.STOP_LIMIT:
+            return price2, price
+        return None, None
+
+    def _parse_submit_response(
+        self,
+        raw: Dict[str, Any],
+        timestamp: datetime,
+        direction: Optional[OrderDirection] = None,
+        order_type: Optional[OrderType] = None,
+    ) -> BrokerResponse:
         """
         Parse Kraken AddOrder response into BrokerResponse.
 
@@ -1002,16 +1050,29 @@ class KrakenAdapter(AbstractAdapter):
         Args:
             raw: Raw Kraken result dict
             timestamp: Response receipt timestamp (UTC)
+            direction: DRY-RUN only — which side of the quote a fill takes (#505)
+            order_type: DRY-RUN only — which fill rule the simulated venue applies
 
         Returns:
             BrokerResponse — PENDING in both modes; dry-run uses
             simulator-issued synthetic ref
         """
         if raw.get(self._DRY_RUN_SENTINEL) == 'submit':
+            if direction is None or order_type is None:
+                # Guessing LONG/MARKET here would turn a caller's omission into a plausible
+                # wrong fill, which is the one thing the dry-run rewrite exists to prevent.
+                raise ValueError(
+                    f'❌ Dry-run submit for {raw.get("ordertype")} reached the parse layer '
+                    f'without direction/order_type. The orchestrator supplies both; a caller '
+                    f'invoking _parse_submit_response directly has to as well (#505).')
+            limit_price, trigger_price = self._dry_run_prices(order_type, raw)
             response = self._dry_run_simulator.submit(
                 lots=raw['lots'],
-                price=raw['price'],
                 timestamp=timestamp,
+                direction=direction,
+                order_type=order_type,
+                limit_price=limit_price,
+                trigger_price=trigger_price,
             )
             # The simulator issues the synthetic ref; the VENUE said what it made of the
             # order. Both belong on the response — the ref is ours, the description is
@@ -1032,13 +1093,14 @@ class KrakenAdapter(AbstractAdapter):
         raw: Dict[str, Any],
         broker_ref: str,
         timestamp: datetime,
+        market: Optional[TickData] = None,
     ) -> BrokerResponse:
         """
         Parse Kraken QueryOrders response into BrokerResponse.
 
         Pure w.r.t. broker payload. In dry-run mode delegates to the
-        simulator, which advances the per-order poll counter and may
-        flip the order from PENDING to FILLED. Real-mode parse maps
+        simulator, which advances the per-order poll counter and answers
+        whether the MARKET has reached the order's price (#505). Real-mode parse maps
         Kraken status codes to BrokerOrderStatus and extracts fill
         data when terminal.
 
@@ -1046,12 +1108,14 @@ class KrakenAdapter(AbstractAdapter):
             raw: Raw Kraken result dict
             broker_ref: The txid that was queried
             timestamp: Response receipt timestamp (UTC)
+            market: DRY-RUN only — the quote when this poll was decided; a real Kraken
+                response carries its own state and ignores it
 
         Returns:
             BrokerResponse with current status
         """
         if raw.get(self._DRY_RUN_SENTINEL) == 'query':
-            return self._dry_run_simulator.query(broker_ref, timestamp)
+            return self._dry_run_simulator.query(broker_ref, timestamp, market=market)
 
         # An answer that does not mention the txid is not a state, and it used to become
         # one: `raw.get(broker_ref, {})` then `.get('status', 'pending')` turned "Kraken has
@@ -1149,8 +1213,9 @@ class KrakenAdapter(AbstractAdapter):
         if raw.get(self._DRY_RUN_SENTINEL) == 'modify':
             return self._dry_run_simulator.modify(
                 broker_ref=raw['broker_ref'],
-                new_price=raw['new_price'],
                 timestamp=timestamp,
+                new_limit_price=raw['new_limit_price'],
+                new_trigger_price=raw['new_trigger_price'],
             )
 
         return BrokerResponse(

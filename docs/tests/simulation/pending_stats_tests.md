@@ -11,8 +11,6 @@ The pending stats test suite validates the pending order statistics system — l
 - Seeds: inbound_latency=12345
 - Max Ticks: 5,000
 
-**Total Tests:** 12
-
 **Location:** `tests/simulation/pending_stats/`
 
 ---
@@ -48,7 +46,7 @@ tests/
 
 ## Test Classes
 
-### TestPendingStatsBaseline (6 tests)
+### TestPendingStatsBaseline
 Validates that pending stats are correctly populated after scenario execution.
 
 | Test | Validates |
@@ -60,14 +58,14 @@ Validates that pending stats are correctly populated after scenario execution.
 | `test_latency_stats_populated` | avg/min/max latency ticks are set |
 | `test_latency_avg_in_range` | avg is between min and max |
 
-### TestSyntheticCloseNotCounted (1 test)
+### TestSyntheticCloseNotCounted
 Validates that end-of-scenario position closes via synthetic orders do NOT produce false force-closed counts.
 
 | Test | Validates |
 |------|-----------|
 | `test_filled_count_matches_trade_lifecycle` | filled count >= completed trades (no inflated force-closed) |
 
-### TestForceClosedDetection (5 tests)
+### TestForceClosedDetection
 Validates that genuine stuck-in-pipeline orders are correctly detected as force-closed anomalies.
 
 | Test | Validates |

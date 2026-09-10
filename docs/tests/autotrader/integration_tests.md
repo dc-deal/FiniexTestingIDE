@@ -6,7 +6,7 @@ End-to-end validation of the AutoTrader mock pipeline and unit testing of AutoTr
 
 ## Test Files
 
-### test_autotrader_mock_session.py (8 Tests)
+### test_autotrader_mock_session.py
 
 Full pipeline integration: runs a complete session with deterministic parquet replay data and asserts on the `AutoTraderResult`. Plus profile-loader parse guards (no session run).
 
@@ -18,7 +18,7 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 | `test_tick_source_fields_fully_parsed` | Every `tick_source` profile key reaches the config (no silently dropped keys, incl. the #436 freeze-lever fields) |
 | `test_staleness_contract_fields_parsed` | #436 knobs: `execution.market_data_stale_after_s` + `order_guard.block_stale_market_data` — per-profile override AND app_config JIC defaults |
 
-`TestSessionExitCode` (5 tests) covers the outcome→exit-code projection the CLI calls
+`TestSessionExitCode` covers the outcome→exit-code projection the CLI calls
 (`AutoTraderResult.get_outcome()` / `get_exit_code()`, #372): a framework emergency → 2, a normal
 shutdown → 0, an **operator** Ctrl+C → 0, a #348 safety escalation *without* an `emergency_reason`
 → still 2, and a normal session that logged errors → 3. The last one closes the §35 asymmetry and
@@ -33,7 +33,7 @@ layer fire and still report success.
 
 **Runtime:** ~6 seconds total (session shared across both tests via `scope='module'`).
 
-### test_autotrader_sentiment_feed.py (7 Tests)
+### test_autotrader_sentiment_feed.py
 
 End-to-end validation of the `scenario_settings.data_sentiment_type` mock feed (#438): index
 resolution through the shared `MountPreparer`, provider injection into SIGNAL workers, decision
@@ -51,7 +51,7 @@ parquets (2026-04-27 / 2026-05-04) and the imported `crypto_sentiment` signal ar
 
 **Runtime:** ~16 seconds total (both sessions shared via `scope='module'`).
 
-### test_market_data_outage.py (5 Tests)
+### test_market_data_outage.py
 
 The #436 combined outage session (`market_data_outage_test.json`): the mock feeder freezes
 mid-replay (`freeze_after_ticks: 1500`, `freeze_duration_s: 2.0`, threshold 1 s) while the
@@ -69,7 +69,7 @@ recovered", both staleness contracts in ONE fast session driven by the
 
 **Runtime:** ~10 seconds (one shared session; includes the 2 s deliberate freeze).
 
-### test_autotrader_trade_lifecycle.py (15 Tests)
+### test_autotrader_trade_lifecycle.py
 
 Trade lifecycle validation through the AutoTrader mock pipeline. Uses `mock_session_test.json` (simple_consensus, parquet replay) which produces real fill prices — unlike dry-run live sessions where entry price is 0.
 
@@ -87,7 +87,7 @@ One session is shared across all test classes (`scope='module'`) to avoid runnin
 
 **Runtime:** ~6 seconds total (session shared across 14 tests via `scope='module'`, LogFiles test runs own session).
 
-### test_autotrader_trade_scenarios.py (12 Tests)
+### test_autotrader_trade_scenarios.py
 
 Targeted scenario tests for specific AutoTrader pipeline behaviors: SL/TP level propagation, duplicate signal suppression, and resilience under minimal warmup data.
 
@@ -108,7 +108,7 @@ Each class runs an independent session from its own profile. Sessions are module
 
 **Runtime:** ~6 seconds total across all 4 sessions.
 
-### test_partial_close_live_pipeline.py (15 Tests)
+### test_partial_close_live_pipeline.py
 
 Runs the `partial_close_lifecycle.json` profile (scripted `BacktestingMultiPosition` + mock adapter) end-to-end and verifies the multi-fill visibility paradigm (#330) on the live-pipeline side. Mirrors what the sim partial_close suite validates for the sim path.
 
@@ -123,7 +123,7 @@ Runs the `partial_close_lifecycle.json` profile (scripted `BacktestingMultiPosit
 
 **Runtime:** ~2 seconds (single session via `scope='module'`).
 
-### test_live_clipping_monitor.py (22 Tests)
+### test_live_clipping_monitor.py
 
 Unit tests for `LiveClippingMonitor` — no external dependencies, no tick data, no time dependency (mocked where needed).
 

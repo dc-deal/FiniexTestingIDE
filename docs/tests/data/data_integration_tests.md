@@ -13,8 +13,6 @@ The data integration test suite validates the data pipeline integrity from tick 
 | crypto | > 0 (real trade volume in base currency) | > 0 |
 | forex | == 0 (CFD has no real volume) | > 0 |
 
-**Total Tests:** 9
-
 ---
 
 ## Fixtures (conftest.py)
@@ -44,11 +42,11 @@ The data integration test suite validates the data pipeline integrity from tick 
 
 ## Test Files
 
-### test_volume_integrity.py (9 Tests)
+### test_volume_integrity.py
 
 Validates volume data consistency across the data pipeline for all markets.
 
-#### TestVolumeSchema (2 Tests)
+#### TestVolumeSchema
 
 Schema validation ensuring required columns exist in all bar files.
 
@@ -59,7 +57,7 @@ Schema validation ensuring required columns exist in all bar files.
 
 ---
 
-#### TestCryptoVolume (2 Tests)
+#### TestCryptoVolume
 
 Validates crypto markets have real trade volume data.
 
@@ -72,7 +70,7 @@ Validates crypto markets have real trade volume data.
 
 ---
 
-#### TestForexVolume (1 Test)
+#### TestForexVolume
 
 Validates forex CFD markets correctly report zero volume.
 
@@ -84,7 +82,7 @@ Validates forex CFD markets correctly report zero volume.
 
 ---
 
-#### TestTickCount (1 Test)
+#### TestTickCount
 
 Validates tick count is positive for all markets regardless of type.
 
@@ -94,7 +92,7 @@ Validates tick count is positive for all markets regardless of type.
 
 ---
 
-#### TestIndexBarConsistency (2 Tests)
+#### TestIndexBarConsistency
 
 Validates that index statistics match actual bar data in parquet files.
 
@@ -105,7 +103,7 @@ Validates that index statistics match actual bar data in parquet files.
 
 ---
 
-#### TestAllTimeframes (1 Test)
+#### TestAllTimeframes
 
 Cross-timeframe consistency validation.
 

@@ -65,7 +65,7 @@ of it:
 
 - The benchmark recorded only the declared version, so an artifact could name a release taken
   from a different tree.
-- The live-adapter certificate re-read `configs/broker_settings/kraken_spot.json` at write time
+- The live-adapter certificate re-read the broker's configured `dry_run` at write time
   and published `dry_run: true`, while its two decisive tests set `dry_run = False` on their own
   adapter and placed real orders. The artifact understated exactly what it was taken to prove.
 

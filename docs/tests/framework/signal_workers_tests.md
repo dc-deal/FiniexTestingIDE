@@ -18,8 +18,6 @@ fixtures via direct provider injection — no batch, no tick loop.
 - The live transport: the SSE stream (#468) with its frame decoder, boot bridge and
   producer-registry reader
 
-**Total Tests:** 301
-
 ---
 
 ## Test Files

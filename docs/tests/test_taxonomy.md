@@ -74,7 +74,7 @@ tests/
 │
 ├── autotrader/
 │   ├── integration/       integration — mock session, trade lifecycle, trade scenarios (full pipeline)
-│   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query/polling_cadence/drift_audit/decision_event_dispatcher (#319, #321, #318, #326, #320, #327, #348)
+│   ├── live_executor/     unit — LiveTradeExecutor, LiveRequestProcessor, async submit/modify/cancel/trades_query/polling_cadence/drift_audit/decision_event_dispatcher, undecided dry-run poll (#319, #321, #318, #326, #320, #327, #348, #505)
 │   ├── loop_cadence/      unit — clock injection + heartbeat re-poll + decision ghost-pass cadence (#360) + market-data staleness contract (#436) + disturbance episodes (#451)
 │   ├── order_guard/       unit — OrderGuard scenarios and unit cases
 │   ├── safety/            unit — circuit breaker (margin + spot)
@@ -86,7 +86,7 @@ tests/
 │   ├── session_validation/ unit — SessionPostRunValidator: the live Tier-1 channel, shared stress/slow-component checks
 │   ├── api_monitor/       unit — broker REST latency/error telemetry (#351)
 │   ├── field_study_machine/  unit — Field Study phase state machine (#332)
-│   └── kraken_adapter/    unit — Kraken private-call nonce monotonicity + lock (#332), client-order-id wire key + read-back (#473)
+│   └── kraken_adapter/    unit — Kraken private-call nonce monotonicity + lock (#332), client-order-id wire key + read-back (#473), dry-run fill rules (#505)
 │
 ├── parity/                parity — simulation vs. AutoTrader identical output (#294, #318, #326, #360 sim ghost-pass)
 │
@@ -102,6 +102,7 @@ tests/
 │   ├── signal_coverage/   unit — SignalCoverageReport gap detection + scenario signal-window validation
 │   ├── data_coverage/     unit — data format version spans (which collector schema produced which archive window, #453)
 │   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)
+│   ├── test_price_trigger.py  unit — the shared order-vs-quote predicate: limit/stop reached, book side (§45, #505)
 │   ├── market_compatibility/ unit — market activity metric, validator
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
 │   ├── user_namespace/    unit — USER worker/decision discovery

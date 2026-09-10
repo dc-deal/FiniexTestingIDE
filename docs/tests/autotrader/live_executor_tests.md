@@ -10,7 +10,6 @@ The live executor test suite validates the LiveTradeExecutor, LiveRequestProcess
 - Initial Balance: 10,000 USD
 - Execution Modes: instant_fill, delayed_fill, reject_all, timeout
 
-**Total Tests:** see the runner output — the per-file sections below are the map.
 (An absolute number here drifted from the sum of the sections and was stale by several
 files; the runner counts, this document explains.)
 
@@ -801,3 +800,27 @@ contract here, never a particular type, and the tests say so in their own docstr
 The payload MAPPING itself is asserted in [kraken_adapter_tests.md](kraken_adapter_tests.md) —
 offline, in the daily suite, because `tests/live_adapters/` is a release gate and runs too rarely
 to be the only guard on which Kraken field carries a trigger.
+
+### test_undecided_dry_run_poll.py
+
+The dry-run simulator plays the venue, and when it runs out of the facts it needs it REFUSES
+rather than inventing a fill (#505, and the rules themselves are in
+[kraken_adapter_tests.md](kraken_adapter_tests.md)). That refusal cannot be logged where it
+happens — the adapter has no logger, by design, because it is a transport — so it travels on the
+response as `undecided_reason` and the executor is what makes it visible.
+
+| Test class | Covers |
+|------|-------------|
+| `TestTheRefusalReachesTheOperator` | it reaches the SESSION channel as an error, once per order however often the poll repeats, and the order is neither booked nor dropped; a legitimately waiting PENDING says nothing |
+| `TestARestingOrderRefusalIsReportedToo` | the resting poll path reports it as well, because a resting order is what #503 will rehearse |
+| `TestTheQuoteActuallyReachesTheSimulatedVenue` | all THREE hand-offs of the quote — the executor stamping its tick onto the poll job, the worker forwarding the job's quote to the parse layer, and the parse layer handing it to the simulator |
+
+The third class exists because of a measurement, not a hunch: with only the two ends covered,
+dropping `market=job.market` in the worker dispatcher left the entire suite green while every
+dry-run resting order refused for the rest of the session. Each hand-off is now pinned
+separately, and each was verified by removing it and watching exactly one test go red.
+
+**Why the refusal is an ERROR and not a warning:** a rehearsal that exercised nothing looks
+exactly like one that passed. Grading the session `FINISHED_WITH_ERRORS` (§35) is the intended
+consequence — the operator is meant to notice that the run proved less than it appears to.
+

@@ -10,8 +10,6 @@ The worker test suite validates the parameter validation system, schema integrit
 - 7 Workers: RsiWorker, BollingerWorker, MaTrendWorker, MacdWorker, ObvWorker, HeavyRsiWorker, BacktestingSampleWorker
 - 3 Decision Logics: SimpleConsensus, AggressiveTrend, BacktestingDeterministic
 
-**Total Tests:** 269
-
 ---
 
 ## Test Files
@@ -20,7 +18,7 @@ The worker test suite validates the parameter validation system, schema integrit
 
 Validates that every component's `get_parameter_schema()` returns well-formed, internally consistent `InputParamDef` declarations and that every worker's `get_output_schema()` returns valid `OutputParamDef` declarations. All schema tests are parametrized across all 10 components.
 
-#### TestSchemaStructure (30 Tests)
+#### TestSchemaStructure
 
 | Test | Parametrized | Description |
 |------|-------------|-------------|
@@ -28,7 +26,7 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 | `test_schema_values_are_parameter_defs` | ×10 | All values are `InputParamDef` instances |
 | `test_schema_keys_are_strings` | ×10 | All keys are strings |
 
-#### TestInputParamDefValidity (60 Tests)
+#### TestInputParamDefValidity
 
 | Test | Parametrized | Description |
 |------|-------------|-------------|
@@ -39,7 +37,7 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 | `test_choices_contain_valid_values` | ×10 | All choices match declared `param_type` |
 | `test_defaults_in_choices` | ×10 | Default value is in `choices` list (when choices defined) |
 
-#### TestWorkerSpecificSchemas (7 Tests)
+#### TestWorkerSpecificSchemas
 
 | Test | Description |
 |------|-------------|
@@ -51,7 +49,7 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 | `test_macd_has_three_required_periods` | MACD declares `fast_period`, `slow_period`, `signal_period` as REQUIRED |
 | `test_heavy_rsi_has_artificial_load` | HeavyRSI declares `artificial_load_ms` with default 0 |
 
-#### TestDecisionLogicSpecificSchemas (4 Tests)
+#### TestDecisionLogicSpecificSchemas
 
 | Test | Description |
 |------|-------------|
@@ -60,7 +58,7 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 | `test_backtesting_deterministic_has_trade_sequence` | BacktestingDeterministic has `trade_sequence` parameter |
 | `test_all_logics_have_lot_size` | All non-backtesting decision logics declare `lot_size` |
 
-#### TestOutputSchemaStructure (35 Tests)
+#### TestOutputSchemaStructure
 
 | Test | Parametrized | Description |
 |------|-------------|-------------|
@@ -70,7 +68,7 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 | `test_output_category_is_valid` | ×7 | Output category is `'SIGNAL'` or `'INFO'` |
 | `test_output_min_less_than_max` | ×7 | `min_val < max_val` when both are set |
 
-#### TestWorkerSpecificOutputSchemas (5 Tests)
+#### TestWorkerSpecificOutputSchemas
 
 | Test | Description |
 |------|-------------|
@@ -82,11 +80,11 @@ Validates that every component's `get_parameter_schema()` returns well-formed, i
 
 ---
 
-### test_parameter_validation.py (26 Tests)
+### test_parameter_validation.py
 
 Tests the `validate_parameters()` function that enforces schema constraints at runtime.
 
-#### TestValidParameterConfigs (6 Tests)
+#### TestValidParameterConfigs
 
 | Test | Description |
 |------|-------------|
@@ -97,14 +95,14 @@ Tests the `validate_parameters()` function that enforces schema constraints at r
 | `test_valid_choice` | Value matching a declared choice passes |
 | `test_empty_schema_always_passes` | Components with empty schema accept any config |
 
-#### TestMissingRequired (2 Tests)
+#### TestMissingRequired
 
 | Test | Description |
 |------|-------------|
 | `test_missing_required_raises` | Missing REQUIRED parameter raises `ParameterValidationError` in strict mode |
 | `test_missing_required_raises_even_non_strict` | Missing REQUIRED parameter raises even in non-strict mode (always fatal) |
 
-#### TestTypeErrors (6 Tests)
+#### TestTypeErrors
 
 | Test | Description |
 |------|-------------|
@@ -115,7 +113,7 @@ Tests the `validate_parameters()` function that enforces schema constraints at r
 | `test_int_for_bool_raises` | Integer where bool expected raises (no truthy coercion) |
 | `test_string_for_bool_raises` | String where bool expected raises |
 
-#### TestBoundaryStrict (5 Tests)
+#### TestBoundaryStrict
 
 | Test | Description |
 |------|-------------|
@@ -125,7 +123,7 @@ Tests the `validate_parameters()` function that enforces schema constraints at r
 | `test_float_above_max_raises` | Float above maximum raises |
 | `test_the_bollinger_bug` | Regression test: `deviation=0.02` (below min 0.5) is caught |
 
-#### TestBoundaryNonStrict (3 Tests)
+#### TestBoundaryNonStrict
 
 | Test | Description |
 |------|-------------|
@@ -133,14 +131,14 @@ Tests the `validate_parameters()` function that enforces schema constraints at r
 | `test_above_max_warns` | Value above `max_val` warns in non-strict mode |
 | `test_multiple_violations_all_warned` | Multiple boundary violations each produce separate warnings |
 
-#### TestChoicesValidation (2 Tests)
+#### TestChoicesValidation
 
 | Test | Description |
 |------|-------------|
 | `test_invalid_choice_strict_raises` | Value not in `choices` raises in strict mode |
 | `test_invalid_choice_non_strict_warns` | Invalid choice warns in non-strict mode |
 
-#### TestContextName (2 Tests)
+#### TestContextName
 
 | Test | Description |
 |------|-------------|
@@ -149,11 +147,11 @@ Tests the `validate_parameters()` function that enforces schema constraints at r
 
 ---
 
-### test_worker_defaults.py (24 Tests)
+### test_worker_defaults.py
 
 Tests the `apply_defaults()` function that fills missing optional parameters from schema defaults.
 
-#### TestApplyDefaultsCore (7 Tests)
+#### TestApplyDefaultsCore
 
 | Test | Description |
 |------|-------------|
@@ -165,7 +163,7 @@ Tests the `apply_defaults()` function that fills missing optional parameters fro
 | `test_empty_config_gets_all_defaults` | Empty config receives all optional defaults |
 | `test_empty_schema_returns_copy` | Components with empty schema return input copy |
 
-#### TestRealWorkerDefaults (17 Tests)
+#### TestRealWorkerDefaults
 
 | Test | Parametrized | Description |
 |------|-------------|-------------|
@@ -181,11 +179,11 @@ Tests the `apply_defaults()` function that fills missing optional parameters fro
 
 ---
 
-### test_factory_integration.py (21 Tests)
+### test_factory_integration.py
 
 Tests end-to-end factory workflows: config → validation → instantiation for both WorkerFactory and DecisionLogicFactory.
 
-#### TestWorkerFactoryValidConfigs (6 Tests)
+#### TestWorkerFactoryValidConfigs
 
 | Test | Description |
 |------|-------------|
@@ -196,14 +194,14 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 | `test_create_heavy_rsi_worker` | HeavyRSI worker created with artificial load parameter |
 | `test_create_obv_worker` | OBV worker created with valid periods config |
 
-#### TestWorkerFactoryMissingRequired (2 Tests)
+#### TestWorkerFactoryMissingRequired
 
 | Test | Description |
 |------|-------------|
 | `test_macd_missing_fast_period` | Factory rejects MACD config missing `fast_period` |
 | `test_macd_missing_all_required` | Factory rejects MACD config missing all required params |
 
-#### TestWorkerFactoryBoundaryStrict (4 Tests)
+#### TestWorkerFactoryBoundaryStrict
 
 | Test | Description |
 |------|-------------|
@@ -212,13 +210,13 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 | `test_macd_fast_period_zero` | Factory rejects `fast_period=0` (below min 1) |
 | `test_heavy_rsi_negative_load` | Factory rejects `artificial_load_ms=-5` (below min 0) |
 
-#### TestWorkerFactoryBoundaryNonStrict (1 Test)
+#### TestWorkerFactoryBoundaryNonStrict
 
 | Test | Description |
 |------|-------------|
 | `test_bollinger_deviation_too_low_warns` | Non-strict mode warns but creates worker with out-of-range deviation |
 
-#### TestDecisionLogicFactoryValidConfigs (4 Tests)
+#### TestDecisionLogicFactoryValidConfigs
 
 | Test | Description |
 |------|-------------|
@@ -227,7 +225,7 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 | `test_create_simple_consensus_defaults_only` | SimpleConsensus created with empty config (all defaults) |
 | `test_create_backtesting_deterministic` | BacktestingDeterministic created with trade sequence |
 
-#### TestDecisionLogicFactoryBoundaryStrict (3 Tests)
+#### TestDecisionLogicFactoryBoundaryStrict
 
 | Test | Description |
 |------|-------------|
@@ -235,7 +233,7 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 | `test_consensus_lot_size_zero` | Factory rejects `lot_size=0` (below min 0.01) |
 | `test_consensus_min_confidence_above_one` | Factory rejects `min_confidence=1.5` (above max 1.0) |
 
-#### TestDecisionLogicFactoryBoundaryNonStrict (1 Test)
+#### TestDecisionLogicFactoryBoundaryNonStrict
 
 | Test | Description |
 |------|-------------|
@@ -243,15 +241,15 @@ Tests end-to-end factory workflows: config → validation → instantiation for 
 
 ---
 
-### worker_computation_tests/ (57 Tests)
+### worker_computation_tests/
 
 Unit tests for indicator computation logic. Each test creates a worker with known input data and validates mathematical correctness.
 
 ---
 
-#### test_rsi_computation.py (8 Tests)
+#### test_rsi_computation.py
 
-##### TestRSIBasicComputation (4 Tests)
+##### TestRSIBasicComputation
 
 | Test | Description |
 |------|-------------|
@@ -260,14 +258,14 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_rsi_all_losses` | Monotonically falling prices produce RSI = 0 |
 | `test_rsi_equal_gains_losses` | Equal gains and losses produce RSI ≈ 50 |
 
-##### TestRSIOutputFields (2 Tests)
+##### TestRSIOutputFields
 
 | Test | Description |
 |------|-------------|
 | `test_rsi_output_avg_gain_loss` | `avg_gain` and `avg_loss` via `get_signal()` match hand calculation |
 | `test_rsi_output_bars_used` | `bars_used` output matches number of close prices used |
 
-##### TestRSIBoundaryAndRange (2 Tests)
+##### TestRSIBoundaryAndRange
 
 | Test | Description |
 |------|-------------|
@@ -276,9 +274,9 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 
 ---
 
-#### test_bollinger_computation.py (19 Tests)
+#### test_bollinger_computation.py
 
-##### TestBollingerBasicComputation (3 Tests)
+##### TestBollingerBasicComputation
 
 | Test | Description |
 |------|-------------|
@@ -286,7 +284,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_bollinger_bands_custom_deviation` | Bands computed with custom deviation value |
 | `test_bollinger_output_keys` | Result outputs dict contains `upper`, `middle`, `lower`, `position`, `position_raw`, `slope`, `width_pct`, `std_dev`, `bars_used` |
 
-##### TestBollingerPosition (3 Tests)
+##### TestBollingerPosition
 
 | Test | Description |
 |------|-------------|
@@ -294,20 +292,20 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_position_above_upper_clamped` | Price above upper band produces position clamped to 1.0 |
 | `test_position_below_lower_clamped` | Price below lower band produces position clamped to 0.0 |
 
-##### TestBollingerOutputFields (1 Test)
+##### TestBollingerOutputFields
 
 | Test | Description |
 |------|-------------|
 | `test_bollinger_std_dev_output` | `std_dev` via `get_signal()` matches hand-calculated population std dev |
 
-##### TestBollingerRegression (2 Tests)
+##### TestBollingerRegression
 
 | Test | Description |
 |------|-------------|
 | `test_band_width_sanity_check` | Band width matches expected value, regression guard against deviation bug |
 | `test_constant_prices_zero_std` | Constant prices produce zero-width bands (upper = lower = middle) |
 
-##### TestBollingerPositionRaw (3 Tests)
+##### TestBollingerPositionRaw
 
 | Test | Description |
 |------|-------------|
@@ -315,7 +313,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_position_raw_below_lower_unclamped` | Price below lower band → `position_raw` < 0.0 while `position` clamps to 0.0 |
 | `test_position_raw_equals_position_inside_bands` | Inside the bands `position_raw` and `position` coincide |
 
-##### TestBollingerSlopeAndWidth (5 Tests)
+##### TestBollingerSlopeAndWidth
 
 | Test | Description |
 |------|-------------|
@@ -325,7 +323,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_width_pct_matches_band_width_over_middle` | `width_pct` = (upper − lower) / middle |
 | `test_width_pct_zero_when_flat` | Constant closes → `width_pct` = 0.0 |
 
-##### TestBollingerMaType (2 Tests)
+##### TestBollingerMaType
 
 | Test | Description |
 |------|-------------|
@@ -334,9 +332,9 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 
 ---
 
-#### test_ma_trend_computation.py (9 Tests)
+#### test_ma_trend_computation.py
 
-##### TestMaTrendDirection (4 Tests)
+##### TestMaTrendDirection
 
 | Test | Description |
 |------|-------------|
@@ -345,7 +343,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_neutral_on_flat_closes` | Flat closes → `direction` = neutral, slope 0.0 |
 | `test_neutral_band_suppresses_direction` | A wide `neutral_band` classifies a real slope as NEUTRAL |
 
-##### TestMaTrendSlopeAndVolatility (3 Tests)
+##### TestMaTrendSlopeAndVolatility
 
 | Test | Description |
 |------|-------------|
@@ -353,7 +351,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_volatility_pct_matches_std_over_ma` | `volatility_pct` = std_window / ma_value |
 | `test_volatility_pct_zero_when_flat` | Constant closes → `volatility_pct` = 0.0 |
 
-##### TestMaTrendMaType (2 Tests)
+##### TestMaTrendMaType
 
 | Test | Description |
 |------|-------------|
@@ -362,9 +360,9 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 
 ---
 
-#### test_macd_computation.py (11 Tests)
+#### test_macd_computation.py
 
-##### TestEMACalculation (4 Tests)
+##### TestEMACalculation
 
 | Test | Description |
 |------|-------------|
@@ -373,7 +371,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_ema_iterative_calculation` | EMA iteratively matches manual calculation |
 | `test_ema_period_5` | EMA with period 5 matches known reference values |
 
-##### TestMACDStructure (4 Tests)
+##### TestMACDStructure
 
 | Test | Description |
 |------|-------------|
@@ -382,7 +380,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_macd_values_are_float` | All MACD output values are Python floats |
 | `test_macd_bars_used_output` | `bars_used` output matches input bar count |
 
-##### TestMACDDirection (3 Tests)
+##### TestMACDDirection
 
 | Test | Description |
 |------|-------------|
@@ -392,9 +390,9 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 
 ---
 
-#### test_obv_computation.py (10 Tests)
+#### test_obv_computation.py
 
-##### TestOBVBasicComputation (4 Tests)
+##### TestOBVBasicComputation
 
 | Test | Description |
 |------|-------------|
@@ -403,7 +401,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_obv_all_down` | All falling prices accumulate negative volume |
 | `test_obv_flat_price` | Unchanged prices do not add volume |
 
-##### TestOBVEdgeCases (3 Tests)
+##### TestOBVEdgeCases
 
 | Test | Description |
 |------|-------------|
@@ -411,7 +409,7 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 | `test_obv_zero_volume` | Zero volume bars produce OBV = 0 |
 | `test_obv_exactly_two_bars_up` | Minimum case: 2 bars with rising price |
 
-##### TestOBVOutputFields (3 Tests)
+##### TestOBVOutputFields
 
 | Test | Description |
 |------|-------------|

@@ -1,0 +1,51 @@
+{
+  "_comment": "#505 probe — does a dry-run RESTING order behave, and what does a refusal do? It places NOTHING: dry_run routes AddOrder through validate=true, so Kraken validates the order and the DryRunOrderSimulator plays the lifecycle locally. DRY RUN IS FORCED HERE, not inherited: the broker default for kraken_spot may be live, and a profile may only TIGHTEN the posture (#332) — true wins over a live broker, while false against a dry-run broker is refused at startup. That one line is what makes this probe unable to place an order, and it is stated in the file rather than assumed from the environment. RUN IT TWICE: the second start is the interesting one, because the simulator mints its references from a counter that restarts with the process, so a re-adopted DRYRUN- reference is one it never issued — and that is the refusal path #503 will meet.",
+  "dry_run": true,
+  "name": "dry_run_resting_probe",
+  "symbol": "ETHUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "live",
+  "strategy_config": {
+    "decision_logic_type": "CORE/trend_channel_reference",
+    "worker_instances": {
+      "h1_trend": "CORE/ma_trend",
+      "m15_channel": "CORE/bollinger"
+    },
+    "workers": {
+      "h1_trend": {
+        "periods": {
+          "H1": 50
+        }
+      },
+      "m15_channel": {
+        "periods": {
+          "M15": 20
+        },
+        "deviation": 2
+      }
+    },
+    "decision_logic_config": {
+      "_comment": "limit_pullback so the order RESTS instead of filling at once — that is the path under test. entry_band_pos deliberately wide so an entry arms within a short session.",
+      "entry_mode": "limit_pullback",
+      "entry_band_pos": 0.45,
+      "sl_mult": 1.0,
+      "tp_mult": 2.0,
+      "trail_mult": 1.0,
+      "partial_rr": 1.0,
+      "partial_fraction": 0.5,
+      "max_positions": 1,
+      "lot_size": 0.002,
+      "min_free_margin": 0.001
+    }
+  },
+  "tick_source": {
+    "type": "kraken"
+  },
+  "safety": {
+    "_comment": "On, and tight: this touches a funded account. Nothing can be placed in dry-run, but a probe that would misbehave if dry_run were ever flipped is not a probe.",
+    "enabled": true,
+    "min_balance": 5.0,
+    "min_equity": 5.0,
+    "max_drawdown_pct": 5.0
+  }
+}

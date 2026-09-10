@@ -16,7 +16,7 @@ Pure dry-ground tests — synthetic tick data, no file I/O, no subprocesses.
 
 ## Test Classes
 
-### TestVirtualClockFiltering (6 tests)
+### TestVirtualClockFiltering
 Core algorithm correctness with known tick sequences.
 
 | Test | What |
@@ -28,7 +28,7 @@ Core algorithm correctness with known tick sequences.
 | `test_budget_preserves_ranges` | Ranges dict preserved through flagging |
 | `test_counts_reflect_total_ticks` | Counts dict = total tick count, algo count matches `stats.ticks_kept` |
 
-### TestDeterminism (2 tests)
+### TestDeterminism
 Reproducibility guarantees.
 
 | Test | What |
@@ -36,7 +36,7 @@ Reproducibility guarantees.
 | `test_same_input_same_output` | Identical input + budget = identical stats |
 | `test_different_budgets_different_results` | Different budgets produce different clipping |
 
-### TestEdgeCases (5 tests)
+### TestEdgeCases
 Boundary conditions and data quality guards.
 
 | Test | What |
@@ -47,7 +47,7 @@ Boundary conditions and data quality guards.
 | `test_sub_ms_budget_no_clipping` | Budget < 1.0ms with integer-ms data → all `is_clipped=False` |
 | `test_symbol_not_in_ticks` | Unknown symbol → empty stats |
 
-### TestClippingStats (4 tests)
+### TestClippingStats
 `ClippingStats` dataclass correctness.
 
 | Test | What |
@@ -57,7 +57,7 @@ Boundary conditions and data quality guards.
 | `test_zero_clipping_rate_when_none_clipped` | 0 clipped → rate 0.0 |
 | `test_budget_recorded_in_stats` | Budget value preserved in stats |
 
-### TestFlagBasedSplit (5 tests)
+### TestFlagBasedSplit
 `is_clipped` flag integrity and tick preservation.
 
 | Test | What |

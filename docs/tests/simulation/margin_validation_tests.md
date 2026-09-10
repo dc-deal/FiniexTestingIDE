@@ -17,8 +17,6 @@ The margin validation test suite validates margin exhaustion, recovery, order re
 - Account Currency: JPY
 - Seeds: inbound_latency=42424
 
-**Total Tests:** ~42
-
 **Location:** `tests/simulation/margin_validation/`
 
 ---
@@ -126,7 +124,7 @@ tests/
 
 ## Test Files
 
-### test_margin_validation.py (11 Tests)
+### test_margin_validation.py
 
 Tests margin exhaustion, recovery after closing a position, and execution statistics accuracy.
 
@@ -158,7 +156,7 @@ Tests margin exhaustion, recovery after closing a position, and execution statis
 
 ---
 
-### test_order_rejection.py (9 Tests)
+### test_order_rejection.py
 
 Tests lot size validation, position close errors, and rejection tracking.
 
@@ -188,7 +186,7 @@ Tests lot size validation, position close errors, and rejection tracking.
 
 ---
 
-### test_zero_balance.py (6 Tests)
+### test_zero_balance.py
 
 Tests that all orders are rejected when starting with zero balance. Uses a separate scenario config (`margin_validation_zero_balance_test.json`) with `initial_balance=0`. Module-scoped fixtures are defined within the test file itself (not in conftest.py).
 
@@ -217,11 +215,11 @@ Tick  200: Open SHORT 0.01 lot → REJECTED  insufficient margin (balance=0)
 
 ---
 
-### test_margin_validation_pnl_calculation.py (16 Tests) — Shared
+### test_margin_validation_pnl_calculation.py — Shared
 
 Imported from `tests/shared/shared_pnl.py`. Validates P&L calculations for successfully executed trades only.
 
-#### TestPnLCalculation (13 Tests)
+#### TestPnLCalculation
 
 | Test | Description |
 |------|-------------|
@@ -239,7 +237,7 @@ Imported from `tests/shared/shared_pnl.py`. Validates P&L calculations for succe
 | `test_valid_prices` | Entry/exit prices positive |
 | `test_valid_tick_value` | Tick value positive |
 
-#### TestTradeRecordCompleteness (3 Tests)
+#### TestTradeRecordCompleteness
 
 | Test | Description |
 |------|-------------|
@@ -249,7 +247,7 @@ Imported from `tests/shared/shared_pnl.py`. Validates P&L calculations for succe
 
 ---
 
-### test_margin_validation_tick_count.py (4 Tests) — Shared
+### test_margin_validation_tick_count.py — Shared
 
 Imported from `tests/shared/shared_tick_count.py`.
 

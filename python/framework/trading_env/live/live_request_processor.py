@@ -66,6 +66,7 @@ from python.framework.types.live_types.live_request_types import (
     TradesQueryJob,
     TradesQueryResponse,
 )
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOperation,
@@ -222,6 +223,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         return adapter._parse_submit_response(
             raw,
             timestamp=datetime.now(timezone.utc),
+            direction=direction,
+            order_type=order_type,
         )
 
     def submit_close_order(
@@ -267,6 +270,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         return adapter._parse_submit_response(
             raw,
             timestamp=datetime.now(timezone.utc),
+            direction=close_direction,
+            order_type=OrderType.MARKET,
         )
 
     # ============================================
@@ -432,14 +437,17 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             f'({filled_lots} lots, broker_ref={broker_ref})'
         )
 
-        # Dry-run market orders have no real fill price — Kraken validate
-        # mode returns no execution data. Replaced by DryRunOrderSimulator
-        # in a later refactor step.
+        # A fill price of zero is never a real price. It used to be an EXPECTED dry-run
+        # answer — the simulator had no quote and fell back to 0.0 — so this line named
+        # dry-run mode as the cause. That is no longer true (#505): a dry-run order either
+        # fills at a real quote or refuses and stays PENDING. So a zero here now means
+        # something upstream produced one, and pointing at dry-run would send the reader
+        # looking in the one place it cannot be.
         if fill_price is not None and fill_price == 0.0:
             self.logger.warning(
-                f'⚠️  Fill price is 0.00000 for {order_id} — '
-                f'dry-run mode cannot determine market fill price. '
-                f'P&L calculations will be inaccurate.'
+                f'⚠️  Fill price is 0.00000 for {order_id} — no venue prices anything at '
+                f'zero, so this came from our side. Every P&L figure derived from this '
+                f'fill is wrong. Check what answered the fill for this order.'
             )
 
         return pending
@@ -810,7 +818,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         now = datetime.now(timezone.utc)
         try:
             raw = job.adapter._do_request_submit(job.payload)
-            response = job.adapter._parse_submit_response(raw, timestamp=now)
+            response = job.adapter._parse_submit_response(
+                raw, timestamp=now, direction=job.direction, order_type=job.order_type)
         except Exception as e:
             response = self._failure_response(
                 e, broker_ref='', timestamp=now, operation='submit')
@@ -937,7 +946,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         try:
             payload = job.adapter._build_query_payload(job.broker_ref)
             raw = job.adapter._do_request_query(payload)
-            response = job.adapter._parse_query_response(raw, job.broker_ref, now)
+            response = job.adapter._parse_query_response(
+                raw, job.broker_ref, now, market=job.market)
         except Exception as e:
             response = self._failure_response(
                 e, broker_ref=job.broker_ref, timestamp=now,
@@ -1272,6 +1282,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             order_type=order_type,
             payload=payload,
             adapter=adapter,
+            direction=direction,
         ))
 
     def submit_close_order_async(
@@ -1311,6 +1322,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             order_type=OrderType.MARKET,
             payload=payload,
             adapter=adapter,
+            direction=close_direction,
         ))
 
     # ============================================
@@ -1434,6 +1446,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         order_id: str,
         broker_ref: str,
         adapter: AbstractAdapter,
+        market: Optional[TickData] = None,
     ) -> None:
         """
         Enqueue a QueryJob for the worker thread (#320).
@@ -1452,11 +1465,15 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                         executor's _handle_query_response applies the
                         stale-broker_ref guard.
             adapter: Live-capable adapter
+            market: The quote at the moment the poll was decided, stamped here on the MAIN
+                thread rather than read later in the worker — the same reason `ts_init` is
+                a receipt stamp. DRY-RUN only (#505)
         """
         self._http_outbox.put(QueryJob(
             order_id=order_id,
             broker_ref=broker_ref,
             adapter=adapter,
+            market=market,
         ))
 
     def submit_trades_query_async(
@@ -1548,6 +1565,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self,
         broker_ref: str,
         adapter: AbstractAdapter,
+        market: Optional[TickData] = None,
     ) -> BrokerResponse:
         """
         Synchronously query an order's current status via the adapter's Tier-3 layers.
@@ -1560,6 +1578,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Args:
             broker_ref: Broker order reference to query
             adapter: Live-capable adapter
+            market: The quote at the moment this poll was decided. DRY-RUN only — the
+                simulated venue needs it to answer whether the market reached the order's
+                price; a real broker knows its own book (#505)
 
         Returns:
             BrokerResponse with current status (REJECTED on transport error)
@@ -1572,7 +1593,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             return self._failure_response(
                 e, broker_ref=broker_ref, timestamp=now,
                 operation='status query', self_healing=True)
-        return adapter._parse_query_response(raw, broker_ref, now)
+        return adapter._parse_query_response(raw, broker_ref, now, market=market)
 
     def cancel_order_sync(
         self,

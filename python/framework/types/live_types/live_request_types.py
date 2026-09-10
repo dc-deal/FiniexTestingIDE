@@ -34,9 +34,10 @@ from typing import Any, Dict, List, Optional
 
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
 from python.framework.types.live_types.live_execution_types import BrokerResponse
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrderAction
-from python.framework.types.trading_env_types.order_types import OrderType
+from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
 
 @dataclass
@@ -46,7 +47,7 @@ class SubmitJob:
 
     The worker uses the adapter's Tier-3 layers to perform the broker call:
         adapter._do_request_submit(payload) → raw
-        adapter._parse_submit_response(raw, timestamp) → BrokerResponse
+        adapter._parse_submit_response(raw, timestamp, direction, order_type) → BrokerResponse
 
     Args:
         order_id: Internal order identifier (links the job back to the
@@ -61,12 +62,17 @@ class SubmitJob:
         payload: Pre-built broker payload (from adapter._build_submit_payload)
         adapter: Live-capable adapter (used by the worker for the
                  _do_request_submit / _parse_submit_response calls)
+        direction: LONG or SHORT. Read only by the DRY-RUN simulator, which plays the venue
+                   and needs to know which side of the quote a fill takes (#505). No QUOTE
+                   travels with a submit: a dry-run order is priced when it is POLLED, the
+                   same way a venue prices it, so the quote rides on the QueryJob instead
     """
     order_id: str
     action: PendingOrderAction
     order_type: OrderType
     payload: Dict[str, Any]
     adapter: AbstractAdapter
+    direction: Optional[OrderDirection] = None
 
 
 @dataclass
@@ -302,7 +308,7 @@ class QueryJob:
     The worker uses the adapter's Tier-3 query layer:
         adapter._build_query_payload(broker_ref)
         adapter._do_request_query(payload) → raw
-        adapter._parse_query_response(raw, broker_ref, timestamp) → BrokerResponse
+        adapter._parse_query_response(raw, broker_ref, timestamp, market) → BrokerResponse
 
     Args:
         order_id: Internal order identifier (primary routing key in drain)
@@ -310,10 +316,14 @@ class QueryJob:
                     the time the response arrives (Kraken EditOrder flips
                     refs) — the executor guards via broker_ref comparison.
         adapter: Live-capable adapter
+        market: The quote when the poll was DECIDED, stamped on the main thread — the same
+                discipline as `ts_init`: an observation belongs to the moment it was made,
+                not to the moment a worker thread gets round to it. Dry-run only (#505)
     """
     order_id: str
     broker_ref: str
     adapter: AbstractAdapter
+    market: Optional[TickData] = None
 
 
 @dataclass

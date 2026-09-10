@@ -166,6 +166,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # An order the venue answers about by naming nothing is a standing condition too, and
         # it is said once for the same reason (see _handle_query_response).
         self._reported_unknown: Set[str] = set()
+        # DRY-RUN only: the simulated venue could not decide this order's state (#505). Also a
+        # standing condition — the next poll produces the same non-answer — and also said once.
+        self._reported_undecided: Set[str] = set()
         self._session_key = session_key
         # #473 — one ladder for the broker's REST endpoint, shared with the Reconciler so
         # both classify a 502 the same way. A transport fault must never reach the trading
@@ -484,7 +487,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     continue
 
                 response = self._request_processor.query_order_sync(
-                    pending.broker_ref, self.broker.adapter)
+                    pending.broker_ref, self.broker.adapter,
+                    market=self._current_tick)
                 self._handle_broker_response(pending, response)
 
             # Check for timeouts (orders that broker never responded to)
@@ -494,6 +498,42 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         # === Phase 2: Active limit/stop orders (broker-side, waiting for trigger) ===
         self._process_active_orders()
+
+    def _report_undecided_poll(
+        self,
+        order_id: str,
+        broker_ref: Optional[str],
+        response: BrokerResponse,
+    ) -> None:
+        """
+        Say that a DRY-RUN poll produced no decision, once per order (#505).
+
+        The dry-run simulator plays the venue, and a venue that cannot answer must not be
+        read as one that answered "still working". It can only happen in dry-run: a real
+        broker either knows the state or is unreachable, and the second case is UNRESOLVED.
+
+        Why the executor and not the simulator: the adapter has no logger by design — it is
+        a transport — so the refusal travels on the response and is made visible here, in the
+        SESSION channel, which is what reaches the error pot and the run summary (§35).
+
+        Said once, like its unknown-order sibling: the next poll produces the same
+        non-answer, and repeating it every cycle would bury the channel it has to reach.
+
+        Args:
+            order_id: Internal order identifier
+            broker_ref: The reference that was polled
+            response: The response carrying `undecided_reason`
+        """
+        if order_id in self._reported_undecided:
+            return
+        self._reported_undecided.add(order_id)
+        self.logger.error(
+            f'🎭 Dry-run cannot decide order {order_id} (broker_ref={broker_ref}): '
+            f'{response.undecided_reason}. It is never booked as a FILL — a rehearsal that '
+            f'invents one is worse than no rehearsal — so this session is NOT exercising '
+            f'this order path. A MARKET order in this state is still cancelled and recorded '
+            f'by the submit timeout; a resting one simply waits, because a resting order does '
+            f'not expire.')
 
     def _handle_broker_response(
         self,
@@ -507,6 +547,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             pending: The pending order being checked
             response: Broker's current status response
         """
+        if response.undecided_reason:
+            self._report_undecided_poll(
+                pending.pending_order_id, pending.broker_ref, response)
+            return
+
         if response.status == BrokerOrderStatus.FILLED:
             filled = self._request_processor.mark_filled(
                 broker_ref=pending.broker_ref,
@@ -1165,6 +1210,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 order_id=pending.pending_order_id,
                 broker_ref=pending.broker_ref,
                 adapter=self.broker.adapter,
+                # Stamped here, on the main thread, where the tick gate above already
+                # guarantees one. In dry-run this is what lets the simulated venue answer
+                # whether the market reached this order's price (#505).
+                market=self._current_tick,
             )
 
     def _handle_query_response(self, response: QueryResponse) -> None:
@@ -1202,6 +1251,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f'QueryResponse stale broker_ref for {order_id}: '
                 f'response={broker_response.broker_ref} current={pending.broker_ref}'
             )
+            return
+
+        if broker_response.undecided_reason:
+            self._report_undecided_poll(order_id, pending.broker_ref, broker_response)
             return
 
         if broker_response.is_unknown:
@@ -1369,7 +1422,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 lots=request.lots,
                 order_type=OrderType.MARKET,
                 adapter=self.broker.adapter,
-                client_order_id=self.build_client_order_id(order_id),
+                    client_order_id=self.build_client_order_id(order_id),
                 **order_kwargs,
             )
             result = OrderResult(

@@ -12,11 +12,17 @@ import argparse
 import sys
 from typing import List, Optional
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.exceptions.store_errors import StoreCatalogError
+from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.reporting.certificates.certificate_index import CertificateIndex
-from python.framework.store.store_registrations import CERTIFICATES_ROOT
 from python.framework.store.store_catalog import StoreCatalog
+from python.framework.store.store_registrations import CERTIFICATES_ROOT
 from python.framework.types.store_types import StoreId, StoreStatus
+
+# The same window a release certificate gets: both are dated claims whose validity
+# decays rather than expiring at a stroke.
+_FEE_FREEZE_WINDOW_DAYS = 90
 
 
 def _human_size(size_bytes: Optional[int]) -> str:
@@ -77,6 +83,7 @@ class StoreCli:
             for row in healing:
                 print(f'      {row.store_id.value:<18} {row.stale_reason}')
         self._print_expired_certificates()
+        self._print_stale_fee_declarations()
         self._print_notes(rows)
         print()
         return 0
@@ -143,6 +150,36 @@ class StoreCli:
         print(f'\n  ⏰ {len(expired)} release gate(s) whose NEWEST certificate has expired')
         for family, version, until in expired:
             print(f'      {family:<20} {version:<8} valid until {until[:10]}')
+
+    @staticmethod
+    def _print_stale_fee_declarations() -> None:
+        """
+        Broker fee structures whose freeze date is older than a certificate's validity.
+
+        A fee rate is a declared assumption, not a fetched fact, so it is frozen with a date
+        (#505 follow-up). A LIVE session already compares it against the venue on every start
+        and warns on divergence — but someone running only backtests never sees that warning,
+        and this is the one place that asks the question for them.
+
+        Ninety days, the same window a release certificate gets, because it is the same kind
+        of statement: a dated claim whose validity decays rather than expires at a stroke. It
+        prints an AGE, not a verdict — the venue is the only authority on whether the rate is
+        actually wrong, and a live session is what asks it.
+        """
+        stale = []
+        manager = MarketConfigManager()
+        for broker_type in manager.get_all_broker_types():
+            age = BrokerConfigFactory.frozen_fee_age_days(
+                manager.get_broker_config_path(broker_type))
+            if age and age[1] > _FEE_FREEZE_WINDOW_DAYS:
+                stale.append((broker_type, age[0], age[1]))
+        if not stale:
+            return
+        print(f'\n  ⏰ {len(stale)} broker fee structure(s) frozen longer than '
+              f'{_FEE_FREEZE_WINDOW_DAYS} days')
+        for broker_type, stamped, days in stale:
+            print(f'      {broker_type:<20} frozen {stamped} — {days} days ago. Re-freeze from '
+                  f'a live session\'s divergence warning, or confirm it still holds')
 
     @staticmethod
     def _print_notes(rows: List[StoreStatus]) -> None:

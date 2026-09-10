@@ -3,8 +3,6 @@
 `tests/framework/static_analysis/test_undefined_names.py` — the undefined-name gate.
 Runs in every suite.
 
-**Total Tests:** 3
-
 Static analysis in this project has **two tiers**, and only the first one is a gate.
 
 ## Tier 1 — the gate: no undefined names

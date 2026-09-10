@@ -7,7 +7,7 @@ swap on the position.
 
 See the model: [Swap / Overnight-Funding Cost Model](../../trading_realism/swap_cost_model.md).
 
-## test_swap_accrual.py (8 tests)
+## test_swap_accrual.py
 
 | Test | Description |
 |------|-------------|

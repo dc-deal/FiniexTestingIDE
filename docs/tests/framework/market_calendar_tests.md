@@ -4,7 +4,7 @@
 overnight-swap accrual (#365) relies on: `MarketCalendar` rollover helpers,
 `time_utils` DST conversion, and the `MarketClock` awareness layer.
 
-## test_swap_rollover.py (11 tests) — pure calendar/time helpers
+## test_swap_rollover.py — pure calendar/time helpers
 
 | Test | Description |
 |------|-------------|
@@ -24,7 +24,7 @@ overnight-swap accrual (#365) relies on: `MarketCalendar` rollover helpers,
 | `test_next_market_open_already_open_unchanged` | a weekday instant is returned unchanged |
 | `test_next_market_open_skips_holiday` | a holiday weekday skips to the next open day |
 
-## test_market_clock.py (6 tests) — `MarketClock` awareness
+## test_market_clock.py — `MarketClock` awareness
 
 | Test | Description |
 |------|-------------|

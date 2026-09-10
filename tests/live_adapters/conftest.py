@@ -7,8 +7,8 @@ passed for a given release, validated afterwards by test_live_adapter_certificat
 
 The certificate records what the fixtures OBSERVED, never what a config file declares. The
 distinction is not academic: this suite's two decisive tests set `dry_run = False` on their
-own adapter and place real orders, while `configs/broker_settings/kraken_spot.json` says
-`true` — a certificate that re-read the file understated exactly what it existed to prove.
+own adapter and place real orders, while the broker's configured `dry_run` says `true` — a
+certificate that re-read the config understated exactly what it existed to prove.
 
 Usage:
     pytest tests/live_adapters/ -v -m live_adapter --release-version 1.2.2
@@ -224,7 +224,7 @@ def _write_report(release_version: str, comment: str, results: _ResultCollector)
         'tests_expected_to_fail': results.expected_failures,
         'tests_run': results.tests_run,
         # What the fixtures actually built, per phase. Registered by them at construction;
-        # never re-read from configs/broker_settings/ at write time.
+        # never re-read from any config at write time.
         'observed': {'phases': results.observed_phases},
         'warnings': warnings,
     }

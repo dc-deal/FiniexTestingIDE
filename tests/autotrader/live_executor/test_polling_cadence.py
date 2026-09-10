@@ -162,9 +162,9 @@ class TestThrottle:
         dispatches = []
         original = executor._request_processor.submit_query_order_async
 
-        def _counting(order_id, broker_ref, adapter):
+        def _counting(order_id, broker_ref, adapter, **kwargs):
             dispatches.append(order_id)
-            original(order_id, broker_ref, adapter)
+            original(order_id, broker_ref, adapter, **kwargs)
 
         executor._request_processor.submit_query_order_async = _counting
 
@@ -200,9 +200,9 @@ class TestThrottle:
         dispatches = []
         original = executor._request_processor.submit_query_order_async
 
-        def _counting(order_id, broker_ref, adapter):
+        def _counting(order_id, broker_ref, adapter, **kwargs):
             dispatches.append(time.time())
-            original(order_id, broker_ref, adapter)
+            original(order_id, broker_ref, adapter, **kwargs)
 
         executor._request_processor.submit_query_order_async = _counting
 
@@ -236,8 +236,8 @@ class TestThrottle:
         dispatches = []
         original = executor._request_processor.submit_query_order_async
         executor._request_processor.submit_query_order_async = (
-            lambda order_id, broker_ref, adapter: (
-                dispatches.append(order_id), original(order_id, broker_ref, adapter)
+            lambda order_id, broker_ref, adapter, **kwargs: (
+                dispatches.append(order_id), original(order_id, broker_ref, adapter, **kwargs)
             )
         )
 
@@ -289,7 +289,7 @@ class TestInFlightGuard:
 
         dispatches = []
         executor._request_processor.submit_query_order_async = (
-            lambda order_id, broker_ref, adapter: dispatches.append(order_id)
+            lambda order_id, broker_ref, adapter, **kwargs: dispatches.append(order_id)
         )
 
         executor._process_active_orders()

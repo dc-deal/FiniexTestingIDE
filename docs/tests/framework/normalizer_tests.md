@@ -3,9 +3,7 @@
 `tests/framework/test_normalizer.py` — the central normalization apparatus
 (`python/framework/utils/trading_math/normalizer.py`). Runs under the synthetic `framework/_root` suite.
 
-**Total Tests:** 17
-
-## TestRescale (7 Tests) — `rescale(value, lower, upper)` (MinMax / %B, unclamped)
+## TestRescale — `rescale(value, lower, upper)` (MinMax / %B, unclamped)
 
 | Test | Description |
 |------|-------------|
@@ -17,7 +15,7 @@
 | `test_degenerate_range_returns_midpoint` | upper == lower → 0.5 |
 | `test_inverted_range_returns_midpoint` | upper < lower → 0.5 |
 
-## TestClamp (5 Tests) — `clamp(x, low, high)`
+## TestClamp — `clamp(x, low, high)`
 
 | Test | Description |
 |------|-------------|
@@ -27,7 +25,7 @@
 | `test_at_bounds` | exact bounds returned as-is |
 | `test_custom_range` | non-default [low, high] honored |
 
-## TestNormalize (5 Tests) — `normalize(value, scale)`
+## TestNormalize — `normalize(value, scale)`
 
 | Test | Description |
 |------|-------------|

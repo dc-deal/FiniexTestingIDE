@@ -12,7 +12,7 @@ The SL/TP & limit order validation test suite verifies stop loss/take profit tri
 - Time windows sourced from `discoveries_cli.py extreme-moves mt5 USDJPY`
 - Per-scenario `max_ticks` caps to limit tick loop processing (see Scenario Design)
 
-**Total Tests:** 85 (SL/TP + limit + stop + cancel + batch health)
+**Coverage:** SL/TP · limit · stop · cancel · batch health
 
 **Performance:** ~18s (50-bar discovery windows + tightened max_ticks caps)
 
@@ -103,7 +103,7 @@ Scenarios: `long_tp`, `long_sl`, `short_tp`, `short_sl`, `modify_tp`, `long_limi
 
 ## Test Classes
 
-### TestLongTpTrigger (7 tests)
+### TestLongTpTrigger
 LONG position in uptrend window. TP should trigger.
 
 | Test | Validates |
@@ -116,7 +116,7 @@ LONG position in uptrend window. TP should trigger.
 | `test_sl_level_matches_config` | stop_loss == config value |
 | `test_sl_tp_triggered_count` | ExecutionStats.sl_tp_triggered == 1 |
 
-### TestLongSlTrigger (7 tests)
+### TestLongSlTrigger
 LONG position opened against downtrend. SL should trigger.
 
 | Test | Validates |
@@ -129,7 +129,7 @@ LONG position opened against downtrend. SL should trigger.
 | `test_sl_tp_triggered_count` | ExecutionStats.sl_tp_triggered == 1 |
 | `test_negative_pnl` | gross_pnl < 0 (loss confirmed) |
 
-### TestShortTpTrigger (6 tests)
+### TestShortTpTrigger
 SHORT position in downtrend window. TP should trigger.
 
 | Test | Validates |
@@ -141,7 +141,7 @@ SHORT position in downtrend window. TP should trigger.
 | `test_tp_level_matches_config` | take_profit == config value |
 | `test_sl_tp_triggered_count` | ExecutionStats.sl_tp_triggered == 1 |
 
-### TestShortSlTrigger (7 tests)
+### TestShortSlTrigger
 SHORT position opened against uptrend. SL should trigger.
 
 | Test | Validates |
@@ -154,7 +154,7 @@ SHORT position opened against uptrend. SL should trigger.
 | `test_sl_tp_triggered_count` | ExecutionStats.sl_tp_triggered == 1 |
 | `test_negative_pnl` | gross_pnl < 0 (loss confirmed) |
 
-### TestModifyTpTrigger (5 tests)
+### TestModifyTpTrigger
 LONG position with in-flight TP modification. Initial TP unreachable, modified at tick 500 to reachable value.
 
 | Test | Validates |
@@ -165,7 +165,7 @@ LONG position with in-flight TP modification. Initial TP unreachable, modified a
 | `test_exit_price_equals_modified_tp` | exit_price == modified TP |
 | `test_sl_tp_triggered_count` | ExecutionStats.sl_tp_triggered == 1 |
 
-### TestLongLimitFill (5 tests)
+### TestLongLimitFill
 LONG limit order. Price dips to fill level (maker fee).
 
 | Test | Validates |
@@ -176,7 +176,7 @@ LONG limit order. Price dips to fill level (maker fee).
 | `test_direction_is_long` | direction = LONG |
 | `test_no_exit_is_fabricated` | the position stays OPEN and no trade carries SCENARIO_END (#492) |
 
-### TestShortLimitFill (5 tests)
+### TestShortLimitFill
 SHORT limit order. Price rises to fill level (maker fee).
 
 | Test | Validates |
@@ -187,7 +187,7 @@ SHORT limit order. Price rises to fill level (maker fee).
 | `test_direction_is_short` | direction = SHORT |
 | `test_no_exit_is_fabricated` | the position stays OPEN and no trade carries SCENARIO_END (#492) |
 
-### TestLimitFillThenSl (5 tests)
+### TestLimitFillThenSl
 LONG limit fills, then SL triggers during continued downtrend.
 
 | Test | Validates |
@@ -198,7 +198,7 @@ LONG limit fills, then SL triggers during continued downtrend.
 | `test_entry_price_equals_limit` | entry_price == config limit price |
 | `test_sl_tp_triggered_count` | ExecutionStats.sl_tp_triggered == 1 |
 
-### TestModifyLimitPriceFill (4 tests)
+### TestModifyLimitPriceFill
 LONG limit with price modification. Original price unreachable, modified at tick 500 to reachable value.
 
 | Test | Validates |
@@ -208,7 +208,7 @@ LONG limit with price modification. Original price unreachable, modified at tick
 | `test_entry_price_equals_modified` | entry_price == modified config limit price |
 | `test_direction_is_long` | direction = LONG |
 
-### TestStopLongTrigger (5 tests)
+### TestStopLongTrigger
 STOP LONG order — stop triggers when uptrend pushes price above stop_price. Fills at market price (taker fee).
 
 | Test | Validates |
@@ -219,7 +219,7 @@ STOP LONG order — stop triggers when uptrend pushes price above stop_price. Fi
 | `test_direction_is_long` | direction = LONG |
 | `test_no_exit_is_fabricated` | the position stays OPEN and no trade carries SCENARIO_END (#492) |
 
-### TestStopShortTrigger (5 tests)
+### TestStopShortTrigger
 STOP SHORT order — stop triggers when downtrend pushes price below stop_price. Fills at market price (taker fee).
 
 | Test | Validates |
@@ -230,7 +230,7 @@ STOP SHORT order — stop triggers when downtrend pushes price below stop_price.
 | `test_direction_is_short` | direction = SHORT |
 | `test_no_exit_is_fabricated` | the position stays OPEN and no trade carries SCENARIO_END (#492) |
 
-### TestStopLimitLongTrigger (5 tests)
+### TestStopLimitLongTrigger
 STOP_LIMIT LONG — stop triggers, then fills as LIMIT at configured limit price (maker fee).
 
 | Test | Validates |
@@ -241,7 +241,7 @@ STOP_LIMIT LONG — stop triggers, then fills as LIMIT at configured limit price
 | `test_direction_is_long` | direction = LONG |
 | `test_no_exit_is_fabricated` | the position stays OPEN and no trade carries SCENARIO_END (#492) |
 
-### TestStopLimitShortTrigger (5 tests)
+### TestStopLimitShortTrigger
 STOP_LIMIT SHORT — stop triggers, then fills as LIMIT at configured limit price (maker fee).
 
 | Test | Validates |
@@ -252,7 +252,7 @@ STOP_LIMIT SHORT — stop triggers, then fills as LIMIT at configured limit pric
 | `test_direction_is_short` | direction = SHORT |
 | `test_no_exit_is_fabricated` | the position stays OPEN and no trade carries SCENARIO_END (#492) |
 
-### TestStopLongThenTp (5 tests)
+### TestStopLongThenTp
 STOP LONG triggers, position opened; then TP closes it.
 
 | Test | Validates |
@@ -263,7 +263,7 @@ STOP LONG triggers, position opened; then TP closes it.
 | `test_exit_price_equals_tp` | exit_price == config TP level |
 | `test_sl_tp_triggered_count` | ExecutionStats.sl_tp_triggered == 1 |
 
-### TestModifyStopTrigger (4 tests)
+### TestModifyStopTrigger
 Stop order with unreachable initial stop_price. Modified at tick 500 to reachable value.
 
 | Test | Validates |
@@ -273,14 +273,14 @@ Stop order with unreachable initial stop_price. Modified at tick 500 to reachabl
 | `test_entry_price_at_or_above_modified_stop` | entry_price >= modified config stop_price |
 | `test_direction_is_long` | direction = LONG |
 
-### TestCancelStopNoFill (1 test)
+### TestCancelStopNoFill
 STOP LONG cancelled at tick 100 before it can trigger. No position opened.
 
 | Test | Validates |
 |------|-----------|
 | `test_no_trades` | 0 trades (cancel prevented fill) |
 
-### TestCancelLimitNoFill (1 test)
+### TestCancelLimitNoFill
 LONG LIMIT at utopian price cancelled at tick 100 before fill. No position opened.
 
 | Test | Validates |

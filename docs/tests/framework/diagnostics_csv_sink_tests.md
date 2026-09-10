@@ -8,9 +8,7 @@ End-to-end pipeline coverage lives separately:
 [`tests/autotrader/integration/test_diagnostics_sink_integration.py`](../autotrader/) proves
 the AutoTrader pipeline flushes a real algo-declared sink to the run dir at session end.
 
-**Total Tests:** 14
-
-## TestDiagnosticsCsvSink (7 Tests) — file logistics
+## TestDiagnosticsCsvSink — file logistics
 
 | Test | Description |
 |------|-------------|
@@ -22,7 +20,7 @@ the AutoTrader pipeline flushes a real algo-declared sink to the run dir at sess
 | `test_noop_when_no_rows` | no appended rows → no file written |
 | `test_get_name` | sink reports its name |
 
-## TestDecisionLogicSinkApi (3 Tests) — AbstractDecisionLogic API
+## TestDecisionLogicSinkApi — AbstractDecisionLogic API
 
 | Test | Description |
 |------|-------------|
@@ -30,7 +28,7 @@ the AutoTrader pipeline flushes a real algo-declared sink to the run dir at sess
 | `test_distinct_names_distinct_sinks` | distinct names → distinct sinks, both listed |
 | `test_no_sinks_by_default` | a logic that declares none has an empty sink list |
 
-## TestFlushDecisionDiagnostics (4 Tests) — shared run-end flush helper
+## TestFlushDecisionDiagnostics — shared run-end flush helper
 
 | Test | Description |
 |------|-------------|
