@@ -26,9 +26,15 @@ surface**:
 > **Who enforces what, if you run this live.** The two RESTING ENTRIES are real orders at the
 > venue: `stop_breakout` places a Kraken `stop-loss` and `limit_pullback` a `limit`, so both
 > survive this process dying and both are cancelled or left standing by the session-end policy.
-> The **SL/TP and the trailing stop are not.** They are levels on the position, enforced by this
-> framework against the tick stream — in live exactly as in a backtest (#500) — so a position is
-> unprotected while the process is not running. The run report names the enforcer beside every
+> The **SL/TP and the trailing stop are levels on the position**, enforced by this framework
+> against the tick stream — in live exactly as in a backtest (#500). **Since #503 the stop can
+> also rest at the venue**: switch `autotrader.execution.venue_held_protection` on in the profile
+> (default OFF) and the framework places a real STOP for the declared `stop_loss` once the entry
+> fills, so it survives this process dying. Only the stop — Kraken has no OCO, so the take profit
+> stays with the local check either way, and with the switch OFF a position is unprotected while
+> the process is not running. Worth knowing for THIS bot in particular: its trailing stop moves
+> the level often, and each move becomes an amend at the venue.
+> The run report names the enforcer beside every
 > level, and one more asymmetry is worth knowing before reading a backtest of `stop_breakout`: the
 > simulation triggers a stop on ask/bid while Kraken triggers on the last traded price, and it
 > fills at the triggering tick with no slippage model, so a **stop ENTRY is the one order type

@@ -159,6 +159,7 @@ class BacktestingEventProbe(AbstractDecisionLogic):
             DecisionEventType.ORDER_REJECTED,
             DecisionEventType.ORDER_CANCELLED,
             DecisionEventType.PARTIAL_CLOSE,
+            DecisionEventType.POSITION_CLOSED,
             DecisionEventType.SESSION_END,
         }
 

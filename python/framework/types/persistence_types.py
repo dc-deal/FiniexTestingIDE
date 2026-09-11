@@ -147,6 +147,10 @@ class PositionCarryOver(BaseModel):
         mae_price: Price at the worst excursion
         mfe_price: Price at the best excursion
         swap_accrued_until: Last rollover instant already charged, ISO-8601 UTC (#365)
+        protective_order_id: Our id for the protective order the venue holds (#503)
+        protective_broker_ref: The venue's reference for it — the ONLY key with which the
+            next session can still ask "did it fill?". A pairing flag would not do: a
+            pairing can be re-derived from a counter, a txid from nothing
         fees: Fees already incurred
         entry_trades: The atomic executions behind the entry
         entry_submission: Submission-moment audit values of the entry
@@ -172,6 +176,8 @@ class PositionCarryOver(BaseModel):
     pip_size: float = 0.0
     price_unit: str = ''
     entry_tick_index: int = 0
+    protective_order_id: Optional[str] = None
+    protective_broker_ref: Optional[str] = None
     mae_pnl: float = 0.0
     mfe_pnl: float = 0.0
     mae_price: float = 0.0

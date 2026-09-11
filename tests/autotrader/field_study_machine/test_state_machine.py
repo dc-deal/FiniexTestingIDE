@@ -275,3 +275,66 @@ def test_full_sequence_runs_to_completion():
     assert [r.outcome for r in m.get_results()] == [
         PhaseOutcome.PASS, PhaseOutcome.PASS, PhaseOutcome.PASS
     ]
+
+
+class TestTheProtectiveLevelPhase:
+    """
+    #503. The one phase that answers the question #500 opened: does a level the STRATEGY
+    declares ever leave this process?
+
+    It cannot be read off the entry's payload — the level deliberately does not travel
+    there — so the phase proves it the only way it can be proven: by an order resting at
+    the venue over a real holding, and by that order being cancelled BEFORE the close.
+    """
+
+    _RAW = {'side': 'long', 'lots': 0.003, 'stop_loss_offset_pct': 0.05,
+            'fill_timeout_s': 45}
+
+    def test_the_entry_carries_a_declared_level_far_from_the_market(self):
+        m = _machine([_phase('p', 'protective_level', **self._RAW)])
+
+        action = m.advance(_ctx(1))
+
+        assert action.kind == PhaseActionKind.SUBMIT_MARKET
+        assert action.stop_loss == 1900.0, (
+            '5 % below a 2000 mid — wide on purpose: a stop that triggers inside the '
+            'phase proves the offset was too tight, not that the feature works')
+        assert action.lots == 0.003, (
+            'Its own size, because a protective order is worth lots x TRIGGER and the '
+            "default would land under Kraken's cost minimum")
+
+    def test_it_waits_for_the_venue_to_hold_the_order_before_closing(self):
+        m = _machine([_phase('p', 'protective_level', **self._RAW)])
+        m.advance(_ctx(1))
+        m.advance(_ctx(2, open_pos=1))
+
+        waiting = m.advance(_ctx(3, open_pos=1, stops=0))
+        assert waiting.kind == PhaseActionKind.NONE, (
+            'A position that is open but not yet protected is exactly the window the '
+            'feature exists to close — the phase does not walk past it')
+
+        assert m.advance(_ctx(4, open_pos=1, stops=1)).kind == PhaseActionKind.CLOSE_ALL
+
+    def test_it_passes_only_when_nothing_is_left_behind(self):
+        m = _machine([_phase('p', 'protective_level', **self._RAW)])
+        m.advance(_ctx(1))
+        m.advance(_ctx(2, open_pos=1))
+        m.advance(_ctx(3, open_pos=1, stops=1))
+
+        m.advance(_ctx(4, open_pos=0, stops=1))
+        assert not m.is_complete(), (
+            'A closed position with the stop still at the venue is an orphan, not a pass')
+
+        m.advance(_ctx(5, open_pos=0, stops=0))
+        assert m.get_results()[0].outcome == PhaseOutcome.PASS
+
+    def test_a_protection_that_never_appears_closes_the_position_out(self):
+        """A failed phase must not leave real money exposed."""
+        m = _machine([_phase('p', 'protective_level', **self._RAW)])
+        m.advance(_ctx(1))
+        m.advance(_ctx(2, open_pos=1))
+
+        action = m.advance(_ctx(200, open_pos=1, stops=0))
+
+        assert action.kind == PhaseActionKind.CLOSE_ALL
+        assert 'no protective order' in action.reason

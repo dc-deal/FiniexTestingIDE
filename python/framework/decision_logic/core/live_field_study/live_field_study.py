@@ -550,6 +550,10 @@ class LiveFieldStudy(AbstractDecisionLogic):
             lots=action.lots,
             price=None if is_stop else action.price,
             stop_price=action.price if is_stop else None,
+            # #503 — a DECLARED level. The framework turns it into an order at the venue
+            # where the profile opts in; this is the only route by which a declared level
+            # ever leaves this process, and the PROTECTIVE_LEVEL phase is what proves it.
+            stop_loss=action.stop_loss,
             comment=f'FieldStudy {action.phase_id}',
         )
         if result is not None and result.is_rejected:

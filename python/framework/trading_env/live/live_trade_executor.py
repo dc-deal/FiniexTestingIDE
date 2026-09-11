@@ -41,14 +41,18 @@ from python.framework.types.config_types.connection_policy_config_types import C
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
+    DeferredClose,
     TimeoutConfig,
 )
 from python.framework.types.live_types.live_request_types import QueryResponse, TradesQueryResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     EntryType,
 )
+from python.framework.types.portfolio_types.portfolio_types import Position
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.latency_simulator_types import (
     ModificationRequest,
     PendingOperation,
@@ -76,6 +80,12 @@ from python.framework.types.trading_env_types.pending_order_stats_types import P
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
 from python.framework.utils.run_id_utils import build_client_order_id
+
+# Lot tolerance for the venue-held close resolver (#503). Volumes cross the wire as
+# decimal strings and come back as floats, so "the same volume again" is never bit-equal.
+# Below every venue's minimum increment by orders of magnitude, so it can only ever
+# absorb float noise, never a real fill.
+_VENUE_CLOSE_LOT_EPSILON = 1e-9
 
 
 class LiveTradeExecutor(AbstractTradeExecutor):
@@ -114,6 +124,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         poll_interval_ms: int = 5000,
         rest_ladder: Optional[ConnectionLadder] = None,
         session_key: str = '',
+        venue_held_protection: bool = False,
     ):
         """
         Initialize live trade executor.
@@ -136,6 +147,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             session_key: Short discriminator this session stamps onto every client order
                 id it sends (#473). Empty disables the wire key — mock and dry-run paths
                 that never reach a venue do not need one.
+            venue_held_protection: The profile's default for #503 — whether a declared
+                stop_loss additionally rests at the venue as an order of its own. An
+                order may override it; the adapter's capability can refuse it.
         """
         super().__init__(
             broker_config=broker_config,
@@ -169,6 +183,21 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # DRY-RUN only: the simulated venue could not decide this order's state (#505). Also a
         # standing condition — the next poll produces the same non-answer — and also said once.
         self._reported_undecided: Set[str] = set()
+        # #503 — the profile's default for venue-held protection. An order may override it
+        # (OpenOrderRequest.venue_held_protection); the adapter's capability may refuse it.
+        self._venue_held_protection_default = venue_held_protection
+        # #503 — closes waiting for the venue to confirm the protective order is gone.
+        # Keyed by position, because that is what a close names and what a protective
+        # order protects; at most one close is in flight for a position at a time.
+        self._deferred_closes: Dict[str, DeferredClose] = {}
+        # Positions that lost their protective order to a PARTIAL close and must get a
+        # fresh one at the remaining size once that close resolves (#503).
+        self._reinstate_after_close: Set[str] = set()
+        # #503 — venue closes the BOOT discovered, waiting for the first tick. A close
+        # cannot be booked before one exists: the trade record needs a bid and an ask,
+        # and `get_current_price` raises without them. So the boot records what the venue
+        # did and the first tick books it.
+        self._boot_venue_closes: List[Tuple[str, float, Optional[float]]] = []
         self._session_key = session_key
         # #473 — one ladder for the broker's REST endpoint, shared with the Reconciler so
         # both classify a 502 the same way. A transport fault must never reach the trading
@@ -293,17 +322,37 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
     def get_in_flight_order_ids(self) -> Set[str]:
         """
-        Internal ids the latency queue is still waiting on (#355).
+        Internal ids whose submit answer has not come back yet (#355).
 
-        The truth pull compares against the RESTING orders only, so a MARKET or CLOSE order
-        in flight has no counterpart there and would read as one we placed and stopped
-        tracking. It is tracked — just in the other world. This is how the Reconciler tells
-        the two apart.
+        The truth pull joins on `broker_ref`, so anything we have sent and not yet heard
+        about has no counterpart to join to — and would read as an order we placed and
+        stopped tracking. It is tracked; its reference simply has not arrived.
+
+        TWO sources, and the second was missing (measured 2026-09-10, twice in five field
+        study runs). A MARKET or CLOSE order in flight lives in the processor's world, which
+        the resting-order pull does not compare against at all. But a RESTING order inside
+        its OWN submit round trip is equally unjoinable: it sits in the active list with
+        `broker_ref=None`, so the venue already reports it under a key we cannot match. Both
+        occurrences were three limits submitted back to back with a reconcile tick landing
+        in the two seconds before the references came back; each resolved cleanly moments
+        later, and each had produced an ERROR saying the order was forgotten.
+
+        Suppressing it loses no coverage: an answer that never arrives is reported by its
+        own channel (#473 — `_unresolved_report_after_s`, once per order), which is a
+        statement about OUR transport rather than about the venue's books.
 
         Returns:
-            The pending order ids currently held by the request processor
+            The pending order ids the processor holds, plus every resting order still
+            waiting for its broker reference
         """
-        return {p.pending_order_id for p in self._request_processor.get_pending_orders()}
+        in_flight = {p.pending_order_id
+                     for p in self._request_processor.get_pending_orders()}
+        in_flight.update(
+            p.pending_order_id
+            for p in self._active_limit_orders + self._active_stop_orders
+            if p.broker_ref is None
+        )
+        return in_flight
 
     def adopt_resting_orders(
         self,
@@ -421,6 +470,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f'(client_order_id={broker_order.client_order_id}) — '
                 f'broker_ref={broker_order.broker_ref} restored, polling resumed'
             )
+            if pending.closes_position_id:
+                # #503 — this is the THIRD place a broker_ref goes from None to set, and a
+                # protective order owes its position the stamp wherever that happens. The
+                # venue is holding this stop; without the stamp the position still reads
+                # LOCAL, so our own check closes it too and both fire. The carry-over would
+                # then record no reference either, and the next boot could never cancel it.
+                self._stamp_protective_confirmation(pending)
 
             if pending.execution_state.cancel_requested:
                 pending.execution_state.cancel_requested = False
@@ -568,10 +624,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
             # Call inherited fill processing (synthesizes pending.fills.trades
             # entry inside _fill_open_order/close_order if not yet populated)
-            if filled.order_action == PendingOrderAction.OPEN:
-                self._fill_open_order(filled, fill_price=response.fill_price)
-            elif filled.order_action == PendingOrderAction.CLOSE:
-                self._fill_close_order(filled, fill_price=response.fill_price)
+            self._route_resting_fill(
+                filled,
+                fill_price=response.fill_price,
+                filled_lots=response.filled_lots,
+            )
 
         elif response.status == BrokerOrderStatus.REJECTED:
             rejected = self._request_processor.mark_rejected(
@@ -730,6 +787,18 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         if response.is_rejected:
             self._drop_active_order(pending)
+            if pending.closes_position_id:
+                # #503 — the operator asked for a level the venue would hold and did not
+                # get one. The position is still open and still protected only by this
+                # process, which is precisely the state a 30-day run must not enter
+                # unnoticed (§35: the session channel, not global.log).
+                self._clear_protective_stamp(pending)
+                self.logger.error(
+                    f'❌ The venue REFUSED the protective STOP for '
+                    f'{pending.closes_position_id}: '
+                    f"{response.rejection_reason or 'unknown'}. The position is open and "
+                    f'its stop is enforced by THIS PROCESS ONLY — it does not survive a '
+                    f'restart.')
             rejection = create_rejection_result(
                 order_id=order_id,
                 reason=RejectionReason.BROKER_ERROR,
@@ -741,12 +810,21 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         # Non-rejected: confirm broker_ref on the resting pending
         pending.broker_ref = response.broker_ref
+        if pending.closes_position_id and not response.is_filled:
+            # #503 — ONLY NOW does the venue hold it, and only now does the local check
+            # step aside for this position's stop. Not on the declaration, not on the
+            # submit: in between, nobody at the venue holds anything.
+            self._stamp_protective_confirmation(pending)
 
         if response.is_filled:
             # Sync-fill (rare — e.g. price already crossed at submit).
             # FILLED-precedence: a fill wins over any deferred cancel (#361).
             self._drop_active_order(pending)
-            self._fill_open_order(pending, fill_price=response.fill_price)
+            self._route_resting_fill(
+                pending,
+                fill_price=response.fill_price,
+                filled_lots=response.filled_lots,
+            )
         elif pending.execution_state.cancel_requested:
             # Deferred cancel (#361): a cancel was requested while this submit was
             # in-flight (broker_ref=None). Now confirmed → issue it. The CancelResponse
@@ -768,6 +846,46 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     # ============================================
     # Async Modify / Cancel / Position-Modify Drain Handlers (#318)
     # ============================================
+
+    def _stamp_protective_confirmation(self, protective: PendingOrder) -> None:
+        """
+        Record the venue's reference on the position the protective order protects (#503).
+
+        The stamp is what `Position.protective_enforcement` derives VENUE from, so it is
+        the single moment the local stop check stands down for that position — and it is
+        deliberately driven by the venue's answer rather than by our request.
+
+        Args:
+            protective: The confirmed protective order
+        """
+        position = self.portfolio.get_position(protective.closes_position_id)
+        if position is None:
+            self.logger.error(
+                f'❌ The venue confirmed protective order {protective.broker_ref} for '
+                f'{protective.closes_position_id}, which this bot no longer holds. It is '
+                f'resting over a position that is gone — cancel it by hand.')
+            return
+        position.protective_broker_ref = protective.broker_ref
+        self.logger.info(
+            f'🛡️ The venue now holds the stop for {position.position_id} '
+            f'(broker_ref={protective.broker_ref}) — it survives this process')
+
+    def _clear_protective_stamp(self, protective: PendingOrder) -> None:
+        """
+        Hand the position's stop back to the local check (#503).
+
+        Called wherever a protective order stops existing at the venue. Clearing the
+        reference is what makes `protective_enforcement` answer LOCAL again, so the tick
+        check resumes on the very next tick rather than leaving the level with nobody.
+
+        Args:
+            protective: The protective order that is no longer at the venue
+        """
+        position = self.portfolio.get_position(protective.closes_position_id)
+        if position is None:
+            return
+        position.protective_broker_ref = None
+        position.protective_order_id = None
 
     def _find_active_order(self, order_id: str) -> Optional[PendingOrder]:
         """Find a PendingOrder by order_id in _active_limit_orders / _active_stop_orders."""
@@ -890,7 +1008,19 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self._orders_rejected += 1
             self._check_order_history_limit()
             self._order_history.append(rejection)
-            self._notify_outcome(pending.direction, rejection, pending)
+            if pending.closes_position_id:
+                # #503 — a refused amend of a PROTECTIVE order must not feed the
+                # OrderGuard cooldown. Measured on the trailing stop: 378 amends over 62
+                # positions, worst burst 20 in 39 ticks, and two rejections block EVERY
+                # new order in that direction for 60 s — the replacement protective order
+                # included. The refusal stays visible in the log and the order history; it
+                # simply is not a new-order rejection, because no new order was attempted.
+                self.logger.error(
+                    f'❌ The venue refused an amend of the protective order for '
+                    f'{pending.closes_position_id}: '
+                    f"{response.rejection_reason or 'unknown'}")
+            else:
+                self._notify_outcome(pending.direction, rejection, pending)
         else:
             # Success — apply provisional values to local shadow state
             if mod is not None:
@@ -911,6 +1041,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     old_ref=pending.broker_ref, new_ref=response.broker_ref,
                 )
                 pending.broker_ref = response.broker_ref
+                if pending.closes_position_id:
+                    # #503 — a re-minted reference has to reach the position too, or the
+                    # carry-over records a txid the venue has retired and the next boot
+                    # reads its own protection as an ABSENCE. Cannot fire on Kraken, whose
+                    # AmendOrder keeps the txid (§32); it is the SECOND adapter that re-mints
+                    # — #209, where a green suite proves nothing about this line.
+                    self._stamp_protective_confirmation(pending)
 
             self.logger.info(
                 f'✏️ Order {order_id} modify resolved '
@@ -950,6 +1087,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f"Broker rejected cancel for {order_id}: "
                 f"{response.rejection_reason or 'unknown'} (cancel-race possible)"
             )
+            if pending.closes_position_id:
+                self._abandon_deferred_close(
+                    pending.closes_position_id,
+                    f"the venue refused to cancel the protective order "
+                    f"({response.rejection_reason or 'unknown'})")
             pending.execution_state.in_flight_operation = PendingOperation.NONE
             return
 
@@ -958,12 +1100,22 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # observes the state transition naturally. Order_history is reserved
         # for EXECUTED / REJECTED-by-broker, not for algo-initiated cancels.
         self._drop_active_order(pending)
+        if pending.closes_position_id:
+            # #503 — the venue no longer holds this position's stop, so the local check
+            # has to take it back on the very next tick. Leaving the stamp would leave
+            # the level with nobody: silent here, and enforced by neither.
+            self._clear_protective_stamp(pending)
 
         pending.execution_state.in_flight_operation = PendingOperation.NONE
         self.logger.info(
             f'❌ Order {order_id} cancel resolved (broker_ref={pending.broker_ref})'
         )
         self._emit_order_cancelled(pending)
+        if pending.closes_position_id:
+            # #503 — and THIS is what a close was waiting for. Released after the line
+            # above so the log reads in the order the events happened; a reader tracing a
+            # cancel-then-close sequence should not have to reconstruct it.
+            self._release_deferred_close(pending.closes_position_id)
 
     def _handle_position_modify_response(
         self,
@@ -1122,11 +1274,12 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             if pending.fills.cumulative_filled_lots > 0:
                 entry_type, _ = self._resting_fill_classification(pending)
                 self._drop_active_order(pending)
-                self._fill_open_order(
+                self._route_resting_fill(
                     pending,
                     fill_price=pending.fills.cumulative_avg_price,
                     entry_type=entry_type,
                     fill_type=FillType.LIMIT,
+                    filled_lots=pending.fills.cumulative_filled_lots,
                 )
                 self.logger.info(
                     f'🎯 Order {pending.pending_order_id} filled via trades drain '
@@ -1272,22 +1425,53 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     f'resolve it, only a time-ranged history read can.')
             return
 
+        # #503 — a protective order the venue holds is fed to the resolver on THREE
+        # answers, not only on FILLED. `vol_exec` reaches us on every status (#505), and
+        # each of the three represents real lots leaving the position.
+        venue_held = bool(pending.closes_position_id)
+        venue_filled = broker_response.filled_lots or 0.0
+
         if broker_response.status == BrokerOrderStatus.FILLED:
             entry_type, fill_type = self._resting_fill_classification(pending)
             self._drop_active_order(pending)
-            self._fill_open_order(
+            self._route_resting_fill(
                 pending,
                 fill_price=broker_response.fill_price,
                 entry_type=entry_type,
                 fill_type=fill_type,
+                filled_lots=broker_response.filled_lots,
             )
             self.logger.info(
                 f'🎯 Active {entry_type.value} order {order_id} filled at '
                 f'{broker_response.fill_price} (broker_ref={pending.broker_ref})'
             )
+        elif broker_response.is_terminal and venue_held and venue_filled > 0:
+            # The dangerous shape: the venue took PART of a protective order and then the
+            # order ended (cancelled, expired). Booked as a plain broker rejection those
+            # lots would be lost from our books while they are gone from the account.
+            self._drop_active_order(pending)
+            self._apply_venue_close(
+                pending,
+                filled_lots=venue_filled,
+                avg_price=broker_response.fill_price,
+            )
+            self._clear_protective_stamp(pending)
+            self.logger.warning(
+                f'🛑 Protective order {order_id} ended as '
+                f'{broker_response.status.value} after closing {venue_filled} lots '
+                f'(broker_ref={pending.broker_ref}) — the executed part is booked, and '
+                f'any remaining position is back under the local check')
         elif broker_response.is_terminal:
             # REJECTED / CANCELLED / EXPIRED by broker
             self._drop_active_order(pending)
+            if pending.closes_position_id:
+                # #503 — it ended without executing anything, so the position it was
+                # protecting is unprotected from here. Give it back to the local check.
+                self._clear_protective_stamp(pending)
+                self.logger.error(
+                    f'❌ The protective STOP for {pending.closes_position_id} ended as '
+                    f'{broker_response.status.value} at the venue without filling. The '
+                    f'position is open and its stop is enforced by THIS PROCESS ONLY.')
             self._orders_rejected += 1
             rejection = create_rejection_result(
                 order_id=order_id,
@@ -1303,11 +1487,458 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 f'{broker_response.status.value} by broker '
                 f'(broker_ref={pending.broker_ref})'
             )
+        elif venue_held and venue_filled > 0:
+            # A partial fill on a still-open protective order. Kraken has no
+            # PARTIALLY_FILLED — a half-filled order stays `open` and reports what
+            # executed beside it. The order STAYS active and is re-polled for the rest;
+            # what already closed is booked now, because it is real money out of the
+            # position and the resolver is idempotent about seeing it again.
+            self._apply_venue_close(
+                pending,
+                filled_lots=venue_filled,
+                avg_price=broker_response.fill_price,
+            )
         # else: PENDING / PARTIALLY_FILLED — no state change, next cycle re-polls
 
     # ============================================
     # Order Submission (live-specific)
     # ============================================
+
+    def _fill_open_order(
+        self,
+        pending_order: PendingOrder,
+        fill_price: Optional[float] = None,
+        entry_type: EntryType = EntryType.MARKET,
+        fill_type: FillType = FillType.MARKET
+    ) -> None:
+        """
+        Book the entry, then give the venue the position's stop to hold (#503).
+
+        The placement hangs off the FILL and not off the submit, because there is nothing
+        to protect until a position exists — and it hangs off this one method because
+        every route into a live position passes through it.
+
+        Args:
+            pending_order: The order the venue reported filled
+            fill_price: The price it filled at
+            entry_type: MARKET or LIMIT — how the position was entered
+            fill_type: How the fill came about
+        """
+        super()._fill_open_order(
+            pending_order,
+            fill_price=fill_price,
+            entry_type=entry_type,
+            fill_type=fill_type,
+        )
+        if not pending_order.venue_held_protection:
+            return
+        position = self.portfolio.get_position(pending_order.pending_order_id)
+        if position is None or position.stop_loss is None:
+            return
+        self._place_protective_order(position)
+
+    def _fill_close_order(
+        self,
+        pending_order: PendingOrder,
+        fill_price: Optional[float] = None,
+        close_reason: CloseReason = CloseReason.MANUAL,
+        exit_trades: Optional[List[BrokerTrade]] = None
+    ) -> float:
+        """
+        Book the close, then re-protect whatever the position has left (#503).
+
+        A PARTIAL close leaves a position behind at a smaller size, and its protective
+        order was cancelled to let the close through safely (see `close_position`). The
+        remainder would otherwise sit at the venue with no stop over it — protected only
+        by this process, silently, from a routine partial close.
+
+        Kraken's AmendOrder can change a volume; our modify path cannot, so a fresh order
+        is the honest route rather than a half-built one.
+
+        Args:
+            pending_order: The close order the venue confirmed
+            fill_price: The price it filled at
+            close_reason: Why the position was closed
+            exit_trades: The executions to record — see the base method
+
+        Returns:
+            The lots actually booked
+        """
+        booked = super()._fill_close_order(
+            pending_order,
+            fill_price=fill_price,
+            close_reason=close_reason,
+            exit_trades=exit_trades,
+        )
+        position_id = pending_order.closes_position_id or pending_order.pending_order_id
+        if position_id not in self._reinstate_after_close:
+            return booked
+        self._reinstate_after_close.discard(position_id)
+        position = self.portfolio.get_position(position_id)
+        if position is None or position.stop_loss is None:
+            # A full close after all, or the level was withdrawn on the way. Nothing left
+            # to protect, and inventing an order for it would be worse than none.
+            return booked
+        self.logger.info(
+            f'🛡️ {position_id} survived the close with {position.lots} lots — placing a '
+            f'fresh protective order at its remaining size')
+        self._place_protective_order(position)
+        return booked
+
+    def on_tick(self, tick: TickData) -> None:
+        """
+        Book what the venue did while nothing was running, then run the normal tick.
+
+        A close cannot be booked before a tick exists — the trade record needs a bid and
+        an ask — so the boot only RECORDS what the venue reported about a carried
+        protective order, and the first tick is where it becomes a trade (#503).
+
+        Args:
+            tick: The tick that is arriving
+        """
+        super().on_tick(tick)
+        # AFTER the base pass, which is what sets the tick, the prices and the canonical
+        # clock — all three are needed to write a trade record. The local SL/TP check
+        # runs first and correctly leaves these positions alone: they still carry the
+        # venue stamp, so it stands aside for them.
+        if self._boot_venue_closes:
+            self._drain_boot_venue_closes()
+
+    def _drain_boot_venue_closes(self) -> None:
+        """Book the closes the boot found, now that there is a price to record them against."""
+        pending = self._boot_venue_closes
+        self._boot_venue_closes = []
+        for position_id, filled_lots, fill_price in pending:
+            position = self.portfolio.get_position(position_id)
+            if position is None:
+                continue
+            protective = PendingOrder(
+                pending_order_id=(position.protective_order_id
+                                  or f'protect_{position_id}'),
+                order_action=PendingOrderAction.CLOSE,
+                order_type=OrderType.STOP,
+                broker_ref=position.protective_broker_ref,
+                symbol=position.symbol,
+                direction=(OrderDirection.SHORT
+                           if position.direction == OrderDirection.LONG
+                           else OrderDirection.LONG),
+                close_reason=CloseReason.SL_TRIGGERED,
+                closes_position_id=position_id,
+            )
+            self._apply_venue_close(
+                protective, filled_lots=filled_lots, avg_price=fill_price)
+
+    def get_request_processor(self) -> LiveRequestProcessor:
+        """
+        The live request processor, for a caller that must compose a Tier-3 round trip
+        itself — today only the cold-start boot, which has to ASK the venue about a
+        carried protective order before this session has a tick or a loop (#503).
+
+        Returns:
+            The processor this executor submits through
+        """
+        return self._request_processor
+
+    def apply_carried_venue_close(
+        self,
+        position: Position,
+        filled_lots: float,
+        fill_price: Optional[float],
+    ) -> None:
+        """
+        Book a close the venue performed while nothing was running (#503).
+
+        The boot's counterpart to the in-session resolver: a protective order that fired
+        overnight already moved the money, and the books have to catch up or every number
+        after it is wrong — the balance, the P&L, and the next cross-check.
+
+        Args:
+            position: The restored position the venue closed
+            filled_lots: The volume the venue reports it executed
+            fill_price: The price it executed at
+        """
+        self.logger.info(
+            f'🛡️ Cold start: the venue closed {position.position_id} through its '
+            f'protective order while nothing was running — booking it on the first tick')
+        self._boot_venue_closes.append(
+            (position.position_id, filled_lots, fill_price))
+
+    def adopt_carried_protective_order(self, position: Position) -> None:
+        """
+        Take a still-resting protective order back into this session's stop world (#503).
+
+        Without this the order rests at the venue and no session knows it: it cannot be
+        amended when the level moves, cannot be cancelled before a close, and reappears
+        at the next boot as somebody else's order.
+
+        Args:
+            position: The restored position whose protective order is still resting
+        """
+        order_id = position.protective_order_id or f'protect_{position.position_id}'
+        protective = PendingOrder(
+            pending_order_id=order_id,
+            order_action=PendingOrderAction.CLOSE,
+            order_type=OrderType.STOP,
+            broker_ref=position.protective_broker_ref,
+            symbol=position.symbol,
+            direction=(OrderDirection.SHORT if position.direction == OrderDirection.LONG
+                       else OrderDirection.LONG),
+            entry_price=position.stop_loss,
+            close_lots=position.lots,
+            close_reason=CloseReason.SL_TRIGGERED,
+            closes_position_id=position.position_id,
+            order_kwargs={'stop_price': position.stop_loss},
+        )
+        self._active_stop_orders.append(protective)
+        position.protective_order_id = order_id
+        self.logger.info(
+            f'🛡️ Cold start: the venue is still holding the stop for '
+            f'{position.position_id} (broker_ref={position.protective_broker_ref}) — '
+            f'adopted, and the local check stays aside for it')
+
+    def _place_protective_order(self, position: Position) -> None:
+        """
+        Send the position's stop to the venue as an order of its own (#503).
+
+        It is minted from the ORDER counter like any other order — the wire key derives
+        from that id, and overloading the position's id would collide with a restart's
+        counter — so it names its position in `closes_position_id` instead of being it.
+        The direction is REVERSED: what protects a LONG is a sell.
+
+        The stamp that silences the local check is NOT set here. It is set when the venue
+        CONFIRMS (see _handle_resting_submit_response): between sending and hearing back
+        nobody at the venue holds anything, and a level watched by neither is the defect
+        #500 exists to prevent.
+
+        Args:
+            position: The freshly opened position whose stop_loss should rest at the venue
+        """
+        # Minted from the SAME counter every order uses. The wire key is the trailing
+        # number of this id (`build_client_order_id`), so a private counter is not merely
+        # untidy — measured 2026-09-10, `protect_pos_ethusd_27_28` and the next entry
+        # `pos_ethusd_28` produced the same key and Kraken refused the second with
+        # `EGeneral:Invalid arguments:cl_ord_id not unique`. Consuming a counter also
+        # keeps the cold-start high-water mark honest, so a restart cannot re-issue it.
+        order_id = f'protect_{self.portfolio.get_next_position_id(position.symbol)}'
+        direction = (OrderDirection.SHORT if position.direction == OrderDirection.LONG
+                     else OrderDirection.LONG)
+        protective = PendingOrder(
+            pending_order_id=order_id,
+            order_action=PendingOrderAction.CLOSE,
+            order_type=OrderType.STOP,
+            timing=PendingOrderTiming(submitted_at=datetime.now(timezone.utc)),
+            broker_ref=None,
+            symbol=position.symbol,
+            direction=direction,
+            # For a stop the resting price IS the trigger — the same convention the
+            # entry side and the simulation use.
+            entry_price=position.stop_loss,
+            entry_time=self.get_current_time(),
+            close_lots=position.lots,
+            close_reason=CloseReason.SL_TRIGGERED,
+            closes_position_id=position.position_id,
+            order_kwargs={'stop_price': position.stop_loss},
+            submission=self._current_submission(),
+        )
+        self._active_stop_orders.append(protective)
+        position.protective_order_id = order_id
+        self._orders_sent += 1
+        self._request_processor.submit_open_order_async(
+            order_id=order_id,
+            symbol=position.symbol,
+            direction=direction,
+            lots=position.lots,
+            order_type=OrderType.STOP,
+            adapter=self.broker.adapter,
+            client_order_id=self.build_client_order_id(order_id),
+            stop_price=position.stop_loss,
+        )
+        self.logger.info(
+            f'🛡️ Protective STOP submitted for {position.position_id} at '
+            f'{position.stop_loss:.5f} ({direction.value} {position.lots}) — the local '
+            f'check keeps watching until the venue confirms it')
+
+    def _route_resting_fill(
+        self,
+        pending: PendingOrder,
+        fill_price: Optional[float],
+        entry_type: EntryType = EntryType.MARKET,
+        fill_type: FillType = FillType.MARKET,
+        filled_lots: Optional[float] = None,
+    ) -> None:
+        """
+        Send a confirmed fill to the OPEN or the CLOSE half, by the order's own action.
+
+        Three of the four fill sites called `_fill_open_order` unconditionally, which was
+        true as long as every resting order was an entry. Since #503 a resting order can
+        be a protective one the venue holds: routed the old way, a firing stop would OPEN
+        a second position, book an entry fee and tell the algo an order had filled. The
+        branch lives in ONE place rather than at each site (§19).
+
+        Args:
+            pending: The order the venue reported filled
+            fill_price: The price it filled at
+            entry_type: MARKET or LIMIT — how the position was entered (open side only)
+            fill_type: How the fill came about (open side only)
+            filled_lots: Volume the venue reports filled — read only by the venue-held
+                protective route, where it is the resolver's delta input
+        """
+        if pending.order_action == PendingOrderAction.CLOSE:
+            if pending.closes_position_id:
+                self._apply_venue_close(
+                    pending,
+                    filled_lots=self._venue_close_volume(pending, filled_lots),
+                    avg_price=fill_price,
+                )
+                return
+            self._fill_close_order(pending, fill_price=fill_price)
+            return
+        self._fill_open_order(
+            pending,
+            fill_price=fill_price,
+            entry_type=entry_type,
+            fill_type=fill_type,
+        )
+
+    def _venue_close_volume(
+        self,
+        protective: PendingOrder,
+        reported_lots: Optional[float],
+    ) -> float:
+        """
+        How many lots a venue-held protective order has closed, when the answer said FILLED.
+
+        The venue's own figure wins. Where the answer carried none, a FILLED protective
+        order has by definition closed everything it was for — `close_lots` when it names a
+        size, otherwise the position's whole remaining size, because a protective order
+        with no size closes the position. Falling back to 0.0 instead would make the
+        resolver book NOTHING and say nothing about it, which §35 forbids outright: a
+        stop-out that leaves no trace is indistinguishable from a stop that never fired.
+
+        Args:
+            protective: The protective order the venue reported filled
+            reported_lots: The volume on the venue's answer, or None
+
+        Returns:
+            The volume to book, or 0.0 only when nothing can be determined — and then an
+            error naming the reference has already been written
+        """
+        if reported_lots is not None and reported_lots > 0:
+            return reported_lots
+        if protective.close_lots:
+            return protective.close_lots
+        position = (self.portfolio.get_position(protective.closes_position_id)
+                    if protective.closes_position_id else None)
+        if position is not None:
+            return position.lots
+        self.logger.error(
+            f'❌ Protective order {protective.broker_ref} came back FILLED with no volume '
+            f'and no position to size it against ({protective.closes_position_id}). '
+            f'Nothing was booked. Check the account against that reference by hand.')
+        return 0.0
+
+    def _apply_venue_close(
+        self,
+        protective: PendingOrder,
+        filled_lots: float,
+        avg_price: Optional[float],
+    ) -> None:
+        """
+        Book what the VENUE closed through a protective order it held (#503).
+
+        Idempotent by construction, because it has to be: the venue reports the same fill
+        through several routes — a FILLED query, a terminal answer that still carries
+        volume, a partial one that does not, and after a restart the boot resolver. It
+        applies the DELTA against what is already written into the position book, and
+        that counter is its own (`venue_close_applied_lots`, decision 13.a): the fills
+        aggregate answers how much the VENUE filled, and on a venue with trade-level
+        reporting the trades drain sets it to the full amount before anything is booked.
+
+        Two answers it must never give silently. A volume for a position this bot no
+        longer holds is not attributable — it reaches the session pot naming the venue's
+        reference, which is the only handle left for a manual check (§35). So does an
+        excess beyond what the position still holds.
+
+        Args:
+            protective: The protective order, naming its position in closes_position_id
+            filled_lots: Total volume the venue reports filled on it so far
+            avg_price: Volume-weighted price of that fill
+        """
+        state = protective.execution_state
+        consumed = state.venue_close_applied_lots
+        delta = filled_lots - consumed
+        if delta <= _VENUE_CLOSE_LOT_EPSILON:
+            # A second arrival of the same volume — a no-op, which is the whole point.
+            return
+
+        position_id = protective.closes_position_id
+        position = (self.portfolio.get_position(position_id) if position_id else None)
+        if position is None:
+            state.venue_close_applied_lots = filled_lots
+            self.logger.error(
+                f'❌ Protective order {protective.broker_ref} closed {delta:.8f} lots '
+                f'for position {position_id}, which this bot no longer holds. Nothing '
+                f'was booked. Check the account against that reference by hand.')
+            return
+
+        bookable = min(delta, position.lots)
+        if delta - bookable > _VENUE_CLOSE_LOT_EPSILON:
+            self.logger.error(
+                f'❌ Protective order {protective.broker_ref} reports {delta:.8f} lots '
+                f'closed on position {position_id}, which holds {position.lots:.8f}. '
+                f'The excess {delta - bookable:.8f} is unattributable and was not booked.')
+
+        exit_trades = self._unbooked_close_trades(protective, consumed)
+        protective.close_lots = bookable
+        # Record what was BOOKED, never what was requested. `_fill_close_order` converts a
+        # partial into a full close when the remainder would fall under volume_min, so it
+        # can book MORE than asked — and a counter that under-records would make the
+        # venue's next report of the same volume look like an unattributable excess and
+        # raise a false alarm about a healthy close.
+        booked = self._fill_close_order(
+            protective,
+            fill_price=avg_price,
+            exit_trades=exit_trades,
+        )
+        state.venue_close_applied_lots = consumed + booked
+
+    @staticmethod
+    def _unbooked_close_trades(
+        protective: PendingOrder,
+        consumed_lots: float,
+    ) -> Optional[List[BrokerTrade]]:
+        """
+        The executions of a protective order that are not in the position book yet.
+
+        A protective order can be booked in two steps — a partial fill, then the rest —
+        and `_fill_close_order` hands its trade list to the portfolio as the closing
+        record's executions. Handing it the SAME list twice would report the first
+        partial's executions on both closes. A trade is atomic, so a booking boundary
+        always falls between two of them.
+
+        Args:
+            protective: The protective order
+            consumed_lots: How much of it is already booked
+
+        Returns:
+            The unbooked executions, or None when there are none to hand over — then
+            _fill_close_order synthesizes one, exactly as for every other close
+        """
+        if not protective.fills.trades:
+            return None
+        running = 0.0
+        unbooked: List[BrokerTrade] = []
+        for trade in protective.fills.trades:
+            running += trade.volume
+            if running > consumed_lots + _VENUE_CLOSE_LOT_EPSILON:
+                unbooked.append(trade)
+        # An EMPTY slice is returned as such, and it is NOT the same message as None.
+        # None says "this order has no executions at all"; an empty list says "it has
+        # some, and none of them belong to THIS booking" — which happens when the venue
+        # reports more volume than its executions account for. `_fill_close_order`
+        # synthesizes for the second case and would otherwise re-report the executions of
+        # the previous booking, fee and all.
+        return unbooked
 
     def _current_submission(self) -> SubmissionMetadata:
         """
@@ -1323,6 +1954,71 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             tick_mid_price=self._current_tick.mid,
             tick_time_msc=self._current_tick.time_msc,
         )
+
+    def resolve_venue_held_protection(self, request: OpenOrderRequest) -> bool:
+        """
+        Whether THIS order's protective level should rest at the venue (#503).
+
+        Two declarations, and the order wins where it speaks: the profile states the
+        session's intent, an order overrides it for itself. There is no third layer — a
+        cascade would raise "which one wins" for a switch that moves real money.
+
+        Args:
+            request: The incoming order
+
+        Returns:
+            True when a protective order should be placed for the resulting position
+        """
+        if request.venue_held_protection is None:
+            return self._venue_held_protection_default
+        return request.venue_held_protection
+
+    def _reject_if_venue_cannot_hold_protection(
+        self,
+        request: OpenOrderRequest,
+        order_id: str
+    ) -> Optional[OrderResult]:
+        """
+        Refuse an order that demands a venue-held protection this venue cannot carry.
+
+        Live only, and deliberately so: the SIMULATION accepts the flag and changes
+        nothing (it has no venue to place at, and enforces the level itself as before).
+        Refusing there would make a strategy that opts in un-backtestable, and sim/live
+        parity is the point of the project.
+
+        The message names the SHORT side — the profile or the venue — because a refusal
+        an operator cannot act on is only half a refusal; the pre-flight intersection
+        already answers the same way.
+
+        Args:
+            request: The incoming order
+            order_id: The id the rejection is recorded under
+
+        Returns:
+            The rejection for open_order() to return, or None when the order may proceed
+        """
+        if request.stop_loss is None:
+            # Nothing to protect, so nothing to place — a profile-wide opt-in must not
+            # turn every unprotected entry into a rejection.
+            return None
+        if not self.resolve_venue_held_protection(request):
+            return None
+        if self.broker.get_order_capabilities().venue_held_protective_orders:
+            return None
+
+        self._orders_rejected += 1
+        result = create_rejection_result(
+            order_id=order_id,
+            reason=RejectionReason.ORDER_TYPE_NOT_SUPPORTED,
+            message=(
+                f'venue_held_protection was requested, but '
+                f'{self.get_broker_name()} cannot hold a protective order for a '
+                f'position. Turn it off in the profile (execution.venue_held_protection) '
+                f'or pass venue_held_protection=False on this order.'),
+        )
+        self._check_order_history_limit()
+        self._order_history.append(result)
+        return result
 
     def open_order(self, request: OpenOrderRequest) -> OrderResult:
         """
@@ -1379,6 +2075,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         if price_rejection:
             return price_rejection
 
+        # #503 — the order asks for a level the venue holds; refuse before anything is
+        # sent, rather than opening a position whose protection cannot follow it.
+        protection_rejection = self._reject_if_venue_cannot_hold_protection(
+            request, order_id)
+        if protection_rejection:
+            return protection_rejection
+
         # Build order kwargs for adapter and tracker
         order_kwargs = {}
         if request.stop_loss is not None:
@@ -1399,6 +2102,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         if request.order_type in (OrderType.STOP, OrderType.STOP_LIMIT):
             order_kwargs['stop_price'] = request.stop_price
 
+        # #503 — resolved ONCE here and carried on the pending, because the fill site sees
+        # the order and not the request that made it. The refusal above has already run,
+        # so a True here means the venue can carry it.
+        venue_held_protection = self.resolve_venue_held_protection(request)
+
         # MARKET: async submit via the processor worker thread.
         # 1) Register the pending in the processor with broker_ref=None
         #    so has_pending_orders() blocks the algo during the in-flight
@@ -1414,6 +2122,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 broker_ref=None,
                 order_kwargs=order_kwargs,
                 submission=self._current_submission(),
+                venue_held_protection=venue_held_protection,
             )
             self._request_processor.submit_open_order_async(
                 order_id=order_id,
@@ -1472,6 +2181,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             entry_time=self.get_current_time(),
             order_kwargs=order_kwargs,
             submission=self._current_submission(),
+            venue_held_protection=venue_held_protection,
         )
         if is_stop:
             self._active_stop_orders.append(pending)
@@ -1540,6 +2250,35 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 message=f'Position {position_id} not found',
             )
 
+        # #503 — cancel BEFORE closing, never beside it. At spot there is no reduce_only,
+        # and a market close goes through — measured — while a protective stop still rests
+        # over the same holding: both can fill, and the second sells coins that are gone.
+        # So the close is held until the venue confirms the cancel. Failing to confirm
+        # leaves the position OPEN and PROTECTED, which is the safe end of the two.
+        #
+        # Gated on the ORDER's existence, not on its confirmation. Measured 2026-09-10 in
+        # a real field-study run: gating on `protective_broker_ref` left the window
+        # between submitting the protective order and hearing back wide open — the close
+        # went out at 15:37:14, the venue confirmed the stop at 15:37:18, and the order
+        # outlived the position it protected as an orphan at the venue. `_cancel_resting_
+        # order` handles an unconfirmed order through the deferred-cancel path (#361).
+        #
+        # A close that is ALREADY waiting must not be overtaken by the next request, and
+        # the next request is the ordinary case rather than the exotic one: a deferred
+        # close registers nothing with the request processor, so `is_pending_close` and
+        # `has_pending_orders` both stay False, and the framework's own SL/TP check calls
+        # in again on every tick for as long as the level is breached. Letting the second
+        # request through would send the close beside the still-resting stop — the exact
+        # double-fill the deferral exists to prevent, reached by the most normal sequence
+        # there is.
+        if position_id in self._deferred_closes:
+            self.logger.debug(
+                f'🛡️ Close of {position_id} is already waiting for the protective order '
+                f'to be cancelled — the repeat request joins it rather than racing it')
+            return self._deferred_close_result(position)
+        if position.protective_order_id:
+            return self._defer_close_behind_cancel(position, lots, close_reason)
+
         # Send close to broker — close = reverse direction order
         close_direction = (
             OrderDirection.SHORT if position.direction == OrderDirection.LONG
@@ -1585,6 +2324,109 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     # Position Modification (#318) — capability-gated dual-mode
     # ============================================
 
+    def _defer_close_behind_cancel(
+        self,
+        position: Position,
+        lots: Optional[float],
+        close_reason: CloseReason,
+    ) -> OrderResult:
+        """
+        Cancel the venue's protective order first and hold the close until it is gone.
+
+        The order of these two is not a preference. A close that races the protective
+        order can be filled twice — once by us, once by the venue — and at spot the
+        second fill sells a holding that no longer exists.
+
+        Args:
+            position: The position being closed
+            lots: Lots to close, or None for all
+            close_reason: Why the close was requested
+
+        Returns:
+            PENDING while the cancel is in flight, or a rejection when it cannot be sent
+        """
+        order_id = position.protective_order_id
+        scheduled = bool(order_id) and self._cancel_resting_order(
+            order_id, self._active_stop_orders, 'protective stop')
+        if not scheduled:
+            self.logger.error(
+                f'❌ The close of {position.position_id} was NOT sent: its protective '
+                f'order {order_id} could not be cancelled first, and closing beside a '
+                f'live stop can fill twice. The position stays open and protected.')
+            return create_rejection_result(
+                order_id=f'close_{position.position_id}',
+                reason=RejectionReason.BROKER_ERROR,
+                message=('protective order could not be cancelled first — close withheld '
+                         'rather than raced against it'),
+            )
+
+        # A partial close leaves a position behind, and that remainder needs protecting
+        # again at its new size. Kraken can amend a volume; our modify path cannot, so
+        # the honest route is a fresh order once the close has resolved.
+        is_partial = lots is not None and lots < position.lots
+        self._deferred_closes[position.position_id] = DeferredClose(
+            lots=lots, close_reason=close_reason, reinstate=is_partial)
+        self.logger.info(
+            f'🛡️ Close of {position.position_id} is waiting for the venue to confirm the '
+            f'protective order is cancelled — it will be sent then')
+        return self._deferred_close_result(position)
+
+    def _deferred_close_result(self, position: Position) -> OrderResult:
+        """
+        What a caller hears while its close waits behind the protective order's cancel.
+
+        Args:
+            position: The position whose close is deferred
+
+        Returns:
+            A PENDING result naming the close rather than the position
+        """
+        return OrderResult(
+            order_id=f'close_{position.position_id}',
+            status=OrderStatus.PENDING,
+            position_id=position.position_id,
+            action=OrderAction.CLOSE,
+            symbol=position.symbol,
+            direction=position.direction,
+            submission=self._current_submission(),
+        )
+
+    def _release_deferred_close(self, position_id: str) -> None:
+        """
+        Send the close that was waiting for the protective order to go (#503).
+
+        Args:
+            position_id: The position whose protective order is now cancelled
+        """
+        deferred = self._deferred_closes.pop(position_id, None)
+        if deferred is None:
+            return
+        if deferred.reinstate:
+            self._reinstate_after_close.add(position_id)
+        self.logger.info(
+            f'🛡️ The venue confirmed the protective order for {position_id} is gone — '
+            f'sending the close now')
+        self.close_position(
+            position_id, lots=deferred.lots, close_reason=deferred.close_reason)
+
+    def _abandon_deferred_close(self, position_id: str, why: str) -> None:
+        """
+        Drop a close that can no longer be sent safely (#503).
+
+        The position stays OPEN and, because the cancel did not go through, still
+        protected — the safe end of the two outcomes, and the operator has to know the
+        close they asked for did not happen.
+
+        Args:
+            position_id: The position whose close was waiting
+            why: What stopped it
+        """
+        if self._deferred_closes.pop(position_id, None) is None:
+            return
+        self.logger.error(
+            f'❌ The close of {position_id} was withheld and is now abandoned: {why}. '
+            f'The position is STILL OPEN and its protective order is still at the venue.')
+
     def modify_position(
         self,
         position_id: str,
@@ -1605,11 +2447,18 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         caps = self.broker.adapter.get_order_capabilities()
         if not caps.native_position_sl_tp:
             # Synchronous fallback — Kraken-style local-only update
-            return self.portfolio.modify_position(
+            existing = self.portfolio.get_position(position_id)
+            previous_stop = existing.stop_loss if existing else None
+            result = self.portfolio.modify_position(
                 position_id=position_id,
                 new_stop_loss=new_stop_loss,
                 new_take_profit=new_take_profit,
             )
+            if result.success:
+                # #503 — the level moved locally; the order that HOLDS it has to follow,
+                # or the venue keeps enforcing the old one and the console shows the new.
+                self._follow_protective_level(position_id, previous_stop)
+            return result
 
         # Async path — adapter declared native SL/TP support (#209 MT5)
         position = self.portfolio.get_position(position_id)
@@ -1764,6 +2613,57 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             status=ModificationStatus.PENDING,
             order_id=order_id,
         )
+
+    def _follow_protective_level(
+        self,
+        position_id: str,
+        previous_stop: Optional[float],
+    ) -> None:
+        """
+        Move the venue's protective order to the position's new stop level (#503).
+
+        AMEND rather than cancel-and-replace: an amend keeps the order's place and its
+        identity, and — this is the operational half — it never leaves a window in which
+        the position has no protection at the venue at all. A cancel-replace does, and a
+        trailing stop would open that window on nearly every tick of a trend.
+
+        A level REMOVED (`stop_loss` set to None) is the other direction and cannot be
+        amended into: the order itself has to go, or the venue keeps enforcing a level the
+        strategy has withdrawn.
+
+        Args:
+            position_id: The position whose level moved
+            previous_stop: What its stop was before the change
+        """
+        position = self.portfolio.get_position(position_id)
+        if position is None or not position.protective_broker_ref:
+            return
+        if position.stop_loss == previous_stop:
+            return
+        order_id = position.protective_order_id
+        if order_id is None:
+            return
+
+        if position.stop_loss is None:
+            self._cancel_resting_order(
+                order_id, self._active_stop_orders, 'protective stop')
+            self.logger.info(
+                f'🛡️ The stop for {position_id} was withdrawn — cancelling the order the '
+                f'venue was holding for it')
+            return
+
+        result = self.modify_stop_order(order_id, new_stop_price=position.stop_loss)
+        if result.success:
+            self.logger.info(
+                f'🛡️ Protective STOP for {position_id} amended to '
+                f'{position.stop_loss:.5f} (was {previous_stop})')
+            return
+        # The books now say one level and the venue holds another. Which one is real is
+        # the venue's, so the operator has to hear about it (§35).
+        self.logger.error(
+            f'❌ The protective order for {position_id} could NOT follow the new stop '
+            f'{position.stop_loss:.5f}: {result.rejection_reason}. The venue is still '
+            f'holding {previous_stop} — the level shown and the level enforced differ.')
 
     def modify_stop_order(
         self,
@@ -2078,6 +2978,33 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # the venue, nothing expired locally, not even a log line. A stop can rest here as
         # soon as one is adopted at boot (#500).
         resting = self._active_limit_orders + self._active_stop_orders
+        # #503 — a protective order is EXEMPT from the cancel loop, whatever the policy
+        # says. It is the one order whose entire purpose is to outlive this process, and
+        # the only pair a session can start with today (orders=cancel + positions=leave)
+        # would otherwise cancel the protection at exactly the moment the bot stops
+        # looking — the precise inversion of what it is for.
+        # The exemption covers a protective order that still HAS something to protect. An
+        # ORPHAN — one whose position is gone — is the opposite case and must be cancelled
+        # like anything else: a stop resting over a holding that no longer exists sells
+        # coins that are not ours to sell, and in a shared account (#489) they belong to
+        # someone else. Kraken links nothing, so this is our cleanup or nobody's.
+        protective = [p for p in resting
+                      if p.closes_position_id
+                      and self.portfolio.get_position(p.closes_position_id) is not None]
+        orphans = [p for p in resting
+                   if p.closes_position_id and p not in protective]
+        if protective:
+            self.logger.info(
+                f'🛡️ {len(protective)} protective order(s) LEFT STANDING at the venue — '
+                f'they are what protects the open positions while nothing is running, so '
+                f'the session-end cancel policy does not apply to them.')
+        if orphans:
+            self.logger.error(
+                f'❌ {len(orphans)} protective order(s) are resting at the venue over a '
+                f'position this bot no longer holds — cancelling them with the rest. A '
+                f'stop over a holding that is gone sells coins that are not ours.')
+        resting = [p for p in resting if p not in protective]
+
         if resting and not cancel_orders:
             self.logger.info(
                 f'📋 {len(resting)} active resting order(s) LEFT STANDING '

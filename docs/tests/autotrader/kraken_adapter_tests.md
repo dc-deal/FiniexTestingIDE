@@ -80,7 +80,10 @@ mistake on our side into a real order rather than an error:
   as the same answer. They are opposite facts and only one is safe to act on. `BrokerOrderStatus.UNKNOWN`
   says which one it is, and it is deliberately NOT terminal: booking a cancel or an expiry off an
   empty answer would invent a fact. Resolving it needs a WIDER read — a time-ranged history rather
-  than a reference lookup — which is why #503's boot resolver carries a `ClosedOrders` fallback.
+  than a reference lookup. That read is **not built**: no `ClosedOrders` route exists on the
+  adapter, and the gap is named at both consuming sites in the code. The SAFE half is in place —
+  UNKNOWN is never read as "still resting", so the bot never believes in protection it does not
+  have; what is missing is the ability to find out what actually happened.
   Probe: `python/experiments/venue_probes/probe_kraken_txid_retention.py`.
 
 ## Dry-run fill rules — `test_dry_run_fill_rules.py`

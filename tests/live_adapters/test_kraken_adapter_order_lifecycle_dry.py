@@ -217,26 +217,22 @@ class TestKrakenAdapterOrderLifecycle:
             f'got: {described!r}'
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason='A level DECLARED on an order still does not reach Kraken. Since #500 our '
-               'own process enforces it, so it is no longer enforced by nobody, and the '
-               'live path can now place a standalone STOP / STOP_LIMIT — but turning a '
-               'declared stop_loss into such an order is the remaining work, and it needs '
-               'the decision about which half of a declared pair may rest at the venue. '
-               'Strict + raises=AssertionError, so it flips loudly the moment the payload '
-               'carries a level and does NOT swallow a credentials or transport fault.')
-    def test_a_declared_stop_loss_reaches_the_venue(self, live_adapter, processor):
+    def test_a_declared_level_deliberately_does_not_travel_on_the_entry(
+        self, live_adapter, processor
+    ):
         """
-        The crossing question: does a level the strategy DECLARED ever reach Kraken?
+        The question #500 opened, answered by #503 — and answered at a different layer.
 
-        Asserted against the venue's own words rather than our payload. A stop_loss
-        declared beside a LIMIT entry has to show up in Kraken's description of the order
-        — as a conditional close, or as the separate protective order the framework would
-        place for it. Absent means the level never left this process: our own tick check
-        enforces it while we are running and connected, and nothing protects the position
-        once we are not.
+        This test was a strict `xfail` waiting for a declared `stop_loss` to appear in
+        Kraken's description of the ENTRY. It could never flip, because #503 does not
+        send it there: Kraken has no bracket and no OCO, so the level reaches the venue
+        as a SEPARATE stop order the framework places once the entry has filled.
+
+        So the payload's silence is now the CORRECT answer, and this pins it as such —
+        an entry carrying a hidden conditional close would mean two enforcers on one
+        position. What the payload cannot show is whether the level reaches the venue at
+        all; that needs a filled position and a real order resting over it, which is the
+        field study's `protective_level_test` phase.
         """
         response = processor.submit_open_order(
             symbol='ETHUSD',
@@ -249,11 +245,13 @@ class TestKrakenAdapterOrderLifecycle:
         )
 
         descr = (response.raw_response or {}).get('descr', {})
-        described = f"{descr.get('order', '')} {descr.get('close', '')}"
-        assert 'stop' in described.lower(), (
-            'The declared stop_loss never reached the venue — only this process enforces '
-            f'it. Kraken described: {descr.get("order")!r}'
+        assert not (descr.get('close') or '').strip(), (
+            'The entry must carry NO conditional close. A level attached here and a '
+            'protective order placed for the same position would be two enforcers on '
+            f'one holding. Kraken described the close leg as: {descr.get("close")!r}'
         )
+        assert 'limit' in (descr.get('order') or '').lower(), (
+            f'and the entry itself is still a plain limit: {descr.get("order")!r}')
 
     def test_invalid_symbol_rejected(self, live_adapter, processor):
         """Unknown symbol reaches Kraken API — expects REJECTED response."""

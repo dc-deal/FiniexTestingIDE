@@ -57,6 +57,7 @@ from python.framework.types.decision_event_types import (
     DecisionEvent,
     OrderCancelledEvent,
     PartialCloseEvent,
+    PositionClosedEvent,
     SessionEndSeverity,
 )
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
@@ -452,11 +453,15 @@ class AbstractTradeExecutor(ABC):
 
         Asked in one place and read everywhere — by the tick check that acts on it and by
         the report that states it, so the operator can never read a level without reading
-        who holds it. Today both pipelines answer LOCAL: no adapter can carry a level to
-        the venue on a submit, which is its own issue.
+        who holds it. Both pipelines answer LOCAL: no adapter carries a level to the venue
+        on the SUBMIT, which is a different mechanism from #503's standalone order.
+
+        Since #503 this is the run's DEFAULT, not the answer for every position: a
+        position whose protective order the venue has confirmed says VENUE for itself
+        (Position.protective_enforcement).
 
         Returns:
-            The enforcement site for levels this executor accepts
+            The enforcement site for levels this executor accepts by default
         """
         return ProtectiveLevelEnforcement.LOCAL
 
@@ -477,24 +482,30 @@ class AbstractTradeExecutor(ABC):
         Args:
             tick: Current tick data with bid/ask prices
         """
-        if self.get_protective_level_enforcement() == ProtectiveLevelEnforcement.VENUE:
-            # The venue holds the level as an order of its own and will act on it. Checking
-            # here as well would put TWO enforcers on one position: the venue's order can
-            # fill while our own close is still in flight, and the position is sold twice.
-            # No executor answers VENUE yet; the branch is the contract an adapter that can
-            # carry a level to the wire will rely on, and it is covered by its own test.
-            return
+        run_default = self.get_protective_level_enforcement()
 
         for position in self.get_open_positions():
             if position.symbol != tick.symbol:
                 continue
 
-            if position.is_sl_triggered(tick.bid, tick.ask):
+            # The stand-down is per LEVEL, not per position — and that distinction is the
+            # whole point. What rests at the venue is ONE order holding the STOP (#503);
+            # Kraken has no OCO and no bracket, so the take profit of the same position is
+            # still ours to enforce. Standing down for the position as a whole would leave
+            # the target recorded, printed, carried into the report and enforced by
+            # nobody — the exact defect #500 abolished, reinstated one level up.
+            venue_holds_stop = position.protective_enforcement(run_default) == (
+                ProtectiveLevelEnforcement.VENUE)
+
+            if position.is_sl_triggered(tick.bid, tick.ask) and not venue_holds_stop:
                 self.logger.info(
                     f'🛑 SL triggered: {position.position_id} '
                     f'{position.direction.value} @ SL={position.stop_loss:.5f} '
                     f'(bid={tick.bid:.5f}, ask={tick.ask:.5f})'
                 )
+                # Acting here as well as at the venue would put TWO enforcers on one
+                # position — the venue's order can fill while our close is in flight, and
+                # the position is sold twice. Hence the guard above.
                 self._close_on_protective_level(
                     position, position.stop_loss, CloseReason.SL_TRIGGERED)
 
@@ -1072,8 +1083,9 @@ class AbstractTradeExecutor(ABC):
         self,
         pending_order: PendingOrder,
         fill_price: Optional[float] = None,
-        close_reason: CloseReason = CloseReason.MANUAL
-    ) -> None:
+        close_reason: CloseReason = CloseReason.MANUAL,
+        exit_trades: Optional[List[BrokerTrade]] = None
+    ) -> float:
         """
         Process a confirmed CLOSE order — update portfolio, record PnL.
 
@@ -1092,6 +1104,17 @@ class AbstractTradeExecutor(ABC):
             fill_price: Broker-provided close price. If None, determined from
                         current tick (bid for LONG close, ask for SHORT close).
             close_reason: Why the position was closed
+            exit_trades: The executions to record on the closing trade. None (the normal
+                case) means the order's own — synthesized first when it has none. A
+                venue-held protective order booked in two steps passes the UNBOOKED
+                slice, so the second close does not report the first partial's
+                executions a second time (#503)
+
+        Returns:
+            The lots actually booked — 0.0 where nothing was. It is NOT always what the
+            caller asked for: this method converts a partial into a full close when the
+            remainder would fall under volume_min, and the venue-close resolver has to
+            record what happened rather than what it requested (#503)
         """
         # A live close is asynchronous, so the reason is known at the TRIGGER and the fill
         # happens a round trip later. It travels on the PendingOrder; an explicit argument
@@ -1107,14 +1130,20 @@ class AbstractTradeExecutor(ABC):
         self.logger.verbose(
             f'CURRENT_TICK_AT_ORDER_CLOSE_FILL: {json.dumps(self._current_tick.to_dict(), indent=2)}')
 
+        # Which position this settles. For every close the strategy or the engine requests
+        # the order id IS the position id, and that held everywhere until #503. A
+        # venue-held protective order is minted from the order counter like any other
+        # order — the wire key is derived from it — so it names its position separately.
+        position_id = pending_order.closes_position_id or pending_order.pending_order_id
+
         # Get position
-        position = self.portfolio.get_position(pending_order.pending_order_id)
+        position = self.portfolio.get_position(position_id)
         if not position:
             self.logger.warning(
                 f'⚠️ Close order {pending_order.pending_order_id} failed: '
-                f'Position {pending_order.pending_order_id} not found'
+                f'Position {position_id} not found'
             )
-            return
+            return 0.0
 
         # Get current price (needed for tick_value calculation regardless)
         bid, ask = self.get_current_price(position.symbol)
@@ -1141,12 +1170,12 @@ class AbstractTradeExecutor(ABC):
                 f'⚠️ Invalid close_lots {close_lots} for {pending_order.pending_order_id} '
                 f'— skipping fill'
             )
-            return
+            return 0.0
 
         if close_lots is not None and close_lots > position.lots:
             self.logger.warning(
                 f'⚠️ close_lots {close_lots} > position.lots {position.lots} '
-                f'for {pending_order.pending_order_id} — converting to full close'
+                f'for {position_id} — converting to full close'
             )
             close_lots = None  # Full close
 
@@ -1185,46 +1214,58 @@ class AbstractTradeExecutor(ABC):
         # #326: synthesize a BrokerTrade for the close execution if not yet
         # populated. It carries the exit fee so the event stream and the trade history show
         # the charge too — they used to report the exit leg at zero (#506).
-        if not pending_order.fills.trades:
-            self._synthesize_pending_trade(
-                pending_order=pending_order,
-                fill_price=close_price,
-                filled_lots=executed_lots,
-                entry_type=EntryType.MARKET,  # closes are market in V1
-                symbol_spec=symbol_spec,
-                fee_cost=exit_fee.cost if exit_fee else 0.0,
-            )
+        if exit_trades is None or not exit_trades:
+            # None  → the caller has no opinion: use the order's own executions, and
+            #         synthesize one when it has none. Every close but a venue-held one.
+            # []    → the caller HAS executions on the order but none of them belong to
+            #         this booking (#503, a protective order booked in two steps). A fresh
+            #         synthetic one is the honest record; reusing the earlier list would
+            #         report the previous partial's executions and its fee a second time.
+            needs_synthesis = not pending_order.fills.trades or exit_trades == []
+            already = len(pending_order.fills.trades)
+            if needs_synthesis:
+                self._synthesize_pending_trade(
+                    pending_order=pending_order,
+                    fill_price=close_price,
+                    filled_lots=executed_lots,
+                    entry_type=EntryType.MARKET,  # closes are market in V1
+                    symbol_spec=symbol_spec,
+                    fee_cost=exit_fee.cost if exit_fee else 0.0,
+                    position=position,
+                )
+            exit_trades = (list(pending_order.fills.trades[already:]) if exit_trades == []
+                           else list(pending_order.fills.trades))
 
         # Execute close
         if is_partial:
             realized_pnl = self.portfolio.partial_close_position(
-                position_id=pending_order.pending_order_id,
+                position_id=position_id,
                 close_lots=close_lots,
                 exit_price=close_price,
                 exit_tick_value=exit_tick_value,
                 exit_tick_index=self._tick_counter,
                 exit_fee=exit_fee,
                 close_reason=close_reason,
-                exit_trades=list(pending_order.fills.trades),
+                exit_trades=exit_trades,
                 exit_submission=pending_order.submission,
             )
             self.logger.debug(
-                f'📊 Partial close: {pending_order.pending_order_id} '
+                f'📊 Partial close: {position_id} '
                 f'{close_lots} lots at {close_price:.5f}, P&L: {realized_pnl:.2f}'
             )
         else:
             realized_pnl = self.portfolio.close_position_portfolio(
-                position_id=pending_order.pending_order_id,
+                position_id=position_id,
                 exit_price=close_price,
                 exit_tick_value=exit_tick_value,
                 exit_tick_index=self._tick_counter,
                 exit_fee=exit_fee,
                 close_reason=close_reason,
-                exit_trades=list(pending_order.fills.trades),
+                exit_trades=exit_trades,
                 exit_submission=pending_order.submission,
             )
             self.logger.debug(
-                f'💰 Position closed: {pending_order.pending_order_id} '
+                f'💰 Position closed: {position_id} '
                 f'at {close_price:.5f}, P&L: {realized_pnl:.2f}'
             )
 
@@ -1238,14 +1279,17 @@ class AbstractTradeExecutor(ABC):
             # The field that CARRIES the cost used to be zero while the real figure sat in
             # metadata beside it (#506). It reaches the order history and the order report
             # from here.
-            # It does NOT yet reach the Field Study's session-cost ceiling or its
-            # certificate, and that is not this line's doing: a FULL close notifies nobody
-            # — `_notify_outcome` is called only from `_fill_open_order`, and the only event
-            # a close emits is the PartialCloseEvent below. So the ceiling still sees entry
-            # fees plus partial-close fees and misses every full close. Closing that gap
-            # needs a full-close outcome, which is #503's new POSITION_CLOSED event.
+            # A full close still reaches no ORDER-OUTCOME listener — `_notify_outcome` is
+            # called only from `_fill_open_order` — so anything summing per-event
+            # commissions cannot see it. The Field Study's cost ceiling is not affected:
+            # #506 rerouted it to read the portfolio's own cost breakdown at session end
+            # instead of summing events. The POSITION_CLOSED event below is what a
+            # listener that DOES want full closes should read.
             commission=exit_fee.cost if exit_fee else 0.0,
-            position_id=pending_order.pending_order_id,
+            # order_id stays the ORDER's id and position_id the POSITION's. They are the
+            # same value for every locally-requested close and differ for a venue-held
+            # protective order (#503) — which is exactly why they are two fields.
+            position_id=position_id,
             action=OrderAction.CLOSE,
             symbol=position.symbol,
             direction=position.direction,
@@ -1263,11 +1307,13 @@ class AbstractTradeExecutor(ABC):
         self._check_order_history_limit()
         self._order_history.append(result)
 
-        # Partial-close event (#348) — full closes do not emit (the algo sees
-        # the position gone via get_open_positions); partials carry the delta.
+        # Partial-close event (#348) carries the delta; a full close emits
+        # POSITION_CLOSED (#503). Until then a full close emitted nothing at all and the
+        # algo learned of it by noticing the position missing from get_open_positions()
+        # — which no longer works once the VENUE can close a position on its own.
         if is_partial:
             self._emit_decision_event(PartialCloseEvent(
-                position_id=pending_order.pending_order_id,
+                position_id=position_id,
                 direction=position.direction,
                 closed_lots=executed_lots,
                 remaining_lots=pre_close_total_lots - executed_lots,
@@ -1275,6 +1321,22 @@ class AbstractTradeExecutor(ABC):
                 result=result,
                 tick_time=self.get_current_time(),
             ))
+        else:
+            self._emit_decision_event(PositionClosedEvent(
+                position_id=position_id,
+                direction=position.direction,
+                close_reason=close_reason,
+                # A close order that names its position separately is a protective order
+                # the venue held: it fired on its own and no local close is behind it.
+                # Every other close in the system IS the local request (#503).
+                requested_locally=pending_order.closes_position_id is None,
+                fill_price=close_price,
+                lots=executed_lots,
+                realized_pnl=realized_pnl,
+                result=result,
+                tick_time=self.get_current_time(),
+            ))
+        return executed_lots
 
     # ============================================
     # Position Management
@@ -2166,6 +2228,7 @@ class AbstractTradeExecutor(ABC):
         entry_type: EntryType,
         symbol_spec: SymbolSpecification,
         fee_cost: float,
+        position: Optional[Position] = None,
     ) -> None:
         """
         Append a synthetic BrokerTrade to pending_order.fills.trades (#326).
@@ -2187,6 +2250,10 @@ class AbstractTradeExecutor(ABC):
             entry_type: How the position was opened (drives is_maker)
             symbol_spec: Symbol specification (for fee_currency = quote)
             fee_cost: Locally-computed entry fee in account currency
+            position: The position a CLOSE settles, already resolved by the caller. It
+                supplies the execution side, and it is the only source that can: a
+                venue-held protective order carries its OWN id, so looking the position
+                up by the order id misses and the side comes out inverted (#503)
         """
         is_maker = entry_type in (EntryType.LIMIT, EntryType.STOP_LIMIT)
         self._synth_trade_seq += 1
@@ -2194,12 +2261,15 @@ class AbstractTradeExecutor(ABC):
         # Open LONG → BUY, close LONG → SELL, open SHORT → SELL, close SHORT → BUY.
         # Close-side pendings are created without a `direction` (default None),
         # because they reference a position that the executor identifies by
-        # position_id; the actual direction lives on the Position. Look it up
-        # for close pendings; use pending.direction directly for opens.
+        # position_id; the actual direction lives on the Position — so the CALLER
+        # hands it in. It used to be looked up here by `pending_order_id`, which held
+        # only while a close order's id WAS its position's id: a venue-held protective
+        # order carries its own id (#503), the lookup missed, and the fallback produced
+        # BUY for the exit of a LONG — a record contradicting its own trade list.
         if pending_order.order_action == PendingOrderAction.CLOSE:
             order_action = OrderAction.CLOSE
-            position = self.portfolio.get_position(pending_order.pending_order_id)
-            ref_direction = position.direction if position is not None else pending_order.direction
+            ref_direction = (position.direction if position is not None
+                             else pending_order.direction)
         else:
             order_action = OrderAction.OPEN
             ref_direction = pending_order.direction

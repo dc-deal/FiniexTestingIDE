@@ -79,6 +79,7 @@ class FieldStudyPhaseMachine:
             PhaseType.LIMIT_MODIFY: self._handle_limit_modify,
             PhaseType.LIMIT_CANCEL: self._handle_limit_cancel,
             PhaseType.STOP_CANCEL: self._handle_stop_cancel,
+            PhaseType.PROTECTIVE_LEVEL: self._handle_protective_level,
             PhaseType.MULTI_LIMIT: self._handle_multi_limit,
             PhaseType.MULTI_CANCEL: self._handle_multi_cancel,
             PhaseType.PARTIAL_CLOSE: self._handle_partial_close,
@@ -431,6 +432,81 @@ class FieldStudyPhaseMachine:
             return self._finish(phase, PhaseOutcome.PASS, 'cancelled, no position', ctx.now)
         if self._timed_out(phase, ctx):
             return self._finish(phase, PhaseOutcome.FAIL, 'cancel not confirmed', ctx.now)
+        return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
+
+    def _handle_protective_level(
+        self, phase: FieldStudyPhase, ctx: PhaseContext
+    ) -> PhaseAction:
+        """
+        Open a position WITH a declared level and prove the venue is holding it (#503).
+
+        The one phase that answers the question #500 opened and #503 closed: does a level
+        the strategy DECLARES ever leave this process? It cannot be answered from the
+        entry's payload — the level deliberately does not travel there — and it cannot be
+        answered by a mock, because what is under test is an order resting at a real
+        venue over a real holding.
+
+        Four things it exercises that nothing else does: the framework minting a
+        protective order off a filled entry, the venue accepting it, the stamp that makes
+        the local check stand aside, and — on the close — the cancel-before-close
+        ordering, without which a market close and a resting stop can both fill.
+
+        The stop sits FAR below the market on purpose. A trigger inside the phase would
+        prove the offset was too tight, not that the feature works, and it would cost a
+        taker fee to learn nothing.
+
+        Args:
+            phase: The phase being driven
+            ctx: This tick's observation
+
+        Returns:
+            The action to perform
+        """
+        if self._state == PhaseState.PENDING:
+            self._state = PhaseState.AWAIT_FILL
+            offset = phase.stop_loss_offset_pct or 0.05
+            stop = ctx.mid_price * (1.0 - offset)
+            return self._act(ctx, PhaseAction(
+                PhaseActionKind.SUBMIT_MARKET, phase.phase_id,
+                side=phase.side, lots=self._lots(phase),
+                stop_loss=round(stop, 2),
+                reason='market open with a declared protective level',
+            ))
+
+        if self._state == PhaseState.AWAIT_FILL:
+            if ctx.rejected_since_submit:
+                return self._finish(phase, PhaseOutcome.FAIL, 'entry refused', ctx.now)
+            if ctx.open_position_count > 0:
+                self._state = PhaseState.AWAIT_PROTECTION
+                return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
+            if self._timed_out(phase, ctx):
+                return self._finish(phase, PhaseOutcome.FAIL, 'entry never filled', ctx.now)
+            return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
+
+        if self._state == PhaseState.AWAIT_PROTECTION:
+            if ctx.active_stop_count >= 1:
+                # The venue is holding it. Closing now is the second half of the proof:
+                # the close must go BEHIND the cancel, never beside it.
+                self._state = PhaseState.POST_CLOSE_WAIT
+                return self._act(ctx, PhaseAction(
+                    PhaseActionKind.CLOSE_ALL, phase.phase_id,
+                    reason='close — the protective order must be cancelled first'))
+            if self._timed_out(phase, ctx):
+                # The position is open and unprotected at the venue. Close it rather than
+                # leave it: a failed phase must not leave money exposed.
+                self._state = PhaseState.POST_CLOSE_WAIT
+                return self._act(ctx, PhaseAction(
+                    PhaseActionKind.CLOSE_ALL, phase.phase_id,
+                    reason='no protective order appeared — closing out'))
+            return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
+
+        # POST_CLOSE_WAIT — flat, and nothing left resting at the venue.
+        if ctx.open_position_count == 0 and ctx.active_stop_count == 0:
+            return self._finish(
+                phase, PhaseOutcome.PASS, 'venue held it, then released it', ctx.now)
+        if self._timed_out(phase, ctx):
+            return self._finish(
+                phase, PhaseOutcome.FAIL, 'position or protective order left behind', ctx.now)
         return PhaseAction(PhaseActionKind.NONE, phase.phase_id)
 
     def _handle_multi_limit(self, phase: FieldStudyPhase, ctx: PhaseContext) -> PhaseAction:

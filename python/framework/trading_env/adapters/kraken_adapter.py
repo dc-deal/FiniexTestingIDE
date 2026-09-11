@@ -223,7 +223,11 @@ class KrakenAdapter(AbstractAdapter):
             trailing_stop=False,
             iceberg_orders=True,
             hedging_allowed=self._hedging_allowed,
-            partial_fills_supported=True
+            partial_fills_supported=True,
+            # Measured (#500, minimum size, cleaned up): a standalone stop-loss order
+            # rests over a spot holding and fires while this process is gone. Kraken
+            # links nothing — no reserve, no OCO — so the pairing is our work (#503).
+            venue_held_protective_orders=True,
         )
 
     # ============================================

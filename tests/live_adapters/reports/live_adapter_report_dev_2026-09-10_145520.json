@@ -2,12 +2,12 @@
   "record_kind": "certificate",
   "release_version": "dev",
   "app_version": "1.4.0",
-  "timestamp": "2026-09-07T10:21:58.414720+00:00",
-  "valid_until": "2026-12-06T10:21:58.414720+00:00",
-  "git_commit": "41533bc",
+  "timestamp": "2026-09-10T14:55:20.105658+00:00",
+  "valid_until": "2026-12-09T14:55:20.105658+00:00",
+  "git_commit": "e500355",
   "git_branch": "dev-v-1-4",
   "git_dirty": true,
-  "uncommitted_count": 28,
+  "uncommitted_count": 44,
   "comment": null,
   "isolation_active": true,
   "workspace_overrides": {
@@ -22,21 +22,19 @@
   "overall_status": "PASSED",
   "tests_passed": 9,
   "tests_failed": 0,
+  "tests_failed_names": [],
   "tests_skipped": 0,
-  "tests_expected_to_fail": [
-    "test_a_declared_stop_loss_reaches_the_venue"
-  ],
+  "tests_expected_to_fail": [],
   "tests_run": [
     "test_market_buy_dryrun",
     "test_market_sell_dryrun",
     "test_limit_buy_dryrun",
     "test_limit_buy_with_sltp_dryrun",
     "test_the_venues_own_description_is_preserved",
-    "test_a_declared_stop_loss_reaches_the_venue",
+    "test_a_standalone_stop_reaches_the_venue",
+    "test_a_declared_level_deliberately_does_not_travel_on_the_entry",
     "test_invalid_symbol_rejected",
-    "test_below_minimum_lot_rejected",
-    "test_market_order_fill_roundtrip",
-    "test_limit_order_lifecycle"
+    "test_below_minimum_lot_rejected"
   ],
   "observed": {
     "phases": [
@@ -44,13 +42,10 @@
         "phase": "validate_only",
         "dry_run": true,
         "api_base_url": "https://api.kraken.com"
-      },
-      {
-        "phase": "real_orders",
-        "dry_run": false,
-        "api_base_url": "https://api.kraken.com"
       }
     ]
   },
-  "warnings": []
+  "warnings": [
+    "NO REAL ORDER: every adapter in this run was built with dry_run=True, so the certificate covers API acceptance only \u2014 not order execution."
+  ]
 }

@@ -189,6 +189,7 @@ class DecisionTradingApi:
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         comment: str = '',
+        venue_held_protection: Optional[bool] = None,
     ) -> OrderResult:
         """
         Send order to trading environment.
@@ -209,6 +210,11 @@ class DecisionTradingApi:
             stop_loss: Optional stop loss price level on resulting position
             take_profit: Optional take profit price level on resulting position
             comment: Order comment (e.g., strategy name)
+            venue_held_protection: Let the resulting position's stop_loss rest at the
+                venue as an order of its own, so it survives this process dying (#503).
+                None follows the profile; True/False overrides it for this order. Live
+                refuses it where the adapter cannot carry it; a backtest accepts it and
+                enforces the level itself, so an opted-in strategy stays runnable
 
         Returns:
             OrderResult with execution details
@@ -227,6 +233,7 @@ class DecisionTradingApi:
             stop_loss=stop_loss,
             take_profit=take_profit,
             comment=comment,
+            venue_held_protection=venue_held_protection,
         )
 
         # Pre-trade guard — rejection cooldown + stale-market-data block (#436).

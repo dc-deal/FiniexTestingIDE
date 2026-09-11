@@ -60,6 +60,7 @@
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
 | [Order Guard](architecture/order_guard_architecture.md) | Pre-validation guard (SHORT+SPOT, rejection cooldown, async callback) |
 | [Performance Tracking Layers](architecture/performance_tracking_layers.md) | Two-layer model (per-component + tick-loop profiler), defaults, graceful degradation, why no context-manager wrappers in the tick loop |
+| [Protective Levels](architecture/protective_levels.md) | Who enforces a declared stop_loss / take_profit — the local tick check, the opt-in venue-held STOP (#503), the order's life at the venue (amend · cancel-before-close · partial · session end · orphan), and what the boot asks about a carried reference |
 | [Safety Circuit Breaker](architecture/safety_circuit_breaker_architecture.md) | Account-level protection (balance/drawdown thresholds, AutoTrader only) |
 | [Design Decisions](architecture/execution_design_decisions.md) | Historical reasoning behind architectural choices |
 | [Batch Data Flow](architecture/batch_data_flow.md) | Subprocess data channels, serialization boundaries |

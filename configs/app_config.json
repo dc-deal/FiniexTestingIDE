@@ -53,6 +53,7 @@
             "bar_max_history": 1000,
             "heartbeat_interval_ms": 500,
             "market_data_stale_after_s": 300.0,
+            "venue_held_protection": false,
             "performance_tracking": {
                 "worker_decision_tracking": true
             }

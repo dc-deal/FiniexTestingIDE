@@ -114,7 +114,17 @@ class AbstractPendingOrderManager(ABC):
         return len(self._pending_orders) > 0
 
     def is_pending_close(self, position_id: str) -> bool:
-        """Is this specific position currently being closed?"""
+        """Is this specific position currently being closed?
+
+        Matches on the ORDER id, which IS the position id for every close the strategy or
+        the engine requests. A venue-held protective order (#503) is the exception — it
+        carries its own id and names its position in `closes_position_id` — and it is
+        deliberately NOT matched here. The obvious widening would be wrong in the more
+        expensive direction: a protective order RESTS for the whole life of the position,
+        so counting it as "a close is in flight" would make the algo believe it can never
+        close, permanently. What this guard means is IN FLIGHT, not RESTING. #503 stage D
+        owns the distinction, and the cancel-before-close ordering it needs.
+        """
         pending_closes = self.get_pending_orders(PendingOrderAction.CLOSE)
         return any(p.pending_order_id == position_id for p in pending_closes)
 

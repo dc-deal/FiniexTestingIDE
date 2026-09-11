@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional
 
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
+
 
 class BrokerOrderStatus(Enum):
     """
@@ -133,3 +135,23 @@ class TimeoutConfig:
         order_timeout_seconds: Max wait time for broker fill/rejection
     """
     order_timeout_seconds: float = 30.0
+
+
+@dataclass
+class DeferredClose:
+    """
+    A close held back until the venue confirms the protective order is gone (#503).
+
+    At spot there is no `reduce_only`, and a market close goes through — measured —
+    while a protective stop still rests over the same holding. Both can fill, and the
+    second one sells coins that are no longer there. So the close waits for the cancel.
+
+    Args:
+        lots: Lots to close, or None for the whole position
+        close_reason: Why the close was requested — carried across the wait
+        reinstate: Whether a surviving position should get a fresh protective order at
+            its remaining size once the close resolves (a PARTIAL close)
+    """
+    lots: Optional[float]
+    close_reason: CloseReason
+    reinstate: bool

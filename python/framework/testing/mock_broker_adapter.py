@@ -221,6 +221,8 @@ class MockBrokerAdapter(AbstractAdapter):
             hedging_allowed=False,
             partial_fills_supported=False,
             trade_level_reporting=True,
+            # No venue at all, so nothing can rest at one (#503).
+            venue_held_protective_orders=False,
         )
 
     # ============================================

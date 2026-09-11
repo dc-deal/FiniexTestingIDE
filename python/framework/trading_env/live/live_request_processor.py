@@ -287,6 +287,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         broker_ref: Optional[str],
         order_kwargs: Optional[Dict] = None,
         submission: Optional[SubmissionMetadata] = None,
+        venue_held_protection: bool = False,
     ) -> str:
         """
         Track a submitted OPEN order with broker reference.
@@ -308,6 +309,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             submission: Submission-moment snapshot for the SLIPPAGE audit
                         channel (#340/#345). None when no tick is in scope
                         (cold-start, heartbeat-only path).
+            venue_held_protection: Whether the resulting position should get a protective
+                        order at the venue (#503) — resolved at submit, read at fill
 
         Returns:
             order_id for chaining
@@ -326,6 +329,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             entry_time=now,
             order_kwargs=order_kwargs or {},
             submission=submission if submission else SubmissionMetadata(),
+            venue_held_protection=venue_held_protection,
         )
 
         self.store_order(pending)
