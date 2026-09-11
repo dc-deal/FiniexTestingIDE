@@ -14,7 +14,7 @@ This suite proves that `PortfolioManager.partial_close_position()` and the routi
 - Seeds: inbound_latency=12345
 - Max Ticks: 12,000
 
-**Total Tests:** 39 (23 partial-close specific + 16 reused from baseline)
+**Coverage:** partial-close specific cases plus the baseline suite, reused
 
 ---
 
@@ -112,11 +112,11 @@ PARTIAL_CLOSE_CONFIG = "backtesting/partial_close_test.json"
 
 ## Test Files
 
-### test_partial_close.py (23 Tests)
+### test_partial_close.py
 
 Partial-close specific tests organized in 7 groups.
 
-#### TestTradeRecordCount (5 Tests)
+#### TestTradeRecordCount
 
 | Test | Description |
 |------|-------------|
@@ -126,7 +126,7 @@ Partial-close specific tests organized in 7 groups.
 | `test_partial_records_share_position_id` | Both partials belong to same position |
 | `test_partial_position_has_three_records` | 3 total records for partially closed position |
 
-#### TestPartialCloseLots (4 Tests)
+#### TestPartialCloseLots
 
 | Test | Description |
 |------|-------------|
@@ -135,7 +135,7 @@ Partial-close specific tests organized in 7 groups.
 | `test_remainder_lots` | Final full close is 0.01 lots |
 | `test_lots_sum_equals_original` | Sum of all closed lots = 0.03 (original) |
 
-#### TestPartialClosePnL (3 Tests)
+#### TestPartialClosePnL
 
 | Test | Description |
 |------|-------------|
@@ -143,14 +143,14 @@ Partial-close specific tests organized in 7 groups.
 | `test_partial_records_have_same_entry_price` | All records share identical entry price |
 | `test_partial_records_have_different_exit_ticks` | Each partial at a different tick |
 
-#### TestPartialCloseFeeSplitting (2 Tests)
+#### TestPartialCloseFeeSplitting
 
 | Test | Description |
 |------|-------------|
 | `test_each_partial_has_positive_fees` | Spread and total fees > 0 per partial |
 | `test_fee_sum_across_partials_is_consistent` | Total spread for position is positive and non-negative per record |
 
-#### TestPositionIsolation (3 Tests)
+#### TestPositionIsolation
 
 | Test | Description |
 |------|-------------|
@@ -158,7 +158,7 @@ Partial-close specific tests organized in 7 groups.
 | `test_non_partial_is_short` | Trade #1 direction is SHORT |
 | `test_non_partial_lot_size` | Trade #1 closes with full 0.02 lots |
 
-#### TestPortfolioAggregation (4 Tests)
+#### TestPortfolioAggregation
 
 | Test | Description |
 |------|-------------|
@@ -167,29 +167,29 @@ Partial-close specific tests organized in 7 groups.
 | `test_total_trades_count` | portfolio.total_trades = 4 |
 | `test_no_rejected_orders` | 0 rejected orders |
 
-#### TestChronologicalOrder (2 Tests)
+#### TestChronologicalOrder
 
 | Test | Description |
 |------|-------------|
 | `test_partial_closes_before_final` | Partial exit ticks < final full close tick |
 | `test_partial_close_ticks_near_config` | Exit ticks ≈ configured tick_numbers (±15 latency) |
 
-### test_partial_close_pnl_calculation.py (16 Tests) — Reused from Baseline
+### test_partial_close_pnl_calculation.py — Reused from Baseline
 
 Generic P&L validation from `tests/shared/shared_pnl.py`. Validates formulas, fee breakdowns, trade completeness across all 4 trade records.
 
-### test_event_stream_csv.py (14 Tests) — Event-Stream CSV (#330)
+### test_event_stream_csv.py — Event-Stream CSV (#330)
 
 Builds the long-format event-stream CSV from the partial_close scenario's terminal state and verifies the chronological event sequence. Uses `EventStreamWriter.from_sim_result` directly (writes to tempdir — the partial_close test fixtures don't go through `BatchReportCoordinator`).
 
-#### TestCsvShape (2 Tests)
+#### TestCsvShape
 
 | Test | Description |
 |------|-------------|
 | `test_header_is_canonical` | Header row matches `EVENT_FIELDS` tuple contract |
 | `test_has_data_rows` | At least one event emitted |
 
-#### TestEventTaxonomy (5 Tests)
+#### TestEventTaxonomy
 
 | Test | Description |
 |------|-------------|
@@ -199,7 +199,7 @@ Builds the long-format event-stream CSV from the partial_close scenario's termin
 | `test_position_close_present` | POSITION_CLOSE events emitted |
 | `test_fill_present` | Per-execution FILL events emitted |
 
-#### TestEventCounts (3 Tests)
+#### TestEventCounts
 
 | Test | Description |
 |------|-------------|
@@ -207,13 +207,13 @@ Builds the long-format event-stream CSV from the partial_close scenario's termin
 | `test_four_positions_closed` | 4 POSITION_CLOSE — 3 partials of pos_1 + 1 full of pos_2 |
 | `test_close_submit_per_close_event` | 4 CLOSE_SUBMIT (one per close, no dedup collapse) |
 
-#### TestChronologicalOrdering (1 Test)
+#### TestChronologicalOrdering
 
 | Test | Description |
 |------|-------------|
 | `test_timestamps_monotonic` | Sort enforced by `flush()` — naive-vs-aware-safe |
 
-#### TestCloseSubmitDistinctFromOrderSubmit (2 Tests)
+#### TestCloseSubmitDistinctFromOrderSubmit
 
 | Test | Description |
 |------|-------------|

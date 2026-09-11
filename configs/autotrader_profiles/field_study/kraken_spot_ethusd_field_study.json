@@ -5,6 +5,10 @@
   "broker_type": "kraken_spot",
   "adapter_type": "live",
   "dry_run": false,
+  "execution": {
+    "_comment": "#503 — the protective_level_test phase is the only one that declares a stop_loss, so this switch places exactly one protective order per run. Every other phase passes no level and is untouched by it.",
+    "venue_held_protection": true
+  },
   "strategy_config": {
     "decision_logic_type": "CORE/live_field_study/live_field_study",
     "worker_instances": {
@@ -42,6 +46,8 @@
         {"phase_id": "limit_cancel_test", "phase_type": "limit_cancel", "side": "long", "limit_offset_pct": 0.004, "fill_timeout_s": 30},
         {"_comment": "The live STOP path (#500). A buy stop rests ABOVE the market and is accepted, confirmed resting, then cancelled at the venue — no fill, therefore no fee. What it proves cannot be proven by a mock: the trigger mapping on the wire (Kraken's `price` carries the trigger, not a limit), the submit-response route that confirms the broker reference, the poll loop reading the stop world, and the cancel path finding the order there rather than among the limits. Both numbers differ from the limit phases ON PURPOSE. A buy stop's order value is lots x TRIGGER, and at the default 0.002 with a 0.4% offset that lands on ~$5.00 — exactly Kraken's cost minimum, so a small downward move fails the phase for arithmetic rather than for a defect (measured 2026-09-07: EOrder:Cost minimum not met). And unlike a limit phase this order must NOT fill: a fill here means the trigger was mis-sided, so the offset is wide enough that a 30-second window cannot reach it.",
          "phase_id": "stop_cancel_test", "phase_type": "stop_cancel", "side": "long", "lots": 0.004, "limit_offset_pct": 0.03, "fill_timeout_s": 30},
+        {"_comment": "The declared-level path (#503) — the one phase that answers the question #500 opened: does a level the STRATEGY declares ever leave this process? It cannot be read off the entry payload (the level deliberately does not travel there) and it cannot be proven by a mock, because what is under test is an order resting at a real venue over a real holding. It exercises the mint off a filled entry, the venue accepting it, the stamp that makes the local check stand aside, and on the close the cancel-before-close ordering. Two numbers differ from the other phases ON PURPOSE. `lots` is larger because a protective order is worth lots x TRIGGER: at the default 0.002 with a 5% offset that lands near $4.67, under Krakens $5 cost minimum, and the phase would fail for arithmetic rather than for a defect (the same trap measured on stop_cancel_test, 2026-09-07). And the offset is WIDE: a stop that triggers inside the phase proves the offset was too tight, not that the feature works, and pays a taker fee to learn nothing.",
+         "phase_id": "protective_level_test", "phase_type": "protective_level", "side": "long", "lots": 0.003, "stop_loss_offset_pct": 0.05, "fill_timeout_s": 45},
         {"phase_id": "multi_concurrent_limits", "phase_type": "multi_limit", "side": "long", "order_count": 3, "limit_offset_pct": 0.005, "fill_timeout_s": 30},
         {"phase_id": "multi_cancel_all", "phase_type": "multi_cancel", "fill_timeout_s": 30},
         {"phase_id": "partial_close_test", "phase_type": "partial_close", "side": "long", "fill_timeout_s": 30},

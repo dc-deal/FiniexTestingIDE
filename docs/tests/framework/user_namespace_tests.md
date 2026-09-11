@@ -10,7 +10,7 @@ Validates path-based worker and decision logic loading: on-demand file loading, 
 
 ## Test Classes
 
-### TestPathWorkerLoading (8 tests)
+### TestPathWorkerLoading
 - Worker loaded by absolute path — class found via introspection
 - Worker loaded by relative path with explicit base_path
 - Missing file → ValueError with clear message
@@ -20,25 +20,25 @@ Validates path-based worker and decision logic loading: on-demand file loading, 
 - File with one worker + helper class → loads correctly (helper ignored)
 - Second call with same path returns cached result
 
-### TestPathDecisionLogicLoading (5 tests)
+### TestPathDecisionLogicLoading
 - Decision logic loaded by absolute path
 - File with zero AbstractDecisionLogic subclasses → ValueError
 - Missing file → ValueError
 - `create_logic()` injects `_source_path` on the returned instance
 - CORE decision logic has `_source_path = None`
 
-### TestCoreRegistration (4 tests)
+### TestCoreRegistration
 - All CORE workers present after factory init
 - All CORE decision logics present after factory init
 - Unknown `CORE/` worker → ValueError (not treated as path)
 - Unknown `CORE/` logic → ValueError
 
-### TestRescan (3 tests)
+### TestRescan
 - `rescan()` removes path-loaded workers, keeps CORE entries
 - `rescan()` clears `user_loaded.*` from `sys.modules`
 - DecisionLogicFactory `rescan()` works the same way
 
-### TestWorkerOrchestratorNormalization (5 tests)
+### TestWorkerOrchestratorNormalization
 - `CORE/rsi` ref returned unchanged
 - Absolute path returned unchanged
 - Relative ref with base_path resolves correctly

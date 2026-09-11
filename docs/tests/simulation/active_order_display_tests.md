@@ -9,8 +9,6 @@ The active order display test suite validates that unresolved pending orders (li
 - 2 scenarios: 1 limit scenario, 1 stop scenario
 - 500 ticks each — fast execution (~5 seconds total)
 
-**Total Tests:** 14
-
 **Location:** `tests/simulation/active_order_display/`
 
 ---
@@ -48,7 +46,7 @@ The conftest runs one batch (both scenarios), then extracts per-scenario fixture
 
 ## Test Classes
 
-### TestActiveLimitOrdersReported (7 tests)
+### TestActiveLimitOrdersReported
 Uses `pending_stats_limit` fixture. Validates scenario 0: LONG LIMIT at price 0.5000, SL 0.4900, TP 0.5200.
 
 | Test | Validates |
@@ -61,7 +59,7 @@ Uses `pending_stats_limit` fixture. Validates scenario 0: LONG LIMIT at price 0.
 | `test_active_limit_order_take_profit` | Entry `take_profit == 0.5200` |
 | `test_active_stop_orders_empty` | `active_stop_orders` is empty (no stop orders placed) |
 
-### TestActiveStopOrdersReported (7 tests)
+### TestActiveStopOrdersReported
 Uses `pending_stats_stop` fixture. Validates scenario 1: LONG STOP at stop_price 5.0000, SL 4.9500, TP 5.1000.
 
 | Test | Validates |

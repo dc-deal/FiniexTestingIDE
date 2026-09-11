@@ -99,6 +99,13 @@ class PositionBookWatcher:
         be reconstructed afterwards: the venue does not know our positions, and a size we
         never wrote down is a size nobody can testify to.
 
+        The venue's reference for a protective order (#503) belongs here by the same test and
+        not in the drift signature. An exit LEVEL is re-derived by the algo on its next pass;
+        a txid is re-derived by nobody, and it is the only key with which the next session can
+        ask what became of that order. Written on the drift cadence instead, a hard kill in
+        the window would leave the note naming an order id with no reference — the next boot
+        then clears it as unanswerable while a live STOP is still resting at the venue.
+
         Args:
             positions: The positions to describe
 
@@ -106,7 +113,8 @@ class PositionBookWatcher:
             A sorted, hashable description
         """
         return tuple(sorted(
-            (p.position_id, p.lots, p.status.value) for p in positions
+            (p.position_id, p.lots, p.status.value, p.protective_broker_ref)
+            for p in positions
         ))
 
     @staticmethod

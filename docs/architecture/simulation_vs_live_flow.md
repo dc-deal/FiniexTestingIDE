@@ -115,7 +115,7 @@ AutotraderTickLoop.run()
 
 **Key characteristics:**
 - Ticks arrive in real-time via WebSocket, buffered through a thread-safe queue
-- SL/TP is enforced by THIS process, not by the broker (#500) — `_check_sl_tp_triggers` runs in live too, and `get_protective_level_enforcement()` names who holds the level. No adapter carries a level to the venue on a submit, so the answer is `LOCAL` everywhere today
+- SL/TP is enforced by THIS process unless the venue was asked to hold it (#500, #503) — `_check_sl_tp_triggers` runs in live too, and `get_protective_level_enforcement()` names who holds the level. A submit still carries no level to the venue; what #503 adds is a standalone STOP order placed after the entry fills, opt-in via `execution.venue_held_protection` and OFF by default. So `LOCAL` remains the answer unless that switch is on, and even then it covers the STOP only — the take profit has no second order to rest in. Contract: `docs/architecture/protective_levels.md`
 - Pending orders resolved by broker polling today (#320 cadence); WebSocket push is the V1.4 primary (#331)
 - Fills on the fast path reach the algo immediately via the #348 Decision Event Channel — drained each tick AND during idle heartbeats
 - The Reconciler (#151) runs as a separate trust layer (ALERT_ONLY) — it verifies broker truth, it does not learn fills

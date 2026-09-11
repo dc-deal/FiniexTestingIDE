@@ -93,7 +93,6 @@ python/framework/trading_env/adapters/example_adapter.py     ← adapter class
 configs/brokers/example/example_broker_config.json           ← static symbol/broker specs
 configs/credentials/example_credentials.json                 ← placeholder
 user_configs/credentials/example_credentials.json            ← real credentials (gitignored)
-configs/broker_settings/example_spot.json                    ← live connection settings (credentials_file, dry_run, broker_transport.{api_base_url, rate_limit_interval_s, request_timeout_s, poll_interval_ms})
 configs/autotrader_profiles/live/example_ethusd.json         ← AutoTrader profile
 tests/live_adapters/test_example_adapter_order_lifecycle_dry.py
 tests/live_adapters/test_example_adapter_order_lifecycle_live.py
@@ -191,10 +190,14 @@ Required `broker_info` fields: `company`, `server`, `trade_mode`, `leverage`, `h
 
 Required per-symbol fields: `volume_min`, `volume_max`, `volume_step`, `contract_size`, `tick_size`, `digits`, `trade_allowed`, `base_currency`, `quote_currency`.
 
-**`configs/broker_settings/<broker>.json`** — connection settings (used by tests + AutoTrader `enable_live`):
+**`configs/market_config.json`** — connection settings, on the broker's own entry beside
+`dry_run`. There is no per-broker settings FILE: `configs/broker_settings/` was that once, was
+superseded by #252, and its last readers (the live-adapter tests) were repointed when it was
+removed. One authoritative copy, overridable through `user_configs/market_config.json`:
 
 ```json
 {
+  "broker_type": "example_spot",
   "credentials_file": "example_credentials.json",
   "dry_run": true,
   "broker_transport": {
@@ -206,15 +209,23 @@ Required per-symbol fields: `volume_min`, `volume_max`, `volume_step`, `contract
 }
 ```
 
-`credentials_file` and `dry_run` are passed flat to `enable_live`; the four `broker_transport` fields are bundled into a `BrokerTransportConfig` Pydantic object and passed as `transport=`. Construct explicitly:
+Read it through `MarketConfigManager`, never by opening the file — that is what makes the
+user override and the §28 validation apply. `broker_transport` arrives as a
+`BrokerTransportConfig` already:
 
 ```python
+entry = MarketConfigManager().get_broker_entry('example_spot')
 adapter.enable_live(
-    credentials_file=broker_settings['credentials_file'],
-    dry_run=broker_settings['dry_run'],
-    transport=BrokerTransportConfig(**broker_settings['broker_transport']),
+    credentials_file=entry.credentials_file,
+    dry_run=entry.dry_run,
+    transport=entry.broker_transport,
 )
 ```
+
+**A test that spends real money reads the same source a session reads.** The live-adapter suite
+forces `dry_run` for its own phase and narrows the rate limit with
+`entry.broker_transport.model_copy(update={...})` — it does not read a different file. A gate
+proving something about settings nobody obeys is not a gate.
 
 ---
 
@@ -412,21 +423,65 @@ order, and that absence is the fact that tells it apart.
 
 ## DryRunOrderSimulator — Mandatory Integration
 
-Every live-capable adapter must integrate the shared `DryRunOrderSimulator` (`python/framework/trading_env/adapters/dry_run_simulator.py`). It provides a counter-based PENDING → FILLED lifecycle so dry-run mode exercises the same pending pipeline as real-mode.
+Every live-capable adapter must integrate the shared `DryRunOrderSimulator` (`python/framework/trading_env/adapters/dry_run_simulator.py`). It provides a PENDING → FILLED lifecycle so dry-run mode exercises the same pending pipeline as real-mode.
 
 ```python
 class DryRunOrderSimulator:
-    def submit(self, lots, price, timestamp) -> BrokerResponse:    # PENDING + DRYRUN-NNNNNN ref
-    def query(self, broker_ref, timestamp) -> BrokerResponse:      # PENDING while remaining_polls > 0, then FILLED
-    def cancel(self, broker_ref, timestamp) -> BrokerResponse:     # CANCELLED, idempotent
-    def modify(self, broker_ref, new_price, timestamp) -> BrokerResponse  # same ref, mimics AmendOrder (in-place)
+    def submit(self, lots, timestamp, direction, order_type,
+               limit_price=None, trigger_price=None) -> BrokerResponse   # PENDING + DRYRUN-NNNNNN
+    def query(self, broker_ref, timestamp, market=None) -> BrokerResponse
+    def cancel(self, broker_ref, timestamp) -> BrokerResponse            # CANCELLED, idempotent
+    def modify(self, broker_ref, timestamp,
+               new_limit_price=None, new_trigger_price=None) -> BrokerResponse   # same ref
 ```
 
-Default `polls_until_fill=2` matches the typical tick-loop cadence (one tick → poll → still pending → next tick → poll → fill). Configurable per adapter if needed.
+The two prices are SEPARATE parameters, and so are the two amend legs. One field meaning "limit
+or trigger, depending on the type" is what let an amend of a stop-limit's limit overwrite its
+trigger; Kraken's own AmendOrder keeps them apart and so does this.
+
+**It plays the venue, so it answers the venue's question (#505).** An order fills when the MARKET
+reaches its price, at the price the market is then at, using the same predicate and the same book
+side the backtest uses (`utils/trading_math/price_trigger.py`):
+
+| Order | Fills when | At which price |
+|---|---|---|
+| MARKET | the poll counter is spent | the quote AT THAT POLL — ask for a buy, bid for a sell |
+| LIMIT | the market reached the limit **and** the counter is spent | the limit |
+| STOP | the market crossed the trigger | the **quote**, not the trigger |
+| STOP_LIMIT | the trigger fires, then the limit rule applies | the limit |
+| anything else, no quote, or a ref it never issued | **never — it refuses** | — |
+
+**The two non-obvious prices were both got wrong on the first attempt, and the simulation is the
+authority on both.** A market order is priced when it ARRIVES: the simulation stores
+`entry_price = 0` for one and fills from the tick current after the latency, so pricing at submit
+showed zero round-trip slippage by construction. And a triggered stop fills at the market — the
+simulation says `# STOP triggered → fill at current market price` — so filling at the trigger
+flattered every stop by the distance the price had moved through it, which on a gap is the whole
+gap. No quote is passed to `submit()` at all any more; a dry-run order is priced when it is
+polled, because that is when a venue prices it.
+
+`polls_until_fill=2` matches the typical tick-loop cadence (one tick → poll → still pending →
+next tick → poll → fill). It models the round trip to the venue, so it applies to a resting order
+that is immediately reachable too, and it is a condition ALONGSIDE the price rather than instead
+of it.
+
+**A refusal is not a fill and not a rejection.** Where the facts run out — no quote to compare
+against, or an order type nothing here models — the order stays PENDING and the response carries
+`undecided_reason`. The adapter has no logger by design, so the executor is what makes it visible,
+in the session channel (§35). Your adapter passes the quote through the PARSE layer
+(`_parse_submit_response` / `_parse_query_response` take it as an argument) and never through the
+payload: the payload is what goes on the wire, and a rehearsal detail must not reach a venue.
 
 The Kraken adapter's pattern (sentinel-tagged raw from `_do_request_*` recognized by `_parse_*_response` and delegated to the simulator) is the canonical integration shape. Replicate it.
 
 **Why dry-run goes through the full lifecycle:** before this was introduced (#319 step 9), dry-run mode returned `FILLED` immediately on submit — bypassing pending tracking, OrderGuard cooldowns, timeout detection, etc. Any bug in those paths was undetectable in dry-run. With the simulator, dry-run is real-mode-equivalent in behavior; only the source of the fill differs.
+
+**And why the price rule came later (#505):** the lifecycle was right while the FILL was not.
+Every order flipped after two polls and a MARKET order filled at `0.0`, which with
+`poll_interval_ms = 5000` meant every resting order "filled" about ten seconds after placement at
+a price nobody chose. `dry_run: true` is the shipped default for kraken_spot, so the first
+rehearsal of any resting-order feature reported a stop that had fired at zero — a confident wrong
+answer, in the mode meant to make a feature safe to try.
 
 ---
 
@@ -519,7 +574,7 @@ AutoTrader profile references only the broker type and adapter type:
 }
 ```
 
-`market_config.json` resolves `broker_type` → `broker_config_path` (path to the symbol-specs JSON). Connection settings come from `configs/broker_settings/<broker>.json` via the AutoTrader CLI.
+`market_config.json` resolves `broker_type` → `broker_config_path` (path to the symbol-specs JSON), and carries the connection settings on the same entry — `credentials_file`, `dry_run` and `broker_transport`.
 
 The `BrokerType` enum (`python/framework/types/trading_env_types/broker_types.py`) must include the new type. The adapter factory (`python/framework/factory/`) maps `BrokerType` → concrete adapter class.
 

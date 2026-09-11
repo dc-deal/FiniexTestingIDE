@@ -30,6 +30,7 @@ from python.framework.types.decision_event_types import (
     OrderFilledEvent,
     OrderRejectedEvent,
     PartialCloseEvent,
+    PositionClosedEvent,
     SessionEndEvent,
 )
 from python.framework.types.decision_logic_types import (
@@ -555,6 +556,19 @@ class AbstractDecisionLogic(ABC):
 
         Args:
             event: Partial-close detail (position id, closed/remaining lots, price)
+        """
+        pass
+
+    def on_position_closed(self, event: PositionClosedEvent) -> None:
+        """
+        React to a position closing completely. No-op unless overridden.
+
+        Fires on EVERY full close in both pipelines — including one the VENUE initiated,
+        where a protective order it held fired and nobody here asked for a close (#503).
+        `event.requested_locally` tells the two apart.
+
+        Args:
+            event: Close detail (position id, reason, price, lots, realised P&L)
         """
         pass
 

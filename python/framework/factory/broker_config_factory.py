@@ -15,10 +15,12 @@ PERFORMANCE:
 
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
+from python.framework.utils.time_utils import parse_datetime
 
 
 class BrokerConfigFactory:
@@ -154,6 +156,43 @@ class BrokerConfigFactory:
                     f"   Expected: base='{expected_base}', quote='{expected_quote}'\n"
                     f"   Fix: Correct the entry in the broker config JSON file."
                 )
+
+    @staticmethod
+    def frozen_fee_age_days(
+        config_path: str,
+        now: Optional[datetime] = None,
+    ) -> Optional[Tuple[str, int]]:
+        """
+        How old the declared fee structure's freeze is, when the file says (#505 follow-up).
+
+        A fee rate is an ASSUMPTION, not a fetched fact: a volume-tiered venue prices per
+        account, and the tier moves as the account trades. So the seed records WHEN it was
+        frozen, and this reads that date back — the same shape a certificate's `valid_until`
+        has, because it is the same kind of statement: a dated claim whose validity decays.
+
+        Who needs it: a live session already compares the declared rate against the venue on
+        every start and warns. Someone running only BACKTESTS never sees that warning, and
+        the seed can rot indefinitely for them. This is the answer for that reader.
+
+        A file with no freeze block returns None — an absence, not an age of zero. Reading
+        `_fee_structure_frozen` rather than the fee block itself is deliberate: the block is
+        inside `config_hash`, so a provenance note in it would move the reproducibility
+        anchor without changing a price.
+
+        Args:
+            config_path: Path to a broker config JSON file
+            now: The instant to measure against; current UTC when not given
+
+        Returns:
+            (freeze date as written, whole days since) — or None when the file declares none
+        """
+        with open(config_path, 'r', encoding='utf-8') as handle:
+            raw = json.load(handle)
+        stamped = raw.get('_fee_structure_frozen', {}).get('date')
+        if not stamped:
+            return None
+        moment = now or datetime.now(timezone.utc)
+        return stamped, (moment - parse_datetime(stamped)).days
 
     @staticmethod
     def fee_structure_from(config_path: str) -> Dict[str, Any]:

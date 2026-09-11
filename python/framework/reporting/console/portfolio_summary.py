@@ -215,20 +215,45 @@ class PortfolioSummary(AbstractBatchSummarySection):
         Returns:
             The line, empty when the position declares no level
         """
+        stop_held = pos.protective_level_enforcement
+        target_held = pos.take_profit_enforcement or stop_held
+        # One label across both levels reads as a claim about both. Since #503 that claim
+        # can be half false: only the STOP rests at the venue, so a position reported as
+        # "survives a restart" has a target that does not. Labelled per level as soon as the
+        # two answers differ, and left as one line when they agree, which is the usual case.
+        split = stop_held != target_held
         parts = []
         if pos.stop_loss is not None:
-            parts.append(f'stop {pos.stop_loss:,.5f}')
+            parts.append(f'stop {pos.stop_loss:,.5f}'
+                         + (f'  [{PortfolioSummary._enforcement_label(stop_held, renderer)}]'
+                            if split else ''))
         if pos.take_profit is not None:
-            parts.append(f'target {pos.take_profit:,.5f}')
+            parts.append(f'target {pos.take_profit:,.5f}'
+                         + (f'  [{PortfolioSummary._enforcement_label(target_held, renderer)}]'
+                            if split else ''))
         if not parts:
             return ''
-        if pos.protective_level_enforcement == ProtectiveLevelEnforcement.VENUE.value:
-            held = 'held at the venue — survives a restart'
-        elif pos.protective_level_enforcement == ProtectiveLevelEnforcement.LOCAL.value:
-            held = renderer.yellow('watched by this process only')
-        else:
-            held = renderer.red('ENFORCED BY NOBODY')
-        return ' · '.join(parts) + f'  [{held}]'
+        if split:
+            return ' · '.join(parts)
+        return ' · '.join(parts) + (
+            f'  [{PortfolioSummary._enforcement_label(stop_held, renderer)}]')
+
+    @staticmethod
+    def _enforcement_label(enforcement: str, renderer: ConsoleRenderer) -> str:
+        """How one level's enforcement answer is shown.
+
+        Args:
+            enforcement: The enforcement value from the row
+            renderer: Console renderer for formatting
+
+        Returns:
+            The bracket text for that level
+        """
+        if enforcement == ProtectiveLevelEnforcement.VENUE.value:
+            return 'held at the venue — survives a restart'
+        if enforcement == ProtectiveLevelEnforcement.LOCAL.value:
+            return renderer.yellow('watched by this process only')
+        return renderer.red('ENFORCED BY NOBODY')
 
     def _balance_lines(
         self, unit: PortfolioUnitRow, renderer: ConsoleRenderer) -> List[str]:

@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional
 
+from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
+
 
 class BrokerOrderStatus(Enum):
     """
@@ -67,6 +69,12 @@ class BrokerResponse:
         fill_price: Execution price (set when status=FILLED)
         filled_lots: Actual filled volume (set when status=FILLED)
         rejection_reason: Broker's rejection message (set when status=REJECTED)
+        undecided_reason: Why this poll produced no decision — set only by the DRY-RUN
+            simulator, which plays the venue and can run out of the facts it needs (#505).
+            It is never a venue answer: a real broker either knows the order's state or
+            cannot be reached, and the second case is UNRESOLVED. A response carrying this
+            stays PENDING, and the executor is what makes it visible (§35), because the
+            adapter has no logger by design
         timestamp: Broker response timestamp (UTC)
         raw_response: Preserved broker-specific response for debugging
     """
@@ -75,6 +83,7 @@ class BrokerResponse:
     fill_price: Optional[float] = None
     filled_lots: Optional[float] = None
     rejection_reason: Optional[str] = None
+    undecided_reason: Optional[str] = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     raw_response: Optional[Dict[str, Any]] = None
 
@@ -126,3 +135,23 @@ class TimeoutConfig:
         order_timeout_seconds: Max wait time for broker fill/rejection
     """
     order_timeout_seconds: float = 30.0
+
+
+@dataclass
+class DeferredClose:
+    """
+    A close held back until the venue confirms the protective order is gone (#503).
+
+    At spot there is no `reduce_only`, and a market close goes through — measured —
+    while a protective stop still rests over the same holding. Both can fill, and the
+    second one sells coins that are no longer there. So the close waits for the cancel.
+
+    Args:
+        lots: Lots to close, or None for the whole position
+        close_reason: Why the close was requested — carried across the wait
+        reinstate: Whether a surviving position should get a fresh protective order at
+            its remaining size once the close resolves (a PARTIAL close)
+    """
+    lots: Optional[float]
+    close_reason: CloseReason
+    reinstate: bool

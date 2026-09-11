@@ -147,9 +147,9 @@ class TestObservedSettings:
     The certificate must state what the fixtures RAN, not what a config file declares.
 
     This is the defect the class exists for: the two decisive tests build their adapter with
-    `dry_run = False` and place real orders, while `configs/broker_settings/kraken_spot.json`
-    says `true`. The old certificate re-read that file and therefore understated the one
-    thing it was taken to prove.
+    `dry_run = False` and place real orders, while the broker's configured `dry_run` says
+    `true`. The old certificate re-read the config and therefore understated the one thing it
+    was taken to prove.
     """
 
     def test_observed_phases_are_recorded(self, certificate):

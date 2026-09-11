@@ -143,6 +143,12 @@ class PendingOrderExecutionState:
     cancel_requested: bool = False
     in_flight_query: bool = False
     last_polled_at_ms: float = 0.0
+    # How much of a VENUE-HELD protective order is already written into the position book
+    # (#503). It is the resolver's idempotency key and deliberately NOT
+    # fills.cumulative_filled_lots: that one answers how much the VENUE filled, and on a
+    # venue with trade-level reporting the trades drain sets it to the full amount before
+    # anything has been booked. One number cannot answer both questions.
+    venue_close_applied_lots: float = 0.0
 
 
 @dataclass
@@ -213,6 +219,18 @@ class PendingOrder:
     # a live close is asynchronous: the trigger and the fill are separated by a broker
     # round trip, and the reason is only known at the trigger (#500).
     close_reason: Optional[CloseReason] = None
+    # Which position this close order settles (#503). Empty on every close the strategy
+    # or the engine requests, where the order id IS the position id. Set on a protective
+    # order the VENUE holds: that one is minted from the order counter like any other
+    # order, because the wire key is derived from it and overloading the position id
+    # would collide with a restart's counter. So the position has to be named separately.
+    closes_position_id: Optional[str] = None
+    # Whether the position this ENTRY produces should get a protective order at the venue
+    # (#503). Resolved once at submit — profile default ⊕ per-order override — and carried
+    # here because the fill site sees the order, not the request that made it. An explicit
+    # field rather than a passenger in `order_kwargs`: that dict is splatted onto the
+    # adapter call, so anything added to it goes on the wire.
+    venue_held_protection: bool = False
 
     # === Composed sub-concerns (#345) ===
     timing: PendingOrderTiming = field(default_factory=PendingOrderTiming)
@@ -236,8 +254,11 @@ class PendingOrder:
             'lots': self.lots,
             'order_kwargs': serialize_value(self.order_kwargs),
             'close_lots': self.close_lots,
+            'closes_position_id': self.closes_position_id,
+            'venue_held_protection': self.venue_held_protection,
             # Async operation state (#318)
             'in_flight_operation': self.execution_state.in_flight_operation.value if self.execution_state.in_flight_operation else None,
+            'venue_close_applied_lots': self.execution_state.venue_close_applied_lots,
             # Trade records (#326)
             'trades': [t.to_dict() for t in self.fills.trades],
             'cumulative_filled_lots': self.fills.cumulative_filled_lots,

@@ -9,8 +9,6 @@ The modify_lifecycle test suite validates the async modify/cancel pattern introd
 - Account: 10,000 USD initial balance
 - Symbol: BTCUSD (Mock built-in spec)
 
-**Total Tests:** 17
-
 **Location:** `tests/simulation/modify_lifecycle/`
 
 ---
@@ -47,7 +45,7 @@ Each test typically does:
 
 ## Test Files
 
-### test_modify_pending_lifecycle.py (10 Tests)
+### test_modify_pending_lifecycle.py
 
 Validates the sim modify lifecycle: scheduling sets `in_flight_operation = PENDING_MODIFY`, Phase 0 of next-tick processing applies the modification to entry_price / order_kwargs, in-flight state clears. Capability gates for stop-order modify and position modify.
 
@@ -88,7 +86,7 @@ Validates the sim modify lifecycle: scheduling sets `in_flight_operation = PENDI
 
 ---
 
-### test_cancel_pending_lifecycle.py (7 Tests)
+### test_cancel_pending_lifecycle.py
 
 Validates the sim cancel lifecycle: scheduling sets `in_flight_operation = PENDING_CANCEL`, Phase 0 of next-tick processing removes the order from `_active_limit_orders` / `_active_stop_orders`.
 

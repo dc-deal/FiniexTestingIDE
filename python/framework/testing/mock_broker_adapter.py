@@ -221,6 +221,8 @@ class MockBrokerAdapter(AbstractAdapter):
             hedging_allowed=False,
             partial_fills_supported=False,
             trade_level_reporting=True,
+            # No venue at all, so nothing can rest at one (#503).
+            venue_held_protective_orders=False,
         )
 
     # ============================================
@@ -641,7 +643,17 @@ class MockBrokerAdapter(AbstractAdapter):
         'CANCELLED': BrokerOrderStatus.CANCELLED,
     }
 
-    def _parse_submit_response(self, raw: Dict[str, Any], timestamp: datetime) -> BrokerResponse:
+    def _parse_submit_response(
+        self,
+        raw: Dict[str, Any],
+        timestamp: datetime,
+        direction: Optional[OrderDirection] = None,
+        order_type: Optional[OrderType] = None,
+    ) -> BrokerResponse:
+        # The two dry-run arguments are part of the Tier-3 contract (#505). This mock has no
+        # dry-run mode — it decides its own fills — so it accepts and ignores them, which is
+        # what an adapter for a venue without a rehearsal mode does. An adapter that HAS one
+        # reads them; see KrakenAdapter._parse_submit_response for the shape to copy.
         return BrokerResponse(
             broker_ref=raw['broker_ref'],
             status=self._STATUS_MAP[raw['status']],
@@ -651,7 +663,13 @@ class MockBrokerAdapter(AbstractAdapter):
             timestamp=timestamp,
         )
 
-    def _parse_query_response(self, raw: Dict[str, Any], broker_ref: str, timestamp: datetime) -> BrokerResponse:
+    def _parse_query_response(
+        self,
+        raw: Dict[str, Any],
+        broker_ref: str,
+        timestamp: datetime,
+        market: Optional[TickData] = None,
+    ) -> BrokerResponse:
         return BrokerResponse(
             broker_ref=raw['broker_ref'],
             status=self._STATUS_MAP[raw['status']],

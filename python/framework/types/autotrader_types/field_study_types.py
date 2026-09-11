@@ -21,6 +21,9 @@ class PhaseType(StrEnum):
     LIMIT_MODIFY = 'limit_modify'
     LIMIT_CANCEL = 'limit_cancel'
     STOP_CANCEL = 'stop_cancel'
+    # #503 — open a position WITH a declared level, confirm the venue is holding the
+    # protective order the framework placed for it, then close and confirm it is gone.
+    PROTECTIVE_LEVEL = 'protective_level'
     MULTI_LIMIT = 'multi_limit'
     MULTI_CANCEL = 'multi_cancel'
     PARTIAL_CLOSE = 'partial_close'
@@ -42,6 +45,10 @@ class PhaseState(StrEnum):
     SUBMIT = 'submit'                # ready to submit the (next) order
     AWAIT_FILL = 'await_fill'        # order submitted, waiting for fill/reject/timeout
     POST_FILL_WAIT = 'post_fill_wait'  # settle window after a fill
+    # #503 — the entry filled; waiting for the venue to confirm the protective order the
+    # framework placed for it. A distinct state because a position that is open but not
+    # yet protected is exactly the window the feature exists to close.
+    AWAIT_PROTECTION = 'await_protection'
     CLOSE = 'close'                  # ready to close / cancel
     POST_CLOSE_WAIT = 'post_close_wait'  # settle window after a close/cancel
     DONE = 'done'                    # finished (see outcome)
@@ -90,6 +97,10 @@ class FieldStudyPhase:
         post_wait_s: Settle window after a fill / close before advancing
         idle_seconds: Quiet-period duration for IDLE phases
         rearm: Re-arm-until-fill for LIMIT_OPEN (re-price toward market on timeout)
+        stop_loss_offset_pct: How far below the market the PROTECTIVE_LEVEL phase's
+            declared stop sits (fraction, e.g. 0.05). Wide on purpose: the phase proves
+            the order RESTS at the venue, and a stop that triggers inside it would prove
+            the offset was too tight rather than anything about the feature (#503)
     """
     phase_id: str
     phase_type: PhaseType
@@ -98,6 +109,7 @@ class FieldStudyPhase:
     expect_rejection: bool = False
     lots: Optional[float] = None
     limit_offset_pct: Optional[float] = None
+    stop_loss_offset_pct: Optional[float] = None
     order_count: int = 1
     fill_timeout_s: float = 30.0
     post_wait_s: float = 2.0
@@ -123,6 +135,7 @@ class FieldStudyPhase:
             expect_rejection=bool(raw.get('expect_rejection', False)),
             lots=raw.get('lots'),
             limit_offset_pct=raw.get('limit_offset_pct'),
+            stop_loss_offset_pct=raw.get('stop_loss_offset_pct'),
             order_count=int(raw.get('order_count', 1)),
             fill_timeout_s=float(raw.get('fill_timeout_s', 30.0)),
             post_wait_s=float(raw.get('post_wait_s', 2.0)),
@@ -144,6 +157,9 @@ class PhaseAction:
         price: Limit price for SUBMIT_LIMIT / MODIFY_LIMIT
         order_id: Target order id for CANCEL / MODIFY_LIMIT
         close_fraction: Fraction of a position to close for CLOSE_PARTIAL (0..1)
+        stop_loss: Protective level to DECLARE on the resulting position (#503). The
+            framework turns it into an order at the venue where the profile opts in —
+            which is the only way a declared level ever leaves this process
         reason: Human-readable narration for logs and the recorder
     """
     kind: PhaseActionKind
@@ -153,6 +169,7 @@ class PhaseAction:
     price: Optional[float] = None
     order_id: Optional[str] = None
     close_fraction: Optional[float] = None
+    stop_loss: Optional[float] = None
     reason: str = ''
 
 

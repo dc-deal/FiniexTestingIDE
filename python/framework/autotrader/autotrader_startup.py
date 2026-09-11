@@ -303,6 +303,37 @@ def setup_pipeline(
         account_currency = list(balances.keys())[0]
 
     # === Phase 4: LiveTradeExecutor ===
+    # #503 — a profile-wide opt-in the venue cannot carry is a startup problem, not a
+    # per-order one. Left to the submit path it would reject EVERY protected entry, one at
+    # a time, for the whole session: the bot would run, trade nothing, and each rejection
+    # would look like an isolated incident. §35 says a pre-run problem ABORTS.
+    #
+    # But only where there IS a venue. A mock session builds a MockBrokerAdapter whatever
+    # the profile's broker_type says, so it can never carry one — and refusing there would
+    # make an opted-in profile UNREHEARSABLE, which is the same mistake the simulation
+    # deliberately avoids by accepting the flag and changing nothing. So: live refuses,
+    # mock says so once and ignores it for the run.
+    venue_held_protection = config.execution.venue_held_protection
+    if venue_held_protection and not (
+            broker_config.get_order_capabilities().venue_held_protective_orders):
+        if config.adapter_type == 'live':
+            raise ValueError(
+                f"Configuration error: AutoTrader profile '{config.name}' sets "
+                f"execution.venue_held_protection, but "
+                f"'{broker_config.get_broker_name()}' cannot hold a protective order for a "
+                f"position.\n"
+                f"Turn the profile switch off, or run this profile against a broker that "
+                f"can. A single order may still opt in explicitly via "
+                f"send_order(venue_held_protection=True) — and will be refused the same way."
+            )
+        logger.warning(
+            f"⚠️ execution.venue_held_protection is set, but this is a "
+            f"'{config.adapter_type}' session and has no venue to hold a protective order. "
+            f"The switch is IGNORED for this run — levels are enforced locally, exactly as "
+            f"in a backtest. The same profile against a LIVE adapter that cannot carry it "
+            f"refuses to start.")
+        venue_held_protection = False
+
     broker_entry = market_config_manager.get_broker_entry(config.broker_type)
     connection_policy = broker_entry.broker_transport.connection
     executor = build_live_executor(
@@ -317,6 +348,9 @@ def setup_pipeline(
         # day fragment mints its own run id and must not change the key mid-session, which
         # is why it is derived here and never re-derived downstream.
         session_key=session_key_from_run_id(run_id),
+        # #503 — the profile's intent. A per-order override still wins over it, and the
+        # adapter's capability can refuse it outright.
+        venue_held_protection=venue_held_protection,
     )
     # The session log's event-time column pulls from the canonical clock. Attachable only
     # HERE: the logger goes INTO build_live_executor above, so it necessarily exists first.

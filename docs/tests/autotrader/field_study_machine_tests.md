@@ -52,6 +52,27 @@ in its own resting world with its own cancel and modify paths, and
 `test_stop_cancel_rests_then_cancels_pass` asserts that a limit count of 1 moves nothing — that
 order belongs to another phase.
 
+## The protective-level phase (#503)
+
+`protective_level` is the phase that proves the whole venue-held chain on a real account, and it
+is the only phase whose subject is an order this framework places on the strategy's behalf rather
+than one the strategy asked for.
+
+It runs the sequence end to end: a small protected entry fills, the framework mints a STOP at the
+declared level, the venue confirms it, the local check stands down **for that stop only**, and the
+close then cancels the order before it goes out. The phase passes when the venue held it and then
+released it — both halves, because a stop that is never confirmed and a stop that is never
+released fail in opposite directions and both leave money exposed.
+
+Two properties the state-machine cases pin:
+
+- **The entry payload stays EMPTY.** The protective level is never attached to the entry — #503
+  places a standalone order after the fill, deliberately, because Kraken's conditional close can
+  only be set WITH the primary order and can never be adjusted afterwards. A case asserting the
+  opposite was retired rather than flipped.
+- **The phase is SKIPPED, not failed, where the adapter cannot carry one.** `venue_held_protective_orders`
+  is a declared capability; a venue that does not offer it is not a defect in this bot.
+
 ## Run
 
 ```bash

@@ -19,6 +19,7 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_types import Position
+from python.framework.types.trading_env_types.order_types import ProtectiveLevelEnforcement
 
 
 def build_portfolio_report(run_id: str, units: List[RunUnit]) -> PortfolioReport:
@@ -63,8 +64,10 @@ def _open_position_rows(
     Args:
         positions: The unit's open positions at run end
         last_price: The unit's last mid price — 0.0 when no tick ever arrived
-        enforcement: Who enforces a protective level in the executor that produced these
-            positions, stamped at capture — carried only onto rows that HAVE a level (#500)
+        enforcement: Who enforces a protective level by DEFAULT in the executor that
+            produced these positions, stamped at capture — carried only onto rows that
+            HAVE a level (#500). A position whose protective order the venue confirmed
+            overrides it for itself (#503), so a mixed run reports each row truthfully
 
     Returns:
         One row per position; `valued` is False where there was no price to mark against
@@ -84,12 +87,59 @@ def _open_position_rows(
             # Only where there is something to enforce — an empty string on a position
             # without levels reads correctly as "nothing to hold".
             protective_level_enforcement=(
-                enforcement
+                _enforcement_of(position, enforcement)
+                if position.stop_loss is not None or position.take_profit is not None
+                else ''),
+            take_profit_enforcement=(
+                _take_profit_enforcement_of(position, enforcement)
                 if position.stop_loss is not None or position.take_profit is not None
                 else ''),
         )
         for position in positions
     ]
+
+
+def _enforcement_of(position: Position, run_default: str) -> str:
+    """Who holds THIS position's protective level, for its report row (#503).
+
+    The run-wide answer stamped at capture is only the DEFAULT. A position whose
+    protective order the venue confirmed answers for itself, so a mixed run reports each
+    row truthfully instead of painting one label across all of them. The derivation is
+    the position's own, shared with the tick check that acts on it — the report and the
+    enforcer can never disagree.
+
+    Args:
+        position: The open position
+        run_default: The executor's run-wide answer as captured, '' when none was
+
+    Returns:
+        The enforcement value for the row, or '' when the run captured no answer
+    """
+    if not run_default:
+        return ''
+    return position.protective_enforcement(
+        ProtectiveLevelEnforcement(run_default)).value
+
+
+def _take_profit_enforcement_of(position, run_default: str) -> str:
+    """Who enforces the TARGET, which is not always who enforces the stop (#503).
+
+    Only one order can rest at the venue — Kraken offers neither OCO nor a bracket — and the
+    one placed holds the STOP. So a position the venue protects still has a take profit that
+    only this process watches, and saying otherwise tells an operator a level survives a
+    restart when it does not.
+
+    Args:
+        position: The open position
+        run_default: The executor's run-wide answer as captured, '' when none was
+
+    Returns:
+        The target's enforcement value, or '' when the run captured no answer
+    """
+    stop_answer = _enforcement_of(position, run_default)
+    if stop_answer == ProtectiveLevelEnforcement.VENUE.value:
+        return ProtectiveLevelEnforcement.LOCAL.value
+    return stop_answer
 
 
 def _final_equity(stats, unrealized_pnl: float, est_current: float) -> float:

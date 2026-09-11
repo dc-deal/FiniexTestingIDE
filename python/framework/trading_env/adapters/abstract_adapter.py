@@ -619,15 +619,25 @@ class AbstractAdapter(ABC):
         self,
         raw: Dict[str, Any],
         timestamp: datetime,
+        direction: Optional[OrderDirection] = None,
+        order_type: Optional[OrderType] = None,
     ) -> BrokerResponse:
         """
         Convert a raw broker submit response into a BrokerResponse.
 
         Pure — no I/O, no state mutation.
 
+        The last two arguments are for DRY-RUN only, and they are parameters rather than
+        payload keys for a specific reason: the payload is what goes on the wire, and a
+        rehearsal detail must never be sent to a venue (#505). A real broker knows the order
+        it just accepted and ignores them. No QUOTE is passed here — a dry-run order is
+        priced when it is polled, because that is when a venue prices it.
+
         Args:
             raw: Raw broker response dict
             timestamp: Response receipt timestamp (UTC)
+            direction: Order direction — which side of the quote a dry-run fill takes
+            order_type: Which dry-run fill rule applies
 
         Returns:
             BrokerResponse with broker_ref and status
@@ -641,6 +651,7 @@ class AbstractAdapter(ABC):
         raw: Dict[str, Any],
         broker_ref: str,
         timestamp: datetime,
+        market: Optional[TickData] = None,
     ) -> BrokerResponse:
         """
         Convert a raw broker query response into a BrokerResponse.
@@ -651,6 +662,9 @@ class AbstractAdapter(ABC):
             raw: Raw broker response dict
             broker_ref: The broker reference that was queried
             timestamp: Response receipt timestamp (UTC)
+            market: DRY-RUN only — the quote when the poll was decided, so the simulated
+                venue can answer whether the market has reached the order's price (#505).
+                A real broker knows its own book and ignores it
 
         Returns:
             BrokerResponse with current status

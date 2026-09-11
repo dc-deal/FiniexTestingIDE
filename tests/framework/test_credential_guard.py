@@ -76,7 +76,7 @@ class TestUnrelatedPathsAreNotTouched:
 
     @pytest.mark.parametrize('path', [
         'configs/app_config.json',
-        'configs/broker_settings/kraken_spot.json',
+        'configs/brokers/kraken/kraken_spot_broker_config.json',
         'data/runtime/brokers/kraken_spot/kraken_spot_broker_config.json',
         'some/other/credentials/file.json',
     ])

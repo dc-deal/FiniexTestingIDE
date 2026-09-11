@@ -23,7 +23,7 @@ state and the correct state look identical from the outside:
 
 ---
 
-## `test_store_catalog.py` (11 tests)
+## `test_store_catalog.py`
 
 **Catalog completeness.** Every `StoreId` has a registration — this is the assertion behind
 CLAUDE.md §44's rule that a new store is entered in the same change. Every descriptor carries a
@@ -45,7 +45,7 @@ exercised rather than one of its subclasses:
   that produced the content.
 - An index written before the stamp existed reads as out of date rather than as current.
 
-## `test_artifact_retrieval.py` (7 tests)
+## `test_artifact_retrieval.py`
 
 **The spec registry.** Seventeen report artifacts, each binding a `.json` name to a Pydantic model,
 and no two sharing a file name — two specs on one name would silently overwrite each other inside a
@@ -64,7 +64,7 @@ rule when they collapsed into one.
 > is asserted is the pair that makes the static claim true — every spec's model matches the
 > artifact it names, and the round trip returns that model.
 
-## `test_carry_over_envelope.py` (5 tests)
+## `test_carry_over_envelope.py`
 
 The envelope round-trips with its payload and its provenance. The writing run is optional, so a
 writer without a run identity still produces a valid envelope. **The identity is the bot; the run

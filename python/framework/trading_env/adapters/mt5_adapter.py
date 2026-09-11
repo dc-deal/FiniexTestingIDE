@@ -104,7 +104,10 @@ class Mt5Adapter(AbstractAdapter):
             trailing_stop=False,  # Requires live MT5 connection
             iceberg_orders=False,  # Not supported by MT5
             hedging_allowed=self._hedging_allowed,
-            partial_fills_supported=False  # MT5 fills orders atomically
+            partial_fills_supported=False,  # MT5 fills orders atomically
+            # False is not a gap: MT5 holds the level ON the position rather than as a
+            # separate order, which is a different mechanism and belongs to #209 (#503).
+            venue_held_protective_orders=False,
         )
 
     # ============================================

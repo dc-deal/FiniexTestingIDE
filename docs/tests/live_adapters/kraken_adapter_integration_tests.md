@@ -251,7 +251,7 @@ git state including `dirty`, validity window, isolation flag, workspace override
 }
 ```
 
-The distinction was a real defect: `configs/broker_settings/kraken_spot.json` says
+The distinction was a real defect: the broker's configured `dry_run` says
 `dry_run: true`, while `_fill` and `_live` set it to `False` on their own adapter and place real
 orders. The certificate used to re-read that file and therefore published `dry_run: true` —
 understating exactly what it existed to prove. The fixtures now report their effective settings

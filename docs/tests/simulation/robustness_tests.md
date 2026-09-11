@@ -7,7 +7,7 @@ no full pipeline run.
 
 See the feature: [Robustness Validation guide](../../user_guides/robustness_validation_guide.md).
 
-## test_robustness.py (32 tests)
+## test_robustness.py
 
 ### `TestAssignRoles` — the time-ordered split policy
 | Test | Description |

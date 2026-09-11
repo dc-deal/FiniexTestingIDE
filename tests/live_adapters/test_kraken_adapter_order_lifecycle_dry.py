@@ -17,16 +17,15 @@ from pathlib import Path
 
 import pytest
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
-from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, TimeoutConfig
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 from tests.live_adapters.conftest import record_observed_adapter
 
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
-_BROKER_SETTINGS_PATH = Path('configs/broker_settings/kraken_spot.json')
 _CREDENTIALS_PATH = Path('user_configs/credentials/kraken_credentials.json')
 
 
@@ -44,26 +43,27 @@ def live_adapter(request):
     with open(_BROKER_CONFIG_PATH, 'r') as f:
         broker_config = json.load(f)
 
-    with open(_BROKER_SETTINGS_PATH, 'r') as f:
-        broker_settings = json.load(f)
-
-    # Always enforce dry_run in test context — never place real orders
-    broker_settings['dry_run'] = True
-    # Reduce rate limit for test speed — validate=true calls are lenient
-    broker_settings['broker_transport']['rate_limit_interval_s'] = 0.5
+    # The SAME source a live session reads (#505 follow-up). `configs/broker_settings/` was
+    # a leftover of the #252 migration that production had stopped reading, so this suite —
+    # the only one that spends real money — was proving something about a file nobody obeyed.
+    entry = MarketConfigManager().get_broker_entry('kraken_spot')
+    transport = entry.broker_transport.model_copy(update={'rate_limit_interval_s': 0.5})
+    credentials_file = entry.credentials_file
+    # Forced here, never read from config: this fixture's phase decides it.
+    dry_run = True
 
     adapter = KrakenAdapter(broker_config)
     adapter.enable_live(
-        credentials_file=broker_settings['credentials_file'],
-        dry_run=broker_settings['dry_run'],
-        transport=BrokerTransportConfig(**broker_settings['broker_transport']),
+        credentials_file=credentials_file,
+        dry_run=dry_run,
+        transport=transport,
     )
     # The certificate records what was BUILT here, not what the settings file says.
     record_observed_adapter(
         request,
         phase='validate_only',
-        dry_run=broker_settings['dry_run'],
-        api_base_url=broker_settings['broker_transport']['api_base_url'])
+        dry_run=dry_run,
+        api_base_url=transport.api_base_url)
     return adapter
 
 
@@ -86,9 +86,10 @@ class TestKrakenAdapterOrderLifecycle:
     does NOT place orders. All tests skip if credentials are not available.
 
     Post-DryRunOrderSimulator behavior: a successful submit returns PENDING
-    with a synthetic DRYRUN-* ref. The order flips to FILLED after
-    polls_until_fill (default 2) query_order_sync calls — exercised by the
-    Phase 2 live tests, not here.
+    with a synthetic DRYRUN-* ref. What makes it FILL is no longer time alone
+    (#505): the poll counter must be spent AND the market must have reached the
+    order's price, and each poll has to be given the quote to compare against.
+    Nothing here polls to a fill — these tests assert the submit answer only.
 
     Note: submit_open_order does not call validate_order() internally — invalid
     symbol and below-min-lot cases reach the API and return REJECTED.
@@ -216,26 +217,22 @@ class TestKrakenAdapterOrderLifecycle:
             f'got: {described!r}'
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason='A level DECLARED on an order still does not reach Kraken. Since #500 our '
-               'own process enforces it, so it is no longer enforced by nobody, and the '
-               'live path can now place a standalone STOP / STOP_LIMIT — but turning a '
-               'declared stop_loss into such an order is the remaining work, and it needs '
-               'the decision about which half of a declared pair may rest at the venue. '
-               'Strict + raises=AssertionError, so it flips loudly the moment the payload '
-               'carries a level and does NOT swallow a credentials or transport fault.')
-    def test_a_declared_stop_loss_reaches_the_venue(self, live_adapter, processor):
+    def test_a_declared_level_deliberately_does_not_travel_on_the_entry(
+        self, live_adapter, processor
+    ):
         """
-        The crossing question: does a level the strategy DECLARED ever reach Kraken?
+        The question #500 opened, answered by #503 — and answered at a different layer.
 
-        Asserted against the venue's own words rather than our payload. A stop_loss
-        declared beside a LIMIT entry has to show up in Kraken's description of the order
-        — as a conditional close, or as the separate protective order the framework would
-        place for it. Absent means the level never left this process: our own tick check
-        enforces it while we are running and connected, and nothing protects the position
-        once we are not.
+        This test was a strict `xfail` waiting for a declared `stop_loss` to appear in
+        Kraken's description of the ENTRY. It could never flip, because #503 does not
+        send it there: Kraken has no bracket and no OCO, so the level reaches the venue
+        as a SEPARATE stop order the framework places once the entry has filled.
+
+        So the payload's silence is now the CORRECT answer, and this pins it as such —
+        an entry carrying a hidden conditional close would mean two enforcers on one
+        position. What the payload cannot show is whether the level reaches the venue at
+        all; that needs a filled position and a real order resting over it, which is the
+        field study's `protective_level_test` phase.
         """
         response = processor.submit_open_order(
             symbol='ETHUSD',
@@ -248,11 +245,13 @@ class TestKrakenAdapterOrderLifecycle:
         )
 
         descr = (response.raw_response or {}).get('descr', {})
-        described = f"{descr.get('order', '')} {descr.get('close', '')}"
-        assert 'stop' in described.lower(), (
-            'The declared stop_loss never reached the venue — only this process enforces '
-            f'it. Kraken described: {descr.get("order")!r}'
+        assert not (descr.get('close') or '').strip(), (
+            'The entry must carry NO conditional close. A level attached here and a '
+            'protective order placed for the same position would be two enforcers on '
+            f'one holding. Kraken described the close leg as: {descr.get("close")!r}'
         )
+        assert 'limit' in (descr.get('order') or '').lower(), (
+            f'and the entry itself is still a plain limit: {descr.get("order")!r}')
 
     def test_invalid_symbol_rejected(self, live_adapter, processor):
         """Unknown symbol reaches Kraken API — expects REJECTED response."""

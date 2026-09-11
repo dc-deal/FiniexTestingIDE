@@ -52,6 +52,10 @@ from python.framework.types.trading_env_types.stress_test_types import (
     StressTestConfig,
     StressTestRejectOrderConfig,
 )
+from python.framework.utils.trading_math.price_trigger import (
+    is_limit_reached,
+    is_stop_reached,
+)
 
 
 class TradeSimulator(AbstractTradeExecutor):
@@ -593,6 +597,10 @@ class TradeSimulator(AbstractTradeExecutor):
         """
         Check if current tick price has reached the limit price.
 
+        The comparison itself is shared with the dry-run simulator (#505) — a rehearsal that
+        disagreed with the backtest about when an order fills would predict nothing. What stays
+        here is the executor's own bookkeeping: no tick yet, or a tick for another symbol.
+
         Args:
             pending: Limit order with entry_price = limit price
 
@@ -602,18 +610,17 @@ class TradeSimulator(AbstractTradeExecutor):
         if not self._current_tick or pending.symbol != self._current_tick.symbol:
             return False
 
-        if pending.direction == OrderDirection.LONG:
-            # Buy limit: fill when ask <= limit price
-            return self._current_tick.ask <= pending.entry_price
-        else:
-            # Sell limit: fill when bid >= limit price
-            return self._current_tick.bid >= pending.entry_price
+        return is_limit_reached(
+            pending.direction, pending.entry_price,
+            self._current_tick.bid, self._current_tick.ask)
 
     def _is_stop_price_reached(self, pending: PendingOrder) -> bool:
         """
         Check if current tick price has reached the stop trigger price.
 
         Inverse of limit: stop triggers on breakout (price moves through stop level).
+
+        Shared with the dry-run simulator, like its limit sibling (#505).
 
         Args:
             pending: Stop order with entry_price = stop trigger price
@@ -624,12 +631,9 @@ class TradeSimulator(AbstractTradeExecutor):
         if not self._current_tick or pending.symbol != self._current_tick.symbol:
             return False
 
-        if pending.direction == OrderDirection.LONG:
-            # Buy stop: triggers when ask >= stop_price (breakout up)
-            return self._current_tick.ask >= pending.entry_price
-        else:
-            # Sell stop: triggers when bid <= stop_price (breakout down)
-            return self._current_tick.bid <= pending.entry_price
+        return is_stop_reached(
+            pending.direction, pending.entry_price,
+            self._current_tick.bid, self._current_tick.ask)
 
     def _convert_stop_limit_to_limit(self, pending: PendingOrder) -> None:
         """

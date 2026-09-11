@@ -285,3 +285,50 @@ class TestAsyncSubmitMultiple:
         positions = executor_instant.get_open_positions()
         assert len(positions) == 3
         assert not executor_instant.has_pending_orders()
+
+
+class TestARestingOrderAwaitingItsReferenceCountsAsInFlight:
+    """
+    The reconciler joins broker truth on `broker_ref`. Anything we have SENT and not yet
+    heard about has nothing to join to — and without this it reads as an order we placed
+    and stopped tracking.
+
+    Measured 2026-09-10, twice in five live field-study runs: three limits submitted back
+    to back, a reconcile tick landing in the two seconds before the references came back,
+    and an ERROR in the session channel saying the order was forgotten. Each one resolved
+    cleanly moments later. Nothing was ever lost; the alarm was.
+
+    The reconciler's own suite cannot catch this — its FakeExecutor stubs
+    `get_in_flight_order_ids` — so the property is pinned here, on the real method.
+    """
+
+    def test_a_limit_in_its_submit_window_is_reported_as_in_flight(
+        self, executor_instant, mock_instant
+    ):
+        mock_instant.feed_tick(executor_instant, symbol='BTCUSD')
+        executor_instant.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
+            direction=OrderDirection.LONG, lots=0.001, price=40000.0,
+        ))
+        pending = executor_instant._active_limit_orders[0]
+        assert pending.broker_ref is None, 'the venue has not answered yet'
+
+        assert pending.pending_order_id in executor_instant.get_in_flight_order_ids(), (
+            'The venue already has it and reports it under a key we cannot join on — '
+            'calling that "placed and forgotten" is a false alarm')
+
+    def test_and_stops_being_in_flight_once_the_reference_arrives(
+        self, executor_instant, mock_instant
+    ):
+        mock_instant.feed_tick(executor_instant, symbol='BTCUSD')
+        executor_instant.open_order(OpenOrderRequest(
+            symbol='BTCUSD', order_type=OrderType.LIMIT,
+            direction=OrderDirection.LONG, lots=0.001, price=40000.0,
+        ))
+        order_id = executor_instant._active_limit_orders[0].pending_order_id
+
+        mock_instant.await_submit_confirmation(executor_instant)
+
+        assert order_id not in executor_instant.get_in_flight_order_ids(), (
+            'With a reference the ordinary join finds it — suppressing it any longer '
+            'would hide a genuinely lost order')

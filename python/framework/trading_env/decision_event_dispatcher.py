@@ -27,6 +27,7 @@ from python.framework.types.decision_event_types import (
     OrderFilledEvent,
     OrderRejectedEvent,
     PartialCloseEvent,
+    PositionClosedEvent,
     SessionEndEvent,
 )
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
@@ -42,6 +43,7 @@ _EVENT_TYPE_BY_CLASS: Dict[Type[DecisionEvent], DecisionEventType] = {
     OrderRejectedEvent: DecisionEventType.ORDER_REJECTED,
     OrderCancelledEvent: DecisionEventType.ORDER_CANCELLED,
     PartialCloseEvent: DecisionEventType.PARTIAL_CLOSE,
+    PositionClosedEvent: DecisionEventType.POSITION_CLOSED,
     SessionEndEvent: DecisionEventType.SESSION_END,
 }
 
@@ -190,5 +192,7 @@ class DecisionEventDispatcher:
             self._decision_logic.on_order_cancelled(event)
         elif isinstance(event, PartialCloseEvent):
             self._decision_logic.on_partial_close(event)
+        elif isinstance(event, PositionClosedEvent):
+            self._decision_logic.on_position_closed(event)
         elif isinstance(event, SessionEndEvent):
             self._decision_logic.on_session_end(event)

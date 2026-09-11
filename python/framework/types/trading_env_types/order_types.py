@@ -203,7 +203,12 @@ class ProtectiveLevelEnforcement(Enum):
         when it is breached. Protects while we are running and connected; a process that
         dies leaves the position unprotected.
     VENUE: the level rests at the broker as an order of its own and survives our process
-        dying. No adapter answers this yet — the Kraken conditional close is its own issue.
+        dying. Answered since #503, where Kraken Spot holds a declared stop as a standalone
+        STOP order — opt-in, default OFF. It is the STOP only: Kraken has neither OCO nor a
+        bracket, so one order rests and it is the one that bounds the loss; a declared take
+        profit stays with the local check whatever this says. The MARGIN side is unwalked —
+        MT5 holds the level ON the position, with no separate order to derive an answer
+        from, so a three-way reading may be needed there (#209).
     """
     LOCAL = 'local'
     VENUE = 'venue'
@@ -253,6 +258,16 @@ class OrderCapabilities:
     # the executor synthesizes a single aggregate BrokerTrade from the
     # query response — the data model stays consistent.
     trade_level_reporting: bool = True
+
+    # Venue-held protective orders (#503)
+    # venue_held_protective_orders: the venue accepts a STANDALONE order that can hold a
+    # protective level for an open position, so the level survives our process dying.
+    # Kraken: True — measured, a stop-loss order rests over a spot holding and fires
+    # without us. MT5: False — MT5 holds the level ON the position, a different mechanism
+    # (#209). It is NOT native_position_sl_tp, which says who performs a MODIFY: on the
+    # two venues that exist the two answers point in opposite directions, and reading one
+    # for the other reinstates #500's original defect one level up.
+    venue_held_protective_orders: bool = False
 
     def supports_order_type(self, order_type: OrderType) -> bool:
         """Check if broker supports specific order type"""
@@ -504,6 +519,9 @@ class OpenOrderRequest:
         stop_loss: Optional stop loss price level on resulting position
         take_profit: Optional take profit price level on resulting position
         comment: Order comment
+        venue_held_protection: Whether the resulting position's protective level should
+            rest at the venue as an order of its own (#503). None follows the profile's
+            execution.venue_held_protection; True/False overrides it for this order
     """
     symbol: str
     order_type: OrderType
@@ -514,6 +532,7 @@ class OpenOrderRequest:
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     comment: str = ''
+    venue_held_protection: Optional[bool] = None
 
 
 # ============================================

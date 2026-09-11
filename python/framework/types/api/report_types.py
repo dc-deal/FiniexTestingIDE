@@ -190,12 +190,18 @@ class OpenPositionRow(BaseModel):
     valued: bool = False
     stop_loss: float | None = None
     take_profit: float | None = None
-    # Who enforces the two levels above (#500). 'local' — our own process watches the tick
-    # stream and closes on a breach, so a process that dies leaves the position unprotected.
-    # 'venue' — the level rests at the broker and outlives us. Empty where no level is set.
-    # A level was reported for a long time with nobody behind it; this is what makes the
-    # difference readable instead of assumed.
+    # Who enforces the STOP (#500). 'local' — our own process watches the tick stream and
+    # closes on a breach, so a process that dies leaves the position unprotected. 'venue' —
+    # the level rests at the broker and outlives us. Empty where no level is set. A level
+    # was reported for a long time with nobody behind it; this is what makes the difference
+    # readable instead of assumed.
     protective_level_enforcement: str = ''
+    # And who enforces the TARGET, which is not the same answer (#503). Only ONE order can
+    # rest at the venue — Kraken has neither OCO nor a bracket — and it holds the stop,
+    # because a bounded loss is worth more than a captured opportunity. So a position whose
+    # stop the venue holds still has a take profit watched by this process alone. One answer
+    # across both levels told an operator the target survives a restart, and it does not.
+    take_profit_enforcement: str = ''
 
 
 class PortfolioUnitRow(BaseModel):

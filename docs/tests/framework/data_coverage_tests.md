@@ -8,8 +8,6 @@ archive structure — which collector schema produced which period.
 
 **Test Location:** `tests/framework/data_coverage/`
 **Unit under test:** `python/framework/discoveries/data_coverage/data_format_version_spans.py`
-**Total Tests:** 6
-
 The unit is pure — it takes index entries and returns spans, with no index load and no file access.
 Tests therefore need no fixture data beyond entry dicts.
 
@@ -17,7 +15,7 @@ Tests therefore need no fixture data beyond entry dicts.
 
 ## Test Files
 
-### test_version_spans.py (6 tests)
+### test_version_spans.py
 
 **TestSpanGrouping:**
 - Empty entry list → empty span list

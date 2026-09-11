@@ -150,7 +150,6 @@ class TestCatalogCompleteness:
             Path('configs/autotrader_profiles'): 'hand-written live/backtest profiles',
             Path('configs/discoveries'): 'hand-written discovery configuration',
             Path('configs/test_scenarios'): 'hand-written test scenario configuration',
-            Path('configs/broker_settings'): 'hand-written per-broker settings (§28)',
             Path('configs/generator'): 'hand-written generator configuration + header template',
             Path('configs/sweeps'): 'hand-written parameter-sweep specifications (#390)',
         }

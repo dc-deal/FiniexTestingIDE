@@ -7,7 +7,10 @@ from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.types.portfolio_types.portfolio_trade_record_types import EntryType
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import FeeType
-from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.trading_env_types.order_types import (
+    OrderDirection,
+    ProtectiveLevelEnforcement,
+)
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
 
@@ -103,6 +106,15 @@ class Position:
     mae_price: float = 0.0  # current_price at the worst excursion (seeded to entry)
     mfe_price: float = 0.0  # current_price at the best excursion (seeded to entry)
 
+    # === Venue-held protection (#503) — the order the venue holds for this position ===
+    # Set from the CONFIRMATION of the protective order, never from the declaration:
+    # between submitting one and hearing back, nobody at the venue holds anything, so the
+    # local check has to stay awake. Both fields travel into the cold-start carry-over —
+    # the projection sees the position, not the PendingOrder, and the broker reference is
+    # the only key that can still ask "did it fill?" after a restart.
+    protective_order_id: Optional[str] = None
+    protective_broker_ref: Optional[str] = None
+
     # === Swap accrual (#365) — last rollover instant already charged ===
     # Seeded to entry_time in __post_init__; advanced as overnight swap accrues.
     swap_accrued_until: Optional[datetime] = None
@@ -191,6 +203,36 @@ class Position:
     # ============================================
     # SL/TP Trigger Detection
     # ============================================
+
+    def protective_enforcement(
+        self,
+        run_default: ProtectiveLevelEnforcement
+    ) -> ProtectiveLevelEnforcement:
+        """
+        Who holds THIS position's protective level (#503).
+
+        Derived from the broker reference rather than stored beside it: a fourth carrier
+        of the same truth is how the console came to print a stop nobody held (#500). A
+        run is mixed from now on — one position's level can rest at the venue while the
+        next one's does not — so the run-wide answer is only the fallback.
+
+        MARGIN ANCHOR (2026-09-10, #209): this derivation assumes the venue holds the
+        level as a STANDALONE ORDER, which is Kraken spot's shape. MT5 holds it ON the
+        position — there is no separate order and therefore no broker reference to derive
+        from, so a margin venue that genuinely enforces a level would still read LOCAL
+        here. Not a defect today (MT5 declares venue_held_protective_orders=False, so the
+        case cannot arise), and deliberately not modelled ahead of the account model that
+        needs it. #209 decides whether the answer becomes a three-way one.
+
+        Args:
+            run_default: What the executor answers for the run as a whole
+
+        Returns:
+            VENUE once the venue has confirmed an order for this position, else the default
+        """
+        if self.protective_broker_ref:
+            return ProtectiveLevelEnforcement.VENUE
+        return run_default
 
     def is_sl_triggered(self, bid: float, ask: float) -> bool:
         """

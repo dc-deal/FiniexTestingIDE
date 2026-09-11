@@ -20,17 +20,15 @@ from pathlib import Path
 
 import pytest
 
-from tests.live_adapters.conftest import record_observed_adapter
-
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
-from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, TimeoutConfig
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
+from tests.live_adapters.conftest import record_observed_adapter
 
 _BROKER_CONFIG_PATH = Path('configs/brokers/kraken/kraken_spot_broker_config.json')
-_BROKER_SETTINGS_PATH = Path('configs/broker_settings/kraken_spot.json')
 _CREDENTIALS_PATH = Path('user_configs/credentials/kraken_credentials.json')
 
 
@@ -48,25 +46,28 @@ def live_adapter_real(request, real_orders_authorised):
     with open(_BROKER_CONFIG_PATH, 'r') as f:
         broker_config = json.load(f)
 
-    with open(_BROKER_SETTINGS_PATH, 'r') as f:
-        broker_settings = json.load(f)
+    # The SAME source a live session reads (#505 follow-up). `configs/broker_settings/` was
+    # a leftover of the #252 migration that production had stopped reading, so this suite —
+    # the only one that spends real money — was proving something about a file nobody obeyed.
+    entry = MarketConfigManager().get_broker_entry('kraken_spot')
+    transport = entry.broker_transport.model_copy(update={'rate_limit_interval_s': 0.5})
+    credentials_file = entry.credentials_file
+    # Forced here, never read from config: this fixture's phase decides it.
+    dry_run = False
 
     # Phase 2: real orders required — dry_run must be off
-    broker_settings['dry_run'] = False
-    broker_settings['broker_transport']['rate_limit_interval_s'] = 0.5
-
     adapter = KrakenAdapter(broker_config)
     adapter.enable_live(
-        credentials_file=broker_settings['credentials_file'],
-        dry_run=broker_settings['dry_run'],
-        transport=BrokerTransportConfig(**broker_settings['broker_transport']),
+        credentials_file=credentials_file,
+        dry_run=dry_run,
+        transport=transport,
     )
     # The certificate records what was BUILT here, not what the settings file says.
     record_observed_adapter(
         request,
         phase='real_orders',
-        dry_run=broker_settings['dry_run'],
-        api_base_url=broker_settings['broker_transport']['api_base_url'])
+        dry_run=dry_run,
+        api_base_url=transport.api_base_url)
     return adapter
 
 

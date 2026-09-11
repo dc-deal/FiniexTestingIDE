@@ -6,6 +6,8 @@ Covers:
 - _inject_symbols_hash(): 8-char SHA256 of symbols block; stable across meta-only changes
 """
 
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -191,3 +193,75 @@ class TestTheReproducibilityHashCoversTheFees:
         config.adapter = adapter
 
         assert config.config_hash == 'deadbeef'
+
+
+class TestTheFreezeDateIsReadableBack:
+    """
+    A fee rate is a declared ASSUMPTION, so the seed records when it was frozen (#505
+    follow-up) — and something has to be able to read that back, or the date is decoration.
+
+    Who needs it: a live session compares the declared rate against the venue on every start
+    and warns on divergence. Someone running only BACKTESTS never sees that warning, and the
+    seed can rot indefinitely for them. `store_cli.py catalog` asks this question for that
+    reader, next to the expired release certificates — the same shape, because it is the same
+    kind of statement.
+    """
+
+    def _seed(self, tmp_path, block) -> str:
+        """
+        A broker config file carrying a chosen freeze block.
+
+        Args:
+            tmp_path: pytest temporary directory
+            block: The `_fee_structure_frozen` value, or None to omit it
+
+        Returns:
+            Path to the written file
+        """
+        raw = {'symbols': {}, 'fee_structure': {'model': 'maker_taker'}}
+        if block is not None:
+            raw['_fee_structure_frozen'] = block
+        path = tmp_path / 'seed.json'
+        path.write_text(json.dumps(raw), encoding='utf-8')
+        return str(path)
+
+    def test_the_age_is_whole_days_since_the_stamp(self, tmp_path):
+        path = self._seed(tmp_path, {'date': '2026-06-01'})
+
+        stamped, days = BrokerConfigFactory.frozen_fee_age_days(
+            path, now=datetime(2026, 9, 9, tzinfo=timezone.utc))
+
+        assert stamped == '2026-06-01'
+        assert days == 100
+
+    def test_a_file_with_no_freeze_block_answers_None_not_zero(self, tmp_path):
+        """
+        An absence is not an age. Reporting zero would say "frozen today" about a file that
+        never claimed a date — which is the more comfortable of the two wrong answers.
+        """
+        assert BrokerConfigFactory.frozen_fee_age_days(self._seed(tmp_path, None)) is None
+
+    def test_the_stamp_lives_OUTSIDE_the_hashed_fee_block(self, tmp_path):
+        """
+        Why it is a sibling of `fee_structure` and not a field in it: `config_hash` is
+        computed over the fee block, so a provenance note inside it would move the
+        reproducibility anchor without changing a single price.
+        """
+        without = {'symbols': {}, 'fee_structure': {'maker_fee': 0.4, 'taker_fee': 0.8}}
+        with_note = dict(without)
+        with_note['_fee_structure_frozen'] = {'date': '2026-09-08', 'source': 'measured'}
+
+        BrokerConfigFactory._inject_config_hashes(without)
+        BrokerConfigFactory._inject_config_hashes(with_note)
+
+        assert (without['_config_meta']['config_hash']
+                == with_note['_config_meta']['config_hash'])
+
+    def test_the_shipped_kraken_seed_carries_one(self, tmp_path):
+        """The rule is only worth anything if the file that matters actually follows it."""
+        age = BrokerConfigFactory.frozen_fee_age_days(
+            'configs/brokers/kraken/kraken_spot_broker_config.json')
+
+        assert age is not None, 'the re-frozen Kraken seed must say when it was frozen'
+        assert age[1] >= 0
+

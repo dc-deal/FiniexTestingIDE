@@ -9,8 +9,6 @@ The trade_emission test suite validates the BrokerTrade emission introduced by #
 - Account: 10,000 USD initial balance
 - Symbol: BTCUSD (Mock built-in spec)
 
-**Total Tests:** 4
-
 **Location:** `tests/simulation/trade_emission/`
 
 ---

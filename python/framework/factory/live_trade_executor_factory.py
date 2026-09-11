@@ -28,6 +28,7 @@ def build_live_executor(
     poll_interval_ms: int = 5000,
     connection_policy: Optional[ConnectionPolicy] = None,
     session_key: str = '',
+    venue_held_protection: bool = False,
 ) -> LiveTradeExecutor:
     """
     Create a fully configured LiveTradeExecutor.
@@ -48,6 +49,9 @@ def build_live_executor(
             (#473). Sourced from BrokerTransportConfig.connection.
         session_key: Discriminator for the client order ids this session sends (#473).
             Empty on paths that never reach a venue.
+        venue_held_protection: Profile default for #503 — whether a declared stop_loss
+            additionally rests at the venue as an order of its own. Sourced from
+            AutotraderExecutionDefaults.venue_held_protection.
 
     Returns:
         LiveTradeExecutor ready for live trading
@@ -83,4 +87,5 @@ def build_live_executor(
         poll_interval_ms=poll_interval_ms,
         rest_ladder=rest_ladder,
         session_key=session_key,
+        venue_held_protection=venue_held_protection,
     )

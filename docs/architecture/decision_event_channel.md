@@ -43,6 +43,7 @@ No guessing: each event delivers one typed payload to one hook.
 | `ORDER_REJECTED` | `OrderRejectedEvent` — order_id, direction, reason, message, result | `on_order_rejected` |
 | `ORDER_CANCELLED` | `OrderCancelledEvent` — order_id, direction | `on_order_cancelled` |
 | `PARTIAL_CLOSE` | `PartialCloseEvent` — position_id, direction, closed_lots, remaining_lots, fill_price, result | `on_partial_close` |
+| `POSITION_CLOSED` | `PositionClosedEvent` — position_id, direction, close_reason, requested_locally, fill_price, lots | `on_position_closed` |
 | `SESSION_END` | `SessionEndEvent` — reason, severity | `on_session_end` |
 
 Every payload also carries `tick_time` (sim time in backtests, wall-clock in live).
@@ -55,7 +56,8 @@ Every payload also carries `tick_time` (sim time in backtests, wall-clock in liv
    ORDER_REJECTED ─────┤   _notify_outcome  (existing fan-out, #319)   │──┐
                        │   _emit_order_cancelled / partial-close emit  │  │
    ORDER_CANCELLED /   │   → _decision_event_sink                      │──┤
-   PARTIAL_CLOSE ──────┘                                                  │
+   PARTIAL_CLOSE /     │                                               │  │
+   POSITION_CLOSED ────┘                                                  │
                                                                           ▼
                                           ┌────────────────────────────────────┐
    SESSION_END (tick loop) ──────────────►│  DecisionEventDispatcher             │
@@ -70,9 +72,14 @@ Every payload also carries `tick_time` (sim time in backtests, wall-clock in liv
 - `ORDER_FILLED` / `ORDER_REJECTED` ride the executor's existing order-outcome
   listener fan-out (#319). Close fills do **not** reach that fan-out, so they
   never produce spurious outcomes for OrderGuard / DriftAuditor.
-- `ORDER_CANCELLED` / `PARTIAL_CLOSE` are emitted through a **dedicated sink**
-  (`set_decision_event_sink`) — kept separate from `_notify_outcome` so existing
-  outcome consumers are untouched.
+- `ORDER_CANCELLED` / `PARTIAL_CLOSE` / `POSITION_CLOSED` are emitted through a
+  **dedicated sink** (`set_decision_event_sink`) — kept separate from `_notify_outcome`
+  so existing outcome consumers are untouched.
+- `POSITION_CLOSED` fires on EVERY full close in BOTH pipelines, not only on the
+  venue-initiated one #503 introduced. Narrowing it to the live case would be a parity
+  break of the same family the external-data contract forbids, and a strategy reacting to
+  "my position is gone" needs it whichever route closed it. `requested_locally=False`
+  is what marks the close nobody here asked for.
 - `SESSION_END` is built by the tick loop at session end (request, exhaustion,
   Ctrl+C, or safety halt).
 
@@ -128,6 +135,7 @@ subscribes to an event the current executor can't emit simply never receives it
 | `ORDER_FILLED` / `ORDER_REJECTED` | ✓ | ✓ |
 | `ORDER_CANCELLED` | ✓ | ✓ |
 | `PARTIAL_CLOSE` | ✓ | ✓ |
+| `POSITION_CLOSED` | ✓ | ✓ (incl. venue-initiated, #503) |
 | `SESSION_END` | ✓ (ticks exhausted / request) | ✓ (request / Ctrl+C / safety) |
 | `PARTIAL_FILL` (broker multi-execution) | — (order-book topic #143) | from #342 |
 | `RECONCILE_ALERT` | — (live-only) | from #151 Phase 2 |

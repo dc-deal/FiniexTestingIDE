@@ -225,6 +225,24 @@ class TestTheWatcherWritesOnChange:
         assert watcher.has_changed([position]) is False
         assert watcher.has_changed([position], drift_due=True) is True
 
+    def test_a_confirmed_protective_reference_is_structural(self):
+        """
+        #503. The venue's txid for a protective order is re-derivable by nobody, which is
+        this signature's own test for belonging here — an exit LEVEL the algo recomputes on
+        its next pass is not.
+
+        On the drift cadence instead, a hard kill inside the window leaves the note naming a
+        protective order id with no reference. The next boot then reads it as unanswerable
+        and clears it, while a live STOP is still resting at the venue with nothing pointing
+        at it.
+        """
+        position = _live_position()
+        watcher = PositionBookWatcher([position])
+        position.protective_broker_ref = 'OABCDE-1234-XYZ'
+
+        assert watcher.has_changed([position]) is True, (
+            'It cannot wait for the drift interval — it cannot be recovered afterwards')
+
     def test_a_new_position_is_structural_even_while_drift_waits(self):
         first = _live_position()
         watcher = PositionBookWatcher([first])
