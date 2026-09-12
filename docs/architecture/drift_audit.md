@@ -243,6 +243,21 @@ the metric remains event-based and post-fill. MT5-style brokers with real bid/as
 still feed the same formula — `submission.tick_mid_price = (bid + ask) / 2` — and the audit
 value-add is the latency-window drift component on top of what `SpreadFee` already accounts for.
 
+### What the literature calls this
+
+The execution-cost literature names this measurement **arrival cost** (also: trading cost) — the
+difference between the average execution price and the market price at the moment the order
+entered the market. It is described there as the single most important metric for judging a
+venue, a broker or an algorithm, which is what this channel is for.
+
+One asymmetry is worth knowing before comparing a number here against one from that literature:
+it uses "slippage" as a synonym for the WHOLE implementation shortfall, while the SLIPPAGE
+channel measures only the arrival-cost component of it. The other two components are the delay
+cost between decision and dispatch — structurally zero in this framework, because a bot decides
+and submits within one tick — and the opportunity cost of an order that never filled, which
+nothing here measures today. A reader who expects the two definitions to coincide will otherwise
+find a gap that is not one.
+
 ## Configuration
 
 `DriftAuditConfig` (Pydantic, in `autotrader_defaults_config_types.py`):

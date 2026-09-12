@@ -7,17 +7,19 @@ Mirrors process_startup_preparation.py for backtesting.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
+from python.framework.autotrader.autotrader_account_model import AutotraderAccountModel
 from python.framework.autotrader.autotrader_broker_config_setup import create_broker_config
 from python.framework.autotrader.autotrader_logger_bundle import AutotraderLoggerBundle
 from python.framework.autotrader.autotrader_pipeline_bundle import AutotraderPipelineBundle
 from python.framework.autotrader.autotrader_warmup_preparator import AutotraderWarmupPreparator
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
 from python.framework.factory.worker_factory import WorkerFactory
@@ -28,18 +30,24 @@ from python.framework.reporting.store.run_index import RunIndex
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
 from python.framework.signal_data.transport.signal_boot_resolver import prepare_live_signal_boot
+from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
+from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.config_types.market_config_types import TradingModel
+from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
+from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.log_layout_types import RUN_TYPE_LIVE
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.signal_data_types import (
+    SignalLiveBoot,
     SignalSourceMode,
+    SignalSourceResolution,
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType
+from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
 from python.framework.validators.capital_validator import (
@@ -225,17 +233,11 @@ def setup_pipeline(
     """
     Create all pipeline objects for AutoTrader session.
 
-    Mirrors process_startup_preparation phases:
-    1. Load broker config from JSON
-    2. Get DecisionLogic requirements
-    3. Create LiveTradeExecutor via factory
-    4. Create TradingContext
-    5. Create Workers
-    6. Create DecisionLogic
-    7. Create WorkerOrchestrator + wire DecisionTradingApi
-    8. Create BarRenderingController
-    9. Warmup bar injection (mock: parquet, live: API)
-    10. Create LiveClippingMonitor
+    Reads as the boot order itself: each phase builds one part and hands it to the next.
+    Every phase longer than a few lines has its own function below this one, so the order
+    stays visible here and the construction detail sits one level down.
+
+    Mirrors process_startup_preparation phases.
 
     Args:
         config: AutoTrader configuration
@@ -249,6 +251,91 @@ def setup_pipeline(
         The pipeline bundle — every object the session needs, wired
     """
     # === Phase 1: Broker Config ===
+    balances, explicit_account_currency, broker_config = _resolve_broker_and_balances(
+        config, logger)
+
+    # === Phase 2: DecisionLogic Requirements ===
+    decision_logic_factory, required_order_types = _resolve_order_requirements(
+        config, logger)
+
+    # === Phase 3: Resolve trading model ===
+    account = _resolve_account_model(
+        config, broker_config, balances, explicit_account_currency)
+
+    # === Phase 4: LiveTradeExecutor ===
+    executor, connection_policy = _build_executor(
+        config, logger, run_id, broker_config, balances, account)
+
+    # === Phase 5: TradingContext ===
+    adapter = broker_config.adapter
+    volume_min = adapter.get_symbol_specification(config.symbol).volume_min
+    trading_context = TradingContext(
+        broker_type=BrokerType(config.broker_type),
+        market_type=account.market_type,
+        symbol=config.symbol,
+        volume_min=volume_min,
+        trading_model=account.trading_model,
+        pip_size=adapter.get_pip_size(config.symbol),
+    )
+
+    # === Phase 6 + 6b: Workers and the source their signals come from ===
+    workers, signal_source, live_boot = _build_workers(
+        config, logger, package, trading_context)
+
+    # === Phase 7 + 8: DecisionLogic, orchestrator, DecisionTradingApi ===
+    decision_logic, worker_orchestrator = _build_decision_layer(
+        config, logger, decision_logic_factory, trading_context, workers,
+        signal_source, live_boot, executor, required_order_types)
+
+    # === Phase 8: BarRenderingController ===
+    bar_controller = BarRenderingController(
+        logger=logger,
+        max_history=config.execution.bar_max_history
+    )
+    bar_controller.register_workers(workers)
+    logger.debug('✅ BarRenderingController created')
+
+    # === Phase 9: Warmup + Display Label Cache ===
+    display_label_cache = _run_warmup(
+        config, logger, workers, bar_controller, connection_policy,
+        decision_logic, balances, account)
+
+    # === Phase 10: LiveClippingMonitor ===
+    clipping_monitor = LiveClippingMonitor(
+        report_interval_s=config.clipping_monitor.report_interval_s,
+        strategy=config.clipping_monitor.strategy,
+    )
+    logger.debug(
+        f'✅ ClippingMonitor: strategy={config.clipping_monitor.strategy}, '
+        f'report_interval={config.clipping_monitor.report_interval_s}s'
+    )
+
+    return AutotraderPipelineBundle(
+        executor=executor,
+        bar_controller=bar_controller,
+        worker_orchestrator=worker_orchestrator,
+        decision_logic=decision_logic,
+        clipping_monitor=clipping_monitor,
+        trading_model=account.trading_model,
+        display_label_cache=display_label_cache,
+    )
+
+
+def _resolve_broker_and_balances(
+    config: AutoTraderConfig,
+    logger: ScenarioLogger,
+) -> Tuple[Dict[str, float], Optional[str], BrokerConfig]:
+    """
+    Phase 1 — the broker config, and where this session's starting capital comes from.
+
+    Args:
+        config: AutoTrader configuration
+        logger: ScenarioLogger instance
+
+    Returns:
+        The balances, the profile's explicit account currency if it declared one, and the
+        broker config
+    """
     # Balances source (#438): the mock replays a scenario → its scenario_settings.balances
     # (starting capital); live is filled from the broker inside create_broker_config (the
     # profile declares no balances).
@@ -259,8 +346,25 @@ def setup_pipeline(
         balances = {}
         explicit_account_currency = None
     broker_config = create_broker_config(config, logger, balances)
+    return balances, explicit_account_currency, broker_config
 
-    # === Phase 2: DecisionLogic Requirements ===
+
+def _resolve_order_requirements(
+    config: AutoTraderConfig,
+    logger: ScenarioLogger,
+) -> Tuple[DecisionLogicFactory, List[OrderType]]:
+    """
+    Phase 2 — what the configured decision logic declares it needs, checked before anything
+    is built.
+
+    Args:
+        config: AutoTrader configuration
+        logger: ScenarioLogger instance
+
+    Returns:
+        The factory (reused to build the logic itself in phase 7) and the order types the
+        logic declared
+    """
     decision_logic_factory = DecisionLogicFactory(logger=logger)
     decision_logic_class, _ = decision_logic_factory.resolve_logic_class(
         config.strategy_config.get('decision_logic_type', '')
@@ -276,13 +380,30 @@ def setup_pipeline(
     cold_start_hook_error = check_cold_start_hook(decision_logic_class, required_order_types)
     if cold_start_hook_error:
         raise ValueError(cold_start_hook_error)
+    return decision_logic_factory, required_order_types
 
-    # === Phase 3: Resolve trading model ===
+
+def _resolve_account_model(
+    config: AutoTraderConfig,
+    broker_config: BrokerConfig,
+    balances: Dict[str, float],
+    explicit_account_currency: Optional[str],
+) -> AutotraderAccountModel:
+    """
+    Phase 3 — what kind of account this session trades, and in which currency.
+
+    Args:
+        config: AutoTrader configuration
+        broker_config: The broker config from phase 1
+        balances: The balances from phase 1
+        explicit_account_currency: The profile's override, or None
+
+    Returns:
+        The resolved account model
+    """
     market_config_manager = MarketConfigManager()
     market_type = market_config_manager.get_market_type(config.broker_type)
     trading_model = market_config_manager.get_trading_model(config.broker_type)
-    spot_mode = trading_model == TradingModel.SPOT
-
     # Validate: balances must be resolved
     if not balances:
         raise ValueError(
@@ -302,7 +423,36 @@ def setup_pipeline(
     else:
         account_currency = list(balances.keys())[0]
 
-    # === Phase 4: LiveTradeExecutor ===
+    return AutotraderAccountModel(
+        market_type=market_type,
+        trading_model=trading_model,
+        symbol_spec=symbol_spec,
+        account_currency=account_currency,
+    )
+
+
+def _build_executor(
+    config: AutoTraderConfig,
+    logger: ScenarioLogger,
+    run_id: str,
+    broker_config: BrokerConfig,
+    balances: Dict[str, float],
+    account: AutotraderAccountModel,
+) -> Tuple[LiveTradeExecutor, ConnectionPolicy]:
+    """
+    Phase 4 — the executor every order goes through, and the connection policy behind it.
+
+    Args:
+        config: AutoTrader configuration
+        logger: ScenarioLogger instance
+        run_id: This session's run id
+        broker_config: The broker config from phase 1
+        balances: The balances from phase 1
+        account: The account model from phase 3
+
+    Returns:
+        The wired executor and the broker's connection policy (phase 9 warms up over it)
+    """
     # #503 — a profile-wide opt-in the venue cannot carry is a startup problem, not a
     # per-order one. Left to the submit path it would reject EVERY protected entry, one at
     # a time, for the whole session: the bot would run, trade nothing, and each rejection
@@ -334,14 +484,14 @@ def setup_pipeline(
             f"refuses to start.")
         venue_held_protection = False
 
-    broker_entry = market_config_manager.get_broker_entry(config.broker_type)
+    broker_entry = MarketConfigManager().get_broker_entry(config.broker_type)
     connection_policy = broker_entry.broker_transport.connection
     executor = build_live_executor(
         broker_config=broker_config,
         balances=balances,
-        account_currency=account_currency,
+        account_currency=account.account_currency,
         logger=logger,
-        spot_mode=spot_mode,
+        spot_mode=account.spot_mode,
         poll_interval_ms=broker_entry.broker_transport.poll_interval_ms,
         connection_policy=connection_policy,
         # #473 — four characters of the run id's random half. The SESSION owns it: a #476
@@ -358,20 +508,28 @@ def setup_pipeline(
     logger.info(
         f'💱 LiveTradeExecutor created: balances={balances}'
     )
+    return executor, connection_policy
 
-    # === Phase 5: TradingContext ===
-    adapter = broker_config.adapter
-    volume_min = adapter.get_symbol_specification(config.symbol).volume_min
-    trading_context = TradingContext(
-        broker_type=BrokerType(config.broker_type),
-        market_type=market_type,
-        symbol=config.symbol,
-        volume_min=volume_min,
-        trading_model=trading_model,
-        pip_size=adapter.get_pip_size(config.symbol),
-    )
 
-    # === Phase 6: Workers ===
+def _build_workers(
+    config: AutoTraderConfig,
+    logger: ScenarioLogger,
+    package: Optional[ProcessDataPackage],
+    trading_context: TradingContext,
+) -> Tuple[List, SignalSourceResolution, Optional[SignalLiveBoot]]:
+    """
+    Phases 6 and 6b — the workers, and the source their signal snapshots come from.
+
+    Args:
+        config: AutoTrader configuration
+        logger: ScenarioLogger instance
+        package: Prepared scenario data package (mock) or None (live)
+        trading_context: The trading context from phase 5
+
+    Returns:
+        The workers, the resolved signal source, and the live boot state when the source is
+        LIVE (None otherwise)
+    """
     worker_factory = WorkerFactory(logger=logger)
     workers_dict = worker_factory.create_workers_from_config(
         strategy_config=config.strategy_config,
@@ -380,7 +538,6 @@ def setup_pipeline(
     workers = list(workers_dict.values())
     logger.debug(f'✅ Created {len(workers)} workers')
 
-    # === Phase 6b: Signal Providers (#431/#438, live transport #141 Part 2a) ===
     # A SIGNAL worker resolves against exactly one collaborator and never learns where its
     # snapshots came from. Two ways to give it one:
     #   mounted  — the mock's prepared series, injected exactly as the sim subprocess does;
@@ -408,8 +565,38 @@ def setup_pipeline(
         for worker in [w for w in workers if isinstance(w, AbstractSignalWorker)]:
             worker.set_signal_provider(provider)
     logger.info(f'📡 {signal_source.reason}')
+    return workers, signal_source, live_boot
 
-    # === Phase 7: DecisionLogic ===
+
+def _build_decision_layer(
+    config: AutoTraderConfig,
+    logger: ScenarioLogger,
+    decision_logic_factory: DecisionLogicFactory,
+    trading_context: TradingContext,
+    workers: List,
+    signal_source: SignalSourceResolution,
+    live_boot: Optional[SignalLiveBoot],
+    executor: LiveTradeExecutor,
+    required_order_types: List[OrderType],
+) -> Tuple[AbstractDecisionLogic, WorkerOrchestrator]:
+    """
+    Phases 7 and 8 — the strategy, the orchestrator that runs its workers, and the API it
+    places orders through.
+
+    Args:
+        config: AutoTrader configuration
+        logger: ScenarioLogger instance
+        decision_logic_factory: The factory from phase 2
+        trading_context: The trading context from phase 5
+        workers: The workers from phase 6
+        signal_source: The resolved signal source from phase 6b
+        live_boot: The live boot state from phase 6b, or None
+        executor: The executor from phase 4
+        required_order_types: What the logic declared in phase 2
+
+    Returns:
+        The decision logic and the orchestrator, both wired
+    """
     decision_logic = decision_logic_factory.create_logic(
         logic_type=config.strategy_config.get('decision_logic_type', ''),
         logic_config=config.strategy_config.get('decision_logic_config', {}),
@@ -427,7 +614,6 @@ def setup_pipeline(
     # validation channel.
     surface_decision_logic_version(decision_logic, logger)
 
-    # === Phase 8: WorkerOrchestrator + DecisionTradingApi ===
     worker_orchestrator = WorkerOrchestrator(
         decision_logic=decision_logic,
         strategy_config=config.strategy_config,
@@ -447,16 +633,36 @@ def setup_pipeline(
     )
     decision_logic.set_trading_api(trading_api)
     logger.debug('✅ DecisionTradingApi injected')
+    return decision_logic, worker_orchestrator
 
-    # === Phase 8: BarRenderingController ===
-    bar_controller = BarRenderingController(
-        logger=logger,
-        max_history=config.execution.bar_max_history
-    )
-    bar_controller.register_workers(workers)
-    logger.debug('✅ BarRenderingController created')
 
-    # === Phase 9: Warmup + Display Label Cache ===
+def _run_warmup(
+    config: AutoTraderConfig,
+    logger: ScenarioLogger,
+    workers: List,
+    bar_controller: BarRenderingController,
+    connection_policy: ConnectionPolicy,
+    decision_logic: AbstractDecisionLogic,
+    balances: Dict[str, float],
+    account: AutotraderAccountModel,
+) -> DisplayLabelCache:
+    """
+    Phase 9 — fill the workers' history, build the display labels, and refuse a session that
+    could fund no order at all.
+
+    Args:
+        config: AutoTrader configuration
+        logger: ScenarioLogger instance
+        workers: The workers from phase 6
+        bar_controller: The bar controller from phase 8
+        connection_policy: The connection policy from phase 4
+        decision_logic: The decision logic from phase 7
+        balances: The balances from phase 1
+        account: The account model from phase 3
+
+    Returns:
+        The pre-resolved display labels
+    """
     warmup_preparator = AutotraderWarmupPreparator(logger=logger)
     warmup_preparator.prepare_and_inject(
         config=config,
@@ -480,28 +686,10 @@ def setup_pipeline(
     # and that is SAID rather than swallowed — a check that silently does not run reads
     # exactly like one that ran and passed.
     reference_price = _newest_bar_close(bar_controller, config.symbol)
-    sufficiency_error = check_account_sufficiency(balances, symbol_spec, reference_price)
+    sufficiency_error = check_account_sufficiency(
+        balances, account.symbol_spec, reference_price)
     if sufficiency_error:
         raise ValueError(sufficiency_error)
     if reference_price is None:
         logger.warning(describe_missing_reference_price(config.symbol))
-
-    # === Phase 10: LiveClippingMonitor ===
-    clipping_monitor = LiveClippingMonitor(
-        report_interval_s=config.clipping_monitor.report_interval_s,
-        strategy=config.clipping_monitor.strategy,
-    )
-    logger.debug(
-        f'✅ ClippingMonitor: strategy={config.clipping_monitor.strategy}, '
-        f'report_interval={config.clipping_monitor.report_interval_s}s'
-    )
-
-    return AutotraderPipelineBundle(
-        executor=executor,
-        bar_controller=bar_controller,
-        worker_orchestrator=worker_orchestrator,
-        decision_logic=decision_logic,
-        clipping_monitor=clipping_monitor,
-        trading_model=trading_model,
-        display_label_cache=display_label_cache,
-    )
+    return display_label_cache
