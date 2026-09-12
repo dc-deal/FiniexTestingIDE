@@ -19,6 +19,12 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestCoverage` | `test_coverage_ok` | start/end/timeframes fields present |
 | `TestCoverage` | `test_unknown_symbol_returns_404` | 404 + `error: not_found` |
 | `TestBars` | `test_bars_ok` | OHLCV shape, correct field names |
+| `TestBars` | `test_bars_carry_the_tick_count` | `tc` per bar — the activity measure on feeds whose volume is 0.0 |
+| `TestBars` | `test_a_cut_response_says_that_it_was_cut` | `X-Bar-Truncated` / `Count` / `Total` / `Limit` on a capped range |
+| `TestBars` | `test_a_complete_response_says_it_was_not_cut` | the same headers on an uncut range |
+| `TestBars` | `test_every_response_states_its_own_semantics` | `X-Bar-Time-Basis` `open` · `X-Bar-Timezone` `UTC` · `X-Bar-Price-Basis` `mid` |
+| `TestBars` | `test_a_limit_above_the_cap_is_refused_rather_than_clamped` | 400 + `error: invalid_limit` |
+| `TestBars` | `test_a_limit_below_one_is_refused` | 400 + `error: invalid_limit` |
 | `TestBars` | `test_invalid_timeframe_returns_400` | 400 + `error: invalid_timeframe` |
 | `TestBars` | `test_from_after_to_returns_400` | 400 + `error: invalid_range` |
 | `TestBars` | `test_unknown_broker_returns_404` | 404 + `error: not_found` |

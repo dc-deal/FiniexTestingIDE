@@ -34,12 +34,13 @@ class CoverageResponse(BaseModel):
 
 
 class BarResponse(BaseModel):
-    t: int              # unix seconds UTC
+    t: int              # unix seconds UTC, bar OPEN time
     o: float
     h: float
     l: float
     c: float
-    v: float
+    v: float            # traded volume; 0.0 on feeds that carry none (forex CFD)
+    tc: int             # ticks aggregated into this bar
 
 
 class TimeframeInfo(BaseModel):

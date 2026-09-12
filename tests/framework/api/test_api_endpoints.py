@@ -207,6 +207,106 @@ class TestBars:
         assert all(k in bars[0] for k in ('t', 'o', 'h', 'l', 'c', 'v'))
         assert bars[0]['o'] == 40000.0
 
+    def test_bars_carry_the_tick_count(self, client):
+        """Forex feeds report volume 0.0, so the tick count is their only activity measure."""
+        with (
+            patch('python.api.endpoints.bars_router.BarsIndexManager', return_value=_mock_index()),
+            patch('python.api.endpoints.bars_router.pd.read_parquet', return_value=_sample_bars_df()),
+        ):
+            r = client.get(
+                '/api/v1/brokers/kraken_spot/symbols/BTCUSD/bars',
+                params={
+                    'timeframe': 'M30',
+                    'from': '2026-01-01T00:00:00Z',
+                    'to': '2026-02-01T00:00:00Z',
+                },
+            )
+        assert r.status_code == 200
+        assert [bar['tc'] for bar in r.json()] == [100, 120]
+
+    def test_a_cut_response_says_that_it_was_cut(self, client):
+        """The defect this replaces: head() returned the first rows and nothing said so."""
+        with (
+            patch('python.api.endpoints.bars_router.BarsIndexManager', return_value=_mock_index()),
+            patch('python.api.endpoints.bars_router.pd.read_parquet', return_value=_sample_bars_df()),
+        ):
+            r = client.get(
+                '/api/v1/brokers/kraken_spot/symbols/BTCUSD/bars',
+                params={
+                    'timeframe': 'M30',
+                    'from': '2026-01-01T00:00:00Z',
+                    'to': '2026-02-01T00:00:00Z',
+                    'limit': 1,
+                },
+            )
+        assert r.status_code == 200
+        assert len(r.json()) == 1
+        assert r.headers['X-Bar-Truncated'] == 'true'
+        assert r.headers['X-Bar-Count'] == '1'
+        assert r.headers['X-Bar-Limit'] == '1'
+        # The total is what makes the rest reachable — head() is exactly what discards it.
+        assert r.headers['X-Bar-Total'] == '2'
+
+    def test_a_complete_response_says_it_was_not_cut(self, client):
+        with (
+            patch('python.api.endpoints.bars_router.BarsIndexManager', return_value=_mock_index()),
+            patch('python.api.endpoints.bars_router.pd.read_parquet', return_value=_sample_bars_df()),
+        ):
+            r = client.get(
+                '/api/v1/brokers/kraken_spot/symbols/BTCUSD/bars',
+                params={
+                    'timeframe': 'M30',
+                    'from': '2026-01-01T00:00:00Z',
+                    'to': '2026-02-01T00:00:00Z',
+                },
+            )
+        assert r.headers['X-Bar-Truncated'] == 'false'
+        assert r.headers['X-Bar-Count'] == r.headers['X-Bar-Total'] == '2'
+
+    def test_every_response_states_its_own_semantics(self, client):
+        """Open-vs-close, timezone and mid-vs-traded each cost a reader a wrong answer."""
+        with (
+            patch('python.api.endpoints.bars_router.BarsIndexManager', return_value=_mock_index()),
+            patch('python.api.endpoints.bars_router.pd.read_parquet', return_value=_sample_bars_df()),
+        ):
+            r = client.get(
+                '/api/v1/brokers/kraken_spot/symbols/BTCUSD/bars',
+                params={
+                    'timeframe': 'M30',
+                    'from': '2026-01-01T00:00:00Z',
+                    'to': '2026-02-01T00:00:00Z',
+                },
+            )
+        assert r.headers['X-Bar-Time-Basis'] == 'open'
+        assert r.headers['X-Bar-Timezone'] == 'UTC'
+        assert r.headers['X-Bar-Price-Basis'] == 'mid'
+
+    def test_a_limit_above_the_cap_is_refused_rather_than_clamped(self, client):
+        r = client.get(
+            '/api/v1/brokers/kraken_spot/symbols/BTCUSD/bars',
+            params={
+                'timeframe': 'M30',
+                'from': '2026-01-01T00:00:00Z',
+                'to': '2026-02-01T00:00:00Z',
+                'limit': 10_001,
+            },
+        )
+        assert r.status_code == 400
+        assert r.json()['error'] == 'invalid_limit'
+
+    def test_a_limit_below_one_is_refused(self, client):
+        r = client.get(
+            '/api/v1/brokers/kraken_spot/symbols/BTCUSD/bars',
+            params={
+                'timeframe': 'M30',
+                'from': '2026-01-01T00:00:00Z',
+                'to': '2026-02-01T00:00:00Z',
+                'limit': 0,
+            },
+        )
+        assert r.status_code == 400
+        assert r.json()['error'] == 'invalid_limit'
+
     def test_invalid_timeframe_returns_400(self, client):
         r = client.get(
             '/api/v1/brokers/kraken_spot/symbols/BTCUSD/bars',

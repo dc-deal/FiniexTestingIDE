@@ -76,7 +76,7 @@ For production use, restrict `allow_origins` to the actual deployment domain. No
 | GET | `/api/v1/brokers` | Broker types available in bar index |
 | GET | `/api/v1/brokers/{broker}/symbols` | Symbols for a broker with `market_type` |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/coverage` | Available date range and timeframes |
-| GET | `/api/v1/brokers/{broker}/symbols/{symbol}/bars` | OHLCV bars (query: `timeframe`, `from`, `to`) |
+| GET | `/api/v1/brokers/{broker}/symbols/{symbol}/bars` | OHLCV bars (query: `timeframe`, `from`, `to`, `limit`) |
 | GET | `/api/v1/reports/runs` | Index of EVERY run, newest first — `run_id`, `group` ∈ `simulation` \| `live`, the set / profile name, `artifacts` (every report file the run persisted, by name), and — from the run's header (#475) — `start_time`, `parent_id` (the sweep or session this run belongs to; null when it stands alone), `app_version`, `git_commit` and `config_snapshot`. **`group` is the PIPELINE, never the nesting:** a sweep combination is a `simulation` whose `parent_id` names its sweep, and a live day fragment (#476) will be a `live` whose `parent_id` names its session. `has_reports` is still served, now derived as `artifacts` being non-empty, so the two can never disagree. **`reporting`** (`expected` \| `none`) says whether the run was COMMISSIONED to report — read it together with `artifacts`: empty + `expected` means still running or died before reporting, empty + `none` means it was never meant to. Without the pair a crashed run is indistinguishable from a deliberately silent one. **`artifacts` is what a consumer should read:** the two pipelines produce DIFFERENT sets (a live session has no `scenario_details` / `profiling` / `run_meta` / `aggregated_portfolio`), so a client that guessed would get a 404 for the difference. Served from the derived run index, built from each run's `header.json`; a lookup is an exact match against that index. A run with no artifacts exists as logs only (a test session writes none). The entry point the routes below are addressed by |
 | GET | `/api/v1/sweeps` | Every recorded parameter sweep, newest first — id, start, duration, combination + ok/error counts, algo, objective. Served from the run-results ledger (#390) |
 | GET | `/api/v1/sweeps/{sweep_id}` | One sweep's combinations, RANKED by the objective the sweep declared. Each row carries its `run_id`, the hinge into the report routes |
@@ -103,9 +103,36 @@ Returns the globally configured timeframe list in ascending order (by bar durati
 
 - `from` and `to` are ISO-8601 UTC datetime strings (e.g. `2026-01-01T00:00:00Z`)
 - Naive datetimes are treated as UTC
-- Response timestamps `t` are **unix seconds UTC**
+- Response timestamps `t` are **unix seconds UTC** and mark the bar's **OPEN**
+- `limit` is the caller's own row cap. Omitted it applies `MAX_BARS`; above it the request is
+  refused (`400 invalid_limit`) rather than clamped, so a cap is never applied behind a caller's back
 - Maximum bars per request: `MAX_BARS = 10_000` — prevents accidental huge responses
 - Valid timeframes: M1, M5, M15, M30, H1, H4, D1 (via `TimeframeConfig`)
+- `v` is traded volume and is **0.0 on feeds that carry none** (forex CFD); `tc` is the number of
+  ticks aggregated into the bar and is the activity measure on those feeds
+
+#### What the response says about itself
+
+The body is a bare array, because that is what existing clients read. Everything a consumer needs
+*about* the rows therefore travels as response headers — additive by construction, so a client that
+ignores them is unaffected, and a shortened payload can no longer end in silence.
+
+| Header | Meaning |
+|---|---|
+| `X-Bar-Count` | Rows in this response |
+| `X-Bar-Total` | Rows matching the range **before** the cap — what makes the rest reachable |
+| `X-Bar-Limit` | The cap that was applied |
+| `X-Bar-Truncated` | `true` when the range held more than the cap |
+| `X-Bar-Time-Basis` | `open` — the stamp is the period's start, never its close |
+| `X-Bar-Timezone` | `UTC` |
+| `X-Bar-Price-Basis` | `mid` — OHLC is `(bid + ask) / 2`, not a traded price |
+
+The last three are facts a caller cannot infer from the rows and gets no second chance to get
+right: reading a bar stamp as a close-time, or a mid as a traded price, produces a plausible
+number that is wrong.
+
+Bars are **rendered from ticks** (a DERIVED store, §44): periods with no ticks produce no bar —
+gaps are omitted, never zero-filled.
 
 ### Reports Endpoints Details
 
