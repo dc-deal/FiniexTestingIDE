@@ -1,12 +1,17 @@
 # Broker Trade Record Model — Order ↔ Executions Pairing
 
-> See [Trade Execution Visibility](trade_execution_visibility.md) for how `BrokerTrade` records propagate through `Position.entry_trades` / `TradeRecord.entry_trades` / `exit_trades`, how the renderers surface them, and the long-format event-stream CSV.
+> See [Trade Execution Visibility](trade_execution_visibility.md) for how `BrokerTrade` records
+> propagate through `Position.entry_trades` / `TradeRecord.entry_trades` / `exit_trades`, how the
+> renderers surface them, and the long-format event-stream CSV.
 
 ## Concept
 
-Every order placed at a broker eventually produces one or more **executions** (also called trades, fills, or deals). The order is the instruction; executions are the realizations. The relationship is always 1:N — one order, many executions — and is universal across institutional and retail brokers (FIX ExecutionReports, IBKR `execDetails`, Binance `myTrades`, Kraken `QueryTrades`, MT5 deals).
+Every order placed at a broker eventually produces one or more **executions** (also called trades,
+fills, or deals). The order is the instruction; executions are the realizations. The relationship is
+always 1:N — one order, many executions — and is universal across institutional and retail brokers
+(FIX ExecutionReports, IBKR `execDetails`, Binance `myTrades`, Kraken `QueryTrades`, MT5 deals).
 
-This project models that pairing via the `BrokerTrade` domain type. The data model is broker-agnostic; transport details live in each adapter's Tier-3 `_build_trades_query_payload` / `_do_request_trades_query` / `_parse_trades_query_response` triple.
+This project models that pairing via the `BrokerTrade` domain type. The data model is broker-agnostic; transport details live in each adapter's Tier-3 `build_trades_query_payload` / `do_request_trades_query` / `parse_trades_query_response` triple.
 
 ```
 ORDER (the instruction)
@@ -53,14 +58,17 @@ The helper `pending.append_trade(trade)` mutates `trades` and recomputes the cum
 Three methods on `AbstractAdapter` — every live-capable adapter implements them:
 
 ```python
-def _build_trades_query_payload(broker_ref: str) -> Dict[str, Any]
-def _do_request_trades_query(payload: Dict[str, Any]) -> Dict[str, Any]
-def _parse_trades_query_response(raw, broker_ref, order_id) -> List[BrokerTrade]
+def build_trades_query_payload(broker_ref: str) -> Dict[str, Any]
+def do_request_trades_query(payload: Dict[str, Any]) -> Dict[str, Any]
+def parse_trades_query_response(raw, broker_ref, order_id) -> List[BrokerTrade]
 ```
 
 Pure / transport / pure layering, identical to the submit/query/cancel/modify triples established by #319.
 
-The `OrderCapabilities.trade_level_reporting` flag (default True) declares whether the broker exposes per-execution detail. All real broker integrations (Kraken, MT5, IBKR, Binance) support it. Adapters that lack it can declare False and fall back to aggregated reporting — the data model still works (one synthetic record per fill).
+The `OrderCapabilities.trade_level_reporting` flag (default True) declares whether the broker
+exposes per-execution detail. All real broker integrations (Kraken, MT5, IBKR, Binance) support it.
+Adapters that lack it can declare False and fall back to aggregated reporting — the data model still
+works (one synthetic record per fill).
 
 ### Kraken Implementation
 
@@ -69,11 +77,13 @@ Kraken's REST API requires a two-call pattern:
 1. `POST /0/private/QueryOrders` with `trades=true` → returns the order detail plus a `trades: [tradeid, ...]` list
 2. `POST /0/private/QueryTrades` with comma-separated `txid=` → returns full per-trade detail
 
-The Kraken adapter encapsulates both calls inside `_do_request_trades_query`. Dry-run orders (DRYRUN-* refs) bypass the broker and return an empty list — a documented limitation, since dry-run orders never produce real executions.
+The Kraken adapter encapsulates both calls inside `do_request_trades_query`. Dry-run orders (DRYRUN-* refs) bypass the broker and return an empty list — a documented limitation, since dry-run orders never produce real executions.
 
 ### Mock Implementation
 
-The `MockBrokerAdapter` records synthetic trade records at fill time (in `_do_request_submit` INSTANT_FILL and `_do_request_query` DELAYED_FILL paths) via the `_record_mock_trades` helper. The constructor parameter `trades_per_fill: int = 1` controls how many records are produced per fill:
+The `MockBrokerAdapter` records synthetic trade records at fill time (in `do_request_submit`
+INSTANT_FILL and `do_request_query` DELAYED_FILL paths) via the `_record_mock_trades` helper. The
+constructor parameter `trades_per_fill: int = 1` controls how many records are produced per fill:
 
 - `1` (default): single full-volume trade — typical real-world fill
 - `N > 1`: split into N records with even volume and small price offsets — exercises partial-fill code paths in regression tests
@@ -121,7 +131,13 @@ Both pipelines route through `AbstractTradeExecutor._synthesize_pending_trade` w
 
 ## V1 Limitation — Synthetic Fee
 
-The polling-path synthesis in V1 uses the locally-computed fee as the BrokerTrade.fee value — `entry_fee.cost` on an open and `exit_fee.cost` on a close (#506), both ours rather than broker-reported — not the broker-reported fee. Drift Audit (#327) consumes `pending.cumulative_fee` to compare against `KrakenFeeModel.compute_fee` and surface divergence. As long as V1 polling drives `pending.trades`, that comparison is tautologically zero. Real divergence detection requires async trades_query against the live broker, which #327 may trigger independently as a post-outcome consumer.
+The polling-path synthesis in V1 uses the locally-computed fee as the BrokerTrade.fee value —
+`entry_fee.cost` on an open and `exit_fee.cost` on a close (#506), both ours rather than
+broker-reported — not the broker-reported fee. Drift Audit (#327) consumes `pending.cumulative_fee`
+to compare against `KrakenFeeModel.compute_fee` and surface divergence. As long as V1 polling drives
+`pending.trades`, that comparison is tautologically zero. Real divergence detection requires async
+trades_query against the live broker, which #327 may trigger independently as a post-outcome
+consumer.
 
 The async path (`submit_trades_query_async` → drain → `_handle_trades_response`) is fully wired and tested. It is not invoked from the V1 polling code path by default; that activation is deferred to:
 

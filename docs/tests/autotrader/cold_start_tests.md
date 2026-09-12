@@ -127,7 +127,7 @@ the refusal reaches the session error pot, so the run cannot grade green.
 
 ---
 
-## Running
+## Running the Tests
 
 ```bash
 python -m pytest tests/autotrader/cold_start/ -v

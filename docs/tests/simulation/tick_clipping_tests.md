@@ -4,11 +4,16 @@
 
 Regression suite for the bar rendering / clipping gate ordering in the simulation tick loop. Ensures that bars aggregate **all** ticks regardless of the `is_clipped` flag set by the tick processing budget.
 
-**Context:** The tick processing budget flags ticks as `is_clipped=True` to simulate "algo was too slow to react". Clipped ticks skip the algo path (workers, decision logic) but must still reach bar rendering — otherwise OHLC, volume and tick_count are silently wrong. Bars represent market data, not algo input.
+**Context:** The tick processing budget flags ticks as `is_clipped=True` to simulate "algo was too
+slow to react". Clipped ticks skip the algo path (workers, decision logic) but must still reach bar
+rendering — otherwise OHLC, volume and tick_count are silently wrong. Bars represent market data,
+not algo input.
 
 **Location:** `tests/simulation/tick_clipping/`
 
-**Approach:** Lightweight integration test against `execute_tick_loop`. Uses a real `BarRenderingController` with mocked trade executor, worker orchestrator, and decision logic — isolates the tick loop ordering from the rest of the simulation pipeline.
+**Approach:** Lightweight integration test against `execute_tick_loop`. Uses a real
+`BarRenderingController` with mocked trade executor, worker orchestrator, and decision logic —
+isolates the tick loop ordering from the rest of the simulation pipeline.
 
 ---
 
@@ -45,7 +50,7 @@ The tests guard against regression of the ordering.
 
 ---
 
-## Running
+## Running the Tests
 
 ```
 pytest tests/simulation/tick_clipping/ -v

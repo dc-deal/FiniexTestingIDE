@@ -39,7 +39,7 @@ The AutoTrader-mock test also exercises `request_session_end` end-to-end — the
 ends the session itself (no operator Ctrl+C), and `SESSION_END` is the last event
 delivered before teardown.
 
-## Fixtures
+## Fixtures (conftest.py)
 
 - Simulation scenario set: `configs/scenario_sets/backtesting/event_channel_test.json`
 - AutoTrader-mock profile: `configs/autotrader_profiles/backtesting/event_channel_lifecycle.json`
@@ -47,7 +47,7 @@ delivered before teardown.
 Both reuse the USDJPY mt5 tick data of the partial-close suites; only the decision
 logic and its plan differ.
 
-## Running
+## Running the Tests
 
 ```
 # Dual-world (sim)

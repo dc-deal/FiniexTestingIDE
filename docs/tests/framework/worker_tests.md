@@ -16,7 +16,9 @@ The worker test suite validates the parameter validation system, schema integrit
 
 ### test_parameter_schema.py (~127 Tests)
 
-Validates that every component's `get_parameter_schema()` returns well-formed, internally consistent `InputParamDef` declarations and that every worker's `get_output_schema()` returns valid `OutputParamDef` declarations. All schema tests are parametrized across all 10 components.
+Validates that every component's `get_parameter_schema()` returns well-formed, internally consistent
+`InputParamDef` declarations and that every worker's `get_output_schema()` returns valid
+`OutputParamDef` declarations. All schema tests are parametrized across all 10 components.
 
 #### TestSchemaStructure
 
@@ -419,13 +421,15 @@ Unit tests for indicator computation logic. Each test creates a worker with know
 
 ---
 
-## Architecture Notes
+## Architecture
 
 ### Test Design Philosophy
 
 The worker test suite uses a **layered validation** approach:
 
-1. **Schema layer** (`test_parameter_schema.py`): Every component's `InputParamDef` declarations are internally consistent — types match, bounds are valid, defaults are within range. Worker `OutputParamDef` declarations are validated for structure, categories, and bounds.
+1. **Schema layer** (`test_parameter_schema.py`): Every component's `InputParamDef` declarations are
+   internally consistent — types match, bounds are valid, defaults are within range. Worker
+   `OutputParamDef` declarations are validated for structure, categories, and bounds.
 
 2. **Validation layer** (`test_parameter_validation.py`): The `validate_parameters()` function correctly enforces all constraints — missing required, type mismatches, boundary violations, strict vs non-strict modes.
 

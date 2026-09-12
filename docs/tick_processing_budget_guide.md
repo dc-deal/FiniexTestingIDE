@@ -6,9 +6,16 @@
 
 In live trading, ticks that arrive while the algorithm is still processing the previous tick are **lost** (clipped). The backtesting simulation processes every tick sequentially — optimistically biased because no ticks are ever skipped.
 
-The **Tick Processing Budget** bridges this gap by deterministically **flagging** ticks as clipped, simulating the clipping behavior of live trading. Flagged ticks still flow through the tick loop — the broker path (`trade_simulator.on_tick()`) and bar rendering see every tick, while the algo path (bar history, workers, decision logic) skips clipped ticks.
+The **Tick Processing Budget** bridges this gap by deterministically **flagging** ticks as clipped,
+simulating the clipping behavior of live trading. Flagged ticks still flow through the tick loop —
+the broker path (`trade_simulator.on_tick()`) and bar rendering see every tick, while the algo path
+(bar history, workers, decision logic) skips clipped ticks.
 
-**Key property:** Flag-based approach. All ticks enter the subprocess and tick loop. The `is_clipped` flag on each tick controls whether the algo path processes it. This ensures the broker simulation (pending order fills, SL/TP triggers, limit/stop monitoring) and bar construction (OHLC, volume, tick count) operate on the full market data stream — identical to a real broker and market data feed.
+**Key property:** Flag-based approach. All ticks enter the subprocess and tick loop. The
+`is_clipped` flag on each tick controls whether the algo path processes it. This ensures the broker
+simulation (pending order fills, SL/TP triggers, limit/stop monitoring) and bar construction (OHLC,
+volume, tick count) operate on the full market data stream — identical to a real broker and market
+data feed.
 
 ---
 

@@ -113,7 +113,7 @@ Cross-timeframe consistency validation.
 
 ---
 
-## Architecture Notes
+## Architecture
 
 ### Test Design Philosophy
 

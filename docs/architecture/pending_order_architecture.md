@@ -94,7 +94,12 @@ New fields land in their sub-type — no further widening of the parent surface.
 
 **Purpose:** Simulates broker acceptance delay. Every order — regardless of type — passes through this queue first.
 
-**Simulation:** `OrderLatencySimulator` extends `AbstractPendingOrderManager`. Uses `SeededDelayGenerator` (`utils/seeded_generators/`) to assign a deterministic `broker_fill_msc` (millisecond timestamp) to each order. On each tick, `process_tick()` compares the tick's `collected_msc` (or `time_msc` fallback) against `broker_fill_msc` and returns orders whose inbound latency has elapsed. See [Design Decision: Inbound-Only Fill Timing](#design-decision-inbound-only-fill-timing) below.
+**Simulation:** `OrderLatencySimulator` extends `AbstractPendingOrderManager`. Uses
+`SeededDelayGenerator` (`utils/seeded_generators/`) to assign a deterministic `broker_fill_msc`
+(millisecond timestamp) to each order. On each tick, `process_tick()` compares the tick's
+`collected_msc` (or `time_msc` fallback) against `broker_fill_msc` and returns orders whose inbound
+latency has elapsed. See
+[Design Decision: Inbound-Only Fill Timing](#design-decision-inbound-only-fill-timing) below.
 
 **Live:** `LiveRequestProcessor` extends `AbstractPendingOrderManager`. Tracks orders by `broker_ref` (O(1) lookup). Fill/rejection arrives via broker polling, not tick counting.
 
@@ -136,7 +141,11 @@ New fields land in their sub-type — no further widening of the parent surface.
 **Modification:** `modify_limit_order(order_id, new_price, new_stop_loss, new_take_profit)`
 **Cancellation:** `cancel_limit_order(order_id)` — removes from list, returns `True`
 
-**Live mode:** Broker handles limit matching server-side. `LiveTradeExecutor` maintains `_active_limit_orders` as **shadow state** — when the broker accepts a LIMIT order (status=PENDING), it is tracked locally. Each tick, `_process_active_orders()` polls the broker for fills. After a successful `modify_limit_order()`, the local shadow state is updated to reflect the new price/SL/TP. Shadow state correctness depends on #151 (Reconciliation).
+**Live mode:** Broker handles limit matching server-side. `LiveTradeExecutor` maintains
+`_active_limit_orders` as **shadow state** — when the broker accepts a LIMIT order (status=PENDING),
+it is tracked locally. Each tick, `_process_active_orders()` polls the broker for fills. After a
+successful `modify_limit_order()`, the local shadow state is updated to reflect the new price/SL/TP.
+Shadow state correctness depends on #151 (Reconciliation).
 
 ---
 
@@ -169,9 +178,21 @@ New fields land in their sub-type — no further widening of the parent surface.
 **Modification:** `modify_stop_order(order_id, new_stop_price, new_limit_price, new_stop_loss, new_take_profit)`
 **Cancellation:** `cancel_stop_order(order_id)` — removes from list, returns `True`
 
-**Live mode: the trigger lives at the VENUE, not here.** The trigger logic above is the simulator's; the live executor has no price-trigger predicate of its own and does not want one — a resting stop is an order Kraken holds, and `ordertype=stop-loss` / `stop-loss-limit` is how it is placed (`price` carries the trigger, `price2` the limit). `LiveTradeExecutor` maintains `_active_stop_orders` as **shadow state** exactly as World 2 does: each tick, `_process_active_orders()` polls both lists for fills, the session-end cleanup cancels or leaves both, and boot adoption files a venue-reported stop into this world by type (#500).
+**Live mode: the trigger lives at the VENUE, not here.** The trigger logic above is the simulator's;
+the live executor has no price-trigger predicate of its own and does not want one — a resting stop
+is an order Kraken holds, and `ordertype=stop-loss` / `stop-loss-limit` is how it is placed (`price`
+carries the trigger, `price2` the limit). `LiveTradeExecutor` maintains `_active_stop_orders` as
+**shadow state** exactly as World 2 does: each tick, `_process_active_orders()` polls both lists for
+fills, the session-end cleanup cancels or leaves both, and boot adoption files a venue-reported stop
+into this world by type (#500).
 
-Two consequences worth stating, because they are asymmetries rather than bugs. A live STOP triggers on Kraken's **last traded price** (their `trigger` parameter defaults to `last`) while the simulator triggers on ask/bid — since `ask > last > bid`, the backtest fires slightly early on both sides and fills at the triggering tick with no slippage model, so a **stop ENTRY is the one order type whose backtest is optimistic by construction**. And a triggered STOP_LIMIT changes identity in the simulation (it converts to a LIMIT and moves to World 2) while at the venue it stays one order in this world.
+Two consequences worth stating, because they are asymmetries rather than bugs. A live STOP triggers
+on Kraken's **last traded price** (their `trigger` parameter defaults to `last`) while the simulator
+triggers on ask/bid — since `ask > last > bid`, the backtest fires slightly early on both sides and
+fills at the triggering tick with no slippage model, so a
+**stop ENTRY is the one order type whose backtest is optimistic by construction**. And a triggered
+STOP_LIMIT changes identity in the simulation (it converts to a LIMIT and moves to World 2) while at
+the venue it stays one order in this world.
 
 ---
 
@@ -380,11 +401,17 @@ At scenario end, `finish_remaining_orders()` handles all three worlds:
    venue. A position now stays open and is reported as open and valued; see
    [session_end_policy.md](session_end_policy.md).
 
-2. **Active limit orders** (`_active_limit_orders`): `_expire_active_orders()` creates `OrderResult(status=EXPIRED, reason="scenario_end")` entries in `_order_history` for each. Lists are **preserved** (not cleared) — `get_pending_stats()` snapshots them into `PendingOrderStats.active_limit_orders` for reporting. In live mode, active limit orders are also cancelled at the broker before expiry. A warning is logged.
+2. **Active limit orders** (`_active_limit_orders`): `_expire_active_orders()` creates
+   `OrderResult(status=EXPIRED, reason="scenario_end")` entries in `_order_history` for each. Lists
+   are **preserved** (not cleared) — `get_pending_stats()` snapshots them into
+   `PendingOrderStats.active_limit_orders` for reporting. In live mode, active limit orders are also
+   cancelled at the broker before expiry. A warning is logged.
 
 3. **Active stop orders** (`_active_stop_orders`): Same treatment as limit orders — EXPIRED records created, lists preserved for snapshots. A warning is logged.
 
-4. **Latency queue** (`clear_pending()`): Any genuine stuck-in-pipeline orders are recorded as `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`). Only these real anomalies produce individual `PendingOrderRecord` entries in `anomaly_orders`.
+4. **Latency queue** (`clear_pending()`): Any genuine stuck-in-pipeline orders are recorded as
+   `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`). Only these real anomalies produce
+   individual `PendingOrderRecord` entries in `anomaly_orders`.
 
 **Note:** `check_clean_shutdown()` validates only the latency pipeline (via `_has_pipeline_orders()` → `has_pipeline_orders()`) — intentionally preserved active limit/stop orders do not trigger cleanup warnings.
 

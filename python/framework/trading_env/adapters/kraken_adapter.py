@@ -112,7 +112,7 @@ class KrakenAdapter(AbstractAdapter):
     _OFFSET_PRICED_ORDERTYPES = frozenset({'trailing-stop', 'trailing-stop-limit'})
 
     # Sentinel key marking a raw response as a dry-run handoff. The
-    # _do_request_* layer tags the raw dict; _parse_*_response detects
+    # do_request_* layer tags the raw dict; parse_*_response detects
     # the tag and delegates to DryRunOrderSimulator for the synthetic
     # BrokerResponse so the response timestamp matches the parse stage.
     _DRY_RUN_SENTINEL = '__dry_run_op__'
@@ -595,14 +595,14 @@ class KrakenAdapter(AbstractAdapter):
     #
     # Tier 3 is split into three pure layers (transport-neutral contract
     # defined on AbstractAdapter):
-    #   _build_*_payload     — pure, no I/O, no state
-    #   _do_request_*        — transport (HTTP for Kraken), raises on error
-    #   _parse_*_response    — pure w.r.t. broker payload (delegates to
+    #   build_*_payload     — pure, no I/O, no state
+    #   do_request_*        — transport (HTTP for Kraken), raises on error
+    #   parse_*_response    — pure w.r.t. broker payload (delegates to
     #                          DryRunOrderSimulator on the dry-run branch)
     #
     # LiveRequestProcessor composes these layers directly — see its
     # submit/query/cancel/modify orchestrators. Dry-run flows through the
-    # DryRunOrderSimulator owned by this adapter: _do_request_* runs the
+    # DryRunOrderSimulator owned by this adapter: do_request_* runs the
     # real broker call when validation is still desired (validate=true
     # for submit) and tags the raw with the operation kind; the parse
     # layer hands off to the simulator with the parse-stage timestamp.
@@ -610,7 +610,7 @@ class KrakenAdapter(AbstractAdapter):
 
     # --- Build payloads (pure) ---
 
-    def _build_submit_payload(
+    def build_submit_payload(
         self,
         symbol: str,
         direction: OrderDirection,
@@ -764,7 +764,7 @@ class KrakenAdapter(AbstractAdapter):
             )
         data[key] = str(value)
 
-    def _build_query_payload(self, broker_ref: str) -> Dict[str, str]:
+    def build_query_payload(self, broker_ref: str) -> Dict[str, str]:
         """
         Build Kraken QueryOrders payload.
 
@@ -778,7 +778,7 @@ class KrakenAdapter(AbstractAdapter):
         """
         return {'txid': broker_ref}
 
-    def _build_cancel_payload(self, broker_ref: str) -> Dict[str, str]:
+    def build_cancel_payload(self, broker_ref: str) -> Dict[str, str]:
         """
         Build Kraken CancelOrder payload.
 
@@ -792,7 +792,7 @@ class KrakenAdapter(AbstractAdapter):
         """
         return {'txid': broker_ref}
 
-    def _build_modify_payload(
+    def build_modify_payload(
         self,
         broker_ref: str,
         symbol: str,
@@ -838,12 +838,12 @@ class KrakenAdapter(AbstractAdapter):
             self._put_price(data, 'limit_price', new_price)
         return data
 
-    def _build_trades_query_payload(self, broker_ref: str) -> Dict[str, str]:
+    def build_trades_query_payload(self, broker_ref: str) -> Dict[str, str]:
         """
         Build Kraken trades-query payload (#326).
 
         Pure — no I/O, no state. The payload carries only the order's txid;
-        _do_request_trades_query performs the two-call Kraken pattern
+        do_request_trades_query performs the two-call Kraken pattern
         (QueryOrders trades=true → QueryTrades) internally.
 
         Args:
@@ -856,7 +856,7 @@ class KrakenAdapter(AbstractAdapter):
 
     # --- HTTP transport (raises on error) ---
 
-    def _do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Send AddOrder request to Kraken. Raises on HTTP/API error.
 
@@ -864,7 +864,7 @@ class KrakenAdapter(AbstractAdapter):
         broker validates pair, lot size, cost minimum, and margin —
         an invalid order still raises and surfaces as REJECTED. On
         successful validation the call hands off to DryRunOrderSimulator
-        via a sentinel-tagged dict so _parse_submit_response can produce
+        via a sentinel-tagged dict so parse_submit_response can produce
         the synthetic BrokerResponse with the parse-stage timestamp.
 
         Args:
@@ -883,7 +883,7 @@ class KrakenAdapter(AbstractAdapter):
                 self._DRY_RUN_VALIDATED: validated,
                 'lots': float(payload['volume']),
                 # Kraken's two price fields mean different things per ordertype (see
-                # _build_submit_payload): limit → price is the limit; stop-loss → price is
+                # build_submit_payload): limit → price is the limit; stop-loss → price is
                 # the TRIGGER; stop-loss-limit → price is the trigger and price2 the limit.
                 # Split here, where the ordertype is known, so the simulator never receives
                 # one field meaning two things.
@@ -893,7 +893,7 @@ class KrakenAdapter(AbstractAdapter):
             }
         return self._fetch_private('/0/private/AddOrder', payload)
 
-    def _do_request_query(self, payload: Dict[str, str]) -> Dict[str, Any]:
+    def do_request_query(self, payload: Dict[str, str]) -> Dict[str, Any]:
         """
         Send QueryOrders request to Kraken. Raises on HTTP/API error.
 
@@ -914,7 +914,7 @@ class KrakenAdapter(AbstractAdapter):
             }
         return self._fetch_private('/0/private/QueryOrders', payload)
 
-    def _do_request_cancel(self, payload: Dict[str, str]) -> Dict[str, Any]:
+    def do_request_cancel(self, payload: Dict[str, str]) -> Dict[str, Any]:
         """
         Send CancelOrder request to Kraken. Raises on HTTP/API error.
 
@@ -935,7 +935,7 @@ class KrakenAdapter(AbstractAdapter):
             }
         return self._fetch_private('/0/private/CancelOrder', payload)
 
-    def _do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Send AmendOrder request to Kraken. Raises on HTTP/API error.
 
@@ -963,7 +963,7 @@ class KrakenAdapter(AbstractAdapter):
             }
         return self._fetch_private('/0/private/AmendOrder', payload)
 
-    def _do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Fetch per-execution trade records for an order (#326). Two-call Kraken
         pattern internally:
@@ -971,7 +971,7 @@ class KrakenAdapter(AbstractAdapter):
             2. QueryTrades(txid=ids)     → full trade detail per ID
 
         Dry-run orders (DRYRUN-* refs) do not produce real trade records —
-        returns a sentinel-tagged dict that _parse_trades_query_response
+        returns a sentinel-tagged dict that parse_trades_query_response
         converts to an empty list.
 
         Args:
@@ -1036,7 +1036,7 @@ class KrakenAdapter(AbstractAdapter):
             return price2, price
         return None, None
 
-    def _parse_submit_response(
+    def parse_submit_response(
         self,
         raw: Dict[str, Any],
         timestamp: datetime,
@@ -1068,7 +1068,7 @@ class KrakenAdapter(AbstractAdapter):
                 raise ValueError(
                     f'❌ Dry-run submit for {raw.get("ordertype")} reached the parse layer '
                     f'without direction/order_type. The orchestrator supplies both; a caller '
-                    f'invoking _parse_submit_response directly has to as well (#505).')
+                    f'invoking parse_submit_response directly has to as well (#505).')
             limit_price, trigger_price = self._dry_run_prices(order_type, raw)
             response = self._dry_run_simulator.submit(
                 lots=raw['lots'],
@@ -1092,7 +1092,7 @@ class KrakenAdapter(AbstractAdapter):
             raw_response=raw,
         )
 
-    def _parse_query_response(
+    def parse_query_response(
         self,
         raw: Dict[str, Any],
         broker_ref: str,
@@ -1160,7 +1160,7 @@ class KrakenAdapter(AbstractAdapter):
             raw_response=raw,
         )
 
-    def _parse_cancel_response(
+    def parse_cancel_response(
         self,
         raw: Dict[str, Any],
         broker_ref: str,
@@ -1191,7 +1191,7 @@ class KrakenAdapter(AbstractAdapter):
             raw_response=raw,
         )
 
-    def _parse_modify_response(
+    def parse_modify_response(
         self,
         raw: Dict[str, Any],
         original_broker_ref: str,
@@ -1229,7 +1229,7 @@ class KrakenAdapter(AbstractAdapter):
             raw_response=raw,
         )
 
-    def _parse_trades_query_response(
+    def parse_trades_query_response(
         self,
         raw: Dict[str, Any],
         broker_ref: str,
@@ -1246,7 +1246,7 @@ class KrakenAdapter(AbstractAdapter):
         do not produce real per-execution detail. Documented limitation.
 
         Args:
-            raw: Raw Kraken result dict (output of _do_request_trades_query)
+            raw: Raw Kraken result dict (output of do_request_trades_query)
             broker_ref: The order's broker_ref (cross-checked against ordertxid)
             order_id: OUR internal order_id (injected into every BrokerTrade)
 
@@ -1740,7 +1740,7 @@ class KrakenAdapter(AbstractAdapter):
         """
         Resolve a Kraken pair string to the quote currency from broker config.
 
-        Used by _parse_trades_query_response to fill BrokerTrade.fee_currency.
+        Used by parse_trades_query_response to fill BrokerTrade.fee_currency.
         Iterates broker_config symbols looking for a kraken_pair_name match.
         Falls back to 'USD' if no match (most spot pairs are USD-quoted).
 

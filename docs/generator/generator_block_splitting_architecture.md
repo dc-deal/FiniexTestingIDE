@@ -2,7 +2,10 @@
 
 ## Overview
 
-The scenario generator creates time blocks for backtesting runs. It is a **block-splitting tool**, not a warmup-aware system. It splits data into time blocks based on market structure (gaps, volatility). Warmup is the batch orchestrator's responsibility — it loads bars by count from parquet, regardless of time gaps.
+The scenario generator creates time blocks for backtesting runs. It is a **block-splitting tool**,
+not a warmup-aware system. It splits data into time blocks based on market structure (gaps,
+volatility). Warmup is the batch orchestrator's responsibility — it loads bars by count from
+parquet, regardless of time gaps.
 
 This document covers the block splitting analysis, the Generator Profile system, and the Post-Run Correctness Metric.
 
@@ -78,9 +81,16 @@ When the generator splits a full time range into blocks, each block runs in comp
 | 1 | **Indicator values** (MACD, RSI, EMA, Bollinger...) | MACD(12,26,9) needs ~34 bars = 2.8h on M5 | ✅ Batch orchestrator loads warmup bars by count from parquet |
 | 6 | **Bar history depth** | Long-range patterns (S/R over 200+ bars) blind | ✅ Warmup bars from parquet, `max_history=1000` deque is generous |
 
-These are NOT block-splitting problems — they are warmup problems handled entirely by the batch orchestrator. `SharedDataPreparator.prepare_bars()` loads bars by count (`bars_df.tail(warmup_count)`) from parquet, regardless of time gaps. Bars from before gaps (weekends, outages) are valid warmup data for indicators. The generator has no warmup logic — it only splits data into time blocks.
+These are NOT block-splitting problems — they are warmup problems handled entirely by the batch
+orchestrator. `SharedDataPreparator.prepare_bars()` loads bars by count
+(`bars_df.tail(warmup_count)`) from parquet, regardless of time gaps. Bars from before gaps
+(weekends, outages) are valid warmup data for indicators. The generator has no warmup logic — it
+only splits data into time blocks.
 
-**Evidence:** The warmup bar pipeline: `VectorizedBarRenderer (parquet)` → `SharedDataPreparator.prepare_bars()` → `ProcessDataPackage` → `BarRenderingController.inject_warmup_bars()` → `BarRenderer.initialize_historical_bars()`. Same data source, same rendering algorithm, same quality as live tick-by-tick bars.
+**Evidence:** The warmup bar pipeline: `VectorizedBarRenderer (parquet)` →
+`SharedDataPreparator.prepare_bars()` → `ProcessDataPackage` →
+`BarRenderingController.inject_warmup_bars()` → `BarRenderer.initialize_historical_bars()`. Same
+data source, same rendering algorithm, same quality as live tick-by-tick bars.
 
 #### Structurally Unsolvable (inherent to subprocess isolation)
 
@@ -151,7 +161,9 @@ The system operates in two strictly separated modes — **never mixed**:
 
 ### Profile Format
 
-JSON files in `configs/generator_profiles/`, organized by **split mode then broker type** — `<mode>/<broker_type>/` (e.g. `continuous/mt5/`, `volatility_split/kraken_spot/`). Human-readable but must not be manually edited (documented convention, not enforced via hash).
+JSON files in `configs/generator_profiles/`, organized by **split mode then broker type** —
+`<mode>/<broker_type>/` (e.g. `continuous/mt5/`, `volatility_split/kraken_spot/`). Human-readable
+but must not be manually edited (documented convention, not enforced via hash).
 
 ```json
 {
@@ -243,12 +255,18 @@ The `split_algorithm` (always `atr_minima`) remains global in `generator_config.
 
 ### Scenario Set Integration
 
-Profile Run is activated via the `--generator-profile` CLI flag on the `run` command. The profile blocks replace the `scenarios[]` array from the scenario set JSON. Global config (strategy, execution, trade_simulator) is still loaded from the scenario set.
+Profile Run is activated via the `--generator-profile` CLI flag on the `run` command. The profile
+blocks replace the `scenarios[]` array from the scenario set JSON. Global config (strategy,
+execution, trade_simulator) is still loaded from the scenario set.
 
 - `--generator-profile <path> [<path> ...]` → Profile Run (accepts files and/or directories)
 - No flag → Free Run (backward-compatible)
 
-**Multi-Profile Runs:** Multiple profile files or directories can be passed. If a directory is given, all `*.json` files inside are auto-discovered. All profiles are merged into a single batch with globally unique `scenario_index` values. Scenario names follow the pattern `{SYMBOL}_{mode}_{block_index:02d}` (e.g. `BTCUSD_vol_00`, `EURUSD_cont_03`). The batch summary header shows profile count and symbol count.
+**Multi-Profile Runs:** Multiple profile files or directories can be passed. If a directory is
+given, all `*.json` files inside are auto-discovered. All profiles are merged into a single batch
+with globally unique `scenario_index` values. Scenario names follow the pattern
+`{SYMBOL}_{mode}_{block_index:02d}` (e.g. `BTCUSD_vol_00`, `EURUSD_cont_03`). The batch summary
+header shows profile count and symbol count.
 
 **Profile directories** (`<mode>/<broker_type>/`):
 - `configs/generator_profiles/volatility_split/<broker_type>/` — ATR-minima split profiles
@@ -265,15 +283,31 @@ The generator **consumes** `VolatilityProfileAnalyzer` output (volatility profil
 
 ### Gap Handling
 
-All splitters treat all gap types the same way for block construction (via the shared `ContinuousRegionExtractor`): **weekends, holidays, and short gaps are normal pauses — the algorithm sleeps through them and continues when ticks resume.** Blocks span across these gaps without splitting.
+All splitters treat all gap types the same way for block construction (via the shared
+`ContinuousRegionExtractor`):
+**weekends, holidays, and short gaps are normal pauses — the algorithm sleeps through them and continues when ticks resume.**
+Blocks span across these gaps without splitting.
 
-**Block-start snapping (blocks mode).** A block may *span* a weekend, but it must never *begin* inside one — a `start_date` with no ticks fails scenario validation. `BlocksSplit` therefore snaps any block boundary that lands in a market-closed window (weekend / holiday) forward to the next market open via `MarketCalendar.next_market_open` (§37, the single source of truth for market time). The boundary arithmetic (`region_start + k·block_size`) regularly lands on a weekend for multi-day Forex blocks, so this snap is what keeps generated robustness/blocks sets runnable.
+**Block-start snapping (blocks mode).** A block may *span* a weekend, but it must never *begin*
+inside one — a `start_date` with no ticks fails scenario validation. `BlocksSplit` therefore snaps
+any block boundary that lands in a market-closed window (weekend / holiday) forward to the next
+market open via `MarketCalendar.next_market_open` (§37, the single source of truth for market time).
+The boundary arithmetic (`region_start + k·block_size`) regularly lands on a weekend for multi-day
+Forex blocks, so this snap is what keeps generated robustness/blocks sets runnable.
 
 Only **moderate** and **large** gaps (real data collection issues) cause region splits — blocks never span across them.
 
-The `GapCategory` classification (weekend, holiday, short, moderate, large) exists primarily for the **Data Coverage Report** to distinguish expected market closures from actual data problems. For block generation and P&L calculation, there is no difference between a weekend gap and any other pause — no ticks arrive, the algorithm waits, the next tick continues processing.
+The `GapCategory` classification (weekend, holiday, short, moderate, large) exists primarily for the
+**Data Coverage Report** to distinguish expected market closures from actual data problems. For
+block generation and P&L calculation, there is no difference between a weekend gap and any other
+pause — no ticks arrive, the algorithm waits, the next tick continues processing.
 
-**Gap boundary splitting (forex only):** When a raw gap exceeds the maximum expected weekend duration (80h), the Data Coverage Report splits it at market boundaries (Friday 20:00 UTC close, Sunday 22:00 UTC open). Each sub-gap is classified independently. This prevents data loss spanning multiple weeks from being masked as a single "weekend" closure. Gaps ≤ 80h pass through unchanged — the existing weekend pattern matching handles normal closures correctly. This splitting only affects classification in the Coverage Report; block generation and P&L calculation are not impacted.
+**Gap boundary splitting (forex only):** When a raw gap exceeds the maximum expected weekend
+duration (80h), the Data Coverage Report splits it at market boundaries (Friday 20:00 UTC close,
+Sunday 22:00 UTC open). Each sub-gap is classified independently. This prevents data loss spanning
+multiple weeks from being masked as a single "weekend" closure. Gaps ≤ 80h pass through unchanged —
+the existing weekend pattern matching handles normal closures correctly. This splitting only affects
+classification in the Coverage Report; block generation and P&L calculation are not impacted.
 
 The volatility-split ATR-minima algorithm skips over gap periods (no volatility data available) when searching for split points, rather than inserting artificial forced splits into empty time ranges.
 
@@ -324,7 +358,9 @@ When the disposition is MODERATE or worse, the root cause is almost always **too
 | **Reduce time range** | Fewer blocks generated | When only a specific market period is relevant |
 | **Accept the result** | Use continuous as ground truth, volatility_split for parallelism | When you need speed and know the distortion range |
 
-**Key insight:** The disposition measures the fit between **block size** and **trade frequency**. A strategy averaging 3 trades per block will always show high disposition because nearly every block ends with an open trade. The same strategy on continuous mode (1 block) may show ~0%.
+**Key insight:** The disposition measures the fit between **block size** and **trade frequency**. A
+strategy averaging 3 trades per block will always show high disposition because nearly every block
+ends with an open trade. The same strategy on continuous mode (1 block) may show ~0%.
 
 The disposition does NOT indicate a bad strategy — it indicates that the chosen splitting is too aggressive for the strategy's trading pace.
 
@@ -338,7 +374,11 @@ The disposition does NOT indicate a bad strategy — it indicates that the chose
 }
 ```
 
-A Forex strategy with ~3 trades per 24h block showed 82% SEVERE (9/25 force-closed). Increasing `max_block_hours` to 48 halves the number of blocks and block boundaries. After regenerating profiles, the same strategy may drop to MODERATE or GOOD. The `min_block_hours` and `atr_percentile_threshold` control *where* splits happen, not *how many* — `max_block_hours` is the primary lever for disposition improvement.
+A Forex strategy with ~3 trades per 24h block showed 82% SEVERE (9/25 force-closed). Increasing
+`max_block_hours` to 48 halves the number of blocks and block boundaries. After regenerating
+profiles, the same strategy may drop to MODERATE or GOOD. The `min_block_hours` and
+`atr_percentile_threshold` control *where* splits happen, not *how many* — `max_block_hours` is the
+primary lever for disposition improvement.
 
 ### Empirical Feedback Loop
 

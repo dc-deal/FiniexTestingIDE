@@ -2,7 +2,11 @@
 
 ## Overview
 
-The modify_lifecycle test suite validates the async modify/cancel pattern introduced by #318 on the **simulation side**. Unlike most other simulation test suites which run full scenarios via `execute_tick_loop`, this suite instantiates `TradeSimulator` directly and drives it with controlled msc-tagged ticks. The focus is on the **shape of the modify/cancel lifecycle** — scheduling, in-flight state, resolve-on-next-tick — not on full P&L correctness.
+The modify_lifecycle test suite validates the async modify/cancel pattern introduced by #318 on the
+**simulation side**. Unlike most other simulation test suites which run full scenarios via
+`execute_tick_loop`, this suite instantiates `TradeSimulator` directly and drives it with controlled
+msc-tagged ticks. The focus is on the **shape of the modify/cancel lifecycle** — scheduling,
+in-flight state, resolve-on-next-tick — not on full P&L correctness.
 
 **Test Configuration:** Direct `TradeSimulator` instantiation via fixture
 - Adapter: `MockBrokerAdapter(mode=INSTANT_FILL)` with zero inbound latency
@@ -47,7 +51,9 @@ Each test typically does:
 
 ### test_modify_pending_lifecycle.py
 
-Validates the sim modify lifecycle: scheduling sets `in_flight_operation = PENDING_MODIFY`, Phase 0 of next-tick processing applies the modification to entry_price / order_kwargs, in-flight state clears. Capability gates for stop-order modify and position modify.
+Validates the sim modify lifecycle: scheduling sets `in_flight_operation = PENDING_MODIFY`, Phase 0
+of next-tick processing applies the modification to entry_price / order_kwargs, in-flight state
+clears. Capability gates for stop-order modify and position modify.
 
 #### TestModifyLimitOrderAsyncLifecycle
 
@@ -136,7 +142,7 @@ Launch.json entry: `🧩 Pytest: Sim Modify Lifecycle (#318)`
 
 ---
 
-## Architecture Notes
+## Architecture
 
 ### Test Design Philosophy
 

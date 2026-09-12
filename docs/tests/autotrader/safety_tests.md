@@ -2,9 +2,16 @@
 
 ## Overview
 
-The safety circuit breaker test suite validates the account-level protection mechanism in the AutoTrader tick loop. It covers the equity-based evaluation for spot mode, balance-based evaluation for margin mode, the config split (`min_balance` / `min_equity`), and the live display state tracking.
+The safety circuit breaker test suite validates the account-level protection mechanism in the
+AutoTrader tick loop. It covers the equity-based evaluation for spot mode, balance-based evaluation
+for margin mode, the config split (`min_balance` / `min_equity`), and the live display state
+tracking.
 
-**AutoTrader pipeline only.** The Safety Circuit Breaker does not exist in backtesting — simulation intentionally shows full consequences of an algorithm's behavior, including worst-case drawdowns. See [safety_circuit_breaker_architecture.md](../../architecture/safety_circuit_breaker_architecture.md) for design rationale.
+**AutoTrader pipeline only.** The Safety Circuit Breaker does not exist in backtesting — simulation
+intentionally shows full consequences of an algorithm's behavior, including worst-case drawdowns.
+See
+[safety_circuit_breaker_architecture.md](../../architecture/safety_circuit_breaker_architecture.md)
+for design rationale.
 
 **Location:** `tests/autotrader/safety/`
 
@@ -36,7 +43,10 @@ Direct tests against `_check_safety` using a lightweight stub that mirrors the i
 
 ### Level 2 — Integration Tests: Spot
 
-End-to-end tests that run full AutoTrader mock sessions in **spot mode** with overridden safety configs. Uses `btcusd_mock_safety.json` (kraken_spot/BTCUSD, 15K ticks, display off, INSTANT_FILL mock adapter, `simple_consensus` decision logic). Three session scenarios, each run once and shared across all tests in the module.
+End-to-end tests that run full AutoTrader mock sessions in **spot mode** with overridden safety
+configs. Uses `btcusd_mock_safety.json` (kraken_spot/BTCUSD, 15K ticks, display off, INSTANT_FILL
+mock adapter, `simple_consensus` decision logic). Three session scenarios, each run once and shared
+across all tests in the module.
 
 | Class | Safety Config | What it validates |
 |-------|--------------|-------------------|
@@ -46,7 +56,9 @@ End-to-end tests that run full AutoTrader mock sessions in **spot mode** with ov
 
 ### Level 2 — Integration Tests: Margin
 
-End-to-end tests that run full AutoTrader mock sessions in **margin mode** with overridden safety configs. Uses `margin_safety_test.json` (mt5/EURUSD, 15K ticks, display off, INSTANT_FILL mock adapter, `backtesting_margin_stress` with deterministic `trade_sequence`). Three session scenarios.
+End-to-end tests that run full AutoTrader mock sessions in **margin mode** with overridden safety
+configs. Uses `margin_safety_test.json` (mt5/EURUSD, 15K ticks, display off, INSTANT_FILL mock
+adapter, `backtesting_margin_stress` with deterministic `trade_sequence`). Three session scenarios.
 
 | Class | Safety Config | What it validates |
 |-------|--------------|-------------------|
@@ -54,7 +66,9 @@ End-to-end tests that run full AutoTrader mock sessions in **margin mode** with 
 | `TestMarginSafetyTriggers` | `min_balance=10001, max_drawdown_pct=50` | Circuit breaker triggers (`min_balance` above initial), warning contains "min_balance" (not "min_equity"), no trades (all blocked) |
 | `TestMarginSafetyDisabledNoInterference` | `enabled=False` | Trades execute, no safety warnings, no interference |
 
-**Key difference from spot:** In margin mode, balance only changes when trades are **closed** (not on open). The trigger session uses `min_balance=10001` (above the 10000 initial balance) to trigger immediately, validating that the margin path correctly checks `min_balance`.
+**Key difference from spot:** In margin mode, balance only changes when trades are **closed** (not
+on open). The trigger session uses `min_balance=10001` (above the 10000 initial balance) to trigger
+immediately, validating that the margin path correctly checks `min_balance`.
 
 ---
 
@@ -83,7 +97,7 @@ Integration test `TestSpotSafetyTriggers` confirms that aggressive thresholds tr
 
 ---
 
-## Fixtures
+## Fixtures (conftest.py)
 
 ### Unit Test Fixtures
 

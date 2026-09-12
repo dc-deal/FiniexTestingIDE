@@ -90,6 +90,12 @@
 | [Discovery System](discovery_system.md) | Volatility profiling, extreme moves, data coverage caching |
 | [Stress Test System](stress_test.md) | Config-driven fault injection, seeded randomness |
 
+## Contributing
+
+| Document | Description |
+|----------|-------------|
+| [Documentation Style Guide](documentation_style_guide.md) | How documentation is written here — opening, boundaries, headings, wrapping, diagrams |
+
 ## Test Suites
 
 Each test suite has its own documentation in [`tests/`](tests/).

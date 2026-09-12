@@ -2490,8 +2490,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
 
         # Enqueue PositionModifyJob — worker thread does the broker roundtrip.
-        # Adapter must implement _build_position_modify_payload /
-        # _do_request_position_modify / _parse_position_modify_response
+        # Adapter must implement build_position_modify_payload /
+        # do_request_position_modify / parse_position_modify_response
         # (or equivalent — #209 finalizes the surface).
         self._request_processor.submit_modify_position_async(
             position_id=position_id,

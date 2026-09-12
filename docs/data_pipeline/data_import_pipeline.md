@@ -2,7 +2,9 @@
 
 ## Overview
 
-The import pipeline converts JSON tick exports from data collectors into optimized Parquet files with UTC-normalized timestamps, quality metrics, and preserved source metadata. After tick import, bars are pre-rendered for all standard timeframes (M1 through D1).
+The import pipeline converts JSON tick exports from data collectors into optimized Parquet files
+with UTC-normalized timestamps, quality metrics, and preserved source metadata. After tick import,
+bars are pre-rendered for all standard timeframes (M1 through D1).
 
 **Related**: [tick_collector_guide.md](tick_collector_guide.md) — MQL5 collector usage, JSON schema, error classification.
 
@@ -125,11 +127,19 @@ local_device_time:   "2026.03.08 18:41:34"
 | `time_msc` | int64 | Broker matching engine timestamp (Unix epoch ms) — the event time. UTC-converted by importer. Non-decreasing; ties are normal on burst-heavy feeds |
 | `collected_msc` | int64 | Local clock at tick receipt (Unix epoch ms) — the arrival time. Already UTC from data format 1.5.0, so the importer does not convert it. Non-decreasing. Default `0` for pre-V1.3.0 data |
 
-> **Note — `timestamp` redundancy**: The mandatory `timestamp` field (human-readable, seconds precision) is derivable from `time_msc` with the broker UTC offset. It remains mandatory for backward compatibility but may be deprecated in a future data format revision.
+> **Note — `timestamp` redundancy**: The mandatory `timestamp` field (human-readable, seconds
+> precision) is derivable from `time_msc` with the broker UTC offset. It remains mandatory for
+> backward compatibility but may be deprecated in a future data format revision.
 
-> **Note — `collected_msc` time base**: The field is UTC from data format 1.5.0 onwards, declared by `collected_msc_timebase` in the metadata. Older files carry device-local time and are converted once by the restoration migration (`python/experiments/restore_collected_msc_v3.py`) — **not** by the importer, which never rewrites source content. 
+> **Note — `collected_msc` time base**: The field is UTC from data format 1.5.0 onwards, declared by
+> `collected_msc_timebase` in the metadata. Older files carry device-local time and are converted
+> once by the restoration migration (`python/experiments/restore_collected_msc_v3.py`) — **not** by
+> the importer, which never rewrites source content.
 
-> **Note — `server_time` removed**: The per-tick `server_time` field (string, same precision as `timestamp`) was removed from the import schema. It was redundant with `time_msc`. Old data files may still contain it — the importer drops it during Parquet export (column filter). New collectors no longer produce it.
+> **Note — `server_time` removed**: The per-tick `server_time` field (string, same precision as
+> `timestamp`) was removed from the import schema. It was redundant with `time_msc`. Old data files
+> may still contain it — the importer drops it during Parquet export (column filter). New collectors
+> no longer produce it.
 
 ### Nested Metadata Schemas
 
@@ -327,7 +337,10 @@ To add a new broker or override an offset, create `user_configs/import_config.js
 
 ### Test Paths
 
-The `test_paths` block provides isolated directories for the test suite, preventing tests from touching production data. The test session fixture generates reference Parquets (BTCUSD, ETHUSD as `kraken_spot` + EURUSD, GBPUSD as `mt5`) into `data/test/import/processed/`. The processed directory is cleaned at session start to avoid duplicate detection conflicts.
+The `test_paths` block provides isolated directories for the test suite, preventing tests from
+touching production data. The test session fixture generates reference Parquets (BTCUSD, ETHUSD as
+`kraken_spot` + EURUSD, GBPUSD as `mt5`) into `data/test/import/processed/`. The processed directory
+is cleaned at session start to avoid duplicate detection conflicts.
 
 ```
 data/test/import/
@@ -386,7 +399,10 @@ Parquet metadata → TickIndexManager (index entry, persisted) → SharedDataPre
     → SingleScenario.data_format_versions → PostRunValidator (advisory)
 ```
 
-**Index**: `TickIndexManager` extracts `data_format_version` from each Parquet file's custom metadata, stores it per index entry and persists it as a column of the index file. An index written before the field was persisted has no such column and reads as `'unknown'` — a one-time `python python/cli/tick_index_cli.py rebuild` populates it.
+**Index**: `TickIndexManager` extracts `data_format_version` from each Parquet file's custom
+metadata, stores it per index entry and persists it as a column of the index file. An index written
+before the field was persisted has no such column and reads as `'unknown'` — a one-time
+`python python/cli/tick_index_cli.py rebuild` populates it.
 
 **Report warning**: exactly one advisory, and it speaks only about the index — when no version is recorded for a file (`'unknown'`):
 
@@ -394,7 +410,11 @@ Parquet metadata → TickIndexManager (index entry, persisted) → SharedDataPre
 ⚠️  Data format version unknown for 186/186 file(s) — the tick index carries no version for them
 ```
 
-**The version declares a schema; it is not a quality signal.** `DataFormatVersion` is an operator-set input of the collector, so a collector that starts recording a field without a version bump is invisible in it — which has happened (the MT5 collector gained `collected_msc` while its running instance kept declaring `1.1.0`). Any advisory deriving "this data's `collected_msc` is synthesized" from the version would therefore make false statements on real archives, and none does.
+**The version declares a schema; it is not a quality signal.** `DataFormatVersion` is an
+operator-set input of the collector, so a collector that starts recording a field without a version
+bump is invisible in it — which has happened (the MT5 collector gained `collected_msc` while its
+running instance kept declaring `1.1.0`). Any advisory deriving "this data's `collected_msc` is
+synthesized" from the version would therefore make false statements on real archives, and none does.
 
 Versions are compared component-wise, never as strings (`'1.10.0' < '1.3.0'` is `True` lexicographically) — see `python/framework/utils/version_utils.py`.
 
@@ -507,7 +527,10 @@ These fields exist in Parquet but are **not** transported to subprocesses:
 | `spread_points`, `spread_pct` | Quality checks only (pre-transport) |
 | `tick_flags`, `session` | Import metadata only |
 
-> **Note**: `collected_msc` and `time_msc` are preserved as int64 throughout. The importer applies the UTC offset to `time_msc` only — `collected_msc` arrives in UTC already (data format 1.5.0) or is converted beforehand by the restoration migration. The simulation reads both from TickData and decides which to use for inter-tick intervals.
+> **Note**: `collected_msc` and `time_msc` are preserved as int64 throughout. The importer applies
+> the UTC offset to `time_msc` only — `collected_msc` arrives in UTC already (data format 1.5.0) or
+> is converted beforehand by the restoration migration. The simulation reads both from TickData and
+> decides which to use for inter-tick intervals.
 
 ---
 

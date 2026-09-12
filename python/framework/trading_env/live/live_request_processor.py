@@ -181,8 +181,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         Submit a new open order via the adapter (synchronous in V1).
 
-        Composes adapter Tier-3 layers: _build_submit_payload →
-        _do_request_submit → _parse_submit_response. Pure orchestrator —
+        Composes adapter Tier-3 layers: build_submit_payload →
+        do_request_submit → parse_submit_response. Pure orchestrator —
         no storage side-effect. The caller decides whether to register
         the result via register_pending_open (MARKET path) or to track
         it elsewhere (LIMIT → _active_limit_orders, migrated in step 7).
@@ -205,7 +205,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Returns:
             BrokerResponse from the adapter (REJECTED on transport error)
         """
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol=symbol,
             direction=direction,
             lots=lots,
@@ -214,13 +214,13 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         )
 
         try:
-            raw = adapter._do_request_submit(payload)
+            raw = adapter.do_request_submit(payload)
         except Exception as e:
             return self._failure_response(
                 e, broker_ref='', timestamp=datetime.now(timezone.utc),
                 operation='submit')
 
-        return adapter._parse_submit_response(
+        return adapter.parse_submit_response(
             raw,
             timestamp=datetime.now(timezone.utc),
             direction=direction,
@@ -252,7 +252,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Returns:
             BrokerResponse from the adapter (REJECTED on transport error)
         """
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol=symbol,
             direction=close_direction,
             lots=close_lots,
@@ -261,13 +261,13 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         )
 
         try:
-            raw = adapter._do_request_submit(payload)
+            raw = adapter.do_request_submit(payload)
         except Exception as e:
             return self._failure_response(
                 e, broker_ref='', timestamp=datetime.now(timezone.utc),
                 operation='submit')
 
-        return adapter._parse_submit_response(
+        return adapter.parse_submit_response(
             raw,
             timestamp=datetime.now(timezone.utc),
             direction=close_direction,
@@ -821,8 +821,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         now = datetime.now(timezone.utc)
         try:
-            raw = job.adapter._do_request_submit(job.payload)
-            response = job.adapter._parse_submit_response(
+            raw = job.adapter.do_request_submit(job.payload)
+            response = job.adapter.parse_submit_response(
                 raw, timestamp=now, direction=job.direction, order_type=job.order_type)
         except Exception as e:
             response = self._failure_response(
@@ -840,7 +840,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Worker-thread handler for EditJob (#318).
 
         Composes adapter Tier-3 modify layer:
-            _build_modify_payload → _do_request_modify → _parse_modify_response
+            build_modify_payload → do_request_modify → parse_modify_response
 
         Transport errors are surfaced as REJECTED BrokerResponse. The main
         thread's drain_inbox routes the EditResponse to the executor via
@@ -851,7 +851,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         now = datetime.now(timezone.utc)
         try:
-            payload = job.adapter._build_modify_payload(
+            payload = job.adapter.build_modify_payload(
                 broker_ref=job.broker_ref,
                 symbol=job.symbol,
                 order_type=job.order_type,
@@ -860,8 +860,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 new_stop_loss=job.new_stop_loss,
                 new_take_profit=job.new_take_profit,
             )
-            raw = job.adapter._do_request_modify(payload)
-            response = job.adapter._parse_modify_response(
+            raw = job.adapter.do_request_modify(payload)
+            response = job.adapter.parse_modify_response(
                 raw, original_broker_ref=job.broker_ref, timestamp=now,
             )
         except Exception as e:
@@ -879,13 +879,13 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Worker-thread handler for CancelJob (#318).
 
         Composes adapter Tier-3 cancel layer:
-            _build_cancel_payload → _do_request_cancel → _parse_cancel_response
+            build_cancel_payload → do_request_cancel → parse_cancel_response
         """
         now = datetime.now(timezone.utc)
         try:
-            payload = job.adapter._build_cancel_payload(job.broker_ref)
-            raw = job.adapter._do_request_cancel(payload)
-            response = job.adapter._parse_cancel_response(
+            payload = job.adapter.build_cancel_payload(job.broker_ref)
+            raw = job.adapter.do_request_cancel(payload)
+            response = job.adapter.parse_cancel_response(
                 raw, job.broker_ref, now,
             )
         except Exception as e:
@@ -904,9 +904,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
 
         Position-modify Tier-3 surface is adapter-specific. The current
         contract assumes the adapter exposes
-            _build_position_modify_payload(position_id, symbol, new_sl, new_tp)
-            _do_request_position_modify(payload)
-            _parse_position_modify_response(raw, position_id, timestamp)
+            build_position_modify_payload(position_id, symbol, new_sl, new_tp)
+            do_request_position_modify(payload)
+            parse_position_modify_response(raw, position_id, timestamp)
         as a separate operation triple. Adapters that fold position-modify
         into the existing modify operation (#209 design decision) should
         override this dispatch method or expose the same triple names as
@@ -914,14 +914,14 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         now = datetime.now(timezone.utc)
         try:
-            payload = job.adapter._build_position_modify_payload(
+            payload = job.adapter.build_position_modify_payload(
                 position_id=job.position_id,
                 symbol=job.symbol,
                 new_stop_loss=job.new_stop_loss,
                 new_take_profit=job.new_take_profit,
             )
-            raw = job.adapter._do_request_position_modify(payload)
-            response = job.adapter._parse_position_modify_response(
+            raw = job.adapter.do_request_position_modify(payload)
+            response = job.adapter.parse_position_modify_response(
                 raw, position_id=job.position_id, timestamp=now,
             )
         except Exception as e:
@@ -939,7 +939,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Worker-thread handler for QueryJob (#320).
 
         Composes adapter Tier-3 query layer:
-            _build_query_payload → _do_request_query → _parse_query_response
+            build_query_payload → do_request_query → parse_query_response
 
         Transport errors are surfaced as a REJECTED BrokerResponse — the main
         thread's drain handler clears in_flight_query regardless and decides
@@ -948,9 +948,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         now = datetime.now(timezone.utc)
         try:
-            payload = job.adapter._build_query_payload(job.broker_ref)
-            raw = job.adapter._do_request_query(payload)
-            response = job.adapter._parse_query_response(
+            payload = job.adapter.build_query_payload(job.broker_ref)
+            raw = job.adapter.do_request_query(payload)
+            response = job.adapter.parse_query_response(
                 raw, job.broker_ref, now, market=job.market)
         except Exception as e:
             response = self._failure_response(
@@ -967,17 +967,17 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Worker-thread handler for TradesQueryJob (#326).
 
         Composes adapter Tier-3 trades-query layer:
-            _build_trades_query_payload → _do_request_trades_query
-            → _parse_trades_query_response
+            build_trades_query_payload → do_request_trades_query
+            → parse_trades_query_response
 
         Transport errors are surfaced as a TradesQueryResponse with success=False
         and an empty trades list — the main thread's drain handler decides how
         to react (typically: leave the pending in place, retry on next poll).
         """
         try:
-            payload = job.adapter._build_trades_query_payload(job.broker_ref)
-            raw = job.adapter._do_request_trades_query(payload)
-            trades = job.adapter._parse_trades_query_response(
+            payload = job.adapter.build_trades_query_payload(job.broker_ref)
+            raw = job.adapter.do_request_trades_query(payload)
+            trades = job.adapter.parse_trades_query_response(
                 raw, broker_ref=job.broker_ref, order_id=job.order_id,
             )
             self._http_inbox.put(TradesQueryResponse(
@@ -1273,7 +1273,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             adapter: Live-capable adapter
             **kwargs: price, stop_loss, take_profit, comment, expected_price
         """
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol=symbol,
             direction=direction,
             lots=lots,
@@ -1313,7 +1313,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             adapter: Live-capable adapter
             **kwargs: comment, expected_price, etc.
         """
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol=symbol,
             direction=close_direction,
             lots=close_lots,
@@ -1524,8 +1524,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         Synchronously modify an order via the adapter's Tier-3 layers.
 
-        Composes adapter._build_modify_payload → _do_request_modify →
-        _parse_modify_response. Blocks the caller thread for one broker
+        Composes adapter.build_modify_payload → do_request_modify →
+        parse_modify_response. Blocks the caller thread for one broker
         roundtrip. Async modify (queued through the worker) is the subject
         of #318 and uses the same Tier-3 surface.
 
@@ -1548,7 +1548,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             broker_ref on success — Kraken EditOrder returns a fresh txid)
         """
         now = datetime.now(timezone.utc)
-        payload = adapter._build_modify_payload(
+        payload = adapter.build_modify_payload(
             broker_ref=broker_ref,
             symbol=symbol,
             order_type=order_type,
@@ -1558,12 +1558,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             new_take_profit=new_take_profit,
         )
         try:
-            raw = adapter._do_request_modify(payload)
+            raw = adapter.do_request_modify(payload)
         except Exception as e:
             return self._failure_response(
                 e, broker_ref=broker_ref, timestamp=now,
                 operation='modify')
-        return adapter._parse_modify_response(raw, original_broker_ref=broker_ref, timestamp=now)
+        return adapter.parse_modify_response(raw, original_broker_ref=broker_ref, timestamp=now)
 
     def query_order_sync(
         self,
@@ -1574,8 +1574,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         Synchronously query an order's current status via the adapter's Tier-3 layers.
 
-        Composes adapter._build_query_payload → _do_request_query →
-        _parse_query_response. Blocks the caller thread for one broker
+        Composes adapter.build_query_payload → do_request_query →
+        parse_query_response. Blocks the caller thread for one broker
         roundtrip. Used by LiveTradeExecutor for the Phase-1 / Phase-2
         polling passes inside _process_pending_orders.
 
@@ -1590,14 +1590,14 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             BrokerResponse with current status (REJECTED on transport error)
         """
         now = datetime.now(timezone.utc)
-        payload = adapter._build_query_payload(broker_ref)
+        payload = adapter.build_query_payload(broker_ref)
         try:
-            raw = adapter._do_request_query(payload)
+            raw = adapter.do_request_query(payload)
         except Exception as e:
             return self._failure_response(
                 e, broker_ref=broker_ref, timestamp=now,
                 operation='status query', self_healing=True)
-        return adapter._parse_query_response(raw, broker_ref, now, market=market)
+        return adapter.parse_query_response(raw, broker_ref, now, market=market)
 
     def cancel_order_sync(
         self,
@@ -1607,8 +1607,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         Synchronously cancel an order via the adapter's Tier-3 layers.
 
-        Composes adapter._build_cancel_payload → _do_request_cancel →
-        _parse_cancel_response. Blocks the caller thread for one broker
+        Composes adapter.build_cancel_payload → do_request_cancel →
+        parse_cancel_response. Blocks the caller thread for one broker
         roundtrip. Async cancel (queued through the worker) is the subject
         of #318 and uses the same Tier-3 surface.
 
@@ -1620,11 +1620,11 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             BrokerResponse (REJECTED on transport error, CANCELLED on success)
         """
         now = datetime.now(timezone.utc)
-        payload = adapter._build_cancel_payload(broker_ref)
+        payload = adapter.build_cancel_payload(broker_ref)
         try:
-            raw = adapter._do_request_cancel(payload)
+            raw = adapter.do_request_cancel(payload)
         except Exception as e:
             return self._failure_response(
                 e, broker_ref=broker_ref, timestamp=now,
                 operation='cancel')
-        return adapter._parse_cancel_response(raw, broker_ref, now)
+        return adapter.parse_cancel_response(raw, broker_ref, now)

@@ -60,7 +60,7 @@ class BrokerResponse:
     Standardized response from broker API.
 
     Wraps broker-specific response formats into a unified structure.
-    Used by AbstractAdapter Tier-3 layers (_parse_*_response) and the
+    Used by AbstractAdapter Tier-3 layers (parse_*_response) and the
     LiveRequestProcessor sync/async orchestrators.
 
     Args:

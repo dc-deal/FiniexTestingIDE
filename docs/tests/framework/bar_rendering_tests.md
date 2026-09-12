@@ -58,7 +58,7 @@ For each bar, the test verifies exact match of:
 - `tests/framework/bar_rendering/conftest.py` — Synthetic tick generators and fixtures
 - `tests/framework/bar_rendering/test_renderer_consistency.py` — Consistency test suite
 
-## Running
+## Running the Tests
 
 ```bash
 pytest tests/framework/bar_rendering/ -v --tb=short

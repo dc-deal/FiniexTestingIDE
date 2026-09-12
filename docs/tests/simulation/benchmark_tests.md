@@ -126,7 +126,10 @@ CI-friendly tests that validate benchmark certificates without running the actua
 
 #### TestBreakdownShape
 
-The per-stage breakdown records the SHAPE it was measured in (the sorted section names). Comparing two reports means comparing those name sets first: the operation names are free strings with no enum behind them, and `worker_decision` has already absorbed another operation once. A rename is an addition plus a removal — never a changed value.
+The per-stage breakdown records the SHAPE it was measured in (the sorted section names). Comparing
+two reports means comparing those name sets first: the operation names are free strings with no enum
+behind them, and `worker_decision` has already absorbed another operation once. A rename is an
+addition plus a removal — never a changed value.
 
 | Test | Description |
 |------|-------------|
@@ -459,8 +462,13 @@ Reports are saved as JSON with full audit trail in `tests/simulation/benchmark/r
 - All measured values are **medians** across 3 runs
 - `raw_measurements` contains the individual run values for traceability
 - `breakdown` carries the per-stage medians plus the `shape` they were measured in — read the shape before comparing any value across reports
-- `record_kind` / `app_version` / `git_*` / `valid_until` / `isolation_active` / `workspace_overrides` come from the **shared** `CertificateIdentity` that all four release certificates carry — see [Release Certificates](../../architecture/release_certificates.md)
-- `config_provenance` holds what this certificate EXERCISED: the workload it measured and the config contract it was measured under. `workspace_overrides` (in the identity) lists **names and a count only** — the report is committed to the public repository, so it must never carry what `user_configs/` contains
+- `record_kind` / `app_version` / `git_*` / `valid_until` / `isolation_active` /
+  `workspace_overrides` come from the **shared** `CertificateIdentity` that all four release
+  certificates carry — see [Release Certificates](../../architecture/release_certificates.md)
+- `config_provenance` holds what this certificate EXERCISED: the workload it measured and the config
+  contract it was measured under. `workspace_overrides` (in the identity) lists
+  **names and a count only** — the report is committed to the public repository, so it must never
+  carry what `user_configs/` contains
 - `artifacts` lists all log files copied to `reports/logs/run_N/`
 - If `debug_mode_detected` is `true`, the report is automatically `FAILED` regardless of metric results — see **Validity Guards** for the other four conditions
 
@@ -499,7 +507,7 @@ The comment appears as `"comment": "..."` in the generated report. Omitted if no
 
 ---
 
-## Architecture Notes
+## Architecture
 
 ### Test Design Philosophy
 

@@ -13,7 +13,9 @@
 
 The Safety Circuit Breaker is an account-level protection mechanism in the AutoTrader tick loop. It monitors balance/equity and drawdown thresholds on every tick and blocks all new position entries when thresholds are breached.
 
-**Key characteristic: AutoTrader pipeline only.** The Safety Circuit Breaker does not exist in backtesting. In simulation, you want to see the full consequences of an algorithm's behavior — including account blowups. The breaker is a *production safety net*, not a simulation constraint.
+**Key characteristic: AutoTrader pipeline only.** The Safety Circuit Breaker does not exist in
+backtesting. In simulation, you want to see the full consequences of an algorithm's behavior —
+including account blowups. The breaker is a *production safety net*, not a simulation constraint.
 
 > **Relation to OrderGuard:** See [Two Independent Safety Layers](order_guard_architecture.md#two-independent-safety-layers) in the OrderGuard doc. OrderGuard = per-order, per-direction. Safety = per-account, session-wide. Independent layers.
 
@@ -106,7 +108,9 @@ Located in `python/framework/types/autotrader_types/autotrader_config_types.py`.
 | **AutoTrader** (live/paper) | Yes | Production safety net — prevents account blowup |
 | **Backtesting** (simulation) | No | Simulation should show full consequences of algo behavior, including worst-case drawdowns. A breaker would mask problems |
 
-This is a deliberate design choice. Backtesting exists to *find* the scenarios where an algo loses money — artificially cutting losses in simulation defeats the purpose. The operator evaluates drawdown from batch reports and decides whether the algo is safe for live deployment.
+This is a deliberate design choice. Backtesting exists to *find* the scenarios where an algo loses
+money — artificially cutting losses in simulation defeats the purpose. The operator evaluates
+drawdown from batch reports and decides whether the algo is safe for live deployment.
 
 ---
 
@@ -142,7 +146,10 @@ When safety is disabled:
 Safety:  off
 ```
 
-The detail line shows the active config field name for the current trading model, current value vs threshold, and drawdown headroom. Display data flows through `AutoTraderDisplayStats.safety_blocked`, `safety_reason`, `safety_current_value`, and `safety_drawdown_pct`.
+The detail line shows the active config field name for the current trading model, current value vs
+threshold, and drawdown headroom. Display data flows through
+`AutoTraderDisplayStats.safety_blocked`, `safety_reason`, `safety_current_value`, and
+`safety_drawdown_pct`.
 
 ---
 

@@ -21,7 +21,9 @@ pytest tests/data/inter_tick_interval/ -v
 
 ## Interval Source
 
-The tick loop uses `collected_msc` (monotonic device clock, V1.3.0+) as primary interval source. Falls back to `time_msc` when `collected_msc == 0` (pre-V1.3.0 data), with negative-diff skip for non-monotonic broker timestamps. See `process_tick_loop.py` lines 105-112.
+The tick loop uses `collected_msc` (monotonic device clock, V1.3.0+) as primary interval source.
+Falls back to `time_msc` when `collected_msc == 0` (pre-V1.3.0 data), with negative-diff skip for
+non-monotonic broker timestamps. See `process_tick_loop.py` lines 105-112.
 
 ## Dependencies
 

@@ -291,7 +291,7 @@ matching the index as soon as one scenario is excluded.
 - `tests/framework/batch_validations/test_broker_config_factory.py`
 - `tests/framework/batch_validations/test_kraken_config_fetcher.py`
 
-## Running
+## Running the Tests
 
 ```bash
 pytest tests/framework/batch_validations/ -v --tb=short

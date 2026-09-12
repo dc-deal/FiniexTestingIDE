@@ -212,16 +212,16 @@ class TestTheQuoteActuallyReachesTheSimulatedVenue:
         """
         with open('configs/brokers/kraken/kraken_spot_broker_config.json', encoding='utf-8') as fh:
             adapter = KrakenAdapter(json.load(fh))
-        submit = adapter._parse_submit_response(
+        submit = adapter.parse_submit_response(
             {'__dry_run_op__': 'submit', 'lots': 1.0, 'ordertype': 'limit',
              'price': 3900.0, 'price2': None},
             timestamp=_TS, direction=OrderDirection.LONG, order_type=OrderType.LIMIT)
         raw = {'__dry_run_op__': 'query', 'broker_ref': submit.broker_ref}
 
-        away = adapter._parse_query_response(
+        away = adapter.parse_query_response(
             raw, submit.broker_ref, _TS,
             market=TickData(timestamp=_TS, symbol='ETHUSD', bid=3999.0, ask=4001.0))
-        arrived = adapter._parse_query_response(
+        arrived = adapter.parse_query_response(
             raw, submit.broker_ref, _TS,
             market=TickData(timestamp=_TS, symbol='ETHUSD', bid=3898.0, ask=3900.0))
 
@@ -240,7 +240,7 @@ class TestTheQuoteActuallyReachesTheSimulatedVenue:
         """
         with open('configs/brokers/kraken/kraken_spot_broker_config.json', encoding='utf-8') as fh:
             adapter = KrakenAdapter(json.load(fh))
-        submit = adapter._parse_submit_response(
+        submit = adapter.parse_submit_response(
             {'__dry_run_op__': 'submit', 'lots': 1.0, 'ordertype': 'limit',
              'price': 3900.0, 'price2': None},
             timestamp=_TS, direction=OrderDirection.LONG, order_type=OrderType.LIMIT)

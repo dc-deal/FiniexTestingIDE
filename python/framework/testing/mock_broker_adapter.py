@@ -6,7 +6,7 @@ Extends AbstractAdapter with mock data (BTCUSD from real Kraken config)
 and configurable execution behavior (instant fill, delayed, reject, timeout).
 
 Implements the Tier-3 layers (_build/_do_request/_parse) natively — the
-"mock transport" lives in _do_request_* and mutates internal mock state
+"mock transport" lives in do_request_* and mutates internal mock state
 (counter, _mock_pending). _build_* layers pack parameters into a dict;
 _parse_* layers turn the mock raw dict into a BrokerResponse.
 
@@ -177,7 +177,7 @@ class MockBrokerAdapter(AbstractAdapter):
 
         # === #326 Trade Record Emission ===
         # Per-broker_ref trade records, populated on fill. Looked up later
-        # by _do_request_trades_query. Empty until an order produces fills.
+        # by do_request_trades_query. Empty until an order produces fills.
         self._trades_per_fill: int = trades_per_fill
         self._mock_trades: Dict[str, List[Dict[str, Any]]] = {}
         self._trade_counter: int = 0
@@ -380,9 +380,9 @@ class MockBrokerAdapter(AbstractAdapter):
     # The mock has no real transport — no HTTP, no RPC. The Tier-3 layers
     # implement the mock execution semantics directly:
     #   _build_*    Pure — pack parameters into a dict
-    #   _do_request_*  Mock transport — mutates _order_counter and
+    #   do_request_*  Mock transport — mutates _order_counter and
     #                  _mock_pending, returns a status-tagged raw dict
-    #   _parse_*_response  Pure — turn the raw dict into a BrokerResponse
+    #   parse_*_response  Pure — turn the raw dict into a BrokerResponse
     # ============================================
 
     def is_live_capable(self) -> bool:
@@ -428,7 +428,7 @@ class MockBrokerAdapter(AbstractAdapter):
 
     # --- Build payloads (pure parameter packing) ---
 
-    def _build_submit_payload(
+    def build_submit_payload(
         self,
         symbol: str,
         direction: OrderDirection,
@@ -446,13 +446,13 @@ class MockBrokerAdapter(AbstractAdapter):
             'client_order_id': kwargs.get('client_order_id'),
         }
 
-    def _build_query_payload(self, broker_ref: str) -> Dict[str, Any]:
+    def build_query_payload(self, broker_ref: str) -> Dict[str, Any]:
         return {'broker_ref': broker_ref}
 
-    def _build_cancel_payload(self, broker_ref: str) -> Dict[str, Any]:
+    def build_cancel_payload(self, broker_ref: str) -> Dict[str, Any]:
         return {'broker_ref': broker_ref}
 
-    def _build_modify_payload(
+    def build_modify_payload(
         self,
         broker_ref: str,
         symbol: str,
@@ -472,16 +472,16 @@ class MockBrokerAdapter(AbstractAdapter):
             'new_take_profit': new_take_profit,
         }
 
-    def _build_trades_query_payload(self, broker_ref: str) -> Dict[str, Any]:
+    def build_trades_query_payload(self, broker_ref: str) -> Dict[str, Any]:
         return {'broker_ref': broker_ref}
 
     # --- Mock transport (mutates mock state, returns status-tagged raw) ---
 
-    def _do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Simulate broker submit transport. Mutates _order_counter and,
         for DELAYED_FILL/TIMEOUT, _mock_pending. Returns a status-tagged
-        raw dict that _parse_submit_response converts to a BrokerResponse.
+        raw dict that parse_submit_response converts to a BrokerResponse.
         """
         self._order_counter += 1
         broker_ref = f'MOCK-{self._order_counter:06d}'
@@ -530,7 +530,7 @@ class MockBrokerAdapter(AbstractAdapter):
             'broker_ref': broker_ref,
         }
 
-    def _do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Simulate broker query transport. DELAYED_FILL flips PENDING→FILLED
         on first query; TIMEOUT keeps the order PENDING forever. Unknown
@@ -569,7 +569,7 @@ class MockBrokerAdapter(AbstractAdapter):
             'filled_lots': order_data['lots'],
         }
 
-    def _do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Simulate broker cancel transport. Idempotent — discards any
         pending state for the broker_ref and returns CANCELLED.
@@ -586,7 +586,7 @@ class MockBrokerAdapter(AbstractAdapter):
             'broker_ref': broker_ref,
         }
 
-    def _do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Simulate broker trades-query transport. Returns the synthetic trade
         records recorded at fill time (see _record_mock_trades). Unknown
@@ -598,7 +598,7 @@ class MockBrokerAdapter(AbstractAdapter):
             'trades': self._mock_trades.get(broker_ref, []),
         }
 
-    def _do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Simulate broker modify transport. REJECT_ALL fails the modify;
         unknown broker_ref fails; otherwise applies new_price / SL / TP
@@ -643,7 +643,7 @@ class MockBrokerAdapter(AbstractAdapter):
         'CANCELLED': BrokerOrderStatus.CANCELLED,
     }
 
-    def _parse_submit_response(
+    def parse_submit_response(
         self,
         raw: Dict[str, Any],
         timestamp: datetime,
@@ -653,7 +653,7 @@ class MockBrokerAdapter(AbstractAdapter):
         # The two dry-run arguments are part of the Tier-3 contract (#505). This mock has no
         # dry-run mode — it decides its own fills — so it accepts and ignores them, which is
         # what an adapter for a venue without a rehearsal mode does. An adapter that HAS one
-        # reads them; see KrakenAdapter._parse_submit_response for the shape to copy.
+        # reads them; see KrakenAdapter.parse_submit_response for the shape to copy.
         return BrokerResponse(
             broker_ref=raw['broker_ref'],
             status=self._STATUS_MAP[raw['status']],
@@ -663,7 +663,7 @@ class MockBrokerAdapter(AbstractAdapter):
             timestamp=timestamp,
         )
 
-    def _parse_query_response(
+    def parse_query_response(
         self,
         raw: Dict[str, Any],
         broker_ref: str,
@@ -679,14 +679,14 @@ class MockBrokerAdapter(AbstractAdapter):
             timestamp=timestamp,
         )
 
-    def _parse_cancel_response(self, raw: Dict[str, Any], broker_ref: str, timestamp: datetime) -> BrokerResponse:
+    def parse_cancel_response(self, raw: Dict[str, Any], broker_ref: str, timestamp: datetime) -> BrokerResponse:
         return BrokerResponse(
             broker_ref=raw['broker_ref'],
             status=self._STATUS_MAP[raw['status']],
             timestamp=timestamp,
         )
 
-    def _parse_modify_response(self, raw: Dict[str, Any], original_broker_ref: str, timestamp: datetime) -> BrokerResponse:
+    def parse_modify_response(self, raw: Dict[str, Any], original_broker_ref: str, timestamp: datetime) -> BrokerResponse:
         return BrokerResponse(
             broker_ref=raw['broker_ref'],
             status=self._STATUS_MAP[raw['status']],
@@ -694,7 +694,7 @@ class MockBrokerAdapter(AbstractAdapter):
             timestamp=timestamp,
         )
 
-    def _parse_trades_query_response(
+    def parse_trades_query_response(
         self,
         raw: Dict[str, Any],
         broker_ref: str,
@@ -749,7 +749,7 @@ class MockBrokerAdapter(AbstractAdapter):
 
         Splits total_lots evenly across self._trades_per_fill records. For N>1,
         applies small price offsets around fill_price to model book-walking.
-        Stores trade dicts in self._mock_trades — _parse_trades_query_response
+        Stores trade dicts in self._mock_trades — parse_trades_query_response
         maps these to BrokerTrade later, when the caller supplies an order_id.
 
         Args:

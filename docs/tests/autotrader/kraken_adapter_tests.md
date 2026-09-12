@@ -117,5 +117,5 @@ pytest tests/autotrader/kraken_adapter/ -v
 Or launch.json: `🧩 Pytest: Kraken Adapter (Offline)`.
 
 Source: `python/framework/trading_env/adapters/kraken_adapter.py` — `_do_fetch_private`,
-`_sign_request`, `_build_submit_payload`, `_put_price`, `_build_modify_payload`,
+`_sign_request`, `build_submit_payload`, `_put_price`, `build_modify_payload`,
 `_parse_openorders_response`, `_prices_from_descr`.

@@ -58,7 +58,7 @@ it because the market had arrived. Two answers to one question breaks the framew
 claim. Verified by mutation: inverting the book side turns three of these tests red, and
 inverting the limit comparison turns six tests of `simulation/sltp_limit_validation` red.
 
-## Running
+## Running the Tests
 
 ```bash
 pytest tests/framework/test_price_trigger.py -v --tb=short

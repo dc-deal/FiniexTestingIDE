@@ -2,11 +2,15 @@
 
 ## Overview
 
-The OrderGuard is a spam protection layer inside `DecisionTradingApi` that prevents rejection storms **before** orders reach the executor. It is the universal gateway for all decision logics (CORE and USER), covering both backtesting and live trading.
+The OrderGuard is a spam protection layer inside `DecisionTradingApi` that prevents rejection storms
+**before** orders reach the executor. It is the universal gateway for all decision logics (CORE and
+USER), covering both backtesting and live trading.
 
 Its single responsibility is the **Rejection Cooldown** — blocking a direction after N consecutive broker rejections for a configurable period, preventing rejection spam (e.g. repeated INSUFFICIENT_MARGIN attempts).
 
-The OrderGuard lives in the intermediate layer between DecisionLogic and executor. It does not enforce business rules, does not know about market types, and does not know about balances. Structural validation (market type, balance, order type compatibility) belongs in the executor.
+The OrderGuard lives in the intermediate layer between DecisionLogic and executor. It does not
+enforce business rules, does not know about market types, and does not know about balances.
+Structural validation (market type, balance, order type compatibility) belongs in the executor.
 
 ### Clock / Time Source
 
@@ -74,9 +78,20 @@ _fill_open_order()
                               guard.record_success(LONG)    → counter=0
 ```
 
-### Callback Registration
+### Listener Registration
 
-`DecisionTradingApi.__init__()` registers `_on_order_outcome()` via `executor.set_order_outcome_callback()`. The callback fires at every terminal outcome point:
+`DecisionTradingApi.__init__()` registers `_on_order_outcome()` via
+`executor.add_order_outcome_listener()`. The slot is **multi-listener**: registering does not
+replace what is already there, and listeners are notified in registration order. Three consumers
+register today:
+
+| Registrant | Why |
+|------------|-----|
+| `decision_trading_api.py` | the OrderGuard path — cooldown state after a rejection |
+| `decision_event_dispatcher.py` | strategy-facing order events |
+| `live/drift_auditor.py` | read-only local-vs-broker telemetry (#327) |
+
+The listener fires at every terminal outcome point:
 
 | Location | Outcome | Callback |
 |----------|---------|----------|
@@ -90,7 +105,10 @@ _fill_open_order()
 
 ### Latency Window
 
-Between `open_order() → PENDING` and the callback, N ticks may pass. During this window, additional orders for the same direction can be submitted without the guard blocking them. This mirrors real broker behavior — you can submit orders faster than the broker confirms them. The guard activates once the rejection confirmation arrives.
+Between `open_order() → PENDING` and the callback, N ticks may pass. During this window, additional
+orders for the same direction can be submitted without the guard blocking them. This mirrors real
+broker behavior — you can submit orders faster than the broker confirms them. The guard activates
+once the rejection confirmation arrives.
 
 ---
 
@@ -174,7 +192,10 @@ Supports 2-level cascade (`global` → per-`scenario`), same pattern as `stress_
 
 If omitted, `OrderGuardDefaults()` defaults apply in both pipelines.
 
-> **Note on `cooldown_seconds` in backtests:** the value is measured in **simulated tick time**, not wall-clock. A backtest that processes 10 hours of data in 3 seconds of CPU time will see 10 hours of cooldown-relevant time, not 3 seconds. Size this value to the simulated-time gap between consecutive retry attempts you want to suppress, not to the wall-clock execution speed.
+> **Note on `cooldown_seconds` in backtests:** the value is measured in **simulated tick time**, not
+> wall-clock. A backtest that processes 10 hours of data in 3 seconds of CPU time will see 10 hours
+> of cooldown-relevant time, not 3 seconds. Size this value to the simulated-time gap between
+> consecutive retry attempts you want to suppress, not to the wall-clock execution speed.
 
 ---
 
@@ -195,7 +216,7 @@ Guard rejections are recorded in the executor's `_order_history` via `record_gua
 |------|------|
 | `python/framework/trading_env/order_guard.py` | OrderGuard class — cooldown validation + state tracking |
 | `python/framework/trading_env/decision_trading_api.py` | Integration point — guard in `send_order()`, async callback, side→direction resolution |
-| `python/framework/trading_env/abstract_trade_executor.py` | Callback mechanism (`set_order_outcome_callback`, `_notify_outcome`), `resolve_order_side()` |
+| `python/framework/trading_env/abstract_trade_executor.py` | Listener mechanism (`add_order_outcome_listener`, `_notify_outcome`), `resolve_order_side()` |
 | `python/framework/types/config_types/autotrader_defaults_config_types.py` | `OrderGuardDefaults` Pydantic model — shared by both pipelines |
 | `python/framework/types/trading_env_types/order_types.py` | `OrderSide`, `OrderDirection`, `REJECTION_COOLDOWN` enum value |
 
@@ -237,6 +258,9 @@ The project has two runtime protection mechanisms that operate independently at 
 | **Rationale** | Prevents retry spam after rejection | Prevents account blowup |
 | **Config** | `order_guard` in profile / scenario JSON | `safety` in profile JSON |
 
-The layers are **fully independent** — neither knows about the other, neither can bypass the other. When Safety blocks, the decision is overridden to FLAT *before* `send_order()` is called, so the OrderGuard never sees the order. When the OrderGuard blocks, Safety is unaffected (it evaluates on every tick regardless of order activity).
+The layers are **fully independent** — neither knows about the other, neither can bypass the other.
+When Safety blocks, the decision is overridden to FLAT *before* `send_order()` is called, so the
+OrderGuard never sees the order. When the OrderGuard blocks, Safety is unaffected (it evaluates on
+every tick regardless of order activity).
 
 > Full Safety architecture: [safety_circuit_breaker_architecture.md](safety_circuit_breaker_architecture.md)

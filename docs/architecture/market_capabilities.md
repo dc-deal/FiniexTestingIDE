@@ -2,7 +2,11 @@
 
 ## Purpose
 
-Workers depend on different kinds of market data. Some (RSI, Bollinger, MACD) only need prices — they run on any broker. Others (OBV, VWAP) need real trade volume, which forex CFDs cannot provide in a meaningful way. This document describes how the framework declares each market's activity metric and how workers declare what they need, so incompatible combinations are rejected **before** a subprocess ever starts.
+Workers depend on different kinds of market data. Some (RSI, Bollinger, MACD) only need prices —
+they run on any broker. Others (OBV, VWAP) need real trade volume, which forex CFDs cannot provide
+in a meaningful way. This document describes how the framework declares each market's activity
+metric and how workers declare what they need, so incompatible combinations are rejected **before**
+a subprocess ever starts.
 
 ## The Single Source of Truth — `primary_activity_metric`
 
@@ -75,9 +79,17 @@ BatchOrchestrator.run()
   Phase 7: Summary
 ```
 
-`RequirementsCollector` owns a single `WorkerFactory` and `MarketConfigManager` for the whole batch run. The factory is also passed to `AggregateScenarioDataRequirements` so warmup calculation and compatibility validation share the exact same registry — no duplicated class resolution, no per-scenario factory instantiation.
+`RequirementsCollector` owns a single `WorkerFactory` and `MarketConfigManager` for the whole batch
+run. The factory is also passed to `AggregateScenarioDataRequirements` so warmup calculation and
+compatibility validation share the exact same registry — no duplicated class resolution, no
+per-scenario factory instantiation.
 
-Step 1 iterates `scenario.strategy_config.worker_instances`, resolves each worker class via `WorkerFactory._resolve_worker_class()`, calls `get_required_activity_metric()`, and compares it against the broker metric. On mismatch it builds a `MarketCompatibilityError` via the static `ScenarioDataValidator.validate_worker_market_compatibility()` and wraps the error list in a `ValidationResult(is_valid=False)` attached to the scenario. The scenario is then skipped in Step 2, so incompatible scenarios never enter the requirements map and never reach data loading.
+Step 1 iterates `scenario.strategy_config.worker_instances`, resolves each worker class via
+`WorkerFactory._resolve_worker_class()`, calls `get_required_activity_metric()`, and compares it
+against the broker metric. On mismatch it builds a `MarketCompatibilityError` via the static
+`ScenarioDataValidator.validate_worker_market_compatibility()` and wraps the error list in a
+`ValidationResult(is_valid=False)` attached to the scenario. The scenario is then skipped in Step 2,
+so incompatible scenarios never enter the requirements map and never reach data loading.
 
 **Skip-and-report, not fail-fast.** Failing scenarios are marked invalid; the batch continues with the remaining valid scenarios. The Executive Summary surfaces the rejected scenario and its error identically to an out-of-range `start_date`.
 

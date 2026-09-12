@@ -2,7 +2,10 @@
 
 ## Overview
 
-The SL/TP & limit order validation test suite verifies stop loss/take profit trigger detection, limit order fills, maker fees, close reason propagation, and order modifications. Each scenario uses real USDJPY extreme move time windows from the Discovery system to guarantee triggers/fills within the data range.
+The SL/TP & limit order validation test suite verifies stop loss/take profit trigger detection,
+limit order fills, maker fees, close reason propagation, and order modifications. Each scenario uses
+real USDJPY extreme move time windows from the Discovery system to guarantee triggers/fills within
+the data range.
 
 **Test Configuration:** `backtesting/sltp_limit_validation_test.json`
 - Symbol: USDJPY (mt5)
@@ -97,7 +100,9 @@ Each scenario has three fixtures (all session scope):
 | `*_trade_history` | `List[TradeRecord]` for the scenario |
 | `*_execution_stats` | `ExecutionStats` for the scenario |
 
-Scenarios: `long_tp`, `long_sl`, `short_tp`, `short_sl`, `modify_tp`, `long_limit_fill`, `short_limit_fill`, `limit_sl`, `modify_limit`, `stop_long`, `stop_short`, `stop_limit_long`, `stop_limit_short`, `stop_tp`, `modify_stop`, `cancel_stop`, `cancel_limit`
+Scenarios: `long_tp`, `long_sl`, `short_tp`, `short_sl`, `modify_tp`, `long_limit_fill`,
+`short_limit_fill`, `limit_sl`, `modify_limit`, `stop_long`, `stop_short`, `stop_limit_long`,
+`stop_limit_short`, `stop_tp`, `modify_stop`, `cancel_stop`, `cancel_limit`
 
 ---
 
@@ -295,7 +300,10 @@ All scenarios use `hold_ticks=999999` to ensure the position stays open until SL
 
 ### Time Window Selection
 
-Scenarios use real extreme move windows from the Discovery system (`discoveries_cli.py extreme-moves mt5 USDJPY`). Windows are selected with **50-bar resolution** — small enough for fast execution, large enough to guarantee sufficient pip movement for all trigger/fill scenarios.
+Scenarios use real extreme move windows from the Discovery system
+(`discoveries_cli.py extreme-moves mt5 USDJPY`). Windows are selected with **50-bar resolution** —
+small enough for fast execution, large enough to guarantee sufficient pip movement for all
+trigger/fill scenarios.
 
 | Window | Discovery Source | Start | End | Entry Price | Extreme | Ticks |
 |--------|-----------------|-------|-----|-------------|---------|-------|
@@ -419,10 +427,18 @@ The `cancel_limit_no_fill` scenario places a LONG LIMIT at an unreachable price 
 ## Key Design Decisions
 
 ### Discovery-Driven, Config-Driven Tests
-Instead of synthetic price data, this suite uses real market data windows identified by the Extreme Move Scanner. The Extreme Moves report provides time windows with guaranteed directional movement. These windows and their price levels are encoded in the scenario config JSON. Tests extract all expected values from the config at runtime via `ScenarioExpectedValues` — no hardcoded prices exist in the test file. Switching to different discovery windows only requires updating the config; tests adapt automatically.
+Instead of synthetic price data, this suite uses real market data windows identified by the Extreme
+Move Scanner. The Extreme Moves report provides time windows with guaranteed directional movement.
+These windows and their price levels are encoded in the scenario config JSON. Tests extract all
+expected values from the config at runtime via `ScenarioExpectedValues` — no hardcoded prices exist
+in the test file. Switching to different discovery windows only requires updating the config; tests
+adapt automatically.
 
 ### _started_trade_indices Guard
-After SL/TP closes a position, BacktestingDeterministic must not re-open it. The `_started_trade_indices` set tracks which trades from `trade_sequence` have been submitted. Combined with an API state check (no pending orders, no open positions), this prevents the trade loop from triggering again.
+After SL/TP closes a position, BacktestingDeterministic must not re-open it. The
+`_started_trade_indices` set tracks which trades from `trade_sequence` have been submitted. Combined
+with an API state check (no pending orders, no open positions), this prevents the trade loop from
+triggering again.
 
 ### Deterministic Fill at SL/TP Level
 SL/TP closes bypass the latency pipeline entirely. The fill price equals the configured SL/TP level, making assertions deterministic and independent of market microstructure.

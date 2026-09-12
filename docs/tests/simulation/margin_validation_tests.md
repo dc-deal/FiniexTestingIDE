@@ -2,7 +2,10 @@
 
 ## Overview
 
-The margin validation test suite validates margin exhaustion, recovery, order rejection, and edge case handling. It uses a dedicated decision logic (`BacktestingMarginStress`) that intentionally exhausts margin, triggers rejections, recovers margin via explicit closes, and retries previously failed orders.
+The margin validation test suite validates margin exhaustion, recovery, order rejection, and edge
+case handling. It uses a dedicated decision logic (`BacktestingMarginStress`) that intentionally
+exhausts margin, triggers rejections, recovers margin via explicit closes, and retries previously
+failed orders.
 
 **Test Configurations:**
 
@@ -188,7 +191,9 @@ Tests lot size validation, position close errors, and rejection tracking.
 
 ### test_zero_balance.py
 
-Tests that all orders are rejected when starting with zero balance. Uses a separate scenario config (`margin_validation_zero_balance_test.json`) with `initial_balance=0`. Module-scoped fixtures are defined within the test file itself (not in conftest.py).
+Tests that all orders are rejected when starting with zero balance. Uses a separate scenario config
+(`margin_validation_zero_balance_test.json`) with `initial_balance=0`. Module-scoped fixtures are
+defined within the test file itself (not in conftest.py).
 
 #### TestZeroBalanceRejection
 
@@ -286,7 +291,7 @@ python python/cli/strategy_runner_cli.py run backtesting/margin_validation_zero_
 
 ---
 
-## Architecture Notes
+## Architecture
 
 ### Decision Logic: BacktestingMarginStress
 

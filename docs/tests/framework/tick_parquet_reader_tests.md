@@ -2,7 +2,9 @@
 
 ## Purpose
 
-Verifies that `read_tick_parquet()` correctly normalizes broker-native column names to the framework's canonical schema. The central reader is the single entry point for all tick parquet loading — column normalization bugs here propagate to every downstream consumer.
+Verifies that `read_tick_parquet()` correctly normalizes broker-native column names to the
+framework's canonical schema. The central reader is the single entry point for all tick parquet
+loading — column normalization bugs here propagate to every downstream consumer.
 
 ## Why This Matters
 
@@ -50,7 +52,7 @@ All tests use **synthetic parquet files** generated via `tmp_path` fixtures (no 
 - `tests/framework/tick_parquet_reader/test_tick_parquet_reader.py` — Test suite
 - `python/framework/data_preparation/tick_parquet_reader.py` — Module under test
 
-## Running
+## Running the Tests
 
 ```bash
 pytest tests/framework/tick_parquet_reader/ -v --tb=short

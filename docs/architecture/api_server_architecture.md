@@ -1,6 +1,9 @@
 # API Server Architecture
 
-The FiniexTestingIDE HTTP API is a read-only FastAPI application that exposes existing tick and bar data — and the persisted run-report artifacts of both pipelines (#391) — over HTTP. It is the server-side counterpart of the FiniexViewer companion project and the foundation for any future remote-monitoring or tooling integrations.
+The FiniexTestingIDE HTTP API is a read-only FastAPI application that exposes existing tick and bar
+data — and the persisted run-report artifacts of both pipelines (#391) — over HTTP. It is the
+server-side counterpart of the FiniexViewer companion project and the foundation for any future
+remote-monitoring or tooling integrations.
 
 ---
 
@@ -149,7 +152,9 @@ report sections).
 
 ## Pydantic Exception Note
 
-Project convention is `@dataclass` for all data structures (§6). The `api/` types use Pydantic `BaseModel` instead because FastAPI's OpenAPI schema generation and response validation depend on it. This exception is scoped to `python/framework/types/api/` only.
+Project convention is `@dataclass` for all data structures (§6). The `api/` types use Pydantic
+`BaseModel` instead because FastAPI's OpenAPI schema generation and response validation depend on
+it. This exception is scoped to `python/framework/types/api/` only.
 
 ## Open Decisions
 
@@ -159,4 +164,8 @@ Project convention is `@dataclass` for all data structures (§6). The `api/` typ
 
 ## Memory Cache Integration (V1.4 — #21)
 
-The bars endpoint added in #298 reads Parquet files per request. Issue #21 introduces a `FileCache` with LRU eviction for exactly this pattern. When #21 is implemented, the integration point is the bar-file read inside the bars endpoint handler — replace `pd.read_parquet(path)` with `FileCache.get_or_load(broker, symbol, path)`. The `FileCache` class belongs in `python/framework/data_preparation/` alongside `tick_parquet_reader.py`.
+The bars endpoint added in #298 reads Parquet files per request. Issue #21 introduces a `FileCache`
+with LRU eviction for exactly this pattern. When #21 is implemented, the integration point is the
+bar-file read inside the bars endpoint handler — replace `pd.read_parquet(path)` with
+`FileCache.get_or_load(broker, symbol, path)`. The `FileCache` class belongs in
+`python/framework/data_preparation/` alongside `tick_parquet_reader.py`.

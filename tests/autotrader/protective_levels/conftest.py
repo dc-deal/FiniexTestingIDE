@@ -54,7 +54,7 @@ class VenueHoldsProtectionMock(MockBrokerAdapter):
         """
         self._resting_stops.add(broker_ref)
 
-    def _do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Rest a STOP instead of filling it on arrival.
 
@@ -69,9 +69,9 @@ class VenueHoldsProtectionMock(MockBrokerAdapter):
             broker_ref = f'MOCK-{self._order_counter:06d}'
             self._resting_stops.add(broker_ref)
             return {'status': 'PENDING', 'broker_ref': broker_ref}
-        return super()._do_request_submit(payload)
+        return super().do_request_submit(payload)
 
-    def _do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         A resting stop keeps answering PENDING until something ends it.
 
@@ -83,9 +83,9 @@ class VenueHoldsProtectionMock(MockBrokerAdapter):
         """
         if payload.get('broker_ref') in self._resting_stops:
             return {'status': 'PENDING', 'broker_ref': payload['broker_ref']}
-        return super()._do_request_query(payload)
+        return super().do_request_query(payload)
 
-    def _do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Cancelling a resting stop takes it out of this mock's book.
 
@@ -99,4 +99,4 @@ class VenueHoldsProtectionMock(MockBrokerAdapter):
         if broker_ref in self._resting_stops:
             self._resting_stops.discard(broker_ref)
             return {'status': 'CANCELLED', 'broker_ref': broker_ref}
-        return super()._do_request_cancel(payload)
+        return super().do_request_cancel(payload)

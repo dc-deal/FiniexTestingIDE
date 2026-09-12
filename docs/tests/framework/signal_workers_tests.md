@@ -452,7 +452,7 @@ the producer's outage.
 
 ---
 
-## Fixtures
+## Fixtures (conftest.py)
 
 `tests/fixtures/signals/sentiment_sample.jsonl` — int-ms `collected_msc`, covering
 success / no-news / partial / error (empty result) / breaking paths.
@@ -468,7 +468,7 @@ change are expressible as tests rather than as timing luck.
 
 ---
 
-## Running
+## Running the Tests
 
 ```bash
 python -m pytest tests/framework/signal_workers/ -v

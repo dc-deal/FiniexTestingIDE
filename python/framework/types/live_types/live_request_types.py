@@ -46,8 +46,8 @@ class SubmitJob:
     Submit-order job carried via _http_outbox to the worker thread.
 
     The worker uses the adapter's Tier-3 layers to perform the broker call:
-        adapter._do_request_submit(payload) → raw
-        adapter._parse_submit_response(raw, timestamp, direction, order_type) → BrokerResponse
+        adapter.do_request_submit(payload) → raw
+        adapter.parse_submit_response(raw, timestamp, direction, order_type) → BrokerResponse
 
     Args:
         order_id: Internal order identifier (links the job back to the
@@ -59,9 +59,9 @@ class SubmitJob:
                     live in AbstractTradeExecutor._active_limit_orders
                     (Hybrid pattern). The dispatcher delegates LIMIT
                     responses to the executor via a separate hook.
-        payload: Pre-built broker payload (from adapter._build_submit_payload)
+        payload: Pre-built broker payload (from adapter.build_submit_payload)
         adapter: Live-capable adapter (used by the worker for the
-                 _do_request_submit / _parse_submit_response calls)
+                 do_request_submit / parse_submit_response calls)
         direction: LONG or SHORT. Read only by the DRY-RUN simulator, which plays the venue
                    and needs to know which side of the quote a fill takes (#505). No QUOTE
                    travels with a submit: a dry-run order is priced when it is POLLED, the
@@ -105,8 +105,8 @@ class SubmitResponse:
 # ============================================
 # These job/response pairs travel through the same _http_outbox / _http_inbox
 # as SubmitJob/SubmitResponse. The worker dispatches them via the adapter's
-# corresponding Tier-3 triples (_build_modify_payload / _do_request_modify /
-# _parse_modify_response, etc.). drain_inbox handles each response on the
+# corresponding Tier-3 triples (build_modify_payload / do_request_modify /
+# parse_modify_response, etc.). drain_inbox handles each response on the
 # main thread — applying the modification to the local shadow state and
 # clearing the PendingOrder.execution_state.in_flight_operation flag.
 
@@ -117,10 +117,10 @@ class EditJob:
     Modify-order job carried via _http_outbox to the worker thread.
 
     The worker uses the adapter's Tier-3 modify-layer:
-        adapter._build_modify_payload(broker_ref, symbol, order_type,
+        adapter.build_modify_payload(broker_ref, symbol, order_type,
                                       new_price, new_limit_price, sl, tp)
-        adapter._do_request_modify(payload) → raw
-        adapter._parse_modify_response(raw, broker_ref, timestamp) → BrokerResponse
+        adapter.do_request_modify(payload) → raw
+        adapter.parse_modify_response(raw, broker_ref, timestamp) → BrokerResponse
 
     Args:
         order_id: Internal order identifier (links back to the PendingOrder
@@ -217,9 +217,9 @@ class PositionModifyJob:
     instant portfolio.modify_position and never enqueues this job.
 
     The worker uses a separate Tier-3 triple
-        adapter._build_position_modify_payload(...)
-        adapter._do_request_position_modify(payload) → raw
-        adapter._parse_position_modify_response(raw, position_id, timestamp)
+        adapter.build_position_modify_payload(...)
+        adapter.do_request_position_modify(payload) → raw
+        adapter.parse_position_modify_response(raw, position_id, timestamp)
     OR folds it into the existing modify layer with a target discriminator
     (decision deferred to #209 implementation per ISSUE_209).
 
@@ -275,9 +275,9 @@ class TradesQueryJob:
     Trades-query job — fetches the per-execution detail for a filled order.
 
     The worker uses the adapter's Tier-3 trades-query triple:
-        adapter._build_trades_query_payload(broker_ref)
-        adapter._do_request_trades_query(payload) → raw
-        adapter._parse_trades_query_response(raw, broker_ref, order_id)
+        adapter.build_trades_query_payload(broker_ref)
+        adapter.do_request_trades_query(payload) → raw
+        adapter.parse_trades_query_response(raw, broker_ref, order_id)
             → List[BrokerTrade]
 
     Args:
@@ -306,9 +306,9 @@ class QueryJob:
     Status-poll job for an active LIMIT order — used by #320 scheduler.
 
     The worker uses the adapter's Tier-3 query layer:
-        adapter._build_query_payload(broker_ref)
-        adapter._do_request_query(payload) → raw
-        adapter._parse_query_response(raw, broker_ref, timestamp, market) → BrokerResponse
+        adapter.build_query_payload(broker_ref)
+        adapter.do_request_query(payload) → raw
+        adapter.parse_query_response(raw, broker_ref, timestamp, market) → BrokerResponse
 
     Args:
         order_id: Internal order identifier (primary routing key in drain)

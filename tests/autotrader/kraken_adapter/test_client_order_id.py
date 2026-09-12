@@ -13,7 +13,7 @@ Two properties matter and both are cheap to get wrong:
                      carry the key of one still resting at the venue from last night,
                      and boot adoption (#355) would match the wrong order
 
-No network here: `_build_submit_payload` and `_parse_openorders_response` are pure.
+No network here: `build_submit_payload` and `_parse_openorders_response` are pure.
 """
 
 import pytest
@@ -41,10 +41,10 @@ def adapter() -> KrakenAdapter:
 
 
 class TestOnTheWire:
-    """_build_submit_payload puts the key where Kraken reads it."""
+    """build_submit_payload puts the key where Kraken reads it."""
 
     def test_key_lands_in_cl_ord_id(self, adapter):
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol='BTCUSD',
             direction=OrderDirection.LONG,
             lots=0.001,
@@ -56,7 +56,7 @@ class TestOnTheWire:
     def test_absent_key_sends_no_field(self, adapter):
         # The mock and dry-run paths never reach a venue and need no key. Sending an
         # empty one would be a value the venue has to interpret.
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol='BTCUSD',
             direction=OrderDirection.LONG,
             lots=0.001,
@@ -66,7 +66,7 @@ class TestOnTheWire:
         assert 'cl_ord_id' not in payload
 
     def test_key_is_truncated_to_the_venue_limit(self, adapter):
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol='BTCUSD',
             direction=OrderDirection.LONG,
             lots=0.001,

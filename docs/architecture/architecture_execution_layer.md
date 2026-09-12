@@ -2,9 +2,13 @@
 
 ## Overview
 
-This document describes the architecture of the trade execution layer — the system that sits between trading strategy (DecisionLogic) and the market. It explains the design principles, the Simulation/Live hybrid approach, and the reasoning behind each architectural decision.
+This document describes the architecture of the trade execution layer — the system that sits between
+trading strategy (DecisionLogic) and the market. It explains the design principles, the
+Simulation/Live hybrid approach, and the reasoning behind each architectural decision.
 
-The core insight: **Backtesting and live trading share the same portfolio logic.** The only difference is *how* orders reach the market and *how* fills are confirmed. Everything else — portfolio tracking, fee calculations, P&L accounting, margin checks — is identical.
+The core insight: **Backtesting and live trading share the same portfolio logic.** The only
+difference is *how* orders reach the market and *how* fills are confirmed. Everything else —
+portfolio tracking, fee calculations, P&L accounting, margin checks — is identical.
 
 > **Tick flow comparison (Backtesting vs Live):** see [simulation_vs_live_flow.md](simulation_vs_live_flow.md)
 > **Live execution details (LiveTradeExecutor, broker polling, LiveRequestProcessor):** see [live_execution_architecture.md](live_execution_architecture.md)
@@ -124,7 +128,9 @@ Error handling is **not a live-only feature**. It belongs in AbstractTradeExecut
 
 1. **Structural rejections** (AbstractTradeExecutor): Margin check fails during `_fill_open_order()` → rejection stored in `_order_history`, counters updated. This code runs in both modes — identical for simulation and live.
 
-2. **Stress test rejections** (TradeSimulator): `_stress_test_should_reject()` intercepts orders before they reach fill processing → simulates broker-level errors (BROKER_ERROR). Controlled by module constants `STRESS_TEST_REJECTION_ENABLED` and `STRESS_TEST_REJECT_EVERY_N`.
+2. **Stress test rejections** (TradeSimulator): `_stress_test_should_reject()` intercepts orders
+   before they reach fill processing → simulates broker-level errors (BROKER_ERROR). Controlled by
+   module constants `STRESS_TEST_REJECTION_ENABLED` and `STRESS_TEST_REJECT_EVERY_N`.
 
 **Simulator with Stress Testing (implemented):**
 ```
@@ -163,7 +169,9 @@ Rejection data flows through the full reporting pipeline:
 
 ### Pending Order Statistics
 
-Every pending order that leaves the queue (filled, rejected, timed out, or force-closed) is recorded via `AbstractPendingOrderManager.record_outcome()`. Statistics are aggregated at the manager level — no individual records are stored for normal outcomes.
+Every pending order that leaves the queue (filled, rejected, timed out, or force-closed) is recorded
+via `AbstractPendingOrderManager.record_outcome()`. Statistics are aggregated at the manager level —
+no individual records are stored for normal outcomes.
 
 **Data flow:**
 
@@ -190,9 +198,19 @@ Every pending order that leaves the queue (filled, rejected, timed out, or force
 
 **End-of-run cleanup** (`finish_remaining_orders`):
 
-It finishes the run's **orders** only. Active orders are expired (live: cancelled at the broker first, unless the session-end policy leaves them standing), then `clear_pending()` catches any genuine stuck-in-pipeline orders (e.g. an order submitted right before the run ended). Only these real anomalies are recorded as `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`, `"manual_abort"`).
+It finishes the run's **orders** only. Active orders are expired (live: cancelled at the broker
+first, unless the session-end policy leaves them standing), then `clear_pending()` catches any
+genuine stuck-in-pipeline orders (e.g. an order submitted right before the run ended). Only these
+real anomalies are recorded as `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`,
+`"manual_abort"`).
 
-**Open positions are not touched.** Until #492 they were closed here through a synthetic PendingOrder that bypassed the pipeline — and in live that close never reached the venue: it was filled locally, so a session ending with an open position reported a realised exit nobody executed while the asset sat in the account. In simulation it invented a trade whose exit the strategy never chose, which then counted in the trade count, the win rate and the profit factor. A position now stays open and is reported as open and valued (see [autotrader_architecture.md](../autotrader/autotrader_architecture.md) — *Session End*).
+**Open positions are not touched.** Until #492 they were closed here through a synthetic
+PendingOrder that bypassed the pipeline — and in live that close never reached the venue: it was
+filled locally, so a session ending with an open position reported a realised exit nobody executed
+while the asset sat in the account. In simulation it invented a trade whose exit the strategy never
+chose, which then counted in the trade count, the win rate and the profit factor. A position now
+stays open and is reported as open and valued (see
+[autotrader_architecture.md](../autotrader/autotrader_architecture.md) — *Session End*).
 
 ### History Retention Limits
 
@@ -216,9 +234,13 @@ In-memory history collections use configurable limits to prevent unbounded growt
 
 **Config flow**: `app_config.json` → `AppConfigManager` → `ProcessScenarioConfig` (pickle-safe) → subprocess factories → constructors.
 
-A value of `0` means unlimited (no maxlen). When a limit is reached, a one-time warning is logged: `"⚠️ Order history limit reached (10000). Oldest entries will be discarded. Full history available in scenario log."` The full history remains in the scenario log file for post-analysis.
+A value of `0` means unlimited (no maxlen). When a limit is reached, a one-time warning is logged:
+`"⚠️ Order history limit reached (10000). Oldest entries will be discarded. Full history available in scenario log."`
+The full history remains in the scenario log file for post-analysis.
 
-**Design rationale**: For typical backtesting blocks (6-24h), these limits are never hit. Even aggressive scalping strategies produce ~200 order entries per 24h block. The limits protect against edge cases in very long live sessions or extreme multi-position strategies.
+**Design rationale**: For typical backtesting blocks (6-24h), these limits are never hit. Even
+aggressive scalping strategies produce ~200 order entries per 24h block. The limits protect against
+edge cases in very long live sessions or extreme multi-position strategies.
 
 ---
 
@@ -229,7 +251,9 @@ The foundation. Contains all concrete fill processing and shared infrastructure.
 
 **Concrete methods (shared by all modes):**
 - `on_tick(tick)` — Unified tick lifecycle: price update + pending order processing
-- `_fill_open_order(pending_order, fill_price=None) → None` — Side-effect based: portfolio open, fee calculation, margin check, statistics. Results/rejections stored in `_order_history`. `fill_price` override for live (broker's actual price); `None` for simulation (use current tick bid/ask)
+- `_fill_open_order(pending_order, fill_price=None) → None` — Side-effect based: portfolio open, fee
+  calculation, margin check, statistics. Results/rejections stored in `_order_history`. `fill_price`
+  override for live (broker's actual price); `None` for simulation (use current tick bid/ask)
 - `_fill_close_order(pending_order, fill_price=None)` — Portfolio close, P&L realization, statistics. Same price override pattern.
 - `get_order_history()` — All OrderResults (fills + rejections) for audit trail
 - `get_open_positions()` — Returns confirmed portfolio positions only
@@ -289,7 +313,10 @@ Simulated execution. Delegates pending order management to OrderLatencySimulator
 
 **Key characteristic:** Orders enter a queue with a seeded delay. After N ticks, they "fill" — and the base class `_fill_open_order()` / `_fill_close_order()` handles the rest. The simulator adds nothing to the fill logic itself.
 
-**Stress testing:** `_stress_test_should_reject()` intercepts orders between latency completion and fill processing. Controlled by module-level constants (`STRESS_TEST_REJECTION_ENABLED`, `STRESS_TEST_REJECT_EVERY_N`). Rejections are stored in `_order_history` with `BROKER_ERROR` reason — same data path as real broker rejections.
+**Stress testing:** `_stress_test_should_reject()` intercepts orders between latency completion and
+fill processing. Controlled by module-level constants (`STRESS_TEST_REJECTION_ENABLED`,
+`STRESS_TEST_REJECT_EVERY_N`). Rejections are stored in `_order_history` with `BROKER_ERROR` reason
+— same data path as real broker rejections.
 
 `is_pending_close()` delegates to `self.latency_simulator` (inherited from AbstractPendingOrderManager). `has_pending_orders()` is inherited from `AbstractTradeExecutor` — combines pipeline count + active limit/stop order counts.
 
@@ -297,7 +324,12 @@ Simulated execution. Delegates pending order management to OrderLatencySimulator
 
 > Full documentation: [live_execution_architecture.md](live_execution_architecture.md)
 
-Live execution via broker adapter API. Routes orders through `adapter.execute_order()`, polls broker via `adapter.check_order_status()`, calls the *same* shared fill methods from the base. MARKET orders are tracked via `LiveRequestProcessor` (short-lived pipeline). LIMIT orders are tracked as shadow state in inherited `_active_limit_orders` — polled each tick via `_process_active_orders()`. Supports `modify_limit_order()` (broker + local state update) and `cancel_limit_order()` (broker cancel + local removal).
+Live execution via broker adapter API. Routes orders through `adapter.execute_order()`, polls broker
+via `adapter.check_order_status()`, calls the *same* shared fill methods from the base. MARKET
+orders are tracked via `LiveRequestProcessor` (short-lived pipeline). LIMIT orders are tracked as
+shadow state in inherited `_active_limit_orders` — polled each tick via `_process_active_orders()`.
+Supports `modify_limit_order()` (broker + local state update) and `cancel_limit_order()` (broker
+cancel + local removal).
 
 ### AbstractAdapter (Tiered Interface)
 Abstract interface for all broker adapters. Methods are organized in tiers:
@@ -314,7 +346,9 @@ Adapters that only serve backtesting (KrakenAdapter, Mt5Adapter) implement Tier 
 
 > Full documentation: [live_execution_architecture.md](live_execution_architecture.md)
 
-Mock adapter in `python/framework/testing/mock_broker_adapter.py`. Implements all three tiers with configurable behavior (INSTANT_FILL, DELAYED_FILL, REJECT_ALL, TIMEOUT). Used by `MockOrderExecution` for testing LiveTradeExecutor without a real broker.
+Mock adapter in `python/framework/testing/mock_broker_adapter.py`. Implements all three tiers with
+configurable behavior (INSTANT_FILL, DELAYED_FILL, REJECT_ALL, TIMEOUT). Used by
+`MockOrderExecution` for testing LiveTradeExecutor without a real broker.
 
 ### DecisionTradingApi
 The gatekeeper. DecisionLogic interacts *only* through this API. It provides:
@@ -364,11 +398,16 @@ Decision logics express intent using `OrderSide.BUY` / `OrderSide.SELL` — they
 | `BUY` | `LONG` | Open long position (margin) | Buy base currency with quote |
 | `SELL` | `SHORT` | Open short position (margin) | Sell held base currency for quote |
 
-The resolution is the same for both market types. The difference is in `_fill_open_order()`, which branches on `spot_mode` to apply the correct balance semantics. This means decision logics are market-agnostic — they never need to know whether they run on spot or margin.
+The resolution is the same for both market types. The difference is in `_fill_open_order()`, which
+branches on `spot_mode` to apply the correct balance semantics. This means decision logics are
+market-agnostic — they never need to know whether they run on spot or margin.
 
 #### Balance-Aware Algos (Spot)
 
-On spot, a SELL order only succeeds if the algo actually holds the base currency. The executor still validates this at fill time (INSUFFICIENT_FUNDS) — but reaching that path means a rejection lands in the guard's cooldown counter and fills the logs with warnings, which is noise rather than useful signal.
+On spot, a SELL order only succeeds if the algo actually holds the base currency. The executor still
+validates this at fill time (INSUFFICIENT_FUNDS) — but reaching that path means a rejection lands in
+the guard's cooldown counter and fills the logs with warnings, which is noise rather than useful
+signal.
 
 Algos that trade on spot should therefore pre-check balance before calling `send_order(side=SELL)` and silently skip the signal when no base balance is held. `DecisionTradingApi` exposes three helpers for exactly this case:
 
@@ -413,7 +452,9 @@ Both simulation and live share the same PortfolioManager. In live mode, it acts 
 ### PendingOrder (shared dataclass)
 Generic pending order representation used by both modes. Mode-specific fields are Optional:
 
-- **Common fields:** `pending_order_id`, `order_action`, `order_type` (MARKET/LIMIT), `symbol`, `direction`, `lots`, `entry_price` (limit price for LIMIT, 0 for MARKET), `order_kwargs` (built from explicit params: stop_loss, take_profit, comment, magic_number)
+- **Common fields:** `pending_order_id`, `order_action`, `order_type` (MARKET/LIMIT), `symbol`,
+  `direction`, `lots`, `entry_price` (limit price for LIMIT, 0 for MARKET), `order_kwargs` (built
+  from explicit params: stop_loss, take_profit, comment, magic_number)
 - **Simulation fields:** `placed_at_msc`, `broker_fill_msc` (ms-timestamp delay tracking)
 - **Live fields:** `submitted_at`, `broker_ref`, `timeout_at` — see [live_execution_architecture.md](live_execution_architecture.md)
 
@@ -437,7 +478,10 @@ The tick loop does not know (and should not know) whether it's driving a simulat
 
 ### Why This Matters
 
-In the previous design, the tick loop called two separate methods: `update_prices(tick)` and `process_pending_orders()`. This leaked implementation details — the loop "knew" that orders and prices were separate concerns inside the executor. When moving to live trading, this coupling would have required changes in the tick loop itself.
+In the previous design, the tick loop called two separate methods: `update_prices(tick)` and
+`process_pending_orders()`. This leaked implementation details — the loop "knew" that orders and
+prices were separate concerns inside the executor. When moving to live trading, this coupling would
+have required changes in the tick loop itself.
 
 With `on_tick()`, the tick loop is a pure driver. The executor decides how to partition its work internally.
 
@@ -459,13 +503,19 @@ The new design separates concerns completely:
 
 **`get_open_positions()`** — Returns only confirmed, filled, real portfolio positions. Always. In every mode.
 
-**`has_pending_orders()`** — Global check: "Is anything in flight across all worlds?" Concrete in `AbstractTradeExecutor` — combines `has_pipeline_orders()` + `_active_limit_orders` + `_active_stop_orders`. Used by market-only strategies (SimpleConsensus, AggressiveTrend, BacktestingDeterministic) as an early return guard:
+**`has_pending_orders()`** — Global check: "Is anything in flight across all worlds?" Concrete in
+`AbstractTradeExecutor` — combines `has_pipeline_orders()` + `_active_limit_orders` +
+`_active_stop_orders`. Used by market-only strategies (SimpleConsensus, AggressiveTrend,
+BacktestingDeterministic) as an early return guard:
 ```
 if self.trading_api.has_pending_orders():
     return None  # Wait for pending orders to resolve
 ```
 
-**`has_pipeline_orders()`** — Pipeline-only check: "Are orders still in transit (latency queue)?" Excludes broker-accepted orders waiting for price trigger (active limit/stop orders). Used by strategies that place limit/stop orders and need to distinguish between "order underway" and "order waiting at broker for price":
+**`has_pipeline_orders()`** — Pipeline-only check: "Are orders still in transit (latency queue)?"
+Excludes broker-accepted orders waiting for price trigger (active limit/stop orders). Used by
+strategies that place limit/stop orders and need to distinguish between "order underway" and "order
+waiting at broker for price":
 ```
 if self.trading_api.has_pipeline_orders():
     return None  # Order still in latency pipeline — wait
@@ -492,18 +542,35 @@ All methods delegate through DecisionTradingApi → AbstractTradeExecutor → th
 
 ## Order Normalization: The Shared Core
 
-Before an order is recorded locally or sent to the broker, its price fields are snapped to the symbol's precision. This runs on the shared executor layer — `AbstractTradeExecutor._normalize_order_request(request)` — and both `TradeSimulator.open_order()` and `LiveTradeExecutor.open_order()` call it as their first step.
+Before an order is recorded locally or sent to the broker, its price fields are snapped to the
+symbol's precision. This runs on the shared executor layer —
+`AbstractTradeExecutor._normalize_order_request(request)` — and both `TradeSimulator.open_order()`
+and `LiveTradeExecutor.open_order()` call it as their first step.
 
 **Why here and not in `DecisionTradingApi`:** broker price precision (`digits` / tick size) is an execution/broker concern, not an algo-API concern. Normalizing on the executor layer guarantees two things:
 
 1. **Local book == broker truth** — the PortfolioManager records the *same* rounded price the adapter sends, so reconciliation does not see a phantom divergence.
 2. **Sim == Live parity** — both executors round identically, so a backtest and a live run produce the same prices.
 
-A raw computed float (e.g. a limit price from an offset percentage: `1900.53 × 0.998 = 1896.7294…`) is otherwise rejected by the broker — Kraken: `EOrder:Invalid price: ETH/USD price can only be specified up to 2 decimals`. The normalization rounds `price`, `stop_price`, `stop_loss`, and `take_profit` to the symbol's `digits` (from `SymbolSpecification`).
+A raw computed float (e.g. a limit price from an offset percentage: `1900.53 × 0.998 = 1896.7294…`)
+is otherwise rejected by the broker — Kraken:
+`EOrder:Invalid price: ETH/USD price can only be specified up to 2 decimals`. The normalization
+rounds `price`, `stop_price`, `stop_loss`, and `take_profit` to the symbol's `digits` (from
+`SymbolSpecification`).
 
-The **modify paths carry prices too** and use the same `_round_price` helper at the point each value is prepared for the broker: `modify_limit_order` (new limit price), `modify_stop_order` (new trigger + limit price), and the native-SL/TP `modify_position`. Both executors round identically (sim/live parity). The Kraken-style local-only position SL/TP (capability `native_position_sl_tp=False`) is left unrounded — it is a local trigger threshold, never submitted to the broker. That threshold is now genuinely acted upon: since #500 the executor evaluates a declared level against its own tick stream in live as well as in simulation, where it used to skip the check on the assumption that the venue held the level.
+The **modify paths carry prices too** and use the same `_round_price` helper at the point each value
+is prepared for the broker: `modify_limit_order` (new limit price), `modify_stop_order` (new trigger
++ limit price), and the native-SL/TP `modify_position`. Both executors round identically (sim/live
+parity). The Kraken-style local-only position SL/TP (capability `native_position_sl_tp=False`) is
+left unrounded — it is a local trigger threshold, never submitted to the broker. That threshold is
+now genuinely acted upon: since #500 the executor evaluates a declared level against its own tick
+stream in live as well as in simulation, where it used to skip the check on the assumption that the
+venue held the level.
 
-`round(price, digits)` is correct for **decimal-priced** markets, where `tick_size == 10^(-digits)` — true for every Kraken spot pair (BTCUSD `digits=1`, ETHUSD `2`, ADAUSD `6`, …) and MT5 forex/CFD (EURUSD `5`, JPY pairs `3`). A market with a **non-decimal tick** (futures / indices with a tick like `0.25` or `0.05`) must snap to the tick instead — a one-line change in `_round_price`:
+`round(price, digits)` is correct for **decimal-priced** markets, where `tick_size == 10^(-digits)`
+— true for every Kraken spot pair (BTCUSD `digits=1`, ETHUSD `2`, ADAUSD `6`, …) and MT5 forex/CFD
+(EURUSD `5`, JPY pairs `3`). A market with a **non-decimal tick** (futures / indices with a tick
+like `0.25` or `0.05`) must snap to the tick instead — a one-line change in `_round_price`:
 
 ```python
 # decimal markets (current): round to digits
@@ -514,7 +581,12 @@ return round(round(price / tick_size) * tick_size, digits)
 
 No such market is in scope, so the simpler decimal rounding is used (YAGNI).
 
-**Volume is deliberately NOT normalized here.** Unlike price (a sub-tick change is economically negligible and broker-aligned), a lot change is a *position-size* change — silently snapping `0.015 → 0.02` would alter exposure by a third. Mainstream exchange clients reject a step-misaligned volume, or require the caller to round it explicitly (CCXT `amount_to_precision`); `validate_order` already rejects it as `INVALID_LOT_SIZE`. A strategy that computes a fractional lot must floor it to `volume_step` itself.
+**Volume is deliberately NOT normalized here.** Unlike price (a sub-tick change is economically
+negligible and broker-aligned), a lot change is a *position-size* change — silently snapping
+`0.015 → 0.02` would alter exposure by a third. Mainstream exchange clients reject a step-misaligned
+volume, or require the caller to round it explicitly (CCXT `amount_to_precision`); `validate_order`
+already rejects it as `INVALID_LOT_SIZE`. A strategy that computes a fractional lot must floor it to
+`volume_step` itself.
 
 ---
 
@@ -534,7 +606,10 @@ The fill methods (`_fill_open_order`, `_fill_close_order`) are the heart of the 
 7. Append `OrderResult` to `_order_history`
 8. Update execution statistics (`_orders_executed`) — cost tracking lives in the PortfolioManager (`CostBreakdown`)
 
-The method is void because both success and failure are side effects: results go into `_order_history`, rejections increment `_orders_rejected`. Callers (like `_process_pending_orders()`) don't need to inspect the result — the portfolio and history are updated internally.
+The method is void because both success and failure are side effects: results go into
+`_order_history`, rejections increment `_orders_rejected`. Callers (like
+`_process_pending_orders()`) don't need to inspect the result — the portfolio and history are
+updated internally.
 
 ### Close Fill (`_fill_close_order(pending_order, fill_price=None)`)
 1. Look up position in portfolio
@@ -557,7 +632,10 @@ All order outcomes — successful fills AND rejections — are recorded in `_ord
 
 Exposed via `get_order_history()` and transferred across the subprocess boundary in `ProcessTickLoopResult.order_history`.
 
-**Distinction from `trade_history`**: `trade_history` (from PortfolioManager) contains completed round-trip trades with P&L. `order_history` contains all order attempts. A rejection appears in `order_history` but never in `trade_history` (no position was created). A successful trade appears in both, but only `trade_history` has P&L (calculated at close).
+**Distinction from `trade_history`**: `trade_history` (from PortfolioManager) contains completed
+round-trip trades with P&L. `order_history` contains all order attempts. A rejection appears in
+`order_history` but never in `trade_history` (no position was created). A successful trade appears
+in both, but only `trade_history` has P&L (calculated at close).
 
 ---
 
@@ -567,7 +645,9 @@ A subtle but critical difference between simulation and live is **who determines
 
 **Simulation:** The system determines the price. When a pending order's delay elapses, `_fill_open_order()` reads the current tick's bid/ask and applies it. The "broker" (simulator) fills at whatever the market shows at fill time.
 
-**Live:** The broker determines the price. The broker returns the actual execution price, which may differ from the last tick we received (slippage, requotes, market gaps). The `fill_price` parameter carries this broker-determined price into the shared fill logic.
+**Live:** The broker determines the price. The broker returns the actual execution price, which may
+differ from the last tick we received (slippage, requotes, market gaps). The `fill_price` parameter
+carries this broker-determined price into the shared fill logic.
 
 ```
 # Simulation (no fill_price → use current tick):
@@ -622,7 +702,10 @@ Limit orders follow a **two-phase lifecycle** in simulation. The order is first 
 
 ### Entry Types and Fees
 
-Each fill carries an `EntryType` (MARKET, LIMIT, STOP or STOP_LIMIT) that flows through to `TradeRecord.entry_type` for history/reporting. Limit fills use **maker fees** (lower cost for providing liquidity), market fills use **taker fees**. This distinction only matters for maker/taker fee models (e.g. Kraken). Spread-based brokers (MT5) are unaffected.
+Each fill carries an `EntryType` (MARKET, LIMIT, STOP or STOP_LIMIT) that flows through to
+`TradeRecord.entry_type` for history/reporting. Limit fills use **maker fees** (lower cost for
+providing liquidity), market fills use **taker fees**. This distinction only matters for maker/taker
+fee models (e.g. Kraken). Spread-based brokers (MT5) are unaffected.
 
 **How often each model charges** is the other half of the same question, and the two answer
 differently (#506). A maker/taker venue charges **every fill**, so a completed round trip pays
@@ -636,17 +719,26 @@ A close is a MARKET order today, so its exit fee is always the **taker** rate
 
 ### Live Mode
 
-In live mode, the broker handles limit order matching server-side. `LiveTradeExecutor.open_order()` passes the limit price to the broker adapter. When the broker returns PENDING, the order is added to `_active_limit_orders` as shadow state. Each tick, `_process_active_orders()` polls the broker for status updates:
+In live mode, the broker handles limit order matching server-side. `LiveTradeExecutor.open_order()`
+passes the limit price to the broker adapter. When the broker returns PENDING, the order is added to
+`_active_limit_orders` as shadow state. Each tick, `_process_active_orders()` polls the broker for
+status updates:
 - **FILLED** → `_fill_open_order()` with broker's fill price
 - **Terminal** (REJECTED/CANCELLED/EXPIRED) → rejection recorded in `_order_history`
 - **PENDING** → keep polling
 
-`modify_limit_order()` updates both the broker (via `adapter.modify_order()`) and the local shadow state (price, SL, TP). Kraken uses `AmendOrder` — an in-place amend that keeps the same `broker_ref` (no cancel-replace). The local `PendingOrder.broker_ref` is only swapped if a broker returns a new ref on modify (defensive path, not triggered by Kraken).
+`modify_limit_order()` updates both the broker (via `adapter.modify_order()`) and the local shadow
+state (price, SL, TP). Kraken uses `AmendOrder` — an in-place amend that keeps the same `broker_ref`
+(no cancel-replace). The local `PendingOrder.broker_ref` is only swapped if a broker returns a new
+ref on modify (defensive path, not triggered by Kraken).
 
 ### Cleanup
 
 At run end, `finish_remaining_orders()` expires unfilled active orders:
-1. **Live**: Active limit orders are cancelled at the broker first — unless `session_end.orders = "leave"`, which leaves them at the venue for a later session to adopt (#355) and therefore does NOT expire them locally either: an order that can still fill must not be recorded as expired
+1. **Live**: Active limit orders are cancelled at the broker first — unless
+   `session_end.orders = "leave"`, which leaves them at the venue for a later session to adopt
+   (#355) and therefore does NOT expire them locally either: an order that can still fill must not
+   be recorded as expired
 2. **Both modes**: `_expire_active_orders()` creates `OrderResult(status=EXPIRED)` entries in `_order_history`
 3. Lists preserved for `get_pending_stats()` snapshots (reporting)
 
@@ -659,7 +751,9 @@ At run end, `finish_remaining_orders()` expires unfilled active orders:
 - Affected: OrderLatencySimulator, SeededDelayGenerator (`utils/seeded_generators/`), PendingOrder
 
 ### Error Handling in Execution Chain (Partially Resolved)
-**Resolved:** `_fill_open_order()` is now void/side-effect based — rejections stored in `_order_history` instead of returned. Margin rejections and stress test rejections follow the same pattern. `order_history` crosses subprocess boundary via `ProcessTickLoopResult`.
+**Resolved:** `_fill_open_order()` is now void/side-effect based — rejections stored in
+`_order_history` instead of returned. Margin rejections and stress test rejections follow the same
+pattern. `order_history` crosses subprocess boundary via `ProcessTickLoopResult`.
 **Remaining:** `_fill_close_order()` still returns None silently on position-not-found. `close_position()` result not checked by DecisionLogic. Broader error propagation pattern (timeouts, broker errors in live) still needs design.
 - Affects: AbstractTradeExecutor (close path), DecisionTradingApi, DecisionLogic
 
@@ -668,7 +762,10 @@ At run end, `finish_remaining_orders()` expires unfilled active orders:
 - Affects: TradeSimulator, scenario configuration
 
 ### Baseline Tests: order_history Coverage
-**Problem:** Baseline tests validate `execution_stats` counters but don't assert on `order_history` contents. Tests correctly detect stress test rejections (test_no_rejected_orders, test_orders_sent_equals_executed fail when enabled), but no dedicated fixture/assertions for order_history data.
+**Problem:** Baseline tests validate `execution_stats` counters but don't assert on `order_history`
+contents. Tests correctly detect stress test rejections (test_no_rejected_orders,
+test_orders_sent_equals_executed fail when enabled), but no dedicated fixture/assertions for
+order_history data.
 - Affects: Baseline test suite, test fixtures
 
 ### Live-Specific Open Issues

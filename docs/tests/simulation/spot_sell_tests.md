@@ -2,7 +2,10 @@
 
 ## Overview
 
-The spot sell test suite validates that SELL signals on spot markets correctly flow through the full execution pipeline without being blocked by the OrderGuard. This was previously impossible because the guard hard-blocked SHORT (SELL) on spot — the OrderSide/OrderDirection split removed that barrier.
+The spot sell test suite validates that SELL signals on spot markets correctly flow through the full
+execution pipeline without being blocked by the OrderGuard. This was previously impossible because
+the guard hard-blocked SHORT (SELL) on spot — the OrderSide/OrderDirection split removed that
+barrier.
 
 **Location:** `tests/simulation/spot_trading/`
 
@@ -40,7 +43,7 @@ Located at `configs/scenario_sets/backtesting/spot_sell_test.json`:
 
 ---
 
-## Fixtures
+## Fixtures (conftest.py)
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|

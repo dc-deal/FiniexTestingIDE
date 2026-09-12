@@ -2,7 +2,10 @@
 
 ## Overview
 
-The multi-position test suite validates overlapping position management in the FiniexTestingIDE backtesting framework. It uses a dedicated decision logic (`BacktestingMultiPosition`) that opens multiple simultaneous positions, tests hedging (opposite directions on the same symbol), and validates selective per-position closing.
+The multi-position test suite validates overlapping position management in the FiniexTestingIDE
+backtesting framework. It uses a dedicated decision logic (`BacktestingMultiPosition`) that opens
+multiple simultaneous positions, tests hedging (opposite directions on the same symbol), and
+validates selective per-position closing.
 
 This suite proves that the engine's `TradeSimulator`, `PortfolioManager`, and `OrderLatencySimulator` correctly handle the full complexity of multi-position trading — a prerequisite for any real-world hedging strategy.
 
@@ -102,7 +105,7 @@ MULTI_POSITION_CONFIG = "backtesting/multi_position_test.json"
 
 All fixture logic (run_scenario, extract_process_result, etc.) lives in `fixture_helpers.py` as plain functions, wrapped by each suite's `conftest.py` as `@pytest.fixture(scope="session")`.
 
-### Fixtures
+### Fixtures (conftest.py)
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
@@ -137,7 +140,9 @@ Validates that multiple positions can be open simultaneously.
 | `test_zero_positions_in_gap` | No positions open in gap window (tick ~10000) |
 | `test_more_than_one_position_existed` | Fundamental assertion: peak concurrency > 1 |
 
-**How concurrency is computed:** Helper function `_concurrent_at_tick()` counts trades where `entry_tick_index ≤ tick < exit_tick_index`. This uses actual `TradeRecord` data from the portfolio — not internal decision logic state — validating the real engine behavior.
+**How concurrency is computed:** Helper function `_concurrent_at_tick()` counts trades where
+`entry_tick_index ≤ tick < exit_tick_index`. This uses actual `TradeRecord` data from the portfolio
+— not internal decision logic state — validating the real engine behavior.
 
 ---
 

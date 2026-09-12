@@ -27,7 +27,9 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 
 ## Mocking Strategy
 
-`BarsIndexManager`, `MarketConfigManager` and `ReportStore` are patched at their import location in each router module. `pd.read_parquet` is patched for the bars test to return a minimal in-memory DataFrame. No filesystem access occurs during the test run.
+`BarsIndexManager`, `MarketConfigManager` and `ReportStore` are patched at their import location in
+each router module. `pd.read_parquet` is patched for the bars test to return a minimal in-memory
+DataFrame. No filesystem access occurs during the test run.
 
 ## Sweep routes (`TestSweeps`)
 

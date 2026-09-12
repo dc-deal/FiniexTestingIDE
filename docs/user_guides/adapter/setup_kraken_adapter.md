@@ -86,7 +86,9 @@ This is Kraken's native validation parameter — not a local simulation. It catc
 
 **Kraken Spot has no testnet/sandbox.** Dry-run mode is the only way to test order flow without real execution.
 
-`dry_run` is a **broker-level deployment decision** — not a per-session flag. It applies to all AutoTrader sessions that use `kraken_spot`. The committed default (`configs/market_config.json`) is always `true`. Switch to live trading by overriding in `user_configs/market_config.json`.
+`dry_run` is a **broker-level deployment decision** — not a per-session flag. It applies to all
+AutoTrader sessions that use `kraken_spot`. The committed default (`configs/market_config.json`) is
+always `true`. Switch to live trading by overriding in `user_configs/market_config.json`.
 
 ## 4. AutoTrader Profile
 
@@ -104,7 +106,10 @@ AutoTrader profiles contain only algorithm config — no broker connection field
 }
 ```
 
-`balances` with `0.0` values is intentional — the startup fetches real balances for all listed currencies from Kraken and overrides these values. `account_currency` is optional — if omitted, the quote currency (USD) is used by default. Set it explicitly to use the base currency (e.g., `"ETH"`) for P&L denomination.
+`balances` with `0.0` values is intentional — the startup fetches real balances for all listed
+currencies from Kraken and overrides these values. `account_currency` is optional — if omitted, the
+quote currency (USD) is used by default. Set it explicitly to use the base currency (e.g., `"ETH"`)
+for P&L denomination.
 
 ## Config File Relationship
 
@@ -158,7 +163,10 @@ Set `dry_run: false` in `user_configs/market_config.json` (gitignored):
 }
 ```
 
-**This enables real order execution with real money.** Orders sent via `LiveRequestProcessor.submit_open_order` (composing the adapter's Tier-3 layers `_build_submit_payload` → `_do_request_submit` → `_parse_submit_response`) will be placed on the Kraken order book.
+**This enables real order execution with real money.** Orders sent via
+`LiveRequestProcessor.submit_open_order` (composing the adapter's Tier-3 layers
+`build_submit_payload` → `do_request_submit` → `parse_submit_response`) will be placed on the Kraken
+order book.
 
 Ensure:
 - Your account has sufficient balance for the configured `lot_size`

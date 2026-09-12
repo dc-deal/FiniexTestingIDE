@@ -45,7 +45,7 @@ Two details worth knowing about:
   and `print_buffer` did not, so a warning the threshold suppressed still reached the console
   through the batch flush. Both are pinned now.
 
-## Running
+## Running the Tests
 
 ```bash
 pytest tests/framework/logging/ -v --tb=short

@@ -290,11 +290,11 @@ class AggressiveTrend(AbstractDecisionLogic):
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         return [OrderType.MARKET]  # Only market orders for this example
     
-    def get_required_worker_instances(self) -> Dict[str, str]:
-        """Declare which workers this logic needs"""
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
+        """Declare which workers this logic needs, and which of their signals it reads"""
         return {
-            "rsi_fast": "CORE/rsi",
-            "bollinger_main": "CORE/bollinger"
+            "rsi_fast": WorkerRequirement.of("CORE/rsi", "rsi_value"),
+            "bollinger_main": WorkerRequirement.of("CORE/bollinger", "position")
         }
     
     @classmethod
@@ -318,7 +318,7 @@ class AggressiveTrend(AbstractDecisionLogic):
             ),
         }
 
-    def compute(
+    def compute_tick(
         self,
         tick: TickData,
         worker_results: Dict[str, WorkerResult],
@@ -414,7 +414,7 @@ class AggressiveTrend(AbstractDecisionLogic):
 
 | Method | Purpose |
 |--------|---------|
-| `get_required_worker_instances()` | Declare workers: `{"rsi_fast": "CORE/rsi"}` |
+| `get_required_workers()` | Declare workers + the signals read: `{"rsi_fast": WorkerRequirement.of("CORE/rsi", "rsi_value")}` |
 | `get_required_order_types()` | Return `[OrderType.MARKET]` |
 | `get_output_schema()` | Declare typed output fields (optional) |
 | `compute_tick()` | Analyze workers on a market tick, return `Decision(action=..., outputs={...})` — `tick` is never None |
@@ -580,7 +580,9 @@ The JSON config connects everything together.
 | `trade_simulator_config` | Broker, balance, seeds, latency ranges |
 | `scenarios` | Time windows to test |
 
-> **Tip:** `app_config.json → default_trade_simulator_config` provides application-wide defaults (balance, currency, seeds, latency ranges). Scenario sets inherit these automatically — only override what differs. See [Config Cascade Guide](../config_cascade_guide.md) for details.
+> **Tip:** `app_config.json → default_trade_simulator_config` provides application-wide defaults
+> (balance, currency, seeds, latency ranges). Scenario sets inherit these automatically — only
+> override what differs. See [Config Cascade Guide](../config_cascade_guide.md) for details.
 
 ---
 
@@ -600,7 +602,7 @@ See `python/framework/workers/core/rsi_worker.py` as a reference implementation.
 
 1. Create `user_algos/my_strategy/my_decision.py`
 2. Define one class inheriting from `AbstractDecisionLogic` (any class name)
-3. Implement `compute()`, `_execute_decision_impl()`, `get_required_worker_instances()`
+3. Implement `compute_tick()`, `_execute_decision_impl()`, `get_required_workers()`
 
 ### Reference in Config
 
@@ -616,10 +618,10 @@ See `python/framework/workers/core/rsi_worker.py` as a reference implementation.
 
 Paths are relative to the project root. CORE workers use the `CORE/name` shorthand.
 
-Worker references in `get_required_worker_instances()` are relative to the decision logic file:
+Worker references in `get_required_workers()` are relative to the decision logic file:
 
 ```python
-def get_required_worker_instances(self) -> Dict[str, str]:
+def get_required_workers(self) -> Dict[str, WorkerRequirement]:
     return {
         'custom_ind': 'my_indicator.py',   # same directory as this file
         'rsi_filter': 'CORE/rsi',
@@ -687,7 +689,9 @@ Current limitations:
 
 > **Multiple Positions:** The system supports multiple simultaneous positions, but this is **untested**. All included bots use single-position logic. Use at your own risk.
 
-> **Broker compatibility:** STOP orders are not supported by all brokers (e.g. Kraken requires STOP_LIMIT). Use `get_required_order_types()` to declare order needs; the framework validates this at startup. Set `use_stop_limit: true` in `decision_logic_config` for Kraken scenarios.
+> **Broker compatibility:** STOP orders are not supported by all brokers (e.g. Kraken requires
+> STOP_LIMIT). Use `get_required_order_types()` to declare order needs; the framework validates this
+> at startup. Set `use_stop_limit: true` in `decision_logic_config` for Kraken scenarios.
 
 ---
 
@@ -729,23 +733,31 @@ Current limitations:
 
 ## Example: Create a Simple SMA Crossover
 
-```python
-# 1. Worker: SMA (you could also just use bars directly in decision)
+A sketch of the shape, not a complete algorithm — the required methods and parameter
+schemas are shown in full in Steps 1 and 2 above. There is no CORE SMA worker, so this
+declares its own and references it by file name.
 
-class SMAWorker(AbstractIndicatorWorker):
+```python
+# 1. Worker — saved as sma_worker.py beside the decision logic.
+#    The class name is derived from the file name.
+
+class SmaWorker(AbstractIndicatorWorker):
     def compute(self, tick, bar_history, current_bars):
-        bars = bar_history.get("M5", [])
-        closes = [b.close for b in bars[-self.period:]]
-        sma = np.mean(closes)
-        return WorkerResult(outputs={'sma_value': float(sma)})
+        timeframe = self.get_required_timeframes()[0]
+        period = self.get_warmup_requirements()[timeframe]
+        closes = [b.close for b in bar_history.get(timeframe, [])[-period:]]
+        return WorkerResult(outputs={'sma_value': sum(closes) / len(closes)})
 
 # 2. Decision: Crossover
 
-class SMACrossover(AbstractDecisionLogic):
-    def get_required_worker_instances(self):
-        return {"sma_fast": "CORE/sma", "sma_slow": "CORE/sma"}
+class SmaCrossover(AbstractDecisionLogic):
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
+        return {
+            "sma_fast": WorkerRequirement.of("sma_worker.py", "sma_value"),
+            "sma_slow": WorkerRequirement.of("sma_worker.py", "sma_value"),
+        }
 
-    def compute(self, tick, worker_results):
+    def compute_tick(self, tick, worker_results):
         fast = worker_results["sma_fast"].get_signal('sma_value')
         slow = worker_results["sma_slow"].get_signal('sma_value')
 
@@ -754,13 +766,15 @@ class SMACrossover(AbstractDecisionLogic):
         elif fast < slow:
             return Decision(action=DecisionLogicAction.SELL, outputs={'reason': 'SMA cross-down'})
         return Decision(action=DecisionLogicAction.FLAT)
+```
 
-# 3. Config
+The matching scenario config:
 
+```json
 {
     "worker_instances": {
-        "sma_fast": "CORE/sma",
-        "sma_slow": "CORE/sma"
+        "sma_fast": "sma_worker.py",
+        "sma_slow": "sma_worker.py"
     },
     "workers": {
         "sma_fast": {"periods": {"M5": 10}},

@@ -42,7 +42,9 @@ async def run_tick_loop():
     await executor.send_order(decision)        # Executor must become async!
 ```
 
-This breaks the design constraint: Workers and DecisionLogic must be **identical** classes in backtesting and live. The queue stops the infection — Thread 1 can use `await websocket.recv()` internally (#232), Thread 2 only sees synchronous `queue.get()`.
+This breaks the design constraint: Workers and DecisionLogic must be **identical** classes in
+backtesting and live. The queue stops the infection — Thread 1 can use `await websocket.recv()`
+internally (#232), Thread 2 only sees synchronous `queue.get()`.
 
 ## Tick Sources vs Broker Adapters — Separation of Concerns
 
@@ -75,7 +77,9 @@ Merging them into one class would lose this combinability.
 
 ### Industry Reference
 
-Institutional systems (Bloomberg, Refinitiv, FIX protocol) always separate Market Data Gateway from Order Gateway — different latency requirements, protocols, and failure modes. Retail platforms (MT5, cTrader) bundle them in the UI but separate them internally.
+Institutional systems (Bloomberg, Refinitiv, FIX protocol) always separate Market Data Gateway from
+Order Gateway — different latency requirements, protocols, and failure modes. Retail platforms (MT5,
+cTrader) bundle them in the UI but separate them internally.
 
 ### How They Connect
 
@@ -88,7 +92,9 @@ The config maps each independently, `autotrader_startup.py` wires them together:
 }
 ```
 
-`broker_type` is intentionally broader than "adapter" — it selects the full broker configuration (fees, symbol specs, market type, leverage) through `BrokerConfigFactory` and `market_config.json`. The adapter is one part of that. `tick_source.type` maps directly to a `TickSource` class.
+`broker_type` is intentionally broader than "adapter" — it selects the full broker configuration
+(fees, symbol specs, market type, leverage) through `BrokerConfigFactory` and `market_config.json`.
+The adapter is one part of that. `tick_source.type` maps directly to a `TickSource` class.
 
 ### Directory Structure Rationale
 
@@ -103,7 +109,10 @@ python/framework/
     tick_sources/           ← Data feeds — AutoTrader only
 ```
 
-`trading_env/` is the **framework layer** — shared between backtesting and AutoTrader. `autotrader/` is the **application layer** — AutoTrader only. Tick sources live in `autotrader/` because they are exclusively a live concern. Moving them into `trading_env/adapters/` would leak live-only components into the shared framework.
+`trading_env/` is the **framework layer** — shared between backtesting and AutoTrader. `autotrader/`
+is the **application layer** — AutoTrader only. Tick sources live in `autotrader/` because they are
+exclusively a live concern. Moving them into `trading_env/adapters/` would leak live-only components
+into the shared framework.
 
 ## Pipeline Architecture
 
@@ -449,13 +458,22 @@ Both are polled directly from `AbstractTickSource` (GIL-safe primitive reads) �
 
 ### Display Stats Transport
 
-After each tick, `autotrader_tick_loop._build_display_stats()` builds an `AutoTraderDisplayStats` snapshot and pushes it to the display queue (`put_nowait` — dropped if full, display uses last known state). The snapshot contains only primitives, lists, and dataclasses — safe for queue transport and future JSON serialization.
+After each tick, `autotrader_tick_loop._build_display_stats()` builds an `AutoTraderDisplayStats`
+snapshot and pushes it to the display queue (`put_nowait` — dropped if full, display uses last known
+state). The snapshot contains only primitives, lists, and dataclasses — safe for queue transport and
+future JSON serialization.
 
-At shutdown, the tick loop drains stale snapshots from the queue and pushes one **final** snapshot via blocking `put(timeout=1.0)`. This guarantees the display shows the terminal pipeline state (post-close balances, final trade count) regardless of refresh timing. The display thread performs its own final drain after the loop exits, then renders the last frame before the `Live` context closes.
+At shutdown, the tick loop drains stale snapshots from the queue and pushes one **final** snapshot
+via blocking `put(timeout=1.0)`. This guarantees the display shows the terminal pipeline state
+(post-close balances, final trade count) regardless of refresh timing. The display thread performs
+its own final drain after the loop exits, then renders the last frame before the `Live` context
+closes.
 
 Symbol currencies (`base_currency`, `quote_currency`) are resolved once at startup via `SymbolSpec` from the broker adapter and passed through the display stats — no string-splitting heuristic.
 
-In spot mode, `AutoTraderDisplayStats` carries `equity` (total portfolio value in account currency) and `spot_balances` (per-currency holdings). The PORTFOLIO panel branches on `trading_model` to render a dual-balance layout (spot) or the standard balance view (margin).
+In spot mode, `AutoTraderDisplayStats` carries `equity` (total portfolio value in account currency)
+and `spot_balances` (per-currency holdings). The PORTFOLIO panel branches on `trading_model` to
+render a dual-balance layout (spot) or the standard balance view (margin).
 
 ```
 Tick Loop (Thread 2)                Display Thread (Thread 3)
@@ -515,9 +533,17 @@ All metrics are tracked in two scopes: **session totals** (end-of-session summar
 
 ### The verdict — `clipping_monitor.warn_above_ratio`
 
-The console prints the metrics; whether they are *bad* is decided by `SessionPostRunValidator._check_clipping`, which raises a **Tier-1 advisory** when `clipping_ratio` exceeds the configured share (default `0.05` in `app_config.json::autotrader.clipping_monitor`). A ratio can never exceed `1.0`, so that value disables the advisory.
+The console prints the metrics; whether they are *bad* is decided by
+`SessionPostRunValidator._check_clipping`, which raises a **Tier-1 advisory** when `clipping_ratio`
+exceeds the configured share (default `0.05` in `app_config.json::autotrader.clipping_monitor`). A
+ratio can never exceed `1.0`, so that value disables the advisory.
 
-This is the **only** performance verdict a live session makes, and the reason is worth stating: the ratio is measured against *real tick arrival*, so it is grounded in what actually happened. A per-component millisecond threshold is not — 1.2 ms is fine at 50 ms between ticks and fatal at 2 ms — and an earlier check that tried it was removed as misinformation (see [Warnings & Errors — Tier Taxonomy](../architecture/warnings_errors_tiers.md)). Where exactly the line sits is a policy question, which is why it lives in config rather than in a constant.
+This is the **only** performance verdict a live session makes, and the reason is worth stating: the
+ratio is measured against *real tick arrival*, so it is grounded in what actually happened. A
+per-component millisecond threshold is not — 1.2 ms is fine at 50 ms between ticks and fatal at 2 ms
+— and an earlier check that tried it was removed as misinformation (see
+[Warnings & Errors — Tier Taxonomy](../architecture/warnings_errors_tiers.md)). Where exactly the
+line sits is a policy question, which is why it lives in config rather than in a constant.
 
 The sim has no counterpart: it judges clipping against a *configured* `tick_processing_budget_ms` (the tick-budget advisories), while a live session has only what it observed.
 
@@ -976,14 +1002,23 @@ create_broker_config(config, logger)   (autotrader_broker_config_setup.py)
 ```
 
 **Cache location:** `data/runtime/brokers/<broker_type>/` (gitignored, auto-refreshed weekly).  
-**Static seed:** `configs/brokers/kraken/kraken_spot_broker_config.json` — git-tracked, never auto-overwritten. Used by `config_mode=static` brokers, and its `fee_structure` is the declared rate for EVERY reader: a backtest takes it whole, and a dynamic live session starts from it before the venue is asked (#337).  
+**Static seed:** `configs/brokers/kraken/kraken_spot_broker_config.json` — git-tracked, never
+auto-overwritten. Used by `config_mode=static` brokers, and its `fee_structure` is the declared rate
+for EVERY reader: a backtest takes it whole, and a dynamic live session starts from it before the
+venue is asked (#337).
 **Balance fetch failure** is **fatal** — a 0.0 balance in live mode is dangerous.
 
 **Mock mode**: Completely unchanged. No API calls, no credentials needed, `enable_live()` never called.
 
 ### Account Currency & Balance Semantics
 
-For a **mock** session, `scenario_settings.balances` sets the starting capital (a scenario replay needs real balances, like the sim) and determines how P&L is denominated internally. For a **live** session there is no profile balances block — the broker's real balances are fetched at startup for the symbol's base/quote currencies (resolved authoritatively from the symbol spec, #265). The account currency is derived at startup from the balances keys matched against the symbol's base/quote currencies (quote currency preferred). An optional `scenario_settings.account_currency` override allows explicit control.
+For a **mock** session, `scenario_settings.balances` sets the starting capital (a scenario replay
+needs real balances, like the sim) and determines how P&L is denominated internally. For a **live**
+session there is no profile balances block — the broker's real balances are fetched at startup for
+the symbol's base/quote currencies (resolved authoritatively from the symbol spec, #265). The
+account currency is derived at startup from the balances keys matched against the symbol's
+base/quote currencies (quote currency preferred). An optional `scenario_settings.account_currency`
+override allows explicit control.
 
 **Rules:**
 - At least one key in `scenario_settings.balances` must match either the **base** or **quote** currency of the traded symbol (mock).
@@ -1004,9 +1039,15 @@ For a **mock** session, `scenario_settings.balances` sets the starting capital (
 | `{"SOL": 0, "USD": 100}` | (omitted) | `SOLUSD` | Dual-balance, P&L in USD (quote, default) |
 | `{"ETH": 0, "USD": 50}` | `"ETH"` | `ETHUSD` | Dual-balance, P&L in ETH (explicit override) |
 
-**Recommendation:** Use `"USD"` as account currency for all spot pairs. USD is the quote currency across all Kraken USD pairs — one balance covers all symbols, P&L is always in USD (consistent with backtesting), and no per-symbol currency management is needed. Use `account_currency` override only when explicitly needed (e.g., testing P&L in base currency).
+**Recommendation:** Use `"USD"` as account currency for all spot pairs. USD is the quote currency
+across all Kraken USD pairs — one balance covers all symbols, P&L is always in USD (consistent with
+backtesting), and no per-symbol currency management is needed. Use `account_currency` override only
+when explicitly needed (e.g., testing P&L in base currency).
 
-**What happens after trades:** If a BUY fills, the base asset increases and quote decreases (and vice versa for SELL). The AutoTrader only tracks the configured currency — the other side accumulates silently on the Kraken account. This is expected Spot behavior. The Reconciliation Layer (#151) will address cross-session position awareness.
+**What happens after trades:** If a BUY fills, the base asset increases and quote decreases (and
+vice versa for SELL). The AutoTrader only tracks the configured currency — the other side
+accumulates silently on the Kraken account. This is expected Spot behavior. The Reconciliation Layer
+(#151) will address cross-session position awareness.
 
 ### Broker Connection Settings
 
@@ -1022,7 +1063,10 @@ market_config.json → kraken_spot     ← Broker connection config
 Credentials (kraken_credentials.json) ← Only API keys
 ```
 
-To override connection settings (e.g., `dry_run: false` for live trading), create `user_configs/market_config.json` with the changed fields. See [Kraken Adapter Setup Guide](../user_guides/adapter/setup_kraken_adapter.md) for full configuration details.
+To override connection settings (e.g., `dry_run: false` for live trading), create
+`user_configs/market_config.json` with the changed fields. See
+[Kraken Adapter Setup Guide](../user_guides/adapter/setup_kraken_adapter.md) for full configuration
+details.
 
 ### Credentials Cascade
 
@@ -1039,7 +1083,9 @@ Private Kraken endpoints use HMAC-SHA512 signing: `API-Sign = base64(HMAC-SHA512
 
 ### Fee Handling
 
-The declared rate lives in ONE place — the broker's git-tracked seed — and every other reader points at it (#337). A backtest reads it and nothing else, so a run stays reproducible from a commit; a live session starts from the same number, then asks the venue.
+The declared rate lives in ONE place — the broker's git-tracked seed — and every other reader points
+at it (#337). A backtest reads it and nothing else, so a run stays reproducible from a commit; a
+live session starts from the same number, then asks the venue.
 
 Asking is `POST /0/private/TradeVolume`, and what happens with the answer is split in two on purpose:
 
@@ -1048,13 +1094,22 @@ Asking is `POST /0/private/TradeVolume`, and what happens with the answer is spl
 | the session prices with | the declared rate | the venue's rate |
 | a divergence from the seed | WARNS | WARNS |
 
-The warning fires either way, because the failure this replaces was silent: measured 2026-09-08 the declared 0.25/0.40 were exactly HALF what the account was charged (0.40/0.80 on `XETHZUSD`), and no run said so. A static default is not automatically the safe one — this one was optimistic, which is the dangerous direction for a backtest.
+The warning fires either way, because the failure this replaces was silent: measured 2026-09-08 the
+declared 0.25/0.40 were exactly HALF what the account was charged (0.40/0.80 on `XETHZUSD`), and no
+run said so. A static default is not automatically the safe one — this one was optimistic, which is
+the dangerous direction for a backtest.
 
-Note that the tier depends on 30-day rolling volume, which the bot's own trading moves. So no fetch can give the "right" rate for a run that has not happened yet: the declared rate is an ASSUMPTION the record has to pin, which is why `config_hash` covers `fee_structure`. Re-freezing the seed is a deliberate, dated act — see `docs/broker_config_guide.md`.
+Note that the tier depends on 30-day rolling volume, which the bot's own trading moves. So no fetch
+can give the "right" rate for a run that has not happened yet: the declared rate is an ASSUMPTION
+the record has to pin, which is why `config_hash` covers `fee_structure`. Re-freezing the seed is a
+deliberate, dated act — see `docs/broker_config_guide.md`.
 
 ## KrakenAdapter Tier 3 — Live Order Execution (#133 Step 3)
 
-Tier 3 adds real Kraken REST API order execution to `KrakenAdapter`. Methods are activated by calling `enable_live(credentials_file, dry_run, transport)` — without it, the adapter works in Tier 1+2 mode (backtesting only). `transport` is a `BrokerTransportConfig` (api_base_url, rate_limit_interval_s, request_timeout_s, poll_interval_ms).
+Tier 3 adds real Kraken REST API order execution to `KrakenAdapter`. Methods are activated by
+calling `enable_live(credentials_file, dry_run, transport)` — without it, the adapter works in Tier
+1+2 mode (backtesting only). `transport` is a `BrokerTransportConfig` (api_base_url,
+rate_limit_interval_s, request_timeout_s, poll_interval_ms).
 
 ### Adapter Tiers
 
@@ -1085,19 +1140,32 @@ Dry-run behavior:
 
 ### AmendOrder — In-Place Modify
 
-Kraken's `AmendOrder` amends the order **in place** — the txid (and any client order id) stay the same, so there is no cancel-replace and no broker_ref swap. `_parse_modify_response` returns the unchanged `broker_ref`; the response carries an `amend_id` for auditing. The `update_broker_ref(old, new)` swap path remains as a defensive net for brokers that *do* return a new ref on modify, but it is not exercised by Kraken.
+Kraken's `AmendOrder` amends the order **in place** — the txid (and any client order id) stay the
+same, so there is no cancel-replace and no broker_ref swap. `parse_modify_response` returns the
+unchanged `broker_ref`; the response carries an `amend_id` for auditing. The
+`update_broker_ref(old, new)` swap path remains as a defensive net for brokers that *do* return a
+new ref on modify, but it is not exercised by Kraken.
 
 ### Rate Limiting
 
 Configurable via `broker_transport.rate_limit_interval_s` in broker settings (default: 1.0s). Simple time-based throttle — minimum interval between private API calls. Conservative but safe for personal use.
 
-Enforced inside the adapter's `_enforce_rate_limit()` (called from every private HTTP call). Because all broker I/O is funneled through a single worker thread, this gate also serializes async polling against submits/edits/cancels — no risk of two private API calls landing under the rate window.
+Enforced inside the adapter's `_enforce_rate_limit()` (called from every private HTTP call). Because
+all broker I/O is funneled through a single worker thread, this gate also serializes async polling
+against submits/edits/cancels — no risk of two private API calls landing under the rate window.
 
 ### Polling Cadence (#320)
 
-Active LIMIT orders are polled asynchronously through the same worker-thread pattern as submit/edit/cancel/trades_query. `LiveTradeExecutor._process_active_orders` is a non-blocking scheduler: for each `_active_limit_orders` entry it either skips (no broker_ref yet, in-flight query, or inside throttle window) or enqueues a `QueryJob` to the worker. The response is consumed on the main thread via `drain_inbox` → `_handle_query_response`.
+Active LIMIT orders are polled asynchronously through the same worker-thread pattern as
+submit/edit/cancel/trades_query. `LiveTradeExecutor._process_active_orders` is a non-blocking
+scheduler: for each `_active_limit_orders` entry it either skips (no broker_ref yet, in-flight
+query, or inside throttle window) or enqueues a `QueryJob` to the worker. The response is consumed
+on the main thread via `drain_inbox` → `_handle_query_response`.
 
-The scheduler runs on the tick path (`on_tick`) **and** on the idle heartbeat (`heartbeat()`, #360) — so the fill/cancel-confirm query fires during a quiet stretch too, not only when a real tick arrives. The per-order throttle (`poll_interval_ms`) still gates the actual broker I/O, so a faster heartbeat does not multiply API calls.
+The scheduler runs on the tick path (`on_tick`) **and** on the idle heartbeat (`heartbeat()`, #360)
+— so the fill/cancel-confirm query fires during a quiet stretch too, not only when a real tick
+arrives. The per-order throttle (`poll_interval_ms`) still gates the actual broker I/O, so a faster
+heartbeat does not multiply API calls.
 
 Three gates on the scheduler, all silent skips:
 
@@ -1109,17 +1177,37 @@ Three gates on the scheduler, all silent skips:
 
 Pathological "stuck in-flight" cases (worker dead, network hung) are caught by the existing `check_timeouts()` mechanism — when `pending.timeout_at` passes, the order is rejected via `_handle_timeout`.
 
-`_handle_query_response` ALWAYS clears `pending.in_flight_query` (the query is resolved either way), then applies a stale-broker_ref guard before any state mutation. The guard was built for the legacy EditOrder flip (a QueryJob dispatched before the swap returned the OLD ref while `pending.broker_ref` already held the NEW one). With in-place `AmendOrder` the txid is stable across a modify, so the guard no longer fires in normal Kraken flow; it stays as a defensive net (e.g. brokers that cancel-replace). State mutations are skipped on stale; the next throttle cycle fires a fresh QueryJob against the current ref.
+`_handle_query_response` ALWAYS clears `pending.in_flight_query` (the query is resolved either way),
+then applies a stale-broker_ref guard before any state mutation. The guard was built for the legacy
+EditOrder flip (a QueryJob dispatched before the swap returned the OLD ref while
+`pending.broker_ref` already held the NEW one). With in-place `AmendOrder` the txid is stable across
+a modify, so the guard no longer fires in normal Kraken flow; it stays as a defensive net (e.g.
+brokers that cancel-replace). State mutations are skipped on stale; the next throttle cycle fires a
+fresh QueryJob against the current ref.
 
-`poll_interval_ms` is per-broker via `BrokerTransportConfig` (default 5000 ms). Tuning guidance: 5000 ms (default — Kraken-friendly), 1000 ms (scalping), 500 ms (only with rate-limit headroom verified). MARKET-order polling in `_process_pending_orders` stays sync — low frequency, no rate pressure.
+`poll_interval_ms` is per-broker via `BrokerTransportConfig` (default 5000 ms). Tuning guidance:
+5000 ms (default — Kraken-friendly), 1000 ms (scalping), 500 ms (only with rate-limit headroom
+verified). MARKET-order polling in `_process_pending_orders` stays sync — low frequency, no rate
+pressure.
 
 ### Drift Audit (#327)
 
-After every EXECUTED outcome the `DriftAuditor` (wired in `autotrader_main.py` when `drift_audit.enabled=True`) captures a snapshot of the synthetic state (`pending.cumulative_fee` / `cumulative_avg_price` / `cumulative_filled_lots`) and fires a one-shot `submit_trades_query_async()` against the broker. When the per-execution `TradesQueryResponse` arrives via `drain_inbox`, the executor's `_handle_trades_response` fan-outs to all registered `_trades_response_consumers` — including DriftAuditor — which then compares snapshot vs. broker truth across FEE / VOLUME / PRICE dimensions, logs drift events above their thresholds, and surfaces counters in the SESSION panel `Audit:` line.
+After every EXECUTED outcome the `DriftAuditor` (wired in `autotrader_main.py` when
+`drift_audit.enabled=True`) captures a snapshot of the synthetic state (`pending.cumulative_fee` /
+`cumulative_avg_price` / `cumulative_filled_lots`) and fires a one-shot
+`submit_trades_query_async()` against the broker. When the per-execution `TradesQueryResponse`
+arrives via `drain_inbox`, the executor's `_handle_trades_response` fan-outs to all registered
+`_trades_response_consumers` — including DriftAuditor — which then compares snapshot vs. broker
+truth across FEE / VOLUME / PRICE dimensions, logs drift events above their thresholds, and surfaces
+counters in the SESSION panel `Audit:` line.
 
 Strict read-only — no state mutation, no portfolio adjustment. Correction is deferred to the future Reconciliation Layer (#151). Detailed architecture: [architecture/drift_audit.md](../architecture/drift_audit.md).
 
-The listener signature `add_order_outcome_listener(callback)` was extended to `Callable[[OrderDirection, OrderResult, Optional[PendingOrder]], None]` to give consumers the pending reference at outcome time. OrderGuard's adapter accepts the new arg and ignores it. Pre-submit rejections (no PendingOrder yet) pass `pending=None` explicitly at the single relevant call site (`_record_async_rejection` in `live_trade_executor.py`).
+The listener signature `add_order_outcome_listener(callback)` was extended to
+`Callable[[OrderDirection, OrderResult, Optional[PendingOrder]], None]` to give consumers the
+pending reference at outcome time. OrderGuard's adapter accepts the new arg and ignores it.
+Pre-submit rejections (no PendingOrder yet) pass `pending=None` explicitly at the single relevant
+call site (`_record_async_rejection` in `live_trade_executor.py`).
 
 ### Symbol Mapping
 
@@ -1214,7 +1302,9 @@ Phase 9 in setup_pipeline():
 
 ### Direct Injection
 
-AutoTrader is single-process. Backtesting uses `inject_warmup_bars()` with bar dicts for subprocess transport (pickle, CoW). AutoTrader bypasses this — creates `Bar` objects directly and calls `bar_renderer.initialize_historical_bars()`. No serialization round-trip.
+AutoTrader is single-process. Backtesting uses `inject_warmup_bars()` with bar dicts for subprocess
+transport (pickle, CoW). AutoTrader bypasses this — creates `Bar` objects directly and calls
+`bar_renderer.initialize_historical_bars()`. No serialization round-trip.
 
 ### Kraken OHLC API
 

@@ -206,9 +206,10 @@ class AbstractTradeExecutor(ABC):
         # Executor mode — subclasses override (LiveTradeExecutor → LIVE)
         self._executor_mode = ExecutorMode.SIMULATION
 
-        # Order outcome listeners — notify DecisionTradingApi, Reconciliation,
-        # and other consumers of async fill/rejection outcomes (e.g. margin
-        # check at fill time). Signature: (direction, result) -> None.
+        # Order outcome listeners — notify DecisionTradingApi (OrderGuard), the
+        # DecisionEventDispatcher and the DriftAuditor (#327) of async fill/rejection
+        # outcomes (e.g. margin check at fill time).
+        # Signature: (direction, result, pending_order) -> None.
         # Multi-slot: any number of listeners can register independently.
         self._order_outcome_listeners: List[Callable[[OrderDirection, OrderResult, Optional[PendingOrder]], None]] = []
 
