@@ -116,6 +116,13 @@ class PendingOrderTiming:
     broker_fill_msc: Optional[int] = None
     submitted_at: Optional[datetime] = None
     timeout_at: Optional[datetime] = None
+    # The same submission moment read from the MONOTONIC clock, and it exists for one
+    # reason: `submitted_at` is a point in time and must stay a wall-clock reading, but a
+    # DURATION must not be computed from two wall-clock readings. NTP can step that clock
+    # backwards between submit and fill, which yields a negative latency — and a latency
+    # lands in a min/max aggregate, where a single impossible value reads like a venue
+    # fault. Monotonic never steps. Absolute values are meaningless; only differences are.
+    submitted_monotonic: Optional[float] = None
 
 
 @dataclass

@@ -849,3 +849,25 @@ separately, and each was verified by removing it and watching exactly one test g
 exactly like one that passed. Grading the session `FINISHED_WITH_ERRORS` (§35) is the intended
 consequence — the operator is meant to notice that the run proved less than it appears to.
 
+
+### test_pending_latency.py — the clock a duration is measured on
+
+An order's latency is a DURATION, and a duration must not come from two wall-clock readings.
+NTP can step the wall clock backwards inside the submit-to-fill window, and the negative value
+that follows lands in a min/max aggregate — where one impossible number reads like a venue
+fault rather than a clock fault.
+
+The measurement therefore runs on the monotonic clock (`time.monotonic()`), which never steps
+backwards, while `submitted_at` stays a wall-clock reading because it is a point in time rather
+than a duration. `PendingOrderTiming.submitted_monotonic` carries the second stamp.
+
+| Class | Description |
+|---|---|
+| `TestTheLatencyIsMeasuredOnTheMonotonicClock` | the elapsed monotonic difference becomes milliseconds; a wall clock that stepped BACKWARDS cannot produce a negative latency; two orders whose wall-clock stamps differ by a decade measure the same |
+| `TestAnUnmeasurableLatencyIsReportedAsUnmeasured` | a wall-clock stamp alone yields `None`, never a substituted number, and so does an order carrying no stamp at all |
+| `TestEveryLiveSubmissionCarriesTheStamp` | `register_pending_open()` stamps the monotonic clock — the guard against a future submission site forgetting it |
+
+**Why `None` rather than a fallback:** an unmeasurable duration reported as unmeasured costs a
+blank column; reported as a wall-clock difference it costs an investigation into a venue that
+did nothing wrong. This mirrors the rule that a missing injected clock raises instead of
+falling back.

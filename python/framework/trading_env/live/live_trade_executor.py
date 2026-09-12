@@ -1726,7 +1726,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             pending_order_id=order_id,
             order_action=PendingOrderAction.CLOSE,
             order_type=OrderType.STOP,
-            timing=PendingOrderTiming(submitted_at=datetime.now(timezone.utc)),
+            timing=PendingOrderTiming(
+                submitted_at=datetime.now(timezone.utc),
+                submitted_monotonic=time.monotonic()),
             broker_ref=None,
             symbol=position.symbol,
             direction=direction,
@@ -2170,7 +2172,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             pending_order_id=order_id,
             order_action=PendingOrderAction.OPEN,
             order_type=request.order_type,
-            timing=PendingOrderTiming(submitted_at=datetime.now(timezone.utc)),
+            timing=PendingOrderTiming(
+                submitted_at=datetime.now(timezone.utc),
+                submitted_monotonic=time.monotonic()),
             broker_ref=None,
             symbol=request.symbol,
             direction=request.direction,
@@ -2932,18 +2936,23 @@ class LiveTradeExecutor(AbstractTradeExecutor):
     @staticmethod
     def _calculate_pending_latency_ms(pending: PendingOrder) -> Optional[float]:
         """
-        Calculate pending duration in milliseconds from submitted_at to now.
+        Calculate pending duration in milliseconds, from submission to now.
+
+        Measured on the MONOTONIC clock, never on the wall clock: NTP can step the
+        wall clock backwards inside the submit-to-fill window, and the resulting
+        negative latency lands in a min/max aggregate where it reads like a venue
+        fault. A missing stamp yields None rather than a wall-clock substitute — an
+        unmeasurable duration is reported as unmeasured, not as a wrong number.
 
         Args:
-            pending: Pending order with submitted_at timestamp
+            pending: Pending order carrying the submission stamps
 
         Returns:
-            Latency in ms, or None if submitted_at not set
+            Latency in ms, or None when the order carries no monotonic stamp
         """
-        if pending.timing.submitted_at is None:
+        if pending.timing.submitted_monotonic is None:
             return None
-        elapsed = datetime.now(timezone.utc) - pending.timing.submitted_at
-        return elapsed.total_seconds() * 1000
+        return (time.monotonic() - pending.timing.submitted_monotonic) * 1000
 
     # ============================================
     # Cleanup

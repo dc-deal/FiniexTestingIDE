@@ -321,7 +321,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         pending = PendingOrder(
             pending_order_id=order_id,
             order_action=PendingOrderAction.OPEN,
-            timing=PendingOrderTiming(submitted_at=now, timeout_at=timeout_at),
+            timing=PendingOrderTiming(
+                submitted_at=now, timeout_at=timeout_at,
+                submitted_monotonic=time.monotonic()),
             broker_ref=broker_ref,
             symbol=symbol,
             direction=direction,
@@ -379,7 +381,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         pending = PendingOrder(
             pending_order_id=position_id,
             order_action=PendingOrderAction.CLOSE,
-            timing=PendingOrderTiming(submitted_at=now, timeout_at=timeout_at),
+            timing=PendingOrderTiming(
+                submitted_at=now, timeout_at=timeout_at,
+                submitted_monotonic=time.monotonic()),
             broker_ref=broker_ref,
             close_lots=close_lots,
             close_reason=close_reason,
