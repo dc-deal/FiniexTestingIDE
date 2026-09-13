@@ -67,6 +67,93 @@ allow_origins=[
 
 For production use, restrict `allow_origins` to the actual deployment domain. No additional changes are needed — the CORS list is the only configuration surface.
 
+## Authentication
+
+Every route but `/api/v1/health` requires a bearer token, and holding a token is not the same as
+being entitled to what it asks for. The model is not this project's own: it is the shared
+`finiex_auth` package, installed from a pinned public tag, so the security vocabulary exists once
+rather than once per service.
+
+**Two checks, and they fail differently.** The bearer check is mounted on the ROUTER, so a route
+added later inherits it by construction — the failure it prevents cannot be reached by forgetting.
+The grant check is declared PER router with `Security(..., scopes=['<surface>'])`, so a router
+mounted without its scopes is authenticated but ungated, and looks identical to one that is not.
+Only a walk over the surface tells them apart, which is why `assert_no_identity_route_is_ungated`
+runs in the suite.
+
+**A grant names a thing, not a route:** `<surface>:<name>`, where the surface is the router and the
+name is the route's first path parameter. So `bars:kraken_spot` is one venue's bar data. Report
+routes are addressed by a generated run id nobody would write into a token, so `reports:*` is the
+realistic grant there — the model degrades to surface level by design.
+
+| Surface | Router | Typical grant |
+|---|---|---|
+| `brokers` | `broker_router` | `brokers:*` |
+| `bars` | `bars_router` | `bars:kraken_spot`, `bars:mt5` |
+| `reports` | `reports_router` | `reports:*` |
+| `sweeps` | `sweeps_router` | `sweeps:*` |
+
+The vocabulary is closed: a grant naming anything else fails when the credentials file is parsed,
+at boot, rather than becoming a denial at request time that nobody can explain.
+
+**A COLLECTION route has no path parameter, so a grant has nothing to be about — and that was a
+hole.** Measured 2026-09-13 against a token holding only `bars:*` and `brokers:*`:
+`/api/v1/reports/runs` answered 200 with the full run index, naming every live run, and
+`/api/v1/sweeps` answered 200 — while every identity route beside them was correctly refused. The
+package closes it with a floor: a collection route requires **at least one** grant on its router's
+surface, and a caller entitled to part of a list still reaches the handler, which filters it.
+
+**The walk cannot see this.** It calls routes whose path contains a parameter, so a collection route
+gives it nothing to call. Those refusals are named by hand in the suite, and a new collection route
+needs its own test or nothing looks at it.
+
+**Two routes are declared on the app rather than on a router**, so a dependency given at
+`include_router` never reaches them. Both states are chosen rather than inherited:
+`/api/v1/timeframes` is **open** beside `/health` — the app's own static configuration, none of the
+four surfaces, and gating it would make a market-data grant the precondition for a list that reveals
+nothing about market data. `/api/v1/brokers` **requires a token** but takes no grant: which venues
+this installation carries is a fact about the installation.
+
+**For a browser client**, `CORSMiddleware` answers the `OPTIONS` preflight before routing, so the
+preflight — which carries no `Authorization`, by specification — is never gated. `expose_headers`
+lists `WWW-Authenticate` and `Retry-After`, because a browser hides every response header that is
+not CORS-safelisted: without it a cross-origin client sees a 401's status and not the scheme to
+retry with.
+
+**Where tokens live.** `user_configs/credentials/api_tokens.json`, with a tracked placeholder at
+`configs/credentials/api_tokens.json` whose entries are all switched off — an example in a template
+file then cannot gate or grant anything by accident. The registry holds only SHA-256 digests, so a
+configuration file that leaks is not a leaked credential; a lost token is re-minted, never
+recovered. A live token answering from the TRACKED file refuses the boot: that is a real key in the
+repository, which is the expensive half of the credential rule.
+
+Mint one with `python python/cli/api_token_cli.py mint --consumer <name> --grants 'bars:*'`.
+
+**Two switches, not one, and they are separate on purpose.** The bearer dependency is built only
+when `api.require_auth` is on AND a consumer is configured. Otherwise nothing places a consumer on
+the request, the grant check finds nobody to hold a grant, and behaviour is exactly what it was
+before.
+
+Collapsing them would make the first token written into the credentials file gate every route in
+the same instant — and a consumer has to HOLD its token before it can start sending the header, so
+the rollout needs the window in between. `api.require_auth` defaults to false: the safe direction
+is the one that cannot lock out a consumer nobody has told yet.
+
+**What that window can and cannot prove.** With gating off, a request carrying a wrong token — or
+nonsense — still answers 200, because nothing verifies it. So the window de-risks the CLIENT (is the
+header attached, does anything break by sending it) and not the CREDENTIAL (is this token right, are
+its grants right). That is answered the instant gating goes on. Do not read a 200 in this state as
+the token being accepted.
+
+The boot line names both conditions, because from a request the two states are indistinguishable:
+
+```
+    API authentication: NOT enforced (api.require_auth is off — tokens exist, nothing is gated)
+      · 2 consumer(s) [ragengine, viewer] from user_configs/credentials/api_tokens.json
+```
+
+It is a state to pass through, not one to stay in.
+
 ## Endpoints
 
 | Method | Path | Description |

@@ -27,6 +27,12 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
 pydantic>=2.0.0
 
+# API authentication — one token model shared with the signal producer, so the security
+# vocabulary exists once rather than twice. Public repository, plain https: a private
+# dependency would make this repository unbuildable for anyone without a key.
+# Pinned by tag; a breaking change is coordinated before either side raises its pin.
+finiex-auth @ git+https://github.com/dc-deal/finiex-modules-auth.git@v0.3.0
+
 # Console
 rich>=14.2.0
 psutil>=7.1.0

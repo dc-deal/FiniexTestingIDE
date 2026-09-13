@@ -1,172 +1,176 @@
 {
-    "version": "1.4.0",
-    "description": "FiniexTestingIDE - Application Configuration",
-    "development": {
-        "dev_mode": false
+  "version": "1.4.0",
+  "description": "FiniexTestingIDE - Application Configuration",
+  "development": {
+    "dev_mode": false
+  },
+  "console_logging": {
+    "enabled": true,
+    "log_level": "INFO",
+    "warn_on_parameter_override": true,
+    "scenario": {
+      "enabled": false,
+      "log_level": "WARNING",
+      "write_system_info": true
     },
-    "console_logging": {
-        "enabled": true,
-        "log_level": "INFO",
-        "warn_on_parameter_override": true,
-        "scenario": {
-            "enabled": false,
-            "log_level": "WARNING",
-            "write_system_info": true
-        },
-        "summary": {
-            "show_global_log": false,
-            "detail": true,
-            "scenario_detail_threshold": 9
-        }
+    "summary": {
+      "show_global_log": false,
+      "detail": true,
+      "scenario_detail_threshold": 9
+    }
+  },
+  "file_logging": {
+    "enabled": true,
+    "log_level": "DEBUG",
+    "global_log_dir": "logs/",
+    "append_mode": true,
+    "run_logs": {
+      "simulation": "runs/simulation",
+      "live": "runs/live"
     },
-    "file_logging": {
-        "enabled": true,
-        "log_level": "DEBUG",
-        "global_log_dir": "logs/",
-        "append_mode": true,
-        "run_logs": {
-            "simulation": "runs/simulation",
-            "live": "runs/live"
+    "run_index": "runs/runs_index.parquet",
+    "scenario": {
+      "enabled": true,
+      "log_level": null,
+      "file_name_prefix": "scenario"
+    }
+  },
+  "paths": {
+    "data_processed": "data/processed",
+    "user_algo_dirs": [
+      "user_algos/"
+    ],
+    "run_ledger": "runs/ledger"
+  },
+  "history": {
+    "bar_max_history": 1000,
+    "order_history_max": 10000,
+    "trade_history_max": 5000
+  },
+  "api": {
+    "_comment": "require_auth false is the rollout state in which tokens may exist while nothing is gated yet - a consumer needs its token before it can start sending the header. Set true once every consumer confirms it sends one.",
+    "require_auth": false
+  },
+  "autotrader": {
+    "execution": {
+      "parallel_workers": false,
+      "bar_max_history": 1000,
+      "heartbeat_interval_ms": 500,
+      "market_data_stale_after_s": 300.0,
+      "venue_held_protection": false,
+      "performance_tracking": {
+        "worker_decision_tracking": true
+      }
+    },
+    "clipping_monitor": {
+      "report_interval_s": 60.0,
+      "strategy": "queue_all",
+      "warn_above_ratio": 0.05
+    },
+    "display": {
+      "enabled": true,
+      "update_interval_ms": 300
+    },
+    "order_guard": {
+      "cooldown_seconds": 60.0,
+      "max_consecutive_rejections": 2,
+      "block_stale_market_data": true
+    },
+    "drift_audit": {
+      "enabled": true,
+      "fee_threshold_pct": 0.5,
+      "volume_threshold_pct": 0.1,
+      "price_threshold_pct": 1.0,
+      "slippage_threshold_pct": 0.5,
+      "log_all": false,
+      "sample_rate": 1.0
+    },
+    "reconciliation": {
+      "enabled": true,
+      "mode": "alert_only",
+      "interval_ticks": 100,
+      "min_interval_seconds": 60.0
+    },
+    "api_monitor": {
+      "enabled": true,
+      "slow_call_threshold_ms": 3000.0
+    },
+    "state_persistence": {
+      "enabled": true,
+      "path": "data/runtime/session_state",
+      "save_interval_ticks": 500,
+      "save_interval_seconds": 60.0,
+      "max_age_trading_days": 5,
+      "on_corrupt": "warn_reset",
+      "on_stale": "warn_reset"
+    },
+    "cold_start": {
+      "enabled": true,
+      "path": "data/runtime/cold_start_state",
+      "adoption_mode": "operator_confirm",
+      "book_drift_interval_ticks": 500
+    },
+    "session_end": {
+      "orders": "cancel",
+      "positions": "leave"
+    },
+    "capital": {
+      "exclusive_account": false
+    }
+  },
+  "backtesting": {
+    "execution": {
+      "parallel_scenarios": true,
+      "max_parallel_scenarios": 99,
+      "default_scenario_execution_config": {
+        "parallel_workers": false,
+        "worker_parallel_threshold_ms": 1.0,
+        "adaptive_parallelization": true,
+        "performance_tracking": {
+          "tick_loop_profiling": true,
+          "worker_decision_tracking": false
         },
-        "run_index": "runs/runs_index.parquet",
-        "scenario": {
-            "enabled": true,
-            "log_level": null,
-            "file_name_prefix": "scenario"
-        }
+        "strict_parameter_validation": true,
+        "tick_processing_budget_ms": 0.0,
+        "heartbeat_interval_ms": 1000
+      }
+    },
+    "default_trade_simulator_config": {
+      "balances": {},
+      "seeds": {
+        "inbound_latency_seed": 42
+      },
+      "inbound_latency_min_ms": 20,
+      "inbound_latency_max_ms": 80
+    },
+    "monitoring": {
+      "enabled": true,
+      "tui_refresh_rate_ms": 300,
+      "detailed_live_stats": true,
+      "detailed_live_stats_threshold": 3,
+      "detailed_live_stats_exports": {
+        "export_portfolio_stats": false,
+        "export_current_bars": false
+      },
+      "event_tape_size": 5
+    },
+    "data_validation": {
+      "warmup_quality_mode": "standard",
+      "allowed_gap_categories": [
+        "seamless",
+        "short",
+        "weekend",
+        "holiday"
+      ]
     },
     "paths": {
-        "data_processed": "data/processed",
-        "user_algo_dirs": [
-            "user_algos/"
-        ],
-        "run_ledger": "runs/ledger"
+      "scenario_sets": "configs/scenario_sets",
+      "generator_template": "configs/generator/template_scenario_set_header.json",
+      "generator_output": "configs/scenario_sets"
     },
-    "history": {
-        "bar_max_history": 1000,
-        "order_history_max": 10000,
-        "trade_history_max": 5000
-    },
-    "autotrader": {
-        "execution": {
-            "parallel_workers": false,
-            "bar_max_history": 1000,
-            "heartbeat_interval_ms": 500,
-            "market_data_stale_after_s": 300.0,
-            "venue_held_protection": false,
-            "performance_tracking": {
-                "worker_decision_tracking": true
-            }
-        },
-        "clipping_monitor": {
-            "report_interval_s": 60.0,
-            "strategy": "queue_all",
-            "warn_above_ratio": 0.05
-        },
-        "display": {
-            "enabled": true,
-            "update_interval_ms": 300
-        },
-        "order_guard": {
-            "cooldown_seconds": 60.0,
-            "max_consecutive_rejections": 2,
-            "block_stale_market_data": true
-        },
-        "drift_audit": {
-            "enabled": true,
-            "fee_threshold_pct": 0.5,
-            "volume_threshold_pct": 0.1,
-            "price_threshold_pct": 1.0,
-            "slippage_threshold_pct": 0.5,
-            "log_all": false,
-            "sample_rate": 1.0
-        },
-        "reconciliation": {
-            "enabled": true,
-            "mode": "alert_only",
-            "interval_ticks": 100,
-            "min_interval_seconds": 60.0
-        },
-        "api_monitor": {
-            "enabled": true,
-            "slow_call_threshold_ms": 3000.0
-        },
-        "state_persistence": {
-            "enabled": true,
-            "path": "data/runtime/session_state",
-            "save_interval_ticks": 500,
-            "save_interval_seconds": 60.0,
-            "max_age_trading_days": 5,
-            "on_corrupt": "warn_reset",
-            "on_stale": "warn_reset"
-        },
-        "cold_start": {
-            "enabled": true,
-            "path": "data/runtime/cold_start_state",
-            "adoption_mode": "operator_confirm",
-            "book_drift_interval_ticks": 500
-        },
-        "session_end": {
-            "orders": "cancel",
-            "positions": "leave"
-        },
-        "capital": {
-            "exclusive_account": false
-        }
-    },
-    "backtesting": {
-        "execution": {
-            "parallel_scenarios": true,
-            "max_parallel_scenarios": 99,
-            "default_scenario_execution_config": {
-                "parallel_workers": false,
-                "worker_parallel_threshold_ms": 1.0,
-                "adaptive_parallelization": true,
-                "performance_tracking": {
-                    "tick_loop_profiling": true,
-                    "worker_decision_tracking": false
-                },
-                "strict_parameter_validation": true,
-                "tick_processing_budget_ms": 0.0,
-                "heartbeat_interval_ms": 1000
-            }
-        },
-        "default_trade_simulator_config": {
-            "balances": {},
-            "seeds": {
-                "inbound_latency_seed": 42
-            },
-            "inbound_latency_min_ms": 20,
-            "inbound_latency_max_ms": 80
-        },
-        "monitoring": {
-            "enabled": true,
-            "tui_refresh_rate_ms": 300,
-            "detailed_live_stats": true,
-            "detailed_live_stats_threshold": 3,
-            "detailed_live_stats_exports": {
-                "export_portfolio_stats": false,
-                "export_current_bars": false
-            },
-            "event_tape_size": 5
-        },
-        "data_validation": {
-            "warmup_quality_mode": "standard",
-            "allowed_gap_categories": [
-                "seamless",
-                "short",
-                "weekend",
-                "holiday"
-            ]
-        },
-        "paths": {
-            "scenario_sets": "configs/scenario_sets",
-            "generator_template": "configs/generator/template_scenario_set_header.json",
-            "generator_output": "configs/scenario_sets"
-        },
-        "parameter_optimization": {
-            "mount_reuse_enabled": true,
-            "villain_abort_enabled": true
-        }
+    "parameter_optimization": {
+      "mount_reuse_enabled": true,
+      "villain_abort_enabled": true
     }
+  }
 }

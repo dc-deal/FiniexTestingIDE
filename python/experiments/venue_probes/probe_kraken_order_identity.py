@@ -74,6 +74,27 @@ MEASUREMENTS
           Not measured: the 'canceled' flavour — no archived subject came back with that
           status in this run.
 
+    2026-09-13 08:55 UTC — SUBJECT SET WIDENED, and the first run's gap was ours.
+        The 2026-09-12 entry reported no `canceled` subject and left that flavour unmeasured.
+        That was a defect in THIS PROBE, not a fact about Kraken: `events.csv` carries a
+        broker reference only where an order produced a fill-shaped event, so a cancelled
+        order never entered the harvest. Reading each run's session logs as well takes the
+        set from 70 to 194.
+
+      Q2  194 of 194 still answerable, 0 gone. Spread: 70 closed, 124 canceled. The retention
+          edge is still not found, now across a wider and older population.
+
+      Q4  THE TERMINAL FLAVOURS ARE NOT DISTINGUISHABLE. A cancelled order answers exactly
+          what a filled one answers:
+              never minted (OZZZZZ-ZZZZZ-ZZZZZZ)  → ['EOrder:Invalid order']
+              venue says closed                   → ['EOrder:Unknown order']
+              venue says canceled                 → ['EOrder:Unknown order']
+          So `Invalid order` vs `Unknown order` separates NEVER MINTED from GONE, and nothing
+          separates the ways of being gone. A resolution that needs to know WHICH terminal
+          state an order reached must ask QueryOrders, never CancelOrder.
+          `expired` remains unmeasured — the archive contains no such subject, and the probe
+          now says so rather than skipping in silence.
+
 Usage:
     python python/experiments/venue_probes/probe_kraken_order_identity.py            # archive
     python python/experiments/venue_probes/probe_kraken_order_identity.py --mode read
@@ -173,6 +194,42 @@ def _harvest_subjects() -> list:
                     seen.add(txid)
                     subjects.append(Subject(txid, key, run_dir.name))
     return subjects
+
+
+def _harvest_bare_txids() -> list:
+    """
+    Collect every Kraken reference the session logs mention, key or no key.
+
+    A SECOND set, and it exists because the first one cannot answer Q4. `events.csv` carries a
+    broker reference only where an order produced a fill-shaped event, so an order that was
+    CANCELLED never enters it — measured: two references the archive records as cancelled were
+    absent from the 70 pairs, and every one of those 70 came back `closed`. Without this the
+    probe would report "no canceled subject" as a fact about the venue rather than about its
+    own harvest.
+
+    No key is derived here. Q4 asks about a reference, not about ours.
+
+    Returns:
+        Sorted unique txids, oldest run first
+    """
+    found = []
+    seen = set()
+    if not _RUNS_DIR.is_dir():
+        return found
+    loose = re.compile(r'O[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{6}')
+    for profile_dir in sorted(_RUNS_DIR.iterdir()):
+        if not profile_dir.is_dir():
+            continue
+        for run_dir in sorted(profile_dir.iterdir()):
+            logs = run_dir / 'session_logs'
+            if not logs.is_dir():
+                continue
+            for log in sorted(logs.glob('*.log')):
+                for txid in loose.findall(log.read_text(errors='ignore')):
+                    if txid not in seen:
+                        seen.add(txid)
+                        found.append(txid)
+    return found
 
 
 def _build_adapter() -> KrakenAdapter:
@@ -321,7 +378,12 @@ def _stage_retention(adapter: KrakenAdapter, subjects: list, resting: set) -> di
     print('=' * 100)
     print('STAGE 2 — Q2: RETENTION EDGE (reads, batched)')
     print('=' * 100)
+    seen = {s.txid for s in subjects}
     candidates = [s.txid for s in subjects if s.txid not in resting]
+    # The wider set adds the flavours events.csv cannot carry — a cancelled order never
+    # produced a fill-shaped event, so it is in the logs and nowhere else.
+    candidates += [t for t in _harvest_bare_txids()
+                   if t not in seen and t not in resting]
     known = {}
     for start in range(0, len(candidates), _BATCH_SIZE):
         batch = candidates[start:start + _BATCH_SIZE]
@@ -336,6 +398,12 @@ def _stage_retention(adapter: KrakenAdapter, subjects: list, resting: set) -> di
     gone = [t for t in candidates if t not in known]
     print(f'{len(known)} of {len(candidates)} archived references still answerable, '
           f'{len(gone)} already gone')
+    # The distribution decides what Q4 can measure: it needs one subject per terminal
+    # flavour, and a flavour the archive does not contain cannot be asked about.
+    spread = {}
+    for status in known.values():
+        spread[status] = spread.get(status, 0) + 1
+    print(f'  status spread: {spread}')
     # The EDGE, never a span: a min/max pair would read as a range in which everything holds.
     for subject in subjects:
         if subject.txid in known:
@@ -437,14 +505,13 @@ def _stage_cancel_a_gone_order(
     print('=' * 100)
 
     targets = [(_NEVER_MINTED, 'never minted by Kraken')]
-    for status in ('closed', 'canceled'):
-        subject = next(
-            (s for s in subjects
-             if s.txid in known and known[s.txid] == status and s.txid not in resting),
-            None,
-        )
-        if subject is not None:
-            targets.append((subject.txid, f'archived, venue says {status}'))
+    for status in ('closed', 'canceled', 'expired'):
+        txid = next(
+            (t for t, s in known.items() if s == status and t not in resting), None)
+        if txid is not None:
+            targets.append((txid, f'archived, venue says {status}'))
+        else:
+            print(f'  (no {status} subject in the archive — that flavour stays unmeasured)')
 
     for txid, why in targets:
         if not _TXID_PATTERN.match(txid) or txid in resting:

@@ -7,6 +7,7 @@ version-control state, the declared version and the environment, so the four cer
 producers stop deriving it four times and disagreeing four ways.
 """
 
+import platform
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -60,6 +61,10 @@ def build_certificate_identity(
         timestamp=stamped,
         valid_until=stamped + timedelta(days=validity_days),
         git_commit=git.commit if git else 'unknown',
+        # Three parts only: a patch release is not a different interpreter for any purpose a
+        # certificate serves, and the full string carries a build date that would make two
+        # otherwise identical records differ.
+        python_version=platform.python_version(),
         git_branch=git.branch if git else None,
         git_dirty=git.dirty if git else False,
         uncommitted_count=git.uncommitted_count if git else 0,

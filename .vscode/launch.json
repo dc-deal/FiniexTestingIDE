@@ -1122,6 +1122,40 @@
                 "order": 1
             }
         },
+        {
+            "name": "🚀 API Token: list consumers",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/api_token_cli.py",
+            "args": [
+                "list"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "08_api_server",
+                "order": 2
+            }
+        },
+        {
+            "name": "🚀 API Token: mint for a consumer",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/api_token_cli.py",
+            "args": [
+                "mint",
+                "--consumer",
+                "${input:apiConsumerName}",
+                "--grants",
+                "${input:apiConsumerGrants}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "08_api_server",
+                "order": 3
+            }
+        },
         // ====================================================
         // ✨ PARAMETER OPTIMIZATION
         // ====================================================
@@ -3598,9 +3632,20 @@
                 "group": "12_release_gate",
                 "order": 8
             }
-        },
+        }
     ],
     "inputs": [
+        {
+            "id": "apiConsumerName",
+            "type": "promptString",
+            "description": "Consumer name, e.g. viewer or ragengine"
+        },
+        {
+            "id": "apiConsumerGrants",
+            "type": "promptString",
+            "description": "One grant, e.g. bars:* (repeat the command for more)",
+            "default": "bars:*"
+        },
         {
             "id": "userScenarioSet",
             "type": "promptString",

@@ -22,12 +22,25 @@ from python.framework.utils.git_info_utils import (
 
 @dataclass
 class SystemFingerprint:
-    """Current system hardware fingerprint."""
+    """
+    Current system fingerprint — the hardware, and the interpreter that ran on it.
+
+    `python_version` is here because a throughput baseline compares against a reference that
+    knew only the hardware. A different minor version is faster in places, so an interpreter
+    change would report itself as `faster than baseline - consider updating` under an
+    unchanged fingerprint, with nothing in the record saying why — a silent baseline shift
+    wearing the face of an improvement.
+
+    It is REPORTED rather than gating, and that is deliberate: a reference registered before
+    this field existed names no version, and refusing on that would make every existing
+    baseline unusable for a reason that is ours rather than the machine's.
+    """
     cpu_model: str
     cpu_cores: int
     ram_total_gb: float
     ram_available_gb: float
     platform: str
+    python_version: str = 'unknown'
 
     def matches_reference(
         self,
@@ -61,6 +74,24 @@ class SystemFingerprint:
 
         return True, None
 
+    def interpreter_note(self, reference: Dict[str, Any]) -> Optional[str]:
+        """
+        Say so when the interpreter differs from the one the baseline was taken on.
+
+        Args:
+            reference: Reference system dict from reference_systems.json
+
+        Returns:
+            A sentence naming both versions, or None when they agree or the reference
+            predates the field
+        """
+        ref_version = reference.get('hardware', {}).get('python_version')
+        if not ref_version or ref_version == self.python_version:
+            return None
+        return (f'Interpreter differs from the baseline: {self.python_version} now, '
+                f'{ref_version} when the reference was registered — a throughput change '
+                f'may be the interpreter rather than the code')
+
 
 def get_system_fingerprint() -> SystemFingerprint:
     """
@@ -88,7 +119,10 @@ def get_system_fingerprint() -> SystemFingerprint:
         cpu_cores=cpu_cores,
         ram_total_gb=ram_total_gb,
         ram_available_gb=ram_available_gb,
-        platform=plat
+        platform=plat,
+        # Three parts only: a patch release is not a different interpreter for a throughput
+        # comparison, and the full string carries a build date that would differ per image.
+        python_version=platform.python_version()
     )
 
 

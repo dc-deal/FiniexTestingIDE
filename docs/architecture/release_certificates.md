@@ -37,6 +37,7 @@ carries what every certificate needs:
   "app_version": "1.4.0",              // MEASURED from configs/app_config.json
   "timestamp": "...", "valid_until": "...",
   "git_commit": "37469ab", "git_branch": "dev-v-1-4",
+  "python_version": "3.12.11",         // MEASURED — the interpreter that ran
   "git_dirty": false, "uncommitted_count": 0,
   "comment": null,
   "isolation_active": true,
@@ -55,6 +56,15 @@ Two guards come with it, and both exempt `dev` because a rehearsal declares noth
 `isolation_active` and `workspace_overrides` describe the *environment*, which means the same
 thing for all four. What was *exercised* — a scenario set, a broker, a profile, a producer —
 stays with the producer that knows it.
+
+`python_version` joined them because the interpreter is part of what ran and nothing recorded
+it. A certificate taken on a different minor version looked identical to one taken on this one.
+The throughput side is where that costs most: the benchmark compares against a registered
+baseline whose fingerprint knew the CPU, the cores, the RAM and the kernel — and not the
+interpreter. A faster runtime would therefore report itself as `faster than baseline - consider
+updating`, with nothing saying why. The benchmark fingerprint now carries the version too and
+NAMES a difference against the baseline rather than failing on it: a reference registered before
+the field existed must stay usable.
 
 ---
 
