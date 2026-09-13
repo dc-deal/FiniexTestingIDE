@@ -27,6 +27,7 @@ simply pass fixed or advanced timestamps instead of patching `datetime.now()`.
 | Class | What it validates |
 |-------|-------------------|
 | `TestCooldown` | Threshold arming, direction isolation, success reset, expiry, counter accumulation, tick-time anchoring (cooldowns measured in simulated time, not wall-clock) |
+| `TestBrokerUnreachableArmsTheCooldown` | `BROKER_UNREACHABLE` is a cooldown reason (#473 added the reason and the set was not extended); the cooldown expires once rejections stop, and a rejection on every tick would never let it — which is why the timeout-removal fix has to land first |
 | `TestConfigurableThreshold` | Custom `max_consecutive_rejections`, cooldown duration in message |
 
 ### Level 2 — Scenario Integration Tests

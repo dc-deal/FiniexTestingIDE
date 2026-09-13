@@ -78,6 +78,20 @@ knowing rather than rediscovering:
   against `get_active_orders()` — resting orders only — so an unresolved MARKET or CLOSE
   order can never be attributed by it, whatever the cadence. Its only exit is the timeout
   (`order_timeout_seconds`, 30 s) → `BROKER_UNREACHABLE`.
+- **That timeout fires exactly once, and removal is keyed by the order's OWN id.** The
+  reference-keyed removals cannot serve an order whose write was never answered: its
+  `broker_ref` is `None`, the index lookup finds nothing, and they return before removing
+  anything — so the same order timed out again on every heartbeat and every tick for the
+  rest of the session, repeating `on_order_rejected` at the algo and holding
+  `has_pending_orders()` true. For a CLOSE it held `is_pending_close` true, which made that
+  position unclosable. `discard_order()` removes by `pending_order_id`, which always exists.
+- **`BROKER_UNREACHABLE` arms the order cooldown**, for the same reason as the other
+  cooldown reasons: when the venue cannot be reached, sending more orders helps least. The
+  brake gates ENTRIES only, so closing and protecting an open position stay unaffected.
+  This depends on the line above and cannot precede it: `record_rejection` re-arms the
+  cooldown on every call once the count is at threshold, and only a success in the same
+  direction clears it — so a timeout that re-fired every tick would re-block the direction
+  every tick, turning a sixty-second pause into a permanent trading stop.
 - **And the pull is cadenced.** It fires every `interval_ticks` (100) ticks OR at most every
   `min_interval_seconds` (60 s by default, profile-configurable) — whichever comes first, so
   60 s is the CEILING of the wait during an idle market, not a floor. A resting order is

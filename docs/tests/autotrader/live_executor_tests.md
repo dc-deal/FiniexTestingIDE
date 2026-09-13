@@ -796,6 +796,31 @@ order is resting at the broker and we have forgotten it — we manufactured the 
 | `test_failed_status_poll_is_only_a_warning` | A failed status poll is a WARNING; the next cadence retries |
 | `test_a_venue_answer_is_logged_by_neither` | A normal venue answer is neither error nor warning |
 
+**`TestAStuckUnresolvedRestingOrderIsReported`** — keeping an unresolved order is right; saying
+nothing about it forever is not. The poll loop skips every order without a reference (there is
+nothing to poll *with*) and `check_timeouts` sees only the processor's dict, which resting orders
+never enter. Until #487 can ASK the venue, the operator is owed the telling.
+
+| Test | Description |
+|---|---|
+| `test_it_is_reported_as_an_error` | Reported at ERROR level, naming `UNRESOLVED` and the issue that will resolve it |
+| `test_it_is_said_once_not_every_tick` | A standing condition, not an event — repeating it per cycle buries the channel |
+| `test_the_order_is_kept_not_dropped` | Reporting must not become deleting; that is what #473 prevents |
+| `test_a_young_order_is_not_reported_yet` | An answer that has not arrived YET is not one that never will |
+
+**`TestATimedOutUnresolvedOrderLeavesTheTracker`** — removal used to go through the broker
+reference alone. An order whose write was never answered has none, so `mark_rejected` popped
+nothing and returned *before* `remove_order`, while `check_timeouts` deliberately does not remove.
+The same order therefore timed out again on every heartbeat and every tick for the rest of the
+session.
+
+| Test | Description |
+|---|---|
+| `test_the_pending_is_gone_after_its_timeout` | The tracker is empty once the timeout is handled |
+| `test_the_timeout_fires_once_not_on_every_heartbeat` | `check_timeouts` returns it once, not forever — the repeat is what reached the algo as a repeated rejection |
+| `test_a_close_whose_write_was_lost_can_be_closed_again` | The expensive half: `is_pending_close` no longer stays true, so the position is not permanently unclosable |
+| `test_an_answered_order_still_leaves_its_reference_index` | The ordinary case stays correct — no stale index entry a later answer could resolve against |
+
 ---
 
 ### test_order_type_gate.py — #500 sibling: declared vs built

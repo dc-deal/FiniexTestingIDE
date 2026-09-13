@@ -287,7 +287,14 @@ worth answering explicitly. It has three exits, and the second one is why this m
    each such order ONCE into the session error pot: the session must not grade green.
    Deciding it needs the closed-order / trades channel (#487).
 3. **A MARKET or CLOSE order in the latency queue times out** after `order_timeout_seconds`
-   and is recorded as `BROKER_UNREACHABLE` — blaming the transport, not the venue.
+   and is recorded as `BROKER_UNREACHABLE` — blaming the transport, not the venue. That
+   timeout fires exactly ONCE, because the removal is keyed by `pending_order_id` through
+   `discard_order()` and not by a broker reference the order never received. Keying it by
+   reference meant the removal found nothing and returned before removing, so the same order
+   timed out again on every heartbeat and every tick for the rest of the session — and for a
+   CLOSE that held `is_pending_close` true, which made the position unclosable. The reason
+   also arms the order cooldown, which gates ENTRIES only; that pair has a hard ordering,
+   described in `external_connection_policy.md`.
 
 The asymmetry between 2 and 3 is STRUCTURAL, not a matter of timing: the truth pull compares
 against `get_active_orders()`, which carries World 2 and World 3 only. A latency-queue

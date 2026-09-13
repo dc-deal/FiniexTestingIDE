@@ -1611,6 +1611,22 @@
                 "order": 6
             }
         },
+        {
+            "name": "🔭 Venue Probe: Kraken order identity (#487, READ-ONLY)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/venue_probes/probe_kraken_order_identity.py",
+            "args": [
+                "--mode",
+                "read"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_experiments",
+                "order": 7
+            }
+        },
         // ====================================================
         // 🧩 PYTEST VALIDATION
         // ====================================================

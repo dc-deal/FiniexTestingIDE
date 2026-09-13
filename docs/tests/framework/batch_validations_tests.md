@@ -51,6 +51,30 @@ Phase 0 step (#407) rejecting a symbol whose `swap_mode` the swap engine does no
 | `test_unknown_mode_marks_invalid` | `UNKNOWN` (unparseable string mapped by the adapter) → invalid |
 | `test_broker_not_in_map_skips_scenario` | Broker type not in map → silent skip |
 
+### `test_scenario_data_validator.py`
+
+#### `TestMissingCoverageRange`
+
+`DataCoverageReport` is constructed with `start_time` / `end_time` as `None` and keeps them when its
+analysis finds no files. Dereferencing that `None` raised an `AttributeError` that aborted the whole
+batch — a DATA condition escaping as a code crash, which §33 exists to prevent.
+
+| Test | Description |
+|---|---|
+| `test_absent_range_is_an_error_not_a_crash` | Report with no range → one error string returned, nothing raised |
+| `test_the_error_names_the_broker_and_symbol` | The message names the broker type and symbol, so the operator knows what to import |
+| `test_a_half_filled_range_is_refused_too` | Only `end_time` missing → still refused |
+
+#### `TestRangeChecksStillFire`
+
+The guard must not swallow the checks it stands in front of.
+
+| Test | Description |
+|---|---|
+| `test_scenario_inside_the_range_is_clean` | Period within coverage → no errors |
+| `test_start_before_available_data_is_reported` | `start_date` earlier than the first tick → error naming BEFORE |
+| `test_end_after_available_data_is_reported` | `end_date` later than the last tick → error naming AFTER |
+
 ### `test_broker_data_preparator.py`
 
 #### `TestGetValidBrokerScenarioMap`
@@ -286,6 +310,7 @@ matching the index as soon as one scenario is excluded.
 - `tests/framework/batch_validations/test_market_fit_advisory.py`
 - `tests/framework/batch_validations/test_validation_types.py`
 - `tests/framework/batch_validations/test_scenario_package_index.py`
+- `tests/framework/batch_validations/test_scenario_data_validator.py`
 - `tests/framework/batch_validations/test_broker_data_preparator.py`
 - `tests/framework/batch_validations/test_market_config_manager.py`
 - `tests/framework/batch_validations/test_broker_config_factory.py`

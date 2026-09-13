@@ -499,6 +499,39 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
 
         return pending
 
+    def discard_order(
+        self,
+        order_id: str,
+        reason: str,
+    ) -> Optional[PendingOrder]:
+        """
+        Remove a pending order by its own id, whatever its broker reference is.
+
+        The reference-keyed removals above cannot serve an order whose write was never
+        answered: its broker_ref is None, so the index lookup finds nothing and they return
+        BEFORE removing anything. The order id always exists.
+
+        Args:
+            order_id: Internal pending-order identifier
+            reason: Why the order is being discarded, for the log line
+
+        Returns:
+            PendingOrder if it was still tracked, None otherwise
+        """
+        pending = self.remove_order(order_id)
+        if pending is None:
+            return None
+
+        if pending.broker_ref is not None:
+            self._broker_ref_index.pop(pending.broker_ref, None)
+
+        self.logger.warning(
+            f'Pending order discarded: {order_id} reason={reason} '
+            f'(broker_ref={pending.broker_ref or "never answered"})'
+        )
+
+        return pending
+
     # ============================================
     # Timeout Detection
     # ============================================

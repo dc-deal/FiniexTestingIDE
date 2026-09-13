@@ -8,6 +8,7 @@ and reset semantics.
 
 from datetime import datetime, timedelta, timezone
 
+from python.framework.trading_env.decision_trading_api import _COOLDOWN_REJECTION_REASONS
 from python.framework.trading_env.order_guard import OrderGuard
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
@@ -119,6 +120,49 @@ class TestCooldown:
         assert not guard.is_direction_blocked(
             OrderDirection.LONG, _T0 + timedelta(seconds=60, milliseconds=100)
         )
+
+
+class TestBrokerUnreachableArmsTheCooldown:
+    """
+    An unreachable venue is the case where sending more orders helps least.
+
+    #473 moved the order-path transport fault from BROKER_ERROR to the new
+    BROKER_UNREACHABLE and the cooldown set was not extended, so the pause that used to arm
+    when the venue could not be reached armed on nothing.
+    """
+
+    def test_broker_unreachable_is_a_cooldown_reason(self):
+        assert RejectionReason.BROKER_UNREACHABLE in _COOLDOWN_REJECTION_REASONS
+
+    def test_the_cooldown_expires_once_the_rejections_stop(self):
+        guard = OrderGuard(
+            max_consecutive_rejections=2,
+            cooldown_seconds=60.0,
+        )
+        guard.record_rejection(OrderDirection.LONG, _T0)
+        guard.record_rejection(OrderDirection.LONG, _T0)
+
+        assert guard.is_direction_blocked(OrderDirection.LONG, _T0 + timedelta(seconds=30))
+        assert not guard.is_direction_blocked(OrderDirection.LONG, _T0 + timedelta(seconds=61))
+
+    def test_a_rejection_on_every_tick_would_never_let_it_expire(self):
+        """
+        Why the timeout-removal fix has to land BEFORE this reason joins the set.
+
+        `record_rejection` re-arms the cooldown on every call once the count is at the
+        threshold, and only a success in the same direction clears it. While a timed-out
+        order re-fired its rejection on every tick, the direction would be re-blocked on
+        every tick and no successful entry could ever reset it — a permanent trading stop,
+        produced by a brake that was meant to be a sixty-second pause.
+        """
+        guard = OrderGuard(
+            max_consecutive_rejections=2,
+            cooldown_seconds=60.0,
+        )
+        for tick in range(200):
+            guard.record_rejection(OrderDirection.LONG, _T0 + timedelta(seconds=tick))
+
+        assert guard.is_direction_blocked(OrderDirection.LONG, _T0 + timedelta(seconds=250))
 
 
 class TestConfigurableThreshold:

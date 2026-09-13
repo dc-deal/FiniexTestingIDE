@@ -680,9 +680,14 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._request_processor.record_outcome(
             pending, PendingOrderOutcome.TIMED_OUT, latency_ms=latency_ms)
 
-        # Remove from tracker
-        self._request_processor.mark_rejected(
-            broker_ref=pending.broker_ref,
+        # Remove from tracker, keyed by the order's OWN id and never by its broker
+        # reference: an order whose submit answer was lost has no reference, so the
+        # reference-keyed removal finds nothing and returns before removing. The timeout
+        # then fires again on every heartbeat and every tick for the rest of the session —
+        # and for a CLOSE that leaves is_pending_close permanently true, so the position
+        # can never be closed again.
+        self._request_processor.discard_order(
+            order_id=pending.pending_order_id,
             reason='order_timeout',
         )
 

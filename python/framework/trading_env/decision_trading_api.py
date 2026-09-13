@@ -53,18 +53,21 @@ from python.framework.types.trading_env_types.trading_env_stats_types import Cos
 
 from .abstract_trade_executor import AbstractTradeExecutor
 from .order_guard import OrderGuard
-from .portfolio_manager import UNSET, _UnsetType
+from .portfolio_manager import UNSET, AccountInfo, Position, _UnsetType
 
 # Rejection reasons that indicate broker/account-side problems worth
 # cooling down on. Local validation rejections (lot size, unsupported type)
 # are decision bugs, not broker spam — they don't arm the cooldown.
+# BROKER_UNREACHABLE belongs here for the same reason as the rest: when the venue cannot be
+# reached, sending more orders is what helps least. #473 introduced the reason and this set
+# was not extended, so the pause that used to arm on an unreachable broker armed on nothing.
 _COOLDOWN_REJECTION_REASONS = frozenset({
     RejectionReason.INSUFFICIENT_MARGIN,
     RejectionReason.INSUFFICIENT_FUNDS,
     RejectionReason.BROKER_ERROR,
+    RejectionReason.BROKER_UNREACHABLE,
     RejectionReason.MARKET_CLOSED,
 })
-from .portfolio_manager import AccountInfo, Position
 
 
 class DecisionTradingApi:
