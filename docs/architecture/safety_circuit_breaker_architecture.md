@@ -27,13 +27,15 @@ including account blowups. The breaker is a *production safety net*, not a simul
 AutoTrader Tick Loop (every tick)
     │
     ├── Compute safety_value:
-    │   ├── SPOT:   portfolio.get_spot_equity(mid_price)  (balance + held asset value)
-    │   └── MARGIN: executor.get_balance()                (raw balance)
+    │   └── portfolio.get_account_value()    ONE definition, per account model:
+    │       ├── SPOT:   balance + held assets at the current mid price
+    │       └── MARGIN: balance + unrealized P&L
     │
-    ├── _check_safety(safety_value, initial_balance)
+    ├── _check_safety(safety_value, baseline)
     │   ├── min threshold check:  SPOT → min_equity, MARGIN → min_balance
-    │   ├── max_drawdown check:   (initial - current) / initial > max_drawdown_pct?
-    │   └── Sets _safety_blocked = True if EITHER triggers (OR-combined)
+    │   ├── drawdown checks:      pct and abs, against the risk baseline
+    │   ├── daily loss checks:    pct and abs, against the DAY's baseline
+    │   └── Sets _safety_blocked = True if ANY triggers (OR-combined, every one named)
     │
     ├── if _safety_blocked:
     │   └── decision overridden to FLAT → send_order() never called
@@ -47,10 +49,16 @@ AutoTrader Tick Loop (every tick)
 
 | Mode | Value checked | Min threshold field | Drawdown basis |
 |------|--------------|-------------------|----------------|
-| **Spot** | Equity (balance + held asset value at current price) | `min_equity` | `(initial_balance - equity) / initial_balance` |
-| **Margin** | Raw balance (changes only on realized P&L) | `min_balance` | `(initial_balance - balance) / initial_balance` |
+| **Spot** | Account value: balance + held assets at the current price | `min_equity` | `(baseline - value) / baseline` |
+| **Margin** | Account value: balance + unrealized P&L | `min_balance` | `(baseline - value) / baseline` |
 
-In spot mode, buying an asset transfers account currency into the asset — the balance drops but portfolio value stays the same. Using equity prevents phantom drawdown triggers from normal trading activity.
+In spot mode, buying an asset transfers account currency into the asset — the balance drops but portfolio value stays the same. Using the account value prevents phantom drawdown triggers from normal trading activity.
+
+**Both rows read the SAME function since #356**, and only the threshold FIELD differs by model —
+the name says which config key a profile writes, never which quantity is compared. Margin used to
+read settled cash, which by construction moves only on realised P&L: the account model that can
+lose more than it holds was the one whose breaker could not see an open loss coming, while the
+drawdown series three methods away had the right number all along.
 
 ### Soft Stop Behavior
 
@@ -153,6 +161,61 @@ threshold, and drawdown headroom. Display data flows through
 
 ---
 
+## The End-of-Session Report
+
+Every drawdown figure the session produces names the baseline it was measured against. That is
+not decoration: four quantities in this codebase are called "initial", none of the older ones
+recorded when or at what price it was taken, and two of them are different numbers for the same
+holdings — so a bare "−12 %" could not be traced back to the denominator that produced it.
+
+The report is written to `io/safety.json` and rendered as a block in the live session summary. It
+goes through the unified reporting pipeline (`docs/architecture/reporting_pipeline.md`): the tick
+loop CAPTURES, `safety_report_builder.py` DERIVES, the console only formats.
+
+### What it answers, and why each answer has the shape it has
+
+**The denominator.** The `RiskBaseline` record travels whole — its kind, its stamp, its origin,
+and on a spot account the price and the holdings its value can be re-derived from. A record that
+came back from the previous session is flagged separately, because that is the whole point of the
+persistence and one boolean away from invisible.
+
+**How far the account actually moved.** The extremes are RUNNING MAXIMA, not the value at the end.
+A session that touched 18 % at hour three and recovered by hour four ends at −0 %, and read from a
+session-end snapshot it is indistinguishable from one that never moved. Over thirty unattended days
+that is the difference the operator's next decision hangs on.
+
+**Two extremes, because a high-water mark moves.** 1 000 below a baseline of 10 000 is 10 %; 1 200
+below a later peak of 20 000 is the larger amount and the smaller share. Tracking only one of them
+would report 6 % as the session's worst percentage while the percentage limit was breached at 10 %.
+With the default fixed baseline the two are the same instant and agree by construction — the second
+line only appears when they genuinely differ.
+
+**How close it came.** One figure per threshold: the share of the configured limit the worst
+excursion consumed. The percentage limit and the absolute one are independent and either can fire
+first, so the figure reports whichever came CLOSER. Where no limit is configured it is `null`, never
+zero — "no limit" and "nothing used of the limit" are different statements.
+
+**One row per UTC day.** A daily limit is measured against a reference struck fresh every morning,
+so a single "worst daily loss" across a month would be a maximum across thirty different
+denominators. Each row names its own day-start baseline. The console prints the deepest day plus
+every day that tripped a limit; the artifact carries them all.
+
+**What the hard stop did.** Whether it fired, what tripped it, and whether the book was confirmed
+flat. `flatten_completed` is `null` when it never fired, which a reader must be able to tell apart
+from "fired and did not finish" — a drain still running when the session ended for another reason is
+resolved to `false` at capture, with the positions still open at the venue named.
+
+### It is written even when the limits are OFF
+
+The record is produced whenever a baseline was taken, including for a session with
+`safety.enabled: false`. That session still has a denominator and still moves against it, and the
+resulting record is what says what WOULD have fired. Refusing to measure it would mean arming a live
+limit in order to find out what the limit should be.
+
+Absent only when no baseline was ever taken — a session that saw no tick it could value.
+
+---
+
 ## Key Files
 
 | File | Role |
@@ -163,3 +226,7 @@ threshold, and drawdown headroom. Display data flows through
 | `python/system/ui/autotrader_live_display.py` | Safety status + detail line rendering |
 | `python/framework/trading_env/portfolio_manager.py` | `get_spot_equity()` — equity computation for spot mode |
 | `configs/autotrader_profiles/*.json` | Per-symbol safety thresholds |
+| `python/framework/autotrader/risk_baseline_tracker.py` | `RiskBaselineTracker` — takes, restores and advances the denominator |
+| `python/framework/types/autotrader_types/safety_session_types.py` | What the loop captures for the report |
+| `python/framework/reporting/builders/safety_report_builder.py` | DERIVE — the `SafetyReport` model |
+| `python/framework/reporting/console/live_session_summary.py` | PRESENT — the closing-block safety section |

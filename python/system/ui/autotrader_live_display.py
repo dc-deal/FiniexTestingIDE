@@ -370,6 +370,8 @@ class AutoTraderLiveDisplay:
                 min_label = 'min_equity'
                 min_threshold = safety.min_equity
             else:
+                # The field a margin profile writes. Both floors denominate the ACCOUNT
+                # VALUE since #356 — the name says which key, not which quantity.
                 min_label = 'min_balance'
                 min_threshold = safety.min_balance
 

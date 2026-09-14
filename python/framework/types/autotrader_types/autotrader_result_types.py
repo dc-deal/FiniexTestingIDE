@@ -11,6 +11,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
+from python.framework.types.autotrader_types.safety_session_types import SafetySessionRecord
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
@@ -62,6 +63,11 @@ class AutoTraderResult:
             a simulation, a dry run and a Field Study — the three cases with nothing to find.
             Captured raw; the report model is derived from it
         cold_start_verdict: What the decision logic answered about that situation
+        safety_session: What the circuit breaker measured against the session's risk
+            denominators (#356 / #314) — running maxima rather than the value at the end,
+            so a session that recovered from a deep excursion is not read as a quiet one.
+            None when the session never built a tick loop. Captured raw; the report model
+            is derived from it
         session_validation_result: Post-run advisory findings (Tier 1) — the live counterpart
             of BatchExecutionSummary.batch_validation_result
     """
@@ -89,6 +95,7 @@ class AutoTraderResult:
     session_logger_buffer: List[LogRecord] = field(default_factory=list)
     cold_start_situation: Optional[ColdStartSituation] = None
     cold_start_verdict: Optional[ColdStartVerdict] = None
+    safety_session: Optional[SafetySessionRecord] = None
     session_validation_result: List[ValidationResult] = field(default_factory=list)
 
     def add_session_validation_result(self, result: ValidationResult) -> None:

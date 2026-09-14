@@ -25,6 +25,7 @@ from python.framework.types.api.report_types import (
     RobustnessReport,
     RunMetaReport,
     RunSummary,
+    SafetyReport,
     ScenarioDetailsReport,
     SignalReport,
     TradeHistoryReport,
@@ -58,6 +59,8 @@ RUN_META_ARTIFACT: ArtifactSpec[RunMetaReport] = ArtifactSpec(
     'run_meta.json', RunMetaReport)
 RUN_SUMMARY_ARTIFACT: ArtifactSpec[RunSummary] = ArtifactSpec(
     'run_summary.json', RunSummary)
+SAFETY_ARTIFACT: ArtifactSpec[SafetyReport] = ArtifactSpec(
+    'safety.json', SafetyReport)
 SCENARIO_DETAILS_ARTIFACT: ArtifactSpec[ScenarioDetailsReport] = ArtifactSpec(
     'scenario_details.json', ScenarioDetailsReport)
 SIGNAL_ARTIFACT: ArtifactSpec[SignalReport] = ArtifactSpec(

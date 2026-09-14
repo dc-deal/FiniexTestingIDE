@@ -16,6 +16,7 @@ from python.configuration.autotrader.autotrader_config_loader import load_autotr
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.io.artifact_specs import (
     BROKER_ARTIFACT,
+    SAFETY_ARTIFACT,
 )
 from python.framework.reporting.io.report_artifact_io import read_artifact
 from python.framework.reporting.store.report_store import IO_SUBDIR
@@ -135,6 +136,34 @@ class TestAutotraderMockSession:
         summary = (run_dir / 'autotrader_summary.log').read_text()
         assert 'BROKER CONFIGURATION' in summary
         assert 'Company: Kraken' in summary
+
+    def test_safety_report_written(self, mock_session):
+        """
+        The safety record reaches DISK, which is the one thing the unit tests cannot show.
+
+        Each link of the chain is pinned on its own — the loop's running maxima, the
+        builder's derivations, the store's round trip — and a chain of proven links is still
+        not a proven chain. This is the end-to-end: a real session ran, and what it measured
+        against its baseline is readable afterwards (#356 Phase C).
+        """
+        _, run_dir = mock_session
+
+        safety_artifact = run_dir / IO_SUBDIR / 'safety.json'
+        assert safety_artifact.exists(), 'safety.json not written for a live session'
+
+        report = read_artifact(safety_artifact, SAFETY_ARTIFACT)
+        assert report.baseline is not None, (
+            'the report was written without the record it exists to name')
+        assert report.baseline_value > 0
+        assert report.baseline_value == report.baseline.value
+        # The session ran through one UTC day of replayed ticks, so there is a day row and
+        # it names the day rather than only carrying a number.
+        assert report.days, 'no day row — a daily limit would have nothing to measure against'
+        assert report.days[0].day
+        # Nothing was armed in this profile, so "how close it came" must say NO LIMIT rather
+        # than "used none of it" — the two are different statements and 0.0 conflates them.
+        assert report.soft_limit_used_pct is None
+        assert report.worst_drawdown_abs >= 0.0
 
 
 class TestProfileLoader:

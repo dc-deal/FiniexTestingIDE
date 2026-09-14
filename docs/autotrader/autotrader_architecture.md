@@ -771,18 +771,56 @@ The check runs after every tick. If conditions clear (e.g. equity/balance recove
   "enabled": true,
   "min_balance": 500.0,
   "min_equity": 9.0,
-  "max_drawdown_pct": 20.0
+  "max_drawdown_pct": 20.0,
+  "max_drawdown_abs": 0.0,
+  "max_daily_loss_abs": 0.0,
+  "max_daily_loss_pct": 0.0,
+  "baseline_mode": "fixed",
+  "persist_baseline": true,
+  "emergency_flatten_enabled": false,
+  "max_drawdown_pct_hard": 0.0,
+  "max_drawdown_abs_hard": 0.0,
+  "spot_liquidate_to_quote": false
 }
 ```
+
+Every threshold defaults to `0.0` / `false` — an existing profile needs no migration, and a limit
+set to `0.0` is off while its siblings keep working.
+
+**The soft block** — stops new entries, leaves open positions alone:
 
 | Field | Description |
 |---|---|
 | `enabled` | Master switch — omit or set `false` to disable entirely |
-| `min_balance` | Block if `balance < min_balance` (margin mode, account currency) |
-| `min_equity` | Block if `equity < min_equity` (spot mode, account currency) |
-| `max_drawdown_pct` | Block if session drawdown > X%. Computed from balance (margin) or equity (spot) |
+| `min_balance` | Block if the ACCOUNT VALUE falls below this floor (margin profiles write this key) |
+| `min_equity` | The same floor, spelled for spot profiles |
+| `max_drawdown_pct` | Block if the session drawdown exceeds this share of the risk baseline |
+| `max_drawdown_abs` | The same limit as an amount (#314). Independent — either can fire first: a percentage auto-scales with the account, an absolute floor is what stops that percentage from meaning a dangerously large number once the account has grown |
+| `max_daily_loss_abs` | Block if the loss since the day's start exceeds this amount (#314) |
+| `max_daily_loss_pct` | The same daily limit as a share of the day-start value |
 
-Both conditions are OR-combined — either alone triggers the block. Set to `0.0` to disable a specific condition while keeping the other active. Each mode uses its own min-threshold field (`min_balance` for margin, `min_equity` for spot).
+Since #356 both floors denominate the SAME quantity — the account value — and the account model
+only decides which key a profile writes. On margin it used to be settled cash, which by
+construction moves only on realised P&L, so an open loss could not reach the floor at all.
+
+**The baseline** — the denominator every drawdown figure is measured against:
+
+| Field | Description |
+|---|---|
+| `baseline_mode` | `fixed` holds the value at deployment; `high_water_mark` trails the peak and therefore RATCHETS — profit tightens the limit, which is the prop-firm convention and a deliberate choice rather than a default |
+| `persist_baseline` | Whether it survives a restart. `true` is the point of #356: a restart mid-drawdown would otherwise re-anchor at the drawn-down value and forget the accumulated loss. `false` is the deliberate escape for a profile that wants a fresh reference on every start |
+
+**The hard stop** — CLOSES what is open, then ends the session:
+
+| Field | Description |
+|---|---|
+| `emergency_flatten_enabled` | Master switch. Default `false`, because turning it on changes what happens to real money |
+| `max_drawdown_pct_hard` | Drawdown share at which everything is closed |
+| `max_drawdown_abs_hard` | The same as an amount |
+| `spot_liquidate_to_quote` | Whether the hard stop also SELLS a spot holding. Default `false`, and the asymmetry is real rather than timid: a margin position can lose more than the account holds, so liquidating it is the point; a spot holding cannot, so selling it converts an unrealised loss into a realised one — a trading decision, not a safety one |
+
+All conditions are OR-combined — any one alone triggers, and every condition that fired is named
+in the reason, so a blocked session says whether one limit was touched or three were blown through.
 
 ### Display
 

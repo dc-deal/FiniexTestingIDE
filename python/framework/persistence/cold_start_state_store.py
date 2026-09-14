@@ -31,6 +31,7 @@ from python.framework.types.persistence_types import (
     CarryOverEnvelope,
     ColdStartPayload,
     PositionCarryOver,
+    RiskBaseline,
 )
 from python.framework.types.store_types import StoreId
 
@@ -158,6 +159,7 @@ class ColdStartStateStore:
         highest_position_counter: int,
         keys_in_use: Optional[Set[str]] = None,
         open_positions: Optional[List[PositionCarryOver]] = None,
+        risk_baseline: Optional[RiskBaseline] = None,
         refresh_index: bool = True,
     ) -> None:
         """
@@ -183,6 +185,12 @@ class ColdStartStateStore:
                 the stored book untouched — a caller that only advances the key must not
                 silently erase what the bot holds. An empty LIST means "the book is empty",
                 which is a statement and does overwrite
+            risk_baseline: The denominator every risk limit measures against (#356). Same
+                convention: None leaves the stored record untouched, which is what a caller
+                writing only the book must do — erasing the baseline would re-anchor the
+                drawdown on the next boot, i.e. reintroduce the exact drift this persists
+                against. There is no "clear it" case, so unlike the book there is no empty
+                value that overwrites
             refresh_index: Whether to rebuild the store index afterwards. False for the
                 writes that happen DURING a session: the rebuild reads every bot's document
                 and costs 26-40 ms on this project's tree (§42), which has no business inside
@@ -209,6 +217,8 @@ class ColdStartStateStore:
             payload.highest_position_counter, highest_position_counter)
         if open_positions is not None:
             payload.open_positions = list(open_positions)
+        if risk_baseline is not None:
+            payload.risk_baseline = risk_baseline
 
         envelope = CarryOverEnvelope(
             schema_version=_SCHEMA_VERSION,

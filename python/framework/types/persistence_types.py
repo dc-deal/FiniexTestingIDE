@@ -1,11 +1,13 @@
 """
 FiniexTestingIDE - Persistence Types
-Runtime domain types for the algo state persistence layer (#354) and the envelope every
-carry-over store writes around its payload (#486).
+Runtime domain types for the algo state persistence layer (#354), the risk baseline every
+limit measures against (#356), and the envelope every carry-over store writes around its
+payload (#486).
 """
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -193,6 +195,99 @@ class PositionCarryOver(BaseModel):
     entry_submission: SubmissionCarryOver = Field(default_factory=SubmissionCarryOver)
 
 
+class BaselineKind(StrEnum):
+    """
+    Which question a risk baseline is the denominator for (#356).
+
+    SESSION_FIXED: the account value at deployment. Drawdown is measured against it and it
+      does not move — the plainest reading of "how far down am I from where I started".
+    HIGH_WATER_MARK: the peak account value ever seen. The prop-firm convention for a
+      maximum drawdown, and it RATCHETS: profit tightens the limit.
+    DAY_START: the value at the trading day's boundary, for a daily loss limit (#314). The
+      same record type as the two above, which is why it is a kind and not a second field.
+    """
+    SESSION_FIXED = 'session_fixed'
+    HIGH_WATER_MARK = 'high_water_mark'
+    DAY_START = 'day_start'
+
+
+class BaselineOrigin(StrEnum):
+    """
+    HOW a baseline came to be — and, with it, what kind of time its stamp is.
+
+    The field exists because `taken_at_utc` cannot be read honestly without it. A baseline
+    taken from boot balances happens BEFORE the first tick, so there is no canonical time
+    yet and the stamp is wall-clock provenance; one taken at a day boundary in an illiquid
+    gap is the heartbeat's wall-clock read, which §9 permits for idle. A reader that knows
+    the origin always knows which kind of time it is holding.
+
+    RESTORED_CARRY_OVER is the one that carries the whole issue: it means the record came
+    back from the predecessor unchanged, INCLUDING its original stamp. A restart that
+    re-stamped the baseline as new would silently forget the drawdown it was in — which is
+    the defect #356 exists to remove.
+    """
+    FIRST_TICK = 'first_tick'
+    BOOT_BALANCES = 'boot_balances'
+    RESTORED_CARRY_OVER = 'restored_carry_over'
+    HWM_UPDATE = 'hwm_update'
+    DAY_BOUNDARY = 'day_boundary'
+
+
+class BaselineQuantities(BaseModel):
+    """
+    What the account HELD when a spot baseline was taken.
+
+    Carried so the baseline's value can be re-derived rather than trusted:
+    `value == quote + base * mark_price`. A denominator that cannot be checked is a
+    denominator nobody can argue with when a drawdown figure looks wrong.
+
+    Args:
+        quote: The quote-currency balance (e.g. USD)
+        base: The base-asset holding (e.g. BTC), in asset units
+    """
+    quote: float = 0.0
+    base: float = 0.0
+
+
+class RiskBaseline(BaseModel):
+    """
+    The account value every risk limit measures against, as a record that describes itself.
+
+    Four quantities in this codebase are called "initial" and none of them records WHEN or
+    AT WHAT PRICE it was taken; two of them are different numbers for the same holdings. So
+    an operator reading "-12 %" could not tell which denominator produced it. This record is
+    the answer: every drawdown figure names the baseline it was measured against.
+
+    It is also the fix for the restart drift. The baseline used to be captured on the first
+    tick and held in memory, so a restart mid-drawdown re-captured it at the already
+    drawn-down value and the accumulated loss was silently forgotten. Persisted through the
+    cold-start carry-over, the record comes back with its ORIGINAL stamp and
+    `origin=restored_carry_over`.
+
+    `mark_price` and `quantities` are SPOT only. A cash-denominated margin account has no
+    price at which its value was struck — market practice records none either, and inventing
+    one would be the kind of field that reads as meaningful and is not.
+
+    Args:
+        kind: Which denominator this is
+        value: The account value in account currency
+        taken_at_utc: ISO-8601 UTC; `origin` says whether it is canonical or wall-clock
+        origin: How the record came to be
+        mark_price: The price the holdings were valued at — SPOT only, None on margin
+        quantities: What was held at that instant — SPOT only
+        exclusive_account: The #489 declaration in force when it was taken. The denominator
+            is the bot's own only if the account is the bot's alone, and a drawdown shown
+            without that premise is a number about somebody else's deposits too
+    """
+    kind: BaselineKind
+    value: float
+    taken_at_utc: str
+    origin: BaselineOrigin
+    mark_price: Optional[float] = None
+    quantities: Optional[BaselineQuantities] = None
+    exclusive_account: bool = False
+
+
 class ColdStartPayload(BaseModel):
     """
     The framework's own carry-over: what the NEXT session needs to recognise its predecessor
@@ -219,10 +314,14 @@ class ColdStartPayload(BaseModel):
         session_keys: Client-order-id discriminators, newest last
         highest_position_counter: The largest position counter minted so far
         open_positions: The open book at the time of writing (spot only)
+        risk_baseline: The denominator every risk limit measures against (#356). None means
+            no session has written one yet — the successor then takes a fresh baseline,
+            which is the correct first-run behaviour and the only case in which it should
     """
     session_keys: List[str] = Field(default_factory=list)
     highest_position_counter: int = 0
     open_positions: List[PositionCarryOver] = Field(default_factory=list)
+    risk_baseline: Optional[RiskBaseline] = None
 
 
 class CarryOverEnvelope(BaseModel):

@@ -12,8 +12,16 @@ GUESSING which directory belonged to its predecessor.
 
 import json
 
+import pytest
+
 from python.framework.persistence.cold_start_state_index import ColdStartStateIndex
 from python.framework.persistence.cold_start_state_store import ColdStartStateStore
+from python.framework.types.persistence_types import (
+    BaselineKind,
+    BaselineOrigin,
+    BaselineQuantities,
+    RiskBaseline,
+)
 
 
 class TestRoundTrip:
@@ -97,6 +105,83 @@ class TestRoundTrip:
         # The FILE is named after the bot — a successor with a different run id finds it.
         assert store.get_state_path().name == 'btcusd_test_btcusd.json'
         assert raw['store_id'] == 'cold_start_state'
+
+
+class TestTheRiskBaselineSurvivesTheDisk:
+    """
+    The fix in #356 is only real if the record reaches the next PROCESS (#356 Phase B).
+
+    Everything else about the baseline is provable in memory: the tracker adopts a restored
+    record, keeps its stamp, refuses to re-anchor. None of that matters if the write drops
+    the field on the way to disk — the successor then finds nothing, takes a fresh baseline
+    at the drawn-down value, and every unit test stays green while the drift is back.
+
+    That failure has happened in this project before, one layer up: a config field declared
+    in the model, mirrored in the file, allowed through the key check and read at runtime,
+    and silently dropped by the loader that transferred it.
+    """
+
+    @staticmethod
+    def _baseline() -> RiskBaseline:
+        return RiskBaseline(
+            kind=BaselineKind.HIGH_WATER_MARK,
+            value=10_231.5,   # == 2_047.5 + 0.093 * 88_000, the spot invariant
+            taken_at_utc='2026-09-10T08:00:00+00:00',
+            origin=BaselineOrigin.FIRST_TICK,
+            mark_price=88_000.0,
+            quantities=BaselineQuantities(quote=2_047.5, base=0.093),
+            exclusive_account=True)
+
+    def test_it_comes_back_field_for_field(self, store):
+        store.save(session_key='1641', highest_position_counter=1,
+                   risk_baseline=self._baseline())
+
+        restored = store.load().risk_baseline
+
+        assert restored == self._baseline(), (
+            'the successor cannot continue a drawdown it cannot read')
+
+    def test_the_stamp_is_not_re_written_on_the_way_through(self, store):
+        """A restart does not strike a new denominator, so nothing may re-stamp it."""
+        store.save(session_key='1641', highest_position_counter=1,
+                   risk_baseline=self._baseline())
+
+        assert store.load().risk_baseline.taken_at_utc == '2026-09-10T08:00:00+00:00'
+
+    def test_a_spot_record_stays_re_derivable_across_the_disk(self, store):
+        """
+        `value == quote + base * mark_price` — and the point is that it still holds AFTER JSON.
+
+        A denominator nobody can check is a denominator nobody can argue with when a drawdown
+        figure looks wrong, so the quantities have to survive the write intact rather than
+        being decoration beside a value that was stored on its own.
+        """
+        store.save(session_key='1641', highest_position_counter=1,
+                   risk_baseline=self._baseline())
+
+        restored = store.load().risk_baseline
+
+        assert restored.quantities.quote + restored.quantities.base * restored.mark_price \
+            == pytest.approx(restored.value)
+
+    def test_not_supplying_it_leaves_the_stored_one_untouched(self, store):
+        """
+        The store's `None` convention, on the field that most depends on it.
+
+        The book is written on a STRUCTURAL change of the open positions, far more often
+        than the baseline moves. Every one of those writes passes `risk_baseline=None`, so a
+        `None` that overwrote would erase the record on the first position that opened.
+        """
+        store.save(session_key='1641', highest_position_counter=1,
+                   risk_baseline=self._baseline())
+
+        store.save(session_key='1641', highest_position_counter=2)
+
+        assert store.load().risk_baseline == self._baseline()
+
+    def test_a_first_boot_has_none_rather_than_a_default(self, store):
+        """A zero-valued record would be a denominator nobody took."""
+        assert store.load().risk_baseline is None
 
 
 class TestUnreadableDocument:

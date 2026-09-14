@@ -2,7 +2,7 @@
 FiniexTestingIDE - Margin Safety Circuit Breaker Integration Tests
 
 End-to-end tests through the AutoTrader mock pipeline in margin mode.
-Validates that safety checks use balance (not equity) correctly during
+Validates that safety checks read the ACCOUNT VALUE (#356) correctly during
 a real tick loop session with mt5/EURUSD.
 
 Uses margin_safety_test.json as base profile (backtesting_margin_stress

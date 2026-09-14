@@ -20,15 +20,24 @@ Exercised through `__new__`: the method needs three attributes, and building a r
 would drag in a broker, a tick source and a decision logic without testing any of them.
 """
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import List, Optional, Set
 
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_cold_start
+from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
-from python.framework.types.persistence_types import PositionCarryOver
+from python.framework.types.persistence_types import (
+    BaselineKind,
+    ColdStartPayload,
+    PositionCarryOver,
+    RiskBaseline,
+)
 from tests.autotrader.cold_start.conftest import RecordingLogger
+
+_CLOCK = datetime(2026, 9, 14, 8, 0, tzinfo=timezone.utc)
 
 
 class SpyStore:
@@ -41,6 +50,7 @@ class SpyStore:
     def save(self, session_key: str, highest_position_counter: int,
              keys_in_use: Optional[Set[str]] = None,
              open_positions: Optional[List[PositionCarryOver]] = None,
+             risk_baseline: Optional[RiskBaseline] = None,
              refresh_index: bool = True) -> None:
         if self._fail:
             raise OSError('disk full')
@@ -49,8 +59,13 @@ class SpyStore:
             'highest_position_counter': highest_position_counter,
             'keys_in_use': set(keys_in_use or ()),
             'open_positions': open_positions,
+            'risk_baseline': risk_baseline,
             'refresh_index': refresh_index,
         })
+
+    def load(self):
+        """A spy has no stored predecessor — the baseline restore reads an empty payload."""
+        return ColdStartPayload()
 
 
 def _profile(cold_start_config, enabled: bool = True, tmp: str = '/tmp/cold_start_test'):
@@ -79,13 +94,28 @@ def _note() -> PositionCarryOver:
     )
 
 
-def _main(executor, store, persist: bool, keys_in_use=None) -> AutotraderMain:
-    """A session object carrying only what the carry-over write reads."""
+def _main(executor, store, persist: bool, keys_in_use=None,
+          risk_baseline=None) -> AutotraderMain:
+    """
+    A session object carrying only what the carry-over write reads.
+
+    The list is the point: this helper IS the write's dependency surface, so a new
+    attribute the write consults has to appear here or the test stops describing it.
+
+    Args:
+        executor: The session's executor
+        store: The carry-over store (or a spy)
+        persist: Whether this session may write at all
+        keys_in_use: Session halves the venue currently shows
+        risk_baseline: The baseline tracker (#356), or None for a session that never got
+            one — every abort before the cold start decided still reaches the write
+    """
     main = AutotraderMain.__new__(AutotraderMain)
     main._executor = executor
     # The write promises to swallow its own failures into the session channel (§35), so the
     # channel has to exist for that promise to be testable at all.
     main._session_logger = RecordingLogger()
+    main._risk_baseline = risk_baseline
     main._cold_start = ColdStartSetup(
         proceed=True,
         store=store,
@@ -207,7 +237,7 @@ class TestWhoIsEligible:
 
 class TestTheTickLoopSeam:
     """
-    The seam that decides whether a pass writes the book (#355).
+    The seam that decides whether a pass writes the carry-over (#355 / #356).
 
     Exercised through `__new__` for the same reason the rest of this file is: the method needs
     four attributes, and building a real tick loop would drag in a broker, a tick source and a
@@ -215,14 +245,19 @@ class TestTheTickLoopSeam:
     """
 
     @staticmethod
-    def _loop(executor, writes, drift_ticks=500):
-        """A tick loop carrying only what the book seam reads."""
+    def _loop(executor, writes, drift_ticks=500, risk_baseline=None):
+        """A tick loop carrying only what the carry-over seam reads."""
         loop = AutotraderTickLoop.__new__(AutotraderTickLoop)
         loop._executor = executor
-        loop._persist_position_book = lambda: writes.append(True) or True
+        loop._persist_carry_over = lambda: writes.append(True) or True
         loop._book_watcher = PositionBookWatcher(executor.portfolio.get_open_positions())
         loop._book_drift_interval_ticks = drift_ticks
         loop._last_book_drift_tick = 0
+        # #356 — the baseline half of the same document. None/None is "no tracker", which is
+        # every case in this class except the baseline tests below.
+        loop._risk_baseline = risk_baseline
+        loop._persisted_baseline = (
+            risk_baseline.get_baseline() if risk_baseline is not None else None)
         return loop
 
     def test_a_structural_change_writes_once_and_then_stays_quiet(self, spot_executor):
@@ -232,8 +267,8 @@ class TestTheTickLoopSeam:
         # appearing afterwards is the change this pass sees.
         spot_executor.portfolio.restore_position_book([_note()])
 
-        loop._persist_position_book_if_changed()
-        loop._persist_position_book_if_changed()
+        loop._persist_carry_over_if_needed()
+        loop._persist_carry_over_if_needed()
 
         assert len(writes) == 1
 
@@ -243,12 +278,12 @@ class TestTheTickLoopSeam:
         # missing from the note until something else happened to move the book.
         attempts = []
         loop = self._loop(spot_executor, [])
-        loop._persist_position_book = lambda: attempts.append(False) or False
+        loop._persist_carry_over = lambda: attempts.append(False) or False
         spot_executor.portfolio.restore_position_book([_note()])
 
-        loop._persist_position_book_if_changed()
-        loop._persist_position_book_if_changed()
-        loop._persist_position_book_if_changed()
+        loop._persist_carry_over_if_needed()
+        loop._persist_carry_over_if_needed()
+        loop._persist_carry_over_if_needed()
 
         assert len(attempts) == 3
 
@@ -258,15 +293,15 @@ class TestTheTickLoopSeam:
         writes = []
         loop = self._loop(spot_executor, writes, drift_ticks=500)
         spot_executor.portfolio.restore_position_book([_note()])
-        loop._persist_position_book_if_changed(ticks_processed=1)
+        loop._persist_carry_over_if_needed(ticks_processed=1)
         assert len(writes) == 1
 
         spot_executor.get_open_positions()[0].stop_loss = 60000.0
 
-        loop._persist_position_book_if_changed(ticks_processed=2)
+        loop._persist_carry_over_if_needed(ticks_processed=2)
         assert len(writes) == 1
 
-        loop._persist_position_book_if_changed(ticks_processed=600)
+        loop._persist_carry_over_if_needed(ticks_processed=600)
         assert len(writes) == 2
 
     def test_the_cadence_needs_no_clock(self, spot_executor):
@@ -276,12 +311,118 @@ class TestTheTickLoopSeam:
         loop = self._loop(spot_executor, writes)
         spot_executor.portfolio.restore_position_book([_note()])
 
-        loop._persist_position_book_if_changed(ticks_processed=0)
+        loop._persist_carry_over_if_needed(ticks_processed=0)
 
         assert len(writes) == 1
 
     def test_nothing_wired_is_a_no_op(self, spot_executor):
         loop = self._loop(spot_executor, [])
-        loop._persist_position_book = None
+        loop._persist_carry_over = None
 
-        loop._persist_position_book_if_changed()
+        loop._persist_carry_over_if_needed()
+
+
+class TestTheBaselineReachesTheDiskBeforeAHardKill:
+    """
+    The one write the position book cannot carry (#356).
+
+    The carry-over used to be written in-run only when the open BOOK changed structurally,
+    and only in spot mode. That left three sessions writing their risk baseline for the
+    first time at SHUTDOWN: a margin session (no book is written at all), a spot session
+    that never opens a position, and any session killed before its first trade. A hard kill
+    — OOM, power, `kill -9` — is precisely the moment a shutdown write does not happen, and
+    the successor then re-anchors its baseline at the drawn-down value. That is the drift
+    #356 exists to remove, surviving in the case it was written for.
+
+    The boot write cannot cover it either: it runs BEFORE the first tick, when no baseline
+    has been taken yet.
+    """
+
+    @staticmethod
+    def _tracker(value: float, kind: BaselineKind = BaselineKind.SESSION_FIXED):
+        """A tracker that has already taken its baseline, as the first tick leaves it."""
+        tracker = RiskBaselineTracker(
+            mode=kind, restored=None, spot_mode=False, exclusive_account=False,
+            clock_fn=lambda: _CLOCK, logger=RecordingLogger())
+        tracker.ensure_taken(value)
+        return tracker
+
+    @staticmethod
+    def _loop(executor, writes, tracker, drift_ticks=500, seeded=None):
+        """A tick loop whose book is quiet, so only the baseline can trigger a write."""
+        loop = AutotraderTickLoop.__new__(AutotraderTickLoop)
+        loop._executor = executor
+        loop._persist_carry_over = lambda: writes.append(True) or True
+        loop._book_watcher = PositionBookWatcher(executor.portfolio.get_open_positions())
+        loop._book_drift_interval_ticks = drift_ticks
+        loop._last_book_drift_tick = 0
+        loop._risk_baseline = tracker
+        loop._persisted_baseline = seeded
+        return loop
+
+    def test_a_baseline_taken_this_session_is_written_without_a_book_change(
+            self, spot_executor):
+        writes = []
+        loop = self._loop(spot_executor, writes, self._tracker(10_000.0))
+
+        loop._persist_carry_over_if_needed(ticks_processed=1)
+
+        assert len(writes) == 1, (
+            'the baseline reaches the disk for the first time at shutdown — a hard kill '
+            'loses it, and the successor re-anchors at the drawn-down value')
+
+    def test_and_then_it_stays_quiet(self, spot_executor):
+        """A fixed baseline never changes again, so one write is the whole cost."""
+        writes = []
+        loop = self._loop(spot_executor, writes, self._tracker(10_000.0))
+
+        loop._persist_carry_over_if_needed(ticks_processed=1)
+        loop._persist_carry_over_if_needed(ticks_processed=2)
+        loop._persist_carry_over_if_needed(ticks_processed=600)
+
+        assert len(writes) == 1
+
+    def test_a_restored_baseline_is_not_written_again(self, spot_executor):
+        """
+        It came FROM the disk and the boot write already carried it.
+
+        Seeded at construction rather than assumed: a tracker holding a record before the
+        first tick restored it, and re-writing it would spend 11 ms proving what is already
+        on disk.
+        """
+        tracker = self._tracker(10_000.0)
+        writes = []
+        loop = self._loop(spot_executor, writes, tracker,
+                          seeded=tracker.get_baseline())
+
+        loop._persist_carry_over_if_needed(ticks_processed=1)
+
+        assert writes == []
+
+    def test_a_new_peak_waits_for_the_cadence(self, spot_executor):
+        """
+        A high-water mark advances on a great many ticks of a trend, at 11 ms a write.
+
+        Writing a peak late is safe in a way writing the FIRST baseline late is not: a
+        stale, lower peak is a looser limit, never a tighter one.
+        """
+        tracker = self._tracker(10_000.0, BaselineKind.HIGH_WATER_MARK)
+        writes = []
+        loop = self._loop(spot_executor, writes, tracker, drift_ticks=500,
+                          seeded=tracker.get_baseline())
+
+        tracker.observe(10_500.0)
+        loop._persist_carry_over_if_needed(ticks_processed=2)
+        assert writes == [], 'a write per new peak, on every tick of a trend'
+
+        loop._persist_carry_over_if_needed(ticks_processed=600)
+        assert len(writes) == 1
+
+    def test_a_session_without_a_tracker_is_unaffected(self, spot_executor):
+        """The negative control — nothing here may start writing on its own."""
+        writes = []
+        loop = self._loop(spot_executor, writes, None)
+
+        loop._persist_carry_over_if_needed(ticks_processed=1)
+
+        assert writes == []

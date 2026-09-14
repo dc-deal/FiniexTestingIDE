@@ -146,6 +146,12 @@ def _run_autotrader(ticks):
     symbol_spec.quote_currency = 'USD'
     executor.broker.adapter.get_symbol_specification.return_value = symbol_spec
     executor.portfolio.get_spot_equity.return_value = 1000.0
+    # The loop does ARITHMETIC with these two on every tick (#356): it measures the account
+    # value against the risk baseline whether the circuit breaker is armed or not, so a bare
+    # MagicMock reaches a comparison and raises. Same reason the two stubs around it exist —
+    # a mock executor that answers a number where the loop needs a number.
+    executor.portfolio.get_account_value.return_value = 1000.0
+    executor.portfolio.initial_balance = 1000.0
     # No session-end request in this fixture — a bare MagicMock would return a
     # truthy mock and break the loop after the first tick (#348).
     executor.is_session_end_requested.return_value = False

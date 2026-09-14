@@ -1159,9 +1159,16 @@ class PortfolioManager:
             balances=dict(self._balances) if self._spot_mode else None,
         )
 
-    def _equity_for_curve(self) -> Optional[float]:
+    def get_account_value(self) -> Optional[float]:
         """
-        The account's value on ONE scale, for the drawdown series.
+        The account's value on ONE scale — what every risk measure reads.
+
+        Public since #356, and the rename is the point: it used to be named for the drawdown
+        series because that was its only consumer. The live circuit breaker is the second,
+        and it was reading something else — `get_balance()` on margin, i.e. SETTLED CASH,
+        which by construction moves only on realised P&L. So the account model that can lose
+        more than it holds was the one whose breaker could not see an open loss coming, while
+        the drawdown series three methods away had the right number all along.
 
         There is exactly one right formula per account model, and mixing them inside a
         single running maximum is worse than picking the wrong one consistently. SPOT holds
@@ -1173,8 +1180,10 @@ class PortfolioManager:
         `get_account_info`, which overrides its own equity for spot for the same reason.
 
         Returns:
-            The equity, or None when spot mode has no price to value the holdings against —
-            an unvalued holding is not a drawdown, and guessing one would invent the number
+            The account value, or None when spot mode has no price to value the holdings
+            against — an unvalued holding is not a drawdown, and guessing one would invent
+            the number. A caller that measures risk must treat None as "cannot measure yet",
+            never as zero
         """
         self._ensure_positions_updated()
         if not self._spot_mode:
@@ -1191,7 +1200,7 @@ class PortfolioManager:
         Returns:
             None — updates `_max_equity` / `_max_drawdown` in place
         """
-        equity = self._equity_for_curve()
+        equity = self.get_account_value()
         if equity is None:
             return
 
@@ -1212,7 +1221,7 @@ class PortfolioManager:
         the end would report the drawdown it had at its last close and nothing after.
 
         Called at the capture point of both pipelines. The formula it samples with is
-        `_equity_for_curve`, shared with the close path so the series has ONE scale.
+        `get_account_value`, shared with the close path so the series has ONE scale.
 
         Returns:
             None — updates the running maximum and drawdown in place

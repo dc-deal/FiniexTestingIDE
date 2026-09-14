@@ -13,6 +13,12 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field, computed_field
 
+# The risk baseline is REUSED, not projected. It is already a Pydantic record that describes
+# itself — kind, stamp, origin, and on spot the price and quantities its value can be
+# re-derived from — and the safety report's job is to surface exactly that record. A parallel
+# row type would be a hand-maintained copy of it, and a copy is what silently drops a field.
+from python.framework.types.persistence_types import RiskBaseline
+
 
 class ExecutionRow(BaseModel):
     """One broker execution / fill (#330) — the projection of a BrokerTrade (#393)."""
@@ -1037,6 +1043,160 @@ class ColdStartReport(RunScopedReport):
     algo_name: str = ''
     algo_accounted_for: Optional[bool] = None
     algo_note: str = ''
+
+
+class SafetyLimits(BaseModel):
+    """
+    What the circuit breaker was ARMED with for this session (#356 / #314).
+
+    Carried so a drawdown figure can be read against the threshold it was measured for. A
+    report showing "worst drawdown 8 %" without saying whether the limit was 5 % or 30 %
+    describes an incident or a quiet session and the reader cannot tell which.
+
+    Args:
+        min_floor: The account-value floor below which new entries are blocked, 0 = off
+        min_floor_key: Which config key the profile wrote it under — `min_equity` on spot,
+            `min_balance` on margin. Since #356 both denominate the SAME quantity, the
+            account value, and the account model only decides the spelling; naming the key
+            here is what keeps that from reading as two different limits
+        max_drawdown_pct: Soft block threshold as a share of the baseline, 0 = off
+        max_drawdown_abs: Soft block threshold as an amount, 0 = off
+        max_daily_loss_abs: Daily loss limit as an amount, 0 = off
+        max_daily_loss_pct: Daily loss limit as a share of the day's baseline, 0 = off
+        baseline_mode: The CONFIGURED denominator — 'fixed' or 'high_water_mark'. May
+            differ from the baseline record's own `kind`: a restored record keeps its kind
+            and governs the session, and the two fields side by side are what show it
+        persist_baseline: Whether the baseline was allowed to survive a restart
+        emergency_flatten_enabled: Whether the HARD stop was armed at all
+        max_drawdown_pct_hard: Hard stop threshold as a share of the baseline, 0 = off
+        max_drawdown_abs_hard: Hard stop threshold as an amount, 0 = off
+        spot_liquidate_to_quote: Whether the hard stop was allowed to SELL a spot holding
+    """
+    min_floor: float = 0.0
+    min_floor_key: str = ''
+    max_drawdown_pct: float = 0.0
+    max_drawdown_abs: float = 0.0
+    max_daily_loss_abs: float = 0.0
+    max_daily_loss_pct: float = 0.0
+    baseline_mode: str = ''
+    persist_baseline: bool = True
+    emergency_flatten_enabled: bool = False
+    max_drawdown_pct_hard: float = 0.0
+    max_drawdown_abs_hard: float = 0.0
+    spot_liquidate_to_quote: bool = False
+
+
+class SafetyDayRow(BaseModel):
+    """
+    One UTC trading day, its own denominator, and the worst loss measured against it.
+
+    Args:
+        day: The UTC date, YYYY-MM-DD
+        baseline: The DAY_START record, so this row's percentage names its denominator
+        baseline_value: That record's value, 0.0 when the day never took one
+        worst_loss_abs: The deepest drop below it during the day
+        worst_loss_pct: The same drop as a share of it. One instant, not two — a day-start
+            baseline does not move inside its own day
+        worst_loss_at: When that low was seen, ISO-8601 UTC
+        limit_hit: Whether a DAILY limit fired on this day. A day can trip its own limit
+            while the session drawdown stays well inside its threshold, which is the entire
+            reason a daily limit exists beside a session one
+    """
+    day: str
+    baseline: Optional[RiskBaseline] = None
+    baseline_value: float = 0.0
+    worst_loss_abs: float = 0.0
+    worst_loss_pct: float = 0.0
+    worst_loss_at: str = ''
+    limit_hit: bool = False
+
+
+class SafetyReport(RunScopedReport):
+    """
+    The risk denominator this session ran against, and how far it moved (#356 / #314).
+
+    Live-only, and present whenever a baseline was taken — including a session that ran with
+    the limits switched OFF. That case is deliberately not skipped: a session measuring its
+    drawdown without acting on it is what says what WOULD have fired, which is the record a
+    parity proof wants before anything is armed.
+
+    Every figure here names its denominator. Four quantities in this codebase are called
+    "initial" and none of them records when or at what price it was taken, so a bare "−12 %"
+    could not be traced to the number that produced it. The baseline record travels whole —
+    its kind, its stamp, its origin, and on spot the price and holdings it can be re-derived
+    from — rather than as a copied float.
+
+    The session extremes are RUNNING MAXIMA, not the value at the end. A session that
+    touched 18 % at hour three and recovered would otherwise be indistinguishable from one
+    that never moved, and over thirty unattended days that is the difference that matters.
+
+    Args:
+        symbol: The instrument this session traded
+        enabled: Whether the circuit breaker was switched on
+        baseline: The session denominator as the record that describes itself. None when
+            none was ever taken — a session that saw no valuable tick
+        baseline_value: That record's value, 0.0 when there is none. Repeated flat so a
+            consumer reading only the top level has the denominator
+        baseline_restored: Whether it came back from the previous session rather than being
+            struck by this one. The whole point of #356, and one boolean away from invisible
+        final_value: The last account value the breaker checked
+        worst_drawdown_abs: The deepest drop below the baseline, in account currency
+        worst_drawdown_abs_at: When that low was seen, ISO-8601 UTC
+        worst_drawdown_pct: The deepest drop as a SHARE of the baseline — a separate
+            instant, because a high-water-mark baseline moves and then the largest amount
+            and the largest share are two different moments. With a fixed baseline they
+            coincide
+        worst_drawdown_pct_at: When THAT low was seen, ISO-8601 UTC
+        soft_limit_used_pct: How much of the configured soft drawdown limit the worst
+            excursion consumed, as a percentage — 100 means it fired. None when no soft
+            drawdown limit was configured, which is not the same as 0
+        hard_limit_used_pct: The same measure against the HARD threshold. None when the
+            hard stop was not armed
+        block_count: How often the soft block ENGAGED — transitions, not ticks spent blocked
+        blocked_at_end: Whether new entries were still blocked when the session ended
+        reason_at_end: The breaker's reason at that moment, empty when it was not blocked
+        limits: What was armed
+        days: One row per UTC day the session ran through
+        days_limit_hit: How many of those days tripped a daily limit
+        worst_day: The UTC date of the deepest daily loss, empty when no day took a
+            baseline. Derived here rather than in a renderer: thirty rows do not belong on
+            a console, and a renderer that picks the maximum out of them has built its own
+            aggregate, which is how two surfaces come to disagree about the same figure
+        worst_day_loss_abs: That day's loss, in account currency
+        worst_day_loss_pct: That day's loss as a share of ITS OWN day-start baseline
+        flatten_fired: Whether the HARD stop tripped
+        flatten_reason: What tripped it, with its numbers
+        flatten_completed: Whether the book was confirmed flat before the session ended.
+            None when the hard stop never fired — which a reader must be able to tell apart
+            from "fired and did not finish"
+        flatten_unconfirmed: Positions still open when the session ended anyway. These are
+            at the venue and nobody has confirmed otherwise
+    """
+    symbol: str = ''
+    enabled: bool = False
+    baseline: Optional[RiskBaseline] = None
+    baseline_value: float = 0.0
+    baseline_restored: bool = False
+    final_value: float = 0.0
+    worst_drawdown_abs: float = 0.0
+    worst_drawdown_abs_at: str = ''
+    worst_drawdown_pct: float = 0.0
+    worst_drawdown_pct_at: str = ''
+    soft_limit_used_pct: Optional[float] = None
+    hard_limit_used_pct: Optional[float] = None
+    block_count: int = 0
+    blocked_at_end: bool = False
+    reason_at_end: str = ''
+    limits: SafetyLimits = SafetyLimits()
+    days: list[SafetyDayRow] = []
+    days_limit_hit: int = 0
+    worst_day: str = ''
+    worst_day_loss_abs: float = 0.0
+    worst_day_loss_pct: float = 0.0
+    flatten_fired: bool = False
+    flatten_reason: str = ''
+    flatten_completed: Optional[bool] = None
+    flatten_unconfirmed: list[str] = []
 
 
 class SignalUsageRow(BaseModel):
