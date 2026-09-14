@@ -34,6 +34,12 @@ EXPECTED_MIDDLE = 102.0
 EXPECTED_STD = math.sqrt(2.0)  # 1.41421356...
 STANDARD_CLOSES = [100, 101, 102, 103, 104]
 
+# An EMA midline needs three periods of history, so the five-bar series above cannot
+# exercise it. CURVED on purpose as well: at steady state both averages lag a constant
+# slope by exactly (period-1)/2, so on a STRAIGHT ramp the EMA and the SMA midline are
+# indistinguishable and an "ema differs from sma" test would pass for the wrong reason.
+RISING_CURVE_16 = [round(100 + 0.05 * i * i, 4) for i in range(16)]
+
 
 class TestBollingerBasicComputation:
     """Test bollinger band calculation against hand-computed values."""
@@ -408,7 +414,7 @@ class TestBollingerMaType:
         assert result.get_signal('middle') == pytest.approx(EXPECTED_MIDDLE, abs=0.001)
 
     def test_ema_midline_differs_from_sma_on_trend(self, mock_logger):
-        """On rising closes the EMA midline weights recent prices → above the SMA."""
+        """On an accelerating rise the EMA midline weights recent prices → above the SMA."""
         sma_worker = BollingerWorker(
             name='test_sma',
             parameters={'periods': {'M5': 5}, 'deviation': 2.0, 'ma_type': 'sma'},
@@ -419,8 +425,8 @@ class TestBollingerMaType:
             parameters={'periods': {'M5': 5}, 'deviation': 2.0, 'ma_type': 'ema'},
             logger=mock_logger,
         )
-        bars = make_bars(STANDARD_CLOSES)
-        tick = make_tick(bid=102.0)
+        bars = make_bars(RISING_CURVE_16)
+        tick = make_tick(bid=111.25)
 
         sma_mid = sma_worker.compute(
             tick=tick, bar_history={'M5': bars}, current_bars={}
@@ -430,4 +436,4 @@ class TestBollingerMaType:
         ).get_signal('middle')
 
         assert ema_mid != pytest.approx(sma_mid, abs=0.001)
-        assert ema_mid > sma_mid  # rising series → EMA leans toward recent highs
+        assert ema_mid > sma_mid  # accelerating rise → EMA leans toward recent highs

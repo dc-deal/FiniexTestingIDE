@@ -47,10 +47,17 @@ class TimeframeConfig:
     - Canonical ordering
     """
 
-    # Base registry entries (extendable later)
+    # Base registry entries (extendable later).
+    #
+    # This is the VOCABULARY — which names exist and what they mean. It is deliberately not
+    # the same question as which timeframes get MATERIALIZED on import (that set lives in
+    # import_config.json, because rendering one costs storage on every symbol) nor which
+    # ones a VENUE can serve as live warmup bars (that is a fact about the venue and is
+    # declared by its adapter). A name can exist here and be answered by neither.
     _REGISTRY: Dict[str, Dict[str, object]] = {
         'M1':  {'minutes': 1,    'resample': '1min'},
         'M5':  {'minutes': 5,    'resample': '5min'},
+        'M10': {'minutes': 10,   'resample': '10min'},
         'M15': {'minutes': 15,   'resample': '15min'},
         'M30': {'minutes': 30,   'resample': '30min'},
         'H1':  {'minutes': 60,   'resample': '1h'},

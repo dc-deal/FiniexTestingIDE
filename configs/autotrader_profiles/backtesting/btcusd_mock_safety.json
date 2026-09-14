@@ -1,5 +1,6 @@
 {
   "name": "btcusd_mock_safety",
+    "_comment": "Thresholds are deliberately looser than the textbook 30/70. This fixture exists to make the SAFETY layer fire, which needs trades to lose money on — not to validate RSI levels. At 30/70 its 164-bar window offered only 6 entries that passed RSI + Bollinger + the OBV filter together, and the move to Wilder's smoothing (#517) took all six. At 40/60 the same window offers 9, measured 2026-09-14.",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",
@@ -29,10 +30,10 @@
       }
     },
     "decision_logic_config": {
-      "rsi_oversold": 30,
-      "rsi_overbought": 70,
-      "bollinger_lower_threshold": 0.3,
-      "bollinger_upper_threshold": 0.7,
+      "rsi_oversold": 40,
+      "rsi_overbought": 60,
+      "bollinger_lower_threshold": 0.4,
+      "bollinger_upper_threshold": 0.6,
       "min_confidence": 0.5,
       "lot_size": 0.1,
       "min_free_margin": 1000,

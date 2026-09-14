@@ -3,15 +3,20 @@ FiniexTestingIDE - Moving-Average Trend Worker
 Bar-based trend direction + volatility-normalized slope
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
 from python.framework.types.component_metadata_types import ComponentMetadata
+from python.framework.types.indicator_types import MaType
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
-from python.framework.utils.trading_math.moving_average import moving_average
+from python.framework.utils.trading_math.indicators.moving_average import (
+    moving_average,
+    moving_average_warmup_bars,
+)
+from python.framework.utils.trading_math.indicators.standard_deviation import window_std
 from python.framework.utils.trading_math.normalizer import Normalizer
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 
@@ -38,7 +43,9 @@ class MaTrendWorker(AbstractIndicatorWorker):
 
         # periods → handled by Abstract (INDICATOR type)
         # Optional — factory applies defaults; .has() guards direct construction
-        self.ma_type = self.params.get('ma_type') if self.params.has('ma_type') else 'ema'
+        self.ma_type = MaType(
+            self.params.get('ma_type') if self.params.has('ma_type') else MaType.EMA.value
+        )
         self.neutral_band = self.params.get('neutral_band') if self.params.has('neutral_band') else 0.1
 
     # ============================================
@@ -119,10 +126,37 @@ class MaTrendWorker(AbstractIndicatorWorker):
         """
         MA trend warmup requirements from config 'periods'.
 
+        A recursive average needs more history than its period: over exactly `period`
+        closes an EMA returns its own SMA seed, which would make this worker's default
+        `ma_type` silently stop meaning anything. The average itself says how much it needs.
+
         Returns:
             Dict[timeframe, bars_needed] - e.g. {"H1": 50}
         """
-        return self.periods
+        return self.calculate_requirements({
+            'periods': self.periods,
+            'ma_type': self.ma_type.value,
+        })
+
+    @classmethod
+    def calculate_requirements(cls, config: Dict[str, Any]) -> Dict[str, int]:
+        """
+        Bars this worker needs before its average is free of its seed.
+
+        The batch pipeline sizes the bar LOAD from this classmethod while the instance is
+        checked against its own requirement at runtime — so both read the same rule here.
+
+        Args:
+            config: Worker configuration dict with 'periods' and optional 'ma_type'
+
+        Returns:
+            Dict[timeframe, bars_needed]
+        """
+        ma_type = MaType(config.get('ma_type') or MaType.EMA.value)
+        return {
+            timeframe: moving_average_warmup_bars(period, ma_type)
+            for timeframe, period in config.get('periods', {}).items()
+        }
 
     def get_required_timeframes(self) -> List[str]:
         """
@@ -167,20 +201,22 @@ class MaTrendWorker(AbstractIndicatorWorker):
         timeframe = list(self.periods.keys())[0]
         period = self.periods[timeframe]
 
-        # Get bar history for our timeframe (window-bounded: last period + 1 for slope)
-        bars = self.effective_bars(timeframe, bar_history, current_bars, count=period + 1)
+        # The average's own window: its period for an SMA, a multiple of it for a
+        # recursive average (+1 bar for the slope's shifted window)
+        window = moving_average_warmup_bars(period, self.ma_type)
+        bars = self.effective_bars(timeframe, bar_history, current_bars, count=window + 1)
 
         # Extract close prices from bars (keep one extra bar for slope)
         all_closes = np.array([bar.close for bar in bars])
-        close_prices = all_closes[-period:]
+        close_prices = all_closes[-window:]
 
         ma_value = moving_average(close_prices, period, self.ma_type)
-        std_window = np.std(close_prices)
+        std_window = window_std(close_prices, period)
 
-        # Volatility-normalized midline slope (needs period+1 closes)
+        # Volatility-normalized midline slope (needs window+1 closes)
         slope = 0.0
-        if len(all_closes) >= period + 1:
-            prev_window = all_closes[-(period + 1):-1]
+        if len(all_closes) >= window + 1:
+            prev_window = all_closes[-(window + 1):-1]
             ma_prev = moving_average(prev_window, period, self.ma_type)
             slope = Normalizer.normalize(ma_value - ma_prev, std_window)
 

@@ -3,15 +3,20 @@ FiniexTestingIDE - Bollinger Worker
 Bar-based Bollinger band computation
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
 from python.framework.types.component_metadata_types import ComponentMetadata
+from python.framework.types.indicator_types import MaType
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
-from python.framework.utils.trading_math.moving_average import moving_average
+from python.framework.utils.trading_math.indicators.bollinger_bands import bollinger_bands
+from python.framework.utils.trading_math.indicators.moving_average import (
+    moving_average,
+    moving_average_warmup_bars,
+)
 from python.framework.utils.trading_math.normalizer import Normalizer
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 
@@ -39,7 +44,9 @@ class BollingerWorker(AbstractIndicatorWorker):
         # periods → handled by Abstract (INDICATOR type)
         self.deviation = self.params.get('deviation')
         # Optional — factory applies the 'sma' default; .has() guards direct construction
-        self.ma_type = self.params.get('ma_type') if self.params.has('ma_type') else 'sma'
+        self.ma_type = MaType(
+            self.params.get('ma_type') if self.params.has('ma_type') else MaType.SMA.value
+        )
 
     # ============================================
     # STATIC: Classmethods for factory/UI
@@ -130,6 +137,28 @@ class BollingerWorker(AbstractIndicatorWorker):
         """Bollinger is price-based — no activity-data dependency."""
         return None
 
+    @classmethod
+    def calculate_requirements(cls, config: Dict[str, Any]) -> Dict[str, int]:
+        """
+        Bars this worker needs before its midline is free of its seed.
+
+        A recursive midline needs more history than its period: an EMA over exactly
+        `period` closes has nothing to recurse over and returns its own SMA seed, which
+        would make `ma_type: ema` silently do nothing. The average itself says how much
+        it needs.
+
+        Args:
+            config: Worker configuration dict with 'periods' and optional 'ma_type'
+
+        Returns:
+            Dict[timeframe, bars_needed]
+        """
+        ma_type = MaType(config.get('ma_type') or MaType.SMA.value)
+        return {
+            timeframe: moving_average_warmup_bars(period, ma_type)
+            for timeframe, period in config.get('periods', {}).items()
+        }
+
     # ============================================
     # DYNAMIC: Instance methods for runtime
     # ============================================
@@ -138,10 +167,17 @@ class BollingerWorker(AbstractIndicatorWorker):
         """
         Bollinger warmup requirements from config 'periods'.
 
+        Delegates to the classmethod so the batch pipeline, which sizes the bar LOAD from
+        it, and this instance, which is checked against it at runtime, cannot answer the
+        same question differently.
+
         Returns:
             Dict[timeframe, bars_needed] - e.g. {"M5": 20, "M30": 50}
         """
-        return self.periods
+        return self.calculate_requirements({
+            'periods': self.periods,
+            'ma_type': self.ma_type.value,
+        })
 
     def get_required_timeframes(self) -> List[str]:
         """
@@ -184,20 +220,21 @@ class BollingerWorker(AbstractIndicatorWorker):
         timeframe = list(self.periods.keys())[0]
         period = self.periods[timeframe]
 
-        # Get bar history for our timeframe (window-bounded: last period + 1 for slope)
-        bars = self.effective_bars(timeframe, bar_history, current_bars, count=period + 1)
+        # The midline's own window: its period for an SMA, a multiple of it for a
+        # recursive average (+1 bar for the slope's shifted window)
+        window = moving_average_warmup_bars(period, self.ma_type)
+        bars = self.effective_bars(timeframe, bar_history, current_bars, count=window + 1)
 
         # Extract close prices from bars (keep one extra bar for slope)
         all_closes = np.array([bar.close for bar in bars])
-        close_prices = all_closes[-period:]
+        close_prices = all_closes[-window:]
 
         # Calculate Bollinger bands
-        middle = moving_average(close_prices, period, self.ma_type)
-        std_dev = np.std(close_prices)
-
-        band_half = std_dev * self.deviation
-        upper = middle + band_half
-        lower = middle - band_half
+        bands = bollinger_bands(close_prices, period, self.deviation, self.ma_type)
+        middle = bands.middle
+        upper = bands.upper
+        lower = bands.lower
+        std_dev = bands.std_dev
 
         # Calculate current position relative to bands (raw = unclamped overshoot)
         current_price = tick.mid
@@ -221,11 +258,11 @@ class BollingerWorker(AbstractIndicatorWorker):
         if self.wants_output('width_pct'):
             # Band width relative to the midline
             outputs['width_pct'] = float(Normalizer.normalize(band_width, middle))
-        # Midline slope: the expensive optional (a 2nd moving_average, needs period+1 closes)
+        # Midline slope: the expensive optional (a 2nd moving_average, needs window+1 closes)
         if self.wants_output('slope'):
             slope = 0.0
-            if len(all_closes) >= period + 1:
-                prev_window = all_closes[-(period + 1):-1]
+            if len(all_closes) >= window + 1:
+                prev_window = all_closes[-(window + 1):-1]
                 mid_prev = moving_average(prev_window, period, self.ma_type)
                 slope = Normalizer.normalize(middle - mid_prev, band_width)
             outputs['slope'] = float(slope)

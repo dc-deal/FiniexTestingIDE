@@ -1,16 +1,18 @@
 """
 FiniexTestingIDE - MACD Worker Computation Tests
 
-Tests the MACD compute() and _calculate_ema() methods.
+Tests the MACD compute() method.
 
 Key implementation details (verified from source):
-- _calculate_ema: Starts with SMA of first `period` values, then iterates
-    multiplier = 2 / (period + 1)
-    ema = SMA(first period values)
-    for each remaining price: ema = (price - ema) * multiplier + ema
-- If len(prices) < period → falls back to np.mean(prices)
+- The EMA itself now lives in trading_math/indicators, and its hand-calculated reference
+  values moved to tests/framework/indicators/test_moving_averages.py with it — this suite
+  no longer reaches into a private method to test shared arithmetic (§15)
 - MACD line = fast_ema - slow_ema
-- Signal line = EMA of historical MACD values (complex loop)
+- Signal line = EMA of historical MACD values (complex loop). KNOWN DEVIATION from the
+  standard construction, documented at the call site and carried by #517: the loop feeds
+  the signal EMA with MACD values taken before the slow EMA is seeded, which are
+  structurally zero. Changing it moves MACD output in every backtest, so it is its own
+  decision
 - Histogram = MACD - Signal
 - Returns WorkerResult with outputs dict {macd, signal, histogram, fast_ema, slow_ema, bars_used}
 """
@@ -21,92 +23,6 @@ from tests.framework.worker_tests.worker_computation_tests.conftest import make_
 
 from python.framework.types.worker_types import WorkerResult
 from python.framework.workers.core.macd_worker import MacdWorker
-
-
-class TestEMACalculation:
-    """
-    Test _calculate_ema() directly with hand-computed values.
-
-    This is the foundation - if EMA is correct, MACD follows.
-    """
-
-    def _make_macd_worker(self, mock_logger):
-        """Helper: create a MACD worker for EMA access."""
-        return MacdWorker(
-            name='test_macd',
-            parameters={
-                'periods': {'M5': 10},
-                'fast_period': 3,
-                'slow_period': 5,
-                'signal_period': 2,
-            },
-            logger=mock_logger,
-        )
-
-    def test_ema_exact_period_returns_sma(self, mock_logger):
-        """
-        When len(prices) == period, EMA = SMA (no iteration step).
-
-        prices = [100, 102, 104], period = 3
-        SMA = (100 + 102 + 104) / 3 = 102.0
-        """
-        worker = self._make_macd_worker(mock_logger)
-        prices = np.array([100.0, 102.0, 104.0])
-
-        ema = worker._calculate_ema(prices, period=3)
-
-        assert ema == pytest.approx(102.0, abs=0.001)
-
-    def test_ema_less_than_period_returns_mean(self, mock_logger):
-        """
-        When len(prices) < period, falls back to np.mean.
-
-        prices = [100, 102], period = 5
-        mean = 101.0
-        """
-        worker = self._make_macd_worker(mock_logger)
-        prices = np.array([100.0, 102.0])
-
-        ema = worker._calculate_ema(prices, period=5)
-
-        assert ema == pytest.approx(101.0, abs=0.001)
-
-    def test_ema_iterative_calculation(self, mock_logger):
-        """
-        EMA with iteration steps, hand-calculated.
-
-        prices = [100, 102, 104, 103, 105, 107], period = 3
-        multiplier = 2 / (3 + 1) = 0.5
-
-        SMA(first 3) = (100 + 102 + 104) / 3 = 102.0
-        After 103: (103 - 102.0) * 0.5 + 102.0 = 102.5
-        After 105: (105 - 102.5) * 0.5 + 102.5 = 103.75
-        After 107: (107 - 103.75) * 0.5 + 103.75 = 105.375
-        """
-        worker = self._make_macd_worker(mock_logger)
-        prices = np.array([100.0, 102.0, 104.0, 103.0, 105.0, 107.0])
-
-        ema = worker._calculate_ema(prices, period=3)
-
-        assert ema == pytest.approx(105.375, abs=0.001)
-
-    def test_ema_period_5(self, mock_logger):
-        """
-        EMA with period=5, verifying different multiplier.
-
-        prices = [100, 102, 104, 103, 105, 107, 106], period = 5
-        multiplier = 2 / (5 + 1) = 0.33333
-
-        SMA(first 5) = (100 + 102 + 104 + 103 + 105) / 5 = 102.8
-        After 107: (107 - 102.8) * 0.33333 + 102.8 = 104.2
-        After 106: (106 - 104.2) * 0.33333 + 104.2 = 104.8
-        """
-        worker = self._make_macd_worker(mock_logger)
-        prices = np.array([100.0, 102.0, 104.0, 103.0, 105.0, 107.0, 106.0])
-
-        ema = worker._calculate_ema(prices, period=5)
-
-        assert ema == pytest.approx(104.8, abs=0.01)
 
 
 class TestMACDStructure:

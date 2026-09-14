@@ -21,6 +21,7 @@ from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
+from python.framework.utils.trading_math.indicators.on_balance_volume import obv
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 
 
@@ -173,7 +174,7 @@ class ObvWorker(AbstractIndicatorWorker):
         volumes = np.array([bar.volume for bar in bars_to_use])
 
         # Calculate OBV
-        obv = self._calculate_obv(closes, volumes)
+        obv_value = obv(closes, volumes)
 
         # Calculate trend direction (OBV slope over last few bars)
         trend = self._calculate_trend(
@@ -183,37 +184,13 @@ class ObvWorker(AbstractIndicatorWorker):
         has_volume = total_volume > 0
 
         return WorkerResult(outputs={
-            'obv_value': float(obv),
+            'obv_value': float(obv_value),
             'trend': trend,
             'has_volume': has_volume,
             'total_volume': total_volume,
             'bars_used': len(bars_to_use),
             'market_type': self._market_type.value if self._market_type else None,
         })
-
-    def _calculate_obv(self, closes: np.ndarray, volumes: np.ndarray) -> float:
-        """
-        Calculate cumulative OBV value.
-
-        Args:
-            closes: Array of close prices
-            volumes: Array of volumes
-
-        Returns:
-            Final OBV value
-        """
-        if len(closes) < 2:
-            return 0.0
-
-        obv = 0.0
-        for i in range(1, len(closes)):
-            if closes[i] > closes[i - 1]:
-                obv += volumes[i]
-            elif closes[i] < closes[i - 1]:
-                obv -= volumes[i]
-            # If equal, OBV unchanged
-
-        return obv
 
     def _calculate_trend(
         self,
@@ -237,9 +214,8 @@ class ObvWorker(AbstractIndicatorWorker):
 
         # Calculate OBV at start and end of lookback period
         start_idx = -(lookback + 1)
-        obv_start = self._calculate_obv(
-            closes[:start_idx], volumes[:start_idx])
-        obv_end = self._calculate_obv(closes, volumes)
+        obv_start = obv(closes[:start_idx], volumes[:start_idx])
+        obv_end = obv(closes, volumes)
 
         diff = obv_end - obv_start
 

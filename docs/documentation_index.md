@@ -162,6 +162,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Data Coverage Tests](tests/framework/data_coverage_tests.md) | Data format version spans — which collector schema produced which archive window |
 | [Normalizer Tests](tests/framework/normalizer_tests.md) | Central rescale/clamp/normalize apparatus |
 | [Account Value Tests](tests/framework/account_value_tests.md) | One account-value definition per account model — the input every circuit-breaker limit sits on, and why spot answers None rather than guessing |
+| [Indicator Tests](tests/framework/indicator_tests.md) | The shared indicator library: what each name means, that the per-tick and bulk forms of one indicator agree, and how much history each average needs |
 | [Price Trigger Tests](tests/framework/price_trigger_tests.md) | The shared order-vs-quote predicate: has the market reached this price, and which side of the book does this direction trade at |
 | [Market Calendar / Swap Rollover](tests/framework/market_calendar_tests.md) | Swap-rollover + DST calendar helpers + MarketClock awareness (#365) |
 | [Diagnostics CSV Sink Tests](tests/framework/diagnostics_csv_sink_tests.md) | Strategy-owned diagnostics CSV channel + flush helper |

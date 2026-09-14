@@ -50,3 +50,34 @@ class TimeframeInfo(BaseModel):
 
 class TimeframeListResponse(BaseModel):
     timeframes: list[TimeframeInfo]
+
+
+class IndicatorPointResponse(BaseModel):
+    t: int              # unix seconds UTC, bar OPEN time — same basis as BarResponse
+    v: float            # the indicator's value at that bar
+
+
+class GapResponse(BaseModel):
+    """
+    One interruption in a symbol's archive, with what it was.
+
+    A venue outage and a quiet weekend are different facts, and `category` is what keeps
+    them apart — the reader never has to infer it from the duration.
+    """
+
+    start: str                  # ISO-8601 UTC
+    end: str                    # ISO-8601 UTC
+    seconds: float
+    category: str               # seamless | weekend | holiday | short | moderate | large
+    reason: str
+
+
+class CoverageGapsResponse(BaseModel):
+    """Coverage span plus every gap inside it, categorised."""
+
+    symbol: str
+    broker: str
+    start: str                  # ISO-8601 UTC
+    end: str                    # ISO-8601 UTC
+    gap_counts: dict[str, int]  # per category
+    gaps: list[GapResponse]

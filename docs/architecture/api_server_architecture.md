@@ -186,6 +186,8 @@ It is a state to pass through, not one to stay in.
 | GET | `/api/v1/brokers/{broker}/symbols` | Symbols for a broker with `market_type` |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/coverage` | Available date range and timeframes |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/bars` | OHLCV bars (query: `timeframe`, `from`, `to`, `limit`) |
+| GET | `/api/v1/brokers/{broker}/symbols/{symbol}/gaps` | Every interruption in the archive, each with its CATEGORY — a venue outage and a quiet weekend are different facts and the caller never has to infer which from a duration. Served from the discovery cache; computes nothing |
+| GET | `/api/v1/brokers/{broker}/symbols/{symbol}/indicators/atr` | Average True Range per bar (query: `timeframe`, `from`, `to`, `period`, `smoothing`, `limit`) |
 | GET | `/api/v1/reports/runs` | Index of EVERY run, newest first — `run_id`, `group` ∈ `simulation` \| `live`, the set / profile name, `artifacts` (every report file the run persisted, by name), and — from the run's header (#475) — `start_time`, `parent_id` (the sweep or session this run belongs to; null when it stands alone), `app_version`, `git_commit` and `config_snapshot`. **`group` is the PIPELINE, never the nesting:** a sweep combination is a `simulation` whose `parent_id` names its sweep, and a live day fragment (#476) will be a `live` whose `parent_id` names its session. `has_reports` is still served, now derived as `artifacts` being non-empty, so the two can never disagree. **`reporting`** (`expected` \| `none`) says whether the run was COMMISSIONED to report — read it together with `artifacts`: empty + `expected` means still running or died before reporting, empty + `none` means it was never meant to. Without the pair a crashed run is indistinguishable from a deliberately silent one. **`artifacts` is what a consumer should read:** the two pipelines produce DIFFERENT sets (a live session has no `scenario_details` / `profiling` / `run_meta` / `aggregated_portfolio`), so a client that guessed would get a 404 for the difference. Served from the derived run index, built from each run's `header.json`; a lookup is an exact match against that index. A run with no artifacts exists as logs only (a test session writes none). The entry point the routes below are addressed by |
 | GET | `/api/v1/sweeps` | Every recorded parameter sweep, newest first — id, start, duration, combination + ok/error counts, algo, objective. Served from the run-results ledger (#390) |
 | GET | `/api/v1/sweeps/{sweep_id}` | One sweep's combinations, RANKED by the objective the sweep declared. Each row carries its `run_id`, the hinge into the report routes |
@@ -242,6 +244,43 @@ number that is wrong.
 
 Bars are **rendered from ticks** (a DERIVED store, §44): periods with no ticks produce no bar —
 gaps are omitted, never zero-filled.
+
+### Gaps Endpoint Details
+
+Per symbol, not per timeframe: the coverage analysis runs at one configured granularity, and a
+gap in the tick stream is a gap at every timeframe above it.
+
+`gap_counts` reports only the categories that actually occurred — a zero is noise. Categories
+come from the market's own rules, so a weekend is `weekend` on forex and never appears on
+crypto, which does not close.
+
+### ATR Endpoint Details
+
+`GET …/indicators/atr?timeframe=M5&from=<iso>&to=<iso>&period=14&smoothing=rma`
+
+Three things this route does that a naive implementation would not:
+
+**It computes a lead-in.** Wilder's smoothing is recursive, so the value at the first requested
+bar depends on bars BEFORE it. Computing only the requested range would return a seed rather
+than an ATR — and it would look like a number. The lead-in is taken by ROW COUNT, never by a
+calendar offset: a calendar window silently under-delivers across a market closure.
+
+**It declares its convention.** "ATR" means Wilder's smoothing everywhere outside this project,
+and a caller cannot tell from the rows which average produced them. Three headers say so:
+
+| Header | Meaning |
+|---|---|
+| `X-Indicator-Smoothing` | `rma` (Wilder, the default and the standard) \| `ema` \| `sma` |
+| `X-Indicator-Period` | The period the values were computed with |
+| `X-Indicator-Timeframe` | The bar timeframe underneath them |
+
+The bar-semantics headers (`X-Bar-Time-Basis`, `X-Bar-Timezone`) and the row-count headers
+(`X-Bar-Count`, `X-Bar-Total`, `X-Bar-Limit`, `X-Bar-Truncated`) travel with it, since the
+points carry the same stamps as the bars they came from.
+
+**It refuses rather than clamps.** A `period` above `MAX_INDICATOR_PERIOD` or a `limit` above
+`MAX_BARS` answers `400`, the same rule the bars route follows: a cap applied behind the
+caller's back is worse than a refusal.
 
 ### Reports Endpoints Details
 

@@ -4,18 +4,25 @@ FiniexTestingIDE - RSI Worker Computation Tests
 Tests the RSI compute() method against hand-calculated reference values.
 
 Key implementation details (verified from source):
-- SMA-based RSI (NOT Wilder's Exponential Smoothing)
-- Uses np.mean(gains) and np.mean(losses) over ALL deltas
-- Takes bars[-(period + 1):] → needs period + 1 bars minimum
-- Returns WorkerResult with outputs['rsi_value'] = float(rsi)
+- Wilder's RSI: gains and losses are smoothed with the RMA, which is what the bare name
+  means everywhere outside this repository
+- The window is rma_warmup_bars(period) + 1, NOT period + 1: the smoothing is recursive,
+  so the period is not the window
+- Returns WorkerResult with outputs['rsi_value'], plus the two averages behind it
 
 Reference formula:
-    deltas = np.diff(close_prices)
-    avg_gain = mean(positive deltas, zeros included)
-    avg_loss = mean(abs(negative deltas), zeros included)
+    deltas = diff(close_prices)
+    avg_gain = rma(positive deltas, zeros included)
+    avg_loss = rma(abs(negative deltas), zeros included)
     RS = avg_gain / avg_loss
     RSI = 100 - (100 / (1 + RS))
     Special case: avg_loss == 0 → RSI = 100.0
+
+Most cases below hand-supply exactly period + 1 bars, and over exactly one period of
+deltas the RMA returns its own seed — the plain mean. So those hand-calculated reference
+values are unchanged by the move to Wilder, and that is precisely the collapse that let
+this project compute Cutler's RSI under the plain name for as long as it did. The last
+class supplies real history and is where the difference becomes visible.
 """
 
 import pytest
@@ -224,3 +231,55 @@ class TestRSIBoundaryAndRange:
         assert 0.0 <= result.get_signal('rsi_value') <= 100.0
         # This upward-biased series should be above 50
         assert result.get_signal('rsi_value') > 50.0
+
+
+class TestTheWorkerComputesTheStandardRsi:
+    """
+    Given real history the worker must produce Wilder's RSI, not Cutler's.
+
+    Everything above supplies exactly `period + 1` bars, where the two definitions
+    coincide by construction — so without this class the suite would stay green whichever
+    of the two the worker used.
+    """
+
+    # Deterministic zigzag with an upward drift: gains and losses both occur, and they are
+    # unevenly spaced, so recency weighting changes the answer.
+    HISTORY = [
+        100.0, 101.5, 100.8, 102.6, 101.9, 103.8, 103.0, 105.2, 104.3, 106.7,
+        105.6, 108.3, 107.1, 110.0, 108.6, 111.7, 110.1, 113.4, 111.6, 115.2,
+        113.4, 117.3, 115.2, 119.4, 117.1,
+    ]
+
+    def test_it_matches_wilders_definition(self, mock_logger):
+        import numpy as np
+
+        from python.framework.types.indicator_types import MaType
+        from python.framework.utils.trading_math.indicators.rsi import rsi
+
+        period = 4
+        worker = RsiWorker(
+            name='test_rsi',
+            parameters={'periods': {'M5': period}},
+            logger=mock_logger,
+        )
+        bars = make_bars(self.HISTORY)
+        result = worker.compute(
+            tick=make_tick(bid=self.HISTORY[-1]),
+            bar_history={'M5': bars},
+            current_bars={},
+        )
+
+        window = np.array(self.HISTORY[-worker.get_warmup_requirements()['M5']:])
+        assert result.get_signal('rsi_value') == pytest.approx(rsi(window, period).value)
+        assert result.get_signal('rsi_value') != pytest.approx(
+            rsi(window, period, smoothing=MaType.SMA).value
+        )
+
+    def test_it_reads_further_back_than_its_period(self, mock_logger):
+        period = 4
+        worker = RsiWorker(
+            name='test_rsi',
+            parameters={'periods': {'M5': period}},
+            logger=mock_logger,
+        )
+        assert worker.get_warmup_requirements()['M5'] > period + 1

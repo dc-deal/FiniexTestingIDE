@@ -15,6 +15,7 @@ from typing import Dict, Optional
 
 import pandas as pd
 
+from python.configuration.import_config_manager import ImportConfigManager
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
@@ -47,10 +48,12 @@ class VectorizedBarRenderer:
         """
         self.symbol = symbol
         self._log_buffer = log_buffer
-        # Pandas resample() rules for each timeframe
+        # Pandas resample() rules for each timeframe the import is configured to
+        # materialize — the registry says which names EXIST, the config which ones are
+        # written to disk, because every one of them costs a file per symbol
         self._resample_rules = {
             tf: TimeframeConfig.get_resample_rule(tf)
-            for tf in TimeframeConfig.sorted()
+            for tf in ImportConfigManager().get_render_timeframes()
         }
 
     def _log(self, level: str, message: str) -> None:

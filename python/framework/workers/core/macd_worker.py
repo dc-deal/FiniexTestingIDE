@@ -11,6 +11,10 @@ from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import REQUIRED, InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
+from python.framework.utils.trading_math.indicators.exponential_moving_average import (
+    ema_warmup_bars,
+)
+from python.framework.utils.trading_math.indicators.macd import macd
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 
 
@@ -131,27 +135,29 @@ class MacdWorker(AbstractIndicatorWorker):
         """
         Calculate MACD warmup requirements from config.
 
-        MACD needs: max(fast_period, slow_period) + signal_period bars
-        This ensures enough data for both MACD line and signal line.
+        Both averages are recursive, and the signal line is an average OF the MACD line, so
+        the two warmups stack: the slow EMA must be free of its seed before the MACD values
+        it produces are worth averaging, and the signal EMA then needs its own run of them.
+        `slow + signal` bars — the old rule — is barely enough to compute the pair at all
+        and nowhere near enough for either to have converged.
+
+        The configured `periods` no longer sizes this. It stays in the config because it is
+        what the schema requires of every INDICATOR worker, but the window this worker reads
+        follows from its own three periods.
 
         Args:
             config: Worker configuration dict with periods, fast/slow/signal
 
         Returns:
-            Dict[timeframe, bars_needed] - e.g. {"M5": 35}
-
-        Example:
-            >>> config = {
-            ...     "periods": {"M5": 35},
-            ...     "fast_period": 12,
-            ...     "slow_period": 26,
-            ...     "signal_period": 9
-            ... }
-            >>> MacdWorker.calculate_requirements(config)
-            {"M5": 35}
+            Dict[timeframe, bars_needed] - e.g. {"M5": 105} for 12/26/9
         """
-        # Use periods directly from config
-        return config.get('periods', {})
+        slow = config.get('slow_period')
+        signal = config.get('signal_period')
+        if not slow or not signal:
+            return config.get('periods', {})
+
+        needed = ema_warmup_bars(slow) + ema_warmup_bars(signal)
+        return {timeframe: needed for timeframe in config.get('periods', {})}
 
     # ============================================
     # DYNAMIC: Instance methods for Runtime
@@ -159,12 +165,21 @@ class MacdWorker(AbstractIndicatorWorker):
 
     def get_warmup_requirements(self) -> Dict[str, int]:
         """
-        MACD warmup requirements from config 'periods'.
+        MACD warmup requirements.
+
+        Delegates to the classmethod so the batch pipeline, which sizes the bar LOAD from
+        it, and this instance, which is checked against it at runtime, cannot answer the
+        same question differently.
 
         Returns:
-            Dict[timeframe, bars_needed] - e.g. {"M5": 35}
+            Dict[timeframe, bars_needed] - e.g. {"M5": 105} for 12/26/9
         """
-        return self.periods
+        return self.calculate_requirements({
+            'periods': self.periods,
+            'fast_period': self.fast_period,
+            'slow_period': self.slow_period,
+            'signal_period': self.signal_period,
+        })
 
     def get_required_timeframes(self) -> List[str]:
         """
@@ -210,72 +225,24 @@ class MacdWorker(AbstractIndicatorWorker):
         """
         # Get first timeframe from periods
         timeframe = list(self.periods.keys())[0]
-        period = self.periods[timeframe]
 
-        # Bars to compute on: history + the current bar unless completed-bar-only
-        bars = self.effective_bars(timeframe, bar_history, current_bars)
+        # The window follows from the three periods, not from the configured 'periods':
+        # both averages are recursive and the signal averages the MACD line, so the two
+        # warmups stack. Reading a shorter window returns a seed, not a MACD.
+        window = self.get_warmup_requirements()[timeframe]
+        bars = self.effective_bars(timeframe, bar_history, current_bars, count=window)
 
         # Extract close prices from bars
-        close_prices = np.array([bar.close for bar in bars[-period:]])
+        close_prices = np.array([bar.close for bar in bars[-window:]])
 
-        # Calculate EMAs
-        fast_ema = self._calculate_ema(close_prices, self.fast_period)
-        slow_ema = self._calculate_ema(close_prices, self.slow_period)
-
-        # Calculate MACD line
-        macd_line = fast_ema - slow_ema
-
-        # Calculate signal line (EMA of MACD line)
-        # For signal line, we need MACD values, not close prices
-        # Simplified: use last few MACD values if we have enough bars
-        if len(bars) >= self.slow_period + self.signal_period:
-            # Calculate historical MACD values for signal line
-            macd_values = []
-            for i in range(self.signal_period, len(close_prices) + 1):
-                hist_close = close_prices[:i]
-                hist_fast = self._calculate_ema(hist_close, self.fast_period)
-                hist_slow = self._calculate_ema(hist_close, self.slow_period)
-                macd_values.append(hist_fast - hist_slow)
-
-            signal_line = self._calculate_ema(
-                np.array(macd_values), self.signal_period
-            )
-        else:
-            # Not enough data for signal line yet
-            signal_line = macd_line
-
-        # Calculate histogram
-        histogram = macd_line - signal_line
+        values = macd(
+            close_prices, self.fast_period, self.slow_period, self.signal_period)
 
         return WorkerResult(outputs={
-            'macd': float(macd_line),
-            'signal': float(signal_line),
-            'histogram': float(histogram),
-            'fast_ema': float(fast_ema),
-            'slow_ema': float(slow_ema),
+            'macd': values.macd,
+            'signal': values.signal,
+            'histogram': values.histogram,
+            'fast_ema': values.fast_ema,
+            'slow_ema': values.slow_ema,
             'bars_used': float(len(close_prices)),
         })
-
-    def _calculate_ema(self, prices: np.ndarray, period: int) -> float:
-        """
-        Calculate Exponential Moving Average.
-
-        Args:
-            prices: Array of prices
-            period: EMA period
-
-        Returns:
-            Current EMA value
-        """
-        if len(prices) < period:
-            # Not enough data, return simple average
-            return np.mean(prices)
-
-        # Calculate EMA using standard formula
-        multiplier = 2 / (period + 1)
-        ema = np.mean(prices[:period])  # Start with SMA
-
-        for price in prices[period:]:
-            ema = (price - ema) * multiplier + ema
-
-        return ema

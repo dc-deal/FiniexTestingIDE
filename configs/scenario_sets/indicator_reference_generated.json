@@ -1,0 +1,133 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "indicator_reference_generated",
+  "created": "2026-09-14T20:25:08.132086+00:00",
+  "description": "Reference set for the shared indicator library (#517), and DERIVED rather than assumed: its nine windows come from the generator's block splitter over kraken_spot coverage, not from dates someone picked. That is the point of it \u2014 the bar index and the coverage report know where the data actually is, including the large gap on 2026-07-29 that this range sits after. Block size is 72h deliberately: a recursive average needs more history than its period, so the RSI's 71-bar warmup alone eats a 6h M5 block whole and the set would run green with zero trades and prove nothing. Didactic, NOT a profitable strategy \u2014 it exists to exercise the chain end to end (derived windows -> corrected indicators -> orders -> report), which it does with 36 trades across three symbols. Regenerate with: generator_cli.py generate-blocks kraken_spot BTCUSD ETHUSD SOLUSD --start 2026-08-01 --end 2026-09-01 --count 3 --block-size 72",
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/aggressive_trend",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "bollinger_main": "CORE/bollinger"
+      },
+      "workers": {
+        "rsi_fast": {
+          "periods": {
+            "M5": 14
+          }
+        },
+        "bollinger_main": {
+          "periods": {
+            "M30": 20
+          },
+          "deviation": 2.0
+        }
+      },
+      "decision_logic_config": {
+        "rsi_buy_threshold": 35,
+        "rsi_sell_threshold": 65,
+        "min_confidence": 0.6
+      }
+    },
+    "execution_config": {},
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 10000.0
+      }
+    },
+    "stress_test_config": {}
+  },
+  "scenarios": [
+    {
+      "name": "BTCUSD_blocks_01",
+      "symbol": "BTCUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-08-01T00:00:00+00:00",
+      "end_date": "2026-08-04T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true
+    },
+    {
+      "name": "BTCUSD_blocks_02",
+      "symbol": "BTCUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-08-04T00:00:00+00:00",
+      "end_date": "2026-08-07T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true
+    },
+    {
+      "name": "BTCUSD_blocks_03",
+      "symbol": "BTCUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-08-07T00:00:00+00:00",
+      "end_date": "2026-08-10T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true
+    },
+    {
+      "name": "ETHUSD_blocks_01",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-08-01T00:00:00+00:00",
+      "end_date": "2026-08-04T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true
+    },
+    {
+      "name": "ETHUSD_blocks_02",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-08-04T00:00:00+00:00",
+      "end_date": "2026-08-07T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true
+    },
+    {
+      "name": "ETHUSD_blocks_03",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-08-07T00:00:00+00:00",
+      "end_date": "2026-08-10T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true
+    },
+    {
+      "name": "SOLUSD_blocks_01",
+      "symbol": "SOLUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-08-01T00:00:00+00:00",
+      "end_date": "2026-08-04T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true
+    },
+    {
+      "name": "SOLUSD_blocks_02",
+      "symbol": "SOLUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-08-04T00:00:00+00:00",
+      "end_date": "2026-08-07T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true
+    },
+    {
+      "name": "SOLUSD_blocks_03",
+      "symbol": "SOLUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-08-07T00:00:00+00:00",
+      "end_date": "2026-08-10T00:00:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true
+    }
+  ]
+}

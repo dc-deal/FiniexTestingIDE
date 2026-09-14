@@ -29,6 +29,17 @@
     "processing": {
         "move_processed_files": true,
         "auto_render_bars": true,
-        "bar_render_workers": 2
+        "bar_render_workers": 2,
+        "_comment_render_timeframes": "Which timeframes the import materializes. Each one costs a parquet file per symbol, so this is a cost knob, not the vocabulary — a name absent here still exists and can be added without code changes. Must name timeframes the registry knows.",
+        "render_timeframes": [
+            "M1",
+            "M5",
+            "M10",
+            "M15",
+            "M30",
+            "H1",
+            "H4",
+            "D1"
+        ]
     }
 }
