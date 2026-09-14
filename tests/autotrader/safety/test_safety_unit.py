@@ -7,12 +7,13 @@ Uses a lightweight stub that mirrors the instance attributes _check_safety reads
 Covers:
 - Spot mode: min_equity triggers/clears, min_balance inert
 - Margin mode: min_balance triggers/clears, min_equity inert
-- Drawdown: equity-based (spot) vs balance-based (margin), no phantom drawdown
+- Drawdown: the ACCOUNT VALUE in both models (#356), no phantom drawdown
 - OR-combined conditions
 - Disabled thresholds (0.0) and disabled safety (enabled=False)
 """
 
 import logging
+from types import SimpleNamespace
 
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.types.autotrader_types.autotrader_config_types import (
@@ -31,18 +32,37 @@ class _SafetyStub:
     exactly the production code — no reimplementation.
     """
 
-    def __init__(self, safety: SafetyConfig, trading_model: TradingModel):
+    def __init__(self, safety: SafetyConfig, trading_model: TradingModel,
+                 day_start_value: float = 0.0):
         self._config = AutoTraderConfig(safety=safety)
         self._trading_model = trading_model
         self._safety_blocked = False
         self._safety_reason = ''
         self._safety_current_value = 0.0
         self._safety_drawdown_pct = 0.0
+        # #356 Phase C — the breaker counts its ENGAGEMENTS for the session report. The
+        # stub carries it because the stub IS the documented dependency surface: an
+        # attribute the path consults has to appear here or the test stops describing it.
+        self._safety_block_count = 0
+        self._day_limit_hit = False
         self._logger = logging.getLogger('test_safety_stub')
+        # #314 — the daily baseline is a tracker in the real loop; here it only has to
+        # answer get_value(), which is all _check_daily_loss reads from it.
+        self._day_baseline = (
+            SimpleNamespace(get_value=lambda: day_start_value)
+            if day_start_value > 0 else None)
 
     def check_safety(self, current_value: float, initial_balance: float) -> None:
         """Delegate to the real _check_safety method via unbound call."""
         AutotraderTickLoop._check_safety(self, current_value, initial_balance)
+
+    def _block(self, reason: str) -> None:
+        """The real accumulator, bound here for the same reason _check_safety is."""
+        AutotraderTickLoop._block(self, reason)
+
+    def _check_daily_loss(self, current_value: float) -> None:
+        """The real daily check, bound here for the same reason."""
+        AutotraderTickLoop._check_daily_loss(self, current_value)
 
 
 def _make_stub(
@@ -51,6 +71,10 @@ def _make_stub(
     min_balance: float = 0.0,
     min_equity: float = 0.0,
     max_drawdown_pct: float = 0.0,
+    max_drawdown_abs: float = 0.0,
+    max_daily_loss_abs: float = 0.0,
+    max_daily_loss_pct: float = 0.0,
+    day_start_value: float = 0.0,
 ) -> _SafetyStub:
     """Build a stub with the given safety config."""
     safety = SafetyConfig(
@@ -58,8 +82,11 @@ def _make_stub(
         min_balance=min_balance,
         min_equity=min_equity,
         max_drawdown_pct=max_drawdown_pct,
+        max_drawdown_abs=max_drawdown_abs,
+        max_daily_loss_abs=max_daily_loss_abs,
+        max_daily_loss_pct=max_daily_loss_pct,
     )
-    return _SafetyStub(safety, trading_model)
+    return _SafetyStub(safety, trading_model, day_start_value)
 
 
 # =============================================================================
@@ -267,3 +294,121 @@ class TestDisplayState:
         stub = _make_stub(TradingModel.SPOT, max_drawdown_pct=30.0)
         stub.check_safety(current_value=11.0, initial_balance=10.0)
         assert stub._safety_drawdown_pct == 0.0
+
+
+# =============================================================================
+# ABSOLUTE DRAWDOWN CAP (#314)
+# =============================================================================
+
+class TestAbsoluteDrawdownCap:
+    """
+    The sibling of the percentage, and independent of it.
+
+    A percentage auto-scales with the account, which is what protects a small one. On a
+    large account the same percentage is a dangerously large number, and the absolute floor
+    is what stops it. Either can fire first; both name themselves when they do.
+    """
+
+    def test_a_loss_beyond_the_cap_blocks(self):
+        stub = _make_stub(max_drawdown_abs=1000.0)
+
+        stub.check_safety(current_value=8_900.0, initial_balance=10_000.0)
+
+        assert stub._safety_blocked
+        assert 'max_drawdown_abs' in stub._safety_reason
+
+    def test_a_loss_inside_the_cap_does_not(self):
+        stub = _make_stub(max_drawdown_abs=1000.0)
+
+        stub.check_safety(current_value=9_500.0, initial_balance=10_000.0)
+
+        assert not stub._safety_blocked
+
+    def test_zero_disables_it(self):
+        stub = _make_stub(max_drawdown_abs=0.0)
+
+        stub.check_safety(current_value=1.0, initial_balance=10_000.0)
+
+        assert not stub._safety_blocked, 'an unset threshold must never gate anything'
+
+    def test_it_is_independent_of_the_percentage(self):
+        """
+        A large account: 12 % is untouched while the absolute floor is long gone.
+
+        That is the whole reason the pair exists rather than one of them.
+        """
+        stub = _make_stub(max_drawdown_pct=12.0, max_drawdown_abs=1000.0)
+
+        stub.check_safety(current_value=97_000.0, initial_balance=100_000.0)
+
+        assert stub._safety_blocked
+        assert 'max_drawdown_abs' in stub._safety_reason
+        assert 'max_drawdown (' not in stub._safety_reason, (
+            'the percentage did not fire, and a reason that claims it did sends the '
+            'operator to the wrong knob')
+
+
+# =============================================================================
+# DAILY LOSS LIMITS (#314)
+# =============================================================================
+
+class TestDailyLossLimits:
+    """
+    A different failure from the session drawdown, and the one a long run is exposed to.
+
+    A session drawdown accumulates from process start; a day resets. A bot that loses a
+    little every single day never trips a session limit at all.
+    """
+
+    def test_the_absolute_daily_limit_blocks(self):
+        stub = _make_stub(max_daily_loss_abs=300.0, day_start_value=10_000.0)
+
+        stub.check_safety(current_value=9_600.0, initial_balance=10_000.0)
+
+        assert stub._safety_blocked
+        assert 'max_daily_loss_abs' in stub._safety_reason
+
+    def test_the_percentage_daily_limit_blocks(self):
+        stub = _make_stub(max_daily_loss_pct=3.0, day_start_value=10_000.0)
+
+        stub.check_safety(current_value=9_600.0, initial_balance=10_000.0)
+
+        assert stub._safety_blocked
+        assert 'max_daily_loss (' in stub._safety_reason
+
+    def test_it_measures_against_the_DAY_not_the_session(self):
+        """
+        The distinction the whole feature rests on.
+
+        Down 25 % on the session but only 1 % today: a daily limit of 3 % must stay silent,
+        or it is a session limit wearing a different name.
+        """
+        stub = _make_stub(max_daily_loss_pct=3.0, day_start_value=7_600.0)
+
+        stub.check_safety(current_value=7_525.0, initial_balance=10_000.0)
+
+        assert not stub._safety_blocked, (
+            f'blocked on {stub._safety_reason} — it read the session loss, not the daily one')
+
+    def test_without_a_day_baseline_nothing_fires(self):
+        """Before the first tick there is no day to measure against, and none is invented."""
+        stub = _make_stub(max_daily_loss_abs=1.0, day_start_value=0.0)
+
+        stub.check_safety(current_value=1.0, initial_balance=10_000.0)
+
+        assert not stub._safety_blocked
+
+    def test_every_breached_limit_is_named(self):
+        """
+        An operator reading a blocked session needs to know whether one limit was touched
+        or three were blown through.
+        """
+        stub = _make_stub(
+            max_drawdown_pct=5.0, max_drawdown_abs=500.0,
+            max_daily_loss_abs=200.0, day_start_value=10_000.0)
+
+        stub.check_safety(current_value=9_000.0, initial_balance=10_000.0)
+
+        for expected in ('max_drawdown (', 'max_drawdown_abs', 'max_daily_loss_abs'):
+            assert expected in stub._safety_reason, (
+                f'{expected} fired but is not in "{stub._safety_reason}"')

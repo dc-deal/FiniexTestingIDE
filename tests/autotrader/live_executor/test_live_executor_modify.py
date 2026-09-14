@@ -180,12 +180,12 @@ class TestModifyLimitOrderAdapterException:
         # Confirm broker_ref without triggering Phase-2 polling
         mock_delayed.await_submit_confirmation(executor_delayed)
 
-        # Monkey-patch adapter's Tier-3 _do_request_modify to raise.
+        # Monkey-patch adapter's Tier-3 do_request_modify to raise.
         # Worker catches it and surfaces as REJECTED EditResponse via inbox.
         def raise_on_modify(*args, **kwargs):
             raise ConnectionError('Broker connection lost')
 
-        executor_delayed.broker.adapter._do_request_modify = raise_on_modify
+        executor_delayed.broker.adapter.do_request_modify = raise_on_modify
 
         rejected_before = executor_delayed.get_execution_stats().orders_rejected
         mod_result = executor_delayed.modify_limit_order(

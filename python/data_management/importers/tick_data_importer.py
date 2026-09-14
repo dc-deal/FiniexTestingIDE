@@ -672,7 +672,7 @@ class TickDataImporter:
         except Exception as e:
             vLog.error(f'❌ Bar rendering failed: {e}')
             vLog.error('   You can manually trigger it later with:')
-            vLog.error('   python -m bar_importer')
+            vLog.error('   python python/cli/bar_index_cli.py render --all --clean')
 
     def _validate_broker_type(self, metadata: dict) -> str:
         """

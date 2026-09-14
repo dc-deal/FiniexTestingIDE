@@ -6,6 +6,7 @@ from typing import List
 
 from pydantic import BaseModel
 
+from python.framework.types.config_types.api_auth_config_types import ApiAuthConfig
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     AutotraderDefaultsConfig,
 )
@@ -43,6 +44,7 @@ class AppConfig(BaseModel):
     Sections:
       - development, console_logging, file_logging: shared
       - paths, history: shared between both pipelines
+      - api: HTTP API posture (whether a token is required)
       - autotrader: AutoTrader pipeline defaults
       - backtesting: Backtesting pipeline settings
     """
@@ -53,5 +55,6 @@ class AppConfig(BaseModel):
     file_logging: FileLoggingConfig
     paths: SharedPaths
     history: HistoryConfig = HistoryConfig()
+    api: ApiAuthConfig = ApiAuthConfig()
     autotrader: AutotraderDefaultsConfig = AutotraderDefaultsConfig()
     backtesting: BacktestingConfig = BacktestingConfig()

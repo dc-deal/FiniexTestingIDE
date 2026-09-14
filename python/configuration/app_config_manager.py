@@ -222,6 +222,19 @@ class AppConfigManager:
         """
         return self._app_config.version
 
+    def get_api_require_auth(self) -> bool:
+        """
+        Whether the HTTP API requires a bearer token.
+
+        Separate from whether any token is configured: a consumer needs its token before it
+        can start sending the header, so the rollout needs a window where both are true and
+        nothing is gated yet.
+
+        Returns:
+            True when gating is enforced
+        """
+        return self._app_config.api.require_auth
+
     # ============================================
     # Development Config
     # ============================================

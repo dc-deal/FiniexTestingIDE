@@ -24,6 +24,9 @@ from python.framework.reporting.builders.cold_start_report_builder import (
     build_cold_start_report_from_session,
 )
 from python.framework.reporting.builders.run_unit import run_units_from_session
+from python.framework.reporting.builders.safety_report_builder import (
+    build_safety_report_from_session,
+)
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_session,
 )
@@ -41,6 +44,7 @@ from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
 from python.framework.reporting.io.artifact_specs import (
     BROKER_ARTIFACT,
     COLD_START_ARTIFACT,
+    SAFETY_ARTIFACT,
     WARNINGS_ERRORS_ARTIFACT,
 )
 from python.framework.reporting.io.report_artifact_io import write_artifact
@@ -198,6 +202,20 @@ class AutotraderReportCoordinator:
             )
             write_artifact(cold_start_report, io_dir, COLD_START_ARTIFACT)
 
+        # Safety (#356 / #314) — the risk denominator this session ran against and how far
+        # the account moved away from it. Written whenever a baseline was TAKEN, including
+        # for a session whose limits were switched off: that record is what says what would
+        # have fired, which is the question a parity proof asks before anything is armed.
+        # No baseline means nothing was ever measured, and an artifact then asserts a
+        # denominator that does not exist.
+        safety_report = None
+        if (result.safety_session is not None
+                and result.safety_session.baseline is not None):
+            safety_report = build_safety_report_from_session(
+                self._run_id, result.safety_session, self._config.safety,
+                self._config.symbol)
+            write_artifact(safety_report, io_dir, SAFETY_ARTIFACT)
+
         # Every artifact of this session is on disk now — the index records WHICH, so a consumer
         # knows what it can fetch instead of discovering it by 404 (#475).
         SharedReportCoordinator.record_run_artifacts(self._run_dir)
@@ -236,7 +254,7 @@ class AutotraderReportCoordinator:
             warnings_summary=WarningsSummary(warnings_errors_report),
             closing_block=LiveSessionSummary(
                 result, unified.trade_history, self._run_dir, unified.run_summary,
-                warnings_errors_report, cold_start_report),
+                warnings_errors_report, cold_start_report, safety_report),
         )
 
         # Render once (live always full detail); capture, print to console (with colors), and

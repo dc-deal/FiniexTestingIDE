@@ -441,13 +441,18 @@ Execution settings cascade individually, allowing performance testing with diffe
    └─ execution_config.performance_tracking.worker_decision_tracking: false → true
 ```
 
-> **Note:** `performance_tracking` is a **nested sub-group** validated by its own Pydantic model with `extra='forbid'`. Both switches inside the sub-group cascade independently — a scenario can flip one while inheriting the other from global. Architecture and reasoning: see [performance_tracking_layers.md](architecture/performance_tracking_layers.md).
+> **Note:** `performance_tracking` is a **nested sub-group** validated by its own Pydantic model
+> with `extra='forbid'`. Both switches inside the sub-group cascade independently — a scenario can
+> flip one while inheriting the other from global. Architecture and reasoning: see
+> [performance_tracking_layers.md](architecture/performance_tracking_layers.md).
 
 ---
 
 ### 4. `trade_simulator_config` (Per-Parameter Merge, 3-Level)
 
-Trading simulator settings cascade individually (app_config → global → scenario), enabling testing across different account configurations. App-level defaults are defined in `app_config.json::default_trade_simulator_config` and provide latency simulation ranges.
+Trading simulator settings cascade individually (app_config → global → scenario), enabling testing
+across different account configurations. App-level defaults are defined in
+`app_config.json::default_trade_simulator_config` and provide latency simulation ranges.
 
 **App Defaults** (`app_config.json` → `backtesting.default_trade_simulator_config`):
 ```json
@@ -487,7 +492,9 @@ Trading simulator settings cascade individually (app_config → global → scena
 >
 > **Optional:** `"account_currency": "JPY"` can be added to `trade_simulator_config` to explicitly set the P&L denomination currency. If omitted, derived from balances + symbol (quote currency preferred).
 > It must be the symbol's **base or quote** currency — cross-currency settlement (account ≠ base ≠ quote) is not supported in V1, and a scenario that sets an incompatible currency is marked invalid.
-> In **spot** mode the account currency is always the **quote** currency: a base value is normalized to quote (with a warning), because spot P&L settles in the quote currency while a base-denominated account would mix units (gross in base, fees in quote).
+> In **spot** mode the account currency is always the **quote** currency: a base value is normalized
+> to quote (with a warning), because spot P&L settles in the quote currency while a base-denominated
+> account would mix units (gross in base, fees in quote).
 
 **Override Log:**
 ```
@@ -600,9 +607,11 @@ These parameters are **scenario-specific only** - no inheritance:
 }
 ```
 
-**These cannot be overridden per scenario** - they define the strategy architecture! The `worker_instances` dict determines which workers exist and their types. Scenarios can only modify parameters of these instances via the `workers` section, not change the architecture itself.
+**These cannot be overridden per scenario** - they define the strategy architecture! The
+`worker_instances` dict determines which workers exist and their types. Scenarios can only modify
+parameters of these instances via the `workers` section, not change the architecture itself.
 
-**Why?** Because the DecisionLogic's `get_required_worker_instances()` method declares a fixed contract. Changing which workers exist would break this contract.
+**Why?** Because the DecisionLogic's `get_required_workers()` method declares a fixed contract. Changing which workers exist would break this contract.
 
 ---
 
@@ -1055,4 +1064,4 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 ]
 ```
 
-**Why?** DecisionLogic declares required workers via `get_required_worker_instances()`. This contract is fixed and cannot change per scenario.
+**Why?** DecisionLogic declares required workers via `get_required_workers()`. This contract is fixed and cannot change per scenario.

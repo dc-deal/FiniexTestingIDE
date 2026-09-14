@@ -78,21 +78,126 @@ knowing rather than rediscovering:
   against `get_active_orders()` — resting orders only — so an unresolved MARKET or CLOSE
   order can never be attributed by it, whatever the cadence. Its only exit is the timeout
   (`order_timeout_seconds`, 30 s) → `BROKER_UNREACHABLE`.
+- **That timeout fires exactly once, and removal is keyed by the order's OWN id.** The
+  reference-keyed removals cannot serve an order whose write was never answered: its
+  `broker_ref` is `None`, the index lookup finds nothing, and they return before removing
+  anything — so the same order timed out again on every heartbeat and every tick for the
+  rest of the session, repeating `on_order_rejected` at the algo and holding
+  `has_pending_orders()` true. For a CLOSE it held `is_pending_close` true, which made that
+  position unclosable. `discard_order()` removes by `pending_order_id`, which always exists.
+- **`BROKER_UNREACHABLE` arms the order cooldown**, for the same reason as the other
+  cooldown reasons: when the venue cannot be reached, sending more orders helps least. The
+  brake gates ENTRIES only, so closing and protecting an open position stay unaffected.
+  This depends on the line above and cannot precede it: `record_rejection` re-arms the
+  cooldown on every call once the count is at threshold, and only a success in the same
+  direction clears it — so a timeout that re-fired every tick would re-block the direction
+  every tick, turning a sixty-second pause into a permanent trading stop.
 - **And the pull is cadenced.** It fires every `interval_ticks` (100) ticks OR at most every
   `min_interval_seconds` (60 s by default, profile-configurable) — whichever comes first, so
-  60 s is the CEILING of the wait during an idle market, not a floor. A resting order is
-  therefore repaired within one cadence, not instantly. Asking EARLY — a targeted
-  order-status request fired by the unresolved event itself, plus a bounded in-flight
-  window — is #487.
-- **Absence at the venue does not resolve anything.** An order missing from the open-order
-  list may never have been accepted, or may have filled. The pull cannot tell those apart,
-  so such a pending is neither dropped nor confirmed: it is reported once into the session
-  error pot naming the order, because it keeps `has_pending_orders()` true. Deciding it
-  needs the closed-order / trades channel, which is again #487.
+  60 s is the CEILING of the wait during an idle market, not a floor. It is the slow lane;
+  the fast one is the resolution below, fired by the unresolved event itself.
 
 The algo needs no new code: `has_in_flight_operation()` stays true and its existing
 discipline pattern blocks. What it gains is that "the venue refused this order" and "we
 could not reach the venue" stop arriving as the same value.
+
+## Asking, and what the answer may be turned into (#487)
+
+The truth pull is cadenced and only sees resting orders. The resolution is neither: it is
+armed by the lost answer and it drives itself on the tick and the heartbeat, which matters
+because an unanswered write is exactly the situation in which no tick may arrive for a
+while.
+
+**All four writes are covered, and three of them used to collapse.** `is_unresolved` was
+read in two places in the whole live layer; everything else treated "not rejected" as
+"accepted", so an unresolved cancel ran the entire success path — dropping an order the
+venue may still hold, clearing the protective stamp, and releasing the deferred close
+beside a stop that may still be resting. That is the double-fill the cancel-before-close
+ordering exists to prevent, reached through a transport fault instead of a race.
+
+The rule is one sentence: **an unresolved write books NOTHING.** The local state stays as it
+was, `in_flight_operation` stays set so no second write races the first, and the resolution
+is armed.
+
+**Which question is asked depends on what the lost answer left behind**, and both routes are
+measured against Kraken (2026-09-13,
+`python/experiments/venue_probes/probe_kraken_order_identity.py`):
+
+```
+broker_ref known      QueryOrders by that reference             one read
+  (cancel / amend)
+
+broker_ref None       OpenOrders  +  ClosedOrders by our key    two reads
+  (submit)            QueryOrders REFUSES a key with no txid
+                      (EGeneral:Invalid arguments), so there is
+                      no one-call form
+```
+
+The second route needs our key to name ONE order, which is why a close mints its own
+counter rather than reusing its position's: before that, `ClosedOrders` for one key answered
+with two orders — an entry and its close — and a resolution that has to guess which is worse
+than one that keeps asking.
+
+**Three verdicts, no fourth:**
+
+| Verdict | What the venue said | What we do |
+|---|---|---|
+| `RESOLVED_RESTING` | it names the order | restore `broker_ref` and step aside — the ordinary poll path already knows how to book a fill |
+| `RESOLVED_ABSENT` | it answered and named nothing, *after* the settle window | now, and only now, a genuine rejection |
+| `UNKNOWN_AT_CEILING` | still nothing when the budget ran out | escalate to the session error pot, block new ENTRIES, and dispose of the order per its world — see below |
+
+A read that FAILED is none of these and books nothing at all: the venue did not answer, so
+the next pass asks again.
+
+**Why the empty answer waits.** An order accepted a moment ago may not be indexed yet, so
+"named nothing" is not yet evidence that nothing was taken. `venue_read_settle_seconds` is
+how long the venue's read plane may lag its write plane, and it is ONE key with several
+readers — this resolution, the reconciler's stale / orphan / unconfirmed verdicts, and the
+DriftAuditor, which meets the same lag and discards its measurement. A constant per site
+would let them disagree about a physical property of one venue.
+
+**Its budget is its own, never the broker ladder's.** `broker_transport.connection` is
+`attempt_budget: 3` with `on_give_up: "abort"`, and abort ENDS the session. A resolution
+that ends the run is worse than the state it resolves.
+
+**The ceiling has a local disposition, and it is not "carry on".** New ENTRIES stop while an
+order we sent is unaccounted for; closing and protecting what is already held continue,
+because the guard is reached from `validate` on an `OpenOrderRequest`. It is a LATCH, not a
+cooldown — the condition does not expire with time, it ends when the order is finally
+accounted for, and specifically NOT because the order left the tracker.
+
+**And the two worlds part company there**, along the same structural line #473 already
+documented:
+
+- A **resting** order stays in its list. The truth pull sees it every cadence and reports it
+  into the session error pot, so keeping it costs a true `has_pending_orders()` and buys a
+  standing record.
+- A **MARKET or CLOSE** pending is outside that pull's reach entirely — nothing would ever
+  look at it again — so it takes the disposition the fill timeout already defines: recorded
+  `BROKER_UNREACHABLE`, never `BROKER_ERROR`, and removed from the tracker so it stops
+  gating the algo. One booking routine serves both callers, because a timeout and a ceiling
+  disagreeing about how a give-up is recorded is how a report and a record come to describe
+  different sessions.
+
+**The fill timer stops applying the moment the resolution claims an order**, and that is the
+issue's first sentence made real. While the two shared a timer the 30 s timeout DISCARDED the
+pending long before a 120 s resolution could finish — for MARKET and CLOSE orders, the ones
+the truth pull cannot see, that was the only exit at all. The suppression is gated on the
+resolution being able to RUN: it needs the canonical clock, and before the first event there
+is none, so an order submitted that early keeps its ordinary timeout rather than losing every
+exit.
+
+**The ceiling is also the watchdog, and nothing else supplies one.** `check_timeouts`
+iterates the request processor's own store, and a resting order is not in it, so a pending
+left in `PENDING_MODIFY` or `PENDING_CANCEL` would sit there until session end — silently,
+while every further operation on it is refused as busy. At the ceiling the operation is
+released and a cancel that was holding a deferred close abandons it, with the error line the
+operator reads. Abandoning is the safe direction: releasing would send the close beside a
+stop whose fate is unknown.
+
+Config lives at `autotrader.execution` in `app_config.json` —
+`order_timeout_seconds`, `venue_read_settle_seconds`, and the `unresolved_resolution`
+block.
 
 ### The key that makes asking possible
 

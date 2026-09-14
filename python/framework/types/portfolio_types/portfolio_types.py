@@ -114,6 +114,12 @@ class Position:
     # the only key that can still ask "did it fill?" after a restart.
     protective_order_id: Optional[str] = None
     protective_broker_ref: Optional[str] = None
+    # The WIRE key that order was sent under (#487). The reference above is what asks the
+    # venue "did it fill?"; this is what asks "is it still there?" on the route that needs
+    # no reference — and after a restart it cannot be recomputed, because it was minted by
+    # a session whose discriminator is gone. Re-deriving one from THIS session would stamp
+    # our name on a predecessor's order.
+    protective_client_order_id: Optional[str] = None
 
     # === Swap accrual (#365) — last rollover instant already charged ===
     # Seeded to entry_time in __post_init__; advanced as overnight swap accrues.

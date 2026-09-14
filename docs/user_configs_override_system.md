@@ -110,7 +110,10 @@ Don't mix this with System A. A partial credentials file under `user_configs/cre
 For System A:
 
 1. Place the base JSON under `configs/<name>.json`.
-2. Add a loader class under [`python/configuration/`](../python/configuration/) following the existing pattern (see [`market_config_loader.py`](../python/configuration/market_config_loader.py) as the most feature-complete example — it uses `list_merge_keys`).
+2. Add a loader class under [`python/configuration/`](../python/configuration/) following the
+   existing pattern (see
+   [`market_config_loader.py`](../python/configuration/market_config_loader.py) as the most
+   feature-complete example — it uses `list_merge_keys`).
 3. Add a Pydantic model under [`python/framework/types/config_types/`](../python/framework/types/config_types/) for schema + defaults. Validate the merged dict with `validate_merged_config()` from `config_merge_utils.py`.
 4. If the config has a list-of-dicts that should merge element-wise (e.g. `brokers`), declare its identifier in `list_merge_keys` when calling `deep_merge`.
 

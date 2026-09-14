@@ -18,9 +18,11 @@ Every adapter lives in `python/framework/trading_env/adapters/` and extends `Abs
 |------|-------------|------------------|
 | **Tier 1** — Config & Symbol Specs | Always (backtesting + live) | `get_symbol_specification`, `get_broker_specification`, `validate_order` |
 | **Tier 2** — Order Object Construction | Always | `create_market_order`, `create_limit_order`, `create_stop_limit_order`, `create_iceberg_order` |
-| **Tier 3** — Live Execution | After `enable_live()` | Twelve methods: `_build_*_payload` / `_do_request_*` / `_parse_*_response` × four operations (submit/query/cancel/modify) |
+| **Tier 3** — Live Execution | After `enable_live()` | One `build_*_payload` / `do_request_*` / `parse_*_response` triple per operation — submit, query, cancel, modify, trades_query |
 
-Tier 1+2 are purely constructors and validators. Tier 3 talks to the real broker — but is decoupled into three pure layers so the orchestration (async dispatch, lifecycle management, dry-run handling) happens outside the adapter in `LiveRequestProcessor`.
+Tier 1+2 are purely constructors and validators. Tier 3 talks to the real broker — but is decoupled
+into three pure layers so the orchestration (async dispatch, lifecycle management, dry-run handling)
+happens outside the adapter in `LiveRequestProcessor`.
 
 ---
 
@@ -29,17 +31,20 @@ Tier 1+2 are purely constructors and validators. Tier 3 talks to the real broker
 Per operation (`submit` / `query` / `cancel` / `modify`), every live-capable adapter must implement three layers:
 
 ```
-  _build_<op>_payload    →    _do_request_<op>    →    _parse_<op>_response
+  build_<op>_payload    →    do_request_<op>    →    parse_<op>_response
   (pure, no I/O)              (transport)              (pure, raw → BrokerResponse)
 ```
 
 | Layer | Allowed | Forbidden |
 |---|---|---|
-| `_build_<op>_payload` | parameter packing, broker-specific format conversion | I/O, state mutation, reading `self._dry_run` |
-| `_do_request_<op>` | actual transport (HTTPS, ZeroMQ, RPC), state mutation (rate-limit counters, dry-run state), **must raise on transport error** | parsing raw to BrokerResponse, lifecycle management |
-| `_parse_<op>_response` | raw dict → `BrokerResponse` conversion, status mapping, fill data extraction | I/O, state mutation, retry logic |
+| `build_<op>_payload` | parameter packing, broker-specific format conversion | I/O, state mutation, reading `self._dry_run` |
+| `do_request_<op>` | actual transport (HTTPS, ZeroMQ, RPC), state mutation (rate-limit counters, dry-run state), **must raise on transport error** | parsing raw to BrokerResponse, lifecycle management |
+| `parse_<op>_response` | raw dict → `BrokerResponse` conversion, status mapping, fill data extraction | I/O, state mutation, retry logic |
 
-`LiveRequestProcessor.submit_open_order` (sync), `submit_open_order_async` (worker-thread), `query_order_sync`, `cancel_order_sync`, `modify_order_sync` compose these layers. The adapter author never needs to think about threading, queues, or main-thread safety — that's the processor's job.
+`LiveRequestProcessor.submit_open_order` (sync), `submit_open_order_async` (worker-thread),
+`query_order_sync`, `cancel_order_sync`, `modify_order_sync` compose these layers. The adapter
+author never needs to think about threading, queues, or main-thread safety — that's the processor's
+job.
 
 ### The Four Operations
 
@@ -52,7 +57,7 @@ Per operation (`submit` / `query` / `cancel` / `modify`), every live-capable ada
 
 ### Transport-Neutral Naming
 
-The transport layer is named `_do_request_*` (not `_do_http_*`) because adapters with non-HTTP transport satisfy the same contract:
+The transport layer is named `do_request_*` (not `do_http_*`) because adapters with non-HTTP transport satisfy the same contract:
 
 - KrakenAdapter — HTTPS POST (`_fetch_private`)
 - MockBrokerAdapter — in-memory state machine
@@ -62,7 +67,12 @@ Same contract, three different transports, zero changes to `LiveRequestProcessor
 
 ### Capability Declaration
 
-`get_order_capabilities()` declares which order types the **venue** accepts — nothing about what this project routes. It is one of two declarations, and the pipeline reads their intersection: the executor declares what has actually been built for its path (`get_supported_order_types()` — the live path carries MARKET, LIMIT, STOP and STOP_LIMIT), and pre-flight checks a strategy's needs against both. So declaring a type here does not by itself let one through — an algo that wants a type either side lacks is refused at startup, and the message names which side is short.
+`get_order_capabilities()` declares which order types the **venue** accepts — nothing about what
+this project routes. It is one of two declarations, and the pipeline reads their intersection: the
+executor declares what has actually been built for its path (`get_supported_order_types()` — the
+live path carries MARKET, LIMIT, STOP and STOP_LIMIT), and pre-flight checks a strategy's needs
+against both. So declaring a type here does not by itself let one through — an algo that wants a
+type either side lacks is refused at startup, and the message names which side is short.
 
 ```python
 def get_order_capabilities(self) -> OrderCapabilities:
@@ -78,9 +88,15 @@ def get_order_capabilities(self) -> OrderCapabilities:
     )
 ```
 
-**Declare the venue, not your progress.** `stop_orders` said `False` here for a long time with the comment *"Kraken uses StopLimit instead"*, which is not true — Kraken offers a plain `stop-loss` that triggers to market, and this same adapter's READ side always mapped it. A capability that under-declares the venue is not a safe error: it is invisible to a certificate built from the declaration (#491 certifies DECLARED paths, so a capability wrongly denied has no path to certify), and it hides the gap behind an apparently deliberate `False`. If the pipeline is the short side, say so in a comment beside a `True` — the intersection already refuses the order.
+**Declare the venue, not your progress.** `stop_orders` said `False` here for a long time with the
+comment *"Kraken uses StopLimit instead"*, which is not true — Kraken offers a plain `stop-loss`
+that triggers to market, and this same adapter's READ side always mapped it. A capability that
+under-declares the venue is not a safe error: it is invisible to a certificate built from the
+declaration (#491 certifies DECLARED paths, so a capability wrongly denied has no path to certify),
+and it hides the gap behind an apparently deliberate `False`. If the pipeline is the short side, say
+so in a comment beside a `True` — the intersection already refuses the order.
 
-If a Tier-3 operation is declared but not implementable for some order type, the `_build_<op>_payload` layer should raise — fail fast at build time rather than send a malformed payload.
+If a Tier-3 operation is declared but not implementable for some order type, the `build_<op>_payload` layer should raise — fail fast at build time rather than send a malformed payload.
 
 ---
 
@@ -130,20 +146,23 @@ docs/tests/live_adapters/example_adapter_integration_tests.md
 |--------|---------|
 | `is_live_capable()` | Return `True` after `enable_live()` succeeded |
 | `enable_live(credentials_file, dry_run, transport: BrokerTransportConfig)` | Load credentials, store config, set `_live_enabled = True` |
-| `_build_submit_payload(symbol, direction, lots, order_type, **kwargs)` | Build broker-specific submit payload |
-| `_do_request_submit(payload)` | Send submit request; **raises on error** |
-| `_parse_submit_response(raw, timestamp)` | Raw → `BrokerResponse` |
-| `_build_query_payload(broker_ref)` | Build query/status payload |
-| `_do_request_query(payload)` | Send query request |
-| `_parse_query_response(raw, broker_ref, timestamp)` | Raw → `BrokerResponse` |
-| `_build_cancel_payload(broker_ref)` | Build cancel payload |
-| `_do_request_cancel(payload)` | Send cancel request |
-| `_parse_cancel_response(raw, broker_ref, timestamp)` | Raw → `BrokerResponse` |
-| `_build_modify_payload(broker_ref, symbol, new_price, new_stop_loss, new_take_profit)` | Build modify payload |
-| `_do_request_modify(payload)` | Send modify request |
-| `_parse_modify_response(raw, original_broker_ref, timestamp)` | Raw → `BrokerResponse` (may carry NEW broker_ref — see below) |
+| `build_submit_payload(symbol, direction, lots, order_type, **kwargs)` | Build broker-specific submit payload |
+| `do_request_submit(payload)` | Send submit request; **raises on error** |
+| `parse_submit_response(raw, timestamp)` | Raw → `BrokerResponse` |
+| `build_query_payload(broker_ref)` | Build query/status payload |
+| `do_request_query(payload)` | Send query request |
+| `parse_query_response(raw, broker_ref, timestamp)` | Raw → `BrokerResponse` |
+| `build_cancel_payload(broker_ref)` | Build cancel payload |
+| `do_request_cancel(payload)` | Send cancel request |
+| `parse_cancel_response(raw, broker_ref, timestamp)` | Raw → `BrokerResponse` |
+| `build_modify_payload(broker_ref, symbol, new_price, new_stop_loss, new_take_profit)` | Build modify payload |
+| `do_request_modify(payload)` | Send modify request |
+| `parse_modify_response(raw, original_broker_ref, timestamp)` | Raw → `BrokerResponse` (may carry NEW broker_ref — see below) |
 
-`_parse_*_response` receives `timestamp` as a parameter — never call `datetime.now()` inside the parse layer. The processor passes a parse-stage timestamp so async-dispatched responses get a timestamp from the main-thread drain (not from the worker), which matters for ordering and event correlation.
+`parse_*_response` receives `timestamp` as a parameter — never call `datetime.now()` inside the
+parse layer. The processor passes a parse-stage timestamp so async-dispatched responses get a
+timestamp from the main-thread drain (not from the worker), which matters for ordering and event
+correlation.
 
 ---
 
@@ -277,7 +296,7 @@ def is_live_capable(self) -> bool:
 **Build payload** (pure, no I/O):
 
 ```python
-def _build_submit_payload(self, symbol, direction, lots, order_type, **kwargs):
+def build_submit_payload(self, symbol, direction, lots, order_type, **kwargs):
     ordertypes = {OrderType.MARKET: 'market', OrderType.LIMIT: 'limit'}
     if order_type not in ordertypes:
         # Never fall through to 'limit' here: an unmapped type would reach the venue as a
@@ -296,10 +315,10 @@ def _build_submit_payload(self, symbol, direction, lots, order_type, **kwargs):
 **Do request** (transport, raises on error):
 
 ```python
-def _do_request_submit(self, payload):
+def do_request_submit(self, payload):
     if self._dry_run:
         # validate=true: broker validates payload (pair, lot, cost, margin) without executing.
-        # Sentinel-tagged dict tells _parse_submit_response to delegate to the simulator.
+        # Sentinel-tagged dict tells parse_submit_response to delegate to the simulator.
         self._fetch_private('/0/private/AddOrder', {**payload, 'validate': 'true'})
         return {
             self._DRY_RUN_SENTINEL: 'submit',
@@ -312,7 +331,7 @@ def _do_request_submit(self, payload):
 **Parse response** (pure):
 
 ```python
-def _parse_submit_response(self, raw, timestamp):
+def parse_submit_response(self, raw, timestamp):
     if raw.get(self._DRY_RUN_SENTINEL) == 'submit':
         return self._dry_run_simulator.submit(
             lots=raw['lots'], price=raw['price'], timestamp=timestamp,
@@ -330,10 +349,14 @@ The same pattern repeats for query / cancel / modify. The MockBrokerAdapter's im
 
 ### `modify_order` — broker_ref semantics
 
-Kraken uses `AmendOrder` — an **in-place** amend: the order keeps the same broker_ref (no cancel-replace), so `_parse_modify_response` returns `original_broker_ref` unchanged. Some brokers instead cancel-replace and return a **new** broker_ref; for those, surface it via `BrokerResponse.broker_ref` and `LiveRequestProcessor.update_broker_ref(old, new)` swaps the index downstream (a defensive path, not exercised by Kraken).
+Kraken uses `AmendOrder` — an **in-place** amend: the order keeps the same broker_ref (no
+cancel-replace), so `parse_modify_response` returns `original_broker_ref` unchanged. Some brokers
+instead cancel-replace and return a **new** broker_ref; for those, surface it via
+`BrokerResponse.broker_ref` and `LiveRequestProcessor.update_broker_ref(old, new)` swaps the index
+downstream (a defensive path, not exercised by Kraken).
 
 ```python
-def _parse_modify_response(self, raw, original_broker_ref, timestamp):
+def parse_modify_response(self, raw, original_broker_ref, timestamp):
     if raw.get(self._DRY_RUN_SENTINEL) == 'modify':
         return self._dry_run_simulator.modify(
             broker_ref=raw['broker_ref'], new_price=raw['new_price'], timestamp=timestamp,
@@ -350,9 +373,14 @@ If your broker keeps the same ref on modify, return it unchanged. Either works �
 
 ### `modify` parameter contract
 
-`_build_modify_payload(broker_ref, symbol, new_price, new_stop_loss, new_take_profit)` — the SL/TP parameters are part of the contract even if your broker doesn't support modifying them (Kraken `AmendOrder` changes limit price / quantity, not SL/TP). In that case accept them and silently ignore — keeps the contract uniform across adapters.
+`build_modify_payload(broker_ref, symbol, new_price, new_stop_loss, new_take_profit)` — the SL/TP
+parameters are part of the contract even if your broker doesn't support modifying them (Kraken
+`AmendOrder` changes limit price / quantity, not SL/TP). In that case accept them and silently
+ignore — keeps the contract uniform across adapters.
 
-`symbol` is in the contract because some brokers need the trading pair alongside the broker_ref. Kraken's `AmendOrder` targets by txid and needs **no** pair, so its build layer ignores `symbol`; brokers that require the pair resolve it to their pair format inside the build layer.
+`symbol` is in the contract because some brokers need the trading pair alongside the broker_ref.
+Kraken's `AmendOrder` targets by txid and needs **no** pair, so its build layer ignores `symbol`;
+brokers that require the pair resolve it to their pair format inside the build layer.
 
 ### Rate limiting
 
@@ -407,7 +435,7 @@ Retrying "insufficient funds" forever would report their outage for our order.
 
 ### The client order id is not optional for a live adapter
 
-`_build_submit_payload(**kwargs)` receives `client_order_id`. Put it on the wire wherever
+`build_submit_payload(**kwargs)` receives `client_order_id`. Put it on the wire wherever
 the venue accepts one, and read it back in `_parse_openorders_response` into
 `BrokerOrder.client_order_id`.
 
@@ -469,12 +497,15 @@ of it.
 against, or an order type nothing here models — the order stays PENDING and the response carries
 `undecided_reason`. The adapter has no logger by design, so the executor is what makes it visible,
 in the session channel (§35). Your adapter passes the quote through the PARSE layer
-(`_parse_submit_response` / `_parse_query_response` take it as an argument) and never through the
+(`parse_submit_response` / `parse_query_response` take it as an argument) and never through the
 payload: the payload is what goes on the wire, and a rehearsal detail must not reach a venue.
 
-The Kraken adapter's pattern (sentinel-tagged raw from `_do_request_*` recognized by `_parse_*_response` and delegated to the simulator) is the canonical integration shape. Replicate it.
+The Kraken adapter's pattern (sentinel-tagged raw from `do_request_*` recognized by `parse_*_response` and delegated to the simulator) is the canonical integration shape. Replicate it.
 
-**Why dry-run goes through the full lifecycle:** before this was introduced (#319 step 9), dry-run mode returned `FILLED` immediately on submit — bypassing pending tracking, OrderGuard cooldowns, timeout detection, etc. Any bug in those paths was undetectable in dry-run. With the simulator, dry-run is real-mode-equivalent in behavior; only the source of the fill differs.
+**Why dry-run goes through the full lifecycle:** before this was introduced (#319 step 9), dry-run
+mode returned `FILLED` immediately on submit — bypassing pending tracking, OrderGuard cooldowns,
+timeout detection, etc. Any bug in those paths was undetectable in dry-run. With the simulator,
+dry-run is real-mode-equivalent in behavior; only the source of the fill differs.
 
 **And why the price rule came later (#505):** the lifecycle was right while the FILL was not.
 Every order flipped after two polls and a MARKET order filled at `0.0`, which with
@@ -508,7 +539,9 @@ tests/live_adapters/
 └── test_<broker>_adapter_order_lifecycle_fill.py   # real MARKET fills, minimum lot
 ```
 
-The tests drive the Tier-3 layers via `LiveRequestProcessor.submit_open_order` / `query_order_sync` / `cancel_order_sync` / `modify_order_sync` — they never call the adapter's Tier-3 methods directly. This validates the full contract including the orchestration boundary.
+The tests drive the Tier-3 layers via `LiveRequestProcessor.submit_open_order` / `query_order_sync`
+/ `cancel_order_sync` / `modify_order_sync` — they never call the adapter's Tier-3 methods directly.
+This validates the full contract including the orchestration boundary.
 
 Key rules:
 - `_live` fixture must explicitly set `dry_run=False` — never rely on the config file default
@@ -523,13 +556,18 @@ Key rules:
 
 ## MockBrokerAdapter — The Template Reference
 
-`python/framework/testing/mock_broker_adapter.py` is the cleanest end-to-end reference for the Tier-3 layer pattern. It satisfies the full 12-method contract with **no network**, no credentials, no config files. Use it as the structural template when implementing a new adapter:
+`python/framework/testing/mock_broker_adapter.py` is the cleanest end-to-end reference for the
+Tier-3 layer pattern. It satisfies the full 12-method contract with **no network**, no credentials,
+no config files. Use it as the structural template when implementing a new adapter:
 
-- `_build_*_payload`: pure parameter packing, dictionary-only
-- `_do_request_*`: in-memory state mutation (mock-as-transport — counter, `_mock_pending`)
-- `_parse_*_response`: pure status-string → enum mapping via `_STATUS_MAP`
+- `build_*_payload`: pure parameter packing, dictionary-only
+- `do_request_*`: in-memory state mutation (mock-as-transport — counter, `_mock_pending`)
+- `parse_*_response`: pure status-string → enum mapping via `_STATUS_MAP`
 
-The mock's `MockExecutionMode` (`INSTANT_FILL`, `DELAYED_FILL`, `REJECT_ALL`, `TIMEOUT`) exists to test the different broker behavior shapes that real adapters might exhibit. When writing your adapter's tests, leverage the equivalent shapes from the real broker (dry-run for instant-fill-like, real submit for delayed-fill-like, etc.).
+The mock's `MockExecutionMode` (`INSTANT_FILL`, `DELAYED_FILL`, `REJECT_ALL`, `TIMEOUT`) exists to
+test the different broker behavior shapes that real adapters might exhibit. When writing your
+adapter's tests, leverage the equivalent shapes from the real broker (dry-run for instant-fill-like,
+real submit for delayed-fill-like, etc.).
 
 ---
 

@@ -607,6 +607,7 @@ class ColdStartAdopter:
                 continue
             position.protective_broker_ref = None
             position.protective_order_id = None
+            position.protective_client_order_id = None
             self._logger.error(
                 f'❌ Cold start: {position_id} comes back UNPROTECTED — its protective '
                 f'order is {response.status.value} at the venue. The declared level is '

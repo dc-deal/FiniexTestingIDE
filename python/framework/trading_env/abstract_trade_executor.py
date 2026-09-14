@@ -206,9 +206,10 @@ class AbstractTradeExecutor(ABC):
         # Executor mode — subclasses override (LiveTradeExecutor → LIVE)
         self._executor_mode = ExecutorMode.SIMULATION
 
-        # Order outcome listeners — notify DecisionTradingApi, Reconciliation,
-        # and other consumers of async fill/rejection outcomes (e.g. margin
-        # check at fill time). Signature: (direction, result) -> None.
+        # Order outcome listeners — notify DecisionTradingApi (OrderGuard), the
+        # DecisionEventDispatcher and the DriftAuditor (#327) of async fill/rejection
+        # outcomes (e.g. margin check at fill time).
+        # Signature: (direction, result, pending_order) -> None.
         # Multi-slot: any number of listeners can register independently.
         self._order_outcome_listeners: List[Callable[[OrderDirection, OrderResult, Optional[PendingOrder]], None]] = []
 
@@ -1799,6 +1800,19 @@ class AbstractTradeExecutor(ABC):
             The current MarketDataStatus (always fresh in sim)
         """
         return self._market_data_status
+
+    def get_unresolved_at_ceiling(self) -> Set[str]:
+        """
+        Orders sent to the venue that it never named, after the resolution ran out (#487).
+
+        Empty in simulation and on every path with no venue: a write cannot be lost to a
+        transport that does not exist. The live executor overrides it, and the OrderGuard
+        reads it to refuse new entries while one of our orders is unaccounted for.
+
+        Returns:
+            Internal order ids at the resolution ceiling (empty in the normal case)
+        """
+        return set()
 
     def get_current_time(self) -> datetime:
         """

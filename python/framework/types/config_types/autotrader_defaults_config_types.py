@@ -14,6 +14,34 @@ from python.framework.types.config_types.performance_tracking_config_types impor
 )
 
 
+class UnresolvedResolutionDefaults(BaseModel):
+    """
+    How a write whose answer was lost gets resolved by ASKING (#487).
+
+    It is not a retry. A write is never repeated — that is how one intent becomes two
+    positions — so what these numbers pace is a READ about the first write's outcome.
+
+    The budget is deliberately this issue's own and NOT the broker REST ladder's: that one
+    is `attempt_budget: 3` with `on_give_up: "abort"`, and abort ENDS the session. A
+    resolution that ends the run is worse than the state it resolves.
+
+    Args:
+        enabled: Whether an unresolved write is resolved at all. Off means the pre-#487
+            behaviour: the order is kept and nothing ever asks
+        query_after_ms: How long after the lost answer the first ask goes out. Not zero —
+            the venue has just been handed a write and its read plane may lag its write one
+        requery_interval_seconds: Spacing between asks once the first one came back UNKNOWN
+        max_attempts: Asks before the ceiling is declared, whichever ceiling comes first
+        max_window_seconds: Wall span before the ceiling is declared, measured on the
+            canonical clock like everything else here
+    """
+    enabled: bool = True
+    query_after_ms: int = 500
+    requery_interval_seconds: float = 5.0
+    max_attempts: int = 12
+    max_window_seconds: float = 120.0
+
+
 class AutotraderExecutionDefaults(BaseModel):
     """AutoTrader tick-loop execution defaults."""
     parallel_workers: bool = False
@@ -37,6 +65,20 @@ class AutotraderExecutionDefaults(BaseModel):
     # order via send_order(venue_held_protection=...). Refused where the adapter cannot
     # carry it; the simulation accepts it and enforces the level itself, unchanged.
     venue_held_protection: bool = False
+    # How long the broker waits for a fill or a refusal before the order is given up on
+    # (#487). It lived as a runtime dataclass default reachable from no config file at all,
+    # which meant its relation to the resolution window below could not be tuned — and the
+    # two numbers only make sense read together.
+    order_timeout_seconds: float = 30.0
+    # How long the venue's READ plane is allowed to lag its write plane (#487). An order
+    # accepted a moment ago may not be indexed yet, so an answer that names nothing is not
+    # yet evidence that nothing was taken — the promotion to "never took it" waits this out.
+    # ONE key with several readers on purpose: this issue's resolution, #349's stale /
+    # orphan / unconfirmed verdicts, and the DriftAuditor, which meets the same lag and
+    # discards the measurement. A constant per site would let them disagree about a physical
+    # property of one venue.
+    venue_read_settle_seconds: float = 5.0
+    unresolved_resolution: UnresolvedResolutionDefaults = UnresolvedResolutionDefaults()
     performance_tracking: AutoTraderPerformanceTrackingConfig = AutoTraderPerformanceTrackingConfig()
 
 

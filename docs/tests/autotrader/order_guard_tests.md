@@ -20,11 +20,14 @@ tests/autotrader/order_guard/
 
 ### Level 1 — Unit Tests
 
-Direct tests against `OrderGuard` with no executor, no tick loop, no scenario runner. The guard is clock-agnostic — all time-dependent methods take an explicit `now: datetime` parameter, so tests simply pass fixed or advanced timestamps instead of patching `datetime.now()`.
+Direct tests against `OrderGuard` with no executor, no tick loop, no scenario runner. The guard is
+clock-agnostic — all time-dependent methods take an explicit `now: datetime` parameter, so tests
+simply pass fixed or advanced timestamps instead of patching `datetime.now()`.
 
 | Class | What it validates |
 |-------|-------------------|
 | `TestCooldown` | Threshold arming, direction isolation, success reset, expiry, counter accumulation, tick-time anchoring (cooldowns measured in simulated time, not wall-clock) |
+| `TestBrokerUnreachableArmsTheCooldown` | `BROKER_UNREACHABLE` is a cooldown reason (#473 added the reason and the set was not extended); the cooldown expires once rejections stop, and a rejection on every tick would never let it — which is why the timeout-removal fix has to land first |
 | `TestConfigurableThreshold` | Custom `max_consecutive_rejections`, cooldown duration in message |
 
 ### Level 2 — Scenario Integration Tests
@@ -47,7 +50,10 @@ Located in `configs/scenario_sets/backtesting/`:
 - **Balance:** 80,000 JPY
 - **Trade sequence:** 2 LONGs (fill, consume margin), 1 LONG (INSUFFICIENT_MARGIN at fill time), 1 LONG (blocked as REJECTION_COOLDOWN)
 - **Guard config:** `max_consecutive_rejections=1` — decouples test from framework default, single rejection arms cooldown
-- **`cooldown_seconds=86400`** (1 day). The cooldown is measured in *simulated tick time*, not wall-clock: the scenario runs 2000 ticks across ~10h of data, so ~1 hour of simulated time elapses between the rejecting trade (#2) and the follow-up trade (#3). The long cooldown ensures Trade #3 still sees the armed cooldown regardless of tick spacing.
+- **`cooldown_seconds=86400`** (1 day). The cooldown is measured in *simulated tick time*, not
+  wall-clock: the scenario runs 2000 ticks across ~10h of data, so ~1 hour of simulated time elapses
+  between the rejecting trade (#2) and the follow-up trade (#3). The long cooldown ensures Trade #3
+  still sees the armed cooldown regardless of tick spacing.
 
 ---
 
@@ -74,7 +80,7 @@ Guard rejections flow through `AbstractTradeExecutor.record_guard_rejection()` i
 
 ---
 
-## Fixtures
+## Fixtures (conftest.py)
 
 ### Unit Test Fixtures
 

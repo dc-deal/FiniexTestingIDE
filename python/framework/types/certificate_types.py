@@ -67,6 +67,13 @@ class CertificateIdentity:
     `isolation_active` and `workspace_overrides` describe the environment rather than the
     subject — every producer needs them, and they mean the same thing for all four. What
     was exercised (a scenario set, a profile, a broker) stays with the producer.
+
+    `python_version` belongs with them for a reason that was almost paid for: the interpreter
+    is part of what ran, and nothing recorded it. A certificate taken on a different minor
+    version looks identical to one taken on this one, so a change of interpreter would be
+    invisible in the record — and on the throughput side it would read as a code improvement,
+    since the benchmark compares against a baseline whose fingerprint never knew the version
+    either.
     """
     record_kind: str
     release_version: str
@@ -74,6 +81,7 @@ class CertificateIdentity:
     timestamp: datetime
     valid_until: datetime
     git_commit: str
+    python_version: str = 'unknown'
     git_branch: Optional[str] = None
     git_dirty: bool = False
     uncommitted_count: int = 0

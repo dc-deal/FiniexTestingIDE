@@ -26,7 +26,7 @@ Recorded results:
       with status, vol_exec and closetm. A txid Kraken never minted returns `{}`.
 
 It reaches the adapter's Tier-3 transport (`_fetch_private`) on purpose: the point is what the
-VENUE sends, and the parse layer flattens exactly the detail being measured. `_parse_query_response`
+VENUE sends, and the parse layer flattens exactly the detail being measured. `parse_query_response`
 is called beside it to show what production would make of the same answer.
 
 Usage:
@@ -155,7 +155,7 @@ def _report_the_absence(adapter: KrakenAdapter, now: datetime) -> None:
     """
     print(f'\n--- a reference Kraken never minted ({_NEVER_MINTED})')
     raw = _query(adapter, [_NEVER_MINTED])
-    parsed = adapter._parse_query_response(raw, _NEVER_MINTED, now)
+    parsed = adapter.parse_query_response(raw, _NEVER_MINTED, now)
     print(f'  raw answer          : {json.dumps(raw)}')
     print(f'  key present         : {_NEVER_MINTED in raw}')
     print(f'  production reads it : {parsed.status.value} '

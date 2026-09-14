@@ -19,6 +19,7 @@ Job types (outbox, main → worker):
                            OrderCapabilities.native_position_sl_tp)
     TradesQueryJob         pull per-execution detail after FILLED (#326)
     QueryJob               poll an active LIMIT order's status (#320)
+    OrderResolveJob        ask what became of a write whose answer was lost (#487)
 
 Response types (inbox, worker → main):
     SubmitResponse         result of a SubmitJob
@@ -27,13 +28,18 @@ Response types (inbox, worker → main):
     PositionModifyResponse result of a PositionModifyJob (#318)
     TradesQueryResponse    result of a TradesQueryJob (#326)
     QueryResponse          result of a QueryJob (#320)
+    OrderResolveResponse   result of an OrderResolveJob (#487)
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
-from python.framework.types.live_types.live_execution_types import BrokerResponse
+from python.framework.types.live_types.live_execution_types import (
+    BrokerOrderStatus,
+    BrokerResponse,
+)
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrderAction
@@ -46,8 +52,8 @@ class SubmitJob:
     Submit-order job carried via _http_outbox to the worker thread.
 
     The worker uses the adapter's Tier-3 layers to perform the broker call:
-        adapter._do_request_submit(payload) → raw
-        adapter._parse_submit_response(raw, timestamp, direction, order_type) → BrokerResponse
+        adapter.do_request_submit(payload) → raw
+        adapter.parse_submit_response(raw, timestamp, direction, order_type) → BrokerResponse
 
     Args:
         order_id: Internal order identifier (links the job back to the
@@ -59,9 +65,9 @@ class SubmitJob:
                     live in AbstractTradeExecutor._active_limit_orders
                     (Hybrid pattern). The dispatcher delegates LIMIT
                     responses to the executor via a separate hook.
-        payload: Pre-built broker payload (from adapter._build_submit_payload)
+        payload: Pre-built broker payload (from adapter.build_submit_payload)
         adapter: Live-capable adapter (used by the worker for the
-                 _do_request_submit / _parse_submit_response calls)
+                 do_request_submit / parse_submit_response calls)
         direction: LONG or SHORT. Read only by the DRY-RUN simulator, which plays the venue
                    and needs to know which side of the quote a fill takes (#505). No QUOTE
                    travels with a submit: a dry-run order is priced when it is POLLED, the
@@ -105,8 +111,8 @@ class SubmitResponse:
 # ============================================
 # These job/response pairs travel through the same _http_outbox / _http_inbox
 # as SubmitJob/SubmitResponse. The worker dispatches them via the adapter's
-# corresponding Tier-3 triples (_build_modify_payload / _do_request_modify /
-# _parse_modify_response, etc.). drain_inbox handles each response on the
+# corresponding Tier-3 triples (build_modify_payload / do_request_modify /
+# parse_modify_response, etc.). drain_inbox handles each response on the
 # main thread — applying the modification to the local shadow state and
 # clearing the PendingOrder.execution_state.in_flight_operation flag.
 
@@ -117,10 +123,10 @@ class EditJob:
     Modify-order job carried via _http_outbox to the worker thread.
 
     The worker uses the adapter's Tier-3 modify-layer:
-        adapter._build_modify_payload(broker_ref, symbol, order_type,
+        adapter.build_modify_payload(broker_ref, symbol, order_type,
                                       new_price, new_limit_price, sl, tp)
-        adapter._do_request_modify(payload) → raw
-        adapter._parse_modify_response(raw, broker_ref, timestamp) → BrokerResponse
+        adapter.do_request_modify(payload) → raw
+        adapter.parse_modify_response(raw, broker_ref, timestamp) → BrokerResponse
 
     Args:
         order_id: Internal order identifier (links back to the PendingOrder
@@ -217,9 +223,9 @@ class PositionModifyJob:
     instant portfolio.modify_position and never enqueues this job.
 
     The worker uses a separate Tier-3 triple
-        adapter._build_position_modify_payload(...)
-        adapter._do_request_position_modify(payload) → raw
-        adapter._parse_position_modify_response(raw, position_id, timestamp)
+        adapter.build_position_modify_payload(...)
+        adapter.do_request_position_modify(payload) → raw
+        adapter.parse_position_modify_response(raw, position_id, timestamp)
     OR folds it into the existing modify layer with a target discriminator
     (decision deferred to #209 implementation per ISSUE_209).
 
@@ -275,9 +281,9 @@ class TradesQueryJob:
     Trades-query job — fetches the per-execution detail for a filled order.
 
     The worker uses the adapter's Tier-3 trades-query triple:
-        adapter._build_trades_query_payload(broker_ref)
-        adapter._do_request_trades_query(payload) → raw
-        adapter._parse_trades_query_response(raw, broker_ref, order_id)
+        adapter.build_trades_query_payload(broker_ref)
+        adapter.do_request_trades_query(payload) → raw
+        adapter.parse_trades_query_response(raw, broker_ref, order_id)
             → List[BrokerTrade]
 
     Args:
@@ -306,9 +312,9 @@ class QueryJob:
     Status-poll job for an active LIMIT order — used by #320 scheduler.
 
     The worker uses the adapter's Tier-3 query layer:
-        adapter._build_query_payload(broker_ref)
-        adapter._do_request_query(payload) → raw
-        adapter._parse_query_response(raw, broker_ref, timestamp, market) → BrokerResponse
+        adapter.build_query_payload(broker_ref)
+        adapter.do_request_query(payload) → raw
+        adapter.parse_query_response(raw, broker_ref, timestamp, market) → BrokerResponse
 
     Args:
         order_id: Internal order identifier (primary routing key in drain)
@@ -373,5 +379,72 @@ class TradesQueryResponse:
     order_id: str
     broker_ref: str
     trades: List[BrokerTrade] = field(default_factory=list)
+    success: bool = True
+    error_message: Optional[str] = None
+
+
+@dataclass
+class OrderResolveJob:
+    """
+    Ask the venue what became of a write whose answer never arrived (#487).
+
+    It is NOT a retry: the write must never run again, because a retry after a lost answer
+    is how one intent becomes two positions (§43). What runs is a different, READ-ONLY
+    operation about the first one's outcome — which is why this is its own job rather than
+    a re-dispatch of the original.
+
+    Two routes, and which one applies is decided by what the lost answer left behind. Both
+    are measured (2026-09-13, `probe_kraken_order_identity.py`):
+
+        broker_ref known   an unresolved CANCEL or AMEND — the reference arrived, only the
+                           second answer did not. The ordinary QueryOrders route answers.
+        broker_ref None    an unresolved SUBMIT — no reference ever came back, so the only
+                           handle is our own key. QueryOrders REFUSES a key without a txid
+                           (`EGeneral:Invalid arguments`), so it takes TWO reads: the open
+                           orders, plus the closed ones narrowed to that key.
+
+    Args:
+        order_id: Internal order identifier (primary routing key in drain)
+        client_order_id: The wire key this order was sent under, or None when it was sent
+            without one — in which case the keyless route below cannot answer at all
+        broker_ref: The venue reference, when one arrived before the answer was lost
+        adapter: Live-capable adapter
+        range_start: Start of the closed-order window to read (UTC)
+        range_end: End of that window (UTC)
+    """
+    order_id: str
+    client_order_id: Optional[str]
+    broker_ref: Optional[str]
+    adapter: AbstractAdapter
+    range_start: datetime
+    range_end: datetime
+
+
+@dataclass
+class OrderResolveResponse:
+    """
+    What the venue said about an unresolved write, normalised across both routes.
+
+    The executor decides RESOLVED_RESTING / RESOLVED_ABSENT / UNKNOWN from this without
+    knowing which route answered — the routes differ in cost and payload, not in meaning.
+
+    `status=None` is the load-bearing value: the venue ANSWERED and named nothing. That is
+    not yet "it never took the order" — an order accepted a moment ago may not be indexed
+    yet — so the promotion to a rejection waits out the settle window. `success=False` is a
+    different fact again: the venue did not answer, and the next attempt asks again.
+
+    Args:
+        order_id: Internal order identifier (matches OrderResolveJob.order_id)
+        status: What the venue says this order IS, or None when it named nothing
+        broker_ref: The reference the venue gave it — the handle a lost submit answer
+            never delivered, and what puts the order back into the ordinary poll path
+        filled_lots: How much of it the venue has executed (0.0 when none / unknown)
+        success: False when the read itself failed; `status` then says nothing
+        error_message: Non-empty when success is False
+    """
+    order_id: str
+    status: Optional[BrokerOrderStatus] = None
+    broker_ref: Optional[str] = None
+    filled_lots: float = 0.0
     success: bool = True
     error_message: Optional[str] = None

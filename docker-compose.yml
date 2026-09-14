@@ -17,6 +17,13 @@ services:
       # Real path comes from FINIEX_BUS_PATH in .env; without it a tracked empty
       # stub is mounted, so a fresh clone needs no host folder.
       - ${FINIEX_BUS_PATH:-./.devcontainer/bus_placeholder}:/bus
+    ports:
+      # The HTTP API (#514). Bound to the host's loopback, never 0.0.0.0: the browser
+      # client's `reports` grant was issued on the condition that the API is reachable from
+      # this machine only, and this line is what makes that a property of the configuration
+      # rather than of whichever tool happened to be forwarding the port. Purely additive —
+      # an IDE that forwards 8000 keeps working, so no consumer has to change its address.
+      - "127.0.0.1:8000:8000"
     environment:
       - PYTHONPATH=/app
     stdin_open: true # Für interaktive Shell

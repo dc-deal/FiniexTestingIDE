@@ -11,7 +11,11 @@ For tick flow comparison (Backtesting vs Live): see [simulation_vs_live_flow.md]
 
 Live execution via broker adapter API. Delegates pending order management to LiveRequestProcessor.
 
-**Key characteristic:** Routes orders through `adapter.execute_order()`, polls broker via `adapter.check_order_status()`, and calls the *same* `_fill_open_order(pending_order, fill_price=broker_price)` / `_fill_close_order(pending_order, fill_price=broker_price)` from the base — identical portfolio logic, zero duplication.
+**Key characteristic:** Routes orders through `adapter.execute_order()`, polls broker via
+`adapter.check_order_status()`, and calls the *same*
+`_fill_open_order(pending_order, fill_price=broker_price)` /
+`_fill_close_order(pending_order, fill_price=broker_price)` from the base — identical portfolio
+logic, zero duplication.
 
 **Constructor validation:** Requires `adapter.is_live_capable() == True`. Takes optional `TimeoutConfig` (default: 30s timeout).
 
@@ -26,7 +30,9 @@ Live execution via broker adapter API. Delegates pending order management to Liv
 4. `_handle_timeout()` — Cancels at broker, records BROKER_ERROR rejection
 5. `cancel_limit_order()` — Cancels at broker + removes from `_active_limit_orders`
 
-**Feature gating:** MARKET, LIMIT, STOP and STOP_LIMIT supported (#500). TRAILING_STOP and ICEBERG are rejected — Kraken offers both, this pipeline builds neither, and the pre-flight intersects the adapter's declaration with the executor's own set so the message names whichever side is short.
+**Feature gating:** MARKET, LIMIT, STOP and STOP_LIMIT supported (#500). TRAILING_STOP and ICEBERG
+are rejected — Kraken offers both, this pipeline builds neither, and the pre-flight intersects the
+adapter's declaration with the executor's own set so the message names whichever side is short.
 
 **Testable via MockBrokerAdapter** — no real broker needed for pipeline verification.
 
@@ -202,7 +208,9 @@ modify_limit_order(order_id, new_price, new_sl, new_tp)
 ### Design Notes
 
 - **No local SL/TP validation** — broker handles validation server-side. Simulation validates locally against limit price; live delegates to broker.
-- **Local shadow state update** — after successful broker modify, the `PendingOrder` in `_active_limit_orders` is updated with new price/SL/TP values. This keeps the local state consistent for `get_pending_stats()` snapshots and `get_active_order_counts()`.
+- **Local shadow state update** — after successful broker modify, the `PendingOrder` in
+  `_active_limit_orders` is updated with new price/SL/TP values. This keeps the local state
+  consistent for `get_pending_stats()` snapshots and `get_active_order_counts()`.
 - **Broker ref update** — Kraken uses `AmendOrder` (in-place), so the `broker_ref` stays the same across a modify. The swap path remains defensive for brokers that return a new ref on modify.
 - **UNSET sentinel** — The `_UnsetType`/`UNSET` pattern from `PortfolioManager` is translated to `None` at the adapter boundary. Adapters don't know about UNSET.
 - **Order lookup** — broker_ref is resolved by scanning `_active_limit_orders` (O(n), typically very small list). `LiveRequestProcessor` is no longer involved in LIMIT order tracking.
@@ -218,7 +226,10 @@ Mock behavior:
 
 ## PortfolioManager in Live Mode
 
-Both simulation and live share the same PortfolioManager. In live mode, it acts as the **local shadow state** — the system's internal view of what the broker should have. The shadow state is kept current by the fast fill path; the Reconciler (#151) verifies it against broker truth on a separate cadence (see *Fill Detection & Reconciliation* below).
+Both simulation and live share the same PortfolioManager. In live mode, it acts as the
+**local shadow state** — the system's internal view of what the broker should have. The shadow state
+is kept current by the fast fill path; the Reconciler (#151) verifies it against broker truth on a
+separate cadence (see *Fill Detection & Reconciliation* below).
 
 ---
 
@@ -226,11 +237,22 @@ Both simulation and live share the same PortfolioManager. In live mode, it acts 
 
 Live state stays correct through two distinct layers — do not conflate them:
 
-**Layer 1 — Fast fill path (primary truth source).** A fill is detected via the executor's order path: the broker response (poll today, #320 cadence) marks the order filled (`mark_filled` → `_fill_open_order`) and updates the shadow state. The fill is then delivered to the decision logic **immediately** through the #348 Decision Event Channel — drained each tick and during idle heartbeats. This is where the bot learns the truth and the algo reacts.
+**Layer 1 — Fast fill path (primary truth source).** A fill is detected via the executor's order
+path: the broker response (poll today, #320 cadence) marks the order filled (`mark_filled` →
+`_fill_open_order`) and updates the shadow state. The fill is then delivered to the decision logic
+**immediately** through the #348 Decision Event Channel — drained each tick and during idle
+heartbeats. This is where the bot learns the truth and the algo reacts.
 
-**Layer 2 — Reconciler (trust net).** The Reconciler (#151) pulls broker truth (`get_broker_orders` / `get_broker_balances` / `get_broker_positions`) on a separate hybrid cadence (every N ticks OR M seconds) and diffs it against the shadow state. It does **not** learn the fill first — it verifies after the fact and reports divergence (`ghost` / `orphan` / `stale`). Today it runs **ALERT_ONLY** (detect + log + SESSION panel), validated on real money.
+**Layer 2 — Reconciler (trust net).** The Reconciler (#151) pulls broker truth (`get_broker_orders`
+/ `get_broker_balances` / `get_broker_positions`) on a separate hybrid cadence (every N ticks OR M
+seconds) and diffs it against the shadow state. It does **not** learn the fill first — it verifies
+after the fact and reports divergence (`ghost` / `orphan` / `stale`). Today it runs **ALERT_ONLY**
+(detect + log + SESSION panel), validated on real money.
 
-**Whose order is it? (#355 Phase 1.)** The order diff joins on the **client order id** before `broker_ref`, because our own key still answers that question when the venue's reference never arrived (#473). A resting broker order therefore splits four ways instead of being an anonymous ghost:
+**Whose order is it? (#355 Phase 1.)** The order diff joins on the **client order id** before
+`broker_ref`, because our own key still answers that question when the venue's reference never
+arrived (#473). A resting broker order therefore splits four ways instead of being an anonymous
+ghost:
 
 | Bucket | Meaning | Divergence? |
 |---|---|---|
@@ -241,13 +263,22 @@ Live state stays correct through two distinct layers — do not conflate them:
 
 The operator's SESSION panel aggregates `abandoned + foreign_session + unconfirmed` as "N ours, unaccounted" (current cycle). An attribution is deliberately NOT in that number: it is a repair, and it appears in the log and the final summary instead.
 
-Plus one local bucket: `unconfirmed` — a pending whose submit was never answered and which the broker does not show either. It is never dropped (the venue may still hold it) but it keeps `has_pending_orders()` true, so it is reported once into the session error pot; resolving it needs the targeted status query in #487.
+Plus one local bucket: `unconfirmed` — a pending whose submit was never answered and which the
+broker does not show either. It is never dropped (the venue may still hold it) but it keeps
+`has_pending_orders()` true, so it is reported once into the session error pot; resolving it needs
+the targeted status query in #487.
 
-**The Reconciler still writes nothing.** An attribution is applied by the executor (`apply_order_attributions`), called by the tick loop with what the cycle matched, and it only ever fills a `broker_ref` that is `None` — overwriting a settled one would be correction, which is #349.
+**The Reconciler still writes nothing.** An attribution is applied by the executor
+(`apply_order_attributions`), called by the tick loop with what the cycle matched, and it only ever
+fills a `broker_ref` that is `None` — overwriting a settled one would be correction, which is #349.
 
-**Detection source is transparent to the algo.** Poll today (#320); WebSocket push (#331) becomes the V1.4 primary, with polling demoted to a resilience fallback. Both feed the same executor hooks and the same #348 channel, so the decision logic reacts identically regardless of source.
+**Detection source is transparent to the algo.** Poll today (#320); WebSocket push (#331) becomes
+the V1.4 primary, with polling demoted to a resilience fallback. Both feed the same executor hooks
+and the same #348 channel, so the decision logic reacts identically regardless of source.
 
-**Correction is V1.4 (#349).** `AUTO_CORRECT` (stale-field + partial-fill delta-apply) and `HALT_TRADING` (with operator-confirm-to-resume). Ghost/orphan positions always escalate to HALT — adopting an unknown position with a synthetic entry price corrupts P&L permanently.
+**Correction is V1.4 (#349).** `AUTO_CORRECT` (stale-field + partial-fill delta-apply) and
+`HALT_TRADING` (with operator-confirm-to-resume). Ghost/orphan positions always escalate to HALT —
+adopting an unknown position with a synthetic entry price corrupts P&L permanently.
 
 ---
 

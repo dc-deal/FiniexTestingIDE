@@ -8,7 +8,9 @@
 
 ### Layer A — Per-Component Tracker
 
-**Where:** `WorkerOrchestrator.__init__` creates a `WorkerPerformanceTracker` per worker and one `DecisionLogicPerformanceTracker` for the decision logic. Hot-path `.record()` calls happen inside `WorkerOrchestrator` (per worker, per tick) and inside `AbstractDecisionLogic.execute_decision`.
+**Where:** `WorkerOrchestrator.__init__` creates a `WorkerPerformanceTracker` per worker and one
+`DecisionLogicPerformanceTracker` for the decision logic. Hot-path `.record()` calls happen inside
+`WorkerOrchestrator` (per worker, per tick) and inside `AbstractDecisionLogic.execute_decision`.
 
 **Output sections (consume Layer A):**
 - 📊 PERFORMANCE DETAILS (PER SCENARIO) — per-worker call counts, avg / min / max / total
@@ -21,7 +23,9 @@
 
 ### Layer B — Tick-Loop Profiler
 
-**Where:** `process_tick_loop.py` body — operation-level timers bracketed by `time.perf_counter()` between every loop step (`trade_simulator`, `bar_rendering`, `bar_history`, `worker_decision`, `order_execution`, `live_update`, plus `total_per_tick` and `inter_tick_intervals_ms`).
+**Where:** `process_tick_loop.py` body — operation-level timers bracketed by `time.perf_counter()`
+between every loop step (`trade_simulator`, `bar_rendering`, `bar_history`, `worker_decision`,
+`order_execution`, `live_update`, plus `total_per_tick` and `inter_tick_intervals_ms`).
 
 **Output sections (consume Layer B):**
 - ⚡ PROFILING ANALYSIS (per scenario)
@@ -48,7 +52,10 @@
 
 ### Why the Hybrid Section needs both
 
-🔍 WORKER DECISION BREAKDOWN combines top-line operation timing (Layer B) with per-worker decomposition (Layer A) and computes `Coordination Overhead = Total − Worker − Decision`. Without Layer A's split, the section would either show only a total (no breakdown) or compute a misleading "100% overhead" — so it is suppressed when either layer is off.
+🔍 WORKER DECISION BREAKDOWN combines top-line operation timing (Layer B) with per-worker
+decomposition (Layer A) and computes `Coordination Overhead = Total − Worker − Decision`. Without
+Layer A's split, the section would either show only a total (no breakdown) or compute a misleading
+"100% overhead" — so it is suppressed when either layer is off.
 
 ---
 
@@ -100,11 +107,20 @@ Measured overhead per call (microbenchmark, CPython 3.x):
 | Class-based context manager (pre-allocated) | ~380 | ~230 | 228 ms / 138 ms |
 | `@contextmanager` decorator | ~700 | ~650 | 420 ms / 390 ms |
 
-The `with`-block introduces frame setup, `__enter__`/`__exit__` dispatch, and (with `@contextmanager`) generator advancement. Even the cheapest class-based variant is 1.5× the cost of inline conditionals **at minimum** — and when disabled, where the framework should be at its leanest, context managers are roughly 23× more expensive than inline conditionals.
+The `with`-block introduces frame setup, `__enter__`/`__exit__` dispatch, and (with
+`@contextmanager`) generator advancement. Even the cheapest class-based variant is 1.5× the cost of
+inline conditionals **at minimum** — and when disabled, where the framework should be at its
+leanest, context managers are roughly 23× more expensive than inline conditionals.
 
-We pay the visual cost of inline `if`-checks to keep the tick loop's overhead as close to zero as physically achievable. The pattern is intentionally repetitive — six structurally identical blocks, one per operation — because uniform code is easy to scan even when verbose. Wrappers, helpers, decorators, and context managers all add measurable cost without changing what the code does.
+We pay the visual cost of inline `if`-checks to keep the tick loop's overhead as close to zero as
+physically achievable. The pattern is intentionally repetitive — six structurally identical blocks,
+one per operation — because uniform code is easy to scan even when verbose. Wrappers, helpers,
+decorators, and context managers all add measurable cost without changing what the code does.
 
-If you find yourself wanting to "clean up" the profiling brackets in `process_tick_loop.py`, **don't**. The current shape is the result of an explicit performance-first decision. The benchmark suite's throughput tolerance (±20%) cannot absorb a 3× overhead inflation, and the field study profiles depend on the disabled path being effectively free.
+If you find yourself wanting to "clean up" the profiling brackets in `process_tick_loop.py`,
+**don't**. The current shape is the result of an explicit performance-first decision. The benchmark
+suite's throughput tolerance (±20%) cannot absorb a 3× overhead inflation, and the field study
+profiles depend on the disabled path being effectively free.
 
 ```python
 # This is the intended shape — do not refactor:

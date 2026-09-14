@@ -6,7 +6,7 @@ Extends AbstractAdapter with mock data (BTCUSD from real Kraken config)
 and configurable execution behavior (instant fill, delayed, reject, timeout).
 
 Implements the Tier-3 layers (_build/_do_request/_parse) natively — the
-"mock transport" lives in _do_request_* and mutates internal mock state
+"mock transport" lives in do_request_* and mutates internal mock state
 (counter, _mock_pending). _build_* layers pack parameters into a dict;
 _parse_* layers turn the mock raw dict into a BrokerResponse.
 
@@ -25,8 +25,9 @@ Usage:
 import copy
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
+from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
 from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
@@ -164,11 +165,13 @@ class MockBrokerAdapter(AbstractAdapter):
         # without a record of it a test can only observe that our own book forgot the order
         # — which is exactly what a cleanup that never reached the venue also looks like.
         self._cancelled_refs: List[str] = []
-        # When set, every cancel raises as a transport fault would. The realistic case is a
-        # venue outage at shutdown, and it is the one a test cannot otherwise produce: the
-        # sync cancel catches its own exception and returns a failure RESPONSE, so nothing
-        # downstream ever sees a raise.
-        self._cancel_transport_error: Optional[str] = None
+        # Injected transport faults, per operation ('submit' / 'query' / 'cancel' /
+        # 'modify') → (message, terminal). A test cannot otherwise produce the state #487
+        # is about: the sync paths catch their own exception and return a failure RESPONSE,
+        # so nothing downstream ever sees a raise. The `terminal` half is the whole point —
+        # only a NON-terminal fault reaches BrokerOrderStatus.UNRESOLVED, and a plain
+        # ConnectionError classifies TERMINAL, i.e. produces REJECTED instead.
+        self._transport_faults: Dict[str, Tuple[str, bool]] = {}
         # Configurable fill price offset (simulates slippage)
         self._slippage_points: float = 0.0
         # Last-seen tick per symbol (fed via on_tick) — used to fill
@@ -177,7 +180,7 @@ class MockBrokerAdapter(AbstractAdapter):
 
         # === #326 Trade Record Emission ===
         # Per-broker_ref trade records, populated on fill. Looked up later
-        # by _do_request_trades_query. Empty until an order produces fills.
+        # by do_request_trades_query. Empty until an order produces fills.
         self._trades_per_fill: int = trades_per_fill
         self._mock_trades: Dict[str, List[Dict[str, Any]]] = {}
         self._trade_counter: int = 0
@@ -188,6 +191,10 @@ class MockBrokerAdapter(AbstractAdapter):
         # tests via set_broker_* — independent of the local shadow side.
         self._divergence_mode: MockDivergenceMode = MockDivergenceMode.NONE
         self._broker_orders: List[BrokerOrder] = []
+        # Broker CLOSED-order truth (#487). Seeded separately from the open ones, because
+        # the two answer opposite questions: an order is in exactly one of the buckets, and
+        # the whole point of the closed read is to see what the open one cannot.
+        self._closed_broker_orders: List[BrokerOrder] = []
         self._broker_positions: List[BrokerPosition] = []
         self._broker_balances: Dict[str, float] = {}
 
@@ -380,9 +387,9 @@ class MockBrokerAdapter(AbstractAdapter):
     # The mock has no real transport — no HTTP, no RPC. The Tier-3 layers
     # implement the mock execution semantics directly:
     #   _build_*    Pure — pack parameters into a dict
-    #   _do_request_*  Mock transport — mutates _order_counter and
+    #   do_request_*  Mock transport — mutates _order_counter and
     #                  _mock_pending, returns a status-tagged raw dict
-    #   _parse_*_response  Pure — turn the raw dict into a BrokerResponse
+    #   parse_*_response  Pure — turn the raw dict into a BrokerResponse
     # ============================================
 
     def is_live_capable(self) -> bool:
@@ -428,7 +435,7 @@ class MockBrokerAdapter(AbstractAdapter):
 
     # --- Build payloads (pure parameter packing) ---
 
-    def _build_submit_payload(
+    def build_submit_payload(
         self,
         symbol: str,
         direction: OrderDirection,
@@ -446,13 +453,13 @@ class MockBrokerAdapter(AbstractAdapter):
             'client_order_id': kwargs.get('client_order_id'),
         }
 
-    def _build_query_payload(self, broker_ref: str) -> Dict[str, Any]:
+    def build_query_payload(self, broker_ref: str) -> Dict[str, Any]:
         return {'broker_ref': broker_ref}
 
-    def _build_cancel_payload(self, broker_ref: str) -> Dict[str, Any]:
+    def build_cancel_payload(self, broker_ref: str) -> Dict[str, Any]:
         return {'broker_ref': broker_ref}
 
-    def _build_modify_payload(
+    def build_modify_payload(
         self,
         broker_ref: str,
         symbol: str,
@@ -472,17 +479,34 @@ class MockBrokerAdapter(AbstractAdapter):
             'new_take_profit': new_take_profit,
         }
 
-    def _build_trades_query_payload(self, broker_ref: str) -> Dict[str, Any]:
+    def build_trades_query_payload(self, broker_ref: str) -> Dict[str, Any]:
         return {'broker_ref': broker_ref}
 
     # --- Mock transport (mutates mock state, returns status-tagged raw) ---
 
-    def _do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _raise_injected_fault(self, operation: str) -> None:
+        """
+        Raise the fault a test injected for this operation, if there is one.
+
+        Nothing is mutated before it raises — the venue was never reached, so whatever it
+        held before the call it still holds.
+
+        Args:
+            operation: 'submit', 'query', 'cancel' or 'modify'
+        """
+        fault = self._transport_faults.get(operation)
+        if fault is None:
+            return
+        message, terminal = fault
+        raise ConnectionAttemptFailedError(message, terminal=terminal)
+
+    def do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Simulate broker submit transport. Mutates _order_counter and,
         for DELAYED_FILL/TIMEOUT, _mock_pending. Returns a status-tagged
-        raw dict that _parse_submit_response converts to a BrokerResponse.
+        raw dict that parse_submit_response converts to a BrokerResponse.
         """
+        self._raise_injected_fault('submit')
         self._order_counter += 1
         broker_ref = f'MOCK-{self._order_counter:06d}'
         symbol = payload['symbol']
@@ -530,12 +554,13 @@ class MockBrokerAdapter(AbstractAdapter):
             'broker_ref': broker_ref,
         }
 
-    def _do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Simulate broker query transport. DELAYED_FILL flips PENDING→FILLED
         on first query; TIMEOUT keeps the order PENDING forever. Unknown
         broker_ref yields a REJECTED tag.
         """
+        self._raise_injected_fault('query')
         broker_ref = payload['broker_ref']
 
         if broker_ref not in self._mock_pending:
@@ -569,16 +594,15 @@ class MockBrokerAdapter(AbstractAdapter):
             'filled_lots': order_data['lots'],
         }
 
-    def _do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Simulate broker cancel transport. Idempotent — discards any
         pending state for the broker_ref and returns CANCELLED.
         """
+        # Raised BEFORE anything is popped or recorded: the venue was never reached, so it
+        # still holds the order.
+        self._raise_injected_fault('cancel')
         broker_ref = payload['broker_ref']
-        if self._cancel_transport_error is not None:
-            # Nothing is popped and nothing is recorded: the venue was never reached, so it
-            # still holds the order.
-            raise ConnectionError(self._cancel_transport_error)
         self._mock_pending.pop(broker_ref, None)
         self._cancelled_refs.append(broker_ref)
         return {
@@ -586,7 +610,7 @@ class MockBrokerAdapter(AbstractAdapter):
             'broker_ref': broker_ref,
         }
 
-    def _do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Simulate broker trades-query transport. Returns the synthetic trade
         records recorded at fill time (see _record_mock_trades). Unknown
@@ -598,13 +622,14 @@ class MockBrokerAdapter(AbstractAdapter):
             'trades': self._mock_trades.get(broker_ref, []),
         }
 
-    def _do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Simulate broker modify transport. REJECT_ALL fails the modify;
         unknown broker_ref fails; otherwise applies new_price / SL / TP
         to the mock pending entry and returns FILLED (modification
         accepted).
         """
+        self._raise_injected_fault('modify')
         broker_ref = payload['broker_ref']
 
         if self._mode == MockExecutionMode.REJECT_ALL:
@@ -643,7 +668,7 @@ class MockBrokerAdapter(AbstractAdapter):
         'CANCELLED': BrokerOrderStatus.CANCELLED,
     }
 
-    def _parse_submit_response(
+    def parse_submit_response(
         self,
         raw: Dict[str, Any],
         timestamp: datetime,
@@ -653,7 +678,7 @@ class MockBrokerAdapter(AbstractAdapter):
         # The two dry-run arguments are part of the Tier-3 contract (#505). This mock has no
         # dry-run mode — it decides its own fills — so it accepts and ignores them, which is
         # what an adapter for a venue without a rehearsal mode does. An adapter that HAS one
-        # reads them; see KrakenAdapter._parse_submit_response for the shape to copy.
+        # reads them; see KrakenAdapter.parse_submit_response for the shape to copy.
         return BrokerResponse(
             broker_ref=raw['broker_ref'],
             status=self._STATUS_MAP[raw['status']],
@@ -663,7 +688,7 @@ class MockBrokerAdapter(AbstractAdapter):
             timestamp=timestamp,
         )
 
-    def _parse_query_response(
+    def parse_query_response(
         self,
         raw: Dict[str, Any],
         broker_ref: str,
@@ -679,14 +704,14 @@ class MockBrokerAdapter(AbstractAdapter):
             timestamp=timestamp,
         )
 
-    def _parse_cancel_response(self, raw: Dict[str, Any], broker_ref: str, timestamp: datetime) -> BrokerResponse:
+    def parse_cancel_response(self, raw: Dict[str, Any], broker_ref: str, timestamp: datetime) -> BrokerResponse:
         return BrokerResponse(
             broker_ref=raw['broker_ref'],
             status=self._STATUS_MAP[raw['status']],
             timestamp=timestamp,
         )
 
-    def _parse_modify_response(self, raw: Dict[str, Any], original_broker_ref: str, timestamp: datetime) -> BrokerResponse:
+    def parse_modify_response(self, raw: Dict[str, Any], original_broker_ref: str, timestamp: datetime) -> BrokerResponse:
         return BrokerResponse(
             broker_ref=raw['broker_ref'],
             status=self._STATUS_MAP[raw['status']],
@@ -694,7 +719,7 @@ class MockBrokerAdapter(AbstractAdapter):
             timestamp=timestamp,
         )
 
-    def _parse_trades_query_response(
+    def parse_trades_query_response(
         self,
         raw: Dict[str, Any],
         broker_ref: str,
@@ -749,7 +774,7 @@ class MockBrokerAdapter(AbstractAdapter):
 
         Splits total_lots evenly across self._trades_per_fill records. For N>1,
         applies small price offsets around fill_price to model book-walking.
-        Stores trade dicts in self._mock_trades — _parse_trades_query_response
+        Stores trade dicts in self._mock_trades — parse_trades_query_response
         maps these to BrokerTrade later, when the caller supplies an order_id.
 
         Args:
@@ -823,14 +848,30 @@ class MockBrokerAdapter(AbstractAdapter):
     # choose a MockDivergenceMode; the Reconciler reconciles this against the
     # local shadow state.
 
-    def set_cancel_transport_error(self, message: Optional[str]) -> None:
+    def set_transport_fault(
+        self,
+        operation: str,
+        message: Optional[str],
+        terminal: bool = False,
+    ) -> None:
         """
-        Make every cancel fail as a transport fault, or clear it with None.
+        Make one broker operation fail as a transport fault, or clear it with None.
+
+        `terminal` decides which state the caller ends in, and the two are not
+        interchangeable: a NON-terminal fault is classified TRANSIENT by the ladder and
+        becomes BrokerOrderStatus.UNRESOLVED — the venue may or may not hold the order —
+        while a terminal one becomes REJECTED. #487 is about the first; a test that wants
+        it must not inject the second.
 
         Args:
-            message: The error text the fault carries, or None to cancel normally
+            operation: 'submit', 'query', 'cancel' or 'modify'
+            message: The error text the fault carries, or None to clear it
+            terminal: True when a retry could not fix it (→ REJECTED rather than UNRESOLVED)
         """
-        self._cancel_transport_error = message
+        if message is None:
+            self._transport_faults.pop(operation, None)
+            return
+        self._transport_faults[operation] = (message, terminal)
 
     def get_cancelled_refs(self) -> List[str]:
         """
@@ -849,6 +890,15 @@ class MockBrokerAdapter(AbstractAdapter):
             orders: Broker open-order truth for the next reconcile
         """
         self._broker_orders = list(orders)
+
+    def set_closed_broker_orders(self, orders: List[BrokerOrder]) -> None:
+        """
+        Seed the broker-side closed orders returned by get_closed_broker_orders.
+
+        Args:
+            orders: Terminal-order truth for the next resolution read
+        """
+        self._closed_broker_orders = list(orders)
 
     def set_broker_positions(self, positions: List[BrokerPosition]) -> None:
         """
@@ -887,6 +937,33 @@ class MockBrokerAdapter(AbstractAdapter):
         if self._divergence_mode == MockDivergenceMode.DROP_ORDERS:
             return []
         return list(self._broker_orders)
+
+    def get_closed_broker_orders(
+        self,
+        start: datetime,
+        end: datetime,
+        client_order_id: Optional[str] = None,
+    ) -> List[BrokerOrder]:
+        """
+        Return seeded broker closed orders, filtered the way a venue would filter them.
+
+        The range is NOT applied: a seeded BrokerOrder carries no venue timestamp, so
+        filtering on one would answer from a field the test never set. The key filter IS
+        applied, because that is the narrowing #487's resolution depends on.
+
+        Args:
+            start: Range start (accepted, unused — see above)
+            end: Range end (accepted, unused — see above)
+            client_order_id: When given, only orders carrying exactly this key
+
+        Returns:
+            List of BrokerOrder (empty when nothing was seeded / nothing matches)
+        """
+        self._raise_injected_fault('closedorders')
+        if client_order_id is None:
+            return list(self._closed_broker_orders)
+        return [o for o in self._closed_broker_orders
+                if o.client_order_id == client_order_id]
 
     def get_broker_balances(self) -> Dict[str, float]:
         """

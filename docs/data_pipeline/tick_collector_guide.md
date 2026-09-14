@@ -157,10 +157,16 @@ data format 1.3.0, the MT5 file 1.1.0.
 **Fields that mean more than their name suggests:**
 - `data_format_version`: Schema version of the data collector output. A compile-time constant of the collector, not a chart input — it identifies the code that wrote the file.
 - `collected_msc_timebase`: Time base of `collected_msc`. `"utc"` means the field needs no offset conversion. Written by newer collectors, and set retroactively by the restoration migration — so its presence does not by itself date the file.
-- `collected_msc_restoration`: Record of that migration, present only in files it touched. `method` names what was applied (`noop` = inspected, nothing to correct), `shift_ms` the correction per segment. It documents a change to already-archived data and is therefore provenance, not collector output.
+- `collected_msc_restoration`: Record of that migration, present only in files it touched. `method`
+  names what was applied (`noop` = inspected, nothing to correct), `shift_ms` the correction per
+  segment. It documents a change to already-archived data and is therefore provenance, not collector
+  output.
 - `local_device_time` / `broker_server_time`: Wall clock of the collecting machine and of the broker at file creation. Informational — the import pipeline never derives an offset from them.
 - `broker_type`: Broker identifier (e.g. "mt5", "kraken_spot"). Everything downstream keys on this — the market type, the trading rules and the broker config are all resolved from it.
-- `market_type` (MT5 collector only): the collector's own classification, e.g. `"forex_cfd"`. This is **not** the framework market type (`forex` / `crypto`) from `market_config.json`, which is resolved from `broker_type` and decides weekend and trading rules. Same field name, different vocabulary — do not read one as the other.
+- `market_type` (MT5 collector only): the collector's own classification, e.g. `"forex_cfd"`. This
+  is **not** the framework market type (`forex` / `crypto`) from `market_config.json`, which is
+  resolved from `broker_type` and decides weekend and trading rules. Same field name, different
+  vocabulary — do not read one as the other.
 - `collection_purpose`: Use case identifier (e.g. "backtesting")
 - `volume_timeframe`: Volume aggregation period (e.g. "PERIOD_M1")
 - `error_tracking.enabled`: Error system active
@@ -191,8 +197,15 @@ data format 1.3.0, the MT5 file 1.1.0.
 
 **Tick Fields:**
 - `timestamp`: Human-readable time (broker server time, truncated to the second). Redundant — derivable from `time_msc` with the broker UTC offset. Kept for backward compatibility.
-- `time_msc`: Broker matching engine timestamp (Unix epoch ms) — the **event** time. UTC-converted by importer (offset applied). Non-decreasing: measured across the full archive, 0 regressions in 251 M consecutive deltas. Ties are normal and carry meaning — a market order sweeping the book produces several fills in one millisecond (measured: 43 % of consecutive Kraken ticks share a `time_msc`, 0.06 % on MT5).
-- `collected_msc`: Local clock at tick receipt (Unix epoch ms) — the **arrival** time, and therefore the correct source for inter-tick interval measurement. Read from the OS clock via `GetSystemTimePreciseAsFileTime`, so it is **already UTC** and needs no offset conversion. Non-decreasing; a backwards step of the system clock is clamped by the collector.
+- `time_msc`: Broker matching engine timestamp (Unix epoch ms) — the **event** time. UTC-converted
+  by importer (offset applied). Non-decreasing: measured across the full archive, 0 regressions in
+  251 M consecutive deltas. Ties are normal and carry meaning — a market order sweeping the book
+  produces several fills in one millisecond (measured: 43 % of consecutive Kraken ticks share a
+  `time_msc`, 0.06 % on MT5).
+- `collected_msc`: Local clock at tick receipt (Unix epoch ms) — the **arrival** time, and therefore
+  the correct source for inter-tick interval measurement. Read from the OS clock via
+  `GetSystemTimePreciseAsFileTime`, so it is **already UTC** and needs no offset conversion.
+  Non-decreasing; a backwards step of the system clock is clamped by the collector.
 - `bid` / `ask`: Bid and ask price
 - `last`: Last trade price (0 for forex/CFD)
 - `real_volume`: Real trade volume (crypto > 0, forex/CFD = 0)
@@ -203,7 +216,11 @@ data format 1.3.0, the MT5 file 1.1.0.
 - `tick_flags`: Tick type flags (e.g. "BID ASK", "BUY", "SELL")
 - `session`: Trading session label (broker-side, recalculated to UTC by importer)
 
-> **Why a second timestamp at all?** `time_msc` says when the tick *happened* at the broker, `collected_msc` says when it *reached us* — two different questions, and only the second one describes our observation. The `timestamp` string cannot substitute for either: it is truncated to the second, and 53 % of MT5 ticks share a second with at least one neighbour (60 % on Kraken), so at that resolution the arrival cadence collapses.
+> **Why a second timestamp at all?** `time_msc` says when the tick *happened* at the broker,
+> `collected_msc` says when it *reached us* — two different questions, and only the second one
+> describes our observation. The `timestamp` string cannot substitute for either: it is truncated to
+> the second, and 53 % of MT5 ticks share a second with at least one neighbour (60 % on Kraken), so
+> at that resolution the arrival cadence collapses.
 
 ### Error Report Section
 

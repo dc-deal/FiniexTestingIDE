@@ -90,7 +90,11 @@ tests/autotrader/live_executor/
 
 ### test_live_request_processor.py
 
-Tests the `LiveRequestProcessor` storage layer independently from `LiveTradeExecutor`. Validates pending order storage, broker reference index, fill/rejection marking, timeout detection, and cleanup. The orchestration surface (`submit_open_order`, `submit_open_order_async`, `modify_order_sync`, etc.) is covered by the executor-level tests; this suite focuses on the inherited `AbstractPendingOrderManager` storage layer extended with broker-ref tracking.
+Tests the `LiveRequestProcessor` storage layer independently from `LiveTradeExecutor`. Validates
+pending order storage, broker reference index, fill/rejection marking, timeout detection, and
+cleanup. The orchestration surface (`submit_open_order`, `submit_open_order_async`,
+`modify_order_sync`, etc.) is covered by the executor-level tests; this suite focuses on the
+inherited `AbstractPendingOrderManager` storage layer extended with broker-ref tracking.
 
 #### TestSubmitAndQuery
 
@@ -146,7 +150,10 @@ Tests the `LiveRequestProcessor` storage layer independently from `LiveTradeExec
 
 ### test_live_executor_mock.py
 
-Integration tests for the full execution pipeline: `open_order()` → broker response → fill processing → order_history / portfolio update. All MARKET submits are async post-#319 step 6 — `open_order()` returns PENDING immediately and the fill arrives via `drain_inbox()` on the next tick.
+Integration tests for the full execution pipeline: `open_order()` → broker response → fill
+processing → order_history / portfolio update. All MARKET submits are async post-#319 step 6 —
+`open_order()` returns PENDING immediately and the fill arrives via `drain_inbox()` on the next
+tick.
 
 #### TestInstantFill
 
@@ -246,7 +253,10 @@ Multi-order scenarios: multiple orders tracked, open+close cycles, close_all_rem
 
 ### test_live_executor_modify.py
 
-Limit order modification via broker adapter: successful modify, non-existent order, broker rejection, adapter exceptions, and `get_broker_ref()` reverse lookup. All modification tests use `OrderType.LIMIT` with `price=49000.0` to place orders into `_active_limit_orders` (Hybrid Architecture shadow state — shared sim/live).
+Limit order modification via broker adapter: successful modify, non-existent order, broker
+rejection, adapter exceptions, and `get_broker_ref()` reverse lookup. All modification tests use
+`OrderType.LIMIT` with `price=49000.0` to place orders into `_active_limit_orders` (Hybrid
+Architecture shadow state — shared sim/live).
 
 LIMIT submit is async post-#319 step 7 (`broker_ref=None` immediately after `open_order`); tests use `await_submit_confirmation` to drain the broker_ref confirmation before calling modify, so the modify path can resolve `order_id → broker_ref`.
 
@@ -290,7 +300,9 @@ LIMIT submit is async post-#319 step 7 (`broker_ref=None` immediately after `ope
 
 ### test_async_submit.py — #321 Regression Coverage
 
-Locks down the SHAPE of the async submit lifecycle introduced by #319 step 6. The other test files cover outcomes; this file specifically asserts the lifecycle itself so a regression to a sync-via-shortcut (which would pass outcome tests) cannot slip through.
+Locks down the SHAPE of the async submit lifecycle introduced by #319 step 6. The other test files
+cover outcomes; this file specifically asserts the lifecycle itself so a regression to a
+sync-via-shortcut (which would pass outcome tests) cannot slip through.
 
 Asserts that are unique to this file:
 - `result.position_id is None` immediately after `open_order()`
@@ -464,7 +476,7 @@ pytest tests/autotrader/live_executor/test_live_executor_mock.py::TestInstantFil
 
 ---
 
-## Architecture Notes
+## Architecture
 
 ### Test Design Philosophy
 
@@ -480,8 +492,8 @@ The live executor tests use **direct pipeline validation** rather than scenario 
 ```
 MockOrderExecution
   +-- MockBrokerAdapter (extends AbstractAdapter — native Tier-3)
-  |     +-- Tier-3 layers: _build_*_payload / _do_request_* / _parse_*_response × 4 ops
-  |     +-- MockExecutionMode controls _do_request_submit / _do_request_query behavior
+  |     +-- Tier-3 layers: build_*_payload / do_request_* / parse_*_response × 4 ops
+  |     +-- MockExecutionMode controls do_request_submit / do_request_query behavior
   |     +-- _resolve_market_fill_price uses last on_tick price (ask for LONG, bid for SHORT)
   |
   +-- LiveTradeExecutor (extends AbstractTradeExecutor)
@@ -508,7 +520,7 @@ MockOrderExecution
 
 ### MockBrokerAdapter Modes
 
-| Mode | `_do_request_submit` | `_do_request_query` | `_do_request_modify` | Use Case |
+| Mode | `do_request_submit` | `do_request_query` | `do_request_modify` | Use Case |
 |------|----------------------|---------------------|----------------------|----------|
 | `INSTANT_FILL` | Returns FILLED-raw | N/A (no pending) | FILLED if pending | Synchronous-fill brokers |
 | `DELAYED_FILL` | Returns PENDING-raw, tracks in `_mock_pending` | Returns FILLED-raw on first query | FILLED if pending | Asynchronous-fill brokers |
@@ -528,7 +540,9 @@ For test isolation, `MockOrderExecution` provides two drain helpers:
 
 ### test_broker_trade_records.py — #326 BrokerTrade Layer
 
-Validates the order ↔ executions pairing model: `BrokerTrade` aggregation on `PendingOrder`, the polling-path synthesis baseline, the async `submit_trades_query_async` roundtrip via worker + drain, the stale-broker_ref guard, and the `trade_level_reporting` capability flag.
+Validates the order ↔ executions pairing model: `BrokerTrade` aggregation on `PendingOrder`, the
+polling-path synthesis baseline, the async `submit_trades_query_async` roundtrip via worker + drain,
+the stale-broker_ref guard, and the `trade_level_reporting` capability flag.
 
 #### TestPendingOrderAppendTrade
 
@@ -566,7 +580,10 @@ Validates the order ↔ executions pairing model: `BrokerTrade` aggregation on `
 
 ### test_polling_cadence.py — #320 Live Polling Cadence
 
-Validates the three coordinated fixes introduced by #320: side-effect-free `heartbeat()` for idle ticks, async per-order polling via the worker thread, and the in-flight guard + wall-clock throttle on `_process_active_orders`. All tests exercise the LIMIT-order polling path; MARKET stays sync (out of scope).
+Validates the three coordinated fixes introduced by #320: side-effect-free `heartbeat()` for idle
+ticks, async per-order polling via the worker thread, and the in-flight guard + wall-clock throttle
+on `_process_active_orders`. All tests exercise the LIMIT-order polling path; MARKET stays sync (out
+of scope).
 
 #### TestHeartbeat
 
@@ -623,7 +640,11 @@ asks about a protective order that may have fired while the process was down.
 
 ### test_drift_auditor.py — #327 Drift Audit + #340 Slippage
 
-Validates the read-only drift telemetry pipeline established by #327: outcome-listener captures synthetic snapshot, async trades-query roundtrip, multi-consumer fan-out, comparison + counter classification, currency-aware FEE skip, coexistence with OrderGuard, leak-free response handling, and consumer-exception isolation. The SLIPPAGE channel added by #340 reuses the same pipeline pattern with a fourth `DriftType` comparison branch.
+Validates the read-only drift telemetry pipeline established by #327: outcome-listener captures
+synthetic snapshot, async trades-query roundtrip, multi-consumer fan-out, comparison + counter
+classification, currency-aware FEE skip, coexistence with OrderGuard, leak-free response handling,
+and consumer-exception isolation. The SLIPPAGE channel added by #340 reuses the same pipeline
+pattern with a fourth `DriftType` comparison branch.
 
 Uses a `_FakeExecutor` stub that records listener / consumer registrations and lets tests drive `fire_outcome()` / `fire_trades_response()` directly — no worker thread, no real adapter.
 
@@ -685,7 +706,11 @@ Uses a `_FakeExecutor` stub that records listener / consumer registrations and l
 
 #### TestSlippageAudit — #340
 
-Validates the fourth audit channel: trade-channel tick mid-price captured at submission vs. broker's actual fill price. Always structural (slippage is market reality, not a bug). Threshold-gated counter, max-tracked magnitude. Action-agnostic — fires for both open and close orders. Snapshots with `submission_tick_mid_price=None` (synthetic cleanup pendings, cold-start paths) are skipped gracefully.
+Validates the fourth audit channel: trade-channel tick mid-price captured at submission vs. broker's
+actual fill price. Always structural (slippage is market reality, not a bug). Threshold-gated
+counter, max-tracked magnitude. Action-agnostic — fires for both open and close orders. Snapshots
+with `submission_tick_mid_price=None` (synthetic cleanup pendings, cold-start paths) are skipped
+gracefully.
 
 | Test | Description |
 |---|---|
@@ -771,6 +796,31 @@ order is resting at the broker and we have forgotten it — we manufactured the 
 | `test_failed_status_poll_is_only_a_warning` | A failed status poll is a WARNING; the next cadence retries |
 | `test_a_venue_answer_is_logged_by_neither` | A normal venue answer is neither error nor warning |
 
+**`TestAStuckUnresolvedRestingOrderIsReported`** — keeping an unresolved order is right; saying
+nothing about it forever is not. The poll loop skips every order without a reference (there is
+nothing to poll *with*) and `check_timeouts` sees only the processor's dict, which resting orders
+never enter. Until #487 can ASK the venue, the operator is owed the telling.
+
+| Test | Description |
+|---|---|
+| `test_it_is_reported_as_an_error` | Reported at ERROR level, naming `UNRESOLVED` and the issue that will resolve it |
+| `test_it_is_said_once_not_every_tick` | A standing condition, not an event — repeating it per cycle buries the channel |
+| `test_the_order_is_kept_not_dropped` | Reporting must not become deleting; that is what #473 prevents |
+| `test_a_young_order_is_not_reported_yet` | An answer that has not arrived YET is not one that never will |
+
+**`TestATimedOutUnresolvedOrderLeavesTheTracker`** — removal used to go through the broker
+reference alone. An order whose write was never answered has none, so `mark_rejected` popped
+nothing and returned *before* `remove_order`, while `check_timeouts` deliberately does not remove.
+The same order therefore timed out again on every heartbeat and every tick for the rest of the
+session.
+
+| Test | Description |
+|---|---|
+| `test_the_pending_is_gone_after_its_timeout` | The tracker is empty once the timeout is handled |
+| `test_the_timeout_fires_once_not_on_every_heartbeat` | `check_timeouts` returns it once, not forever — the repeat is what reached the algo as a repeated rejection |
+| `test_a_close_whose_write_was_lost_can_be_closed_again` | The expensive half: `is_pending_close` no longer stays true, so the position is not permanently unclosable |
+| `test_an_answered_order_still_leaves_its_reference_index` | The ordinary case stays correct — no stale index entry a later answer could resolve against |
+
 ---
 
 ### test_order_type_gate.py — #500 sibling: declared vs built
@@ -824,3 +874,72 @@ separately, and each was verified by removing it and watching exactly one test g
 exactly like one that passed. Grading the session `FINISHED_WITH_ERRORS` (§35) is the intended
 consequence — the operator is meant to notice that the run proved less than it appears to.
 
+
+### test_pending_latency.py — the clock a duration is measured on
+
+An order's latency is a DURATION, and a duration must not come from two wall-clock readings.
+NTP can step the wall clock backwards inside the submit-to-fill window, and the negative value
+that follows lands in a min/max aggregate — where one impossible number reads like a venue
+fault rather than a clock fault.
+
+The measurement therefore runs on the monotonic clock (`time.monotonic()`), which never steps
+backwards, while `submitted_at` stays a wall-clock reading because it is a point in time rather
+than a duration. `PendingOrderTiming.submitted_monotonic` carries the second stamp.
+
+| Class | Description |
+|---|---|
+| `TestTheLatencyIsMeasuredOnTheMonotonicClock` | the elapsed monotonic difference becomes milliseconds; a wall clock that stepped BACKWARDS cannot produce a negative latency; two orders whose wall-clock stamps differ by a decade measure the same |
+| `TestAnUnmeasurableLatencyIsReportedAsUnmeasured` | a wall-clock stamp alone yields `None`, never a substituted number, and so does an order carrying no stamp at all |
+| `TestEveryLiveSubmissionCarriesTheStamp` | `register_pending_open()` stamps the monotonic clock — the guard against a future submission site forgetting it |
+
+**Why `None` rather than a fallback:** an unmeasurable duration reported as unmeasured costs a
+blank column; reported as a wall-clock difference it costs an investigation into a venue that
+did nothing wrong. This mirrors the rule that a missing injected clock raises instead of
+falling back.
+
+## test_write_identity.py — every write carries an identity we can ask about (#487)
+
+A write whose answer is lost can only be resolved by asking the venue what became of it, and the
+only handle that survives a lost answer is the key WE chose. Two properties have to hold for that
+question to have one answer.
+
+**It is unique per write.** An entry and its close used to send the same key, because a close
+derived its key from the position id. Measured 2026-09-13 against Kraken: `ClosedOrders` for one
+key answered with TWO orders, so a lookup by key could not name an order at all. A close now mints
+its own counter from the same source every other order uses — which also keeps the cold-start
+high-water mark honest, so a restart cannot re-issue it.
+
+**It is recorded, not re-derived.** The reconciler rebuilt the key from `pending_order_id`, which
+held only while every key was a function of its id. A re-derived key misses a close in flight and
+drops it into the abandoned bucket — the false alarm measured twice in five live field-study runs.
+`PendingOrder.client_order_id` now holds what actually went on the wire.
+
+| Class | Description |
+|---|---|
+| `TestTheKeyIsUniquePerWrite` | a close does not reuse its entry's key, two partial closes send two different keys, and the close key still parses as one of ours |
+| `TestTheKeyIsRecorded` | a resting order carries the key it sent, and an in-flight close is not reported as abandoned |
+
+## test_unresolved_write_resolution.py — asking, and what the answer may become (#487)
+
+#473 made a lost answer honest; it left open that nothing ever ASKED. The in-flight window was
+bounded by the 30 s fill timeout while the truth pull runs on a ≥60 s cadence, so the pending was
+dropped before anything could ask.
+
+Three verdicts and no fourth: the venue names the order (restore the reference and step aside), it
+answers and names nothing AFTER the settle window (now a genuine rejection), or it still names
+nothing at the ceiling (escalate, block new entries, keep the order). A read that FAILED is none
+of these and books nothing — the venue did not answer, so the next pass asks again.
+
+| Class | Description |
+|---|---|
+| `TestTheStateUnderTestCanBeProduced` | a transient submit fault leaves the order in flight; a TERMINAL one is a rejection instead — the injector's `terminal` flag is the whole difference |
+| `TestTheAskFiresFromTheEvent` | the resolution is armed by the lost answer, its window is `max_window_seconds` rather than `order_timeout_seconds`, and the fill timer stops applying to a MARKET order — without which the resolution would be unreachable for the only world that has no other exit |
+| `TestTheVenueNamesIt` | the reference comes back, the order survives, and the algo is never told it was rejected |
+| `TestTheVenueNamesNothing` | inside the settle window nothing is booked; after it, exactly one rejection |
+| `TestTheCeiling` | the order is kept, entries stop with `RejectionReason.UNRESOLVED_WRITE`, and an empty set refuses nothing |
+| `TestTheTwoWorldsEndDifferentlyAtTheCeiling` | a MARKET pending leaves the tracker recorded `BROKER_UNREACHABLE` rather than gating the algo forever, and the entry block outlives the order |
+| `TestNothingIsEverReSent` | one decision, one order out of this process — in every branch |
+
+**Why the settle window.** An order accepted a moment ago may not be indexed yet, so an answer
+that names nothing is not yet evidence that nothing was taken. Promoting it immediately would turn
+the venue's read lag into a rejection.

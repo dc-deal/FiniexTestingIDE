@@ -60,14 +60,30 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
 - SL/TP triggers checked locally (`_check_sl_tp_triggers`)
 - Pending orders resolved by ms-timestamp comparison (deterministic, seeded delay)
 - `compute_tick()` and `execute_decision()` are **two separate phases** — compute produces a Decision object, execute_decision acts on it
-- **Tick processing budget:** When active, ticks are flagged as `is_clipped` during data preparation. The broker path (step 1) sees every tick — pending order fills, SL/TP triggers, and limit/stop monitoring operate on the full market data stream. The algo path (steps 2-6) skips clipped ticks via `continue`. When budget is disabled (default), `is_clipped` is always `False` and all ticks pass through both paths.
-- **Ghost-pass in simulated time (#360, opt-in):** for a decision that opts in via `wants_heartbeat()`, the loop drives ghost-passes in the simulated gap between two data ticks (`_run_sim_heartbeats`): every `heartbeat_interval_ms` it injects the simulated clock, resolves latency-queue fills at that moment (`TradeSimulator.heartbeat()` → `process_up_to_msc`), and runs `process_heartbeat()` → `execute_decision(tick=None)`. This gives the **same relative reaction point** as the live ghost-pass (sim/live parity). It is **hard-gated**: a non-opt-in decision (all current algos) sees no heartbeat path at all. A **correctness gate** suppresses ghost-passes across a gap longer than `inter_tick_gap_threshold_s` (#208) — across a data/weekend gap the market says nothing. The clock is injected (sim = simulated time, deterministic) and never freezes to the last tick.
+- **Tick processing budget:** When active, ticks are flagged as `is_clipped` during data
+  preparation. The broker path (step 1) sees every tick — pending order fills, SL/TP triggers, and
+  limit/stop monitoring operate on the full market data stream. The algo path (steps 2-6) skips
+  clipped ticks via `continue`. When budget is disabled (default), `is_clipped` is always `False`
+  and all ticks pass through both paths.
+- **Ghost-pass in simulated time (#360, opt-in):** for a decision that opts in via
+  `wants_heartbeat()`, the loop drives ghost-passes in the simulated gap between two data ticks
+  (`_run_sim_heartbeats`): every `heartbeat_interval_ms` it injects the simulated clock, resolves
+  latency-queue fills at that moment (`TradeSimulator.heartbeat()` → `process_up_to_msc`), and runs
+  `process_heartbeat()` → `execute_decision(tick=None)`. This gives the
+  **same relative reaction point** as the live ghost-pass (sim/live parity). It is **hard-gated**: a
+  non-opt-in decision (all current algos) sees no heartbeat path at all. A **correctness gate**
+  suppresses ghost-passes across a gap longer than `inter_tick_gap_threshold_s` (#208) — across a
+  data/weekend gap the market says nothing. The clock is injected (sim = simulated time,
+  deterministic) and never freezes to the last tick.
 
 ---
 
 ## Live Tick Flow
 
-The live flow processes real-time ticks from a broker connection. The runner is `AutotraderTickLoop` — implemented and validated against live Kraken Spot. Ticks are pulled from a thread-safe queue fed by a TickSource thread (KrakenTickSource — Kraken WebSocket v2); the loop is synchronous on the main thread.
+The live flow processes real-time ticks from a broker connection. The runner is `AutotraderTickLoop`
+— implemented and validated against live Kraken Spot. Ticks are pulled from a thread-safe queue fed
+by a TickSource thread (KrakenTickSource — Kraken WebSocket v2); the loop is synchronous on the main
+thread.
 
 **Entry point:** `python/framework/autotrader/autotrader_tick_loop.py` → `AutotraderTickLoop.run()`
 
@@ -115,11 +131,20 @@ AutotraderTickLoop.run()
 
 **Key characteristics:**
 - Ticks arrive in real-time via WebSocket, buffered through a thread-safe queue
-- SL/TP is enforced by THIS process unless the venue was asked to hold it (#500, #503) — `_check_sl_tp_triggers` runs in live too, and `get_protective_level_enforcement()` names who holds the level. A submit still carries no level to the venue; what #503 adds is a standalone STOP order placed after the entry fills, opt-in via `execution.venue_held_protection` and OFF by default. So `LOCAL` remains the answer unless that switch is on, and even then it covers the STOP only — the take profit has no second order to rest in. Contract: `docs/architecture/protective_levels.md`
+- SL/TP is enforced by THIS process unless the venue was asked to hold it (#500, #503) —
+  `_check_sl_tp_triggers` runs in live too, and `get_protective_level_enforcement()` names who holds
+  the level. A submit still carries no level to the venue; what #503 adds is a standalone STOP order
+  placed after the entry fills, opt-in via `execution.venue_held_protection` and OFF by default. So
+  `LOCAL` remains the answer unless that switch is on, and even then it covers the STOP only — the
+  take profit has no second order to rest in. Contract: `docs/architecture/protective_levels.md`
 - Pending orders resolved by broker polling today (#320 cadence); WebSocket push is the V1.4 primary (#331)
 - Fills on the fast path reach the algo immediately via the #348 Decision Event Channel — drained each tick AND during idle heartbeats
 - The Reconciler (#151) runs as a separate trust layer (ALERT_ONLY) — it verifies broker truth, it does not learn fills
-- Idle handling (#360): a tick gap fires a timer event (`heartbeat_interval_ms`, default 1 s) — the single main-loop consumer advances the injected clock, re-polls active orders, reconciles, and runs a side-effect-free decision **ghost-pass** (`tick=None`, cached worker results, opt-in via `wants_heartbeat()`) so the algo reacts in ~1 s instead of waiting for the next tick. No second thread, no synthetic market tick, no tick-state mutation.
+- Idle handling (#360): a tick gap fires a timer event (`heartbeat_interval_ms`, default 1 s) — the
+  single main-loop consumer advances the injected clock, re-polls active orders, reconciles, and
+  runs a side-effect-free decision **ghost-pass** (`tick=None`, cached worker results, opt-in via
+  `wants_heartbeat()`) so the algo reacts in ~1 s instead of waiting for the next tick. No second
+  thread, no synthetic market tick, no tick-state mutation.
 - Canonical clock (#360): `get_current_time()` is loop-injected — the tick timestamp on a real tick, wall-clock on the heartbeat (sim: simulated time). It never freezes to the last tick, so phase/op timeouts track real elapsed time.
 - Same `compute_tick()` → `execute_decision()` two-phase pattern
 

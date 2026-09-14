@@ -92,7 +92,7 @@ Reconciler rejects any non-`alert_only` mode at construction.
 
 ---
 
-## Fixtures
+## Fixtures (conftest.py)
 
 Code-level fixtures live in `conftest.py`:
 

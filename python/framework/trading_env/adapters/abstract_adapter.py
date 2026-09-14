@@ -406,10 +406,10 @@ class AbstractAdapter(ABC):
     # Each Tier-3 operation (submit, query, cancel, modify) is split into
     # three pure layers that any live-capable adapter MUST provide:
     #
-    #   _build_*_payload      Pure — assemble broker-specific request payload
-    #   _do_request_*         Transport — send the request, return raw response
+    #   build_*_payload      Pure — assemble broker-specific request payload
+    #   do_request_*         Transport — send the request, return raw response
     #                         (HTTP, RPC, terminal bridge — implementation choice)
-    #   _parse_*_response     Pure — convert raw response to BrokerResponse
+    #   parse_*_response     Pure — convert raw response to BrokerResponse
     #
     # LiveRequestProcessor composes these layers — submit_open_order /
     # submit_close_order_async / modify_order_sync / cancel_order_sync /
@@ -424,7 +424,7 @@ class AbstractAdapter(ABC):
 
     # --- Build payloads (pure) ---
 
-    def _build_submit_payload(
+    def build_submit_payload(
         self,
         symbol: str,
         direction: OrderDirection,
@@ -449,13 +449,13 @@ class AbstractAdapter(ABC):
                 own reference is exactly what did not arrive
 
         Returns:
-            Adapter-specific payload dict (passed to _do_request_submit)
+            Adapter-specific payload dict (passed to do_request_submit)
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _build_submit_payload'
+            f'{self.get_broker_name()} does not implement build_submit_payload'
         )
 
-    def _build_query_payload(self, broker_ref: str) -> Dict[str, Any]:
+    def build_query_payload(self, broker_ref: str) -> Dict[str, Any]:
         """
         Build a broker-specific payload for an order status query.
 
@@ -465,13 +465,13 @@ class AbstractAdapter(ABC):
             broker_ref: Broker's order reference ID
 
         Returns:
-            Adapter-specific payload dict (passed to _do_request_query)
+            Adapter-specific payload dict (passed to do_request_query)
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _build_query_payload'
+            f'{self.get_broker_name()} does not implement build_query_payload'
         )
 
-    def _build_cancel_payload(self, broker_ref: str) -> Dict[str, Any]:
+    def build_cancel_payload(self, broker_ref: str) -> Dict[str, Any]:
         """
         Build a broker-specific payload for an order cancellation request.
 
@@ -481,13 +481,13 @@ class AbstractAdapter(ABC):
             broker_ref: Broker's order reference ID
 
         Returns:
-            Adapter-specific payload dict (passed to _do_request_cancel)
+            Adapter-specific payload dict (passed to do_request_cancel)
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _build_cancel_payload'
+            f'{self.get_broker_name()} does not implement build_cancel_payload'
         )
 
-    def _build_modify_payload(
+    def build_modify_payload(
         self,
         broker_ref: str,
         symbol: str,
@@ -514,13 +514,13 @@ class AbstractAdapter(ABC):
             new_take_profit: New take profit (None=no change)
 
         Returns:
-            Adapter-specific payload dict (passed to _do_request_modify)
+            Adapter-specific payload dict (passed to do_request_modify)
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _build_modify_payload'
+            f'{self.get_broker_name()} does not implement build_modify_payload'
         )
 
-    def _build_trades_query_payload(self, broker_ref: str) -> Dict[str, Any]:
+    def build_trades_query_payload(self, broker_ref: str) -> Dict[str, Any]:
         """
         Build a broker-specific payload for a per-execution trade-record query.
 
@@ -532,15 +532,15 @@ class AbstractAdapter(ABC):
             broker_ref: Broker's order reference ID
 
         Returns:
-            Adapter-specific payload dict (passed to _do_request_trades_query)
+            Adapter-specific payload dict (passed to do_request_trades_query)
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _build_trades_query_payload'
+            f'{self.get_broker_name()} does not implement build_trades_query_payload'
         )
 
     # --- Transport (broker-side I/O, raises on error) ---
 
-    def _do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_submit(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Send an order submission request to the broker. Raises on transport error.
 
@@ -554,10 +554,10 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _do_request_submit'
+            f'{self.get_broker_name()} does not implement do_request_submit'
         )
 
-    def _do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Send an order status query to the broker. Raises on transport error.
 
@@ -568,10 +568,10 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _do_request_query'
+            f'{self.get_broker_name()} does not implement do_request_query'
         )
 
-    def _do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_cancel(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Send an order cancellation request to the broker. Raises on transport error.
 
@@ -582,10 +582,10 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _do_request_cancel'
+            f'{self.get_broker_name()} does not implement do_request_cancel'
         )
 
-    def _do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_modify(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Send an order modification request to the broker. Raises on transport error.
 
@@ -596,10 +596,10 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _do_request_modify'
+            f'{self.get_broker_name()} does not implement do_request_modify'
         )
 
-    def _do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def do_request_trades_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Send a per-execution trade-record query to the broker. Raises on transport error.
 
@@ -610,12 +610,12 @@ class AbstractAdapter(ABC):
             Raw broker response dict
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _do_request_trades_query'
+            f'{self.get_broker_name()} does not implement do_request_trades_query'
         )
 
     # --- Parse responses (pure) ---
 
-    def _parse_submit_response(
+    def parse_submit_response(
         self,
         raw: Dict[str, Any],
         timestamp: datetime,
@@ -643,10 +643,10 @@ class AbstractAdapter(ABC):
             BrokerResponse with broker_ref and status
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _parse_submit_response'
+            f'{self.get_broker_name()} does not implement parse_submit_response'
         )
 
-    def _parse_query_response(
+    def parse_query_response(
         self,
         raw: Dict[str, Any],
         broker_ref: str,
@@ -670,10 +670,10 @@ class AbstractAdapter(ABC):
             BrokerResponse with current status
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _parse_query_response'
+            f'{self.get_broker_name()} does not implement parse_query_response'
         )
 
-    def _parse_cancel_response(
+    def parse_cancel_response(
         self,
         raw: Dict[str, Any],
         broker_ref: str,
@@ -693,10 +693,10 @@ class AbstractAdapter(ABC):
             BrokerResponse with cancellation status
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _parse_cancel_response'
+            f'{self.get_broker_name()} does not implement parse_cancel_response'
         )
 
-    def _parse_modify_response(
+    def parse_modify_response(
         self,
         raw: Dict[str, Any],
         original_broker_ref: str,
@@ -718,10 +718,10 @@ class AbstractAdapter(ABC):
             BrokerResponse with (potentially new) broker_ref
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _parse_modify_response'
+            f'{self.get_broker_name()} does not implement parse_modify_response'
         )
 
-    def _parse_trades_query_response(
+    def parse_trades_query_response(
         self,
         raw: Dict[str, Any],
         broker_ref: str,
@@ -744,7 +744,7 @@ class AbstractAdapter(ABC):
             List of BrokerTrade records (empty list = no executions found / error)
         """
         raise NotImplementedError(
-            f'{self.get_broker_name()} does not implement _parse_trades_query_response'
+            f'{self.get_broker_name()} does not implement parse_trades_query_response'
         )
 
     # ============================================
@@ -767,6 +767,33 @@ class AbstractAdapter(ABC):
         """
         raw = self._do_request_openorders(self._build_openorders_payload())
         return self._parse_openorders_response(raw)
+
+    def get_closed_broker_orders(
+        self,
+        start: datetime,
+        end: datetime,
+        client_order_id: Optional[str] = None,
+    ) -> List[BrokerOrder]:
+        """
+        Pull the broker's orders that are no longer working, over a time range.
+
+        The counterpart to `get_broker_orders`, and needed because that one answers about
+        OPEN orders only: an order that filled is invisible to it, so "filled" and "the
+        venue never took it" arrive identically (#487). A reference lookup cannot stand in
+        — resolving a write whose answer was lost is precisely the case where no reference
+        came back, which is why the range and our own key are the two ways in.
+
+        Args:
+            start: Range start (UTC, inclusive)
+            end: Range end (UTC, inclusive)
+            client_order_id: Narrow the range to one wire key, where the broker supports it
+
+        Returns:
+            List of BrokerOrder in a terminal state (empty when the range holds none)
+        """
+        raw = self._do_request_closedorders(
+            self._build_closedorders_payload(start, end, client_order_id))
+        return self._parse_closedorders_response(raw)
 
     def get_broker_balances(self) -> Dict[str, float]:
         """
@@ -799,6 +826,27 @@ class AbstractAdapter(ABC):
         """
         raise NotImplementedError(
             f'{self.get_broker_name()} does not implement _build_openorders_payload'
+        )
+
+    def _build_closedorders_payload(
+        self,
+        start: datetime,
+        end: datetime,
+        client_order_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Build a broker-specific payload for a closed-orders pull. Pure.
+
+        Args:
+            start: Range start (UTC, inclusive)
+            end: Range end (UTC, inclusive)
+            client_order_id: Wire key to narrow the range to, where supported
+
+        Returns:
+            Adapter-specific payload dict (passed to _do_request_closedorders)
+        """
+        raise NotImplementedError(
+            f'{self.get_broker_name()} does not implement _build_closedorders_payload'
         )
 
     def _build_balance_payload(self) -> Dict[str, Any]:
@@ -837,6 +885,20 @@ class AbstractAdapter(ABC):
         """
         raise NotImplementedError(
             f'{self.get_broker_name()} does not implement _do_request_openorders'
+        )
+
+    def _do_request_closedorders(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send a closed-orders pull to the broker. Raises on transport error.
+
+        Args:
+            payload: Pre-built closed-orders payload
+
+        Returns:
+            Raw broker response dict
+        """
+        raise NotImplementedError(
+            f'{self.get_broker_name()} does not implement _do_request_closedorders'
         )
 
     def _do_request_balance(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -881,6 +943,20 @@ class AbstractAdapter(ABC):
         """
         raise NotImplementedError(
             f'{self.get_broker_name()} does not implement _parse_openorders_response'
+        )
+
+    def _parse_closedorders_response(self, raw: Dict[str, Any]) -> List[BrokerOrder]:
+        """
+        Convert a raw closed-orders response into a list of BrokerOrder. Pure.
+
+        Args:
+            raw: Raw broker response dict
+
+        Returns:
+            List of BrokerOrder (empty list = none reported)
+        """
+        raise NotImplementedError(
+            f'{self.get_broker_name()} does not implement _parse_closedorders_response'
         )
 
     def _parse_balance_response(self, raw: Dict[str, Any]) -> Dict[str, float]:

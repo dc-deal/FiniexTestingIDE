@@ -149,7 +149,9 @@ against deliberately broken copies of it (#466 netless half).
 
 ## Parity Suite — Category Notes
 
-Parity tests (`tests/parity/`) are the only tests that exercise **both** pipelines simultaneously. They prove that simulation and AutoTrader produce identical output given identical input. See [bar_parity_tests.md](parity/bar_parity_tests.md) for the full matrix.
+Parity tests (`tests/parity/`) are the only tests that exercise **both** pipelines simultaneously.
+They prove that simulation and AutoTrader produce identical output given identical input. See
+[bar_parity_tests.md](parity/bar_parity_tests.md) for the full matrix.
 
 Parity tests complement shared code — they are not a substitute. See `docs/architecture/simulation_vs_live_flow.md` for the architectural rationale.
 

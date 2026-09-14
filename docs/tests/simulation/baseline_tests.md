@@ -53,7 +53,11 @@ tests/
 
 `TestBatchHealth` is included in **every** test suite. It validates that all scenarios in the batch completed without runtime errors before any domain-specific tests run.
 
-**Why this matters:** When a scenario fails with a runtime error (e.g. `AttributeError`, `TypeError`), the batch orchestrator logs the error but continues executing other scenarios. Domain-specific tests that depend on the failed scenario's fixtures will produce confusing failures (missing data, `None` values) without indicating the root cause. `TestBatchHealth` catches this immediately with a clear error message listing which scenario failed and why.
+**Why this matters:** When a scenario fails with a runtime error (e.g. `AttributeError`,
+`TypeError`), the batch orchestrator logs the error but continues executing other scenarios.
+Domain-specific tests that depend on the failed scenario's fixtures will produce confusing failures
+(missing data, `None` values) without indicating the root cause. `TestBatchHealth` catches this
+immediately with a clear error message listing which scenario failed and why.
 
 **Rule: Every new test suite must import `TestBatchHealth` in its main test file.**
 
@@ -241,7 +245,7 @@ pytest tests/simulation/baseline/test_baseline_pnl_calculation.py -v
 
 ---
 
-## Architecture Notes
+## Architecture
 
 ### Test Design Philosophy
 

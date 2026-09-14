@@ -19,15 +19,44 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestCoverage` | `test_coverage_ok` | start/end/timeframes fields present |
 | `TestCoverage` | `test_unknown_symbol_returns_404` | 404 + `error: not_found` |
 | `TestBars` | `test_bars_ok` | OHLCV shape, correct field names |
+| `TestBars` | `test_bars_carry_the_tick_count` | `tc` per bar — the activity measure on feeds whose volume is 0.0 |
+| `TestBars` | `test_a_cut_response_says_that_it_was_cut` | `X-Bar-Truncated` / `Count` / `Total` / `Limit` on a capped range |
+| `TestBars` | `test_a_complete_response_says_it_was_not_cut` | the same headers on an uncut range |
+| `TestBars` | `test_every_response_states_its_own_semantics` | `X-Bar-Time-Basis` `open` · `X-Bar-Timezone` `UTC` · `X-Bar-Price-Basis` `mid` |
+| `TestBars` | `test_a_limit_above_the_cap_is_refused_rather_than_clamped` | 400 + `error: invalid_limit` |
+| `TestBars` | `test_a_limit_below_one_is_refused` | 400 + `error: invalid_limit` |
 | `TestBars` | `test_invalid_timeframe_returns_400` | 400 + `error: invalid_timeframe` |
 | `TestBars` | `test_from_after_to_returns_400` | 400 + `error: invalid_range` |
 | `TestBars` | `test_unknown_broker_returns_404` | 404 + `error: not_found` |
 | `TestReportRuns` | `test_list_runs` | Run index: `count`, newest-first order, `group` + `name` per row |
 | `TestReportRuns` | `test_no_persisted_run_is_not_an_error` | Empty store returns `200` with an empty index, not 404 |
 
+## Authentication (`test_api_auth.py`)
+
+The API answered anyone who could reach it, and CORS is not access control — it is a browser
+mechanism that a non-browser client simply does not consult. Two halves are tested, and the second
+is the one that gets forgotten.
+
+| Test class | What it pins |
+|---|---|
+| `TestTheScaffoldStateChangesNothing` | With no consumer configured every route still answers — the rollout's first step has to be byte-identical, or it is not reversible |
+| `TestATokenIsRequired` | 401 without a header and for an unknown token; `WWW-Authenticate: Bearer` on the refusal, so a client can tell a dead credential from a transport fault; `/health` stays open |
+| `TestHoldingATokenIsNotHoldingAGrant` | The walk over every identity route with a token holding NOTHING (403 required on each); a market-data token reaches its broker and is refused on a report; a grant for one broker does not carry to another |
+| `TestTheTokenFileIsRefusedWhenItIsTheTrackedOne` | A live token answering from the committed file refuses the boot; an inactive entry there is fine, which is what lets the placeholder carry examples |
+| `TestTheSurfaceVocabularyIsClosed` | An unknown surface fails when the token is parsed, not at request time |
+| `TestACollectionRouteIsGatedToo` | The hole the walk cannot see: a route with no path parameter had nothing for a grant to be about, so `/reports/runs` and `/sweeps` answered any authenticated token. Refusal and admission are both named by hand |
+| `TestTheAppLevelRoutesAreADecision` | `/timeframes` open beside `/health`, `/brokers` requiring a token and taking no grant — pinned so neither drifts back to being accidental |
+| `TestTheCorsPreflightIsNeverGated` | An `OPTIONS` without `Authorization` is not refused, and `WWW-Authenticate` / `Retry-After` are exposed — invisible from every seat but a browser's |
+| `TestTheRegistryNeverHoldsAToken` | Only digests are stored, and the boot line names consumers and never tokens |
+
+The walk names four routes as `required`: a router dropping out of the app would otherwise leave it
+green while the surface it gated went unreachable.
+
 ## Mocking Strategy
 
-`BarsIndexManager`, `MarketConfigManager` and `ReportStore` are patched at their import location in each router module. `pd.read_parquet` is patched for the bars test to return a minimal in-memory DataFrame. No filesystem access occurs during the test run.
+`BarsIndexManager`, `MarketConfigManager` and `ReportStore` are patched at their import location in
+each router module. `pd.read_parquet` is patched for the bars test to return a minimal in-memory
+DataFrame. No filesystem access occurs during the test run.
 
 ## Sweep routes (`TestSweeps`)
 

@@ -116,7 +116,12 @@ re-arms toward the market; this one wants the opposite.
 
 **Cross-cutting behaviors:**
 - **Safety integration** — submits route through the standard BUY/SELL decision action, so the safety circuit breaker can suppress new entries (override → FLAT); closes/cancels are never suppressed.
-- **Budget / session guard** — the run self-aborts (cancel + close-all + graceful end) if realized cost breaches `max_session_cost_usd` or the wall-clock exceeds `session_timeout_s`. The COST half of that guard only became effective with #506: `OrderResult.commission` was a literal `0.0` before it, so every certificate up to 2026-09-08 records `realized_cost = 0` — because the field could not carry a figure, not because the run was free. The cost is now read from the order history, which is the only list that carries every leg (a full close emits no decision event).
+- **Budget / session guard** — the run self-aborts (cancel + close-all + graceful end) if realized
+  cost breaches `max_session_cost_usd` or the wall-clock exceeds `session_timeout_s`. The COST half
+  of that guard only became effective with #506: `OrderResult.commission` was a literal `0.0` before
+  it, so every certificate up to 2026-09-08 records `realized_cost = 0` — because the field could
+  not carry a figure, not because the run was free. The cost is now read from the order history,
+  which is the only list that carries every leg (a full close emits no decision event).
 - **Step mode** — `halt_after_phase: <phase_id>` ends the session cleanly after a named phase (for incremental, partial-cost dry runs).
 
 ## JSONL Schema
@@ -179,7 +184,11 @@ The certificate is written to `tests/live_field_study/reports/field_study_report
 **PASS criteria (hard):**
 - every phase reached a non-failing outcome (`pass` / `expected_rejection` / `skipped`)
 - no phase is missing a result (a missing result means the run aborted mid-sequence)
-- **no resting orders at session end** — read from the broker-truth snapshot of the `session_end` PHASE, never simply the last one recorded: a session-end snapshot that failed to be written would otherwise let the PREFLIGHT state answer the gate. The account holds base by design, so order-book flatness (not a zero base balance) is the criterion; what the account actually MOVED is the certificate's `account_delta`, derived from the two snapshots rather than asserted in prose
+- **no resting orders at session end** — read from the broker-truth snapshot of the `session_end`
+  PHASE, never simply the last one recorded: a session-end snapshot that failed to be written would
+  otherwise let the PREFLIGHT state answer the gate. The account holds base by design, so order-book
+  flatness (not a zero base balance) is the criterion; what the account actually MOVED is the
+  certificate's `account_delta`, derived from the two snapshots rather than asserted in prose
 
 **Informational (not pass-gating):** realized cost, slippage distribution, detected-via
 mix, reconciliation alert count.

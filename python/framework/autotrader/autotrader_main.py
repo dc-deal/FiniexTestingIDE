@@ -22,6 +22,7 @@ from python.framework.autotrader.autotrader_startup import (
 )
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_cold_start
+from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.reporting.autotrader_report_coordinator import (
     AutotraderReportCoordinator,
@@ -56,6 +57,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 )
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
+from python.framework.types.persistence_types import BaselineKind
 from python.framework.types.live_types.reconciliation_types import FlatCheckResult
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
@@ -153,6 +155,11 @@ class AutotraderMain:
         # session may write it, and the keys the venue is holding. An empty setup means the
         # step did not run (disabled, Field Study, or a simulation executor).
         self._cold_start: ColdStartSetup = ColdStartSetup()
+        # #356 — built only once the cold start has decided the session may proceed, because
+        # it reads the predecessor's record through that store. Every abort BEFORE that point
+        # still reaches _shutdown, which persists the carry-over, so None is a state the
+        # write path has to handle rather than an impossible one.
+        self._risk_baseline: Optional[RiskBaselineTracker] = None
 
         # #348 — Decision event channel (None when the decision logic subscribes to no events)
         self._decision_event_dispatcher: Optional[DecisionEventDispatcher] = None
@@ -246,104 +253,11 @@ class AutotraderMain:
             self._display_label_cache = pipeline.display_label_cache
             self._print_startup_phase('Pipeline created successfully')
 
-            # === ALGO CLOCK VALIDATION (#359) ===
-            # §9: decision logic & workers must never read wall-clock — the
-            # canonical clock is get_current_time(). Scans the loaded algo
-            # sources (CORE + USER; the only path that sees gitignored
-            # user_algos/). A violation aborts the session at startup (§35),
-            # before any tick is processed.
-            validate_algo_clock(
-                [type(self._decision_logic)]
-                + [type(worker) for worker in self._worker_orchestrator.workers.values()]
-            )
+            self._validate_startup()
 
-            # === SWAP-MODE VALIDATION (#407) ===
-            # The swap engine models only POINTS (NONE = no swap). A symbol whose broker
-            # config declares any other mode — or an unparseable string mapped to UNKNOWN —
-            # would silently accrue wrong/zero overnight financing → fail fast at startup
-            # (§35). Single session: abort (nothing to exclude, unlike the sim batch which
-            # marks the one offending scenario invalid).
-            _swap_spec = self._executor.broker.adapter.get_symbol_specification(
-                self._config.symbol)
-            if not _swap_spec.swap_mode.is_implemented:
-                raise SwapModeNotImplementedError(
-                    self._config.symbol, _swap_spec.swap_mode)
+            self._wire_observability()
 
-            # === MARKET-FIT ADVISORY (#118 Stage 0) ===
-            # The version line is logged by setup_pipeline, where the logic is built. The
-            # VERDICT is decided here — a live operator must see it BEFORE the first trade,
-            # not after the session — but it is HELD until _collect_results, because the
-            # validation channel lives on the result and the result does not exist yet.
-            self._startup_findings = check_market_fit(
-                self._decision_logic.get_metadata(), self._decision_logic.name,
-                self._config.broker_type, self._config.symbol,
-                self._config.name or self._config.symbol)
-            for finding in self._startup_findings:
-                # INFO, deliberately not WARNING: the VERDICT travels as a Tier-1 finding.
-                # A WARNING would also enter the log pot, and the same advisory would appear
-                # twice in the report — once adjudicated, once as an unadjudicated pot line.
-                self._session_logger.info(f'⚠️  {finding.message}')
-
-            # === DRIFT AUDIT (#327) ===
-            # Gated by config; live-only by design — DRYRUN orders auto-skipped
-            # inside the auditor. MOCK orders are audited (useful for tests).
-            if self._config.drift_audit.enabled and isinstance(self._executor, LiveTradeExecutor):
-                self._drift_auditor = DriftAuditor(
-                    executor=self._executor,
-                    config=self._config.drift_audit,
-                    logger=self._session_logger,
-                )
-
-            # === RECONCILIATION (#151, ALERT_ONLY) ===
-            # Gated by config; live-only. Polled on a hybrid cadence by the tick loop.
-            if self._config.reconciliation.enabled and isinstance(self._executor, LiveTradeExecutor):
-                self._reconciler = Reconciler(
-                    executor=self._executor,
-                    config=self._config.reconciliation,
-                    logger=self._session_logger,
-                    trading_model=self._trading_model,
-                    symbol=self._config.symbol,
-                )
-
-            # === API PERFORMANCE MONITOR (#351) ===
-            # Per-endpoint REST latency/error telemetry; injected into the adapter
-            # so its transport layer records to it. Live-only.
-            if self._config.api_monitor.enabled and isinstance(self._executor, LiveTradeExecutor):
-                self._api_monitor = ApiPerfMonitor(
-                    config=self._config.api_monitor,
-                    logger=self._session_logger,
-                )
-                self._executor.broker.adapter.set_api_monitor(self._api_monitor)
-
-            # === ALGO STATE PERSISTENCE (#354) ===
-            # Gated by config + live executor + algo opt-in. Restore-after-warmup,
-            # before the first decision (warmup already ran in setup_pipeline).
-            if (self._config.state_persistence.enabled
-                    and isinstance(self._executor, LiveTradeExecutor)
-                    and self._decision_logic.uses_state_persistence()):
-                # Boot pre-flight: a non-serializable snapshot must fail loudly NOW
-                # (startup), not after hours of live trading.
-                validate_state_snapshot_serializable(self._decision_logic)
-                weekend_aware = MarketConfigManager().has_weekend_closure(self._config.broker_type)
-                self._state_store = AlgoStateStore(
-                    config=self._config.state_persistence,
-                    profile=self._config.name or self._config.symbol,
-                    symbol=self._config.symbol,
-                    weekend_aware=weekend_aware,
-                    logger=self._session_logger,
-                    run_id=self._run_id,
-                )
-                loaded = self._state_store.load()
-                if loaded is not None:
-                    snapshot, restore_ctx = loaded
-                    if self._decision_logic.accepts_restored_state(snapshot, restore_ctx):
-                        self._decision_logic.restore_state(snapshot)
-                        self._session_logger.info(
-                            f'💾 Algo state restored '
-                            f'({restore_ctx.trading_days} trading day(s) old)')
-                    else:
-                        self._session_logger.info(
-                            '💾 Algo rejected restored state — starting fresh')
+            self._restore_algo_state()
 
             # === SESSION-END POLICY (#492) ===
             # Resolved and validated BEFORE the cold-start step, because the two are a
@@ -383,6 +297,12 @@ class AutotraderMain:
             if not self._cold_start.proceed:
                 # The loud banner is already in the session log, and therefore the pot.
                 return self._shutdown(0, 0)
+
+            # === RISK BASELINE (#356) ===
+            # Built BEFORE the first carry-over write below, which now carries the record.
+            # The predecessor's baseline is read here rather than at the first tick: by then
+            # the account has already moved, and taking it there is precisely the drift.
+            self._risk_baseline = self._build_risk_baseline_tracker()
 
             # Record the key NOW, before a single order goes out — not only at shutdown. A
             # hard kill (SIGKILL, OOM, power) is precisely the case this carry-over exists
@@ -449,60 +369,17 @@ class AutotraderMain:
             )
             self._print_startup_phase('Tick source running')
 
-            # === DISPLAY (#228) ===
+            # Read by BOTH the display and the tick loop, so it is resolved here rather
+            # than inside either of them.
             dry_run = self._config.adapter_type == 'mock' or self._is_dry_run()
-            if self._config.display.enabled:
-                self._display_queue = queue.Queue(maxsize=10)
-                self._display = AutoTraderLiveDisplay(
-                    display_queue=self._display_queue,
-                    tick_source=self._tick_source,
-                    config=self._config,
-                    dry_run=dry_run,
-                    display_label_cache=self._display_label_cache,
-                )
-                self._display.start()
-                self._global_logger.info('📺 Live display started')
+            self._start_display(dry_run)
 
             # === TICK LOOP ===
             self._global_logger.info('🔄 Entering tick loop...')
             self._print_startup_phase('Entering tick loop')
             self._running = True
 
-            self._tick_loop = AutotraderTickLoop(
-                config=self._config,
-                tick_queue=self._tick_queue,
-                tick_source=self._tick_source,
-                executor=self._executor,
-                bar_controller=self._bar_controller,
-                worker_orchestrator=self._worker_orchestrator,
-                decision_logic=self._decision_logic,
-                clipping_monitor=self._clipping_monitor,
-                logger=self._session_logger,
-                trading_model=self._trading_model,
-                run_dir=self._run_dir,
-                display_queue=self._display_queue,
-                session_start=run_timestamp,
-                dry_run=dry_run,
-                signal_inbox=self._signal_inbox,
-                signal_transport=self._signal_transport,
-                display_label_cache=self._display_label_cache,
-                drift_auditor=self._drift_auditor,
-                decision_event_dispatcher=self._decision_event_dispatcher,
-                reconciler=self._reconciler,
-                api_monitor=self._api_monitor,
-                state_store=self._state_store,
-                # Wired only where a write can actually happen: a dry run and a refused
-                # boot must not persist, and a MARGIN session has no book to write (those
-                # positions come from the venue, #209). Without the gate the seam would call
-                # a function that returns False on every tick for the life of the session,
-                # and the watcher — which advances only on success — would keep asking.
-                # The in-session writes leave the index alone (§42): it is rebuilt by the
-                # boot and shutdown writes, which are not on the hot path.
-                persist_position_book=(
-                    (lambda: self._persist_cold_start_carry_over(refresh_index=False))
-                    if self._cold_start.persist and self._executor.portfolio.is_spot_mode()
-                    else None),
-            )
+            self._tick_loop = self._build_tick_loop(run_timestamp, dry_run)
             self._tick_loop_started = True
             ticks_processed, ticks_clipped = self._tick_loop.run()
 
@@ -526,6 +403,195 @@ class AutotraderMain:
 
         # === SHUTDOWN ===
         return self._shutdown(ticks_processed, ticks_clipped)
+
+    def _validate_startup(self) -> None:
+        """
+        Startup validations that must abort the session before the first tick (§35).
+
+        Each raises rather than returning a verdict — the caller's try/except turns that into
+        the emergency path. The market-fit advisory is the exception: it is a FINDING, held on
+        self until the result exists to carry it.
+        """
+        # === ALGO CLOCK VALIDATION (#359) ===
+        # §9: decision logic & workers must never read wall-clock — the
+        # canonical clock is get_current_time(). Scans the loaded algo
+        # sources (CORE + USER; the only path that sees gitignored
+        # user_algos/). A violation aborts the session at startup (§35),
+        # before any tick is processed.
+        validate_algo_clock(
+            [type(self._decision_logic)]
+            + [type(worker) for worker in self._worker_orchestrator.workers.values()]
+        )
+
+        # === SWAP-MODE VALIDATION (#407) ===
+        # The swap engine models only POINTS (NONE = no swap). A symbol whose broker
+        # config declares any other mode — or an unparseable string mapped to UNKNOWN —
+        # would silently accrue wrong/zero overnight financing → fail fast at startup
+        # (§35). Single session: abort (nothing to exclude, unlike the sim batch which
+        # marks the one offending scenario invalid).
+        _swap_spec = self._executor.broker.adapter.get_symbol_specification(
+            self._config.symbol)
+        if not _swap_spec.swap_mode.is_implemented:
+            raise SwapModeNotImplementedError(
+                self._config.symbol, _swap_spec.swap_mode)
+
+        # === MARKET-FIT ADVISORY (#118 Stage 0) ===
+        # The version line is logged by setup_pipeline, where the logic is built. The
+        # VERDICT is decided here — a live operator must see it BEFORE the first trade,
+        # not after the session — but it is HELD until _collect_results, because the
+        # validation channel lives on the result and the result does not exist yet.
+        self._startup_findings = check_market_fit(
+            self._decision_logic.get_metadata(), self._decision_logic.name,
+            self._config.broker_type, self._config.symbol,
+            self._config.name or self._config.symbol)
+        for finding in self._startup_findings:
+            # INFO, deliberately not WARNING: the VERDICT travels as a Tier-1 finding.
+            # A WARNING would also enter the log pot, and the same advisory would appear
+            # twice in the report — once adjudicated, once as an unadjudicated pot line.
+            self._session_logger.info(f'⚠️  {finding.message}')
+
+    def _wire_observability(self) -> None:
+        """
+        Build and wire the three observation subsystems, each gated by config and live-only.
+
+        None of them can end the session; all three are read by the tick loop.
+        """
+        # === DRIFT AUDIT (#327) ===
+        # Gated by config; live-only by design — DRYRUN orders auto-skipped
+        # inside the auditor. MOCK orders are audited (useful for tests).
+        if self._config.drift_audit.enabled and isinstance(self._executor, LiveTradeExecutor):
+            self._drift_auditor = DriftAuditor(
+                executor=self._executor,
+                config=self._config.drift_audit,
+                logger=self._session_logger,
+            )
+
+        # === RECONCILIATION (#151, ALERT_ONLY) ===
+        # Gated by config; live-only. Polled on a hybrid cadence by the tick loop.
+        if self._config.reconciliation.enabled and isinstance(self._executor, LiveTradeExecutor):
+            self._reconciler = Reconciler(
+                executor=self._executor,
+                config=self._config.reconciliation,
+                logger=self._session_logger,
+                trading_model=self._trading_model,
+                symbol=self._config.symbol,
+            )
+
+        # === API PERFORMANCE MONITOR (#351) ===
+        # Per-endpoint REST latency/error telemetry; injected into the adapter
+        # so its transport layer records to it. Live-only.
+        if self._config.api_monitor.enabled and isinstance(self._executor, LiveTradeExecutor):
+            self._api_monitor = ApiPerfMonitor(
+                config=self._config.api_monitor,
+                logger=self._session_logger,
+            )
+            self._executor.broker.adapter.set_api_monitor(self._api_monitor)
+
+    def _restore_algo_state(self) -> None:
+        """
+        Restore the algo's own carry-over state, if it opted in and a snapshot survives.
+
+        Runs after warmup (which happened in setup_pipeline) and before the first decision.
+        """
+        # === ALGO STATE PERSISTENCE (#354) ===
+        # Gated by config + live executor + algo opt-in. Restore-after-warmup,
+        # before the first decision (warmup already ran in setup_pipeline).
+        if (self._config.state_persistence.enabled
+                and isinstance(self._executor, LiveTradeExecutor)
+                and self._decision_logic.uses_state_persistence()):
+            # Boot pre-flight: a non-serializable snapshot must fail loudly NOW
+            # (startup), not after hours of live trading.
+            validate_state_snapshot_serializable(self._decision_logic)
+            weekend_aware = MarketConfigManager().has_weekend_closure(self._config.broker_type)
+            self._state_store = AlgoStateStore(
+                config=self._config.state_persistence,
+                profile=self._config.name or self._config.symbol,
+                symbol=self._config.symbol,
+                weekend_aware=weekend_aware,
+                logger=self._session_logger,
+                run_id=self._run_id,
+            )
+            loaded = self._state_store.load()
+            if loaded is not None:
+                snapshot, restore_ctx = loaded
+                if self._decision_logic.accepts_restored_state(snapshot, restore_ctx):
+                    self._decision_logic.restore_state(snapshot)
+                    self._session_logger.info(
+                        f'💾 Algo state restored '
+                        f'({restore_ctx.trading_days} trading day(s) old)')
+                else:
+                    self._session_logger.info(
+                        '💾 Algo rejected restored state — starting fresh')
+
+    def _start_display(self, dry_run: bool) -> None:
+        """
+        Start the live display when the profile asks for one.
+
+        Args:
+            dry_run: Whether this session places no real orders — shown in the display header
+        """
+        # === DISPLAY (#228) ===
+        if self._config.display.enabled:
+            self._display_queue = queue.Queue(maxsize=10)
+            self._display = AutoTraderLiveDisplay(
+                display_queue=self._display_queue,
+                tick_source=self._tick_source,
+                config=self._config,
+                dry_run=dry_run,
+                display_label_cache=self._display_label_cache,
+            )
+            self._display.start()
+            self._global_logger.info('📺 Live display started')
+
+    def _build_tick_loop(self, run_timestamp: datetime, dry_run: bool) -> AutotraderTickLoop:
+        """
+        Assemble the tick loop from everything the boot has built.
+
+        Args:
+            run_timestamp: This session's start, used as the loop's session start
+            dry_run: Whether this session places no real orders
+
+        Returns:
+            The tick loop, wired but not yet running
+        """
+        return AutotraderTickLoop(
+            config=self._config,
+            tick_queue=self._tick_queue,
+            tick_source=self._tick_source,
+            executor=self._executor,
+            bar_controller=self._bar_controller,
+            worker_orchestrator=self._worker_orchestrator,
+            decision_logic=self._decision_logic,
+            clipping_monitor=self._clipping_monitor,
+            logger=self._session_logger,
+            trading_model=self._trading_model,
+            run_dir=self._run_dir,
+            display_queue=self._display_queue,
+            session_start=run_timestamp,
+            dry_run=dry_run,
+            signal_inbox=self._signal_inbox,
+            signal_transport=self._signal_transport,
+            display_label_cache=self._display_label_cache,
+            drift_auditor=self._drift_auditor,
+            decision_event_dispatcher=self._decision_event_dispatcher,
+            reconciler=self._reconciler,
+            api_monitor=self._api_monitor,
+            state_store=self._state_store,
+            risk_baseline=self._risk_baseline,
+            # Wired wherever a write can actually happen: a dry run and a refused boot
+            # must not persist, which `persist` already answers on its own.
+            # It used to be gated on SPOT as well, because a margin session has no book
+            # to write (those positions come from the venue, #209). Since #356 the same
+            # document also carries the risk BASELINE, and a margin session has exactly
+            # the same restart drift — it was in fact the model whose breaker could see
+            # the loss least. Left spot-only, the baseline would reach the disk for the
+            # first time at SHUTDOWN, which is the one moment a hard kill does not reach.
+            # The in-session writes leave the index alone (§42): it is rebuilt by the
+            # boot and shutdown writes, which are not on the hot path.
+            persist_carry_over=(
+                (lambda: self._persist_cold_start_carry_over(refresh_index=False))
+                if self._cold_start.persist else None),
+        )
 
     # =========================================================================
     # STARTUP CONSOLE OUTPUT
@@ -763,6 +829,11 @@ class AutotraderMain:
         if self._tick_loop:
             result.disturbance_episodes = self._tick_loop.get_disturbance_episodes()
             result.market_data_tick_stats = self._tick_loop.get_market_data_tick_stats()
+            # #356 — the risk denominator and how far the account moved against it. Read
+            # from the loop rather than re-derived, because the running maxima only exist
+            # there: the portfolio knows what the account is worth NOW, not what the
+            # deepest excursion was thirty days ago.
+            result.safety_session = self._tick_loop.get_safety_session()
         if self._worker_orchestrator:
             result.disturbance_episodes += self._worker_orchestrator.get_signal_episodes()
 
@@ -892,6 +963,36 @@ class AutotraderMain:
     # HELPERS
     # =========================================================================
 
+    def _build_risk_baseline_tracker(self) -> RiskBaselineTracker:
+        """
+        Build the tracker, restoring the predecessor's baseline where the profile allows it.
+
+        Two switches, and they answer different questions. `safety.enabled` decides whether
+        anything is CHECKED; `persist_baseline` decides whether the denominator survives a
+        restart. A session with safety off still tracks its baseline, so that a later session
+        can switch the checks on against a reference that was taken honestly rather than
+        re-anchored at whatever the account happened to be worth that morning.
+
+        Returns:
+            The tracker this session measures against
+        """
+        safety = self._config.safety
+        restored = None
+        if safety.persist_baseline and self._cold_start.store is not None:
+            restored = self._cold_start.store.load().risk_baseline
+        return RiskBaselineTracker(
+            mode=(BaselineKind.HIGH_WATER_MARK
+                  if safety.baseline_mode == 'high_water_mark'
+                  else BaselineKind.SESSION_FIXED),
+            restored=restored,
+            spot_mode=self._executor.portfolio.is_spot_mode(),
+            exclusive_account=self._config.capital.exclusive_account,
+            # Answers None before the first event, which is what makes the boot-balances
+            # stamp honest provenance rather than an invented canonical time (§9).
+            clock_fn=self._executor.get_current_time_if_set,
+            logger=self._session_logger,
+        )
+
     def _persist_cold_start_carry_over(self, refresh_index: bool = True) -> bool:
         """
         Write the framework carry-over: this session's key, its counter high-water mark and
@@ -940,6 +1041,13 @@ class AutotraderMain:
                 # instead of erasing it.
                 open_positions=(
                     portfolio.get_position_book() if portfolio.is_spot_mode() else None),
+                # #356 — the denominator every risk limit measures against. Both account
+                # models write it, unlike the book above: a margin session has no book to
+                # carry but the same restart drift, and it was the model whose breaker could
+                # see the loss LEAST. None while no baseline has been taken yet, which the
+                # store reads as "not supplied" and therefore leaves the stored one alone.
+                risk_baseline=(self._risk_baseline.get_baseline()
+                               if self._risk_baseline is not None else None),
                 refresh_index=refresh_index,
             )
             return True

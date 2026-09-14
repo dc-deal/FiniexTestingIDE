@@ -95,7 +95,7 @@ the guard that the sim output did not move.
 Sequence numbers restart when the producer boots, so the distance across that boundary measures
 nothing, and counting it would report a restart as lost data.
 
-## Running
+## Running the Tests
 
 ```bash
 python -m pytest tests/framework/reporting/ -v

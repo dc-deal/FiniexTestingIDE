@@ -296,7 +296,10 @@ Each market type defines default parameters for the Generator Profile System:
 }
 ```
 
-Crypto uses larger blocks (72h vs 24h) and a higher ATR percentile threshold (P15 vs P10) because 24/7 markets have less pronounced volatility minima than session-based Forex markets. These defaults override `generator_config.json` when present. The `split_algorithm` (always `atr_minima`) remains global in `generator_config.json`.
+Crypto uses larger blocks (72h vs 24h) and a higher ATR percentile threshold (P15 vs P10) because
+24/7 markets have less pronounced volatility minima than session-based Forex markets. These defaults
+override `generator_config.json` when present. The `split_algorithm` (always `atr_minima`) remains
+global in `generator_config.json`.
 
 ### Pip Size Derivation (`pip_mode`)
 
@@ -444,7 +447,11 @@ fetcher hardcodes the rates rather than fetching them, so the two happened to ag
 
 On first run, an internet connection is required. After the first successful fetch, the session can run offline for up to 30 days before generating a strong staleness warning.
 
-**Lazy symbol addition:** Symbols are added to the cache on demand. If a fresh cache exists but does not contain the requested symbol (e.g., the cache was built during an ETHUSD session and you now start a DOTUSD session), the missing symbol is fetched from the API and merged into the cache — without affecting the age or status of existing symbols. Each symbol carries a `_last_fetched` field indicating when it was last individually verified.
+**Lazy symbol addition:** Symbols are added to the cache on demand. If a fresh cache exists but does
+not contain the requested symbol (e.g., the cache was built during an ETHUSD session and you now
+start a DOTUSD session), the missing symbol is fetched from the API and merged into the cache —
+without affecting the age or status of existing symbols. Each symbol carries a `_last_fetched` field
+indicating when it was last individually verified.
 
 ### Tombstone Symbols
 

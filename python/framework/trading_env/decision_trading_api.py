@@ -53,18 +53,21 @@ from python.framework.types.trading_env_types.trading_env_stats_types import Cos
 
 from .abstract_trade_executor import AbstractTradeExecutor
 from .order_guard import OrderGuard
-from .portfolio_manager import UNSET, _UnsetType
+from .portfolio_manager import UNSET, AccountInfo, Position, _UnsetType
 
 # Rejection reasons that indicate broker/account-side problems worth
 # cooling down on. Local validation rejections (lot size, unsupported type)
 # are decision bugs, not broker spam — they don't arm the cooldown.
+# BROKER_UNREACHABLE belongs here for the same reason as the rest: when the venue cannot be
+# reached, sending more orders is what helps least. #473 introduced the reason and this set
+# was not extended, so the pause that used to arm on an unreachable broker armed on nothing.
 _COOLDOWN_REJECTION_REASONS = frozenset({
     RejectionReason.INSUFFICIENT_MARGIN,
     RejectionReason.INSUFFICIENT_FUNDS,
     RejectionReason.BROKER_ERROR,
+    RejectionReason.BROKER_UNREACHABLE,
     RejectionReason.MARKET_CLOSED,
 })
-from .portfolio_manager import AccountInfo, Position
 
 
 class DecisionTradingApi:
@@ -236,13 +239,15 @@ class DecisionTradingApi:
             venue_held_protection=venue_held_protection,
         )
 
-        # Pre-trade guard — rejection cooldown + stale-market-data block (#436).
-        # Time source is the executor's current tick timestamp: simulated in
-        # backtests (keeps cooldowns deterministic and sim-correct), wall-clock
-        # in live. The market-data status is always fresh in sim.
+        # Pre-trade guard — rejection cooldown + stale-market-data block (#436) +
+        # unresolved-write block (#487). Time source is the executor's current tick
+        # timestamp: simulated in backtests (keeps cooldowns deterministic and sim-correct),
+        # wall-clock in live. The market-data status is always fresh in sim, and the
+        # unresolved set is always empty there.
         now = self._executor.get_current_time()
         guard_result = self._order_guard.validate(
-            request, now, self._executor.get_market_data_status())
+            request, now, self._executor.get_market_data_status(),
+            unresolved_at_ceiling=self._executor.get_unresolved_at_ceiling())
         if guard_result is not None:
             self._executor.record_guard_rejection(guard_result)
             return guard_result

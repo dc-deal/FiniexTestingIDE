@@ -67,7 +67,7 @@ real orders*, and *what does it think a trade costs*. Both were answered wrongly
 this project's history, and neither failure was visible from the outside — one profile field was
 read by nobody, one rate was half the truth for an unknown length of time.
 
-## Running
+## Running the Tests
 
 ```bash
 pytest tests/autotrader/config/ -v --tb=short

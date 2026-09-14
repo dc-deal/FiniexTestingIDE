@@ -116,6 +116,19 @@ class PendingOrderTiming:
     broker_fill_msc: Optional[int] = None
     submitted_at: Optional[datetime] = None
     timeout_at: Optional[datetime] = None
+    # The same submission moment read from the MONOTONIC clock, and it exists for one
+    # reason: `submitted_at` is a point in time and must stay a wall-clock reading, but a
+    # DURATION must not be computed from two wall-clock readings. NTP can step that clock
+    # backwards between submit and fill, which yields a negative latency — and a latency
+    # lands in a min/max aggregate, where a single impossible value reads like a venue
+    # fault. Monotonic never steps. Absolute values are meaningless; only differences are.
+    submitted_monotonic: Optional[float] = None
+    # When a write for this order was most recently DISPATCHED (#487), on the canonical
+    # clock. `submitted_at` is stamped once and never re-stamped, so after an amend or a
+    # cancel there was no way to express "how long has the venue had this" — and that is
+    # exactly the span the settle window measures before an empty answer may be promoted
+    # to "the venue never took it".
+    last_write_at: Optional[datetime] = None
 
 
 @dataclass
@@ -149,6 +162,24 @@ class PendingOrderExecutionState:
     # venue with trade-level reporting the trades drain sets it to the full amount before
     # anything has been booked. One number cannot answer both questions.
     venue_close_applied_lots: float = 0.0
+    # === Resolution of a lost write answer (#487) ===
+    # `resolution_deadline is not None` IS the selector: the unresolved handler ARMS the
+    # resolution and the scheduler drives it, so nothing has to scan for orders that "look
+    # unresolved". All three are on the CANONICAL clock (tick or heartbeat), never the wall
+    # clock — in live, resolution is tick-gated, so a window measured against wall time
+    # decouples from the cadence that actually resolves it (§9).
+    resolution_deadline: Optional[datetime] = None
+    resolution_next_at: Optional[datetime] = None
+    resolution_attempts: int = 0
+    # True while a resolve job for this order is en route to the worker — the same
+    # skip-flag discipline as in_flight_query, and what keeps two asks from overlapping.
+    #
+    # None of this SURVIVES A RESTART, and that is a decision rather than an omission
+    # (§44 / #476): it is scheduling state with a 120-second ceiling, and a restart takes
+    # longer than that. A boot hands the question to the cold-start adopter instead, which
+    # reads the venue's open orders by the same wire key — and since #487 the closed ones
+    # too, so it can also see what a restart would otherwise never learn.
+    resolution_in_flight: bool = False
 
 
 @dataclass
@@ -204,6 +235,12 @@ class PendingOrder:
 
     # === Broker tracking ===
     broker_ref: Optional[str] = None
+    # The wire key this order was actually SENT under (#473, #487). Recorded rather than
+    # re-derived: the reconciler used to rebuild it from `pending_order_id`, which held only
+    # while every order's key was a function of its id — and a CLOSE now mints its own
+    # counter, so it no longer is. A re-derived key would miss a close in flight and report
+    # it as abandoned. None in simulation and on any path with no session key.
+    client_order_id: Optional[str] = None
 
     # === For OPEN orders ===
     symbol: Optional[str] = None

@@ -47,7 +47,7 @@ class TestTheTriggerGoesWhereKrakenReadsIt:
     """The submit mapping this issue exists for."""
 
     def test_a_stop_sends_its_trigger_as_price(self, adapter):
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol='BTCUSD', direction=OrderDirection.LONG, lots=0.01,
             order_type=OrderType.STOP, stop_price=49500.0)
 
@@ -57,7 +57,7 @@ class TestTheTriggerGoesWhereKrakenReadsIt:
         assert 'stopprice' not in payload, 'Not a request parameter — responses only'
 
     def test_a_stop_limit_sends_trigger_and_limit_in_that_order(self, adapter):
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol='BTCUSD', direction=OrderDirection.LONG, lots=0.01,
             order_type=OrderType.STOP_LIMIT, stop_price=49500.0, limit_price=49600.0)
 
@@ -73,7 +73,7 @@ class TestTheTriggerGoesWhereKrakenReadsIt:
         price in both pipelines (#500). It was `price` on the live path only, which is why
         the reconciler's own comparison found nothing for a live limit order.
         """
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol='BTCUSD', direction=OrderDirection.LONG, lots=0.01,
             order_type=OrderType.LIMIT, limit_price=49000.0)
 
@@ -92,7 +92,7 @@ class TestASignedPriceNeverReachesTheVenue:
 
     def test_a_negative_trigger_is_refused(self, adapter):
         with pytest.raises(ValueError) as refused:
-            adapter._build_submit_payload(
+            adapter.build_submit_payload(
                 symbol='BTCUSD', direction=OrderDirection.LONG, lots=0.01,
                 order_type=OrderType.STOP, stop_price=-49500.0)
 
@@ -101,7 +101,7 @@ class TestASignedPriceNeverReachesTheVenue:
 
     def test_a_zero_limit_is_refused(self, adapter):
         with pytest.raises(ValueError):
-            adapter._build_submit_payload(
+            adapter.build_submit_payload(
                 symbol='BTCUSD', direction=OrderDirection.LONG, lots=0.01,
                 order_type=OrderType.STOP_LIMIT, stop_price=49500.0, limit_price=0.0)
 
@@ -112,7 +112,7 @@ class TestASignedPriceNeverReachesTheVenue:
         The executor's own gate refuses a conditional order with no trigger; this layer
         must not turn a MARKET order's absent price into an error.
         """
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol='BTCUSD', direction=OrderDirection.LONG, lots=0.01,
             order_type=OrderType.MARKET)
 
@@ -123,7 +123,7 @@ class TestAmendingAStopMovesItsTrigger:
     """AmendOrder's two price fields, which used to be collapsed into one."""
 
     def test_a_stop_amend_targets_the_trigger(self, adapter):
-        payload = adapter._build_modify_payload(
+        payload = adapter.build_modify_payload(
             broker_ref='OABC-123', symbol='BTCUSD', order_type=OrderType.STOP,
             new_price=49800.0)
 
@@ -137,7 +137,7 @@ class TestAmendingAStopMovesItsTrigger:
         So the venue kept the old limit while our shadow showed the new one — a divergence
         we authored ourselves, on the very path the reconciler then reports.
         """
-        payload = adapter._build_modify_payload(
+        payload = adapter.build_modify_payload(
             broker_ref='OABC-123', symbol='BTCUSD', order_type=OrderType.STOP_LIMIT,
             new_price=49800.0, new_limit_price=49900.0)
 
@@ -145,7 +145,7 @@ class TestAmendingAStopMovesItsTrigger:
         assert payload['limit_price'] == '49900.0'
 
     def test_a_limit_amend_still_targets_the_limit(self, adapter):
-        payload = adapter._build_modify_payload(
+        payload = adapter.build_modify_payload(
             broker_ref='OABC-123', symbol='BTCUSD', order_type=OrderType.LIMIT,
             new_price=49800.0)
 
@@ -294,7 +294,7 @@ class TestAnAnswerThatNamesNoOrderIsNotAState:
     _TS = datetime(2026, 9, 8, 8, 33, tzinfo=timezone.utc)
 
     def test_an_empty_answer_is_unknown_not_pending(self, adapter):
-        response = adapter._parse_query_response({}, 'OZZZZZ-ZZZZZ-ZZZZZZ', self._TS)
+        response = adapter.parse_query_response({}, 'OZZZZZ-ZZZZZ-ZZZZZZ', self._TS)
 
         assert response.status == BrokerOrderStatus.UNKNOWN
         assert response.is_unknown
@@ -302,7 +302,7 @@ class TestAnAnswerThatNamesNoOrderIsNotAState:
     def test_an_answer_about_a_different_order_is_unknown_too(self, adapter):
         raw = {'OOTHER-11111-222222': {'status': 'open', 'vol_exec': '0.0'}}
 
-        response = adapter._parse_query_response(raw, 'OZZZZZ-ZZZZZ-ZZZZZZ', self._TS)
+        response = adapter.parse_query_response(raw, 'OZZZZZ-ZZZZZ-ZZZZZZ', self._TS)
 
         assert response.status == BrokerOrderStatus.UNKNOWN
 
@@ -311,7 +311,7 @@ class TestAnAnswerThatNamesNoOrderIsNotAState:
         Terminal would be worse than the PENDING it replaces: it would invent a cancel or an
         expiry for an order the venue did not describe.
         """
-        response = adapter._parse_query_response({}, 'OZZZZZ-ZZZZZ-ZZZZZZ', self._TS)
+        response = adapter.parse_query_response({}, 'OZZZZZ-ZZZZZ-ZZZZZZ', self._TS)
 
         assert not response.is_terminal
         assert not response.is_filled
@@ -320,7 +320,7 @@ class TestAnAnswerThatNamesNoOrderIsNotAState:
     def test_a_status_word_we_do_not_map_is_unknown_rather_than_pending(self, adapter):
         raw = {'OABC-123': {'status': 'something-kraken-invented', 'vol_exec': '0.0'}}
 
-        response = adapter._parse_query_response(raw, 'OABC-123', self._TS)
+        response = adapter.parse_query_response(raw, 'OABC-123', self._TS)
 
         assert response.status == BrokerOrderStatus.UNKNOWN
 
@@ -328,7 +328,7 @@ class TestAnAnswerThatNamesNoOrderIsNotAState:
         """The guard must not cost the ordinary answer its reading."""
         raw = {'OABC-123': {'status': 'closed', 'vol_exec': '0.002', 'price': '2467.94'}}
 
-        response = adapter._parse_query_response(raw, 'OABC-123', self._TS)
+        response = adapter.parse_query_response(raw, 'OABC-123', self._TS)
 
         assert response.status == BrokerOrderStatus.FILLED
         assert response.filled_lots == pytest.approx(0.002)

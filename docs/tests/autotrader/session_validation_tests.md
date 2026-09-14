@@ -48,7 +48,7 @@ by a real run, in
 session that really executed a stressed profile. A unit test cannot show that the call site
 exists.
 
-## Running
+## Running the Tests
 
 ```bash
 pytest tests/autotrader/session_validation/ -v --tb=short

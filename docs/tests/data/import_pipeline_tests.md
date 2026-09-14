@@ -126,7 +126,12 @@ Validates hash-based duplicate detection.
 - Override mode allows re-import of duplicate
 - Different source file not flagged as duplicate
 
-**DUPLICATE AT LAST Policy:** The `populate_persistent_test_output` session fixture imports 4 reference files into `data/test/import/processed/` at session start. All duplicate detection tests use `tmp_path` for full isolation, so they don't conflict with the persistent import. However, the persistent import must complete first — if duplicate detection tests ever run against shared directories, they must be ordered last (after the reference data is established and directories are clean).
+**DUPLICATE AT LAST Policy:** The `populate_persistent_test_output` session fixture imports 4
+reference files into `data/test/import/processed/` at session start. All duplicate detection tests
+use `tmp_path` for full isolation, so they don't conflict with the persistent import. However, the
+persistent import must complete first — if duplicate detection tests ever run against shared
+directories, they must be ordered last (after the reference data is established and directories are
+clean).
 
 ---
 
@@ -222,7 +227,7 @@ Validates that `data_format_version` survives the tick index write/read cycle �
 
 ---
 
-## Architecture Notes
+## Architecture
 
 - Tests are **fully isolated** — each test creates temporary directories, no shared state
 - Uses `TickDataImporter` directly (not via CLI) for precise control

@@ -74,7 +74,7 @@ No filename-to-classname convention. Any class name works.
 |---------|---------------|
 | `decision_logic_type` in scenario JSON | Project root (cwd) |
 | `worker_instances.*` in scenario JSON | Project root (cwd) |
-| `get_required_worker_instances()` return values | Directory of the decision logic file |
+| `get_required_workers()` return values | Directory of the decision logic file |
 | Absolute paths | Always used as-is |
 
 ---
@@ -119,7 +119,10 @@ factory.rescan():
 
 ## Import Mechanics
 
-External files are loaded via `importlib.util.spec_from_file_location()` — no `sys.path` manipulation. Framework imports inside user files (e.g., `from python.framework.workers.abstract_worker import AbstractWorker`) resolve normally because `/app` is in `sys.path` at runtime.
+External files are loaded via `importlib.util.spec_from_file_location()` — no `sys.path`
+manipulation. Framework imports inside user files (e.g.,
+`from python.framework.workers.abstract_worker import AbstractWorker`) resolve normally because
+`/app` is in `sys.path` at runtime.
 
 **File load errors** are caught and rethrown as `ValueError` with clear messages:
 - `SyntaxError` → file has broken Python

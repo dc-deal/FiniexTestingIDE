@@ -2,7 +2,9 @@
 
 ## Purpose
 
-Verifies that workers declaring an incompatible market activity metric are rejected at pre-flight time, before any subprocess bridge. Protects against the failure mode where (e.g.) OBV silently runs on a forex broker and returns zeros because forex ticks carry no real volume.
+Verifies that workers declaring an incompatible market activity metric are rejected at pre-flight
+time, before any subprocess bridge. Protects against the failure mode where (e.g.) OBV silently runs
+on a forex broker and returns zeros because forex ticks carry no real volume.
 
 ## What Is Tested
 
@@ -52,9 +54,16 @@ Incompatible combinations must produce structured errors without raising excepti
 
 ## Test Design Philosophy
 
-The suite uses the **real** `MarketConfigManager` and `WorkerFactory` (both session-scoped fixtures in `conftest.py`) because the validation logic is a thin shim over these two components. Mocking either would let broken config assumptions slip through — the tests must break if someone reclassifies `kraken_spot` as forex, or deletes the OBV registration from `WorkerFactory._load_core_workers()`.
+The suite uses the **real** `MarketConfigManager` and `WorkerFactory` (both session-scoped fixtures
+in `conftest.py`) because the validation logic is a thin shim over these two components. Mocking
+either would let broken config assumptions slip through — the tests must break if someone
+reclassifies `kraken_spot` as forex, or deletes the OBV registration from
+`WorkerFactory._load_core_workers()`.
 
-`ScenarioDataValidator` is instantiated with empty `data_coverage_reports` since market-compatibility validation has no dependency on tick coverage. The `app_config` is a `MagicMock` returning `'standard'` warmup mode and `['seamless']` allowed gap categories — the validator constructor calls these once at init, they are never re-read during compatibility checks.
+`ScenarioDataValidator` is instantiated with empty `data_coverage_reports` since
+market-compatibility validation has no dependency on tick coverage. The `app_config` is a
+`MagicMock` returning `'standard'` warmup mode and `['seamless']` allowed gap categories — the
+validator constructor calls these once at init, they are never re-read during compatibility checks.
 
 `make_scenario()` in `conftest.py` builds minimal `SingleScenario` objects with just enough fields to pass the validator's interface — no real coverage report, no tick loading, no subprocess.
 
@@ -73,7 +82,7 @@ Modules under test:
 - `python/framework/exceptions/market_compatibility_errors.py` — structured error
 - `python/configuration/market_config_manager.py` — metric lookup
 
-## Running
+## Running the Tests
 
 ```bash
 pytest tests/framework/market_compatibility/ -v --tb=short

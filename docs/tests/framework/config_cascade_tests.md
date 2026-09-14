@@ -42,7 +42,7 @@ still hold as long as the merged result is correct.
 | `test_sub_group_per_key_merge` | #137 — nested `performance_tracking` sub-group merges per-key: scenario overrides `worker_decision_tracking`, `tick_loop_profiling` is inherited from global |
 | `test_unknown_key_hard_fails_with_provenance` | Safety net — typo in `global.execution_config` raises `ValueError` with full provenance string, before any merge happens |
 
-## Fixtures
+## Fixtures (conftest.py)
 
 Each fixture is a self-contained scenario-set JSON with one scenario. The
 scenario carries the minimum required fields (`name`, `symbol`, `data_broker_type`,

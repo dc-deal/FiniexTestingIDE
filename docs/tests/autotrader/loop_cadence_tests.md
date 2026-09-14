@@ -62,7 +62,7 @@ at the machine level without a broker.
 
 ---
 
-## Fixtures
+## Fixtures (conftest.py)
 
 No shared fixtures. Executor tests instantiate `MockOrderExecution` directly; the
 orchestrator test builds a `process_heartbeat`-ready orchestrator via `object.__new__` with

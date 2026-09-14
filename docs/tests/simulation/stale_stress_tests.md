@@ -52,7 +52,7 @@ anomaly in a case is provably the carved one and never an archive artifact.
 Structural invariant asserted for every case: `fresh + stale + blind == ticks_processed` — one
 count per tick, no double count, no miss.
 
-## Running
+## Running the Tests
 
 ```bash
 # Full suite

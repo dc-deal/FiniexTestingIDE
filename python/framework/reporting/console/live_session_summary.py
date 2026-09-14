@@ -15,6 +15,7 @@ from python.framework.reporting.console.feed_stability_summary import format_dis
 from python.framework.types.api.report_types import (
     ColdStartReport,
     RunSummary,
+    SafetyReport,
     TradeHistoryReport,
     WarningsErrorsReport,
 )
@@ -35,6 +36,7 @@ class LiveSessionSummary:
         run_summary: Optional[RunSummary] = None,
         warnings_errors_report: Optional[WarningsErrorsReport] = None,
         cold_start_report: Optional[ColdStartReport] = None,
+        safety_report: Optional[SafetyReport] = None,
     ):
         """
         Args:
@@ -46,6 +48,8 @@ class LiveSessionSummary:
                 grading (#372), so the outcome is read rather than re-asked of the result
             cold_start_report: What the boot step inherited (#355 / #493) — absent when there
                 was nothing to inherit
+            safety_report: The risk denominator this session ran against and how far the
+                account moved (#356 / #314) — absent when no baseline was ever taken
         """
         self._result = result
         self._trade_report = trade_report
@@ -53,11 +57,13 @@ class LiveSessionSummary:
         self._run_summary = run_summary
         self._warnings_errors_report = warnings_errors_report
         self._cold_start_report = cold_start_report
+        self._safety_report = safety_report
 
     def render(self, renderer: ConsoleRenderer) -> None:
-        """Render the closing block (session stats + cold start + output locations)."""
+        """Render the closing block (session stats + cold start + safety + locations)."""
         self._render_stats(renderer)
         self._render_cold_start(renderer)
+        self._render_safety(renderer)
         self._render_output_locations(renderer)
 
     def _render_cold_start(self, renderer: ConsoleRenderer) -> None:
@@ -106,6 +112,81 @@ class LiveSessionSummary:
             verdict = 'accounted for' if report.algo_accounted_for else 'not accounted for'
             note = f' — {report.algo_note}' if report.algo_note else ''
             print(f'  {report.algo_name}: {verdict}{note}')
+
+    def _render_safety(self, renderer: ConsoleRenderer) -> None:
+        """
+        The risk denominator and how far the account moved against it (#356 / #314).
+
+        Every figure here names its baseline, which is the whole reason the section exists: a
+        bare "-12 %" cannot be traced to the number that produced it, and four quantities in
+        this codebase are called "initial". Nothing is computed — the extremes are running
+        maxima captured by the loop and the worst day was chosen in the builder, because a
+        renderer that picks a maximum out of thirty rows has built its own aggregate and the
+        API will then answer the same question differently.
+        """
+        report = self._safety_report
+        # The coordinator only builds this report once a baseline exists, and the block is
+        # written entirely against that record. The second half of the guard is therefore
+        # belt and braces on purpose: this is the closing block of a live session, and a
+        # renderer crashing here would take the whole session summary with it.
+        if report is None or report.baseline is None:
+            return
+
+        print()
+        armed = '' if report.enabled else ' — LIMITS OFF, measured only'
+        print(f'🛡️ Safety (risk baseline){armed}')
+
+        baseline = report.baseline
+        if report.baseline_restored:
+            # The origin token already says `restored_carry_over`, so printing both would be
+            # the same fact twice. This is the case #356 exists for, and it gets the words.
+            print(f'  Baseline:       {baseline.kind.value} = {report.baseline_value:.2f} '
+                  f'(taken {baseline.taken_at_utc})')
+            print('                  RESTORED from the previous session — the drawdown '
+                  'continues from there rather than starting over')
+        else:
+            print(f'  Baseline:       {baseline.kind.value} = {report.baseline_value:.2f} '
+                  f'({baseline.origin.value}, taken {baseline.taken_at_utc})')
+
+        used = ('' if report.soft_limit_used_pct is None
+                else f' — {report.soft_limit_used_pct:.0f}% of the soft limit')
+        when = f' at {report.worst_drawdown_pct_at}' if report.worst_drawdown_pct_at else ''
+        print(f'  Worst drawdown: {-report.worst_drawdown_abs:.2f} '
+              f'({-report.worst_drawdown_pct:.2f}%){when}{used}')
+        # Two extremes, two moments — only ever printed when they ARE two, which on the
+        # default fixed baseline is never. A high-water mark moves, and then the deepest
+        # amount and the deepest share are different ticks.
+        if report.worst_drawdown_abs_at != report.worst_drawdown_pct_at:
+            print(f'    (deepest amount {-report.worst_drawdown_abs:.2f} at '
+                  f'{report.worst_drawdown_abs_at} — the baseline moved between the two)')
+
+        engaged = (f'engaged {report.block_count}x' if report.block_count
+                   else 'never engaged')
+        state = (renderer.red(f'STILL BLOCKED: {report.reason_at_end}')
+                 if report.blocked_at_end else 'clear at session end')
+        print(f'  Entry block:    {engaged}, {state}')
+
+        if report.days:
+            hit = (f', {report.days_limit_hit} over a daily limit'
+                   if report.days_limit_hit else '')
+            print(f'  Daily:          {len(report.days)} day(s), worst {report.worst_day} '
+                  f'{-report.worst_day_loss_abs:.2f} '
+                  f'({-report.worst_day_loss_pct:.2f}% of that day){hit}')
+            for row in report.days:
+                if row.limit_hit:
+                    print(renderer.yellow(
+                        f'    {row.day}: daily limit hit — {-row.worst_loss_abs:.2f} '
+                        f'({-row.worst_loss_pct:.2f}% of {row.baseline_value:.2f})'))
+
+        if report.flatten_fired:
+            print(renderer.red(f'  🚨 HARD STOP fired: {report.flatten_reason}'))
+            if report.flatten_completed:
+                print('     the book was confirmed flat before the session ended')
+            else:
+                still = ', '.join(report.flatten_unconfirmed) or 'none reported'
+                print(renderer.red(
+                    f'     NOT confirmed flat — still open at the venue: {still}. '
+                    f'Check the account by hand.'))
 
     def _render_stats(self, renderer: ConsoleRenderer) -> None:
         """Session outcome statistics + the #389 analytics line."""

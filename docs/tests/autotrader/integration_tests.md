@@ -15,6 +15,7 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 | `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (29782), 0 clipping, 0 warnings/errors, trades produced, stats collected |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
 | `test_broker_report_written` | Broker report persisted (unified model) + rendered in the summary |
+| `test_safety_report_written` | The safety record reaches disk and names its baseline (#356 Phase C) — the end-to-end the unit tests cannot show: a chain of proven links is not a proven chain. Also pins that an unarmed limit reports `null`, not `0.0` |
 | `test_tick_source_fields_fully_parsed` | Every `tick_source` profile key reaches the config (no silently dropped keys, incl. the #436 freeze-lever fields) |
 | `test_staleness_contract_fields_parsed` | #436 knobs: `execution.market_data_stale_after_s` + `order_guard.block_stale_market_data` — per-profile override AND app_config JIC defaults |
 
@@ -93,9 +94,20 @@ Targeted scenario tests for specific AutoTrader pipeline behaviors: SL/TP level 
 
 Each class runs an independent session from its own profile. Sessions are module-scoped.
 
-> **Architectural note:** SL/TP is enforced by THIS process in both pipelines since #500 — `_check_sl_tp_triggers` used to return immediately outside `ExecutorMode.SIMULATION`, on the assumption that the broker held the level, and nothing ever sent one. So these two profiles are named after a trigger that had never happened, and the tests asserted that the level was STORED. They now assert that it ACTED.
+> **Architectural note:** SL/TP is enforced by THIS process in both pipelines since #500 —
+> `_check_sl_tp_triggers` used to return immediately outside `ExecutorMode.SIMULATION`, on the
+> assumption that the broker held the level, and nothing ever sent one. So these two profiles are
+> named after a trigger that had never happened, and the tests asserted that the level was STORED.
+> They now assert that it ACTED.
 >
-> Two properties of the live close shape what they may assert. The exit goes through the asynchronous `close_position()`, so it lands at the broker's next price and **never at the level** — one of the tests pins exactly that. And the number of exits is not a fixed 1: a close still in flight at session end is recorded as an anomaly and cleared rather than filled (`clear_pending`), and a partially filled close leaves lots that trigger again. The tests therefore assert the OUTCOME — something closed for the right reason and nothing is left open — not a count. See [session_end_policy.md](../../architecture/session_end_policy.md) and [protective_level_tests.md](protective_level_tests.md).
+> Two properties of the live close shape what they may assert. The exit goes through the
+> asynchronous `close_position()`, so it lands at the broker's next price and **never at the level**
+> — one of the tests pins exactly that. And the number of exits is not a fixed 1: a close still in
+> flight at session end is recorded as an anomaly and cleared rather than filled (`clear_pending`),
+> and a partially filled close leaves lots that trigger again. The tests therefore assert the
+> OUTCOME — something closed for the right reason and nothing is left open — not a count. See
+> [session_end_policy.md](../../architecture/session_end_policy.md) and
+> [protective_level_tests.md](protective_level_tests.md).
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
@@ -110,7 +122,9 @@ Each class runs an independent session from its own profile. Sessions are module
 
 ### test_partial_close_live_pipeline.py
 
-Runs the `partial_close_lifecycle.json` profile (scripted `BacktestingMultiPosition` + mock adapter) end-to-end and verifies the multi-fill visibility paradigm (#330) on the live-pipeline side. Mirrors what the sim partial_close suite validates for the sim path.
+Runs the `partial_close_lifecycle.json` profile (scripted `BacktestingMultiPosition` + mock adapter)
+end-to-end and verifies the multi-fill visibility paradigm (#330) on the live-pipeline side. Mirrors
+what the sim partial_close suite validates for the sim path.
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
@@ -138,7 +152,7 @@ Unit tests for `LiveClippingMonitor` — no external dependencies, no tick data,
 
 **Runtime:** <0.5 seconds.
 
-## Running
+## Running the Tests
 
 ```bash
 # Full suite

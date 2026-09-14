@@ -57,6 +57,8 @@ from python.framework.types.live_types.live_request_types import (
     CancelResponse,
     EditJob,
     EditResponse,
+    OrderResolveJob,
+    OrderResolveResponse,
     PositionModifyJob,
     PositionModifyResponse,
     QueryJob,
@@ -66,6 +68,7 @@ from python.framework.types.live_types.live_request_types import (
     TradesQueryJob,
     TradesQueryResponse,
 )
+from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.latency_simulator_types import (
@@ -164,6 +167,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # the stale-broker_ref guard, and resolve FILLED / terminal / pending
         # states from the broker's authoritative view.
         self._query_response_hook: Optional[Callable[[QueryResponse], None]] = None
+        # #487: resolution drain handler — main-thread callback receiving what the venue
+        # said about a write whose answer was lost, so the executor can clear the in-flight
+        # flag and decide RESOLVED_RESTING / RESOLVED_ABSENT / keep asking.
+        self._order_resolve_hook: Optional[Callable[[OrderResolveResponse], None]] = None
 
     # ============================================
     # High-Level Orchestrators (sync in V1, async post-step-6)
@@ -181,8 +188,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         Submit a new open order via the adapter (synchronous in V1).
 
-        Composes adapter Tier-3 layers: _build_submit_payload →
-        _do_request_submit → _parse_submit_response. Pure orchestrator —
+        Composes adapter Tier-3 layers: build_submit_payload →
+        do_request_submit → parse_submit_response. Pure orchestrator —
         no storage side-effect. The caller decides whether to register
         the result via register_pending_open (MARKET path) or to track
         it elsewhere (LIMIT → _active_limit_orders, migrated in step 7).
@@ -205,7 +212,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Returns:
             BrokerResponse from the adapter (REJECTED on transport error)
         """
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol=symbol,
             direction=direction,
             lots=lots,
@@ -214,13 +221,13 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         )
 
         try:
-            raw = adapter._do_request_submit(payload)
+            raw = adapter.do_request_submit(payload)
         except Exception as e:
             return self._failure_response(
                 e, broker_ref='', timestamp=datetime.now(timezone.utc),
                 operation='submit')
 
-        return adapter._parse_submit_response(
+        return adapter.parse_submit_response(
             raw,
             timestamp=datetime.now(timezone.utc),
             direction=direction,
@@ -252,7 +259,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Returns:
             BrokerResponse from the adapter (REJECTED on transport error)
         """
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol=symbol,
             direction=close_direction,
             lots=close_lots,
@@ -261,13 +268,13 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         )
 
         try:
-            raw = adapter._do_request_submit(payload)
+            raw = adapter.do_request_submit(payload)
         except Exception as e:
             return self._failure_response(
                 e, broker_ref='', timestamp=datetime.now(timezone.utc),
                 operation='submit')
 
-        return adapter._parse_submit_response(
+        return adapter.parse_submit_response(
             raw,
             timestamp=datetime.now(timezone.utc),
             direction=close_direction,
@@ -288,6 +295,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         order_kwargs: Optional[Dict] = None,
         submission: Optional[SubmissionMetadata] = None,
         venue_held_protection: bool = False,
+        client_order_id: Optional[str] = None,
     ) -> str:
         """
         Track a submitted OPEN order with broker reference.
@@ -311,6 +319,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                         (cold-start, heartbeat-only path).
             venue_held_protection: Whether the resulting position should get a protective
                         order at the venue (#503) — resolved at submit, read at fill
+            client_order_id: The wire key this order is sent under (#487). Recorded so the
+                        reconciler and the resolution path read it instead of re-deriving it
 
         Returns:
             order_id for chaining
@@ -321,8 +331,11 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         pending = PendingOrder(
             pending_order_id=order_id,
             order_action=PendingOrderAction.OPEN,
-            timing=PendingOrderTiming(submitted_at=now, timeout_at=timeout_at),
+            timing=PendingOrderTiming(
+                submitted_at=now, timeout_at=timeout_at,
+                submitted_monotonic=time.monotonic()),
             broker_ref=broker_ref,
+            client_order_id=client_order_id,
             symbol=symbol,
             direction=direction,
             lots=lots,
@@ -351,6 +364,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         close_lots: Optional[float] = None,
         submission: Optional[SubmissionMetadata] = None,
         close_reason: Optional[CloseReason] = None,
+        client_order_id: Optional[str] = None,
     ) -> str:
         """
         Track a submitted CLOSE order with broker reference.
@@ -369,6 +383,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             close_reason: Why the close was requested. Stored here because a
                           live close is asynchronous — the trigger and the fill
                           are a broker round trip apart (#500).
+            client_order_id: The wire key this close is sent under (#487). It is NOT
+                          derivable from position_id any more — a close mints its own
+                          counter so an entry and its close stop sharing one key.
 
         Returns:
             position_id for chaining
@@ -379,8 +396,11 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         pending = PendingOrder(
             pending_order_id=position_id,
             order_action=PendingOrderAction.CLOSE,
-            timing=PendingOrderTiming(submitted_at=now, timeout_at=timeout_at),
+            timing=PendingOrderTiming(
+                submitted_at=now, timeout_at=timeout_at,
+                submitted_monotonic=time.monotonic()),
             broker_ref=broker_ref,
+            client_order_id=client_order_id,
             close_lots=close_lots,
             close_reason=close_reason,
             submission=submission if submission else SubmissionMetadata(),
@@ -495,6 +515,64 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
 
         return pending
 
+    def index_broker_ref(self, broker_ref: str, order_id: str) -> None:
+        """
+        Record a venue reference that arrived late, so lookups by it find their order.
+
+        The ordinary submit path indexes as it confirms; this is for the paths where the
+        reference arrives by another route — the reconcile attribution and #487's
+        resolution — which would otherwise leave an order findable by id but not by the
+        name the venue uses for it.
+
+        The index maps a reference to an order THIS STORE HOLDS, and every reader relies on
+        that: `get_by_broker_ref` resolves the id against `_pending_orders` and answers None
+        when it is absent, which is indistinguishable from "no such reference". A RESTING
+        order lives in the executor's lists, not here, so indexing one would plant a pointer
+        into nothing — and `mark_filled` would pop it, fail to find the order, and warn
+        about a cache miss that was really a filing error. The invariant is enforced here
+        because this is the only place a late reference can break it.
+
+        Args:
+            broker_ref: The venue's reference
+            order_id: Internal pending-order identifier it belongs to
+        """
+        if order_id not in self._pending_orders:
+            return
+        self._broker_ref_index[broker_ref] = order_id
+
+    def discard_order(
+        self,
+        order_id: str,
+        reason: str,
+    ) -> Optional[PendingOrder]:
+        """
+        Remove a pending order by its own id, whatever its broker reference is.
+
+        The reference-keyed removals above cannot serve an order whose write was never
+        answered: its broker_ref is None, so the index lookup finds nothing and they return
+        BEFORE removing anything. The order id always exists.
+
+        Args:
+            order_id: Internal pending-order identifier
+            reason: Why the order is being discarded, for the log line
+
+        Returns:
+            PendingOrder if it was still tracked, None otherwise
+        """
+        pending = self.remove_order(order_id)
+        if pending is None:
+            return None
+
+        if pending.broker_ref is not None:
+            self._broker_ref_index.pop(pending.broker_ref, None)
+
+        self.logger.warning(
+            f'Pending order discarded: {order_id} reason={reason} '
+            f'(broker_ref={pending.broker_ref or "never answered"})'
+        )
+
+        return pending
+
     # ============================================
     # Timeout Detection
     # ============================================
@@ -530,6 +608,14 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         the original on modification. The caller is responsible for
         invoking this when such a swap occurs.
 
+        A miss is NOT an anomaly here, and saying it was is what this warning used to do.
+        The index covers the orders this store holds; a RESTING order lives in the
+        executor's lists and never had an entry to update, so its amend legitimately finds
+        nothing — the executor writes the new reference onto the pending itself. The line
+        could not fire on Kraken, whose AmendOrder keeps the txid, so it was waiting for the
+        second adapter (#209) to report a correct operation as a fault. It is now a DEBUG
+        note, and the return value still tells the caller what happened.
+
         Args:
             old_ref: Previous broker reference (now invalid)
             new_ref: New broker reference from broker
@@ -539,8 +625,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         order_id = self._broker_ref_index.pop(old_ref, None)
         if order_id is None:
-            self.logger.warning(
-                f'update_broker_ref: old_ref={old_ref} not found in index'
+            self.logger.debug(
+                f'update_broker_ref: {old_ref} is not in this store\'s index — expected for '
+                f'a resting order, whose reference the executor owns'
             )
             return False
 
@@ -628,6 +715,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         position_modify_response: Optional[Callable[[str, BrokerResponse], None]] = None,
         trades_response: Optional[Callable[[TradesQueryResponse], None]] = None,
         query_response: Optional[Callable[[QueryResponse], None]] = None,
+        order_resolve: Optional[Callable[[OrderResolveResponse], None]] = None,
     ) -> None:
         """
         Register executor callbacks for async outcomes.
@@ -672,6 +760,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                             in_flight_query on the polled PendingOrder, apply
                             the stale-broker_ref guard, and react to FILLED /
                             terminal / pending broker outcomes.
+            order_resolve: _handle_order_resolve_response(response) — invoked for
+                            OrderResolveResponse so the executor can clear the
+                            resolution in-flight flag and apply the verdict (#487).
         """
         self._fill_open_hook = fill_open
         self._fill_close_hook = fill_close
@@ -682,6 +773,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._position_modify_response_hook = position_modify_response
         self._trades_response_hook = trades_response
         self._query_response_hook = query_response
+        self._order_resolve_hook = order_resolve
 
     def start_worker(self) -> None:
         """
@@ -728,6 +820,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         - EditJob: modify a pending order
         - CancelJob: cancel a pending order
         - PositionModifyJob: modify an open position's SL/TP
+        - OrderResolveJob: ask what became of a write whose answer was lost (#487)
 
         The short get() timeout keeps shutdown latency bounded (max one
         timeout interval after stop_worker).
@@ -750,6 +843,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 self._dispatch_trades_query_job(job)
             elif isinstance(job, QueryJob):
                 self._dispatch_query_job(job)
+            elif isinstance(job, OrderResolveJob):
+                self._dispatch_order_resolve_job(job)
             else:
                 self.logger.warning(
                     f'Unknown job type in outbox: {type(job).__name__}'
@@ -821,8 +916,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         now = datetime.now(timezone.utc)
         try:
-            raw = job.adapter._do_request_submit(job.payload)
-            response = job.adapter._parse_submit_response(
+            raw = job.adapter.do_request_submit(job.payload)
+            response = job.adapter.parse_submit_response(
                 raw, timestamp=now, direction=job.direction, order_type=job.order_type)
         except Exception as e:
             response = self._failure_response(
@@ -840,7 +935,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Worker-thread handler for EditJob (#318).
 
         Composes adapter Tier-3 modify layer:
-            _build_modify_payload → _do_request_modify → _parse_modify_response
+            build_modify_payload → do_request_modify → parse_modify_response
 
         Transport errors are surfaced as REJECTED BrokerResponse. The main
         thread's drain_inbox routes the EditResponse to the executor via
@@ -851,7 +946,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         now = datetime.now(timezone.utc)
         try:
-            payload = job.adapter._build_modify_payload(
+            payload = job.adapter.build_modify_payload(
                 broker_ref=job.broker_ref,
                 symbol=job.symbol,
                 order_type=job.order_type,
@@ -860,8 +955,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 new_stop_loss=job.new_stop_loss,
                 new_take_profit=job.new_take_profit,
             )
-            raw = job.adapter._do_request_modify(payload)
-            response = job.adapter._parse_modify_response(
+            raw = job.adapter.do_request_modify(payload)
+            response = job.adapter.parse_modify_response(
                 raw, original_broker_ref=job.broker_ref, timestamp=now,
             )
         except Exception as e:
@@ -879,13 +974,13 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Worker-thread handler for CancelJob (#318).
 
         Composes adapter Tier-3 cancel layer:
-            _build_cancel_payload → _do_request_cancel → _parse_cancel_response
+            build_cancel_payload → do_request_cancel → parse_cancel_response
         """
         now = datetime.now(timezone.utc)
         try:
-            payload = job.adapter._build_cancel_payload(job.broker_ref)
-            raw = job.adapter._do_request_cancel(payload)
-            response = job.adapter._parse_cancel_response(
+            payload = job.adapter.build_cancel_payload(job.broker_ref)
+            raw = job.adapter.do_request_cancel(payload)
+            response = job.adapter.parse_cancel_response(
                 raw, job.broker_ref, now,
             )
         except Exception as e:
@@ -904,9 +999,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
 
         Position-modify Tier-3 surface is adapter-specific. The current
         contract assumes the adapter exposes
-            _build_position_modify_payload(position_id, symbol, new_sl, new_tp)
-            _do_request_position_modify(payload)
-            _parse_position_modify_response(raw, position_id, timestamp)
+            build_position_modify_payload(position_id, symbol, new_sl, new_tp)
+            do_request_position_modify(payload)
+            parse_position_modify_response(raw, position_id, timestamp)
         as a separate operation triple. Adapters that fold position-modify
         into the existing modify operation (#209 design decision) should
         override this dispatch method or expose the same triple names as
@@ -914,14 +1009,14 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         now = datetime.now(timezone.utc)
         try:
-            payload = job.adapter._build_position_modify_payload(
+            payload = job.adapter.build_position_modify_payload(
                 position_id=job.position_id,
                 symbol=job.symbol,
                 new_stop_loss=job.new_stop_loss,
                 new_take_profit=job.new_take_profit,
             )
-            raw = job.adapter._do_request_position_modify(payload)
-            response = job.adapter._parse_position_modify_response(
+            raw = job.adapter.do_request_position_modify(payload)
+            response = job.adapter.parse_position_modify_response(
                 raw, position_id=job.position_id, timestamp=now,
             )
         except Exception as e:
@@ -939,7 +1034,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Worker-thread handler for QueryJob (#320).
 
         Composes adapter Tier-3 query layer:
-            _build_query_payload → _do_request_query → _parse_query_response
+            build_query_payload → do_request_query → parse_query_response
 
         Transport errors are surfaced as a REJECTED BrokerResponse — the main
         thread's drain handler clears in_flight_query regardless and decides
@@ -948,9 +1043,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         now = datetime.now(timezone.utc)
         try:
-            payload = job.adapter._build_query_payload(job.broker_ref)
-            raw = job.adapter._do_request_query(payload)
-            response = job.adapter._parse_query_response(
+            payload = job.adapter.build_query_payload(job.broker_ref)
+            raw = job.adapter.do_request_query(payload)
+            response = job.adapter.parse_query_response(
                 raw, job.broker_ref, now, market=job.market)
         except Exception as e:
             response = self._failure_response(
@@ -962,22 +1057,111 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             broker_response=response,
         ))
 
+    def _dispatch_order_resolve_job(self, job: OrderResolveJob) -> None:
+        """
+        Worker-thread handler for OrderResolveJob (#487).
+
+        Read-only by construction — this asks ABOUT a write, it never repeats one. Which
+        route answers is decided by what the lost answer left behind, and both are measured
+        (2026-09-13):
+
+            with a broker_ref     QueryOrders by that reference — the ordinary route
+            without one           OpenOrders + ClosedOrders narrowed to our key. QueryOrders
+                                  refuses a key with no txid, so there is no one-call form
+
+        A read that FAILS is reported as such rather than as an empty answer: "the venue did
+        not answer" and "the venue answered and named nothing" are opposite facts, and only
+        the second one may ever become a rejection.
+
+        Args:
+            job: The OrderResolveJob enqueued by the executor's resolution scheduler
+        """
+        now = datetime.now(timezone.utc)
+        try:
+            if job.broker_ref:
+                payload = job.adapter.build_query_payload(job.broker_ref)
+                raw = job.adapter.do_request_query(payload)
+                parsed = job.adapter.parse_query_response(raw, job.broker_ref, now)
+                self._http_inbox.put(OrderResolveResponse(
+                    order_id=job.order_id,
+                    status=None if parsed.status == BrokerOrderStatus.UNKNOWN
+                    else parsed.status,
+                    broker_ref=job.broker_ref,
+                    filled_lots=parsed.filled_lots or 0.0,
+                ))
+                return
+
+            if not job.client_order_id:
+                # Sent under no key and no reference came back: there is nothing to ask
+                # about. Reported as a FAILED read rather than as an empty answer, because
+                # an empty answer is evidence and this is the absence of a question.
+                self._http_inbox.put(OrderResolveResponse(
+                    order_id=job.order_id,
+                    success=False,
+                    error_message='no client order id and no broker reference to ask with',
+                ))
+                return
+
+            match = self._find_by_client_key(
+                job.adapter.get_broker_orders(), job.client_order_id)
+            if match is None:
+                match = self._find_by_client_key(
+                    job.adapter.get_closed_broker_orders(
+                        job.range_start, job.range_end, job.client_order_id),
+                    job.client_order_id)
+
+            self._http_inbox.put(OrderResolveResponse(
+                order_id=job.order_id,
+                status=match.status if match is not None else None,
+                broker_ref=match.broker_ref if match is not None else None,
+                filled_lots=match.filled_lots if match is not None else 0.0,
+            ))
+        except Exception as e:                           # noqa: BLE001 — reported below
+            self._http_inbox.put(OrderResolveResponse(
+                order_id=job.order_id,
+                success=False,
+                error_message=str(e),
+            ))
+
+    @staticmethod
+    def _find_by_client_key(
+        orders: List[BrokerOrder],
+        client_order_id: str,
+    ) -> Optional[BrokerOrder]:
+        """
+        The one order carrying this wire key, or None when the answer names none.
+
+        Returns None when SEVERAL carry it as well, and that is deliberate. One key naming
+        two orders was the measured state before a close minted its own counter, and
+        picking one of them would be a guess about which — a resolution that guesses is
+        worse than one that keeps asking.
+
+        Args:
+            orders: What the venue reported
+            client_order_id: The key we sent
+
+        Returns:
+            The single matching BrokerOrder, or None
+        """
+        matches = [o for o in orders if o.client_order_id == client_order_id]
+        return matches[0] if len(matches) == 1 else None
+
     def _dispatch_trades_query_job(self, job: TradesQueryJob) -> None:
         """
         Worker-thread handler for TradesQueryJob (#326).
 
         Composes adapter Tier-3 trades-query layer:
-            _build_trades_query_payload → _do_request_trades_query
-            → _parse_trades_query_response
+            build_trades_query_payload → do_request_trades_query
+            → parse_trades_query_response
 
         Transport errors are surfaced as a TradesQueryResponse with success=False
         and an empty trades list — the main thread's drain handler decides how
         to react (typically: leave the pending in place, retry on next poll).
         """
         try:
-            payload = job.adapter._build_trades_query_payload(job.broker_ref)
-            raw = job.adapter._do_request_trades_query(payload)
-            trades = job.adapter._parse_trades_query_response(
+            payload = job.adapter.build_trades_query_payload(job.broker_ref)
+            raw = job.adapter.do_request_trades_query(payload)
+            trades = job.adapter.parse_trades_query_response(
                 raw, broker_ref=job.broker_ref, order_id=job.order_id,
             )
             self._http_inbox.put(TradesQueryResponse(
@@ -1052,6 +1236,9 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 self._handle_trades_query_response(item)
             elif isinstance(item, QueryResponse):
                 self._handle_query_response(item)
+            elif isinstance(item, OrderResolveResponse):
+                if self._order_resolve_hook is not None:
+                    self._order_resolve_hook(item)
             else:
                 self.logger.warning(
                     f'Unknown response type in inbox: {type(item).__name__}'
@@ -1130,6 +1317,11 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         pending.broker_ref = response.broker_ref
         if response.broker_ref:
             self._broker_ref_index[response.broker_ref] = item.order_id
+        # #487 — the ORDINARY answer arrived after all, late. It settles the same question
+        # the resolution was asking, so the resolution stops: exactly one actor resolves a
+        # pending, and which one it is must not depend on ordering luck.
+        pending.execution_state.resolution_deadline = None
+        pending.execution_state.resolution_next_at = None
 
         if response.is_filled:
             # Synchronous-fill broker (mock INSTANT_FILL, Kraken close-on-submit)
@@ -1273,7 +1465,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             adapter: Live-capable adapter
             **kwargs: price, stop_loss, take_profit, comment, expected_price
         """
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol=symbol,
             direction=direction,
             lots=lots,
@@ -1313,7 +1505,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             adapter: Live-capable adapter
             **kwargs: comment, expected_price, etc.
         """
-        payload = adapter._build_submit_payload(
+        payload = adapter.build_submit_payload(
             symbol=symbol,
             direction=close_direction,
             lots=close_lots,
@@ -1480,6 +1672,39 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             market=market,
         ))
 
+    def submit_order_resolve_async(
+        self,
+        order_id: str,
+        client_order_id: Optional[str],
+        broker_ref: Optional[str],
+        adapter: AbstractAdapter,
+        range_start: datetime,
+        range_end: datetime,
+    ) -> None:
+        """
+        Enqueue an OrderResolveJob for the worker thread (#487).
+
+        Triggered by LiveTradeExecutor's resolution scheduler for an order whose write was
+        never answered. The caller owns the scheduling state — this method only hands the
+        question to the worker, exactly as the poll path does.
+
+        Args:
+            order_id: Internal order identifier (primary routing key)
+            client_order_id: The wire key the order was sent under, or None
+            broker_ref: The venue reference, when one arrived before the answer was lost
+            adapter: Live-capable adapter
+            range_start: Start of the closed-order window to read (UTC)
+            range_end: End of that window (UTC)
+        """
+        self._http_outbox.put(OrderResolveJob(
+            order_id=order_id,
+            client_order_id=client_order_id,
+            broker_ref=broker_ref,
+            adapter=adapter,
+            range_start=range_start,
+            range_end=range_end,
+        ))
+
     def submit_trades_query_async(
         self,
         order_id: str,
@@ -1524,8 +1749,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         Synchronously modify an order via the adapter's Tier-3 layers.
 
-        Composes adapter._build_modify_payload → _do_request_modify →
-        _parse_modify_response. Blocks the caller thread for one broker
+        Composes adapter.build_modify_payload → do_request_modify →
+        parse_modify_response. Blocks the caller thread for one broker
         roundtrip. Async modify (queued through the worker) is the subject
         of #318 and uses the same Tier-3 surface.
 
@@ -1548,7 +1773,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             broker_ref on success — Kraken EditOrder returns a fresh txid)
         """
         now = datetime.now(timezone.utc)
-        payload = adapter._build_modify_payload(
+        payload = adapter.build_modify_payload(
             broker_ref=broker_ref,
             symbol=symbol,
             order_type=order_type,
@@ -1558,12 +1783,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             new_take_profit=new_take_profit,
         )
         try:
-            raw = adapter._do_request_modify(payload)
+            raw = adapter.do_request_modify(payload)
         except Exception as e:
             return self._failure_response(
                 e, broker_ref=broker_ref, timestamp=now,
                 operation='modify')
-        return adapter._parse_modify_response(raw, original_broker_ref=broker_ref, timestamp=now)
+        return adapter.parse_modify_response(raw, original_broker_ref=broker_ref, timestamp=now)
 
     def query_order_sync(
         self,
@@ -1574,8 +1799,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         Synchronously query an order's current status via the adapter's Tier-3 layers.
 
-        Composes adapter._build_query_payload → _do_request_query →
-        _parse_query_response. Blocks the caller thread for one broker
+        Composes adapter.build_query_payload → do_request_query →
+        parse_query_response. Blocks the caller thread for one broker
         roundtrip. Used by LiveTradeExecutor for the Phase-1 / Phase-2
         polling passes inside _process_pending_orders.
 
@@ -1590,14 +1815,14 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             BrokerResponse with current status (REJECTED on transport error)
         """
         now = datetime.now(timezone.utc)
-        payload = adapter._build_query_payload(broker_ref)
+        payload = adapter.build_query_payload(broker_ref)
         try:
-            raw = adapter._do_request_query(payload)
+            raw = adapter.do_request_query(payload)
         except Exception as e:
             return self._failure_response(
                 e, broker_ref=broker_ref, timestamp=now,
                 operation='status query', self_healing=True)
-        return adapter._parse_query_response(raw, broker_ref, now, market=market)
+        return adapter.parse_query_response(raw, broker_ref, now, market=market)
 
     def cancel_order_sync(
         self,
@@ -1607,8 +1832,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         """
         Synchronously cancel an order via the adapter's Tier-3 layers.
 
-        Composes adapter._build_cancel_payload → _do_request_cancel →
-        _parse_cancel_response. Blocks the caller thread for one broker
+        Composes adapter.build_cancel_payload → do_request_cancel →
+        parse_cancel_response. Blocks the caller thread for one broker
         roundtrip. Async cancel (queued through the worker) is the subject
         of #318 and uses the same Tier-3 surface.
 
@@ -1620,11 +1845,11 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             BrokerResponse (REJECTED on transport error, CANCELLED on success)
         """
         now = datetime.now(timezone.utc)
-        payload = adapter._build_cancel_payload(broker_ref)
+        payload = adapter.build_cancel_payload(broker_ref)
         try:
-            raw = adapter._do_request_cancel(payload)
+            raw = adapter.do_request_cancel(payload)
         except Exception as e:
             return self._failure_response(
                 e, broker_ref=broker_ref, timestamp=now,
                 operation='cancel')
-        return adapter._parse_cancel_response(raw, broker_ref, now)
+        return adapter.parse_cancel_response(raw, broker_ref, now)

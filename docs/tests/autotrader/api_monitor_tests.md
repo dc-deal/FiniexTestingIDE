@@ -57,7 +57,7 @@ as reconciliation / drift_audit.
 
 ---
 
-## Fixtures
+## Fixtures (conftest.py)
 
 No shared fixtures — each test constructs an `ApiPerfMonitor` directly with an
 `ApiMonitorConfig` and a `MagicMock` logger. Config tests use `tmp_path` profiles

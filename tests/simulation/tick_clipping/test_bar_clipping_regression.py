@@ -246,7 +246,8 @@ def _build_autotrader_tick_loop(ticks_with_flags):
     controller = BarRenderingController(logger=logger)
     controller._required_timeframes = {TIMEFRAME}
 
-    # Executor mock: only the ctor-time broker.adapter chain needs real values.
+    # Executor mock: the ctor-time broker.adapter chain plus the two the safety path does
+    # ARITHMETIC with need real values.
     executor = MagicMock()
     symbol_spec = MagicMock()
     symbol_spec.base_currency = 'BTC'
@@ -255,6 +256,11 @@ def _build_autotrader_tick_loop(ticks_with_flags):
     # No session-end request in this fixture — a bare MagicMock would return a
     # truthy mock and break the loop after the first tick (#348).
     executor.is_session_end_requested.return_value = False
+    # The loop measures the account value against the risk baseline on every tick, whether
+    # the circuit breaker is armed or not (#356) — a bare MagicMock reaches a comparison
+    # and raises. Same reason the stub above exists.
+    executor.portfolio.get_account_value.return_value = 1000.0
+    executor.portfolio.initial_balance = 1000.0
 
     # execute_decision must return an object whose .is_rejected is False,
     # otherwise the rejection branch triggers attribute access on MagicMock.

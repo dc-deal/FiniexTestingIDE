@@ -31,7 +31,10 @@ the run end **does** with them, and what a **position** even is in this account 
 | STOP | **rests at the venue** (#500) | **rests locally** | **rests locally** |
 | STOP_LIMIT | **rests at the venue** (#500) | **rests locally** | **rests locally** |
 
-**So `session_end.orders` touches three types in live, and the stop types are the ones that matter most.** Kraken states it themselves: a `stop-loss-limit` "is not automatically linked to a specific position" and has to be cancelled by hand once the position is gone. A stop left standing after the position it protected was closed by another route is a naked order at the venue.
+**So `session_end.orders` touches three types in live, and the stop types are the ones that matter most.**
+Kraken states it themselves: a `stop-loss-limit` "is not automatically linked to a specific
+position" and has to be cancelled by hand once the position is gone. A stop left standing after the
+position it protected was closed by another route is a naked order at the venue.
 
 ### 2 · What the run end does
 

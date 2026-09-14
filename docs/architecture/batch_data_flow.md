@@ -43,7 +43,15 @@ Data prepared in the main process and distributed to subprocesses via pickle ser
 
 Each scenario gets its own package (3-5 MB) instead of one global package (61 MB) — 5x pickle overhead reduction.
 
-**The package dict is keyed by `SingleScenario.scenario_index`, never by a loop position.** The index is assigned once at config load (`scenario_config_loader.py`) and stays with the scenario; `SharedDataPreparator` fills the dict with it. Some consumers receive the COMPLETE scenario list (`ExecutionCoordinator`) and some receive the list FILTERED to the still-valid scenarios (`ScenarioDataValidator`, via `mount_preparer._valid()`), so a position matches the index only in the first case — and only until one scenario is excluded. Keying by position silently pairs a scenario with a neighbour's data. A missing package raises `ScenarioPackageMissingError`: after keying correctly, a hole can only mean the preparator and the consumer disagree about what was prepared, which is framework logic and not operator config (§33).
+**The package dict is keyed by `SingleScenario.scenario_index`, never by a loop position.** The
+index is assigned once at config load (`scenario_config_loader.py`) and stays with the scenario;
+`SharedDataPreparator` fills the dict with it. Some consumers receive the COMPLETE scenario list
+(`ExecutionCoordinator`) and some receive the list FILTERED to the still-valid scenarios
+(`ScenarioDataValidator`, via `mount_preparer._valid()`), so a position matches the index only in
+the first case — and only until one scenario is excluded. Keying by position silently pairs a
+scenario with a neighbour's data. A missing package raises `ScenarioPackageMissingError`: after
+keying correctly, a hole can only mean the preparator and the consumer disagree about what was
+prepared, which is framework logic and not operator config (§33).
 
 **The scenario log buffer crosses as `list[LogRecord]`, not as rendered lines.** A record
 (`framework/types/log_record_types.py`) carries level, observation timestamp, scope, message and
@@ -133,7 +141,9 @@ Results returned from subprocesses after tick loop execution:
 Data that stays in the main process and feeds reports directly via `BatchExecutionSummary`:
 
 - **`SingleScenario`** — enriched during data preparation (e.g., `data_format_versions` populated from Parquet metadata). Never pickled to subprocesses. Available in `BatchExecutionSummary.single_scenario_list` for report sections.
-- **`broker_scenario_map`** — broker configs grouped by `BrokerType`. Distributed to subprocesses (Channel A) for execution but NOT returned (Channel B). Independently available in `BatchExecutionSummary.broker_scenario_map` for `BrokerSummary` rendering.
+- **`broker_scenario_map`** — broker configs grouped by `BrokerType`. Distributed to subprocesses
+  (Channel A) for execution but NOT returned (Channel B). Independently available in
+  `BatchExecutionSummary.broker_scenario_map` for `BrokerSummary` rendering.
 
 ## Why This Matters
 
@@ -148,11 +158,17 @@ Adding metadata to reports does NOT require threading through subprocesses. The 
 3. **If the data is loaded once for all scenarios** (e.g., broker configs):
    → Distribute via `ProcessDataPackage.broker_configs` AND tag on `BatchExecutionSummary.broker_scenario_map`. No round-trip.
 
-**Example**: `data_format_versions` follows pattern 1 — populated from tick index during `SharedDataPreparator.prepare_scenario_packages()`, stored on `SingleScenario`, judged by `PostRunValidator._check_data_version()` and rendered by `WarningsSummary`. Zero subprocess overhead.
+**Example**: `data_format_versions` follows pattern 1 — populated from tick index during
+`SharedDataPreparator.prepare_scenario_packages()`, stored on `SingleScenario`, judged by
+`PostRunValidator._check_data_version()` and rendered by `WarningsSummary`. Zero subprocess
+overhead.
 
 ## Report Sections: Spot-Aware Reporting
 
-`PortfolioStats` carries spot-mode fields (`spot_mode`, `balances`, `initial_balances`, `last_price`, `symbol`) populated in the tick loop via `PortfolioManager.get_portfolio_statistics()`. These follow pattern 2 (produced during tick execution, returned in `ProcessResult`).
+`PortfolioStats` carries spot-mode fields (`spot_mode`, `balances`, `initial_balances`,
+`last_price`, `symbol`) populated in the tick loop via
+`PortfolioManager.get_portfolio_statistics()`. These follow pattern 2 (produced during tick
+execution, returned in `ProcessResult`).
 
 Reporting adapts layout based on `portfolio_stats.spot_mode`:
 - **Margin mode** — single balance line (`Balance: $10,000.00`)
@@ -162,7 +178,9 @@ Mixed batches (margin + spot scenarios in the same currency group) are split int
 
 ## Report Sections: WarningsSummary
 
-`WarningsSummary` (`python/framework/reporting/console/warnings_summary.py`) consolidates all global warnings into a single report section. Unlike other report sections, it is **always rendered** regardless of the `summary.detail` flag — with a clean zero-state line when there are none.
+`WarningsSummary` (`python/framework/reporting/console/warnings_summary.py`) consolidates all global
+warnings into a single report section. Unlike other report sections, it is **always rendered**
+regardless of the `summary.detail` flag — with a clean zero-state line when there are none.
 
 Current warnings:
 - **Stress test active** — lists active stress test configs grouped by signature

@@ -15,7 +15,7 @@ Lifecycle:
     modify  → in-place amend, same ref (mimics Kraken AmendOrder)
 
 The simulator is framework-agnostic — adapters compose it from their
-Tier-3 transport layers (_do_request_*) when self._dry_run is True.
+Tier-3 transport layers (do_request_*) when self._dry_run is True.
 Real-mode transport remains untouched.
 
 IT PLAYS THE VENUE, so it has to answer the venue's question (#505). It used to answer a

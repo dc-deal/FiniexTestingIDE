@@ -104,7 +104,7 @@ class SafetyState:
     Args:
         blocked: Whether new entries are currently blocked
         reason: Human-readable breaker reason (empty when not blocked)
-        current_value: The checked value (equity for spot, balance for margin)
+        current_value: The checked value — the ACCOUNT VALUE in both models (#356)
         drawdown_pct: Current drawdown from the session baseline, in percent
     """
     blocked: bool = False

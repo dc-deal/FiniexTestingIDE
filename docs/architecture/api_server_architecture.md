@@ -1,6 +1,9 @@
 # API Server Architecture
 
-The FiniexTestingIDE HTTP API is a read-only FastAPI application that exposes existing tick and bar data — and the persisted run-report artifacts of both pipelines (#391) — over HTTP. It is the server-side counterpart of the FiniexViewer companion project and the foundation for any future remote-monitoring or tooling integrations.
+The FiniexTestingIDE HTTP API is a read-only FastAPI application that exposes existing tick and bar
+data — and the persisted run-report artifacts of both pipelines (#391) — over HTTP. It is the
+server-side counterpart of the FiniexViewer companion project and the foundation for any future
+remote-monitoring or tooling integrations.
 
 ---
 
@@ -64,6 +67,115 @@ allow_origins=[
 
 For production use, restrict `allow_origins` to the actual deployment domain. No additional changes are needed — the CORS list is the only configuration surface.
 
+## Authentication
+
+Every route but `/api/v1/health` requires a bearer token, and holding a token is not the same as
+being entitled to what it asks for. The model is not this project's own: it is the shared
+`finiex_auth` package, installed from a pinned public tag, so the security vocabulary exists once
+rather than once per service.
+
+**Two checks, and they fail differently.** The bearer check is mounted on the ROUTER, so a route
+added later inherits it by construction — the failure it prevents cannot be reached by forgetting.
+The grant check is declared PER router with `Security(..., scopes=['<surface>'])`, so a router
+mounted without its scopes is authenticated but ungated, and looks identical to one that is not.
+Only a walk over the surface tells them apart, which is why `assert_no_identity_route_is_ungated`
+runs in the suite.
+
+**A grant names a thing, not a route:** `<surface>:<name>`, where the surface is the router and the
+name is the route's first path parameter. So `bars:kraken_spot` is one venue's bar data. Report
+routes are addressed by a generated run id nobody would write into a token, so `reports:*` is the
+realistic grant there — the model degrades to surface level by design.
+
+| Surface | Router | Typical grant |
+|---|---|---|
+| `brokers` | `broker_router` | `brokers:*` |
+| `bars` | `bars_router` | `bars:kraken_spot`, `bars:mt5` |
+| `reports` | `reports_router` | `reports:*` |
+| `sweeps` | `sweeps_router` | `sweeps:*` |
+
+The vocabulary is closed: a grant naming anything else fails when the credentials file is parsed,
+at boot, rather than becoming a denial at request time that nobody can explain.
+
+**A COLLECTION route has no path parameter, so a grant has nothing to be about — and that was a
+hole.** Measured 2026-09-13 against a token holding only `bars:*` and `brokers:*`:
+`/api/v1/reports/runs` answered 200 with the full run index, naming every live run, and
+`/api/v1/sweeps` answered 200 — while every identity route beside them was correctly refused. The
+package closes it with a floor: a collection route requires **at least one** grant on its router's
+surface, and a caller entitled to part of a list still reaches the handler, which filters it.
+
+**The walk cannot see this.** It calls routes whose path contains a parameter, so a collection route
+gives it nothing to call. Those refusals are named by hand in the suite, and a new collection route
+needs its own test or nothing looks at it.
+
+**Two routes are declared on the app rather than on a router**, so a dependency given at
+`include_router` never reaches them. Both states are chosen rather than inherited:
+`/api/v1/timeframes` is **open** beside `/health` — the app's own static configuration, none of the
+four surfaces, and gating it would make a market-data grant the precondition for a list that reveals
+nothing about market data. `/api/v1/brokers` **requires a token** but takes no grant: which venues
+this installation carries is a fact about the installation.
+
+**For a browser client**, `CORSMiddleware` answers the `OPTIONS` preflight before routing, so the
+preflight — which carries no `Authorization`, by specification — is never gated. `expose_headers`
+lists `WWW-Authenticate` and `Retry-After`, because a browser hides every response header that is
+not CORS-safelisted: without it a cross-origin client sees a 401's status and not the scheme to
+retry with.
+
+### Who can reach the port at all, and where that is decided
+
+The `reports` surface names every run this installation has ever recorded, and the browser client's
+grant on it was issued **on the condition that the API is reachable from the operator's machine
+only**. That condition needs a home in a file, or it expires with the conversation that agreed it.
+
+Its home is `docker-compose.yml`: the port is published as `127.0.0.1:8000:8000`. The server itself
+binds `0.0.0.0` inside the container, which is correct and says nothing about exposure — a
+container's own interface is not a network boundary. **The publish is the boundary**, and that is
+why the condition lives there rather than in a startup check: code running inside the container
+cannot observe how its port was published, so a check would have to test `--host` instead, where
+`0.0.0.0` is the normal and correct value. It would be red on every ordinary start, and a gate that
+is red on day one is a gate that gets switched off.
+
+Before this line the port was reachable only because a developer tool happened to forward it, which
+made the condition true by accident and invisible to anyone reading the repository. Publishing it
+is purely ADDITIVE — a forwarding IDE keeps working — so no consumer's address changes.
+
+**What to do instead of a tripwire:** if the bind is ever widened, the `reports` grants are re-asked
+for, and the change is announced to the consumers over the bus. That is a review obligation on this
+line, and the comment beside it says so.
+
+**Where tokens live.** `user_configs/credentials/api_tokens.json`, with a tracked placeholder at
+`configs/credentials/api_tokens.json` whose entries are all switched off — an example in a template
+file then cannot gate or grant anything by accident. The registry holds only SHA-256 digests, so a
+configuration file that leaks is not a leaked credential; a lost token is re-minted, never
+recovered. A live token answering from the TRACKED file refuses the boot: that is a real key in the
+repository, which is the expensive half of the credential rule.
+
+Mint one with `python python/cli/api_token_cli.py mint --consumer <name> --grants 'bars:*'`.
+
+**Two switches, not one, and they are separate on purpose.** The bearer dependency is built only
+when `api.require_auth` is on AND a consumer is configured. Otherwise nothing places a consumer on
+the request, the grant check finds nobody to hold a grant, and behaviour is exactly what it was
+before.
+
+Collapsing them would make the first token written into the credentials file gate every route in
+the same instant — and a consumer has to HOLD its token before it can start sending the header, so
+the rollout needs the window in between. `api.require_auth` defaults to false: the safe direction
+is the one that cannot lock out a consumer nobody has told yet.
+
+**What that window can and cannot prove.** With gating off, a request carrying a wrong token — or
+nonsense — still answers 200, because nothing verifies it. So the window de-risks the CLIENT (is the
+header attached, does anything break by sending it) and not the CREDENTIAL (is this token right, are
+its grants right). That is answered the instant gating goes on. Do not read a 200 in this state as
+the token being accepted.
+
+The boot line names both conditions, because from a request the two states are indistinguishable:
+
+```
+    API authentication: NOT enforced (api.require_auth is off — tokens exist, nothing is gated)
+      · 2 consumer(s) [ragengine, viewer] from user_configs/credentials/api_tokens.json
+```
+
+It is a state to pass through, not one to stay in.
+
 ## Endpoints
 
 | Method | Path | Description |
@@ -73,7 +185,7 @@ For production use, restrict `allow_origins` to the actual deployment domain. No
 | GET | `/api/v1/brokers` | Broker types available in bar index |
 | GET | `/api/v1/brokers/{broker}/symbols` | Symbols for a broker with `market_type` |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/coverage` | Available date range and timeframes |
-| GET | `/api/v1/brokers/{broker}/symbols/{symbol}/bars` | OHLCV bars (query: `timeframe`, `from`, `to`) |
+| GET | `/api/v1/brokers/{broker}/symbols/{symbol}/bars` | OHLCV bars (query: `timeframe`, `from`, `to`, `limit`) |
 | GET | `/api/v1/reports/runs` | Index of EVERY run, newest first — `run_id`, `group` ∈ `simulation` \| `live`, the set / profile name, `artifacts` (every report file the run persisted, by name), and — from the run's header (#475) — `start_time`, `parent_id` (the sweep or session this run belongs to; null when it stands alone), `app_version`, `git_commit` and `config_snapshot`. **`group` is the PIPELINE, never the nesting:** a sweep combination is a `simulation` whose `parent_id` names its sweep, and a live day fragment (#476) will be a `live` whose `parent_id` names its session. `has_reports` is still served, now derived as `artifacts` being non-empty, so the two can never disagree. **`reporting`** (`expected` \| `none`) says whether the run was COMMISSIONED to report — read it together with `artifacts`: empty + `expected` means still running or died before reporting, empty + `none` means it was never meant to. Without the pair a crashed run is indistinguishable from a deliberately silent one. **`artifacts` is what a consumer should read:** the two pipelines produce DIFFERENT sets (a live session has no `scenario_details` / `profiling` / `run_meta` / `aggregated_portfolio`), so a client that guessed would get a 404 for the difference. Served from the derived run index, built from each run's `header.json`; a lookup is an exact match against that index. A run with no artifacts exists as logs only (a test session writes none). The entry point the routes below are addressed by |
 | GET | `/api/v1/sweeps` | Every recorded parameter sweep, newest first — id, start, duration, combination + ok/error counts, algo, objective. Served from the run-results ledger (#390) |
 | GET | `/api/v1/sweeps/{sweep_id}` | One sweep's combinations, RANKED by the objective the sweep declared. Each row carries its `run_id`, the hinge into the report routes |
@@ -100,9 +212,36 @@ Returns the globally configured timeframe list in ascending order (by bar durati
 
 - `from` and `to` are ISO-8601 UTC datetime strings (e.g. `2026-01-01T00:00:00Z`)
 - Naive datetimes are treated as UTC
-- Response timestamps `t` are **unix seconds UTC**
+- Response timestamps `t` are **unix seconds UTC** and mark the bar's **OPEN**
+- `limit` is the caller's own row cap. Omitted it applies `MAX_BARS`; above it the request is
+  refused (`400 invalid_limit`) rather than clamped, so a cap is never applied behind a caller's back
 - Maximum bars per request: `MAX_BARS = 10_000` — prevents accidental huge responses
 - Valid timeframes: M1, M5, M15, M30, H1, H4, D1 (via `TimeframeConfig`)
+- `v` is traded volume and is **0.0 on feeds that carry none** (forex CFD); `tc` is the number of
+  ticks aggregated into the bar and is the activity measure on those feeds
+
+#### What the response says about itself
+
+The body is a bare array, because that is what existing clients read. Everything a consumer needs
+*about* the rows therefore travels as response headers — additive by construction, so a client that
+ignores them is unaffected, and a shortened payload can no longer end in silence.
+
+| Header | Meaning |
+|---|---|
+| `X-Bar-Count` | Rows in this response |
+| `X-Bar-Total` | Rows matching the range **before** the cap — what makes the rest reachable |
+| `X-Bar-Limit` | The cap that was applied |
+| `X-Bar-Truncated` | `true` when the range held more than the cap |
+| `X-Bar-Time-Basis` | `open` — the stamp is the period's start, never its close |
+| `X-Bar-Timezone` | `UTC` |
+| `X-Bar-Price-Basis` | `mid` — OHLC is `(bid + ask) / 2`, not a traded price |
+
+The last three are facts a caller cannot infer from the rows and gets no second chance to get
+right: reading a bar stamp as a close-time, or a mid as a traded price, produces a plausible
+number that is wrong.
+
+Bars are **rendered from ticks** (a DERIVED store, §44): periods with no ticks produce no bar —
+gaps are omitted, never zero-filled.
 
 ### Reports Endpoints Details
 
@@ -149,7 +288,9 @@ report sections).
 
 ## Pydantic Exception Note
 
-Project convention is `@dataclass` for all data structures (§6). The `api/` types use Pydantic `BaseModel` instead because FastAPI's OpenAPI schema generation and response validation depend on it. This exception is scoped to `python/framework/types/api/` only.
+Project convention is `@dataclass` for all data structures (§6). The `api/` types use Pydantic
+`BaseModel` instead because FastAPI's OpenAPI schema generation and response validation depend on
+it. This exception is scoped to `python/framework/types/api/` only.
 
 ## Open Decisions
 
@@ -159,4 +300,8 @@ Project convention is `@dataclass` for all data structures (§6). The `api/` typ
 
 ## Memory Cache Integration (V1.4 — #21)
 
-The bars endpoint added in #298 reads Parquet files per request. Issue #21 introduces a `FileCache` with LRU eviction for exactly this pattern. When #21 is implemented, the integration point is the bar-file read inside the bars endpoint handler — replace `pd.read_parquet(path)` with `FileCache.get_or_load(broker, symbol, path)`. The `FileCache` class belongs in `python/framework/data_preparation/` alongside `tick_parquet_reader.py`.
+The bars endpoint added in #298 reads Parquet files per request. Issue #21 introduces a `FileCache`
+with LRU eviction for exactly this pattern. When #21 is implemented, the integration point is the
+bar-file read inside the bars endpoint handler — replace `pd.read_parquet(path)` with
+`FileCache.get_or_load(broker, symbol, path)`. The `FileCache` class belongs in
+`python/framework/data_preparation/` alongside `tick_parquet_reader.py`.

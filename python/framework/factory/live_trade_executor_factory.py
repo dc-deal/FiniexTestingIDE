@@ -13,6 +13,9 @@ from typing import Optional
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    UnresolvedResolutionDefaults,
+)
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.live_types.live_execution_types import TimeoutConfig
 from python.framework.utils.connection_ladder import ConnectionLadder
@@ -29,6 +32,8 @@ def build_live_executor(
     connection_policy: Optional[ConnectionPolicy] = None,
     session_key: str = '',
     venue_held_protection: bool = False,
+    resolution_config: Optional[UnresolvedResolutionDefaults] = None,
+    venue_read_settle_seconds: float = 5.0,
 ) -> LiveTradeExecutor:
     """
     Create a fully configured LiveTradeExecutor.
@@ -52,6 +57,10 @@ def build_live_executor(
         venue_held_protection: Profile default for #503 — whether a declared stop_loss
             additionally rests at the venue as an order of its own. Sourced from
             AutotraderExecutionDefaults.venue_held_protection.
+        resolution_config: How a write whose answer was lost is asked about (#487).
+            Sourced from AutotraderExecutionDefaults.unresolved_resolution.
+        venue_read_settle_seconds: How long the venue's read plane may lag its write plane
+            before an answer that names nothing counts as evidence (#487).
 
     Returns:
         LiveTradeExecutor ready for live trading
@@ -86,6 +95,8 @@ def build_live_executor(
         initial_balances=initial_balances,
         poll_interval_ms=poll_interval_ms,
         rest_ladder=rest_ladder,
+        resolution_config=resolution_config or UnresolvedResolutionDefaults(),
+        venue_read_settle_seconds=venue_read_settle_seconds,
         session_key=session_key,
         venue_held_protection=venue_held_protection,
     )

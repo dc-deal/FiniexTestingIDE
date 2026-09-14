@@ -113,7 +113,9 @@ Where each concept lives in the data model:
 | events.csv FILL rows | `side` column | `BrokerTrade.side.value` → `buy`/`sell`. `direction` column empty. |
 | events.csv POSITION_OPEN/CLOSE rows | `direction` column | `TradeRecord.direction.value` → `long`/`short`. `side` column empty. |
 
-The events.csv treats `side` and `direction` as **mutually exclusive per row** — FIX-style separation of OrdSide (per-trade operation) from PositionSide (position view). A FILL is an execution operation; a POSITION_OPEN/CLOSE is a position-view aggregate.
+The events.csv treats `side` and `direction` as **mutually exclusive per row** — FIX-style
+separation of OrdSide (per-trade operation) from PositionSide (position view). A FILL is an
+execution operation; a POSITION_OPEN/CLOSE is a position-view aggregate.
 
 **Color-by-direction, text-by-side** convention in the Live panel keeps the visual link to "what kind of position is this trade affecting?" (green = closed-LONG, red = closed-SHORT) while the text accurately labels the algo operation (BUY/SELL).
 
@@ -176,11 +178,16 @@ Compact — sub-rows fire only when non-trivial:
 
 In V1.3 multi-fill data does not yet flow from the broker side, so most sub-rows stay invisible. The display path is ready the moment the data does.
 
-The TRADE HISTORY column header reads **`Side`** (not `Dir`) — the value is the close operation (`buy` or `sell`), color-coded by the underlying position direction (green for closed-LONG, red for closed-SHORT). See the "Trade-Event Side vs Position Direction" section for the full rationale.
+The TRADE HISTORY column header reads **`Side`** (not `Dir`) — the value is the close operation
+(`buy` or `sell`), color-coded by the underlying position direction (green for closed-LONG, red for
+closed-SHORT). See the "Trade-Event Side vs Position Direction" section for the full rationale.
 
 ## Event-Stream CSV (`events.csv`)
 
-Replaces the previous two-file format (`autotrader_orders.csv` + `autotrader_trades.csv`). Long-format / FIX-`ExecutionReport`-style — one row per event, `event_type` as discriminator. One file per AutoTrader session, one per scenario in sim (`events_<scenario>.csv` inside an `events/` subfolder of the scenario-set log dir).
+Replaces the previous two-file format (`autotrader_orders.csv` + `autotrader_trades.csv`).
+Long-format / FIX-`ExecutionReport`-style — one row per event, `event_type` as discriminator. One
+file per AutoTrader session, one per scenario in sim (`events_<scenario>.csv` inside an `events/`
+subfolder of the scenario-set log dir).
 
 Canonical column order ([event_stream_csv_writer.py:EVENT_FIELDS](../../python/framework/reporting/event_stream_csv_writer.py)):
 
@@ -208,7 +215,10 @@ status, close_type, close_reason, is_maker, notes
 
 ### Why CLOSE_SUBMIT comes from trade_history, not order_history
 
-OrderResults for opens and closes share the same `order_id` by design (= `position_id`). If CLOSE_SUBMIT were keyed on `(order_id, action='close')` and emitted from `order_history`, three partial closes of the same position would collapse to one CLOSE_SUBMIT. Building CLOSE_SUBMIT from `trade_history` gives a clean 1:1 mapping per close event regardless of position re-use.
+OrderResults for opens and closes share the same `order_id` by design (= `position_id`). If
+CLOSE_SUBMIT were keyed on `(order_id, action='close')` and emitted from `order_history`, three
+partial closes of the same position would collapse to one CLOSE_SUBMIT. Building CLOSE_SUBMIT from
+`trade_history` gives a clean 1:1 mapping per close event regardless of position re-use.
 
 ### First-class fields vs the metadata bag on OrderResult
 

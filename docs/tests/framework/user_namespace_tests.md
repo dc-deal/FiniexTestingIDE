@@ -47,9 +47,10 @@ Validates path-based worker and decision logic loading: on-demand file loading, 
 
 ### TestUserAlgoIntegration (2 tests, skip if `user_algos/` is empty)
 - First decision logic found in `user_algos/` loads and yields one `AbstractDecisionLogic` subclass
-- `get_required_worker_instances()` returns a dict of `str → str` (path or `CORE/` reference)
+- `get_required_workers()` returns a dict of `str → WorkerRequirement`, each built with
+  `WorkerRequirement.of(<path or CORE/ reference>, *signals)`
 
-## Fixtures
+## Fixtures (conftest.py)
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|

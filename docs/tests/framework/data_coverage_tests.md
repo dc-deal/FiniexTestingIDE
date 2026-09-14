@@ -27,7 +27,7 @@ Tests therefore need no fixture data beyond entry dicts.
 
 ---
 
-## Architecture Notes
+## Architecture
 
 - **Pure function, no IO.** The index load lives in the report's render path
   (`DataCoverageReport._version_spans_section`), so the grouping stays testable in isolation and the

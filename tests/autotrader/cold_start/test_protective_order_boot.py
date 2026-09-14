@@ -57,6 +57,7 @@ def _carried_long(protective_ref=_PROTECTIVE_REF) -> PositionCarryOver:
         status='open',
         protective_order_id='protect_pos_btcusd_1_2',
         protective_broker_ref=protective_ref,
+        protective_client_order_id='ppaa5_2',
     )
 
 
@@ -172,6 +173,45 @@ class TestAStopStillResting:
             'Unadopted it cannot be amended when the level moves, cannot be cancelled '
             'before a close, and comes back at the next boot as a stranger')
         assert adopted[0].broker_ref == _PROTECTIVE_REF
+
+    def test_it_brings_its_wire_key_back_rather_than_a_new_one(
+        self, spot_executor, store, logger
+    ):
+        """
+        The key was minted by a session that is gone, so it can only be CARRIED (#487).
+
+        Recomputing one from this session's discriminator would stamp our name on a
+        predecessor's order — and the reconciler and boot adoption both decide ownership
+        from exactly that half of the key.
+        """
+        store.save(session_key='paa53', highest_position_counter=1,
+                   open_positions=[_carried_long()])
+
+        _boot(spot_executor, store, logger, _answer(BrokerOrderStatus.PENDING))
+
+        position = spot_executor.get_open_positions()[0]
+        adopted = [p for p in spot_executor._active_stop_orders
+                   if p.closes_position_id == position.position_id][0]
+        assert adopted.client_order_id == 'ppaa5_2', (
+            f'the adopted order carries {adopted.client_order_id!r} — the read that needs '
+            f'no venue reference cannot ask about it')
+        assert position.protective_client_order_id == 'ppaa5_2'
+
+    def test_a_book_written_before_the_key_was_carried_still_boots(
+        self, spot_executor, store, logger
+    ):
+        """No key is honest, not a reason to refuse: the reference still answers."""
+        record = _carried_long()
+        record.protective_client_order_id = None
+        store.save(session_key='paa53', highest_position_counter=1,
+                   open_positions=[record])
+
+        assert _boot(spot_executor, store, logger,
+                     _answer(BrokerOrderStatus.PENDING)) is True
+
+        adopted = [p for p in spot_executor._active_stop_orders if p.closes_position_id][0]
+        assert adopted.client_order_id is None
+        assert adopted.broker_ref == _PROTECTIVE_REF
 
 
 class TestAReferenceTheVenueDoesNotRecognise:

@@ -54,6 +54,7 @@ class MockOrderExecution:
         timeout_seconds: float = 30.0,
         spot_mode: bool = False,
         initial_balances: Optional[Dict[str, float]] = None,
+        session_key: str = 'mock',
     ):
         """
         Initialize mock execution environment.
@@ -67,6 +68,9 @@ class MockOrderExecution:
                 margin) — needed by anything that exercises a spot holding, e.g. the
                 cold-start position book (#355)
             initial_balances: Asset inventory for spot mode
+            session_key: Discriminator for the wire keys this mock session sends (#473).
+                Set by default, because an empty one mints no client order id at all — and
+                a suite that never mints one cannot see anything the key path does
         """
         self._mode = mode
         self._initial_balance = initial_balance
@@ -74,6 +78,7 @@ class MockOrderExecution:
         self._timeout_config = TimeoutConfig(
             order_timeout_seconds=timeout_seconds,
         )
+        self._session_key = session_key
         self._spot_mode = spot_mode
         self._initial_balances = initial_balances
         self._tick_counter = 0
@@ -98,6 +103,7 @@ class MockOrderExecution:
             timeout_config=self._timeout_config,
             spot_mode=self._spot_mode,
             initial_balances=self._initial_balances,
+            session_key=self._session_key,
         )
 
     def await_submit_confirmation(self, executor: LiveTradeExecutor) -> None:

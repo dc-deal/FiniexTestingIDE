@@ -94,7 +94,12 @@ New fields land in their sub-type — no further widening of the parent surface.
 
 **Purpose:** Simulates broker acceptance delay. Every order — regardless of type — passes through this queue first.
 
-**Simulation:** `OrderLatencySimulator` extends `AbstractPendingOrderManager`. Uses `SeededDelayGenerator` (`utils/seeded_generators/`) to assign a deterministic `broker_fill_msc` (millisecond timestamp) to each order. On each tick, `process_tick()` compares the tick's `collected_msc` (or `time_msc` fallback) against `broker_fill_msc` and returns orders whose inbound latency has elapsed. See [Design Decision: Inbound-Only Fill Timing](#design-decision-inbound-only-fill-timing) below.
+**Simulation:** `OrderLatencySimulator` extends `AbstractPendingOrderManager`. Uses
+`SeededDelayGenerator` (`utils/seeded_generators/`) to assign a deterministic `broker_fill_msc`
+(millisecond timestamp) to each order. On each tick, `process_tick()` compares the tick's
+`collected_msc` (or `time_msc` fallback) against `broker_fill_msc` and returns orders whose inbound
+latency has elapsed. See
+[Design Decision: Inbound-Only Fill Timing](#design-decision-inbound-only-fill-timing) below.
 
 **Live:** `LiveRequestProcessor` extends `AbstractPendingOrderManager`. Tracks orders by `broker_ref` (O(1) lookup). Fill/rejection arrives via broker polling, not tick counting.
 
@@ -136,7 +141,11 @@ New fields land in their sub-type — no further widening of the parent surface.
 **Modification:** `modify_limit_order(order_id, new_price, new_stop_loss, new_take_profit)`
 **Cancellation:** `cancel_limit_order(order_id)` — removes from list, returns `True`
 
-**Live mode:** Broker handles limit matching server-side. `LiveTradeExecutor` maintains `_active_limit_orders` as **shadow state** — when the broker accepts a LIMIT order (status=PENDING), it is tracked locally. Each tick, `_process_active_orders()` polls the broker for fills. After a successful `modify_limit_order()`, the local shadow state is updated to reflect the new price/SL/TP. Shadow state correctness depends on #151 (Reconciliation).
+**Live mode:** Broker handles limit matching server-side. `LiveTradeExecutor` maintains
+`_active_limit_orders` as **shadow state** — when the broker accepts a LIMIT order (status=PENDING),
+it is tracked locally. Each tick, `_process_active_orders()` polls the broker for fills. After a
+successful `modify_limit_order()`, the local shadow state is updated to reflect the new price/SL/TP.
+Shadow state correctness depends on #151 (Reconciliation).
 
 ---
 
@@ -169,9 +178,21 @@ New fields land in their sub-type — no further widening of the parent surface.
 **Modification:** `modify_stop_order(order_id, new_stop_price, new_limit_price, new_stop_loss, new_take_profit)`
 **Cancellation:** `cancel_stop_order(order_id)` — removes from list, returns `True`
 
-**Live mode: the trigger lives at the VENUE, not here.** The trigger logic above is the simulator's; the live executor has no price-trigger predicate of its own and does not want one — a resting stop is an order Kraken holds, and `ordertype=stop-loss` / `stop-loss-limit` is how it is placed (`price` carries the trigger, `price2` the limit). `LiveTradeExecutor` maintains `_active_stop_orders` as **shadow state** exactly as World 2 does: each tick, `_process_active_orders()` polls both lists for fills, the session-end cleanup cancels or leaves both, and boot adoption files a venue-reported stop into this world by type (#500).
+**Live mode: the trigger lives at the VENUE, not here.** The trigger logic above is the simulator's;
+the live executor has no price-trigger predicate of its own and does not want one — a resting stop
+is an order Kraken holds, and `ordertype=stop-loss` / `stop-loss-limit` is how it is placed (`price`
+carries the trigger, `price2` the limit). `LiveTradeExecutor` maintains `_active_stop_orders` as
+**shadow state** exactly as World 2 does: each tick, `_process_active_orders()` polls both lists for
+fills, the session-end cleanup cancels or leaves both, and boot adoption files a venue-reported stop
+into this world by type (#500).
 
-Two consequences worth stating, because they are asymmetries rather than bugs. A live STOP triggers on Kraken's **last traded price** (their `trigger` parameter defaults to `last`) while the simulator triggers on ask/bid — since `ask > last > bid`, the backtest fires slightly early on both sides and fills at the triggering tick with no slippage model, so a **stop ENTRY is the one order type whose backtest is optimistic by construction**. And a triggered STOP_LIMIT changes identity in the simulation (it converts to a LIMIT and moves to World 2) while at the venue it stays one order in this world.
+Two consequences worth stating, because they are asymmetries rather than bugs. A live STOP triggers
+on Kraken's **last traded price** (their `trigger` parameter defaults to `last`) while the simulator
+triggers on ask/bid — since `ask > last > bid`, the backtest fires slightly early on both sides and
+fills at the triggering tick with no slippage model, so a
+**stop ENTRY is the one order type whose backtest is optimistic by construction**. And a triggered
+STOP_LIMIT changes identity in the simulation (it converts to a LIMIT and moves to World 2) while at
+the venue it stays one order in this world.
 
 ---
 
@@ -215,10 +236,20 @@ wire key (live only)        p1641_47        1641 = 4 chars of the run id's rando
 **It does not collide across a restart:** the counter restarts at 1 with the process, so
 without a session discriminator a fresh order would carry the key of one still resting at
 the venue from last night — and boot adoption (#355) would match the wrong order.
+**And it names ONE order (#487):** every write mints its own counter, including a close and
+each partial close. A close used to derive its key from the position it closes, so an entry
+and its close arrived at the venue under the same key — measured 2026-09-13, `ClosedOrders`
+for one key answered with two orders, and a lookup that cannot name one order cannot resolve
+a lost answer.
 
 The key is what makes an UNRESOLVED order answerable: the venue's own reference is exactly
 what a lost answer did not deliver. The **session** owns it, not the run — a #476 day
 fragment must not change it mid-session.
+
+**It is RECORDED on the order, never re-derived.** `PendingOrder.client_order_id` holds what
+actually went on the wire. Rebuilding it from the internal id held only while every key was
+a function of its id, which a close's no longer is — and a re-derived key would miss a close
+in flight and report it to the reconciler as abandoned.
 
 ---
 
@@ -266,14 +297,62 @@ worth answering explicitly. It has three exits, and the second one is why this m
    each such order ONCE into the session error pot: the session must not grade green.
    Deciding it needs the closed-order / trades channel (#487).
 3. **A MARKET or CLOSE order in the latency queue times out** after `order_timeout_seconds`
-   and is recorded as `BROKER_UNREACHABLE` — blaming the transport, not the venue.
+   and is recorded as `BROKER_UNREACHABLE` — blaming the transport, not the venue. That
+   timeout fires exactly ONCE, because the removal is keyed by `pending_order_id` through
+   `discard_order()` and not by a broker reference the order never received. Keying it by
+   reference meant the removal found nothing and returned before removing, so the same order
+   timed out again on every heartbeat and every tick for the rest of the session — and for a
+   CLOSE that held `is_pending_close` true, which made the position unclosable. The reason
+   also arms the order cooldown, which gates ENTRIES only; that pair has a hard ordering,
+   described in `external_connection_policy.md`.
 
 The asymmetry between 2 and 3 is STRUCTURAL, not a matter of timing: the truth pull compares
 against `get_active_orders()`, which carries World 2 and World 3 only. A latency-queue
 pending is not in that set at all, so it can NEVER be attributed however the cadence is
-tuned — its only exit is the timeout. (The cadence adds a second, separate limitation for
-World 2: the pull runs at most every `min_interval_seconds`, so a repair is not immediate.)
-Asking the venue directly, on the unresolved event itself, is #487.
+tuned. That is what the resolution below adds — it reaches both worlds and both is armed by
+the event rather than waiting for a cadence.
+
+### Asking, rather than waiting to be told (#487)
+
+Exits 1-3 above are all somebody else noticing. The fourth is us asking, and it is armed by
+the lost answer itself:
+
+```
+write → transport fault → UNRESOLVED
+   ├─ nothing is booked, whichever write it was
+   ├─ in_flight_operation stays SET   ← no second write races the first
+   └─ resolution armed; the tick AND the heartbeat drive it
+         ├─ the venue names it       → restore broker_ref, step aside
+         ├─ it names nothing, after
+         │  venue_read_settle_seconds → a genuine rejection
+         └─ still nothing at the ceiling → escalate, block new ENTRIES,
+                                            release the stuck operation,
+                                            and dispose per world
+```
+
+**The fill timer stops applying while the resolution owns an order.** That is what makes the
+resolution reachable at all: the 30 s timeout used to discard the pending long before a 120 s
+window could finish, and for World 1 that timeout was the only exit there was.
+
+**At the ceiling the two worlds part company.** A World-2 resting order stays — the truth pull
+sees it every cadence and reports it. A World-1 pending is outside that pull's reach, so it
+takes the disposition the timeout already defines: recorded `BROKER_UNREACHABLE`, removed from
+the tracker so it stops gating the algo, and never called a venue refusal. The entry block
+does NOT clear when the order leaves: being booked unreachable is not being accounted for.
+
+**It covers all four writes, and three of them used to collapse.** A cancel, an amend and a
+position modify each branched on `is_rejected` alone, so an unresolved answer ran the whole
+success path — and for the cancel that meant dropping an order the venue may still hold and
+sending the deferred close beside it.
+
+**The ceiling is also the watchdog.** `check_timeouts` walks the latency queue's own dict, so
+a resting order left in `PENDING_MODIFY` or `PENDING_CANCEL` had nothing to end it: it sat
+until session end while every further operation on it was refused as busy. At the ceiling the
+operation is released, and a cancel that was holding a deferred close abandons it rather than
+releasing it into a stop whose fate is unknown.
+
+Which question is asked, and why the empty answer waits:
+[external_connection_policy.md](external_connection_policy.md).
 
 ---
 
@@ -380,11 +459,17 @@ At scenario end, `finish_remaining_orders()` handles all three worlds:
    venue. A position now stays open and is reported as open and valued; see
    [session_end_policy.md](session_end_policy.md).
 
-2. **Active limit orders** (`_active_limit_orders`): `_expire_active_orders()` creates `OrderResult(status=EXPIRED, reason="scenario_end")` entries in `_order_history` for each. Lists are **preserved** (not cleared) — `get_pending_stats()` snapshots them into `PendingOrderStats.active_limit_orders` for reporting. In live mode, active limit orders are also cancelled at the broker before expiry. A warning is logged.
+2. **Active limit orders** (`_active_limit_orders`): `_expire_active_orders()` creates
+   `OrderResult(status=EXPIRED, reason="scenario_end")` entries in `_order_history` for each. Lists
+   are **preserved** (not cleared) — `get_pending_stats()` snapshots them into
+   `PendingOrderStats.active_limit_orders` for reporting. In live mode, active limit orders are also
+   cancelled at the broker before expiry. A warning is logged.
 
 3. **Active stop orders** (`_active_stop_orders`): Same treatment as limit orders — EXPIRED records created, lists preserved for snapshots. A warning is logged.
 
-4. **Latency queue** (`clear_pending()`): Any genuine stuck-in-pipeline orders are recorded as `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`). Only these real anomalies produce individual `PendingOrderRecord` entries in `anomaly_orders`.
+4. **Latency queue** (`clear_pending()`): Any genuine stuck-in-pipeline orders are recorded as
+   `FORCE_CLOSED` with a `reason` field (e.g. `"scenario_end"`). Only these real anomalies produce
+   individual `PendingOrderRecord` entries in `anomaly_orders`.
 
 **Note:** `check_clean_shutdown()` validates only the latency pipeline (via `_has_pipeline_orders()` → `has_pipeline_orders()`) — intentionally preserved active limit/stop orders do not trigger cleanup warnings.
 

@@ -141,6 +141,7 @@ class ScenarioDataValidator:
         Assumes date logic is already validated (_validate_date_logic).
 
         Checks:
+        - the report must carry a date range at all
         - start_date must be >= first available tick
         - end_date must be <= last available tick
 
@@ -157,6 +158,18 @@ class ScenarioDataValidator:
         end_date = scenario.end_date if scenario.end_date else None
 
         # Get data range from coverage report
+        # A report whose analysis found no files keeps the None it was constructed with.
+        # That is a DATA condition and belongs in this list — the channel the caller turns
+        # into an invalid scenario — never an AttributeError three frames up in the batch.
+        if report.start_time is None or report.end_time is None:
+            errors.append(
+                f"No tick data coverage for '{scenario.data_broker_type}/{scenario.symbol}': "
+                f'the coverage report carries no date range, so the scenario period cannot be '
+                f'checked against it. Import tick data for this symbol, or rebuild the '
+                f'coverage cache if the data is present.'
+            )
+            return errors
+
         data_start = ensure_utc_aware(report.start_time)
         data_end = ensure_utc_aware(report.end_time)
 

@@ -187,6 +187,10 @@ class RejectionReason(Enum):
     # order that went UNRESOLVED runs out its timeout: the venue may still hold it, and
     # calling that a broker error would put our transport fault on their account.
     BROKER_UNREACHABLE = 'broker_unreachable'
+    # #487 — we asked the venue as long as we said we would and it never named an order we
+    # sent, neither open nor closed. It may be resting there. New ENTRIES stop while that
+    # is true; closing and protecting what is already held do not.
+    UNRESOLVED_WRITE = 'unresolved_write'
 
 
 

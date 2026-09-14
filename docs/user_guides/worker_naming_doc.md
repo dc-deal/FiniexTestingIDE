@@ -10,13 +10,13 @@ This document explains how the framework loads workers and decision logics, and 
 
 ## Reference System
 
-Components are referenced by type strings in scenario configs and in `get_required_worker_instances()`.
+Components are referenced by type strings in scenario configs and in `get_required_workers()`.
 
 | Format | Example | Resolves to |
 |--------|---------|-------------|
 | `CORE/name` | `CORE/rsi` | Framework worker/logic in `python/framework/workers/core/` or `python/framework/decision_logic/core/` |
 | Relative path | `user_algos/my_algo/my_range_worker.py` | Relative to **project root** (from scenario config) |
-| Relative path | `my_range_worker.py` | Relative to the **decision logic file** (from `get_required_worker_instances()`) |
+| Relative path | `my_range_worker.py` | Relative to the **decision logic file** (from `get_required_workers()`) |
 | Absolute path | `/home/user/algos/my_worker.py` | Used as-is |
 
 **Detection rule:** If the string starts with `CORE/` → framework magic. Anything else → file path.
@@ -137,7 +137,13 @@ class MyWorker(AbstractWorker):
         return None
 ```
 
-**Why it is mandatory.** The parent class raises `NotImplementedError` with an actionable message if you forget. The framework validates at pre-flight time (Phase 2 — Availability) that the scenario's broker provides the declared metric, using `primary_activity_metric` from `configs/market_config.json` as the single source of truth. Incompatible scenarios are marked invalid and skipped; the remaining scenarios continue running. See [`docs/architecture/market_capabilities.md`](../architecture/market_capabilities.md) for the full flow and rationale.
+**Why it is mandatory.** The parent class raises `NotImplementedError` with an actionable message if
+you forget. The framework validates at pre-flight time (Phase 2 — Availability) that the scenario's
+broker provides the declared metric, using `primary_activity_metric` from
+`configs/market_config.json` as the single source of truth. Incompatible scenarios are marked
+invalid and skipped; the remaining scenarios continue running. See
+[`docs/architecture/market_capabilities.md`](../architecture/market_capabilities.md) for the full
+flow and rationale.
 
 ---
 
@@ -320,23 +326,26 @@ utility — so what a component actually depends on stays readable at the top of
 
 ```python
 # user_algos/my_algo/my_strategy.py
+from python.framework.types.worker_types import WorkerRequirement
+
 
 class MyStrategy(AbstractDecisionLogic):
 
-    def get_required_worker_instances(self) -> Dict[str, str]:
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         # Paths relative to THIS file's directory
         return {
-            'range_detector': 'my_range_worker.py'
+            'range_detector': WorkerRequirement.of('my_range_worker.py')
         }
 ```
 
 For CORE workers, use the `CORE/name` shorthand:
 
 ```python
-    def get_required_worker_instances(self) -> Dict[str, str]:
+    def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         return {
-            'rsi_fast': 'CORE/rsi',
-            'rsi_slow': 'CORE/rsi',
+            # Naming a signal lets the worker skip everything else it could compute.
+            'rsi_fast': WorkerRequirement.of('CORE/rsi', 'rsi_value'),
+            'rsi_slow': WorkerRequirement.of('CORE/rsi', 'rsi_value'),
         }
 ```
 
@@ -360,7 +369,7 @@ For CORE workers, use the `CORE/name` shorthand:
 All paths in scenario JSON are **relative to the project root** (or absolute).
 
 **Validation rules:**
-- All instance names from `get_required_worker_instances()` must exist in `worker_instances`
+- All instance names from `get_required_workers()` must exist in `worker_instances`
 - Referenced files must resolve to the same physical file (path-normalized comparison)
 - Multiple instances of the same type are allowed (e.g., two RSI workers with different parameters)
 
@@ -376,7 +385,7 @@ no batch summary, purely visual. Optional and zero-cost when not used.
 from python.framework.types.decision_logic_types import AwarenessLevel
 
 class MyDecision(AbstractDecisionLogic):
-    def compute(self, tick, worker_results):
+    def compute_tick(self, tick, worker_results):
         rsi = worker_results['rsi_fast'].get_signal('rsi_value')
         if rsi > 40 and rsi < 60:
             self.notify_awareness(
@@ -456,7 +465,7 @@ Labels are resolved once at startup and cached (frozen `DisplayLabelCache`) — 
 ```
 ValueError: Worker file not found: '/app/user_algos/my_algo/my_range_worker.py'
 ```
-**Fix:** Check the path. Paths in JSON are relative to project root. Paths in `get_required_worker_instances()` are relative to the decision logic file.
+**Fix:** Check the path. Paths in JSON are relative to project root. Paths in `get_required_workers()` are relative to the decision logic file.
 
 ### ❌ Zero or multiple matching classes
 ```
@@ -469,7 +478,7 @@ ValueError: Expected exactly 1 AbstractWorker subclass in '.../my_worker.py', fo
 ValueError: Type mismatch for 'range_detector': DecisionLogic requires '...',
             but config has '...'. Type override not allowed!
 ```
-**Fix:** Ensure the path in `worker_instances` resolves to the same file as the path declared in `get_required_worker_instances()`.
+**Fix:** Ensure the path in `worker_instances` resolves to the same file as the path declared in `get_required_workers()`.
 
 ### ❌ Missing instance name
 ```

@@ -59,7 +59,7 @@ tests/autotrader/state_persistence/
 - Mixed set — clean passes and broken is flagged independently, both retained as distinct cache
   entries.
 
-## Running
+## Running the Tests
 
 ```
 🧩 Pytest: Algo State Persistence (All)   # launch.json

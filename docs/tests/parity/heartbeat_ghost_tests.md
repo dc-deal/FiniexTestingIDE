@@ -42,7 +42,7 @@ pipelines — the foundation the #294 matrix extends for a heartbeat algo.
 
 ---
 
-## Fixtures
+## Fixtures (conftest.py)
 
 No shared fixtures. The latency test instantiates `OrderLatencySimulator` directly; the driver
 test calls `_run_sim_heartbeats` with `MagicMock` collaborators; the loop test wires a real

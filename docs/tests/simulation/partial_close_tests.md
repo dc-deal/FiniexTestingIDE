@@ -2,9 +2,13 @@
 
 ## Overview
 
-The partial close test suite validates fractional position closing in the FiniexTestingIDE backtesting framework. It uses `BacktestingMultiPosition` with a `partial_close_sequence` parameter that triggers `close_position(position_id, lots=close_lots)` at configured tick numbers.
+The partial close test suite validates fractional position closing in the FiniexTestingIDE
+backtesting framework. It uses `BacktestingMultiPosition` with a `partial_close_sequence` parameter
+that triggers `close_position(position_id, lots=close_lots)` at configured tick numbers.
 
-This suite proves that `PortfolioManager.partial_close_position()` and the routing logic in `AbstractTradeExecutor._fill_close_order()` correctly handle proportional P&L, fee splitting, lot tracking, and portfolio aggregation across multiple partial closes.
+This suite proves that `PortfolioManager.partial_close_position()` and the routing logic in
+`AbstractTradeExecutor._fill_close_order()` correctly handle proportional P&L, fee splitting, lot
+tracking, and portfolio aggregation across multiple partial closes.
 
 **Test Configuration:** `backtesting/partial_close_test.json`
 - Symbol: USDJPY
@@ -92,7 +96,7 @@ Same extraction logic as other suites. Suite-specific `conftest.py` adds `partia
 PARTIAL_CLOSE_CONFIG = "backtesting/partial_close_test.json"
 ```
 
-### Fixtures
+### Fixtures (conftest.py)
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
@@ -180,7 +184,9 @@ Generic P&L validation from `tests/shared/shared_pnl.py`. Validates formulas, fe
 
 ### test_event_stream_csv.py — Event-Stream CSV (#330)
 
-Builds the long-format event-stream CSV from the partial_close scenario's terminal state and verifies the chronological event sequence. Uses `EventStreamWriter.from_sim_result` directly (writes to tempdir — the partial_close test fixtures don't go through `BatchReportCoordinator`).
+Builds the long-format event-stream CSV from the partial_close scenario's terminal state and
+verifies the chronological event sequence. Uses `EventStreamWriter.from_sim_result` directly (writes
+to tempdir — the partial_close test fixtures don't go through `BatchReportCoordinator`).
 
 #### TestCsvShape
 

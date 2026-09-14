@@ -15,6 +15,7 @@ one intent becomes two positions); the order stays ours, marked in flight, and t
 path resolves it — which is what FIX has done with an Order Status Request since 1992.
 """
 
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -213,6 +214,97 @@ class TestTimeoutTellsTheTruth:
         assert RejectionReason.BROKER_UNREACHABLE is not RejectionReason.BROKER_ERROR
 
 
+class TestATimedOutUnresolvedOrderLeavesTheTracker:
+    """
+    An order whose write was never answered has no broker reference — and removal used to go
+    through that reference alone.
+
+    `_handle_timeout` called `mark_rejected(broker_ref=pending.broker_ref)`, which popped the
+    reference index with `None`, found nothing, logged `unknown broker_ref` and returned
+    BEFORE `remove_order`. `check_timeouts` deliberately does not remove, so the same order
+    was returned again on every heartbeat and every tick for the rest of the session:
+    `on_order_rejected` repeated at the algo, `has_pending_orders()` permanently true, and
+    for a CLOSE `is_pending_close` permanently true — that position could never be closed
+    again.
+    """
+
+    def _expired_unresolved_open(self, executor) -> str:
+        """
+        Register an unanswered submit whose timeout has already passed.
+
+        Args:
+            executor: Live executor under test
+
+        Returns:
+            The pending order's id
+        """
+        processor = executor.get_request_processor()
+        order_id = processor.register_pending_open(
+            order_id='ORD-STUCK',
+            symbol='BTCUSD',
+            direction=OrderDirection.LONG,
+            lots=0.01,
+            broker_ref=None,
+        )
+        pending = processor.get_pending_orders()[0]
+        pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
+        pending.timing.timeout_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        return order_id
+
+    def test_the_pending_is_gone_after_its_timeout(self, executor_timeout):
+        self._expired_unresolved_open(executor_timeout)
+
+        executor_timeout.heartbeat()
+
+        assert not executor_timeout.get_request_processor().has_pending_orders()
+
+    def test_the_timeout_fires_once_not_on_every_heartbeat(self, executor_timeout):
+        processor = executor_timeout.get_request_processor()
+        self._expired_unresolved_open(executor_timeout)
+        assert len(processor.check_timeouts()) == 1, 'the order must time out at all'
+
+        executor_timeout.heartbeat()
+
+        assert processor.check_timeouts() == [], (
+            'a timeout that keeps firing repeats the rejection at the algo for the rest of '
+            'the session'
+        )
+
+    def test_a_close_whose_write_was_lost_can_be_closed_again(self, executor_timeout):
+        # The expensive half: is_pending_close gates every further close attempt, so a
+        # position stuck behind it is unclosable for the rest of the session.
+        processor = executor_timeout.get_request_processor()
+        processor.register_pending_close(position_id='pos_btcusd_1', broker_ref=None)
+        pending = processor.get_pending_orders()[0]
+        pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
+        pending.timing.timeout_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        assert executor_timeout.is_pending_close('pos_btcusd_1')
+
+        executor_timeout.heartbeat()
+
+        assert not executor_timeout.is_pending_close('pos_btcusd_1')
+
+    def test_an_answered_order_still_leaves_its_reference_index(self, executor_timeout):
+        # The removal must stay correct for the ordinary case too — a stale index entry
+        # would let a later answer resolve an order that is already gone.
+        processor = executor_timeout.get_request_processor()
+        processor.register_pending_open(
+            order_id='ORD-ANSWERED',
+            symbol='BTCUSD',
+            direction=OrderDirection.LONG,
+            lots=0.01,
+            broker_ref='TX-42',
+        )
+        pending = processor.get_pending_orders()[0]
+        pending.timing.timeout_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+
+        executor_timeout.heartbeat()
+
+        assert not processor.has_pending_orders()
+        assert processor.mark_filled(broker_ref='TX-42', fill_price=1.0,
+                                     filled_lots=0.01) is None
+
+
 class LevelRecorder:
     """Logger stand-in that only remembers which level each line was written at."""
 
@@ -274,9 +366,14 @@ class TestAStuckUnresolvedRestingOrderIsReported:
     every order without a reference — correctly, there is nothing to poll WITH — and
     check_timeouts iterates only the processor's dict, which resting orders never enter.
 
-    So the order sits in the shadow for the rest of the session while `has_pending_orders()`
-    stays true and blocks a single-position algo. Until #487 can ASK the venue by our own
-    client order id, the least the operator is owed is being told.
+    So the order sits in the shadow while `has_pending_orders()` stays true and blocks a
+    single-position algo. #487's resolution now ASKS the venue by our own client order id
+    while this is true, and says so if it gives up — but the operator is still owed the
+    early word, because the resolution's window outlasts this report by design.
+
+    The wait is measured on the MONOTONIC clock (§9): it is a duration, and a duration taken
+    from two wall-clock readings can come out negative when NTP steps that clock, which
+    would put a nonsense number into an operator-facing error.
     """
 
     def _stuck_resting_order(self, mock, executor):
@@ -290,6 +387,7 @@ class TestAStuckUnresolvedRestingOrderIsReported:
         pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
         pending.timing.submitted_at = (
             datetime.now(timezone.utc) - timedelta(seconds=3600))
+        pending.timing.submitted_monotonic = time.monotonic() - 3600.0
         return result.order_id
 
     def test_it_is_reported_as_an_error(self, mock_timeout, executor_timeout, capsys):

@@ -118,7 +118,7 @@ resolution can legitimately differ**, because they read different file sets. Whe
 they disagree about whether data exists, the runtime is the one to trust — and
 the disagreement is the bug signal.
 
-## Fixtures
+## Fixtures (conftest.py)
 
 Both files write minimal signal parquets into `tmp_path` carrying only the
 `collected_msc` / `symbol` columns. That is all the report reads (column

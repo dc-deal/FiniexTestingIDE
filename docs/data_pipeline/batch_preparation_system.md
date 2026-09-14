@@ -70,7 +70,10 @@ The batch orchestrator coordinates scenario execution through 8 phases (Phase 0 
 - `validate_account_currencies()` / `set_scenario_account_currency()` — validates and derives account currency from balances
 
 **Broker config loading:**  
-`BrokerDataPreparator` loads each unique broker config JSON once (cached by path), sets `scenario.broker_type`, and returns serialized configs for subprocess sharing. The `broker_scenario_map` produced here is the authoritative source used by all subsequent validators and the Phase 7 `BrokerSummary`.
+`BrokerDataPreparator` loads each unique broker config JSON once (cached by path), sets
+`scenario.broker_type`, and returns serialized configs for subprocess sharing. The
+`broker_scenario_map` produced here is the authoritative source used by all subsequent validators
+and the Phase 7 `BrokerSummary`.
 
 **Output:**
 - Invalid scenarios marked with `validation_result`; batch continues with remaining valid scenarios
@@ -197,7 +200,11 @@ The batch orchestrator coordinates scenario execution through 8 phases (Phase 0 
 - Calculate portfolio metrics
 - Build BatchExecutionSummary
 - Error handling for failed scenarios
-- Inter-tick interval profiling: distribution stats (min/P5/median/mean/P95/max) for the market-side time between consecutive ticks. Session/weekend gaps are filtered using a configurable threshold from `market_config.json`. A budget warning is shown when avg tick processing time exceeds the 5th percentile interval (P5), indicating the algorithm may not keep up with peak tick arrival rate in live operation.
+- Inter-tick interval profiling: distribution stats (min/P5/median/mean/P95/max) for the market-side
+  time between consecutive ticks. Session/weekend gaps are filtered using a configurable threshold
+  from `market_config.json`. A budget warning is shown when avg tick processing time exceeds the 5th
+  percentile interval (P5), indicating the algorithm may not keep up with peak tick arrival rate in
+  live operation.
 
 **Performance:** Fast (<1s)
 

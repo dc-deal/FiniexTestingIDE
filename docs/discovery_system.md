@@ -94,7 +94,15 @@ Analyzes M5 bar data per symbol:
 
 Output: `SymbolVolatilityProfile` dataclass with `periods`, `session_summaries`, `regime_distribution`.
 
-**Session bucketing**: All markets — including 24/7 crypto — are bucketed into the same four time-of-day windows (Sydney/Tokyo, London, New York, Transition). For forex this maps directly to exchange sessions. For crypto, the same bucketing is valid because institutional participants, CME/CBOE futures arbitrage, and US macro news flow create activity patterns that closely follow traditional finance schedules. Empirical data confirms this: BTCUSD on Kraken shows ~1.6× higher volume during the New York window compared to the Asian window. Industry platforms (Bloomberg Terminal, TradingView, Kaiko) use the same Asia/Europe/US bucketing for crypto analytics. Markets without native sessions display the section header as "TIME-OF-DAY ACTIVITY" instead of "SESSION ACTIVITY" (controlled by `session_bucketing` in market config).
+**Session bucketing**: All markets — including 24/7 crypto — are bucketed into the same four
+time-of-day windows (Sydney/Tokyo, London, New York, Transition). For forex this maps directly to
+exchange sessions. For crypto, the same bucketing is valid because institutional participants,
+CME/CBOE futures arbitrage, and US macro news flow create activity patterns that closely follow
+traditional finance schedules. Empirical data confirms this: BTCUSD on Kraken shows ~1.6× higher
+volume during the New York window compared to the Asian window. Industry platforms (Bloomberg
+Terminal, TradingView, Kaiko) use the same Asia/Europe/US bucketing for crypto analytics. Markets
+without native sessions display the section header as "TIME-OF-DAY ACTIVITY" instead of "SESSION
+ACTIVITY" (controlled by `session_bucketing` in market config).
 
 **Cache behavior**: Only M5 timeframe is cached. Custom `--timeframe` values bypass cache and compute directly.
 
@@ -107,7 +115,10 @@ Scans bar data with sliding windows to find extreme directional price movements:
 
 ### Data Coverage Awareness
 
-After deduplication, discovered moves are filtered against the Data Coverage report. Moves whose `start_time` falls within a **weekend**, **holiday**, or **large** data gap are removed. This prevents selecting time windows where tick data is absent or unreliable (e.g. a Sunday start where no real ticks are available for backtesting).
+After deduplication, discovered moves are filtered against the Data Coverage report. Moves whose
+`start_time` falls within a **weekend**, **holiday**, or **large** data gap are removed. This
+prevents selecting time windows where tick data is absent or unreliable (e.g. a Sunday start where
+no real ticks are available for backtesting).
 
 The filter uses `DataCoverageReportCache` to load the gap report for the broker/symbol pair. If no coverage report exists, filtering is skipped with a warning.
 

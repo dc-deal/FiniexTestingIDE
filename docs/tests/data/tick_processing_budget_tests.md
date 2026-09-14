@@ -70,7 +70,7 @@ Boundary conditions and data quality guards.
 
 ---
 
-## Running
+## Running the Tests
 
 ```bash
 # All tests

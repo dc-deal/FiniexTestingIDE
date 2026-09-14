@@ -283,9 +283,12 @@ class Reconciler:
                 continue
             if o.execution_state.in_flight_operation is not PendingOperation.PENDING_SUBMIT:
                 continue
-            ckey = self._executor.build_client_order_id(o.pending_order_id)
-            if ckey:
-                local_orders_by_ckey[ckey] = o
+            # READ, never re-derive (#487). Rebuilding the key from `pending_order_id` held
+            # only while every order's key was a function of its id; a CLOSE now mints its
+            # own counter, so a re-derived key would name an order that was never sent and
+            # the close in flight would fall through to the abandoned bucket.
+            if o.client_order_id:
+                local_orders_by_ckey[o.client_order_id] = o
 
         broker_orders_by_ref: Dict[str, BrokerOrder] = {
             o.broker_ref: o for o in broker_orders if o.broker_ref
@@ -296,10 +299,7 @@ class Reconciler:
         # Orders the latency queue is still waiting on. They are OURS and they are TRACKED —
         # just not in the resting-order list the diff compares against, so without this they
         # would be reported as abandoned on the one cycle that catches them in flight.
-        in_flight_ckeys = {
-            self._executor.build_client_order_id(order_id)
-            for order_id in self._executor.get_in_flight_order_ids()
-        }
+        in_flight_ckeys = self._executor.get_in_flight_client_keys()
 
         attributed_orders: List[Tuple[PendingOrder, BrokerOrder]] = [
             (lo, broker_orders_by_ckey[ckey])
