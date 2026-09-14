@@ -37,6 +37,7 @@ from python.framework.types.api.report_types import RunHeader
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
+from python.framework.types.live_types.live_execution_types import TimeoutConfig
 from python.framework.types.log_layout_types import RUN_TYPE_LIVE
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.market_types.market_types import TradingContext
@@ -501,6 +502,13 @@ def _build_executor(
         # #503 — the profile's intent. A per-order override still wins over it, and the
         # adapter's capability can refuse it outright.
         venue_held_protection=venue_held_protection,
+        # #487 — the fill timeout and the resolution window are one decision read together,
+        # which is why both now come from the same config block instead of one of them
+        # being a runtime default no file could reach.
+        timeout_config=TimeoutConfig(
+            order_timeout_seconds=config.execution.order_timeout_seconds),
+        resolution_config=config.execution.unresolved_resolution,
+        venue_read_settle_seconds=config.execution.venue_read_settle_seconds,
     )
     # The session log's event-time column pulls from the canonical clock. Attachable only
     # HERE: the logger goes INTO build_live_executor above, so it necessarily exists first.

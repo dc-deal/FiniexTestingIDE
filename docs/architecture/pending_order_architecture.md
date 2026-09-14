@@ -236,10 +236,20 @@ wire key (live only)        p1641_47        1641 = 4 chars of the run id's rando
 **It does not collide across a restart:** the counter restarts at 1 with the process, so
 without a session discriminator a fresh order would carry the key of one still resting at
 the venue from last night — and boot adoption (#355) would match the wrong order.
+**And it names ONE order (#487):** every write mints its own counter, including a close and
+each partial close. A close used to derive its key from the position it closes, so an entry
+and its close arrived at the venue under the same key — measured 2026-09-13, `ClosedOrders`
+for one key answered with two orders, and a lookup that cannot name one order cannot resolve
+a lost answer.
 
 The key is what makes an UNRESOLVED order answerable: the venue's own reference is exactly
 what a lost answer did not deliver. The **session** owns it, not the run — a #476 day
 fragment must not change it mid-session.
+
+**It is RECORDED on the order, never re-derived.** `PendingOrder.client_order_id` holds what
+actually went on the wire. Rebuilding it from the internal id held only while every key was
+a function of its id, which a close's no longer is — and a re-derived key would miss a close
+in flight and report it to the reconciler as abandoned.
 
 ---
 
@@ -299,9 +309,50 @@ worth answering explicitly. It has three exits, and the second one is why this m
 The asymmetry between 2 and 3 is STRUCTURAL, not a matter of timing: the truth pull compares
 against `get_active_orders()`, which carries World 2 and World 3 only. A latency-queue
 pending is not in that set at all, so it can NEVER be attributed however the cadence is
-tuned — its only exit is the timeout. (The cadence adds a second, separate limitation for
-World 2: the pull runs at most every `min_interval_seconds`, so a repair is not immediate.)
-Asking the venue directly, on the unresolved event itself, is #487.
+tuned. That is what the resolution below adds — it reaches both worlds and both is armed by
+the event rather than waiting for a cadence.
+
+### Asking, rather than waiting to be told (#487)
+
+Exits 1-3 above are all somebody else noticing. The fourth is us asking, and it is armed by
+the lost answer itself:
+
+```
+write → transport fault → UNRESOLVED
+   ├─ nothing is booked, whichever write it was
+   ├─ in_flight_operation stays SET   ← no second write races the first
+   └─ resolution armed; the tick AND the heartbeat drive it
+         ├─ the venue names it       → restore broker_ref, step aside
+         ├─ it names nothing, after
+         │  venue_read_settle_seconds → a genuine rejection
+         └─ still nothing at the ceiling → escalate, block new ENTRIES,
+                                            release the stuck operation,
+                                            and dispose per world
+```
+
+**The fill timer stops applying while the resolution owns an order.** That is what makes the
+resolution reachable at all: the 30 s timeout used to discard the pending long before a 120 s
+window could finish, and for World 1 that timeout was the only exit there was.
+
+**At the ceiling the two worlds part company.** A World-2 resting order stays — the truth pull
+sees it every cadence and reports it. A World-1 pending is outside that pull's reach, so it
+takes the disposition the timeout already defines: recorded `BROKER_UNREACHABLE`, removed from
+the tracker so it stops gating the algo, and never called a venue refusal. The entry block
+does NOT clear when the order leaves: being booked unreachable is not being accounted for.
+
+**It covers all four writes, and three of them used to collapse.** A cancel, an amend and a
+position modify each branched on `is_rejected` alone, so an unresolved answer ran the whole
+success path — and for the cancel that meant dropping an order the venue may still hold and
+sending the deferred close beside it.
+
+**The ceiling is also the watchdog.** `check_timeouts` walks the latency queue's own dict, so
+a resting order left in `PENDING_MODIFY` or `PENDING_CANCEL` had nothing to end it: it sat
+until session end while every further operation on it was refused as busy. At the ceiling the
+operation is released, and a cancel that was holding a deferred close abandons it rather than
+releasing it into a stop whose fate is unknown.
+
+Which question is asked, and why the empty answer waits:
+[external_connection_policy.md](external_connection_policy.md).
 
 ---
 

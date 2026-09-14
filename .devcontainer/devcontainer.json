@@ -6,9 +6,18 @@
     "workspaceFolder": "/app",
     "customizations": {
         "vscode": {
+            // Installed INSIDE the container on every rebuild. Keep in sync with
+            // .vscode/extensions.json, which is the same set plus the host-side entry
+            // a fresh clone needs before this file can be used at all.
             "extensions": [
                 "ms-python.python",
+                "ms-python.vscode-pylance",
                 "ms-python.debugpy",
+                // Runs as a LINTER only — ruff.toml at the project root is its config.
+                // Nothing formats Python on save; see .vscode/settings.json for why.
+                "charliermarsh.ruff",
+                "anthropic.claude-code",
+                "mql5.mql5-vscode",
                 "Vue.volar"
             ],
             "settings": {

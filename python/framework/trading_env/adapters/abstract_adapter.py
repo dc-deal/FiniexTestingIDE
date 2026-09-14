@@ -768,6 +768,33 @@ class AbstractAdapter(ABC):
         raw = self._do_request_openorders(self._build_openorders_payload())
         return self._parse_openorders_response(raw)
 
+    def get_closed_broker_orders(
+        self,
+        start: datetime,
+        end: datetime,
+        client_order_id: Optional[str] = None,
+    ) -> List[BrokerOrder]:
+        """
+        Pull the broker's orders that are no longer working, over a time range.
+
+        The counterpart to `get_broker_orders`, and needed because that one answers about
+        OPEN orders only: an order that filled is invisible to it, so "filled" and "the
+        venue never took it" arrive identically (#487). A reference lookup cannot stand in
+        — resolving a write whose answer was lost is precisely the case where no reference
+        came back, which is why the range and our own key are the two ways in.
+
+        Args:
+            start: Range start (UTC, inclusive)
+            end: Range end (UTC, inclusive)
+            client_order_id: Narrow the range to one wire key, where the broker supports it
+
+        Returns:
+            List of BrokerOrder in a terminal state (empty when the range holds none)
+        """
+        raw = self._do_request_closedorders(
+            self._build_closedorders_payload(start, end, client_order_id))
+        return self._parse_closedorders_response(raw)
+
     def get_broker_balances(self) -> Dict[str, float]:
         """
         Pull the broker's account balances (asset → amount).
@@ -799,6 +826,27 @@ class AbstractAdapter(ABC):
         """
         raise NotImplementedError(
             f'{self.get_broker_name()} does not implement _build_openorders_payload'
+        )
+
+    def _build_closedorders_payload(
+        self,
+        start: datetime,
+        end: datetime,
+        client_order_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Build a broker-specific payload for a closed-orders pull. Pure.
+
+        Args:
+            start: Range start (UTC, inclusive)
+            end: Range end (UTC, inclusive)
+            client_order_id: Wire key to narrow the range to, where supported
+
+        Returns:
+            Adapter-specific payload dict (passed to _do_request_closedorders)
+        """
+        raise NotImplementedError(
+            f'{self.get_broker_name()} does not implement _build_closedorders_payload'
         )
 
     def _build_balance_payload(self) -> Dict[str, Any]:
@@ -837,6 +885,20 @@ class AbstractAdapter(ABC):
         """
         raise NotImplementedError(
             f'{self.get_broker_name()} does not implement _do_request_openorders'
+        )
+
+    def _do_request_closedorders(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send a closed-orders pull to the broker. Raises on transport error.
+
+        Args:
+            payload: Pre-built closed-orders payload
+
+        Returns:
+            Raw broker response dict
+        """
+        raise NotImplementedError(
+            f'{self.get_broker_name()} does not implement _do_request_closedorders'
         )
 
     def _do_request_balance(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -881,6 +943,20 @@ class AbstractAdapter(ABC):
         """
         raise NotImplementedError(
             f'{self.get_broker_name()} does not implement _parse_openorders_response'
+        )
+
+    def _parse_closedorders_response(self, raw: Dict[str, Any]) -> List[BrokerOrder]:
+        """
+        Convert a raw closed-orders response into a list of BrokerOrder. Pure.
+
+        Args:
+            raw: Raw broker response dict
+
+        Returns:
+            List of BrokerOrder (empty list = none reported)
+        """
+        raise NotImplementedError(
+            f'{self.get_broker_name()} does not implement _parse_closedorders_response'
         )
 
     def _parse_balance_response(self, raw: Dict[str, Any]) -> Dict[str, float]:

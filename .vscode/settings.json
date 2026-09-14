@@ -2,9 +2,22 @@
     // globales Autosave-Format
     "editor.formatOnSave": true,
     "editor.formatOnPaste": true,
-    // Python: autopep8 als Formatter
+    // Python wird NICHT automatisch formatiert, und das ist eine Entscheidung.
+    //
+    // Vorher stand hier autopep8 als defaultFormatter. Es war nie im Container
+    // installiert - haette man es mitinstalliert, haette formatOnSave oben jede
+    // gespeicherte Datei auf 79 Spalten umgebrochen, waehrend ruff.toml 100 deklariert.
+    //
+    // ruff ist auch nicht der Ersatz dafuer: "ruff format" ist ein vollstaendiger
+    // Black-artiger Formatter, der Zeilenumbrueche neu setzt und Aufrufe ueber mehrere
+    // Zeilen aufspreizt. Das waere eine eigene Grundsatzentscheidung ueber den
+    // Layout-Standard des Projekts und ist bewusst nicht getroffen.
+    //
+    // ruff laeuft hier als LINTER: Verstoesse gegen ruff.toml erscheinen beim Tippen,
+    // ohne dass irgendetwas umgeschrieben wird. Geschrieben wird nur im
+    // Release-Hygiene-Durchgang, mit ausgewaehlten Regeln und je eigenem Commit.
     "[python]": {
-        "editor.defaultFormatter": "ms-python.autopep8"
+        "editor.formatOnSave": false
     },
     // aus der exporer view ausschliessen
     "files.exclude": {

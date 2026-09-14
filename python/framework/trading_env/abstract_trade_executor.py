@@ -1801,6 +1801,19 @@ class AbstractTradeExecutor(ABC):
         """
         return self._market_data_status
 
+    def get_unresolved_at_ceiling(self) -> Set[str]:
+        """
+        Orders sent to the venue that it never named, after the resolution ran out (#487).
+
+        Empty in simulation and on every path with no venue: a write cannot be lost to a
+        transport that does not exist. The live executor overrides it, and the OrderGuard
+        reads it to refuse new entries while one of our orders is unaccounted for.
+
+        Returns:
+            Internal order ids at the resolution ceiling (empty in the normal case)
+        """
+        return set()
+
     def get_current_time(self) -> datetime:
         """
         Canonical clock for downstream timing logic (guard cooldowns,

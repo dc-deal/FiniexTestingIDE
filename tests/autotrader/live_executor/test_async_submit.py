@@ -299,7 +299,7 @@ class TestARestingOrderAwaitingItsReferenceCountsAsInFlight:
     cleanly moments later. Nothing was ever lost; the alarm was.
 
     The reconciler's own suite cannot catch this — its FakeExecutor stubs
-    `get_in_flight_order_ids` — so the property is pinned here, on the real method.
+    `get_in_flight_client_keys` — so the property is pinned here, on the real method.
     """
 
     def test_a_limit_in_its_submit_window_is_reported_as_in_flight(
@@ -313,7 +313,7 @@ class TestARestingOrderAwaitingItsReferenceCountsAsInFlight:
         pending = executor_instant._active_limit_orders[0]
         assert pending.broker_ref is None, 'the venue has not answered yet'
 
-        assert pending.pending_order_id in executor_instant.get_in_flight_order_ids(), (
+        assert pending.client_order_id in executor_instant.get_in_flight_client_keys(), (
             'The venue already has it and reports it under a key we cannot join on — '
             'calling that "placed and forgotten" is a false alarm')
 
@@ -325,10 +325,10 @@ class TestARestingOrderAwaitingItsReferenceCountsAsInFlight:
             symbol='BTCUSD', order_type=OrderType.LIMIT,
             direction=OrderDirection.LONG, lots=0.001, price=40000.0,
         ))
-        order_id = executor_instant._active_limit_orders[0].pending_order_id
+        client_key = executor_instant._active_limit_orders[0].client_order_id
 
         mock_instant.await_submit_confirmation(executor_instant)
 
-        assert order_id not in executor_instant.get_in_flight_order_ids(), (
+        assert client_key not in executor_instant.get_in_flight_client_keys(), (
             'With a reference the ordinary join finds it — suppressing it any longer '
             'would hide a genuinely lost order')

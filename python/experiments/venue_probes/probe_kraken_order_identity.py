@@ -95,6 +95,40 @@ MEASUREMENTS
           `expired` remains unmeasured — the archive contains no such subject, and the probe
           now says so rather than skipping in silence.
 
+    2026-09-13 12:35 UTC — Q1d, the route #487 actually needs.
+        Every earlier run paired our key WITH a txid, which answers a question the
+        unresolved-submit case cannot ask: no txid came back, and that is what makes it
+        unresolved. Asked plainly for the first time:
+
+      Q1d QueryOrders WITH `cl_ord_id` AND NO TXID IS REFUSED:
+              {'cl_ord_id': K}  →  ['EGeneral:Invalid arguments']
+          So Kraken treats our key as a FILTER on QueryOrders, never as a lookup of its
+          own; the txid is mandatory there. `ClosedOrders {'cl_ord_id': K}` remains the
+          only measured route that answers without one.
+          Consequence for #487, and it is a design fact rather than a preference: the
+          resolution of an unresolved SUBMIT is TWO reads — OpenOrders (already built, and
+          the reconciler already joins it on the key) plus ClosedOrders by key for the
+          terminal half. An unresolved CANCEL or AMEND holds the txid, so it resolves
+          through the ordinary QueryOrders route, unchanged.
+
+      Q2  194 of 194 still answerable, 0 gone — unchanged since the morning run, same
+          spread (70 closed, 124 canceled). Cleanup proof: 0 orders resting before and
+          after.
+
+    2026-09-13 14:05 UTC — the new parser read against a REAL answer.
+        `_parse_closedorders_response` was written from the OpenOrders payload family,
+        which Kraken documents as the same per-order body under a different top-level
+        key. Documented-as-identical is exactly the claim §32 says to measure, so the
+        probe now runs the ClosedOrders answer from step 4 through the production parser:
+
+          2 entries in → 2 BrokerOrder(s) out
+            OCU3L6-C56FR-5BBVGF  status=filled  type=market  ETHUSD  0.002 / 0.002  p5669_1
+            OD6OFT-CXNPX-Z6GVNP  status=filled  type=market  ETHUSD  0.002 / 0.002  p5669_1
+
+        Pair → symbol resolution, ordertype, status mapping, `vol` vs `vol_exec` and the
+        echoed key all read correctly. And both rows carry the SAME key, which is the
+        measured reason a close now mints its own counter.
+
 Usage:
     python python/experiments/venue_probes/probe_kraken_order_identity.py            # archive
     python python/experiments/venue_probes/probe_kraken_order_identity.py --mode read
@@ -464,6 +498,29 @@ def _stage_key_lookup(adapter: KrakenAdapter, subjects: list, known: dict) -> No
         entries = (closed or {}).get('closed', {})
         print(f'  4 ClosedOrders by our key    → {len(entries)} entr(y/ies): '
               f'{sorted(entries.keys())}')
+
+    # Q1d — the route #487 actually needs, and the one the earlier runs never tried. An
+    # unresolved SUBMIT is by definition the case where no txid came back, so every call
+    # above that pairs the key WITH a txid answers a question we cannot ask in that state.
+    # If QueryOrders takes the key alone, the submit resolution is ONE call; if it does not,
+    # it is OpenOrders + ClosedOrders, which is measured and sufficient either way.
+    key_only, error = _call(adapter, '/0/private/QueryOrders',
+                            {'cl_ord_id': subject.client_order_id})
+    print(f'  5 our key   cl_ord_id ALONE    → '
+          f'{"refused: " + error if error else sorted((key_only or {}).keys())}')
+
+    # What PRODUCTION makes of the same ClosedOrders answer. The parser was written against
+    # the OpenOrders payload family, which the venue documents as identical under a
+    # different top-level key — and "documented as identical" is exactly the kind of claim
+    # §32 says to measure rather than inherit.
+    if not error or closed:
+        parsed = adapter._parse_closedorders_response(closed or {})
+        print(f'  6 production parse of 4     → {len(parsed)} BrokerOrder(s)')
+        for order in parsed:
+            print(f'      {order.broker_ref}  status={order.status.value}  '
+                  f'type={order.order_type.value}  symbol={order.symbol}  '
+                  f'lots={order.lots}  filled={order.filled_lots}  '
+                  f'key={order.client_order_id}')
 
     print()
     print('  VERDICT   2 names the order and 3 is empty      → Kraken ACCEPTS our key')

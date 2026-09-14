@@ -83,6 +83,18 @@ class AbstractPendingOrderManager(ABC):
     # Query (concrete — shared by all modes)
     # ============================================
 
+    def get_order(self, order_id: str) -> Optional[PendingOrder]:
+        """
+        The tracked pending with this id, without removing it.
+
+        Args:
+            order_id: Internal pending-order identifier
+
+        Returns:
+            The PendingOrder, or None when nothing tracks it
+        """
+        return self._pending_orders.get(order_id)
+
     def get_pending_orders(
         self,
         filter_pending_action: Optional[PendingOrderAction] = None

@@ -25,9 +25,12 @@ services:
     volumes:
       - ../FiniexViewer:/viewer
 
-    # FastAPI port — accessible in the browser for OpenAPI UI and manual testing.
-    ports:
-      - "8000:8000"
+    # No `ports` here on purpose. The base docker-compose.yml publishes the API on
+    # 127.0.0.1:8000, and compose MERGES port lists across files rather than replacing
+    # them — so a second mapping for the same host port would make the stack fail to
+    # start. This file used to publish "8000:8000", i.e. on every interface, which also
+    # widened the API beyond the loopback the browser client's `reports` grant was issued
+    # against (see docs/architecture/api_server_architecture.md).
 
   # ---------------------------------------------------------------------------
   # Vite dev server — second container (profile: viewer).

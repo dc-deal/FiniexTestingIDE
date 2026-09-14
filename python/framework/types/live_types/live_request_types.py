@@ -19,6 +19,7 @@ Job types (outbox, main → worker):
                            OrderCapabilities.native_position_sl_tp)
     TradesQueryJob         pull per-execution detail after FILLED (#326)
     QueryJob               poll an active LIMIT order's status (#320)
+    OrderResolveJob        ask what became of a write whose answer was lost (#487)
 
 Response types (inbox, worker → main):
     SubmitResponse         result of a SubmitJob
@@ -27,13 +28,18 @@ Response types (inbox, worker → main):
     PositionModifyResponse result of a PositionModifyJob (#318)
     TradesQueryResponse    result of a TradesQueryJob (#326)
     QueryResponse          result of a QueryJob (#320)
+    OrderResolveResponse   result of an OrderResolveJob (#487)
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
-from python.framework.types.live_types.live_execution_types import BrokerResponse
+from python.framework.types.live_types.live_execution_types import (
+    BrokerOrderStatus,
+    BrokerResponse,
+)
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrderAction
@@ -373,5 +379,72 @@ class TradesQueryResponse:
     order_id: str
     broker_ref: str
     trades: List[BrokerTrade] = field(default_factory=list)
+    success: bool = True
+    error_message: Optional[str] = None
+
+
+@dataclass
+class OrderResolveJob:
+    """
+    Ask the venue what became of a write whose answer never arrived (#487).
+
+    It is NOT a retry: the write must never run again, because a retry after a lost answer
+    is how one intent becomes two positions (§43). What runs is a different, READ-ONLY
+    operation about the first one's outcome — which is why this is its own job rather than
+    a re-dispatch of the original.
+
+    Two routes, and which one applies is decided by what the lost answer left behind. Both
+    are measured (2026-09-13, `probe_kraken_order_identity.py`):
+
+        broker_ref known   an unresolved CANCEL or AMEND — the reference arrived, only the
+                           second answer did not. The ordinary QueryOrders route answers.
+        broker_ref None    an unresolved SUBMIT — no reference ever came back, so the only
+                           handle is our own key. QueryOrders REFUSES a key without a txid
+                           (`EGeneral:Invalid arguments`), so it takes TWO reads: the open
+                           orders, plus the closed ones narrowed to that key.
+
+    Args:
+        order_id: Internal order identifier (primary routing key in drain)
+        client_order_id: The wire key this order was sent under, or None when it was sent
+            without one — in which case the keyless route below cannot answer at all
+        broker_ref: The venue reference, when one arrived before the answer was lost
+        adapter: Live-capable adapter
+        range_start: Start of the closed-order window to read (UTC)
+        range_end: End of that window (UTC)
+    """
+    order_id: str
+    client_order_id: Optional[str]
+    broker_ref: Optional[str]
+    adapter: AbstractAdapter
+    range_start: datetime
+    range_end: datetime
+
+
+@dataclass
+class OrderResolveResponse:
+    """
+    What the venue said about an unresolved write, normalised across both routes.
+
+    The executor decides RESOLVED_RESTING / RESOLVED_ABSENT / UNKNOWN from this without
+    knowing which route answered — the routes differ in cost and payload, not in meaning.
+
+    `status=None` is the load-bearing value: the venue ANSWERED and named nothing. That is
+    not yet "it never took the order" — an order accepted a moment ago may not be indexed
+    yet — so the promotion to a rejection waits out the settle window. `success=False` is a
+    different fact again: the venue did not answer, and the next attempt asks again.
+
+    Args:
+        order_id: Internal order identifier (matches OrderResolveJob.order_id)
+        status: What the venue says this order IS, or None when it named nothing
+        broker_ref: The reference the venue gave it — the handle a lost submit answer
+            never delivered, and what puts the order back into the ordinary poll path
+        filled_lots: How much of it the venue has executed (0.0 when none / unknown)
+        success: False when the read itself failed; `status` then says nothing
+        error_message: Non-empty when success is False
+    """
+    order_id: str
+    status: Optional[BrokerOrderStatus] = None
+    broker_ref: Optional[str] = None
+    filled_lots: float = 0.0
     success: bool = True
     error_message: Optional[str] = None

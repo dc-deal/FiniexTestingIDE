@@ -64,6 +64,7 @@ class VenueHoldsProtectionMock(MockBrokerAdapter):
         Returns:
             A resting answer for a STOP, the mock's own behaviour for anything else
         """
+        self._raise_injected_fault('submit')
         if payload.get('order_type') == OrderType.STOP:
             self._order_counter += 1
             broker_ref = f'MOCK-{self._order_counter:06d}'
@@ -81,6 +82,7 @@ class VenueHoldsProtectionMock(MockBrokerAdapter):
         Returns:
             A resting answer for a stop this mock holds, else the mock's own
         """
+        self._raise_injected_fault('query')
         if payload.get('broker_ref') in self._resting_stops:
             return {'status': 'PENDING', 'broker_ref': payload['broker_ref']}
         return super().do_request_query(payload)
@@ -95,6 +97,10 @@ class VenueHoldsProtectionMock(MockBrokerAdapter):
         Returns:
             A cancelled answer for a stop this mock holds, else the mock's own
         """
+        # An injected transport fault applies to THIS route too. Without it the override
+        # short-circuits the base's check, and a test asking for an unanswered cancel gets
+        # a clean CANCELLED instead — passing while asserting the wrong state (#487).
+        self._raise_injected_fault('cancel')
         broker_ref = payload.get('broker_ref')
         if broker_ref in self._resting_stops:
             self._resting_stops.discard(broker_ref)

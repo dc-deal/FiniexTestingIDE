@@ -108,6 +108,32 @@ quote's journey to the simulator are a different suite —
 `tests/autotrader/live_executor/test_undecided_dry_run_poll.py`, because the executor is what
 logs the one and starts the other.
 
+## Reading what the venue answered, not assuming it (#487)
+
+`test_cancel_response_parsing.py` and `test_closed_orders_read.py`. Both exist because a
+write whose answer was lost has to be ASKED about, and an ask is worthless if the answer is
+not read.
+
+The cancel parser returned `CANCELLED` unconditionally while inspecting nothing. Kraken
+reports how many orders it cancelled: `count: 0` with no error means the cancel named
+nothing, and booking that as a cancel drops a resting order from our books while the venue
+keeps working it. A missing `count` is deliberately NOT read as zero — an answer that does
+not carry the field says nothing either way, and defaulting it would invent a refusal.
+
+The closed-orders read is the route that makes `RESOLVED_ABSENT` possible at all.
+`get_broker_orders` answers about OPEN orders only, so a filled order is invisible to it and
+"filled" and "never taken" arrive identically. Measured 2026-09-13
+(`python/experiments/venue_probes/probe_kraken_order_identity.py`): `QueryOrders` REFUSES
+our key without a txid, so for an unresolved submit — the case where no txid ever came back
+— `ClosedOrders {'cl_ord_id': K}` is the only route that answers.
+
+| Test class | Pins |
+|---|---|
+| `TestWhatTheCountMeans` | one cancelled order is a cancel, none is UNKNOWN, an answer without the field says nothing either way, and the raw payload survives for forensics |
+| `TestThePayload` | the range goes out as unix seconds, an absent key sends no field, a key narrows the range, and a long key is truncated to the venue's 18 characters |
+| `TestTheAnswer` | a filled order is visible where the open pull is blind, a cancelled one is not a filled one, TWO orders can answer to one key, and an unmappable status becomes UNKNOWN rather than "still working" |
+| `TestDryRun` | a dry run reaches no venue and answers nothing, rather than something |
+
 ## Run
 
 ```bash
@@ -118,4 +144,5 @@ Or launch.json: `🧩 Pytest: Kraken Adapter (Offline)`.
 
 Source: `python/framework/trading_env/adapters/kraken_adapter.py` — `_do_fetch_private`,
 `_sign_request`, `build_submit_payload`, `_put_price`, `build_modify_payload`,
-`_parse_openorders_response`, `_prices_from_descr`.
+`_parse_openorders_response`, `_prices_from_descr`, `parse_cancel_response`,
+`_build_closedorders_payload`, `_parse_closedorders_response`.

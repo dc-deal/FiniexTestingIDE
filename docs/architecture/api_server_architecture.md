@@ -120,6 +120,28 @@ lists `WWW-Authenticate` and `Retry-After`, because a browser hides every respon
 not CORS-safelisted: without it a cross-origin client sees a 401's status and not the scheme to
 retry with.
 
+### Who can reach the port at all, and where that is decided
+
+The `reports` surface names every run this installation has ever recorded, and the browser client's
+grant on it was issued **on the condition that the API is reachable from the operator's machine
+only**. That condition needs a home in a file, or it expires with the conversation that agreed it.
+
+Its home is `docker-compose.yml`: the port is published as `127.0.0.1:8000:8000`. The server itself
+binds `0.0.0.0` inside the container, which is correct and says nothing about exposure — a
+container's own interface is not a network boundary. **The publish is the boundary**, and that is
+why the condition lives there rather than in a startup check: code running inside the container
+cannot observe how its port was published, so a check would have to test `--host` instead, where
+`0.0.0.0` is the normal and correct value. It would be red on every ordinary start, and a gate that
+is red on day one is a gate that gets switched off.
+
+Before this line the port was reachable only because a developer tool happened to forward it, which
+made the condition true by accident and invisible to anyone reading the repository. Publishing it
+is purely ADDITIVE — a forwarding IDE keeps working — so no consumer's address changes.
+
+**What to do instead of a tripwire:** if the bind is ever widened, the `reports` grants are re-asked
+for, and the change is announced to the consumers over the bus. That is a review obligation on this
+line, and the comment beside it says so.
+
 **Where tokens live.** `user_configs/credentials/api_tokens.json`, with a tracked placeholder at
 `configs/credentials/api_tokens.json` whose entries are all switched off — an example in a template
 file then cannot gate or grant anything by accident. The registry holds only SHA-256 digests, so a

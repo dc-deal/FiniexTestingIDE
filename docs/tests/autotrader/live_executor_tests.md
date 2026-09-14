@@ -896,3 +896,50 @@ than a duration. `PendingOrderTiming.submitted_monotonic` carries the second sta
 blank column; reported as a wall-clock difference it costs an investigation into a venue that
 did nothing wrong. This mirrors the rule that a missing injected clock raises instead of
 falling back.
+
+## test_write_identity.py — every write carries an identity we can ask about (#487)
+
+A write whose answer is lost can only be resolved by asking the venue what became of it, and the
+only handle that survives a lost answer is the key WE chose. Two properties have to hold for that
+question to have one answer.
+
+**It is unique per write.** An entry and its close used to send the same key, because a close
+derived its key from the position id. Measured 2026-09-13 against Kraken: `ClosedOrders` for one
+key answered with TWO orders, so a lookup by key could not name an order at all. A close now mints
+its own counter from the same source every other order uses — which also keeps the cold-start
+high-water mark honest, so a restart cannot re-issue it.
+
+**It is recorded, not re-derived.** The reconciler rebuilt the key from `pending_order_id`, which
+held only while every key was a function of its id. A re-derived key misses a close in flight and
+drops it into the abandoned bucket — the false alarm measured twice in five live field-study runs.
+`PendingOrder.client_order_id` now holds what actually went on the wire.
+
+| Class | Description |
+|---|---|
+| `TestTheKeyIsUniquePerWrite` | a close does not reuse its entry's key, two partial closes send two different keys, and the close key still parses as one of ours |
+| `TestTheKeyIsRecorded` | a resting order carries the key it sent, and an in-flight close is not reported as abandoned |
+
+## test_unresolved_write_resolution.py — asking, and what the answer may become (#487)
+
+#473 made a lost answer honest; it left open that nothing ever ASKED. The in-flight window was
+bounded by the 30 s fill timeout while the truth pull runs on a ≥60 s cadence, so the pending was
+dropped before anything could ask.
+
+Three verdicts and no fourth: the venue names the order (restore the reference and step aside), it
+answers and names nothing AFTER the settle window (now a genuine rejection), or it still names
+nothing at the ceiling (escalate, block new entries, keep the order). A read that FAILED is none
+of these and books nothing — the venue did not answer, so the next pass asks again.
+
+| Class | Description |
+|---|---|
+| `TestTheStateUnderTestCanBeProduced` | a transient submit fault leaves the order in flight; a TERMINAL one is a rejection instead — the injector's `terminal` flag is the whole difference |
+| `TestTheAskFiresFromTheEvent` | the resolution is armed by the lost answer, its window is `max_window_seconds` rather than `order_timeout_seconds`, and the fill timer stops applying to a MARKET order — without which the resolution would be unreachable for the only world that has no other exit |
+| `TestTheVenueNamesIt` | the reference comes back, the order survives, and the algo is never told it was rejected |
+| `TestTheVenueNamesNothing` | inside the settle window nothing is booked; after it, exactly one rejection |
+| `TestTheCeiling` | the order is kept, entries stop with `RejectionReason.UNRESOLVED_WRITE`, and an empty set refuses nothing |
+| `TestTheTwoWorldsEndDifferentlyAtTheCeiling` | a MARKET pending leaves the tracker recorded `BROKER_UNREACHABLE` rather than gating the algo forever, and the entry block outlives the order |
+| `TestNothingIsEverReSent` | one decision, one order out of this process — in every branch |
+
+**Why the settle window.** An order accepted a moment ago may not be indexed yet, so an answer
+that names nothing is not yet evidence that nothing was taken. Promoting it immediately would turn
+the venue's read lag into a rejection.

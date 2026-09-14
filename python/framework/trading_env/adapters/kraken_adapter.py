@@ -1173,20 +1173,38 @@ class KrakenAdapter(AbstractAdapter):
         simulator so the cancelled ref is removed from its internal
         state (so subsequent queries do not see PENDING).
 
+        The answer is READ, not assumed (#487). Kraken reports how many orders it actually
+        cancelled; `count: 0` with no error means the cancel named nothing, and reporting
+        that as CANCELLED drops a resting order from our books while the venue keeps
+        working it. It becomes UNKNOWN — the venue answered and its answer says nothing
+        about this order, which calls for a wider read rather than a booking.
+
+        Measured 2026-09-13 (`probe_kraken_order_identity.py`): Kraken does not in fact
+        produce `count: 0` for an order that is already gone — it raises
+        `EOrder:Unknown order` (or `EOrder:Invalid order` for a reference it never minted),
+        which the §43 ladder classifies before this parser is reached. So on THIS venue the
+        zero branch is unreachable; it is here for the contract Kraken documents and for the
+        second adapter (#209), not because it fires today.
+
         Args:
             raw: Raw Kraken result dict
             broker_ref: The txid that was cancelled
             timestamp: Response receipt timestamp (UTC)
 
         Returns:
-            BrokerResponse(status=CANCELLED)
+            BrokerResponse(status=CANCELLED), or UNKNOWN when nothing was cancelled
         """
         if raw.get(self._DRY_RUN_SENTINEL) == 'cancel':
             return self._dry_run_simulator.cancel(broker_ref, timestamp)
 
+        # A missing `count` is NOT read as zero: an answer that does not carry the field
+        # says nothing either way, and defaulting it to 0 would invent a refusal.
+        count = raw.get('count')
+        cancelled = count is None or int(count) > 0
+
         return BrokerResponse(
             broker_ref=broker_ref,
-            status=BrokerOrderStatus.CANCELLED,
+            status=BrokerOrderStatus.CANCELLED if cancelled else BrokerOrderStatus.UNKNOWN,
             timestamp=timestamp,
             raw_response=raw,
         )
@@ -1306,6 +1324,35 @@ class KrakenAdapter(AbstractAdapter):
         """
         return {}
 
+    def _build_closedorders_payload(
+        self,
+        start: datetime,
+        end: datetime,
+        client_order_id: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """
+        Build Kraken ClosedOrders payload. Pure.
+
+        Kraken takes the range as unix SECONDS. `cl_ord_id` narrows it to one wire key and
+        is measured to work here without a txid (2026-09-13) — which QueryOrders does NOT
+        do, and that asymmetry is the reason this route exists at all.
+
+        Args:
+            start: Range start (UTC, inclusive)
+            end: Range end (UTC, inclusive)
+            client_order_id: Our wire key, when the question is about one order
+
+        Returns:
+            POST data dict
+        """
+        payload = {
+            'start': str(int(start.timestamp())),
+            'end': str(int(end.timestamp())),
+        }
+        if client_order_id:
+            payload['cl_ord_id'] = str(client_order_id)[:_CL_ORD_ID_MAX_LEN]
+        return payload
+
     def _build_balance_payload(self) -> Dict[str, str]:
         """
         Build Kraken Balance payload. Pure.
@@ -1339,6 +1386,22 @@ class KrakenAdapter(AbstractAdapter):
         if self._dry_run:
             return {self._DRY_RUN_SENTINEL: 'openorders'}
         return self._fetch_private('/0/private/OpenOrders', payload)
+
+    def _do_request_closedorders(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Fetch closed (terminal) orders from Kraken. Raises on HTTP/API error.
+
+        Dry-run returns a sentinel-tagged dict → empty parse.
+
+        Args:
+            payload: Pre-built ClosedOrders payload
+
+        Returns:
+            Raw Kraken result dict (sentinel-tagged in dry-run)
+        """
+        if self._dry_run:
+            return {self._DRY_RUN_SENTINEL: 'closedorders'}
+        return self._fetch_private('/0/private/ClosedOrders', payload)
 
     def _do_request_balance(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1424,34 +1487,82 @@ class KrakenAdapter(AbstractAdapter):
         if raw.get(self._DRY_RUN_SENTINEL) is not None:
             return []
 
-        out: List[BrokerOrder] = []
-        for txid, info in (raw.get('open', {}) or {}).items():
-            descr = info.get('descr', {}) or {}
-            kraken_type = descr.get('type', 'buy')
-            # A MISSING ordertype used to default to 'limit', which is the same lie as the
-            # unknown-type fallback and harder to notice — there is nothing to name in the
-            # report either.
-            kraken_ordertype = descr.get('ordertype') or ''
-            status = self._STATUS_MAP.get(info.get('status', 'open'), BrokerOrderStatus.PENDING)
-            price, stop_price = self._prices_from_descr(kraken_ordertype, descr)
-            out.append(BrokerOrder(
-                broker_ref=txid,
-                symbol=self._resolve_symbol_from_pair(descr.get('pair', '')),
-                direction=OrderDirection.LONG if kraken_type == 'buy' else OrderDirection.SHORT,
-                order_type=self._ORDERTYPE_MAP.get(kraken_ordertype, OrderType.UNKNOWN),
-                lots=float(info.get('vol', 0.0)),
-                # `vol` is the ORIGINAL size; `vol_exec` is what already executed. Adoption
-                # needs both, or it rebuilds a half-filled order at full size (#355).
-                filled_lots=float(info.get('vol_exec', 0.0) or 0.0),
-                status=status,
-                price=price,
-                stop_price=stop_price,
-                # #473 — read our own key back. Without it a resting order we placed and a
-                # resting order somebody else placed are the same unknown row.
-                client_order_id=info.get('cl_ord_id') or None,
-                raw=info,
-            ))
-        return out
+        return [
+            self._broker_order_from_entry(txid, info, BrokerOrderStatus.PENDING)
+            for txid, info in (raw.get('open', {}) or {}).items()
+        ]
+
+    def _broker_order_from_entry(
+        self,
+        txid: str,
+        info: Dict[str, Any],
+        unmapped_status: BrokerOrderStatus,
+    ) -> BrokerOrder:
+        """
+        Convert one Kraken order entry into a BrokerOrder. Pure.
+
+        Shared by the OPEN and CLOSED pulls, which report the same per-order shape under
+        two different top-level keys — the only thing that differs is what an unmappable
+        status word should fall back to.
+
+        Args:
+            txid: The venue's reference, i.e. the key of this entry
+            info: The entry body as the venue reported it
+            unmapped_status: What a status word this adapter cannot name becomes
+
+        Returns:
+            The parsed BrokerOrder, carrying the untouched entry for forensics
+        """
+        descr = info.get('descr', {}) or {}
+        kraken_type = descr.get('type', 'buy')
+        # A MISSING ordertype used to default to 'limit', which is the same lie as the
+        # unknown-type fallback and harder to notice — there is nothing to name in the
+        # report either.
+        kraken_ordertype = descr.get('ordertype') or ''
+        status = self._STATUS_MAP.get(info.get('status', ''), unmapped_status)
+        price, stop_price = self._prices_from_descr(kraken_ordertype, descr)
+        return BrokerOrder(
+            broker_ref=txid,
+            symbol=self._resolve_symbol_from_pair(descr.get('pair', '')),
+            direction=OrderDirection.LONG if kraken_type == 'buy' else OrderDirection.SHORT,
+            order_type=self._ORDERTYPE_MAP.get(kraken_ordertype, OrderType.UNKNOWN),
+            lots=float(info.get('vol', 0.0)),
+            # `vol` is the ORIGINAL size; `vol_exec` is what already executed. Adoption
+            # needs both, or it rebuilds a half-filled order at full size (#355).
+            filled_lots=float(info.get('vol_exec', 0.0) or 0.0),
+            status=status,
+            price=price,
+            stop_price=stop_price,
+            # #473 — read our own key back. Without it a resting order we placed and a
+            # resting order somebody else placed are the same unknown row.
+            client_order_id=info.get('cl_ord_id') or None,
+            raw=info,
+        )
+
+    def _parse_closedorders_response(self, raw: Dict[str, Any]) -> List[BrokerOrder]:
+        """
+        Parse Kraken ClosedOrders response into List[BrokerOrder]. Pure.
+
+        Kraken shape: {'closed': {txid: {...}}, 'count': N} — the same per-order body as
+        OpenOrders, under a different key.
+
+        An unmappable status becomes UNKNOWN rather than PENDING: the venue put this order
+        in the CLOSED bucket, so calling it "still working" would be the exact inversion
+        the query parser was corrected for on 2026-09-08.
+
+        Args:
+            raw: Raw Kraken result dict (output of _do_request_closedorders)
+
+        Returns:
+            List of BrokerOrder (empty in dry-run / when the range holds none)
+        """
+        if raw.get(self._DRY_RUN_SENTINEL) is not None:
+            return []
+
+        return [
+            self._broker_order_from_entry(txid, info, BrokerOrderStatus.UNKNOWN)
+            for txid, info in (raw.get('closed', {}) or {}).items()
+        ]
 
     @classmethod
     def _prices_from_descr(

@@ -15,6 +15,7 @@ one intent becomes two positions); the order stays ours, marked in flight, and t
 path resolves it — which is what FIX has done with an Order Status Request since 1992.
 """
 
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -365,9 +366,14 @@ class TestAStuckUnresolvedRestingOrderIsReported:
     every order without a reference — correctly, there is nothing to poll WITH — and
     check_timeouts iterates only the processor's dict, which resting orders never enter.
 
-    So the order sits in the shadow for the rest of the session while `has_pending_orders()`
-    stays true and blocks a single-position algo. Until #487 can ASK the venue by our own
-    client order id, the least the operator is owed is being told.
+    So the order sits in the shadow while `has_pending_orders()` stays true and blocks a
+    single-position algo. #487's resolution now ASKS the venue by our own client order id
+    while this is true, and says so if it gives up — but the operator is still owed the
+    early word, because the resolution's window outlasts this report by design.
+
+    The wait is measured on the MONOTONIC clock (§9): it is a duration, and a duration taken
+    from two wall-clock readings can come out negative when NTP steps that clock, which
+    would put a nonsense number into an operator-facing error.
     """
 
     def _stuck_resting_order(self, mock, executor):
@@ -381,6 +387,7 @@ class TestAStuckUnresolvedRestingOrderIsReported:
         pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
         pending.timing.submitted_at = (
             datetime.now(timezone.utc) - timedelta(seconds=3600))
+        pending.timing.submitted_monotonic = time.monotonic() - 3600.0
         return result.order_id
 
     def test_it_is_reported_as_an_error(self, mock_timeout, executor_timeout, capsys):

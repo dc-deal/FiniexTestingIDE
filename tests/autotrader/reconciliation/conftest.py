@@ -76,17 +76,24 @@ def make_pending(
     cumulative_filled_lots: float = 0.0,
     in_flight_operation: PendingOperation = PendingOperation.NONE,
     stop_price: Optional[float] = None,
+    client_order_id: Optional[str] = None,
 ) -> PendingOrder:
     """
     Build a local resting PendingOrder (what get_active_orders returns).
 
     in_flight_operation=PENDING_SUBMIT models the state #473 leaves behind when a submit
     answer is lost: the order is kept, its broker_ref is not.
+
+    The wire key defaults to the one this session would have minted for that id, which is
+    true of every ENTRY. Pass it explicitly for a CLOSE, whose key comes from its own
+    counter and is therefore NOT a function of the order id (#487).
     """
     return PendingOrder(
         pending_order_id=order_id,
         order_type=order_type,
         broker_ref=broker_ref,
+        client_order_id=(client_order_id if client_order_id is not None
+                         else build_client_order_id(_TEST_SESSION_KEY, order_id)),
         symbol=symbol,
         direction=direction,
         lots=lots,
@@ -184,7 +191,7 @@ class FakeExecutor:
         positions: Optional[List[Position]] = None,
         rest_ladder: Optional[ConnectionLadder] = None,
         session_key: str = _TEST_SESSION_KEY,
-        in_flight_order_ids: Optional[List[str]] = None,
+        in_flight_client_keys: Optional[List[str]] = None,
     ):
         self.broker = SimpleNamespace(adapter=adapter)
         self._positions = list(positions or [])
@@ -192,7 +199,7 @@ class FakeExecutor:
         self._active_orders = list(active_orders or [])
         self._session_key = session_key
         # The latency queue's own pendings (MARKET / CLOSE) — not part of get_active_orders.
-        self._in_flight_order_ids = list(in_flight_order_ids or [])
+        self._in_flight_client_keys = list(in_flight_client_keys or [])
         self._rest_ladder = rest_ladder or ConnectionLadder(
             name='broker_rest',
             policy=ConnectionPolicy(),
@@ -209,11 +216,8 @@ class FakeExecutor:
     def get_session_key(self) -> str:
         return self._session_key
 
-    def get_in_flight_order_ids(self) -> Set[str]:
-        return set(self._in_flight_order_ids)
-
-    def build_client_order_id(self, order_id: str) -> Optional[str]:
-        return build_client_order_id(self._session_key, order_id)
+    def get_in_flight_client_keys(self) -> Set[str]:
+        return set(self._in_flight_client_keys)
 
 
 @pytest.fixture
@@ -245,10 +249,10 @@ def make_reconciler(logger):
         config: Optional[ReconciliationDefaults] = None,
         symbol: str = 'ETHUSD',
         session_key: str = _TEST_SESSION_KEY,
-        in_flight_order_ids: Optional[List[str]] = None,
+        in_flight_client_keys: Optional[List[str]] = None,
     ) -> Reconciler:
         executor = FakeExecutor(adapter, active_orders, positions, session_key=session_key,
-                                in_flight_order_ids=in_flight_order_ids)
+                                in_flight_client_keys=in_flight_client_keys)
         return Reconciler(
             executor=executor,
             config=config or ReconciliationDefaults(enabled=True),

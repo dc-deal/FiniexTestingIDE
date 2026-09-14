@@ -42,7 +42,7 @@ State updates flow through two paths:
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 from uuid import uuid4
 
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
@@ -90,6 +90,7 @@ class OrderGuard:
         request: OpenOrderRequest,
         now: datetime,
         market_data_status: Optional[MarketDataStatus] = None,
+        unresolved_at_ceiling: Optional[Set[str]] = None,
     ) -> Optional[OrderResult]:
         """
         Pre-validate an order request against the guard rules.
@@ -99,6 +100,9 @@ class OrderGuard:
             now: Current tick time (simulated in backtests, wall-clock in live)
             market_data_status: Session-level tick-stream health (#436);
                 always fresh in sim
+            unresolved_at_ceiling: Orders the venue never named after the resolution ran
+                out (#487). Non-empty blocks new entries; empty in sim and in the
+                ordinary live case
 
         Returns:
             OrderResult(REJECTED) if blocked, None otherwise
@@ -117,6 +121,24 @@ class OrderGuard:
                     f'Entry blocked: market data stale '
                     f'({market_data_status.seconds_since_last_tick:.0f}s '
                     f'since last tick)'
+                ),
+            )
+
+        # Unresolved-write block (#487): we sent an order, asked the venue about it until
+        # the resolution ran out, and it never named the order either open or closed. It may
+        # be resting there. Sending MORE orders while one of ours is unaccounted for is the
+        # case where trading helps least — so entries stop, and only entries: this guard is
+        # reached from `validate` on an OpenOrderRequest, so closing and protecting an open
+        # position are untouched. A LATCH, not a cooldown — the condition does not expire
+        # with time, it ends when the order is finally accounted for.
+        if unresolved_at_ceiling:
+            return create_rejection_result(
+                order_id=self._make_order_id(),
+                reason=RejectionReason.UNRESOLVED_WRITE,
+                message=(
+                    f'Entry blocked: {len(unresolved_at_ceiling)} order(s) sent and never '
+                    f'accounted for by the venue '
+                    f"({', '.join(sorted(unresolved_at_ceiling))}) — check the account"
                 ),
             )
 

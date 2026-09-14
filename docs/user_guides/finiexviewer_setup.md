@@ -76,6 +76,11 @@ Or use the VS Code launch entry **🚀 API Server (Dev)**.
 
 The API is available at `http://localhost:8000`. OpenAPI UI: `http://localhost:8000/docs`.
 
+The base `docker-compose.yml` publishes that port as `127.0.0.1:8000:8000` — the operator's own
+machine and nothing else. That is deliberate rather than cautious: the `reports` surface names
+every run this installation has recorded, and the browser client's grant on it was issued against
+exactly this reachability. Widening the bind means re-asking for those grants.
+
 ---
 
 ## Phase 2 — Vite Dev Server (optional)
@@ -95,7 +100,10 @@ The container automatically installs npm dependencies on first start (`npm insta
 
 ## Port Overview
 
-| Port | Service |
-|------|---------|
-| `8000` | FiniexTestingIDE FastAPI (HTTP API) |
-| `5173` | FiniexViewer Vite dev server |
+| Port | Service | Published as |
+|------|---------|---|
+| `8000` | FiniexTestingIDE FastAPI (HTTP API) | `127.0.0.1:8000` — loopback only |
+| `5173` | FiniexViewer Vite dev server | `5173` |
+
+The Vite container does NOT reach the API through that published port: it resolves `finiex-dev` on
+the compose network (`VITE_API_BASE_URL`), which works regardless of what is published to the host.

@@ -239,13 +239,15 @@ class DecisionTradingApi:
             venue_held_protection=venue_held_protection,
         )
 
-        # Pre-trade guard — rejection cooldown + stale-market-data block (#436).
-        # Time source is the executor's current tick timestamp: simulated in
-        # backtests (keeps cooldowns deterministic and sim-correct), wall-clock
-        # in live. The market-data status is always fresh in sim.
+        # Pre-trade guard — rejection cooldown + stale-market-data block (#436) +
+        # unresolved-write block (#487). Time source is the executor's current tick
+        # timestamp: simulated in backtests (keeps cooldowns deterministic and sim-correct),
+        # wall-clock in live. The market-data status is always fresh in sim, and the
+        # unresolved set is always empty there.
         now = self._executor.get_current_time()
         guard_result = self._order_guard.validate(
-            request, now, self._executor.get_market_data_status())
+            request, now, self._executor.get_market_data_status(),
+            unresolved_at_ceiling=self._executor.get_unresolved_at_ceiling())
         if guard_result is not None:
             self._executor.record_guard_rejection(guard_result)
             return guard_result

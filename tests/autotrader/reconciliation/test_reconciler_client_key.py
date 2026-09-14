@@ -186,7 +186,7 @@ class TestTrackedElsewhere:
             make_broker_order('OQ7X2A-INFLIGHT', client_order_id=_ckey('pos_ethusd_47')),
         ])
         reconciler = make_reconciler(
-            mock_adapter, active_orders=[], in_flight_order_ids=['pos_ethusd_47'])
+            mock_adapter, active_orders=[], in_flight_client_keys=[_ckey('pos_ethusd_47')])
 
         result = reconciler.reconcile(current_tick=1)
 
@@ -201,7 +201,7 @@ class TestTrackedElsewhere:
             make_broker_order('OQ7X2A-RESTING', client_order_id=_ckey('pos_ethusd_51')),
         ])
         reconciler = make_reconciler(
-            mock_adapter, active_orders=[], in_flight_order_ids=['pos_ethusd_47'])
+            mock_adapter, active_orders=[], in_flight_client_keys=[_ckey('pos_ethusd_47')])
 
         result = reconciler.reconcile(current_tick=1)
 

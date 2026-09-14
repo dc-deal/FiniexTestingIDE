@@ -1,15 +1,23 @@
 {
+  // What a fresh clone is offered. The same set the dev container installs
+  // (.devcontainer/devcontainer.json), plus the one entry that belongs on the HOST —
+  // Dev Containers is what opens the container, so it cannot live inside it.
   "recommendations": [
     // Core Python Development (Essential)
     "ms-python.python",
     "ms-python.vscode-pylance",
-    "ms-python.autopep8",
-    "ms-python.isort",
-    // Testing
-    "ms-python.pytest",
+    "ms-python.debugpy",
+    // Linting against ruff.toml — line-length 100, single quotes, import order.
+    // Replaces autopep8 and isort, which answered the same questions differently and
+    // would have reformatted against that config on every save.
+    "charliermarsh.ruff",
+    // Editor tooling
+    "anthropic.claude-code",
     // MQL5 Support (falls gebraucht)
     "mql5.mql5-vscode",
-    // Docker / Dev Containers
+    // Vue / TypeScript — the FiniexViewer companion (docs/user_guides/finiexviewer_setup.md)
+    "Vue.volar",
+    // Docker / Dev Containers — HOST side only
     "ms-vscode-remote.remote-containers"
   ]
 }

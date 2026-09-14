@@ -293,7 +293,8 @@ class TestAnUnconfirmedCancelIsNotAnExpiry:
 
     def test_a_refused_cancel_leaves_no_expired_record(self):
         mock, executor = self._executor_with_resting_order()
-        executor.broker.adapter.set_cancel_transport_error('venue unreachable at shutdown')
+        executor.broker.adapter.set_transport_fault(
+            'cancel', 'venue unreachable at shutdown', terminal=True)
 
         executor.finish_remaining_orders(cancel_orders=True)
 
@@ -313,7 +314,8 @@ class TestAnUnconfirmedCancelIsNotAnExpiry:
         what an operator acts on.
         """
         mock, executor = self._executor_with_resting_order()
-        executor.broker.adapter.set_cancel_transport_error('venue unreachable at shutdown')
+        executor.broker.adapter.set_transport_fault(
+            'cancel', 'venue unreachable at shutdown', terminal=True)
 
         executor.finish_remaining_orders(cancel_orders=True)
 

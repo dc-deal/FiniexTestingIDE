@@ -235,6 +235,43 @@ never puts one there. Its replacement asserts the real contract — the entry pa
 and the acceptance it was standing in for was taken live instead, by the field study's
 `protective_level_test` phase on a real account.
 
+**The `ClosedOrders` read named above is no longer missing (#487).** The adapter now has a
+time-ranged closed-order route that can also be narrowed to one wire key, and it was measured
+against Kraken before it was written. That closes the gap this section described for the boot
+resolver, and it is the read on which "the venue never took this order" rests.
+
+## When the answer to a protective write never arrives (#487)
+
+`test_unresolved_protective_writes.py`. This is the expensive corner of #487 and it lives here
+rather than in a transport suite, because the write that hurts when it is guessed at is the
+CANCEL of a stop the venue is holding.
+
+`_handle_cancel_response` branched on `is_rejected` alone, so an UNRESOLVED answer — the venue
+never spoke — ran the entire success path: the order dropped from the resting list, the protective
+stamp cleared, `order_cancelled` emitted, and the deferred close RELEASED. A market close then
+goes out beside a stop that may still be resting, which is the double-fill the cancel-before-close
+ordering exists to prevent, reached through a transport fault instead of a race.
+
+The rule is that an unresolved write books nothing. The one thing booking nothing must not mean
+is waiting forever: without a release the deferred close sits in `_deferred_closes` for the rest
+of the session, and `close_position` is a no-op while it does — the position could never be closed
+again, while the framework's own stop check re-requests the close on every tick.
+
+| Test class | Pins |
+|---|---|
+| `TestAnUnresolvedCancelBooksNothing` | the order stays in its resting list, the stamp stays, the deferred close is NOT released and no close reaches the venue, the operation stays in flight so nothing races it, and the resolution is asking |
+| `TestTheCeilingEndsTheWait` | at the ceiling the close is ABANDONED rather than left hanging, the operation is released so the order is not stuck for the session, and the order itself is still not dropped |
+| `TestAnUnresolvedAmendWritesNoProvisionalValue` | the shadow price does not move, the provisional values stay parked, and the one-outstanding-amend guard stays closed |
+
+Abandoning rather than releasing is the safe direction: the position stays open and, because the
+cancel did not go through, still protected — and the operator is told the close they asked for did
+not happen.
+
+The mock's fault injector is what makes this reachable at all. `set_transport_fault(operation,
+message, terminal=False)` raises a CLASSIFIED transient fault; a plain `ConnectionError` is
+classified TERMINAL and produces REJECTED instead, so a test written against the old injector
+would have asserted the wrong state while passing.
+
 ## Running it
 
 ```bash
