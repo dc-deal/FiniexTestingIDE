@@ -59,7 +59,14 @@ class TestTheSignalIsSeededOnRealMacdValues:
         line = frame['macd'].dropna()
         signal = macd(closes, _FAST, _SLOW, _SIGNAL).signal
 
-        assert line.min() <= signal <= line.max()
+        # Compared with a tolerance because the bound can be touched EXACTLY: on a straight
+        # line every MACD value is identical, so the signal sits on the bound itself and
+        # lands a float ULP either side of it depending on summation order (1.3e-15 here,
+        # since the averages became a vectorised dot product in 2026-09). The contamination
+        # this test exists to catch pulls the signal towards ZERO — 3.5 away, not 1e-15 —
+        # so the tolerance is nine orders of magnitude tighter than the defect.
+        assert signal >= line.min() or signal == pytest.approx(line.min())
+        assert signal <= line.max() or signal == pytest.approx(line.max())
 
     def test_a_trending_series_keeps_the_signal_on_one_side_of_zero(self):
         # Blunter statement of the same thing: a falling market has no positive MACD

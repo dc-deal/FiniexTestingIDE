@@ -15,6 +15,10 @@ This is part of a single-source module: never reimplement it, never bypass it.
 import numpy as np
 import pandas as pd
 
+from python.framework.utils.trading_math.indicators.recursive_average import (
+    recursive_average,
+)
+
 # How many periods of history an EMA needs before its seed stops showing. Measured
 # 2026-09-14 over periods 2-50: three periods leave the seed holding under 1.9 % of
 # its own weight. RMA_WARMUP_FACTOR is picked to land on that same residual, so the
@@ -51,15 +55,7 @@ def ema(values: np.ndarray, period: int) -> float:
     Returns:
         The exponential moving average at the newest value
     """
-    if len(values) < period:
-        return float(np.mean(values))
-
-    multiplier = 2 / (period + 1)
-    result = float(np.mean(values[:period]))
-    for value in values[period:]:
-        result = (value - result) * multiplier + result
-
-    return float(result)
+    return recursive_average(values, period, 2.0 / (period + 1))
 
 
 def ema_series(values: pd.Series, period: int) -> pd.Series:

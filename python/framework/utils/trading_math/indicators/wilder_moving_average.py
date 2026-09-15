@@ -22,6 +22,10 @@ This is part of a single-source module: never reimplement it, never bypass it.
 import numpy as np
 import pandas as pd
 
+from python.framework.utils.trading_math.indicators.recursive_average import (
+    recursive_average,
+)
+
 # Measured 2026-09-14 over periods 2-50: five periods leave the seed holding under
 # 1.8 % of its own weight — the same residual EMA_WARMUP_FACTOR buys in three.
 RMA_WARMUP_FACTOR = 5
@@ -55,15 +59,7 @@ def rma(values: np.ndarray, period: int) -> float:
     Returns:
         Wilder's moving average at the newest value
     """
-    if len(values) < period:
-        return float(np.mean(values))
-
-    multiplier = 1.0 / period
-    result = float(np.mean(values[:period]))
-    for value in values[period:]:
-        result = (value - result) * multiplier + result
-
-    return float(result)
+    return recursive_average(values, period, 1.0 / period)
 
 
 def rma_series(values: pd.Series, period: int) -> pd.Series:

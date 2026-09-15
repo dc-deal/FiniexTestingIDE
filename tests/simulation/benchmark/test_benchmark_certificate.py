@@ -26,6 +26,27 @@ from python.framework.reporting.certificates.certificate_index import Certificat
 from python.framework.store.store_registrations import CERTIFICATES_ROOT
 
 BENCHMARK_REPORTS_DIR = Path(__file__).parent / 'reports'
+REFERENCE_SYSTEMS_PATH = Path(__file__).parent / 'config' / 'reference_systems.json'
+
+
+def _current_baseline_created() -> Optional[str]:
+    """
+    When the registered baseline was last re-created — the generation boundary.
+
+    Re-registering a baseline is what DECLARES older measurements incomparable, so it is also
+    where a shape comparison has to stop. Returns None when no baseline says, in which case the
+    caller compares everything rather than nothing: an absent boundary must not silently switch
+    a guard off.
+
+    Returns:
+        The ISO-8601 stamp of the newest registered baseline, or None
+    """
+    if not REFERENCE_SYSTEMS_PATH.exists():
+        return None
+    systems = json.loads(REFERENCE_SYSTEMS_PATH.read_text(encoding='utf-8')).get('systems', {})
+    stamps = [s['baseline']['created'] for s in systems.values()
+              if s.get('baseline', {}).get('created')]
+    return max(stamps) if stamps else None
 
 
 def _find_latest_report() -> Optional[Path]:
@@ -307,21 +328,35 @@ class TestBreakdownShape:
 
     def test_committed_reports_agree_on_their_shape(self):
         """
-        Runs over the committed artifacts — and says so when there is nothing to compare.
+        Runs over the committed artifacts of the CURRENT baseline generation.
 
-        The breakdown is new, so no committed report carries one yet. A loop over an empty set
-        would pass while proving nothing, so this SKIPS with a reason and starts asserting by
-        itself once two certificates have been taken with it.
+        Two boundaries, and both are deliberate. The breakdown is newer than most reports, so
+        one without it carries nothing to compare and is skipped. And a report taken before the
+        registered baseline was last re-created belongs to a different generation: re-registering
+        a baseline is the act that DECLARES the old numbers incomparable, so asserting that they
+        still agree would assert the opposite of what the registration said. Same shape as an
+        index's LOGIC_VERSION — the generation boundary is where comparison stops, not where it
+        gets louder.
+
+        The guard keeps all its force inside a generation, which is where a shape change would
+        actually be silent: within one baseline, an added or renamed operation still fails here.
+
+        A loop over fewer than two reports would pass while proving nothing, so it SKIPS with a
+        reason instead.
         """
+        generation_start = _current_baseline_created()
         reports = []
         for path in sorted(BENCHMARK_REPORTS_DIR.glob('benchmark_report_*.json')):
             data = json.loads(path.read_text(encoding='utf-8'))
-            if data.get('breakdown'):
-                reports.append((path.name, data))
+            if not data.get('breakdown'):
+                continue
+            if generation_start and data.get('timestamp', '') < generation_start:
+                continue
+            reports.append((path.name, data))
         if len(reports) < 2:
             pytest.skip(
-                f'{len(reports)} committed report(s) carry a breakdown — at least two are '
-                f'needed before shapes can be compared')
+                f'{len(reports)} committed report(s) of the current baseline generation carry '
+                f'a breakdown — at least two are needed before shapes can be compared')
         for (older_name, older), (newer_name, newer) in zip(reports, reports[1:]):
             diff = compare_breakdown_shape(older, newer)
             assert not diff, (
