@@ -573,7 +573,7 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
         Load API credentials via cascade: user_configs/credentials/ → configs/credentials/.
 
         Args:
-            credentials_filename: Credentials filename (e.g., 'kraken_credentials.json')
+            credentials_filename: Credentials filename (e.g., 'venues/kraken_credentials.json')
 
         Returns:
             (api_key, api_secret) tuple

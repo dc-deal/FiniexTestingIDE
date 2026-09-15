@@ -57,16 +57,29 @@ was allowed, rather than as an authentication error anyone would recognise.
 The tracked file carries the development address, which is harmless, and leaves the production
 address **empty**; the real one lives in `user_configs/`.
 
-## When this folder gets subdirectories
+## The three directories
 
-Not yet, and the trigger is countable rather than a matter of taste: **when the peer credentials
-alone would fill three files**, the folder splits into `inbound/` · `peers/` · `venues/`. Until
-then a subdirectory holding one file is the case the subdirectory threshold explicitly excludes.
+```
+configs/credentials/
+  inbound/   consumer_tokens.json                      who may call us
+  peers/     rag_*, collector_*                        sibling projects, read-only
+  venues/    kraken_credentials.json                   real money
+```
 
-The pressure is real and recent. The folder held a single file from March to August 2026; four more
-arrived in the three weeks to 2026-09-15, each of them as "just one more file". That is how a flat
-namespace stops being readable — not through one wrong decision, but through several right ones in
-a row.
+Split on 2026-09-15, when the peer credentials reached four files. The pressure was recent: the
+folder held a single file from March to August 2026, and four more arrived in the three weeks
+before the split, each of them as "just one more file". That is how a flat namespace stops being
+readable — not through one wrong decision, but through several right ones in a row.
+
+A reader resolves a credential by joining a directory with a **relative path**, so the subdirectory
+travels in the configured name (`peers/rag_credentials.json`) and the cascade
+`user_configs/credentials/` → `configs/credentials/` needs no change.
+
+**One thing the split nearly broke, recorded because it would have failed silently.** The guard that
+refuses a real credential read from the tracked copy tested the *immediate* parent directory. Under
+`configs/credentials/venues/…` that parent is `venues`, the test turned false, and the guard would
+have stopped guarding — on the one file that can move money. It now matches `configs/credentials`
+at any depth. A safety check that is keyed to a layout has to be re-read when the layout moves.
 
 ## Adding a peer
 

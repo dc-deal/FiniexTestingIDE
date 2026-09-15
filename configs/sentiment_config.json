@@ -5,11 +5,11 @@
     "endpoints": {
       "dev": {
         "base_url": "http://host.docker.internal:8100",
-        "credentials_file": "rag_credentials_dev.json"
+        "credentials_file": "peers/rag_credentials_dev.json"
       },
       "production": {
         "base_url": "",
-        "credentials_file": "rag_credentials.json"
+        "credentials_file": "peers/rag_credentials.json"
       }
     }
   },
