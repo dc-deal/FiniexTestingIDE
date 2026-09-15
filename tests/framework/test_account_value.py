@@ -17,6 +17,7 @@ quantity is the subject.
 """
 
 from datetime import datetime, timezone
+from typing import Dict, Optional
 
 import pytest
 
@@ -44,12 +45,17 @@ class _NullLogger:
     def error(self, *args, **kwargs): pass
 
 
-def _portfolio(spot_mode: bool = False) -> PortfolioManager:
+def _portfolio(
+    spot_mode: bool = False,
+    initial_balances: Optional[Dict[str, float]] = None,
+) -> PortfolioManager:
     """
     Build a portfolio over the real MT5 broker config.
 
     Args:
         spot_mode: Build the asset-inventory portfolio instead of the margin one
+        initial_balances: Asset inventory for spot mode — a holding is what makes a spot
+            account value move at all, since it lives in the balances and not in a position
 
     Returns:
         A PortfolioManager with a fixed clock
@@ -59,6 +65,7 @@ def _portfolio(spot_mode: bool = False) -> PortfolioManager:
         broker_config=BrokerConfigFactory.build_broker_config(_MT5_CONFIG),
         leverage=500, margin_call_level=50.0, stop_out_level=20.0,
         spot_mode=spot_mode,
+        initial_balances=initial_balances,
         clock_fn=lambda: _CLOCK)
 
 
@@ -157,7 +164,7 @@ class TestTheDrawdownSeriesAndTheBreakerShareIt:
         portfolio.sample_equity()
 
         value = portfolio.get_account_value()
-        assert portfolio.get_portfolio_statistics().max_drawdown == pytest.approx(_BALANCE - value), (
+        assert portfolio.get_portfolio_statistics().account_max_drawdown == pytest.approx(_BALANCE - value), (
             'the series and the breaker would then disagree about whether the account lost '
             'anything, and the report shows one of the two')
 
@@ -186,3 +193,93 @@ class TestTheMinFloorMeansTheSameThingInBothModels:
             'settled cash never reaches the floor — that was the defect')
         assert portfolio.get_account_value() < floor, (
             'the floor is now reachable by an open loss, which is the whole point')
+
+
+class TestTheDrawdownPercentageIsMeasuredAgainstThePeakOfTheMoment:
+    """
+    The percentage and the two floats beside it belong to DIFFERENT instants.
+
+    `account_max_drawdown` is the deepest decline; `max_equity` is the highest point ever reached.
+    But the deepest decline fell from whatever peak stood AT THE TIME, and a later, higher
+    peak does not make it shallower. So dividing the two finished figures by each other is
+    not the maximum drawdown percentage — it is a smaller number, and it is smaller on
+    exactly the runs that recovered, which is every profitable one.
+
+    This is why the percentage is carried per sample rather than derived at the end, and it
+    is what puts the two pipelines on one construction: the live safety reading has always
+    divided by its baseline of the moment (#497).
+    """
+
+    def test_a_later_higher_peak_does_not_flatter_the_earlier_decline(self):
+        portfolio = _portfolio()
+        _open_long(portfolio)
+
+        _mark(portfolio, _ENTRY + 0.0100)
+        portfolio.sample_equity()
+        peak = portfolio.get_account_value()
+
+        _mark(portfolio, _ENTRY - 0.0050)
+        portfolio.sample_equity()
+        trough = portfolio.get_account_value()
+
+        _mark(portfolio, _ENTRY + 0.0200)
+        portfolio.sample_equity()
+
+        stats = portfolio.get_portfolio_statistics()
+        assert stats.account_max_drawdown_pct == pytest.approx((peak - trough) / peak * 100)
+
+        naive = stats.account_max_drawdown / stats.max_equity * 100
+        assert stats.account_max_drawdown_pct > naive, (
+            f'the carried percentage is {stats.account_max_drawdown_pct:.2f} % and the quotient of '
+            f'the two finished figures is {naive:.2f} % — the quotient is what a reader gets '
+            f'when the report divides at the end, and it understates the risk that was taken')
+
+    def test_without_a_later_peak_the_two_constructions_agree(self):
+        """The guard against overcorrecting — they may differ only where they should."""
+        portfolio = _portfolio()
+        _open_long(portfolio)
+
+        _mark(portfolio, _ENTRY + 0.0100)
+        portfolio.sample_equity()
+        _mark(portfolio, _ENTRY - 0.0050)
+        portfolio.sample_equity()
+
+        stats = portfolio.get_portfolio_statistics()
+        assert stats.account_max_drawdown_pct == pytest.approx(
+            stats.account_max_drawdown / stats.max_equity * 100)
+
+    def test_an_account_that_only_rose_reports_no_drawdown(self):
+        portfolio = _portfolio()
+        _open_long(portfolio)
+
+        for step in (0.0050, 0.0100, 0.0200):
+            _mark(portfolio, _ENTRY + step)
+            portfolio.sample_equity()
+
+        assert portfolio.get_portfolio_statistics().account_max_drawdown_pct == 0.0
+
+    def test_spot_measures_it_the_same_way(self):
+        """
+        §31b: a money path is checked in BOTH account models, never reasoned through on one.
+
+        A spot holding lives in the BALANCES, so the account value moves with every price
+        without any position being open — which is precisely the model the thirty-day run
+        uses.
+        """
+        portfolio = _portfolio(
+            spot_mode=True, initial_balances={'USD': 5_000.0, 'EUR': 5_000.0})
+
+        _mark(portfolio, _ENTRY + 0.0100)
+        portfolio.sample_equity()
+        peak = portfolio.get_account_value()
+
+        _mark(portfolio, _ENTRY - 0.0050)
+        portfolio.sample_equity()
+        trough = portfolio.get_account_value()
+
+        _mark(portfolio, _ENTRY + 0.0200)
+        portfolio.sample_equity()
+
+        stats = portfolio.get_portfolio_statistics()
+        assert stats.account_max_drawdown_pct == pytest.approx((peak - trough) / peak * 100)
+        assert stats.account_max_drawdown_pct > stats.account_max_drawdown / stats.max_equity * 100

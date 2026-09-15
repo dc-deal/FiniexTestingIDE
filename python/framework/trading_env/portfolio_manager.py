@@ -153,8 +153,9 @@ class PortfolioManager:
         self._losing_trades = 0
         self._total_profit = 0.0
         self._total_loss = 0.0
-        self._max_drawdown = 0.0
+        self._account_max_drawdown = 0.0
         self._max_equity = self.balance
+        self._account_max_drawdown_pct = 0.0
 
         # Current market state (lazy evaluation)
         self._current_tick: Optional[TickData] = None
@@ -1185,48 +1186,82 @@ class PortfolioManager:
             the number. A caller that measures risk must treat None as "cannot measure yet",
             never as zero
         """
-        self._ensure_positions_updated()
-        if not self._spot_mode:
-            return self._calculate_equity()
-        if self._current_tick is None:
-            return None
-        return self.get_spot_equity(
-            (self._current_tick.bid + self._current_tick.ask) / 2.0)
+        # SPOT is answered from the BALANCES alone (`get_spot_equity` is O(1) and says so),
+        # so the position refresh below is not needed for the value — and in spot the swap
+        # accrual inside it is a no-op as well. Skipping it leaves the dirty flag standing
+        # for whoever actually needs marked positions, so the laziness is preserved rather
+        # than broken. This is what makes a per-tick drawdown affordable in the account
+        # model the 30-day run uses (#497).
+        if self._spot_mode:
+            if self._current_tick is None:
+                return None
+            return self.get_spot_equity(
+                (self._current_tick.bid + self._current_tick.ask) / 2.0)
 
-    def _extend_equity_curve(self) -> None:
+        self._ensure_positions_updated()
+        return self._calculate_equity()
+
+    def _extend_equity_curve(self, equity: Optional[float] = None) -> None:
         """
         Add one point to the equity curve and carry the running maximum and drawdown.
 
+        NOTE the name overpromises and deliberately stays: no curve is retained. Two floats
+        are carried, and nothing else — a retained series at tick cadence over thirty days is
+        unbounded memory and belongs to #476's fragments (#497).
+
+        Args:
+            equity: A value the caller already holds, to avoid a second evaluation of the
+                same quantity on the same tick. None evaluates it here
+
         Returns:
-            None — updates `_max_equity` / `_max_drawdown` in place
+            None — updates `_max_equity` / `_account_max_drawdown` in place
         """
-        equity = self.get_account_value()
+        if equity is None:
+            equity = self.get_account_value()
         if equity is None:
             return
 
         if equity > self._max_equity:
             self._max_equity = equity
         drawdown = self._max_equity - equity
-        if drawdown > self._max_drawdown:
-            self._max_drawdown = drawdown
+        if drawdown > self._account_max_drawdown:
+            self._account_max_drawdown = drawdown
 
-    def sample_equity(self) -> None:
+        # The PERCENTAGE is measured against the peak STANDING AT THIS MOMENT, and that is
+        # the whole reason it is carried here rather than derived later from the two floats
+        # above. Those two describe different instants: the deepest decline fell from the
+        # peak that was current THEN, and a later, higher peak does not make it shallower.
+        # Dividing the final figures by each other understates every run that recovered —
+        # which is every profitable one. The live safety reading has always divided by its
+        # baseline of the moment (autotrader_tick_loop.py), so this is also what puts the
+        # two pipelines on one construction (#497).
+        if self._max_equity > 0:
+            drawdown_pct = drawdown / self._max_equity * 100.0
+            if drawdown_pct > self._account_max_drawdown_pct:
+                self._account_max_drawdown_pct = drawdown_pct
+
+    def sample_equity(self, equity: Optional[float] = None) -> None:
         """
-        Sample the equity curve once, outside a position close (#492).
+        Add one point to the equity series (#492, widened by #497).
 
-        `_max_equity` / `_max_drawdown` are otherwise only written by `_update_statistics`,
-        whose callers are both position CLOSES — so the series behind the reported drawdown
-        consists of one point per closed trade. The run end used to contribute its last
-        point by force-closing everything; nothing does now, so a run holding a position at
-        the end would report the drawdown it had at its last close and nothing after.
+        The reported drawdown is only as true as this series is dense. It used to be written
+        by `_update_statistics` alone, whose two callers are both position CLOSES — which
+        makes the number the largest decline across a string of closed trades rather than
+        the largest decline of the equity curve. Those are two different measures, and only
+        the second one is what "maximum drawdown" means outside this repository.
 
-        Called at the capture point of both pipelines. The formula it samples with is
-        `get_account_value`, shared with the close path so the series has ONE scale.
+        So a close is now one REASON to sample among others, never the only one. Both
+        pipelines call this per tick; the run end keeps its own sample as the floor.
+
+        Args:
+            equity: A value the caller already holds — the live tick loop evaluates exactly
+                this quantity for its circuit breaker and would otherwise pay for it twice.
+                None evaluates it here
 
         Returns:
             None — updates the running maximum and drawdown in place
         """
-        self._extend_equity_curve()
+        self._extend_equity_curve(equity)
 
     def get_total_trades(self) -> int:
         """Get total number of completed trades."""
@@ -1341,8 +1376,9 @@ class PortfolioManager:
             losing_trades=self._losing_trades,
             total_profit=self._total_profit,
             total_loss=self._total_loss,
-            max_drawdown=self._max_drawdown,
+            account_max_drawdown=self._account_max_drawdown,
             max_equity=self._max_equity,
+            account_max_drawdown_pct=self._account_max_drawdown_pct,
             win_rate=win_rate,
             profit_factor=profit_factor,
             total_spread_cost=self._cost_tracking.total_spread_cost,
@@ -1383,8 +1419,9 @@ class PortfolioManager:
         self._losing_trades = 0
         self._total_profit = 0.0
         self._total_loss = 0.0
-        self._max_drawdown = 0.0
+        self._account_max_drawdown = 0.0
         self._max_equity = self.balance
+        self._account_max_drawdown_pct = 0.0
 
     def _log_trade_record(self, record: TradeRecord) -> None:
         """

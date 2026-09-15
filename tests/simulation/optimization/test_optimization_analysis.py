@@ -4,7 +4,14 @@ from datetime import datetime, timezone
 
 import pytest
 
-from python.framework.optimization.optimization_analysis import rank, sensitivity, summarize_sweeps
+from python.framework.optimization.optimization_analysis import (
+    degenerate_ranking_advisory,
+    mixed_logic_version_advisory,
+    rank,
+    sensitivity,
+    summarize_sweeps,
+)
+from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 
 
 @pytest.fixture
@@ -156,3 +163,159 @@ def test_summarize_sweeps_ignores_non_sweep_runs(tmp_ledger, make_run_summary, m
     """A plain (non-sweep) run is not a sweep → never appears in the sweep list."""
     tmp_ledger.append(make_run_summary(), make_provenance(run_id='plain'))  # no sweep_id
     assert summarize_sweeps(tmp_ledger.read_rows()) == []
+
+
+class TestARankingWhoseWinnerNeverTraded:
+    """
+    A combination that never opened a position scores perfectly on every measure of loss.
+
+    Pardo names it for drawdown: *"minimum drawdown is not enough as a sole criterion, since
+    a drawdown of zero occurs when a model has no losing trades and possibly no winning
+    trades."* Making the measure honest does not help — a model that did nothing genuinely
+    has no drawdown, and minimising genuinely prefers it.
+
+    So the detector names no KPI. The ranking is misleading exactly when its WINNER did
+    nothing, whatever it was ranked by, and that is what is tested here (#497).
+    """
+
+    @pytest.fixture
+    def drawdown_sweep(self, tmp_ledger, make_run_summary, make_provenance):
+        """Two combinations that never traded, two that did — ranked by drawdown ascending."""
+        combos = [
+            ({'decision_logic_config.min_confidence': 0.99}, 0.0, 0),
+            ({'decision_logic_config.min_confidence': 0.95}, 0.0, 0),
+            ({'decision_logic_config.min_confidence': 0.60}, 412.5, 38),
+            ({'decision_logic_config.min_confidence': 0.40}, 980.0, 71),
+        ]
+        for i, (params, dd, trades) in enumerate(combos):
+            tmp_ledger.append(
+                make_run_summary(max_drawdown=dd, total_trades=trades, net_pnl=trades * 1.5),
+                make_provenance(param_hash=f'd{i}', run_id=f'd{i}',
+                                scenario_set_name=f's__c{i:03d}',
+                                sweep_id='sweep_D', sweep_params=params))
+        return tmp_ledger.read_rows(sweep_id='sweep_D')
+
+    def test_it_fires_and_names_what_the_reader_needs(self, drawdown_sweep):
+        ranked = rank(drawdown_sweep, 'account_max_drawdown', maximize=False)
+        advisory = degenerate_ranking_advisory(ranked, 'account_max_drawdown')
+
+        assert advisory is not None, (
+            'the two zero-trade combinations rank first on a minimised drawdown — if this '
+            'passes silently, the sweep recommends the strategy that does not trade')
+        assert advisory.zero_trade_count == 2
+        assert len(advisory.zero_trade_leaders) == 2
+        assert advisory.best_trading_row is not None
+        assert advisory.best_trading_row.total_trades == 38, (
+            'the shallowest drawdown among those that traded is the row the reader wants')
+        assert advisory.best_trading_rank == 3
+        assert advisory.total_ranked == 4
+
+    def test_it_stays_silent_when_the_winner_traded(self, drawdown_sweep):
+        """The guard against a warning that cries on every sweep — it must be rare."""
+        ranked = rank(drawdown_sweep, 'net_pnl', maximize=True)
+
+        assert degenerate_ranking_advisory(ranked, 'net_pnl') is None
+
+    def test_it_names_no_KPI_of_its_own(self, drawdown_sweep):
+        """
+        The condition is 'the winner did nothing', not 'the objective was account_max_drawdown'.
+
+        Minimising net_pnl is a different objective with the same failure, and a detector
+        keyed on a list of KPI names would miss it.
+        """
+        ranked = rank(drawdown_sweep, 'total_trades', maximize=False)
+
+        assert degenerate_ranking_advisory(ranked, 'total_trades') is not None
+
+    def test_a_sweep_where_nothing_traded_says_so(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        for i in range(3):
+            tmp_ledger.append(
+                make_run_summary(max_drawdown=0.0, total_trades=0),
+                make_provenance(param_hash=f'z{i}', run_id=f'z{i}',
+                                scenario_set_name=f's__c{i:03d}', sweep_id='sweep_Z',
+                                sweep_params={'decision_logic_config.min_confidence': 0.99}))
+        ranked = rank(tmp_ledger.read_rows(sweep_id='sweep_Z'), 'account_max_drawdown', maximize=False)
+
+        advisory = degenerate_ranking_advisory(ranked, 'account_max_drawdown')
+
+        assert advisory is not None
+        assert advisory.best_trading_row is None, (
+            'there is no row to point the reader at, and the message has to say that rather '
+            'than leaving the field blank')
+        assert advisory.zero_trade_count == 3
+
+    def test_an_empty_ranking_is_not_a_warning(self):
+        assert degenerate_ranking_advisory([], 'account_max_drawdown') is None
+
+
+class TestARankingThatSpansLogicVersions:
+    """
+    A ledger column can keep its name while the measure behind it changes.
+
+    That is not hypothetical: the account drawdown changed from "the largest decline across
+    closed trades" to "the largest decline of the equity curve" under a stable column name,
+    and nothing in a fragment said which one it held. A ranking across that boundary is
+    best-first over entries that answer different questions, and it looks exactly like a
+    valid ranking — which is why the row carries its producing version (#497).
+    """
+
+    def _sweep(self, tmp_ledger, make_run_summary, make_provenance, versions):
+        for i, version in enumerate(versions):
+            tmp_ledger.append(
+                make_run_summary(net_pnl=float(i)),
+                make_provenance(param_hash=f'v{i}', run_id=f'v{i}',
+                                scenario_set_name=f's__c{i:03d}', sweep_id='sweep_V',
+                                sweep_params={'decision_logic_config.sl_pips': 10 + i}))
+        rows = tmp_ledger.read_rows(sweep_id='sweep_V')
+        for row, version in zip(rows, versions):
+            row.logic_version = version
+        return rows
+
+    def test_one_version_is_not_a_warning(self, tmp_ledger, make_run_summary, make_provenance):
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance, [3, 3, 3])
+
+        assert mixed_logic_version_advisory(rows) is None
+
+    def test_two_versions_are(self, tmp_ledger, make_run_summary, make_provenance):
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance, [2, 3, 3])
+
+        advisory = mixed_logic_version_advisory(rows)
+
+        assert advisory is not None
+        assert advisory.versions == [2, 3]
+        assert advisory.counts == [1, 2]
+        assert advisory.unknown_count == 0
+
+    def test_an_unversioned_row_sorts_first_and_is_counted_as_unknown(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        """
+        None means the version was never recorded, not that the row is old.
+
+        Sorting it first is what a reader needs: it is the entry nothing can resolve
+        automatically, so it is the one that decides whether the ranking is usable.
+        """
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance, [3, None, 3])
+
+        advisory = mixed_logic_version_advisory(rows)
+
+        assert advisory is not None
+        assert advisory.versions == [None, 3]
+        assert advisory.unknown_count == 1
+
+    def test_an_empty_ranking_is_not_a_warning(self):
+        assert mixed_logic_version_advisory([]) is None
+
+
+class TestTheLedgerStampsTheVersionItWroteWith:
+    """The column is only worth having if the writer fills it — and from ONE source."""
+
+    def test_a_freshly_written_row_carries_the_index_logic_version(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        tmp_ledger.append(make_run_summary(net_pnl=1.0), make_provenance())
+
+        row = tmp_ledger.read_rows()[0]
+
+        assert row.logic_version == RunLedgerIndex.LOGIC_VERSION, (
+            'the row and the index must be stamped from the same constant, or the two '
+            'disagree about which logic produced the data the index describes')

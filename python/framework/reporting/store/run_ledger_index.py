@@ -33,7 +33,19 @@ class RunLedgerIndex(AbstractStoreIndex):
         columns: The ledger's canonical column set
     """
 
-    LOGIC_VERSION: int = 2
+    # 3 (#497): the column is now `account_max_drawdown` and it holds a different measure
+    # than the `max_drawdown` before it. Two changes in one version, because they shipped
+    # together:
+    #   - The MEASURE: the largest decline of the EQUITY CURVE, sampled on every TICK in
+    #     both pipelines. It used to be the largest decline across CLOSED TRADES, which is
+    #     one of the two things Pardo names under the one word and not the one people mean.
+    #   - The NAME: `account_` says which of the three drawdowns this is — the account's,
+    #     not a single trade's excursion (`mae_pnl`) and not the safety reading against a
+    #     configured baseline (`SafetyConfig.max_drawdown_pct`, a threshold).
+    # Fragments written before this version carry the old column name and were renamed in
+    # place by `python/experiments/migrate_ledger_drawdown_column.py`; their VALUES are
+    # still the old measure, so a sweep must not rank across the boundary.
+    LOGIC_VERSION: int = 3
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

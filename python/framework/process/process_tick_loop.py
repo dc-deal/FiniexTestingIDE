@@ -254,6 +254,35 @@ def execute_tick_loop(
                 profile_times['bar_rendering'] += (time.perf_counter() - t3) * 1000
                 profile_counts['bar_rendering'] += 1
 
+            # === 2b. Equity sample (#497) ===
+            # BEFORE the clipping gate, with the broker path and the bar rendering, and for
+            # the same reason they are there: a drawdown measures what the MARKET did to the
+            # account, not whether the algo got to look. A clipped tick still happened, and
+            # the account really was that far down.
+            #
+            # Deliberately outside the portfolio's lazy cache as well: the account value is
+            # the input every risk measure reads, and some of what it depends on cannot be
+            # cached, so the mechanism sits on the tick update rather than behind the
+            # laziness that exists for the algo path.
+            #
+            # NOT guarded on an open position, which an earlier attempt was: in SPOT a
+            # holding lives in the BALANCES, so its value moves with every price whether or
+            # not a position is open — the guard would have skipped exactly the account
+            # model the 30-day run uses.
+            #
+            # Cost measured 2026-09-14: 0.007 ms/tick on MARGIN (6.7 % of tick time),
+            # 0.001 ms on SPOT (1.1 %) — margin must re-mark every position against the new
+            # price, spot multiplies a balance. This raises the sim's throughput floor, so
+            # the BENCHMARK baseline and its certificate are re-registered BY HAND with this
+            # as the stated reason (§42): a deliberate regression must not look like one
+            # that crept in. #366's stop-out pass rides this sample rather than opening a
+            # second one.
+            if profiling_enabled: t14 = time.perf_counter()
+            portfolio.sample_equity()
+            if profiling_enabled:
+                profile_times['equity_sample'] += (time.perf_counter() - t14) * 1000
+                profile_counts['equity_sample'] += 1
+
             # === CLIPPING GATE ===
             # Ticks flagged by tick processing budget skip the algo path.
             # The broker and bar rendering already processed them above.
@@ -315,6 +344,7 @@ def execute_tick_loop(
                     scenario_logger.info(
                         f'🛑 Session end requested: {trade_simulator.get_session_end_reason()}')
                     break
+
 
             # === 6. LIVE UPDATES (Time-based) ===
             if profiling_enabled: t11 = time.perf_counter()

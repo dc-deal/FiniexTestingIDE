@@ -159,8 +159,8 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
             0.0 if total_profit == 0 else None)
     max_drawdown = 0.0
     for r in rows:
-        if abs(r.max_drawdown) > abs(max_drawdown):
-            max_drawdown = r.max_drawdown
+        if abs(r.account_max_drawdown) > abs(max_drawdown):
+            max_drawdown = r.account_max_drawdown
     return PortfolioAggregateRow(
         currency=currency,
         unit_count=len(rows),
@@ -172,7 +172,7 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
         total_profit=total_profit,
         total_loss=total_loss,
         net_profit=total_profit - total_loss,
-        max_drawdown=max_drawdown,
+        account_max_drawdown=max_drawdown,
         total_fees=sum(r.total_fees for r in rows),
         unrealized_pnl=sum(r.unrealized_pnl for r in rows),
         final_equity=sum(r.final_equity for r in rows),
@@ -207,14 +207,20 @@ def aggregate_full_portfolio(
     winning, losing = headline.winning_trades, headline.losing_trades
     total_profit, total_loss = headline.total_profit, headline.total_loss
 
-    # Worst-magnitude drawdown + peak equity, with scenario attribution (order-preserving)
+    # Worst-magnitude drawdown + peak equity, with scenario attribution (order-preserving).
+    # The percentage travels WITH the worst drawdown's own row rather than being divided out
+    # of the two aggregates: those two can come from DIFFERENT scenarios, so the old quotient
+    # put one scenario's decline over another's peak, and the console line printed the result
+    # beside a third figure's scenario name (#497).
     max_dd = 0.0
     max_dd_scn = ''
+    max_dd_pct = 0.0
     max_eq = 0.0
     max_eq_scn = ''
     for r in rows:
-        if abs(r.max_drawdown) > abs(max_dd):
-            max_dd, max_dd_scn = r.max_drawdown, r.name
+        if abs(r.account_max_drawdown) > abs(max_dd):
+            max_dd, max_dd_scn, max_dd_pct = (
+                r.account_max_drawdown, r.name, r.account_max_dd_pct)
         if r.max_equity > max_eq:
             max_eq, max_eq_scn = r.max_equity, r.name
 
@@ -247,8 +253,8 @@ def aggregate_full_portfolio(
         balance_pnl=balance_pnl,
         balance_pnl_pct=(balance_pnl / initial * 100) if initial > 0 else 0.0,
         recovery_factor=balance_pnl / abs(max_dd) if max_dd != 0 else 0.0,
-        max_dd_pct=(max_dd / max_eq * 100) if max_eq > 0 else 0.0,
-        max_drawdown_scenario=max_dd_scn,
+        account_max_dd_pct=max_dd_pct,
+        account_max_drawdown_scenario=max_dd_scn,
         max_equity=max_eq,
         max_equity_scenario=max_eq_scn,
         total_spread_cost=total_spread,

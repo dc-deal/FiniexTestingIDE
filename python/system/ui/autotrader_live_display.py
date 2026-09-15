@@ -381,7 +381,13 @@ class AutoTraderLiveDisplay:
                 min_part = f'{min_label}: off'
 
             if safety.max_drawdown_pct > 0:
-                dd_part = f'dd: {stats.safety_drawdown_pct:.1f}% / {safety.max_drawdown_pct:.1f}%'
+                # `safety_dd` rather than `dd` (#497): this is the SAFETY reading, measured
+                # against the configured baseline, and the report shows a CURVE reading —
+                # peak-to-trough — beside it. Two honest measures that may legitimately
+                # differ, and two bare percentages under one word is how they get read as
+                # one number that disagrees with itself.
+                dd_part = (f'safety_dd: {stats.safety_drawdown_pct:.1f}% / '
+                           f'{safety.max_drawdown_pct:.1f}%')
             else:
                 dd_part = 'dd: off'
 

@@ -46,7 +46,8 @@ def _stats_holding_one_position() -> PortfolioStats:
     return PortfolioStats(
         broker_type=BrokerType.KRAKEN_SPOT, total_trades=0, total_long_trades=0,
         total_short_trades=0, winning_trades=0, losing_trades=0, total_profit=0.0,
-        total_loss=0.0, max_drawdown=0.0, max_equity=1000.0, win_rate=0.0,
+        total_loss=0.0, account_max_drawdown=0.0, max_equity=1000.0, account_max_drawdown_pct=0.0,
+        win_rate=0.0,
         profit_factor=None, total_spread_cost=0.0, total_commission=0.0, total_swap=0.0,
         maker_fee=0.0, taker_fee=0.0, total_fees=1.57, currency='USD',
         broker_name='Kraken', current_conversion_rate=1.0, current_balance=358.80,

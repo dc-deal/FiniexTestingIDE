@@ -228,8 +228,10 @@ class PortfolioUnitRow(BaseModel):
     total_profit: float
     total_loss: float
     net_profit: float       # total_profit - total_loss
-    max_drawdown: float
-    max_dd_pct: float = 0.0     # max_drawdown / max_equity — derived here, never in a renderer
+    # ACCOUNT drawdown — the whole account from its high to its low. A TRADE's own
+    # excursion is `TradeRecord.mae_pnl` (#389) and is a different number.
+    account_max_drawdown: float
+    account_max_dd_pct: float = 0.0   # worst decline over the peak it fell FROM, per tick
     total_fees: float
     # Full projection — the per-scenario linear block renders purely from these (defaulted:
     # additive columns; the per-currency aggregated section stays on PortfolioAggregator).
@@ -298,7 +300,7 @@ class PortfolioAggregateRow(BaseModel):
     total_profit: float
     total_loss: float
     net_profit: float
-    max_drawdown: float
+    account_max_drawdown: float
     total_fees: float
     # #492 — the wealth view beside the realised one. Summed across the currency's units,
     # never folded into net_profit.
@@ -526,7 +528,7 @@ class RunSummaryCurrency(BaseModel):
     net_pnl: float          # ← PortfolioAggregateRow.net_profit
     profit_factor: float | None  # ← PortfolioAggregateRow (None = no losing trade)
     win_rate: float         # ← PortfolioAggregateRow.win_rate
-    max_drawdown: float     # ← PortfolioAggregateRow.max_drawdown
+    account_max_drawdown: float     # ← PortfolioAggregateRow.account_max_drawdown
     total_fees: float       # ← PortfolioAggregateRow.total_fees
     total_trades: int
     winning_trades: int
@@ -577,6 +579,10 @@ class RunResultRow(BaseModel):
     so the optimization analysis + the (future) API read typed objects, not string-keyed DataFrame cells.
     """
     # Identity + provenance
+    # None = written before row versioning existed, i.e. the producing logic is UNKNOWN —
+    # never a substituted version, for the same reason `profit_factor` is None rather than
+    # 0.0 when undefined. A ranking that mixes versions compares measures that changed (#497).
+    logic_version: int | None = None
     param_hash: str
     status: str = 'ok'                           # 'ok' | 'error' (error = no usable data, excluded from ranking)
     error: str | None = None                     # failure reason when status == 'error'
@@ -603,7 +609,7 @@ class RunResultRow(BaseModel):
     expectancy: float = 0.0
     profit_factor: float | None = None  # None = undefined (no losing trade)
     win_rate: float = 0.0
-    max_drawdown: float = 0.0
+    account_max_drawdown: float = 0.0
     unrealized_pnl: float = 0.0
     final_equity: float = 0.0
     open_position_count: int = 0
@@ -1443,8 +1449,8 @@ class AggregatedPortfolioRow(BaseModel):
     balance_pnl_pct: float = 0.0
     # Risk
     recovery_factor: float = 0.0
-    max_dd_pct: float = 0.0
-    max_drawdown_scenario: str = ''
+    account_max_dd_pct: float = 0.0
+    account_max_drawdown_scenario: str = ''
     max_equity: float = 0.0
     max_equity_scenario: str = ''
     # Cost split
