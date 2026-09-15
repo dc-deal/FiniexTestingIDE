@@ -9,7 +9,7 @@
 #property copyright "FiniexTestingIDE"
 #property strict
 
-#define EA_VERSION           "V1.0.9"
+#define EA_VERSION           "V1.1.0"
 // Schema version of the exported JSON. A constant, not an input: the version
 // identifies the code that wrote the file and must not be set per chart.
 // collected_msc is UTC - it comes from the OS clock, not from device local time.
@@ -71,6 +71,9 @@ input bool StopOnFatalErrors = false;
 // Globale Variablen
 int fileHandle = INVALID_HANDLE;
 string currentFileName = "";
+// Work name the export is written under. A consumer globs *_ticks.json, so a
+// file must not carry the final name while it is still incomplete and locked.
+string currentWorkFileName = "";
 int tickCounter = 0;
 datetime fileStartTime;
 
@@ -461,14 +464,20 @@ bool CreateNewExportFile()
     StringReplace(dateTimeStr, ":", "");
     StringReplace(dateTimeStr, " ", "_");
     
-    currentFileName = StringFormat("%s%s_%s_ticks.json", 
+    currentFileName = StringFormat("%s%s_%s_ticks.json",
                                    ExportPath, Symbol(), dateTimeStr);
-    
-    fileHandle = FileOpen(currentFileName, FILE_WRITE | FILE_TXT | FILE_ANSI);
-    
+
+    // Write under a name no consumer globs, and rename once the file is complete.
+    // Holding the final name open for the whole collection period would expose
+    // incomplete JSON under a name indistinguishable from a finished export - and
+    // the handle locks it exclusively while it is being written.
+    currentWorkFileName = currentFileName + ".part";
+
+    fileHandle = FileOpen(currentWorkFileName, FILE_WRITE | FILE_TXT | FILE_ANSI);
+
     if (fileHandle == INVALID_HANDLE)
     {
-        Print("FEHLER: Export-Datei konnte nicht erstellt werden: ", currentFileName);
+        Print("FEHLER: Export-Datei konnte nicht erstellt werden: ", currentWorkFileName);
         Print("Letzter Fehler: ", GetLastError());
         return false;
     }
@@ -557,7 +566,7 @@ bool CreateNewExportFile()
     FileWriteString(fileHandle, header);
     tickCounter = 0;
     
-    Print("✅ Neue Export-Datei erstellt: ", currentFileName);
+    Print("✅ Neue Export-Datei erstellt: ", currentWorkFileName);
     Print("   → Local Device Time: ", TimeToString(localTime, TIME_DATE | TIME_SECONDS));
     Print("   → Broker Server Time: ", TimeToString(brokerTime, TIME_DATE | TIME_SECONDS));
     Print("   → collected_msc Resyncs bisher: ", g_anchorResyncs);
@@ -767,7 +776,16 @@ void CloseCurrentFile()
         
         FileWriteString(fileHandle, footer);
         FileClose(fileHandle);
-        
+
+        // The rename is what makes the export appear complete or not at all.
+        // A failure here leaves the .part file: recoverable by hand, and never a
+        // half-written file under a name the import would pick up.
+        if (!FileMove(currentWorkFileName, 0, currentFileName, FILE_REWRITE))
+        {
+            Print("FEHLER: Export-Datei konnte nicht umbenannt werden: ", currentWorkFileName);
+            Print("Letzter Fehler: ", GetLastError());
+        }
+
         // Detailliertes Closing-Log
         Print("✅ Export-Datei geschlossen: ", currentFileName);
         Print(StringFormat("  → %d Ticks gesammelt", tickCounter));

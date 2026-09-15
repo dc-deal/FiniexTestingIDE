@@ -426,7 +426,7 @@ class TickDataImporter:
             'timestamp', 'time_msc', 'collected_msc',
             'bid', 'ask', 'last',
             'tick_volume', 'real_volume', 'chart_tick_volume',
-            'spread_points', 'spread_pct',
+            'spread_points', 'spread_pct', 'quote_age_ms',
             'tick_flags', 'session',
         ]
         extra_cols = [c for c in df.columns if c not in _PARQUET_COLUMNS]
@@ -617,6 +617,15 @@ class TickDataImporter:
         for col in int64_cols:
             if col in df.columns:
                 df[col] = df[col].astype('int64')
+
+        # Nullable by contract (collector format 1.6.0+): the age of the quote a
+        # trade executed against, or null where no quote had been observed yet.
+        # Pandas' capitalised Int32 is the one integer type that carries a null —
+        # plain int32 cannot, and float64 would silently restate an integer age.
+        nullable_int_cols = ['quote_age_ms']
+        for col in nullable_int_cols:
+            if col in df.columns:
+                df[col] = df[col].astype('Int32')
 
         return df
 

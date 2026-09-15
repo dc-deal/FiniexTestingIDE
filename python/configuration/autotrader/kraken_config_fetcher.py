@@ -513,11 +513,12 @@ class KrakenConfigFetcher(AbstractBrokerConfigFetcher):
             '_comment': 'Live broker config fetched from Kraken API',
             '_version': '1.1',
             'broker_type': broker_type,
+            # No symbol count here — this builds one symbol, the cache merge holds
+            # many, and len(symbols) beside it answers that without going stale.
             'export_info': {
                 'timestamp': now.isoformat(),
                 'source': 'Kraken REST API (live fetch)',
                 'exporter_version': '1.01',
-                'symbols_total': 1,
             },
             'broker_info': {
                 'company': 'Kraken',

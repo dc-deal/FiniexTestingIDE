@@ -239,6 +239,33 @@ class TestArchiveOrdering:
 
         assert validator.validate_archive_ordering(entries) == []
 
+    def test_shared_millisecond_at_a_rotation_boundary_is_not_an_overlap(self, validator):
+        """
+        A tie across a file boundary is normal venue behaviour, not an overlap.
+
+        Kraken fires several trades inside one millisecond routinely, and the
+        collector rotates at an exact tick count with no regard for whether that
+        count lands mid-millisecond. Measured on their side over 42,000 ticks:
+        72 % of BTCUSD ticks share their millisecond with another, and 18 of 35
+        rotation boundaries carried an equal stamp in BOTH time columns.
+
+        Both comparisons are therefore STRICT by necessity, not by accident.
+        Tightening either to `<=` reads like harmless hardening and would reject
+        more than half of a healthy archive's file boundaries — which is why this
+        case is pinned rather than left to the incidental coverage of the
+        continuous-archive test above.
+        """
+        entries = {'kraken_spot': {'BTCUSD': [
+            {'file': 'a.parquet', 'start_time': '2026-01-15T10:00:00+00:00',
+             'end_time': '2026-01-15T11:00:00.123000+00:00',
+             'collected_start': 1768471200000, 'collected_end': 1768474800123},
+            {'file': 'b.parquet', 'start_time': '2026-01-15T11:00:00.123000+00:00',
+             'end_time': '2026-01-15T12:00:00+00:00',
+             'collected_start': 1768474800123, 'collected_end': 1768478400000},
+        ]}}
+
+        assert validator.validate_archive_ordering(entries) == []
+
     def test_overlap_is_reported(self, validator):
         """Two collectors on one symbol would produce exactly this."""
         entries = {'mt5': {'EURUSD': [

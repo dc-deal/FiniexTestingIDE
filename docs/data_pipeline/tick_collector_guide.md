@@ -379,6 +379,12 @@ GBPUSD_20251123_143022_ticks.json
 USDJPY_20251124_080534_ticks.json
 ```
 
+A file being written carries a `.part` suffix and is renamed once it is closed. That
+suffix is the whole completeness contract: the import globs `*_ticks.json`, so a file
+under the final name is complete JSON or it does not exist. While collection runs, the
+handle also holds the file locked against every other process — which is why it must not
+wear a name a consumer would try to read.
+
 ---
 
 ## Expected Output Characteristics
