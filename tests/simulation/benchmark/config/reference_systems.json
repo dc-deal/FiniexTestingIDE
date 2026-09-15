@@ -34,8 +34,10 @@
             "tickrun_time_s": 17.0,
             "warmup_time_s": 6.5
           },
-          "reason": "A DELIBERATE regression, registered by hand so it cannot be mistaken for one that crept in (CLAUDE.md, git-state section). Throughput fell 29 % between 2026-08-26 and 2026-09-15, and it was attributed by profiling the SAME workload at four commits with an identical 49,196 worker passes in each: the 49 commits before the indicator centralisation made the worker path slightly FASTER (5.72 s -> 5.08 s), and the whole regression sits in one step (5.08 s -> 7.83 s). Of that, +1.54 s is the indicator library (#517): Wilder's RMA is the standard definition and needs five periods of history where the old inline RSI used one, so an RSI(14) reads 71 bars instead of 15 and does it on every tick. +0.18 s is the per-tick equity sample (#497), which is what makes the drawdown tick-exact in both pipelines. Both are correctness bought with throughput, and both were chosen knowingly. A vectorised closed form for the two exponential averages has already taken back 5.0 % of tick-run time (interleaved wall-clock A/B, no overlap between groups); this baseline is measured WITH it. What remains is the genuine cost of the standard definition, not an accident. The measurement also carries an asterisk worth keeping: warmup is unchanged (6.5 -> 6.6 s), which is the control proving the machine and the disk are not the cause."
-        }
+          "reason": "A DELIBERATE regression, registered by hand so it cannot be mistaken for one that crept in (CLAUDE.md, git-state section). Throughput fell 29 % between 2026-08-26 and 2026-09-15, and it was attributed by profiling the SAME workload at four commits with an identical 49,196 worker passes in each: the 49 commits before the indicator centralisation made the worker path slightly FASTER (5.72 s -> 5.08 s), and the whole regression sits in one step (5.08 s -> 7.83 s). Of that, +1.54 s is the indicator library (#517): Wilder's RMA is the standard definition and needs five periods of history where the old inline RSI used one, so an RSI(14) reads 71 bars instead of 15 and does it on every tick. +0.18 s is the per-tick equity sample (#497), which is what makes the drawdown tick-exact in both pipelines. Both are correctness bought with throughput, and both were chosen knowingly. A vectorised closed form for the two exponential averages has already taken back 5.0 % of tick-run time (interleaved wall-clock A/B, no overlap between groups); this baseline is measured WITH it. What remains is the genuine cost of the standard definition, not an accident. The measurement also carries an asterisk worth keeping: warmup is unchanged (6.5 -> 6.6 s), which is the control proving the machine and the disk are not the cause.",
+          "evidence": "docs/tests/simulation/benchmark_baseline_history.md"
+        },
+        "evidence": "docs/tests/simulation/benchmark_baseline_history.md"
       }
     }
   },
@@ -45,6 +47,7 @@
     "2. Note the performance metrics from the output",
     "3. Add a new entry to 'systems' with your hardware specs",
     "4. Set baseline metrics from your run",
-    "5. Use a descriptive system_id (e.g., 'intel_i9_12900k_24core')"
+    "5. Use a descriptive system_id (e.g., 'intel_i9_12900k_24core')",
+    "To RE-register an existing baseline (a deliberate slow-down or speed-up, never to make a red run green): write the entry in docs/tests/simulation/benchmark_baseline_history.md FIRST \u2014 it states what the entry has to carry \u2014 then set the metrics here and point 'evidence' at it."
   ]
 }

@@ -296,6 +296,11 @@ The benchmark scenario `backtesting_loadtest_40_scenarios.json` defines 40 USDJP
 
 ## Registering a New System
 
+**A baseline that MOVES needs its evidence written down**, and that record is
+[benchmark_baseline_history.md](benchmark_baseline_history.md) — what it has to carry, and why
+each past number is what it is. Registering a first system is the mechanical part below;
+re-registering an existing one is a decision, and the history is where it is defended.
+
 When running on a new system (different CPU, new machine), you must first register it before benchmark tests will pass.
 
 ### Step 1: Run the Benchmark Scenario Manually

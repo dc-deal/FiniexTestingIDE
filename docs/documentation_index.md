@@ -105,6 +105,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | Document | Description |
 |----------|-------------|
 | [Test Runner](tests/tests_runner_docs.md) | Unified runner, configuration, fail-fast |
+| [Benchmark Baseline History](tests/simulation/benchmark_baseline_history.md) | Why the throughput baseline is what it is — what a re-registration has to carry, and the evidence behind each change |
 | [Bar Parity Tests](tests/parity/bar_parity_tests.md) | Cross-pipeline parity: simulation vs. AutoTrader bar identity |
 | [Heartbeat Ghost-Pass Parity](tests/parity/heartbeat_ghost_tests.md) | Sim ghost-pass between ticks + weekend-gap gate (#360 Stage 2) |
 | [AutoTrader Config](tests/autotrader/config_tests.md) | What the live pipeline resolves before a session starts: `dry_run`, profile loadability, the account fee tier |
