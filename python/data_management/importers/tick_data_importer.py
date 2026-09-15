@@ -30,6 +30,10 @@ from python.framework.exceptions.data_quality_errors import (
 )
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.reporting.duplicate_report import DuplicateReport
+from python.framework.types.import_schema_types import (
+    ALREADY_CAPTURED_METADATA_KEYS,
+    NESTED_METADATA_KEYS,
+)
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
 from python.framework.validators.tick_import_validator import TickImportValidator
 
@@ -387,13 +391,14 @@ class TickDataImporter:
         }
 
         # Preserve original MQL5 metadata for traceability (source_meta_ prefix)
-        _NESTED_META_KEYS = {'symbol_info',
-                             'collection_settings', 'error_tracking'}
+        # Both key lists are declared in import_schema_types, beside the schema
+        # they describe. A nested block that is missing from NESTED_METADATA_KEYS
+        # falls to str() and lands as a Python repr rather than as JSON.
         for meta_key, meta_value in metadata.items():
-            if meta_key in _NESTED_META_KEYS:
+            if meta_key in NESTED_METADATA_KEYS:
                 parquet_metadata[f'source_meta_{meta_key}'] = json.dumps(
                     meta_value)
-            elif meta_key not in ('symbol', 'broker', 'ticks'):
+            elif meta_key not in ALREADY_CAPTURED_METADATA_KEYS:
                 parquet_metadata[f'source_meta_{meta_key}'] = str(meta_value)
 
         # ===========================================

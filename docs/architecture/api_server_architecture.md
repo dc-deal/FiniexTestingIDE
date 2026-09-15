@@ -142,8 +142,8 @@ is purely ADDITIVE — a forwarding IDE keeps working — so no consumer's addre
 for, and the change is announced to the consumers over the bus. That is a review obligation on this
 line, and the comment beside it says so.
 
-**Where tokens live.** `user_configs/credentials/api_tokens.json`, with a tracked placeholder at
-`configs/credentials/api_tokens.json` whose entries are all switched off — an example in a template
+**Where tokens live.** `user_configs/credentials/consumer_tokens.json`, with a tracked placeholder at
+`configs/credentials/consumer_tokens.json` whose entries are all switched off — an example in a template
 file then cannot gate or grant anything by accident. The registry holds only SHA-256 digests, so a
 configuration file that leaks is not a leaked credential; a lost token is re-minted, never
 recovered. A live token answering from the TRACKED file refuses the boot: that is a real key in the
@@ -171,7 +171,7 @@ The boot line names both conditions, because from a request the two states are i
 
 ```
     API authentication: NOT enforced (api.require_auth is off — tokens exist, nothing is gated)
-      · 2 consumer(s) [ragengine, viewer] from user_configs/credentials/api_tokens.json
+      · 2 consumer(s) [ragengine, viewer] from user_configs/credentials/consumer_tokens.json
 ```
 
 It is a state to pass through, not one to stay in.

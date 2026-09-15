@@ -307,7 +307,7 @@ class TestTheTokenFileIsRefusedWhenItIsTheTrackedOne:
 
         def _tracked(_self) -> tuple:
             return ({'someone': {'token': 'real', 'grants': ['*'], 'active': True}},
-                    'configs/credentials/api_tokens.json')
+                    'configs/credentials/consumer_tokens.json')
 
         monkeypatch.setattr(ApiTokenManager, '_read', _tracked)
         with pytest.raises(ApiConfigurationError, match='TRACKED'):
@@ -322,7 +322,7 @@ class TestTheTokenFileIsRefusedWhenItIsTheTrackedOne:
 
         def _workspace(_self) -> tuple:
             return ({'someone': {'token': 'real', 'grants': ['*'], 'active': True}},
-                    'user_configs/credentials/api_tokens.json')
+                    'user_configs/credentials/consumer_tokens.json')
 
         monkeypatch.setattr(ApiTokenManager, '_read', _workspace)
         assert not manager.build_registry().is_empty()
@@ -333,7 +333,7 @@ class TestTheTokenFileIsRefusedWhenItIsTheTrackedOne:
 
         def _tracked(_self) -> tuple:
             return ({'example': {'token': '', 'grants': ['*'], 'active': False}},
-                    'configs/credentials/api_tokens.json')
+                    'configs/credentials/consumer_tokens.json')
 
         monkeypatch.setattr(ApiTokenManager, '_read', _tracked)
         assert manager.build_registry().is_empty()

@@ -18,7 +18,7 @@ from python.framework.types.config_types.api_auth_config_types import ConsumerTo
 
 # The cascade every credential in this project uses, most specific first.
 _CREDENTIAL_DIRS = ('user_configs/credentials', 'configs/credentials')
-_CREDENTIALS_FILE = 'api_tokens.json'
+_CREDENTIALS_FILE = 'consumer_tokens.json'
 
 # The directory whose copy is COMMITTED, as the two path parts that identify it. Compared PART
 # BY PART and never as a substring: 'configs/credentials' is a substring of
