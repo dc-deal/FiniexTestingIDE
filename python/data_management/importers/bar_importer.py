@@ -26,6 +26,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.import_config_manager import ImportConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.vectorized_bar_renderer import VectorizedBarRenderer
@@ -33,6 +34,7 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
+from python.framework.exceptions.data_quality_errors import BarFileVerificationException
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.import_result_types import BarRenderResult
 
@@ -249,11 +251,46 @@ def _write_bar_file(
     table = table.replace_schema_metadata(metadata)
     pq.write_table(table, filepath, compression='snappy')
 
+    _verify_bar_file(filepath, len(bars_df))
+
     file_size_mb = filepath.stat().st_size / (1024 * 1024)
     if log_buffer is not None:
         log_buffer.append(
             f'    ├─ Written: {filename} '
             f'({len(bars_df):,} bars, {file_size_mb:.2f} MB)'
+        )
+
+
+def _verify_bar_file(filepath: Path, expected_rows: int) -> None:
+    """
+    Read a freshly written bar file back in full to prove it is readable.
+
+    Only a FULL read finds a truncated or partially written column: the footer still
+    reports the correct row count, and projecting a single column reads cleanly — a
+    projection of `timestamp` reported 128 healthy files while one carried a corrupt
+    `low`. Measured: 64 Kraken bar files read completely in 2.6 s against a render of
+    about four minutes, roughly 1 %. The largest file today (BTCUSD M1, 329,253 rows)
+    costs 434 ms and 25 MB; it is a single row group, so reading it piecewise would
+    bound nothing.
+
+    Args:
+        filepath: Path of the bar parquet that was just written
+        expected_rows: Number of rows the file is supposed to carry
+
+    Returns:
+        None
+    """
+    try:
+        table = pq.read_table(filepath)
+    except Exception as e:
+        raise BarFileVerificationException(
+            f'Bar file unreadable right after writing: {filepath.name} — {e}'
+        ) from e
+
+    if table.num_rows != expected_rows:
+        raise BarFileVerificationException(
+            f'Bar file row count mismatch: {filepath.name} reads back '
+            f'{table.num_rows} rows, {expected_rows} were written'
         )
 
 
@@ -526,7 +563,7 @@ class BarImporter:
         """
         vLog.info('\n📄 Updating bar index...')
         try:
-            bar_index = BarsIndexManager()
+            bar_index = BarsIndexManager(data_dir=str(self.data_dir))
             bar_index.build_index(force_rebuild=True)
 
             # Count symbols across all broker_types
@@ -537,17 +574,33 @@ class BarImporter:
                 f"{len(broker_types)} broker_types ({', '.join(broker_types)})"
             )
 
-            # Rebuild all discovery caches
-            DiscoveryCacheManager().rebuild_all(force=True)
-            vLog.info('✅ Discovery caches rebuilt')
+            # Rebuild all discovery caches. They resolve their own paths and cannot be
+            # scoped, so rebuilding them from an import directed elsewhere would rewrite
+            # production caches from bars this run never touched (#175 owns the
+            # convergence of the three index managers).
+            if self._writes_production_archive():
+                DiscoveryCacheManager().rebuild_all(force=True)
+                vLog.info('✅ Discovery caches rebuilt')
+            else:
+                vLog.info(
+                    '⏭️  Discovery caches NOT rebuilt: this import is scoped to '
+                    f'{self.data_dir}, and the caches can only be built for the '
+                    'production archive.'
+                )
 
-        except ImportError as e:
-            vLog.error(f'❌ Failed to import BarsIndexManager: {e}')
-            vLog.error('   Make sure bars_index_manager.py is available')
-            vLog.error('   You can manually build the index later.')
         except Exception as e:
             vLog.error(f'❌ Failed to update bar index: {e}')
             vLog.error('   Index may be outdated - run manual rebuild!')
+
+    def _writes_production_archive(self) -> bool:
+        """
+        Check whether this importer renders into the production archive.
+
+        Returns:
+            True when data_dir is the configured processed-data directory
+        """
+        production = Path(AppConfigManager().get_data_processed_path()).resolve()
+        return self.data_dir.resolve() == production
 
     def _print_summary(self):
         """Print processing summary"""

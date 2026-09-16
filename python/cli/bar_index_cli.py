@@ -33,8 +33,12 @@ class BarIndexCli:
         """Initialize CLI with paths from AppConfigManager."""
         self.index_manager = BarsIndexManager()
 
-    def cmd_rebuild(self):
-        """Rebuild bar index from scratch"""
+    def cmd_rebuild(self, skip_caches: bool = False):
+        """Rebuild bar index from scratch
+
+        Args:
+            skip_caches: Leave the discovery caches untouched
+        """
         print('\n' + '='*80)
         print('🔄 Rebuilding Bar Index')
         print('='*80 + '\n')
@@ -42,9 +46,14 @@ class BarIndexCli:
         self.index_manager.build_index(force_rebuild=True)
         self.index_manager.print_summary()
 
-        # Rebuild all discovery caches
-        print('\n🔄 Rebuilding discovery caches...')
-        DiscoveryCacheManager().rebuild_all(force=True)
+        # The rebuild reads every bar file completely, so it doubles as the archive's
+        # integrity check — and that use has no interest in the caches, which cost far
+        # more than the scan itself.
+        if skip_caches:
+            print('\n⏭️  Discovery caches left untouched (--no-caches)')
+        else:
+            print('\n🔄 Rebuilding discovery caches...')
+            DiscoveryCacheManager().rebuild_all(force=True)
 
         print('\n✅ Bar index rebuild complete\n')
 
@@ -228,8 +237,11 @@ def main():
     # ─────────────────────────────────────────────────────────────────────────
     # REBUILD command
     # ─────────────────────────────────────────────────────────────────────────
-    subparsers.add_parser(
+    rebuild_parser = subparsers.add_parser(
         'rebuild', help='Rebuild bar index from parquet files')
+    rebuild_parser.add_argument(
+        '--no-caches', action='store_true', default=False, dest='skip_caches',
+        help='Skip the discovery cache rebuild (index only — also the integrity check)')
 
     # ─────────────────────────────────────────────────────────────────────────
     # STATUS command
@@ -266,7 +278,7 @@ def main():
 
     try:
         if args.command == 'rebuild':
-            cli.cmd_rebuild()
+            cli.cmd_rebuild(skip_caches=args.skip_caches)
 
         elif args.command == 'status':
             cli.cmd_status()

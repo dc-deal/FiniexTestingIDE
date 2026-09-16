@@ -43,10 +43,15 @@ class BarsIndexManager:
     INDEX_FILE_PARQUET = store_index_filename(StoreId.BARS)
     INDEX_FILE_JSON_LEGACY = '.parquet_bars_index.json'
 
-    def __init__(self, logger: AbstractLogger = vLog):
-        """Initialize bar index manager."""
+    def __init__(self, logger: AbstractLogger = vLog, data_dir: Optional[str] = None):
+        """
+        Args:
+            logger: Logger instance
+            data_dir: Override data directory (default: from AppConfigManager)
+        """
         self._app_config = AppConfigManager()
-        self.data_dir = Path(self._app_config.get_data_processed_path())
+        self.data_dir = Path(data_dir) if data_dir else Path(
+            self._app_config.get_data_processed_path())
 
         # Parquet index file
         self.index_file = self.data_dir / self.INDEX_FILE_PARQUET
@@ -102,6 +107,11 @@ class BarsIndexManager:
             self.index = {}
             return
 
+        # Files the scan could not read. Collected rather than only warned about:
+        # the RESULT of a failure is a missing index row, which announces nothing and
+        # surfaces later as a missing timeframe somewhere else entirely.
+        unreadable: List[str] = []
+
         # Process each file
         for bar_file in bar_files:
             try:
@@ -121,6 +131,7 @@ class BarsIndexManager:
             except Exception as e:
                 self.logger.warning(
                     f'Failed to index bar file {bar_file.name}: {e}')
+                unreadable.append(f'{bar_file.name}: {e}')
 
         self._save_index()
 
@@ -131,8 +142,41 @@ class BarsIndexManager:
             for tfs in symbols.values()
         )
         self.logger.info(
-            f'✅ Bar index built: {total_entries} timeframes across '
-            f'{self._count_symbols()} symbols in {elapsed:.2f}s'
+            f'✅ Bar index built: {total_entries} timeframes from '
+            f'{len(bar_files)} bar files across {self._count_symbols()} '
+            f'symbols in {elapsed:.2f}s'
+        )
+
+        self._report_unreadable(unreadable, len(bar_files))
+
+    def _report_unreadable(self, unreadable: List[str], scanned: int) -> None:
+        """
+        Report the files the scan could not read, as its own block.
+
+        A per-file warning scrolls away inside a rebuild log, and the consequence —
+        an index row that is simply absent — says nothing at all. It surfaces later
+        as a missing timeframe in an unrelated run. Bars are derived, so the repair
+        is named here too.
+
+        Args:
+            unreadable: One 'filename: error' entry per file that failed to scan
+            scanned: Number of bar files the scan looked at
+
+        Returns:
+            None
+        """
+        if not unreadable:
+            return
+
+        self.logger.error(
+            f'❌ {len(unreadable)} of {scanned} bar files could not be read and are '
+            'MISSING from the index:'
+        )
+        for entry in unreadable:
+            self.logger.error(f'   - {entry}')
+        self.logger.error(
+            '   Re-render the affected symbols: '
+            'python python/cli/bar_index_cli.py render --all --clean'
         )
 
     def _count_symbols(self) -> int:

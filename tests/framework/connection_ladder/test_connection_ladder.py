@@ -8,8 +8,6 @@ Nothing here sleeps — `run_with_ladder` takes an injected waiter, so a three-a
 budget with a 60 s cap costs no wall time.
 """
 
-from typing import List, Tuple
-
 import pytest
 
 from python.framework.exceptions.connection_errors import (
@@ -20,34 +18,7 @@ from python.framework.exceptions.connection_errors import (
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.connection_types import ConnectionOutcome, GiveUpAction
 from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
-
-
-class RecordingLogger:
-    """Minimal AbstractLogger stand-in that keeps what was said, at which level."""
-
-    def __init__(self):
-        self.lines: List[Tuple[str, str]] = []
-
-    def verbose(self, message: str) -> None:
-        self.lines.append(('verbose', message))
-
-    def debug(self, message: str) -> None:
-        self.lines.append(('debug', message))
-
-    def info(self, message: str) -> None:
-        self.lines.append(('info', message))
-
-    def warning(self, message: str) -> None:
-        self.lines.append(('warning', message))
-
-    def error(self, message: str) -> None:
-        self.lines.append(('error', message))
-
-    def levels(self) -> List[str]:
-        return [level for level, _ in self.lines]
-
-    def text(self) -> str:
-        return '\n'.join(message for _, message in self.lines)
+from tests.shared.recording_logger import RecordingLogger
 
 
 class TransientFault(Exception):

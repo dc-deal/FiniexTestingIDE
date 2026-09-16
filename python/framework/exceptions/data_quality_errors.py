@@ -51,3 +51,14 @@ class TickFileValidationException(DataQualityException):
         super().__init__(f'\n\n{result.get_full_report()}')
 
 
+class BarFileVerificationException(DataQualityException):
+    """
+    Raised when a freshly written bar file cannot be read back in full
+
+    A truncated or partially written column is invisible to every check that
+    opens the file without decoding it: the footer still reports the correct
+    row count, and a projection of a single column reads cleanly. The file is
+    therefore read back completely right after writing, while the cause is
+    still known — a day later it surfaces as a missing index row.
+    """
+    pass

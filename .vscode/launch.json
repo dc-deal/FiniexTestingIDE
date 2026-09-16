@@ -1582,18 +1582,6 @@
             }
         },
         {
-            "name": "📊 Report collected_msc quality",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/experiments/report_collected_msc.py",
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "10_experiments",
-                "order": 2
-            }
-        },
-        {
             "name": "📐 Normalization Demo (cross-instrument)",
             "type": "debugpy",
             "request": "launch",
@@ -1603,22 +1591,6 @@
             "presentation": {
                 "group": "10_experiments",
                 "order": 3
-            }
-        },
-        {
-            "name": "🔧 Restore collected_msc (apply + force)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/experiments/restore_collected_msc.py",
-            "args": [
-                "--apply",
-                "--force"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "10_experiments",
-                "order": 4
             }
         },
         {
