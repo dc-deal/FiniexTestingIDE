@@ -189,7 +189,7 @@ class BollingerWorker(AbstractIndicatorWorker):
         return list(self.periods.keys())
 
     def get_default_compute_basis(self) -> ComputeBasis:
-        """LIVE — `position`/`position_raw` track tick.mid intra-bar (#420). BAR_CLOSE opt-in."""
+        """LIVE — `position`/`position_raw` track tick.price intra-bar (#420). BAR_CLOSE opt-in."""
         return ComputeBasis.LIVE
 
     def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:

@@ -270,6 +270,43 @@ class SessionEndDefaults(BaseModel):
     positions: Literal['close', 'leave'] = 'leave'
 
 
+class TickSourceConfig(BaseModel):
+    """
+    Configuration for the tick TRANSPORT (how ticks are delivered).
+
+    Data description (broker/symbol/window) lives in `scenario_settings` (#438) — the mock replay
+    resolves its ticks through the shared index/preparation stack, not from a raw file path.
+
+    Args:
+        type: Tick source type ('mock' for scenario-data replay, 'kraken' for live WebSocket)
+        tick_delay_ms: Artificial delay per tick in ms (mock replay only). 0 = full speed
+        ws_url: WebSocket URL (kraken mode)
+        quote_channel_enabled: Subscribe to the venue's quote channel beside trades (kraken mode,
+            #520 step B). ON: a trade tick carries the real bid/ask it executed against, which is
+            what an archived tick has carried since collector format 1.6.0. OFF: bid = ask = the
+            trade price, the behaviour shipped before. The strategy plane is unaffected either way
+            — a worker reads `tick.price`, which stays the traded price (§31c); what the quote
+            changes is `mid`, and with it the valuation plane
+        reconnect_initial_delay_s: Initial reconnect backoff delay in seconds (kraken mode)
+        reconnect_max_delay_s: Maximum reconnect backoff delay cap in seconds (kraken mode)
+        connection_check_interval_s: WS connection-liveness check interval in seconds (kraken mode)
+        connection_dead_s: Silence threshold to force reconnect in seconds (kraken mode)
+        freeze_after_ticks: Outage drill (#436, mock mode): pause emission once after N ticks. 0 = off
+        freeze_duration_s: Outage drill (#436, mock mode): pause duration in wall seconds
+    """
+    type: str = 'mock'
+    tick_delay_ms: int = 0
+    # WebSocket fields (used when type='kraken')
+    ws_url: str = 'wss://ws.kraken.com/v2'
+    quote_channel_enabled: bool = True
+    reconnect_initial_delay_s: float = 1.0
+    reconnect_max_delay_s: float = 60.0
+    connection_check_interval_s: float = 30.0
+    connection_dead_s: float = 90.0
+    # Outage drill (#436) — deliberate mid-replay feed silence (mock mode)
+    freeze_after_ticks: int = 0
+    freeze_duration_s: float = 0.0
+
 class AutotraderDefaultsConfig(BaseModel):
     """
     Top-level model for app_config.json::autotrader.
@@ -286,3 +323,4 @@ class AutotraderDefaultsConfig(BaseModel):
     state_persistence: StatePersistenceDefaults = StatePersistenceDefaults()
     cold_start: ColdStartDefaults = ColdStartDefaults()
     session_end: SessionEndDefaults = SessionEndDefaults()
+    tick_source: TickSourceConfig = TickSourceConfig()

@@ -12,7 +12,6 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AutoTraderConfig,
     SafetyConfig,
-    TickSourceConfig,
 )
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     ApiMonitorConfig,
@@ -26,6 +25,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ReconciliationDefaults,
     SessionEndDefaults,
     StatePersistenceDefaults,
+    TickSourceConfig,
 )
 from python.framework.types.config_types.performance_tracking_config_types import (
     AutoTraderPerformanceTrackingConfig,

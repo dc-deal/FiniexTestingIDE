@@ -1633,6 +1633,22 @@
                 "order": 7
             }
         },
+        {
+            "name": "🔭 Venue Probe: Kraken quote channel (#520, READ-ONLY)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/venue_probes/probe_kraken_quote_channel.py",
+            "args": [
+                "BTC/USD",
+                "25"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_experiments",
+                "order": 8
+            }
+        },
         // ====================================================
         // 🧩 PYTEST VALIDATION
         // ====================================================
@@ -2099,6 +2115,23 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 21
+            }
+        },
+        {
+            "name": "🧩 Pytest: Kraken Tick Source (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/tick_sources",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 21.5
             }
         },
         {

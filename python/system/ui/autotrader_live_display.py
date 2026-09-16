@@ -28,6 +28,7 @@ from python.framework.autotrader.tick_sources.abstract_tick_source import Abstra
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_display_types import (
     AutoTraderDisplayStats,
+    QuoteFeedStats,
 )
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.decision_logic_types import AwarenessLevel, DecisionLogicAction
@@ -828,11 +829,48 @@ class AutoTraderLiveDisplay:
             f'Stream:         {stream_str}',
             f'Last Tick:      {tick_age_str}',
             f'Last Price:     {price_str}',
+            f'Spread:         {self._format_quote(self._tick_source.get_quote_stats())}',
             f'Reconnects:     {reconnect_str}',
             f'Emitted Ticks:  {emit_rate_str}',
         ]
         lines.extend(self._build_signal_transport_lines(stats))
         return Panel('\n'.join(lines), title='[bold]CONNECTION[/bold]', box=box.ROUNDED)
+
+    def _format_quote(self, quote: Optional[QuoteFeedStats]) -> str:
+        """
+        Render the quote channel as spread plus the age of the quote it came from (#520).
+
+        Both, always, because the spread alone cannot tell a narrow market from a quote cache
+        that stopped updating — a stuck cache shows a frozen spread beside an age that keeps
+        climbing, and no log line makes that as obvious.
+
+        Presentation only: the colour marks a stale quote, it never decides anything. Whether a
+        stale quote WARRANTS a warning is a verdict and belongs to a validator (§12).
+
+        Args:
+            quote: Snapshot from the tick source, None for sources without a quote channel
+
+        Returns:
+            Rich-markup line for the CONNECTION panel
+        """
+        if quote is None:
+            return '[dim]— (no quote channel)[/dim]'
+        if quote.state == 'off':
+            return '[dim]— (off)[/dim]'
+        if quote.state == 'degraded':
+            return '[yellow]— (degraded: no ticker)[/yellow]'
+        if quote.quote_age_ms is None:
+            return '[dim]— (waiting for quote)[/dim]'
+
+        age_ms = quote.quote_age_ms
+        if age_ms >= 10_000:
+            age_str = f'[yellow]quote {age_ms / 1000:.0f}s[/yellow]'
+        elif age_ms >= 1000:
+            age_str = f'quote {age_ms / 1000:.1f}s'
+        else:
+            age_str = f'quote {age_ms}ms'
+
+        return f'{quote.spread:.5g}  ({quote.spread_pct:.4f}%)   {age_str}'
 
     def _build_signal_transport_lines(self, stats) -> list:
         """

@@ -1,0 +1,166 @@
+{
+  "_comment": "Real Kraken WebSocket v2 frames, recorded 2026-09-16 from wss://ws.kraken.com/v2 on BTC/USD with channels ticker(event_trigger=bbo) and trade. Verbatim as they arrived - not hand-written, so the suite pins what the venue actually sends rather than what we believe it sends. Recorded by python/experiments/venue_probes/probe_kraken_quote_channel.py (#520 step B).",
+  "status": {
+    "channel": "status",
+    "type": "update",
+    "data": [
+      {
+        "version": "2.0.10",
+        "system": "online",
+        "api_version": "v2",
+        "connection_id": 13615956907506636970
+      }
+    ]
+  },
+  "subscribe_ack_ticker": {
+    "method": "subscribe",
+    "result": {
+      "channel": "ticker",
+      "event_trigger": "bbo",
+      "snapshot": true,
+      "symbol": "BTC/USD"
+    },
+    "success": true,
+    "time_in": "2026-09-16T12:48:19.488430Z",
+    "time_out": "2026-09-16T12:48:19.488470Z"
+  },
+  "subscribe_ack_trade": {
+    "method": "subscribe",
+    "result": {
+      "channel": "trade",
+      "snapshot": false,
+      "symbol": "BTC/USD"
+    },
+    "success": true,
+    "time_in": "2026-09-16T12:48:19.488492Z",
+    "time_out": "2026-09-16T12:48:19.488502Z"
+  },
+  "heartbeat": {
+    "channel": "heartbeat"
+  },
+  "ticker_snapshot": {
+    "channel": "ticker",
+    "type": "snapshot",
+    "data": [
+      {
+        "symbol": "BTC/USD",
+        "bid": 75920.6,
+        "bid_qty": 1.01911615,
+        "ask": 75920.7,
+        "ask_qty": 0.17786395,
+        "last": 75920.6,
+        "volume": 3850.10362943,
+        "vwap": 75979.6,
+        "low": 74891.5,
+        "high": 77321.2,
+        "change": -989.0,
+        "change_pct": -1.29,
+        "trades": 129600,
+        "timestamp": "2026-09-16T12:48:19.488507Z"
+      }
+    ]
+  },
+  "ticker_update": {
+    "channel": "ticker",
+    "type": "update",
+    "data": [
+      {
+        "symbol": "BTC/USD",
+        "bid": 75920.6,
+        "bid_qty": 1.02573425,
+        "ask": 75920.7,
+        "ask_qty": 0.17786395,
+        "last": 75920.6,
+        "volume": 3850.10362943,
+        "vwap": 75979.6,
+        "low": 74891.5,
+        "high": 77321.2,
+        "change": -989.0,
+        "change_pct": -1.29,
+        "trades": 129600,
+        "timestamp": "2026-09-16T12:48:19.490532Z"
+      }
+    ]
+  },
+  "trade_buy": {
+    "channel": "trade",
+    "type": "update",
+    "data": [
+      {
+        "symbol": "BTC/USD",
+        "side": "buy",
+        "price": 75931.1,
+        "qty": 0.00064257,
+        "ord_type": "limit",
+        "trade_id": 107927363,
+        "timestamp": "2026-09-16T12:48:30.278756Z"
+      }
+    ]
+  },
+  "trade_sell": {
+    "channel": "trade",
+    "type": "update",
+    "data": [
+      {
+        "symbol": "BTC/USD",
+        "side": "sell",
+        "price": 75920.6,
+        "qty": 0.00188123,
+        "ord_type": "limit",
+        "trade_id": 107927359,
+        "timestamp": "2026-09-16T12:48:24.551288Z"
+      }
+    ]
+  },
+  "trade_burst": {
+    "channel": "trade",
+    "type": "update",
+    "data": [
+      {
+        "symbol": "BTC/USD",
+        "side": "sell",
+        "price": 75931.0,
+        "qty": 0.0001,
+        "ord_type": "limit",
+        "trade_id": 107927364,
+        "timestamp": "2026-09-16T12:48:32.996717Z"
+      },
+      {
+        "symbol": "BTC/USD",
+        "side": "sell",
+        "price": 75931.0,
+        "qty": 0.0001,
+        "ord_type": "limit",
+        "trade_id": 107927365,
+        "timestamp": "2026-09-16T12:48:32.996717Z"
+      },
+      {
+        "symbol": "BTC/USD",
+        "side": "sell",
+        "price": 75931.0,
+        "qty": 0.00124943,
+        "ord_type": "limit",
+        "trade_id": 107927366,
+        "timestamp": "2026-09-16T12:48:32.996717Z"
+      },
+      {
+        "symbol": "BTC/USD",
+        "side": "sell",
+        "price": 75931.0,
+        "qty": 0.00378662,
+        "ord_type": "limit",
+        "trade_id": 107927367,
+        "timestamp": "2026-09-16T12:48:32.996717Z"
+      },
+      {
+        "symbol": "BTC/USD",
+        "side": "sell",
+        "price": 75931.0,
+        "qty": 0.00821841,
+        "ord_type": "limit",
+        "trade_id": 107927368,
+        "timestamp": "2026-09-16T12:48:32.996717Z"
+      }
+    ]
+  }
+}

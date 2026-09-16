@@ -454,7 +454,7 @@ def execute_tick_loop(
         portfolio_stats.protective_level_enforcement = (
             trade_simulator.get_protective_level_enforcement().value)
         if current_tick:
-            portfolio_stats.last_price = (current_tick.bid + current_tick.ask) / 2
+            portfolio_stats.last_price = current_tick.mid
         execution_stats = trade_simulator.get_execution_stats()
         cost_breakdown = trade_simulator.portfolio.get_cost_breakdown()
         trade_history = trade_simulator.get_trade_history()

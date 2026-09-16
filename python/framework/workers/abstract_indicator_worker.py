@@ -190,7 +190,7 @@ class AbstractIndicatorWorker(AbstractWorker):
         raise NotImplementedError(
             f'{self.__class__.__name__} must declare get_default_compute_basis(). '
             f'Return ComputeBasis.LIVE for a tick-reactive worker (intra-bar value, '
-            f'e.g. band position from tick.mid) or ComputeBasis.BAR_CLOSE for a '
+            f'e.g. band position from tick.price) or ComputeBasis.BAR_CLOSE for a '
             f'completed-bar indicator read on the bar-close grid. '
             f'See docs/user_guides/worker_naming_doc.md.'
         )

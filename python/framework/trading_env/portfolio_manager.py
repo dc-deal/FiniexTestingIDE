@@ -1145,8 +1145,11 @@ class PortfolioManager:
         # Spot mode: equity = total portfolio value (all balances in account currency)
         # Overrides margin-style equity for consistent algo visibility
         if self._spot_mode and self._current_tick is not None:
-            mid_price = (self._current_tick.bid + self._current_tick.ask) / 2.0
-            equity = self.get_spot_equity(mid_price)
+            # VALUATION reads the midpoint, never the traded price (§31c): marking a holding to
+            # the last print is one-sided by construction. The tick answers it — computing it
+            # here also shadowed the `mid_price` imported above, inside a function that feeds
+            # equity, drawdown and the safety breaker.
+            equity = self.get_spot_equity(self._current_tick.mid)
 
         return AccountInfo(
             balance=self.balance,
@@ -1196,8 +1199,9 @@ class PortfolioManager:
         if self._spot_mode:
             if self._current_tick is None:
                 return None
-            return self.get_spot_equity(
-                (self._current_tick.bid + self._current_tick.ask) / 2.0)
+            # The tick answers it (§31c): valuation reads the midpoint, and the sibling site
+            # in get_account_info values the same holdings the same way.
+            return self.get_spot_equity(self._current_tick.mid)
 
         self._ensure_positions_updated()
         return self._calculate_equity()

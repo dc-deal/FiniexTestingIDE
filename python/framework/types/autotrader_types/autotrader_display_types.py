@@ -133,6 +133,64 @@ class RejectionEntry:
     tick_time: Optional[datetime] = None
 
 
+@dataclass(frozen=True)
+class QuoteFeedStats:
+    """
+    Live view of the venue's quote channel for the CONNECTION panel (#520 step B).
+
+    Exists for one reason the spread alone cannot serve: a narrow market and a quote cache that
+    stopped updating look identical on screen. The AGE is what separates them — a stuck cache
+    shows a frozen spread beside a number that keeps growing, which no log line makes as obvious.
+
+    Frozen, and built from ONE read of the source's held quote, so the display thread renders a
+    consistent pair rather than a spread from one moment and an age from the next.
+
+    Presentation only. A colour for a wide spread is fine here; whether a wide spread WARRANTS a
+    warning is a verdict, and verdicts belong to a validator (§12).
+
+    Args:
+        state: 'off' (the channel is not subscribed) · 'waiting' (subscribed, no quote yet) ·
+            'live' · 'degraded' (the subscription failed; trades still flow without a quote)
+        bid: Best bid of the last observed quote, 0.0 while there is none
+        ask: Best ask of the last observed quote, 0.0 while there is none
+        quote_age_ms: How old that quote is NOW, from the monotonic clock. None — never 0 —
+            while no quote has been observed: a zero asserts a quote seen in this very
+            millisecond, which is a measurement nobody made
+        quotes_received: Quote updates accepted this session. A frozen spread beside a rising
+            count means the venue is quiet; a frozen count means we stopped receiving
+    """
+    state: str = 'off'
+    bid: float = 0.0
+    ask: float = 0.0
+    quote_age_ms: Optional[int] = None
+    quotes_received: int = 0
+
+    @property
+    def spread(self) -> float:
+        """
+        Absolute spread of the last observed quote.
+
+        Returns:
+            ask - bid, 0.0 while no quote has been observed
+        """
+        return self.ask - self.bid
+
+    @property
+    def spread_pct(self) -> float:
+        """
+        Spread relative to the bid, in percent.
+
+        The comparable form: BTCUSD and ADAUSD differ by a factor of 450 here, so an absolute
+        spread says nothing about whether a market is wide.
+
+        Returns:
+            Relative spread in percent, 0.0 while no quote has been observed
+        """
+        if self.bid <= 0:
+            return 0.0
+        return (self.ask - self.bid) / self.bid * 100.0
+
+
 @dataclass
 class SignalTransportEvent:
     """

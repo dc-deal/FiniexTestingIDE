@@ -44,15 +44,16 @@ class ComputeBasis(Enum):
     'compute_basis' overrides per instance). Unifies the former recompute cadence
     (#384) and current-bar inclusion (#387) into a single binary axis:
 
-    - LIVE: includes the forming (current) bar / tick.mid and recomputes every tick —
+    - LIVE: includes the forming (current) bar / tick.price and recomputes every tick —
       the value drifts intra-bar, so the worker reacts to events within a bar. The
-      tick-native default; required by tick-reactive consumers (live %B from tick.mid).
+      tick-native default; required by tick-reactive consumers (live %B from tick.price).
+      A worker is on the STRATEGY plane and therefore reads `price`, never `mid` (§31c).
     - BAR_CLOSE: completed bars only, recomputes only when one of the worker's required
       timeframes closes a bar (cached result served in between). Stable and cheap; only
       correct for consumers that read on the bar-close grid (an intra-bar event that
       reverts before the close is invisible to it).
     """
-    LIVE = 'live'              # per-tick, intra-bar (forming bar / tick.mid)
+    LIVE = 'live'              # per-tick, intra-bar (forming bar / tick.price)
     BAR_CLOSE = 'bar_close'    # completed bars only, recompute on bar close
 
 

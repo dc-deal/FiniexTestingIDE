@@ -86,7 +86,9 @@ tests/
 │   ├── session_validation/ unit — SessionPostRunValidator: the live Tier-1 channel, shared stress/slow-component checks
 │   ├── api_monitor/       unit — broker REST latency/error telemetry (#351)
 │   ├── field_study_machine/  unit — Field Study phase state machine (#332)
-│   └── kraken_adapter/    unit — Kraken private-call nonce monotonicity + lock (#332), client-order-id wire key + read-back (#473), dry-run fill rules (#505)
+│   ├── kraken_adapter/    unit — Kraken private-call nonce monotonicity + lock (#332), client-order-id wire key + read-back (#473), dry-run fill rules (#505)
+│   └── tick_sources/      unit — the live tick before anything sees it: the quote a trade executed
+│                          against, two subscriptions on one connection, recorded Kraken frames (#520)
 │
 ├── parity/                parity — simulation vs. AutoTrader identical output (#294, #318, #326, #360 sim ghost-pass)
 │

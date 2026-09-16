@@ -19,42 +19,11 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ReconciliationDefaults,
     SessionEndDefaults,
     StatePersistenceDefaults,
+    TickSourceConfig,
 )
 from python.framework.types.config_types.scenario_settings_config_types import (
     ScenarioSettingsConfig,
 )
-
-
-@dataclass
-class TickSourceConfig:
-    """
-    Configuration for the tick TRANSPORT (how ticks are delivered).
-
-    Data description (broker/symbol/window) lives in `scenario_settings` (#438) — the mock replay
-    resolves its ticks through the shared index/preparation stack, not from a raw file path.
-
-    Args:
-        type: Tick source type ('mock' for scenario-data replay, 'kraken' for live WebSocket)
-        tick_delay_ms: Artificial delay per tick in ms (mock replay only). 0 = full speed
-        ws_url: WebSocket URL (kraken mode)
-        reconnect_initial_delay_s: Initial reconnect backoff delay in seconds (kraken mode)
-        reconnect_max_delay_s: Maximum reconnect backoff delay cap in seconds (kraken mode)
-        connection_check_interval_s: WS connection-liveness check interval in seconds (kraken mode)
-        connection_dead_s: Silence threshold to force reconnect in seconds (kraken mode)
-        freeze_after_ticks: Outage drill (#436, mock mode): pause emission once after N ticks. 0 = off
-        freeze_duration_s: Outage drill (#436, mock mode): pause duration in wall seconds
-    """
-    type: str = 'mock'
-    tick_delay_ms: int = 0
-    # WebSocket fields (used when type='kraken')
-    ws_url: str = 'wss://ws.kraken.com/v2'
-    reconnect_initial_delay_s: float = 1.0
-    reconnect_max_delay_s: float = 60.0
-    connection_check_interval_s: float = 30.0
-    connection_dead_s: float = 90.0
-    # Outage drill (#436) — deliberate mid-replay feed silence (mock mode)
-    freeze_after_ticks: int = 0
-    freeze_duration_s: float = 0.0
 
 
 @dataclass

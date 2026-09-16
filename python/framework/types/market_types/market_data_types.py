@@ -4,6 +4,32 @@ from enum import Enum
 from typing import Optional, Set, Tuple
 
 
+@dataclass(frozen=True)
+class ObservedQuote:
+    """
+    One bid/ask pair as it was seen on a venue's quote channel.
+
+    Kraken's trade channel reports executions, and an execution happens at exactly one price —
+    so a trade tick on its own carries bid == ask. The quote it executed against arrives on a
+    separate channel, and this is what a tick source holds between the two so it can state one
+    on the other (#520 step B).
+
+    Frozen on purpose: it is written on the socket thread and read on the display thread, and an
+    immutable value handed over by a single reference assignment needs no lock.
+
+    Args:
+        bid: Best bid at observation time
+        ask: Best ask at observation time
+        observed_monotonic_s: Arrival time from time.monotonic(). NOT a wall clock (§9): the age
+            of this quote is a DURATION, and two wall-clock reads can be stepped backwards by NTP
+            into a negative one. Meaningless as an absolute, which is exactly why nothing but a
+            difference is ever taken from it
+    """
+    bid: float
+    ask: float
+    observed_monotonic_s: float
+
+
 @dataclass
 class TickData:
     """

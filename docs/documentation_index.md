@@ -116,6 +116,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Field Study Machine](tests/autotrader/field_study_machine_tests.md) | The offline state machine behind that run — every phase outcome reachable without spending money (#332) |
 | [Live Signal Feed Certificate](tests/live_signal_feed/signal_feed_certificate_guide.md) | Producer contract proof + PASS/FAIL certificate — operator-driven, release-gate (#466) |
 | [Safety Circuit Breaker](tests/autotrader/safety_tests.md) | Account-value safety, phantom drawdown fix, config split, the baseline across a restart, the hard flatten, and what the session recorded |
+| [Tick Sources](tests/autotrader/tick_source_tests.md) | What a live tick IS before anything sees it: the quote a trade executed against, two subscriptions on one connection (#520) |
 | [Live Executor](tests/autotrader/live_executor_tests.md) | LiveTradeExecutor pipeline |
 | [Loop Cadence](tests/autotrader/loop_cadence_tests.md) | Clock injection, heartbeat re-poll, decision ghost-pass (#360) |
 | [Algo State Persistence](tests/autotrader/state_persistence_tests.md) | Snapshot store, corrupt/stale policy, weekend-aware staleness, pre-flight (#354) |

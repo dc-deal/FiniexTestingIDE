@@ -85,6 +85,12 @@ Two prices exist once a venue has a spread, and the difference is not cosmetic.
 | **Slippage baseline** — what a fill is measured against | `tick.mid` | A benchmark has to be neutral between the two sides |
 | **Fills** | `bid` / `ask` | A buy pays the ask and a sell receives the bid, unchanged |
 
+On an order-driven venue `bid` and `ask` are a real quote only where one was recorded. Kraken's
+trade channel alone reports executions, so a tick built from it carries `bid == ask`; the quote
+arrives on a separate channel, which the collector has read since format 1.6.0 and the live tick
+source reads too (#520 step B). Before that boundary a Kraken tick has no spread to speak of, and
+that is a property of the recording rather than of the market.
+
 `TickData.price` resolves this from the data itself: the traded price where one is present,
 the midpoint where it is not. No component reads configuration to decide, and no strategy
 needs to know which venue it is running on.
