@@ -52,7 +52,11 @@ HEADER_PRICE_BASIS = 'X-Bar-Price-Basis'
 
 TIME_BASIS = 'open'
 TIMEZONE = 'UTC'
-PRICE_BASIS = 'mid'
+# The price basis is NOT a constant and no longer read from config: it is a property of the
+# FILE, stamped when it was rendered and carried in the bar index. Config says what a render
+# would produce today; during a re-render half the archive still holds the previous basis,
+# and a header that declares the config is wrong for exactly those files.
+PRICE_BASIS_UNKNOWN = 'unknown'
 
 # An indicator's value means nothing without the convention behind it, and the convention
 # is exactly what a reader cannot infer from the rows. "ATR" means Wilder's smoothing
@@ -76,6 +80,28 @@ def _require_broker_symbol(index: BarsIndexManager, broker: str, symbol: str) ->
         raise ApiException(404, 'not_found', f"Broker '{broker}' not found.")
     if symbol not in index.list_symbols(broker_type=broker):
         raise ApiException(404, 'not_found', f"Symbol '{symbol}' not found for broker '{broker}'.")
+
+
+def _price_basis(index: BarsIndexManager, broker: str, symbol: str, timeframe: str) -> str:
+    """
+    The basis the requested bar file was actually rendered from.
+
+    Read from the index row rather than from configuration, so a file written before the
+    basis was stamped answers 'unknown' instead of borrowing today's declaration.
+
+    Args:
+        index: Loaded bar index
+        broker: Broker type
+        symbol: Trading symbol
+        timeframe: Timeframe key
+
+    Returns:
+        The stamped basis, or 'unknown' where the file predates the stamp
+    """
+    entry = index.index.get(broker, {}).get(symbol, {}).get(timeframe)
+    if not entry:
+        return PRICE_BASIS_UNKNOWN
+    return entry.get('price_basis') or PRICE_BASIS_UNKNOWN
 
 
 def _utc(dt: datetime) -> datetime:
@@ -176,7 +202,7 @@ def get_bars(
     response.headers[HEADER_TRUNCATED] = 'true' if total > limit else 'false'
     response.headers[HEADER_TIME_BASIS] = TIME_BASIS
     response.headers[HEADER_TIMEZONE] = TIMEZONE
-    response.headers[HEADER_PRICE_BASIS] = PRICE_BASIS
+    response.headers[HEADER_PRICE_BASIS] = _price_basis(index, broker, symbol, timeframe)
 
     return [
         BarResponse(

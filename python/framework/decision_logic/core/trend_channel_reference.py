@@ -258,7 +258,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     def get_metadata(cls) -> ComponentMetadata:
         """Didactic CORE reference logic — teaching example, no profitability claim."""
         return ComponentMetadata(
-            version='1.3.0',
+            version='1.4.0',
             doc_link='docs/user_guides/trend_channel_reference_guide.md',
             recommended_markets=('forex',),
         )
@@ -426,7 +426,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         side = OrderSide.BUY if gate == 'up' else OrderSide.SELL
         entry_price, stop_loss, take_profit = self._entry_geometry(side)
 
-        if not self._is_armed(side, tick.mid, entry_price, pos_raw):
+        if not self._is_armed(side, tick.price, entry_price, pos_raw):
             self.notify_awareness(
                 f'Gate {gate} — no {self.entry_mode} setup (%B {pos_raw:.2f})',
                 AwarenessLevel.INFO, 'no_setup',
@@ -798,7 +798,7 @@ class TrendChannelReference(AbstractDecisionLogic):
 
             # Re-price toward the current band edge while it rests (bar-close bounded)
             if oid in active_ids:
-                self._maybe_reprice(oid, info, tick.mid)
+                self._maybe_reprice(oid, info, tick.price)
 
     def _gate_flipped_against(self, direction: OrderDirection) -> bool:
         """

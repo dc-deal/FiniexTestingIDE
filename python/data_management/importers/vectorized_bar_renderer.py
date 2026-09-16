@@ -130,10 +130,16 @@ class VectorizedBarRenderer:
                 "Use read_tick_parquet() to load with normalized columns."
             )
 
-        # === 1. CALCULATE MID-PRICE ===
-        # We use (bid + ask) / 2 for bar OHLC
-        # This is standard in algo trading - most strategies use mid-price
-        df['mid'] = (df['bid'] + df['ask']) / 2.0
+        # === 1. RESOLVE THE BAR PRICE ===
+        # Supplied by read_tick_parquet: the traded price on an order-driven venue, the
+        # bid/ask midpoint on a quote-driven one. Derived there rather than here so the rule
+        # exists once and this renderer stays a pure transformation — it runs in a worker
+        # pool and must not read config per process.
+        if 'price' not in df.columns:
+            raise ValueError(
+                "Missing 'price' column in tick data. "
+                'Use read_tick_parquet() to load with normalized columns.'
+            )
 
         # === 2. ENSURE DATETIME ===
         # CRITICAL: timestamp must be datetime for resample()
@@ -181,9 +187,9 @@ class VectorizedBarRenderer:
         # Build aggregation dict
         # volume: actual trade volume (crypto) or 0.0 (forex CFD)
         agg_dict = {
-            'mid': ['first', 'max', 'min', 'last'],  # OHLC from mid-price
-            'bid': 'count',                          # Tick count
-            'volume': 'sum'                          # Trade volume
+            'price': ['first', 'max', 'min', 'last'],  # OHLC from the venue's own price basis
+            'bid': 'count',                            # Tick count
+            'volume': 'sum'                            # Trade volume
         }
 
         bars = prepared_df.resample(rule).agg(agg_dict)

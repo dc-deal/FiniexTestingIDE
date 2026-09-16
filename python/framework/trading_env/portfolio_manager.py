@@ -49,6 +49,7 @@ from python.framework.types.trading_env_types.trading_env_stats_types import (
 from python.framework.utils.market_calendar import MarketCalendar
 from python.framework.utils.time_utils import mt5_weekday_to_python
 from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
+from python.framework.utils.trading_math.price_trigger import mid_price
 
 
 class _UnsetType:
@@ -1015,7 +1016,7 @@ class PortfolioManager:
 
         # Calculate tick_value
         bid, ask = self._current_prices[symbol]
-        current_price = (bid + ask) / 2.0
+        current_price = mid_price(bid, ask)
         tick_value = self._calculate_tick_value(spec, current_price)
 
         # Update position P&L

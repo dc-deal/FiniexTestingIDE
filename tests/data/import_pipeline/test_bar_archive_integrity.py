@@ -233,3 +233,85 @@ class TestIndexBuildReportsUnreadableFiles:
 
         assert 'error' not in logger.levels()
         assert 'from 1 bar files' in logger.text()
+
+
+class TestThePriceBasisSurvivesIntoTheIndex:
+    """
+    The stamp needs a READ path, or it is decoration.
+
+    A bar file records which basis it was rendered from. That only answers the question it
+    exists for — "is this archive consistently rendered?" — if it reaches the index: the
+    scan extracts a FIXED key set and would drop an unknown one, and the API reads bar rows
+    with `pd.read_parquet`, which discards Arrow schema metadata entirely. So one file must
+    answer for all of them, rather than 128 files answering one at a time.
+    """
+
+    def _write_stamped(self, filepath: Path, basis, rows: int = 5) -> None:
+        """Write a bar file, with or without a price-basis stamp.
+
+        Args:
+            filepath: Destination
+            basis: The stamped basis, or None to model a file written before it existed
+            rows: Number of bars
+        """
+        df = pd.DataFrame({
+            'timestamp': pd.date_range('2026-01-15', periods=rows, freq='1min', tz='UTC'),
+            'open': [1.1] * rows, 'high': [1.2] * rows,
+            'low': [1.0] * rows, 'close': [1.15] * rows,
+            'volume': [10.0] * rows, 'tick_count': [5] * rows,
+        })
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        table = pa.Table.from_pandas(df)
+        metadata = {
+            'symbol': filepath.name.split('_')[0],
+            'timeframe': 'M1',
+            'broker_type': 'kraken_spot',
+        }
+        if basis is not None:
+            metadata['price_basis'] = basis
+        table = table.replace_schema_metadata(metadata)
+        pq.write_table(table, filepath, compression='snappy')
+
+    def test_the_stamp_reaches_the_index_and_survives_a_reload(self, tmp_path):
+        """Scan, persist and load back — the whole round trip, not just the scan."""
+        self._write_stamped(
+            tmp_path / 'kraken_spot' / 'bars' / 'BTCUSD' / 'BTCUSD_M1_BARS.parquet',
+            'order_driven')
+
+        manager = BarsIndexManager(data_dir=str(tmp_path))
+        manager.build_index(force_rebuild=True)
+        assert manager.index['kraken_spot']['BTCUSD']['M1']['price_basis'] == 'order_driven'
+
+        reloaded = BarsIndexManager(data_dir=str(tmp_path))
+        reloaded.build_index()
+        assert reloaded.index['kraken_spot']['BTCUSD']['M1']['price_basis'] == 'order_driven'
+
+    def test_the_persisted_index_carries_it_as_a_column(self, tmp_path):
+        """One file answers for the whole archive — that is the point of the column."""
+        self._write_stamped(
+            tmp_path / 'kraken_spot' / 'bars' / 'ETHUSD' / 'ETHUSD_M1_BARS.parquet',
+            'order_driven')
+
+        manager = BarsIndexManager(data_dir=str(tmp_path))
+        manager.build_index(force_rebuild=True)
+
+        df = pd.read_parquet(tmp_path / BarsIndexManager.INDEX_FILE_PARQUET)
+        assert 'price_basis' in df.columns
+        assert df['price_basis'].iloc[0] == 'order_driven'
+
+    def test_a_file_written_before_the_stamp_reads_as_unknown(self, tmp_path):
+        """
+        Honest, and distinguishable from a declared basis.
+
+        Borrowing today's configuration for an old file is exactly what the stamp exists to
+        prevent — during a re-render, config describes what a render WOULD produce while
+        half the archive still holds the previous answer.
+        """
+        # Everything a bar file always had, and no stamp — a file from before the change.
+        self._write_stamped(
+            tmp_path / 'kraken_spot' / 'bars' / 'SOLUSD' / 'SOLUSD_M1_BARS.parquet', None)
+
+        manager = BarsIndexManager(data_dir=str(tmp_path))
+        manager.build_index(force_rebuild=True)
+
+        assert manager.index['kraken_spot']['SOLUSD']['M1']['price_basis'] == 'unknown'

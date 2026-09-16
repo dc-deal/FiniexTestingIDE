@@ -245,6 +245,10 @@ def _write_bar_file(
         'rendered_at': pd.Timestamp.now(tz='UTC').isoformat(),
         'source_version_min': source_version_min,
         'source_version_max': source_version_max,
+        # What this file was rendered FROM. Without it a half-re-rendered archive is
+        # indistinguishable from a consistent one, and nothing can cross-check a run's bars
+        # against the source it read them with.
+        'price_basis': market_config.get_price_formation(broker_type).value,
     }
 
     table = pa.Table.from_pandas(bars_df)

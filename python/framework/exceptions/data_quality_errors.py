@@ -62,3 +62,20 @@ class BarFileVerificationException(DataQualityException):
     still known — a day later it surfaces as a missing index row.
     """
     pass
+
+
+class TradedPriceMissingException(DataQualityException):
+    """
+    Raised when a venue that prints trades delivers ticks without a traded price
+
+    An order-driven venue has a central order book, so `last` is a real event on every
+    tick — and the import refuses a file where it is absent. Reaching the tick loop
+    without one therefore means this pipeline dropped it somewhere between the archive
+    and the mount, and the consequence is silent: `TickData.price` falls back to the
+    book midpoint, so every bar of the run is built on a different basis than the
+    archive it was rendered from.
+
+    Invisible on data below collector format 1.6.0, where the midpoint and the traded
+    price are the same number, and total from the first file that carries a real spread.
+    """
+    pass

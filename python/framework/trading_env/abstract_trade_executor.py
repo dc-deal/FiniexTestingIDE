@@ -100,6 +100,7 @@ from python.framework.types.trading_env_types.trading_env_stats_types import (
     AccountInfo,
     ExecutionStats,
 )
+from python.framework.utils.trading_math.price_trigger import mid_price
 
 
 class ExecutorMode(Enum):
@@ -1160,7 +1161,7 @@ class AbstractTradeExecutor(ABC):
         # Calculate exit tick_value for trade record
         symbol_spec = self.broker.get_symbol_specification(position.symbol)
         exit_tick_value = self._calculate_tick_value(
-            symbol_spec, (bid + ask) / 2.0)
+            symbol_spec, mid_price(bid, ask))
 
         # --- Determine partial vs full close ---
         close_lots = pending_order.close_lots

@@ -50,6 +50,23 @@ def _mock_index(broker_types=None, symbols=None, stats=None, bar_file=None):
         },
     }
     m.get_bar_file.return_value = bar_file or Path('/fake/bars.parquet')
+    # The nested index the router reads the stamped price basis from. A MagicMock would
+    # answer every lookup with another mock, which is not a header value — and would hide
+    # that the basis now comes from the FILE rather than from a constant.
+    m.index = {
+        'kraken_spot': {
+            'BTCUSD': {'M30': {'price_basis': 'order_driven'},
+                       'H1': {'price_basis': 'order_driven'}},
+            'ETHUSD': {'M30': {'price_basis': 'order_driven'},
+                       'H1': {'price_basis': 'order_driven'}},
+        },
+        'mt5': {
+            'BTCUSD': {'M30': {'price_basis': 'quote_driven'},
+                       'H1': {'price_basis': 'quote_driven'}},
+            'ETHUSD': {'M30': {'price_basis': 'quote_driven'},
+                       'H1': {'price_basis': 'quote_driven'}},
+        },
+    }
     return m
 
 
@@ -280,7 +297,10 @@ class TestBars:
             )
         assert r.headers['X-Bar-Time-Basis'] == 'open'
         assert r.headers['X-Bar-Timezone'] == 'UTC'
-        assert r.headers['X-Bar-Price-Basis'] == 'mid'
+        # Read from the FILE's stamp, not from a constant and not from config: during a
+        # re-render half the archive still carries the previous basis, and a header taken
+        # from configuration would be wrong for exactly those files.
+        assert r.headers['X-Bar-Price-Basis'] == 'order_driven'
 
     def test_a_limit_above_the_cap_is_refused_rather_than_clamped(self, client):
         r = client.get(

@@ -344,7 +344,12 @@ class TickDataImporter:
             file_name=json_file.name,
             declared_tick_count=data.get('summary', {}).get('total_ticks'),
             collected_msc_is_utc=metadata.get(
-                'collected_msc_timebase') == 'utc'
+                'collected_msc_timebase') == 'utc',
+            # Where trades print centrally, a tick without a traded price is malformed
+            # producer output. Refusing here is what keeps `price_formation` a checked
+            # expectation instead of a declaration the data may quietly contradict.
+            price_formation=MarketConfigManager().get_price_formation(
+                broker_type_normalized)
         )
         for warning in validation.warnings:
             vLog.warning(f'   ⚠️  {warning}')

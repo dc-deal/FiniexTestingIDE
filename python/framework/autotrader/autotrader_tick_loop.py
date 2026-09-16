@@ -428,7 +428,7 @@ class AutotraderTickLoop:
 
             # Capture spot equity baseline on first tick (first live price available)
             if ticks_processed == 1 and self._trading_model == TradingModel.SPOT:
-                first_price = (tick.bid + tick.ask) / 2.0
+                first_price = tick.mid
                 self._initial_spot_equity = self._executor.portfolio.get_spot_equity(first_price)
             # #356 — the RISK baseline, which is a different question and answers it once:
             # `ensure_taken` does nothing when a record was restored from the predecessor, so
@@ -995,7 +995,7 @@ class AutotraderTickLoop:
         mark_price: Optional[float] = None
         quantities: Optional[BaselineQuantities] = None
         if self._trading_model == TradingModel.SPOT:
-            mark_price = (tick.bid + tick.ask) / 2.0
+            mark_price = tick.mid
             quantities = self._spot_quantities()
 
         self._risk_baseline.ensure_taken(value, mark_price, quantities)

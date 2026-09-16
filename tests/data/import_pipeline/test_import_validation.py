@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from python.framework.types.config_types.market_config_types import PriceFormation
 from python.framework.validators.tick_import_validator import (
     PLAUSIBLE_LAG_WINDOW_MS,
     SEGMENT_SPLIT_FORWARD_MS,
@@ -159,6 +160,68 @@ class TestRejectionReasons:
             build_frame().iloc[0:0], 'empty.json')
 
         assert not result.is_valid
+
+
+class TestTheTradedPriceIsRequiredWhereTradesPrint:
+    """
+    An order-driven venue must deliver a traded price, and the import refuses otherwise.
+
+    This is what makes `price_formation` a checked expectation rather than a declaration the
+    data may quietly contradict. Without the refusal, a file whose `last` went missing would
+    fall back to the midpoint and its bars would MEAN something different — silently, because
+    every structural check still passes.
+
+    A quote-driven venue is not checked: it has no traded price by construction.
+    """
+
+    def test_order_driven_without_a_traded_price_is_refused(self, validator):
+        """The defect this refusal exists for: the column is there and carries zeros."""
+        df = build_frame()
+        df['last'] = 0.0
+
+        result = validator.validate_file(
+            df, 'no_trades.json', price_formation=PriceFormation.ORDER_DRIVEN)
+
+        assert not result.is_valid
+        assert any('order_driven' in e for e in result.errors)
+
+    def test_order_driven_without_the_column_at_all_is_refused(self, validator):
+        """A producer that stopped sending the field is refused by a different message."""
+        result = validator.validate_file(
+            build_frame(), 'no_last_column.json',
+            price_formation=PriceFormation.ORDER_DRIVEN)
+
+        assert not result.is_valid
+        assert any('no `last` column' in e for e in result.errors)
+
+    def test_order_driven_with_a_traded_price_passes(self, validator):
+        """The healthy case — every tick printed at a price."""
+        df = build_frame()
+        df['last'] = df['bid']
+
+        result = validator.validate_file(
+            df, 'healthy.json', price_formation=PriceFormation.ORDER_DRIVEN)
+
+        assert result.is_valid, result.errors
+
+    def test_quote_driven_is_not_checked(self, validator):
+        """
+        MT5 writes 0.0 on 100 % of ticks and that is correct — a dealer market has no
+        central place where trades happen, so there is nothing to report.
+        """
+        df = build_frame()
+        df['last'] = 0.0
+
+        result = validator.validate_file(
+            df, 'mt5.json', price_formation=PriceFormation.QUOTE_DRIVEN)
+
+        assert result.is_valid, result.errors
+
+    def test_an_undeclared_venue_is_not_checked(self, validator):
+        """Callers that do not know the formation skip the check rather than guess."""
+        result = validator.validate_file(build_frame(), 'unknown.json')
+
+        assert result.is_valid, result.errors
 
 
 class TestTolerances:

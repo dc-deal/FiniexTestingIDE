@@ -23,6 +23,33 @@ class TradingModel(Enum):
     SPOT = 'spot'
 
 
+class PriceFormation(Enum):
+    """
+    How prices come about at a venue — which decides whether a traded price exists.
+
+    ORDER_DRIVEN — a central limit order book matches buy against sell orders, so every
+        trade PRINTS at one price. `last` is a real event, real per-trade volume exists,
+        and the venue's own charts are built from trades (Kraken spot, futures venues,
+        exchange-traded stocks).
+    QUOTE_DRIVEN — a dealer quotes a bid and an ask and takes the other side itself. There
+        is no central place where trades happen, so there is no "last traded price" at all:
+        MT5 forex reports `last = 0.0` on 100 % of ticks, which is not a gap but an absence.
+
+    The vocabulary is Larry Harris, Trading and Exchanges, ch. 5-6.
+
+    It is a property of the VENUE, not of the asset class and not of the account model — a
+    crypto CFD at an MT5 broker is `market_type: crypto`, `trading_model: margin` and
+    QUOTE_DRIVEN. The three axes are independent; see docs/architecture/market_model.md.
+
+    The project already carried this distinction twice before it had a name:
+    `market_rules.<type>.primary_activity_metric` (volume where trades print, tick_count
+    where they do not) and the collector EA's gate on SYMBOL_CALC_MODE_EXCH_* for real
+    volume. Real volume and a traded price are siblings.
+    """
+    ORDER_DRIVEN = 'order_driven'
+    QUOTE_DRIVEN = 'quote_driven'
+
+
 class PipMode(Enum):
     """
     How a market's 'pip' price unit is derived from the broker tick / digits.
@@ -94,6 +121,10 @@ class BrokerEntryConfig(StrictConfigModel):
     """Broker entry as loaded from JSON."""
     broker_type: str
     market_type: MarketType
+    # How this VENUE forms its prices — deliberately REQUIRED, with no default. A default is
+    # how the next broker silently inherits the wrong bar basis, which is the defect this
+    # field exists to remove; without one, StrictConfigModel refuses the load instead.
+    price_formation: PriceFormation
     broker_config_path: str = ''
     trading_model: TradingModel = TradingModel.MARGIN
     config_mode: ConfigMode = ConfigMode.STATIC

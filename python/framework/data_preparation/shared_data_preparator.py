@@ -20,7 +20,10 @@ import pandas as pd
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
+from python.framework.exceptions.data_quality_errors import TradedPriceMissingException
+from python.framework.types.config_types.market_config_types import PriceFormation
 from python.framework.exceptions.signal_data_errors import SignalDataUnavailableError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.signal_data.signal_jsonl_loader import load_signal_series
@@ -611,6 +614,49 @@ class SharedDataPreparator:
             'counts': scenario_counts
         }
 
+    def _assert_traded_price_present(
+        self,
+        broker_type: str,
+        symbol: str,
+        full_df: pd.DataFrame
+    ) -> None:
+        """
+        Refuse a mount whose ticks lost the traded price a venue is supposed to print.
+
+        The import already refuses such a FILE, so reaching here without one means this
+        pipeline dropped the column between the archive and the mount — a column projection
+        added for memory (#442) is the change that would do it. The failure is otherwise
+        silent: `TickData.price` falls back to the book midpoint and every bar of the run is
+        built on a different basis than the archive it came from.
+
+        Once per symbol, never per tick. A quote-driven venue is not checked — it has no
+        traded price by construction and writes zeros.
+
+        Args:
+            broker_type: Broker the ticks were loaded for
+            symbol: Trading symbol, for the message
+            full_df: The concatenated tick frame about to be transported
+
+        Returns:
+            None
+        """
+        formation = MarketConfigManager().get_price_formation(broker_type)
+        if formation is not PriceFormation.ORDER_DRIVEN:
+            return
+
+        has_traded_price = (
+            'last' in full_df.columns and bool((full_df['last'] > 0).any()))
+        if has_traded_price:
+            return
+
+        raise TradedPriceMissingException(
+            f'{broker_type}/{symbol}: the venue is declared order_driven, but none of the '
+            f'{len(full_df):,} mounted ticks carries a traded price. Bars for this run would '
+            f'be built from the book midpoint instead of from what traded, silently and on a '
+            f'different basis than the archive. The import refuses such a file, so the column '
+            f'was lost between the archive and here.'
+        )
+
     def prepare_ticks(
         self,
         requirements: List[TickRequirement]
@@ -709,6 +755,8 @@ class SharedDataPreparator:
             # see also #385
             full_df = pd.concat(dfs).sort_values(
                 ['timestamp', 'time_msc']).reset_index(drop=True)
+
+            self._assert_traded_price_present(broker_type, symbol, full_df)
 
             self._logger.info(
                 f'  ✅ {len(full_df):,} ticks in RAM from {len(relevant_files)} file(s) '

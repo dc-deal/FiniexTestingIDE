@@ -128,7 +128,7 @@ class BollingerWorker(AbstractIndicatorWorker):
     def get_metadata(cls) -> ComponentMetadata:
         """CORE worker metadata (version + doc pointer)."""
         return ComponentMetadata(
-            version='1.0.0',
+            version='1.1.0',
             doc_link='docs/user_guides/worker_naming_doc.md',
         )
 
@@ -237,7 +237,7 @@ class BollingerWorker(AbstractIndicatorWorker):
         std_dev = bands.std_dev
 
         # Calculate current position relative to bands (raw = unclamped overshoot)
-        current_price = tick.mid
+        current_price = tick.price
         position_raw = Normalizer.rescale(current_price, lower, upper)
         position = Normalizer.clamp(position_raw)
         band_width = upper - lower

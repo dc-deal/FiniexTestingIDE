@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Set, Tuple
+from typing import Optional, Set, Tuple
 
 
 @dataclass
@@ -25,11 +25,36 @@ class TickData:
     collected_msc: int = 0
     # True if tick was clipped by tick processing budget (broker sees it, algo skips it)
     is_clipped: bool = False
+    # The price this tick actually TRADED at, where the venue has such a thing.
+    # None — never 0.0 — where it does not: a quote-driven venue has no central place where
+    # trades happen, so MT5 reports 0.0 on every tick and that is an absence, not a price.
+    # Read through `price` rather than directly; see PriceFormation.
+    last: Optional[float] = None
 
     @property
     def mid(self) -> float:
-        """Mid price between bid/ask"""
+        """Mid price between bid/ask
+
+        Deliberately inline rather than delegating to `trading_math.price_trigger.mid_price`,
+        which answers the same question for callers holding a raw (bid, ask) pair: this sits
+        in the tick loop, and delegating was measured at +30 % on the access.
+        """
         return (self.bid + self.ask) / 2.0
+
+    @property
+    def price(self) -> float:
+        """What this market trades at — the STRATEGY's price.
+
+        The traded price where the venue prints one, the book's midpoint where it does not.
+        Bars, indicators and decisions read this; VALUATION (equity, drawdown, the mark price,
+        the slippage baseline) deliberately keeps `mid`, because marking to the last print is
+        one-sided by construction and the easiest number on an exchange to push.
+
+        The data resolves itself: no worker learns about venues and nothing reads config per
+        tick. That holds only while `last` is None rather than 0.0 wherever it is absent —
+        which is why every builder normalises it.
+        """
+        return self.last if self.last is not None else self.mid
 
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization"""
@@ -39,7 +64,11 @@ class TickData:
             'bid': self.bid,
             'ask': self.ask,
             'volume': self.volume,
-            'mid': self.mid
+            'mid': self.mid,
+            # Both, deliberately: `mid` is what a valuation used and `last` what a strategy
+            # saw, and a forensics record that carries only one cannot tell them apart.
+            'last': self.last,
+            'price': self.price
         }
 
 
@@ -152,3 +181,7 @@ class TickTransportColumn(str, Enum):
     ASK = 'ask'
     VOLUME = 'volume'
     IS_CLIPPED = 'is_clipped'
+    # The traded price, absent on quote-driven venues. Declared HERE and not only on
+    # TickData: this enum IS the process boundary, and a field the boundary does not carry
+    # is a field that silently becomes None on the other side of a pickle.
+    LAST = 'last'

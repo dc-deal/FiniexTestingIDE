@@ -37,12 +37,14 @@ _CONFIG_STATIC_AND_DYNAMIC = {
         {
             'broker_type': 'mt5_forex',
             'market_type': 'forex',
+            'price_formation': 'quote_driven',
             'broker_config_path': 'configs/brokers/mt5/mt5_forex_broker_config.json',
             'trading_model': 'margin',
         },
         {
             'broker_type': 'kraken_spot',
             'market_type': 'crypto',
+            'price_formation': 'order_driven',
             'broker_config_path': 'configs/brokers/kraken/kraken_spot_broker_config.json',
             'trading_model': 'spot',
             'config_mode': 'dynamic',
@@ -128,7 +130,8 @@ class TestATypoInMarketConfigIsRefused:
         Returns:
             The broker entry dict
         """
-        entry = {'broker_type': 'kraken_spot', 'market_type': 'crypto'}
+        entry = {'broker_type': 'kraken_spot', 'market_type': 'crypto',
+                 'price_formation': 'order_driven'}
         entry.update(overrides)
         return entry
 

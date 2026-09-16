@@ -130,6 +130,11 @@ class KrakenTickMessageParser:
                 volume=qty,
                 time_msc=time_msc,
                 collected_msc=collected_msc,
+                # Kraken is order-driven: this IS the traded price, and carrying it keeps the
+                # live tick and an archived one the same shape. §41 — a field present in the
+                # archive and absent live is reachable by a worker and would read differently
+                # on the two sides, which is the parity break that rule exists to prevent.
+                last=price,
             )
 
         except (KeyError, ValueError, TypeError):

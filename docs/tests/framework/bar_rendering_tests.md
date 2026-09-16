@@ -53,6 +53,27 @@ For each bar, the test verifies exact match of:
 - **Volume** (aggregated sum)
 - **Tick count**
 
+## Price Basis (`test_price_basis.py`)
+
+A bar is rendered from what its venue actually trades: the traded price where trades print
+centrally, the bid/ask midpoint where they do not. Three properties are pinned, and the first
+is the whole safety argument for re-rendering the archive.
+
+**It is a no-op on every file on disk today.** Kraken carries `last == bid == ask` below
+collector format 1.6.0, MT5 carries `last == 0.0` on every row — so both resolve to exactly
+what the midpoint produced before. Verified against real production files: `price == mid` on
+100 % of rows for both brokers. Only a tick whose bid and ask differ makes the two diverge.
+
+**A quote-driven venue must never render at zero.** MT5 reports `last = 0.0` because it has no
+central place where trades happen. Nothing asserted that a bar price is positive before, and
+`0 >= 0` satisfies the existing `high >= low` — so a misfiring gate would have produced an
+archive of zeros in silence. Both venues are checked.
+
+**The renderer refuses an unnormalized frame.** It is a pure transformation running in a
+worker pool, so it does not resolve the basis itself — resolving there would mean one config
+read per process and a second copy of the rule. `read_tick_parquet` derives the `price` column
+and every consumer inherits it; a frame that bypassed the reader is refused by name.
+
 ## Files
 
 - `tests/framework/bar_rendering/conftest.py` — Synthetic tick generators and fixtures

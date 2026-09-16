@@ -242,6 +242,12 @@ class BarsIndexManager:
         source_version_min = metadata.get('source_version_min', '1.0.0')
         source_version_max = metadata.get('source_version_max', '1.0.0')
 
+        # What this file was rendered FROM. 'unknown' for anything written before the basis
+        # was stamped — honest, and distinguishable from a declared basis, which is the whole
+        # reason the column exists: a half-re-rendered archive must be visible in ONE file
+        # rather than by opening 128.
+        price_basis = metadata.get('price_basis', 'unknown')
+
         return {
             'file': bar_file.name,
             'path': str(bar_file.absolute()),
@@ -260,6 +266,7 @@ class BarsIndexManager:
             'real_bar_count': real_bar_count,
             'source_version_min': source_version_min,
             'source_version_max': source_version_max,
+            'price_basis': price_basis,
             'broker_type': metadata.get('broker_type') or metadata.get('data_collector', 'mt5'),
             'total_trade_volume': round(total_trade_volume, 6) if total_trade_volume is not None else None,
             'avg_volume_per_bar': round(avg_volume_per_bar, 6) if avg_volume_per_bar is not None else None,
@@ -355,6 +362,7 @@ class BarsIndexManager:
                         'real_bar_count': entry.get('real_bar_count', 0),
                         'source_version_min': entry.get('source_version_min', ''),
                         'source_version_max': entry.get('source_version_max', ''),
+                        'price_basis': entry.get('price_basis', 'unknown'),
                         'total_trade_volume': entry.get('total_trade_volume'),
                         'avg_volume_per_bar': entry.get('avg_volume_per_bar'),
                     }
@@ -367,7 +375,8 @@ class BarsIndexManager:
                 'num_row_groups', 'rendered_at', 'total_tick_count',
                 'avg_ticks_per_bar', 'min_ticks_per_bar', 'max_ticks_per_bar',
                 'real_bar_count', 'source_version_min',
-                'source_version_max', 'total_trade_volume', 'avg_volume_per_bar'
+                'source_version_max', 'price_basis',
+                'total_trade_volume', 'avg_volume_per_bar'
             ])
         else:
             df = pd.DataFrame(rows)
@@ -428,6 +437,7 @@ class BarsIndexManager:
                 'real_bar_count': int(row['real_bar_count']) if pd.notna(row.get('real_bar_count')) else 0,
                 'source_version_min': row.get('source_version_min', ''),
                 'source_version_max': row.get('source_version_max', ''),
+                'price_basis': row.get('price_basis', 'unknown'),
                 'broker_type': broker_type,
                 'total_trade_volume': float(row['total_trade_volume']) if pd.notna(row.get('total_trade_volume')) else None,
                 'avg_volume_per_bar': float(row['avg_volume_per_bar']) if pd.notna(row.get('avg_volume_per_bar')) else None,

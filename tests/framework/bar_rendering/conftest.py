@@ -63,11 +63,15 @@ def ticks_to_dataframe(ticks: List[TickData]) -> pd.DataFrame:
     """
     Convert TickData list to DataFrame matching VectorizedBarRenderer input.
 
+    Carries `last` and the derived `price` because the renderer consumes what
+    read_tick_parquet() produces, not what a parquet holds — a fixture that stops at
+    bid/ask/volume exercises a shape no production caller ever passes.
+
     Args:
         ticks: List of TickData objects
 
     Returns:
-        DataFrame with timestamp, bid, ask, volume columns
+        DataFrame with timestamp, bid, ask, volume, last and price columns
     """
     records = []
     for t in ticks:
@@ -76,6 +80,10 @@ def ticks_to_dataframe(ticks: List[TickData]) -> pd.DataFrame:
             'bid': t.bid,
             'ask': t.ask,
             'volume': t.volume,
+            # 0.0 is how a quote-driven venue says "no traded price"; the reader's rule is
+            # mirrored here rather than restated, so the fixture cannot drift from it.
+            'last': t.last if t.last is not None else 0.0,
+            'price': t.price,
         })
     return pd.DataFrame(records)
 

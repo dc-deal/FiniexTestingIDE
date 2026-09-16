@@ -178,7 +178,7 @@ class AutotraderDisplayExporter:
         portfolio.ensure_positions_updated()
 
         # Mid price (needed early for spot equity)
-        last_price = (tick.bid + tick.ask) / 2.0
+        last_price = tick.mid
 
         # Equity + spot balances — spot mode reads balances directly (O(1), no cache trigger)
         if self._trading_model == TradingModel.SPOT:

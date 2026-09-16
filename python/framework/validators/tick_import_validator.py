@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from python.framework.types.config_types.market_config_types import PriceFormation
 from python.framework.types.validation_types import TickFileValidationResult
 
 # Largest tolerated distance between collected_msc and the tick's UTC event time.
@@ -86,7 +87,8 @@ class TickImportValidator:
         df: pd.DataFrame,
         file_name: str,
         declared_tick_count: Optional[int] = None,
-        collected_msc_is_utc: bool = False
+        collected_msc_is_utc: bool = False,
+        price_formation: Optional[PriceFormation] = None
     ) -> TickFileValidationResult:
         """
         Validate one imported tick file.
@@ -101,6 +103,8 @@ class TickImportValidator:
             collected_msc_is_utc: True when the file declares collected_msc_timebase
                 'utc' — such a file must satisfy the lag window, an older one is
                 reported as needing the migration
+            price_formation: How the venue forms its prices, from market_config. An
+                order-driven venue must deliver a traded price; None skips the check
 
         Returns:
             TickFileValidationResult carrying errors, warnings and metrics
@@ -113,6 +117,7 @@ class TickImportValidator:
 
         self._check_tick_count(df, declared_tick_count, result)
         self._check_prices(df, result)
+        self._check_traded_price(df, price_formation, result)
 
         # Timing checks need both time columns. A file without them is not
         # rejected — pre-V1.3.0 exports legitimately lack collected_msc — but
@@ -170,6 +175,45 @@ class TickImportValidator:
         inverted = int((ask < bid).sum())
         if inverted > 0:
             result.add_error(f'{inverted} ticks with ask < bid (inverted spread)')
+
+    def _check_traded_price(
+        self,
+        df: pd.DataFrame,
+        price_formation: Optional[PriceFormation],
+        result: TickFileValidationResult
+    ) -> None:
+        """
+        An order-driven venue must deliver a traded price on every tick.
+
+        This is what turns `price_formation` from a declaration into something checkable.
+        Where trades print centrally, `last` is a real event and its absence is malformed
+        producer output — not a reason to fall back quietly to the midpoint, which is what
+        would otherwise happen and would change what a bar MEANS without anyone noticing.
+
+        A quote-driven venue is not checked: it has no traded price by construction and
+        writes 0.0, which is an absence rather than a defect.
+
+        Args:
+            df: Tick DataFrame
+            price_formation: Declared formation, or None to skip
+            result: Result to record findings on
+        """
+        if price_formation != PriceFormation.ORDER_DRIVEN:
+            return
+
+        if 'last' not in df.columns:
+            result.add_error(
+                'Venue is declared order_driven but the file carries no `last` column — '
+                'a traded price is expected on every tick'
+            )
+            return
+
+        missing = int((df['last'].fillna(0.0) <= 0).sum())
+        if missing > 0:
+            result.add_error(
+                f'{missing} ticks without a traded price, on a venue declared '
+                f'order_driven — `last` must be positive where trades print'
+            )
 
     def _check_monotonic(self, df: pd.DataFrame, result: TickFileValidationResult) -> None:
         """
