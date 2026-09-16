@@ -5,8 +5,12 @@ Live tick stream from Kraken WebSocket v2 trade channel.
 Threading model 8.a: asyncio.run() in daemon thread, TickData pushed
 to queue.Queue consumed by the synchronous main algo thread.
 
-Data consistency: uses the same trade channel as DataCollector,
-ensuring backtesting data matches live data format.
+Data consistency: this used to hold by construction — both sides read only the trade
+channel, so `bid == ask == last` on each and the two agreed. From collector format
+1.6.0 that is no longer true: the collector subscribes to `ticker` as well and stamps
+every trade with the quote it executed against, so an archived tick carries a real
+spread while this source still reports the trade price on both sides. Until that is
+closed, a backtest over 1.6.0 data and a live session do NOT see the same tick.
 """
 
 import asyncio
