@@ -1,6 +1,7 @@
 """Run-results ledger tests (#390) — append per run + read all + filter."""
 
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
+from python.framework.types.api.report_types import RunResultRow
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -166,7 +167,7 @@ def test_what_a_run_consumed_reaches_the_row(tmp_ledger, make_run_summary, make_
     prov = make_provenance(
         run_id='r1', input_plane='archive', data_format_versions='1.5.0,1.7.0',
         origin_classes='production', origin_evidence_grades='attested,stamped',
-        input_files=41, unstamped_input_files=3)
+        input_files=41, unstamped_input_files=3, price_bases='order_driven')
     tmp_ledger.append(make_run_summary(), prov)
 
     row = tmp_ledger.read().iloc[0]
@@ -176,6 +177,7 @@ def test_what_a_run_consumed_reaches_the_row(tmp_ledger, make_run_summary, make_
     assert row['origin_evidence_grades'] == 'attested,stamped'
     assert row['input_files'] == 41
     assert row['unstamped_input_files'] == 3
+    assert row['price_bases'] == 'order_driven'
 
 
 def test_a_failed_run_still_records_what_it_read(tmp_ledger, make_run_summary, make_provenance):
@@ -187,10 +189,29 @@ def test_a_failed_run_still_records_what_it_read(tmp_ledger, make_run_summary, m
     """
     prov = make_provenance(run_id='r1', status='error', error='boom',
                            input_plane='archive', origin_classes='development',
-                           input_files=7, unstamped_input_files=7)
+                           input_files=7, unstamped_input_files=7,
+                           price_bases='quote_driven')
     tmp_ledger.append(make_run_summary(), prov)
 
     row = tmp_ledger.read().iloc[0]
     assert row['status'] == 'error'
     assert row['origin_classes'] == 'development'
     assert row['unstamped_input_files'] == 7
+    assert row['price_bases'] == 'quote_driven'
+
+
+def test_every_ledger_column_is_declared_on_the_typed_row():
+    """
+    The projection must cover the table, or a column is written and reaches no reader.
+
+    `RunResultRow` is the typed read of a ledger row AND the field list the optimizer's CSV
+    export is built from. Pydantic ignores an unknown key without a word, so a column added to
+    `LEDGER_COLUMNS` and forgotten here lands on disk, parses cleanly, and is invisible to
+    every consumer — which is what had happened to the six #518 columns and to
+    r_win_count / r_loss_count. A pass count cannot catch that; only this comparison can.
+    """
+    missing = [c for c in LEDGER_COLUMNS if c not in RunResultRow.model_fields]
+
+    assert missing == [], (
+        f'{missing} are written to the ledger and dropped on the way back in — the data is on '
+        f'disk and no typed reader or exported CSV can see it')

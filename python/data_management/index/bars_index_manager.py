@@ -35,6 +35,11 @@ vLog = get_global_logger()
 # have — adopting it is #175's, and this is the stopgap until then.
 INDEX_SCHEMA_VERSION = b'2.0'
 
+# What a bar file answers when it was written before the price basis was stamped, or when it
+# is not in the index at all. Never a declared basis: 'unknown' is a statement, a borrowed
+# declaration is a guess wearing the shape of a measurement (§31c).
+PRICE_BASIS_UNKNOWN = 'unknown'
+
 
 class BarsIndexManager:
     """
@@ -338,6 +343,29 @@ class BarsIndexManager:
 
         entry = self.index[broker_type][symbol][timeframe]
         return Path(entry['path'])
+
+    def get_price_basis(self, broker_type: str, symbol: str, timeframe: str) -> str:
+        """
+        The basis this bar file was actually RENDERED from (§31c).
+
+        Read from the index row rather than from configuration, and that is the whole point:
+        during a re-render the configuration describes what a render WOULD produce while half
+        the files on disk still hold the previous answer. A file written before the basis was
+        stamped answers 'unknown' rather than borrowing today's declaration.
+
+        Args:
+            broker_type: Broker the bars belong to
+            symbol: Trading symbol
+            timeframe: Timeframe key
+
+        Returns:
+            'order_driven', 'quote_driven', or 'unknown' where the file predates the stamp
+            or is not in the index at all
+        """
+        entry = self.index.get(broker_type, {}).get(symbol, {}).get(timeframe)
+        if not entry:
+            return PRICE_BASIS_UNKNOWN
+        return entry.get('price_basis') or PRICE_BASIS_UNKNOWN
 
     def get_available_timeframes(self, broker_type: str, symbol: str) -> List[str]:
         """Get list of available timeframes for a symbol."""

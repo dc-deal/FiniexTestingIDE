@@ -150,6 +150,15 @@ class PortfolioSummary(AbstractBatchSummarySection):
             f'{renderer.pnl(force_negative(unit.account_max_drawdown), unit.currency)} '
             f'({unit.account_max_dd_pct:.1f}%) | '
             f'Max Equity: {renderer.pnl(force_positive(unit.max_equity), unit.currency)}')
+        # A carried figure looks exactly like a fresh one, and over a thirty-day run with
+        # rehearsed restarts that is the difference between a month and an afternoon (#497).
+        # The stamp is the curve's START, never the last handover: the handover is re-written
+        # on every carry-over write and walks toward the present, so printing it beside a
+        # growing session count would understate exactly the span this line exists to show.
+        if unit.drawdown_restarts:
+            since = unit.drawdown_started_at or 'an unrecorded start'
+            print(
+                f'     ↳ in force since {since} · spans {unit.drawdown_restarts + 1} sessions')
 
         print(
             f'   Cost: spread {renderer.pnl(force_negative(unit.total_spread_cost), unit.currency)} | '

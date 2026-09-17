@@ -34,8 +34,10 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
 from python.framework.exceptions.live_execution_errors import DryRunConflictError
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
+from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
+from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.field_study_recorder import FieldStudyRecorder
 from python.framework.signal_data.signal_observed_accumulator import SignalObservedAccumulator
@@ -58,7 +60,12 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.live_types.reconciliation_types import FlatCheckResult
-from python.framework.types.persistence_types import BaselineKind
+from python.framework.types.persistence_types import (
+    AccountDrawdownCarryOver,
+    BaselineKind,
+    ColdStartPayload,
+    RiskBaseline,
+)
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.framework.types.signal_data_types import (
@@ -74,6 +81,28 @@ from python.framework.validators.session_end_validator import resolve_session_en
 from python.framework.validators.session_post_run_validator import SessionPostRunValidator
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
+
+
+def _mint_deployment_id(run_timestamp: datetime) -> str:
+    """
+    Mint the identity that groups a bot's sessions into one continuous deployment (#497).
+
+    Minted at the FIRST session of a deployment and carried forward by every successor, so N
+    session records become one history. It is an opaque KEY and must never be parsed: the
+    timestamp is in it for a human reading a directory listing, exactly as a sweep id carries
+    one, and anything that needs the start reads `curve_started_utc` instead.
+
+    A profile name cannot do this job. The same bot deployed in July, stopped for a month and
+    redeployed in September is two deployments, and from the outside the two look identical —
+    which is why the key has to be written WHILE the sessions run rather than derived later.
+
+    Args:
+        run_timestamp: The first session's start (UTC)
+
+    Returns:
+        A deployment identity of the shape `deploy_<YYYYmmdd>_<HHMMSS>`
+    """
+    return f'deploy_{run_timestamp.strftime("%Y%m%d_%H%M%S")}'
 
 
 class AutotraderMain:
@@ -113,6 +142,9 @@ class AutotraderMain:
         self._emergency_reason: Optional[str] = None
         self._session_start: Optional[float] = None
         self._run_timestamp: Optional[datetime] = None
+        # Read once at boot, before the header that carries the deployment identity.
+        self._carried: ColdStartPayload = ColdStartPayload()
+        self._deployment_id: str = ''
 
         # Tick communication (Threading model 8.a)
         self._tick_queue: queue.Queue = queue.Queue()
@@ -202,8 +234,19 @@ class AutotraderMain:
         run_timestamp = datetime.now(timezone.utc)
         self._run_timestamp = run_timestamp
 
+        # === CARRY-OVER, read ONCE and read EARLY ===
+        # Before the loggers, because the run HEADER carries the deployment identity and the
+        # header is written in there — at the run's start, with no update path by design. The
+        # payload is kept, so the two readers further down (#356's baseline, #497's curve) do
+        # not open the same document again: this tree charges 110x for a file read (§42), and
+        # two reads could straddle a write and describe two different predecessors.
+        self._carried = self._read_carry_over(run_timestamp)
+        deployment_id = self._carried.deployment_id or _mint_deployment_id(run_timestamp)
+
         # === LOGGERS ===
-        loggers = create_autotrader_loggers(self._config, run_timestamp)
+        loggers = create_autotrader_loggers(
+            self._config, run_timestamp, deployment_id=deployment_id)
+        self._deployment_id = deployment_id
         self._global_logger = loggers.global_logger
         self._session_logger = loggers.session_logger
         self._summary_logger = loggers.summary_logger
@@ -303,7 +346,19 @@ class AutotraderMain:
             # Built BEFORE the first carry-over write below, which now carries the record.
             # The predecessor's baseline is read here rather than at the first tick: by then
             # the account has already moved, and taking it there is precisely the drift.
-            self._risk_baseline = self._build_risk_baseline_tracker()
+            # ONE read for BOTH records. They sit one line apart and used to open the same
+            # document twice, which this tree charges 110x for (§42) — and the two answers
+            # have to come from the same document anyway, or a write between them would leave
+            # the denominator and the curve describing different predecessors.
+            carried = self._load_carry_over_records()
+            self._risk_baseline = self._build_risk_baseline_tracker(carried.risk_baseline)
+
+            # === REPORTED DRAWDOWN CONTINUITY (#497) ===
+            # The sibling of the baseline above, at the other reader. Restored HERE for the
+            # same reason and under the same switch: by the first tick the account has already
+            # moved, and a curve that starts there reports a month's drawdown as an
+            # afternoon's. LIVE only — nothing in the simulation constructs this store.
+            self._restore_reported_drawdown(carried.account_drawdown)
 
             # Record the key NOW, before a single order goes out — not only at shutdown. A
             # hard kill (SIGKILL, OOM, power) is precisely the case this carry-over exists
@@ -964,23 +1019,69 @@ class AutotraderMain:
     # HELPERS
     # =========================================================================
 
-    def _build_risk_baseline_tracker(self) -> RiskBaselineTracker:
+    def _read_carry_over(self, run_timestamp: datetime) -> ColdStartPayload:
         """
-        Build the tracker, restoring the predecessor's baseline where the profile allows it.
+        Open this bot's carry-over document, once, before anything else needs it.
+
+        Early because the run HEADER carries the deployment identity and is written at the
+        run's start with no update path. Constructing the store does no IO — it assembles a
+        path — so this is exactly one file read for every reader that follows.
+
+        Args:
+            run_timestamp: This session's start, used only as the store's provenance stamp
+
+        Returns:
+            The stored payload, or an empty one when there is nothing to read
+        """
+        if not self._config.cold_start.enabled:
+            return ColdStartPayload()
+        store = ColdStartStateStore(
+            root=Path(self._config.cold_start.path),
+            profile=self._config.name or self._config.symbol,
+            symbol=self._config.symbol,
+            logger=get_global_logger(),
+            run_id=None,
+        )
+        return store.load()
+
+    def _load_carry_over_records(self) -> ColdStartPayload:
+        """
+        The records the predecessor left, for both readers that continue them.
+
+        Already read at boot — this applies the SWITCH and hands the payload on. Doing both
+        in one place is what keeps "does risk history survive a restart" answered once for
+        the denominator (#356) and the reported drawdown curve (#497) alike; an empty payload
+        is the honest answer for a first boot and for a profile that asked for a fresh
+        reference, and the two are indistinguishable on purpose.
+
+        Returns:
+            The stored payload, or an empty one when nothing may be carried
+        """
+        if not self._config.safety.persist_baseline:
+            return ColdStartPayload()
+        return self._carried
+
+    def _build_risk_baseline_tracker(
+        self,
+        restored: Optional[RiskBaseline],
+    ) -> RiskBaselineTracker:
+        """
+        Build the tracker, adopting the predecessor's baseline where one was carried.
 
         Two switches, and they answer different questions. `safety.enabled` decides whether
         anything is CHECKED; `persist_baseline` decides whether the denominator survives a
-        restart. A session with safety off still tracks its baseline, so that a later session
-        can switch the checks on against a reference that was taken honestly rather than
-        re-anchored at whatever the account happened to be worth that morning.
+        restart — applied by the caller, which reads both carried records at once. A session
+        with safety off still tracks its baseline, so that a later session can switch the
+        checks on against a reference that was taken honestly rather than re-anchored at
+        whatever the account happened to be worth that morning.
+
+        Args:
+            restored: The predecessor's record, or None for a first run or a fresh start
 
         Returns:
             The tracker this session measures against
         """
         safety = self._config.safety
-        restored = None
-        if safety.persist_baseline and self._cold_start.store is not None:
-            restored = self._cold_start.store.load().risk_baseline
         return RiskBaselineTracker(
             mode=(BaselineKind.HIGH_WATER_MARK
                   if safety.baseline_mode == 'high_water_mark'
@@ -993,6 +1094,37 @@ class AutotraderMain:
             clock_fn=self._executor.get_current_time_if_set,
             logger=self._session_logger,
         )
+
+    def _restore_reported_drawdown(self, carried: Optional[AccountDrawdownCarryOver]) -> None:
+        """
+        Let the REPORT's equity curve continue from the predecessor's, where the profile
+        allows it (#497).
+
+        The same restart drift the risk baseline above was built against, at the other
+        reader. Left alone, a session resuming at a drawn-down value treats that value as its
+        own high and reports no loss at all — so a thirty-day run with rehearsed restarts
+        (#476) reports the drawdown of its last segment and says nothing about the rest.
+
+        Governed by `persist_baseline`, deliberately the same switch rather than a second one:
+        both records answer whether the account's risk HISTORY survives a restart, both live
+        in the same document, and a session where one survives and the other does not produces
+        a report whose two drawdown figures silently describe different periods. The switch is
+        applied by the caller, which reads both records from one document.
+
+        Args:
+            carried: The predecessor's curve, or None for a first run or a fresh start
+
+        Returns:
+            None — seeds the portfolio's curve, or leaves it at this session's own start
+        """
+        if carried is None:
+            return
+        self._executor.portfolio.restore_drawdown_state(carried)
+        self._session_logger.info(
+            f'📉 Reported drawdown continues from the previous session: peak '
+            f'{carried.max_equity:.2f}, deepest {carried.max_drawdown:.2f} '
+            f'({carried.max_drawdown_pct:.2f} %), carried {carried.taken_at_utc} — '
+            f'this figure now spans {carried.restarts + 1} session(s)')
 
     def _persist_cold_start_carry_over(self, refresh_index: bool = True) -> bool:
         """
@@ -1049,6 +1181,17 @@ class AutotraderMain:
                 # store reads as "not supplied" and therefore leaves the stored one alone.
                 risk_baseline=(self._risk_baseline.get_baseline()
                                if self._risk_baseline is not None else None),
+                # #497 — the REPORT's peak and deepest decline. Rides these existing write
+                # points rather than a cadence of its own: one write plus its index rebuild
+                # costs tens of milliseconds on this tree (§42) and has no business in a tick
+                # loop. A crash between two of them loses the deepening since the last, which
+                # is the report plane's crash-safety and therefore #476's subject.
+                account_drawdown=(portfolio.get_account_drawdown_carry_over()
+                                  if self._config.safety.persist_baseline else None),
+                # The join key, written on every one of these points rather than once at boot:
+                # a session that dies before its first structural write must still leave its
+                # membership behind, or its ledger row is an orphan nobody can attach.
+                deployment_id=self._deployment_id,
                 refresh_index=refresh_index,
             )
             return True

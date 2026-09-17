@@ -28,7 +28,7 @@ _RUN_ID = '20260830_120000_a1b2c3d4'
 _TS = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
-def _scenario_reading(versions, classes, grades) -> SingleScenario:
+def _scenario_reading(versions, classes, grades, bases=()) -> SingleScenario:
     """
     A scenario carrying the input lists the mount fills.
 
@@ -36,6 +36,8 @@ def _scenario_reading(versions, classes, grades) -> SingleScenario:
         versions: The data format versions of the files it read
         classes: Their resolved origin classes
         grades: Their resolved evidence grades
+        bases: The price bases of the BAR files it mounted — a separate archive from the
+            three above, which is why it is counted separately and defaults to none
 
     Returns:
         A scenario with only those fields set — nothing else is read here
@@ -46,6 +48,7 @@ def _scenario_reading(versions, classes, grades) -> SingleScenario:
     scenario.data_format_versions = list(versions)
     scenario.origin_classes = list(classes)
     scenario.origin_evidence_grades = list(grades)
+    scenario.price_bases = list(bases)
     return scenario
 
 
@@ -123,6 +126,12 @@ class TestWhatARunConsumed:
         assert p.origin_classes == ''
         assert p.origin_evidence_grades == ''
         assert p.input_files == 0
+        # The ONE field that is filled on the live side, and deliberately so: a live session
+        # renders its bars at runtime, so there is no file to stamp and nothing can be out of
+        # date with the declaration. Blank here would defeat the field — the parity proof has
+        # to compare the live basis against the backtest's, and `input_plane` is what says
+        # this one is DECLARED rather than measured (§31c).
+        assert p.price_bases == 'order_driven'
 
     def test_a_sim_run_reports_the_distinct_values_and_the_counts(self):
         """
@@ -146,6 +155,34 @@ class TestWhatARunConsumed:
         assert record['origin_evidence_grades'] == 'attested,stamped'
         assert record['input_files'] == 3
         assert record['unstamped_input_files'] == 3
+
+    def test_a_half_re_rendered_archive_answers_with_both_bases(self):
+        """
+        The condition the stamp exists to EXPOSE, not to smooth over.
+
+        A re-render walks the archive file by file. While it runs, one scenario legitimately
+        mounts bars written under the new basis beside bars still holding the old answer — and
+        a run over that mixture is not comparable with one over either half. Collapsing it to a
+        single value, or filling the gap from the broker's declaration, is exactly the
+        borrowing the stamp prevents: config describes what a render WOULD produce, and half
+        the files on disk disagree with it (§31c).
+        """
+        scenarios = [_scenario_reading(
+            ['1.7.0'], ['production'], ['stamped'],
+            bases=['order_driven', 'unknown', 'order_driven'])]
+
+        record = _consumption_record(scenarios)
+
+        assert record['price_bases'] == 'order_driven,unknown'
+        # The file COUNT is unchanged: the basis comes from the bar archive and the count from
+        # ticks plus signals, so one is not a subset of the other.
+        assert record['input_files'] == 1
+
+    def test_a_scenario_that_mounted_no_bars_records_no_basis(self):
+        """Empty is the honest answer; the declaration would be a guess in its shape."""
+        record = _consumption_record([_scenario_reading(['1.7.0'], ['production'], ['stamped'])])
+
+        assert record['price_bases'] == ''
 
     def test_only_production_AND_stamped_counts_as_stamped(self):
         """

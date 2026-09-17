@@ -106,6 +106,11 @@ class SingleScenario:
     data_format_versions: List[str] = field(default_factory=list)
     origin_classes: List[str] = field(default_factory=list)
     origin_evidence_grades: List[str] = field(default_factory=list)
+    # One entry per mounted BAR file — the only archive that stamps a price basis. A scenario
+    # that mounted none stays EMPTY rather than falling back to the broker's declaration
+    # (§31c): 'what was this rendered from' and 'what would a render produce today' are two
+    # questions, and they disagree for exactly as long as a re-render is unfinished.
+    price_bases: List[str] = field(default_factory=list)
 
     # === PROFILE RUN METADATA (populated from a WindowSet) ===
     is_profile_run: bool = False

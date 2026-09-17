@@ -71,3 +71,9 @@ class RunProvenance:
     origin_evidence_grades: str = ''        # distinct, sorted, comma-joined
     input_files: int = 0                    # files the scenarios actually read
     unstamped_input_files: int = 0          # of those, the ones not production-and-stamped
+    # WHICH PRICE the bars this run read were rendered from (§31c). Joined-distinct like the
+    # three above, because a run spans brokers and timeframes and a half-re-rendered archive
+    # legitimately answers 'order_driven,unknown' — which is the condition the stamp exists to
+    # expose rather than to smooth over. On the LIVE side it is a DECLARATION and not a stamp;
+    # `input_plane` is what tells the two apart.
+    price_bases: str = ''                   # distinct, sorted, comma-joined

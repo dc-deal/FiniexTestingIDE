@@ -40,6 +40,12 @@ LEDGER_COLUMNS: List[str] = [
     'decision_logic_type', 'decision_version', 'worker_versions',
     'config_snapshot', 'symbols', 'data_broker_type', 'currency',
     'net_pnl', 'expectancy', 'profit_factor', 'win_rate', 'account_max_drawdown',
+    # The drawdown's two companions. The PERCENTAGE cannot be re-derived from the amount
+    # and the peak — it was measured against the peak standing at the time, and dividing
+    # the two finished figures understates every run that recovered (#497). A live row is
+    # CUMULATIVE over its deployment, so `max()` is the right reduction over a deployment's
+    # rows and `sum()` would count one decline several times.
+    'max_equity', 'account_max_drawdown_pct',
     # #492 — realised (net_pnl) and valued (final_equity) side by side. A ranking on
     # net_pnl alone rates a variant still HOLDING a winner below one that closed it, and
     # a run end no longer closes anything. Appended, so older fragments stay readable.
@@ -57,7 +63,7 @@ LEDGER_COLUMNS: List[str] = [
     # there and would otherwise be indistinguishable from a sim row that recorded nothing.
     # Appended, so older fragments stay readable and read back as None.
     'input_plane', 'data_format_versions', 'origin_classes', 'origin_evidence_grades',
-    'input_files', 'unstamped_input_files',
+    'input_files', 'unstamped_input_files', 'price_bases',
 ]
 
 
@@ -187,6 +193,7 @@ class RunResultsLedger:
             'origin_evidence_grades': p.origin_evidence_grades,
             'input_files': p.input_files,
             'unstamped_input_files': p.unstamped_input_files,
+            'price_bases': p.price_bases,
             'logic_version': RunLedgerIndex.LOGIC_VERSION,
         }
 
@@ -202,6 +209,8 @@ class RunResultsLedger:
             'profit_factor': currency.profit_factor,
             'win_rate': currency.win_rate,
             'account_max_drawdown': currency.account_max_drawdown,
+            'max_equity': currency.max_equity,
+            'account_max_drawdown_pct': currency.account_max_dd_pct,
             'unrealized_pnl': currency.unrealized_pnl,
             'final_equity': currency.final_equity,
             'open_position_count': currency.open_position_count,

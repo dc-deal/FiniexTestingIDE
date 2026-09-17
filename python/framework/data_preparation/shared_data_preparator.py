@@ -17,18 +17,18 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
-from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 from python.framework.exceptions.data_quality_errors import TradedPriceMissingException
-from python.framework.types.config_types.market_config_types import PriceFormation
 from python.framework.exceptions.signal_data_errors import SignalDataUnavailableError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.signal_data.signal_jsonl_loader import load_signal_series
 from python.framework.signal_data.signal_parquet_reader import load_signal_series_from_parquet
 from python.framework.stress_test.stale_data_slicer import StaleDataSlicer
+from python.framework.types.config_types.market_config_types import PriceFormation
 from python.framework.types.process_data_types import (
     BarRequirement,
     ClippingStats,
@@ -251,6 +251,17 @@ class SharedDataPreparator:
                 entry.get('origin_class', 'unknown') for entry in inputs]
             scenario.origin_evidence_grades = [
                 entry.get('origin_evidence', 'unknown') for entry in inputs]
+            # The price basis comes from the BAR index, because the bar files are the only
+            # place it is stamped — a tick parquet carries no basis at all. So a scenario
+            # that mounted no bar file records NOTHING here rather than the broker's
+            # declaration: borrowing config is exactly what the stamp exists to prevent, and
+            # during a re-render config describes what a render WOULD produce while half the
+            # archive still holds the previous answer (§31c).
+            scenario.price_bases = [
+                self.bar_index_manager.get_price_basis(
+                    scenario.data_broker_type, symbol, timeframe)
+                for symbol, timeframe, _ in scenario_bars['bars']
+            ]
 
             # Log package size
             tick_count = sum(scenario_ticks['counts'].values())

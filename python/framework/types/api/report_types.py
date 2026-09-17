@@ -232,6 +232,13 @@ class PortfolioUnitRow(BaseModel):
     # excursion is `TradeRecord.mae_pnl` (#389) and is a different number.
     account_max_drawdown: float
     account_max_dd_pct: float = 0.0   # worst decline over the peak it fell FROM, per tick
+    # WHICH PERIOD the two figures above describe (#497). A live session inherits its
+    # predecessor's curve through the cold-start carry-over, so the drawdown may span a month
+    # of restarts — and nothing in the number itself says so. Empty stamp = this session began
+    # its own curve, which is always the case in the simulation.
+    drawdown_carried_from: str = ''
+    drawdown_restarts: int = 0
+    drawdown_started_at: str = ''   # when the curve began, not when it was last handed over
     total_fees: float
     # Full projection — the per-scenario linear block renders purely from these (defaulted:
     # additive columns; the per-currency aggregated section stays on PortfolioAggregator).
@@ -301,6 +308,12 @@ class PortfolioAggregateRow(BaseModel):
     total_loss: float
     net_profit: float
     account_max_drawdown: float
+    # The peak it fell from and the share it was — taken from the SAME unit as the amount
+    # above, never the deepest decline of one scenario over the highest peak of another. That
+    # pairing was a real defect (#497) and the rule is the same here as in the console
+    # aggregate: amount, percentage and the unit they describe travel together.
+    max_equity: float = 0.0
+    account_max_dd_pct: float = 0.0
     total_fees: float
     # #492 — the wealth view beside the realised one. Summed across the currency's units,
     # never folded into net_profit.
@@ -394,6 +407,9 @@ class ScenarioDetailsRow(BaseModel):
     data_format_versions: str = ''
     origin_classes: str = ''
     origin_evidence_grades: str = ''
+    # Empty where the scenario mounted no BAR file — the only archive that stamps a basis.
+    # Not filled from the broker declaration: that is the borrowing the stamp prevents (§31c).
+    price_bases: str = ''
     account_currency: str = ''      # resolved P&L denomination currency
     account_currency_explicit: bool = False  # True when set in config (not auto-derived)
     status: str = 'success'         # 'success' | 'failed' | 'hybrid' (partial + error)
@@ -411,12 +427,38 @@ class ScenarioDetailsRow(BaseModel):
     error_message: str = ''
 
 
+class DataSourceRow(BaseModel):
+    """
+    One data source a run read from, with what that source IS and what was read over it.
+
+    An AGGREGATE and therefore its own stage: it is derived once and serves every surface,
+    rather than being rebuilt by whichever renderer happens to want it. The console used to
+    group the scenario rows itself AND resolve the market type from a config manager it
+    instantiated — two things a PRESENT layer may not do, and the second one silently: config
+    answers what a broker is TODAY, so a re-render or a config edit would make the console
+    disagree with the artifact beside it.
+
+    `market_type` is resolved ONCE here from its authoritative owner. `price_bases` is NOT —
+    it comes from the scenarios' stamps (§31c), because what a file was rendered from and what
+    a render would produce today are two questions that disagree for as long as a re-render is
+    unfinished.
+    """
+    broker_type: str
+    market_type: str        # resolved once in DERIVE, never in a renderer
+    scenario_count: int
+    symbols: list[str]      # sorted, distinct
+    price_bases: str = ''   # distinct, sorted, comma-joined across this source's scenarios
+
+
 class ScenarioDetailsReport(RunScopedReport):
     """
     Per-scenario execution/signal metadata (sim-only): one row per scenario, **including
     failed ones** (the section's job is the full scenario status grid).
     """
     units: list[ScenarioDetailsRow]
+    # The per-source roll-up over those rows. On the model so the console, the artifact and
+    # the API read one derivation instead of three.
+    data_sources: list[DataSourceRow] = []
 
 
 class RunReporting(StrEnum):
@@ -536,6 +578,12 @@ class RunSummaryCurrency(BaseModel):
     profit_factor: float | None  # ← PortfolioAggregateRow (None = no losing trade)
     win_rate: float         # ← PortfolioAggregateRow.win_rate
     account_max_drawdown: float     # ← PortfolioAggregateRow.account_max_drawdown
+    # The peak it fell from and the share it was, from the SAME unit as the amount. The
+    # percentage is not derivable from the other two — it was measured against the peak
+    # standing at the time — and the ledger is the one record that has to carry it, because
+    # a live row is cumulative over its deployment and a reader comparing rows needs both.
+    max_equity: float = 0.0
+    account_max_dd_pct: float = 0.0
     total_fees: float       # ← PortfolioAggregateRow.total_fees
     total_trades: int
     winning_trades: int
@@ -610,6 +658,19 @@ class RunResultRow(BaseModel):
     config_snapshot: str = ''                    # full resolved strategy_config (JSON string)
     symbols: list[str] = []
     data_broker_type: str = ''
+    # WHICH DATA the row was produced over (#518) and WHICH PRICE its bars were rendered from
+    # (§31c). Carried here and not only in the parquet: this model IS the typed read of a
+    # ledger row and `_write_csv` builds the optimizer's export from its field list, so a
+    # column the model does not declare is written to disk and reaches no reader — Pydantic
+    # drops the unknown key without a word. Defaults are '' / 0 so a fragment written before
+    # the columns existed still parses.
+    input_plane: str = ''
+    data_format_versions: str = ''
+    origin_classes: str = ''
+    origin_evidence_grades: str = ''
+    input_files: int = 0
+    unstamped_input_files: int = 0
+    price_bases: str = ''
     currency: str = ''
     # KPIs (the rankable objective fields)
     net_pnl: float = 0.0
@@ -617,6 +678,8 @@ class RunResultRow(BaseModel):
     profit_factor: float | None = None  # None = undefined (no losing trade)
     win_rate: float = 0.0
     account_max_drawdown: float = 0.0
+    max_equity: float = 0.0
+    account_max_drawdown_pct: float = 0.0
     unrealized_pnl: float = 0.0
     final_equity: float = 0.0
     open_position_count: int = 0
@@ -627,6 +690,10 @@ class RunResultRow(BaseModel):
     avg_win_r: float | None = None
     avg_loss_r: float | None = None
     r_trade_count: int = 0
+    # In LEDGER_COLUMNS since #389 and missing here for the same reason as the block above —
+    # declared on disk, dropped on the way in.
+    r_win_count: int = 0
+    r_loss_count: int = 0
     orders_sent: int = 0
     orders_executed: int = 0
     orders_rejected: int = 0

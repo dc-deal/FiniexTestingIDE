@@ -154,7 +154,8 @@ if the identity survived; a resolved class alone is a conclusion whose premise h
 per-scenario lists at mount
       ▼
 run provenance ──► ledger row: input_plane · data_format_versions · origin_classes ·
-      ▼                        origin_evidence_grades · input_files · unstamped_input_files
+      ▼                        origin_evidence_grades · input_files ·
+                               unstamped_input_files · price_bases
 runs/ledger/ ─────► one fragment per run, ranked over by the optimizer
 ```
 
@@ -224,6 +225,22 @@ adjudicated.
 **And the gate asks one question about both.** A run that consumed development signal data is
 exactly as incomparable as one that consumed development ticks, so the per-scenario lists hold the
 inputs of both archives and one rule reads them.
+
+
+**`price_bases` comes from a different archive than the rest of that list, and it is worth
+saying why.** The other fields are read from the TICK and SIGNAL index entries the scenario's
+window overlaps. A price basis is stamped only when a BAR file is written, so it is read from
+the bar index instead — and a scenario that mounted no bars records nothing rather than
+falling back to the broker's declaration. That fallback is the whole thing the stamp prevents:
+during a re-render, configuration describes what a render *would* produce while half the
+archive still holds the previous answer, so a run over the mixture honestly answers
+`order_driven,unknown`.
+
+The LIVE row is the one exception and inverts the rule deliberately. A live session renders
+its bars at runtime from the tick's own price, so no file exists to carry a stamp and nothing
+can be out of date with the declaration — there, configuration IS the truth. `input_plane`
+is what lets a reader tell the two apart, and leaving the live value blank would have defeated
+the field: the parity proof has to compare the live basis against the backtest's.
 
 ## The gate, and why it starts open
 

@@ -115,5 +115,6 @@ model, the price formation and the market type at once.
 | `test_the_three_values_reach_the_row` | the distinct values arrive at the per-scenario grain |
 | `test_a_FAILED_scenario_still_says_what_it_read` | the row an early return could have skipped — failing over development data and over production data are different failures |
 | `test_the_encoding_is_the_one_the_ledger_uses` | sorted AND distinct: the same files in a different read order must produce the same string, or two identical runs look different |
+| `test_the_price_basis_reaches_the_row_at_this_grain_too` | the basis is read from the BAR index, and per scenario because that is where a mixed archive is visible — a run-level `order_driven,unknown` is true and useless for deciding which scenario's numbers to trust |
 | `test_a_scenario_that_read_nothing_reports_empty_rather_than_a_placeholder` | empty is empty, never a stand-in |
 

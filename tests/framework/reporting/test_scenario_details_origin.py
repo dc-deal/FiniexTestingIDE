@@ -14,12 +14,16 @@ scenario: a run that failed over development data and one that failed over produ
 different failures, and this row is the only per-scenario place that survives the run.
 """
 
-from python.framework.reporting.builders.scenario_details_report_builder import _to_row
+from python.framework.reporting.builders.scenario_details_report_builder import (
+    _data_sources,
+    _to_row,
+)
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 
 
-def _scenario(versions, classes, grades, symbol='GBPUSD', broker='mt5') -> SingleScenario:
+def _scenario(versions, classes, grades, symbol='GBPUSD', broker='mt5',
+              bases=()) -> SingleScenario:
     """
     A scenario carrying the input lists the mount fills.
 
@@ -29,6 +33,8 @@ def _scenario(versions, classes, grades, symbol='GBPUSD', broker='mt5') -> Singl
         grades: Their resolved evidence grades
         symbol: The traded symbol
         broker: The archive it read from
+        bases: Price bases of the BAR files it mounted — a different archive from the three
+            above, so it defaults to none rather than mirroring them
 
     Returns:
         A scenario with those fields set
@@ -39,6 +45,7 @@ def _scenario(versions, classes, grades, symbol='GBPUSD', broker='mt5') -> Singl
     scenario.data_format_versions = list(versions)
     scenario.origin_classes = list(classes)
     scenario.origin_evidence_grades = list(grades)
+    scenario.price_bases = list(bases)
     return scenario
 
 
@@ -91,9 +98,86 @@ class TestAScenarioRecordsWhatItRead:
         assert one.data_format_versions == other.data_format_versions == '1.5.0,1.7.0'
         assert one.origin_classes == other.origin_classes == 'production,unknown'
 
+    def test_the_price_basis_reaches_the_row_at_this_grain_too(self):
+        """
+        Per SCENARIO, because that is the grain where a mixed archive is visible.
+
+        The run-level roll-up would answer 'order_driven,unknown' for a set in which one
+        scenario read a fully re-rendered symbol and another did not — true, and useless for
+        deciding which scenario's numbers to trust.
+        """
+        row = _to_row(_result(), _scenario(
+            ['1.7.0'], ['production'], ['stamped'],
+            bases=['order_driven', 'unknown']))
+
+        assert row.price_bases == 'order_driven,unknown'
+
     def test_a_scenario_that_read_nothing_reports_empty_rather_than_a_placeholder(self):
         row = _to_row(_result(), _scenario([], [], []))
 
         assert row.data_format_versions == ''
         assert row.origin_classes == ''
         assert row.origin_evidence_grades == ''
+        assert row.price_bases == ''
+
+
+class TestTheDataSourceRollUpIsDerivedOnce:
+    """
+    The roll-up is a DERIVE stage, not something a renderer does on the way past (§12).
+
+    It used to live in the console: the executive summary grouped the scenario rows itself
+    AND instantiated a config manager to resolve each broker's market type. Two violations of
+    one rule, and the second one silently — config answers what a broker is TODAY, so the
+    console could print one thing while the artifact beside it held another, and no other
+    surface got the grouping at all.
+    """
+
+    @staticmethod
+    def _sources(*scenarios):
+        """Roll the given scenarios up the way the builder does.
+
+        Args:
+            scenarios: The scenarios to project and group
+
+        Returns:
+            The derived data-source rows
+        """
+        return _data_sources([_to_row(_result(), sc) for sc in scenarios])
+
+    def test_the_sources_are_grouped_with_their_market_type_resolved(self):
+        sources = self._sources(
+            _scenario(['1.7.0'], ['production'], ['stamped'],
+                      symbol='BTCUSD', broker='kraken_spot', bases=['order_driven']),
+            _scenario(['1.7.0'], ['production'], ['stamped'],
+                      symbol='ETHUSD', broker='kraken_spot', bases=['order_driven']),
+            _scenario(['1.5.0'], ['production'], ['attested'],
+                      symbol='EURUSD', broker='mt5', bases=['quote_driven']))
+
+        by_broker = {s.broker_type: s for s in sources}
+        assert by_broker['kraken_spot'].scenario_count == 2
+        assert by_broker['kraken_spot'].symbols == ['BTCUSD', 'ETHUSD']
+        assert by_broker['kraken_spot'].market_type == 'crypto'
+        assert by_broker['mt5'].market_type == 'forex'
+
+    def test_the_price_basis_is_de_duplicated_across_a_source_scenarios(self):
+        """
+        The roll-up SPLITS the rows' joined strings rather than concatenating them.
+
+        Two scenarios over one source would otherwise report
+        'order_driven,order_driven,unknown', which is not an answer to "what was this
+        rendered from".
+        """
+        sources = self._sources(
+            _scenario(['1.7.0'], ['production'], ['stamped'],
+                      broker='kraken_spot', bases=['order_driven']),
+            _scenario(['1.7.0'], ['production'], ['stamped'],
+                      broker='kraken_spot', bases=['order_driven', 'unknown']))
+
+        assert sources[0].price_bases == 'order_driven,unknown'
+
+    def test_a_source_whose_scenarios_mounted_no_bars_reports_no_basis(self):
+        """Empty, never a placeholder — and never the broker's declaration."""
+        sources = self._sources(
+            _scenario(['1.7.0'], ['production'], ['stamped'], broker='kraken_spot'))
+
+        assert sources[0].price_bases == ''

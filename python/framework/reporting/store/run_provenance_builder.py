@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.bootstrap_logger import get_global_logger
@@ -146,6 +147,13 @@ def build_run_provenance_from_session(
         # A live session consumes a socket, not an archive, so the consumption record is empty
         # and `input_plane` is what says that on purpose rather than by omission.
         input_plane='stream',
+        # The ONE exception to that emptiness, and the one place config is the right source:
+        # a live session renders its bars at runtime from `tick.price`, so there is no file to
+        # carry a stamp and nothing can be out of date with the declaration. Leaving it blank
+        # would defeat the field — the parity proof has to compare the live basis against the
+        # backtest's, and `input_plane='stream'` is what tells a reader this one is DECLARED
+        # rather than measured (§31c).
+        price_bases=MarketConfigManager().get_price_formation(config.broker_type).value,
     )
 
 
@@ -171,10 +179,12 @@ def _consumption_record(scenarios: List[SingleScenario]) -> Dict[str, Any]:
     versions: List[str] = []
     classes: List[str] = []
     grades: List[str] = []
+    bases: List[str] = []
     for scenario in scenarios:
         versions.extend(scenario.data_format_versions)
         classes.extend(scenario.origin_classes)
         grades.extend(scenario.origin_evidence_grades)
+        bases.extend(scenario.price_bases)
 
     unstamped = sum(
         1 for origin_class, evidence in zip(classes, grades)
@@ -187,6 +197,10 @@ def _consumption_record(scenarios: List[SingleScenario]) -> Dict[str, Any]:
         'origin_evidence_grades': joined_distinct(grades),
         'input_files': len(classes),
         'unstamped_input_files': unstamped,
+        # Counted separately from `input_files` on purpose: the basis comes from the BAR
+        # files and the file count from ticks plus signals, so one is not a subset of the
+        # other and a shared count would describe neither.
+        'price_bases': joined_distinct(bases),
     }
 
 

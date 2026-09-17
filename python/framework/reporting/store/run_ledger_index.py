@@ -50,7 +50,19 @@ class RunLedgerIndex(AbstractStoreIndex):
     # rename above this changes no existing value, so ranking across the boundary stays valid —
     # what an older fragment cannot do is answer the question at all, and it reads back as None
     # rather than as a made-up answer.
-    LOGIC_VERSION: int = 4
+    #
+    # 4 → 5 (#520 / §31c): `price_bases` appended — WHICH PRICE the bars a row was produced
+    # over were rendered from. Same shape as 3 → 4: one column, no existing value changes, so
+    # ranking across the boundary stays valid. It is its own column rather than part of
+    # `data_format_versions` because the two answer different questions and come from
+    # different archives — the format version from the tick files, the basis from the bar
+    # files, which are the only ones that stamp it.
+    #
+    # 5 → 6 (#497): `max_equity` and `account_max_drawdown_pct` appended. The percentage is not
+    # derivable from the amount and the peak — it was measured against the peak standing at the
+    # time — so without the column the ledger holds a drawdown it cannot express as a share.
+    # Same shape again: appended, no existing value changes.
+    LOGIC_VERSION: int = 6
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

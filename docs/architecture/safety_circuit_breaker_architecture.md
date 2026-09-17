@@ -179,6 +179,17 @@ and on a spot account the price and the holdings its value can be re-derived fro
 came back from the previous session is flagged separately, because that is the whole point of the
 persistence and one boolean away from invisible.
 
+**And it is not the only honest drawdown the session produces.** The portfolio section reports a
+SECOND one, and the two may legitimately differ — so each says which it is rather than printing a
+bare percentage. The safety reading is measured against this configured baseline (`fixed` or
+`high_water_mark`); the portfolio's `Max DD (account, curve)` is the largest peak-to-trough
+decline of the equity curve, which is what the word means outside this project and what a sweep
+ranks on. On a `fixed` baseline that never rose they agree; on a `high_water_mark` they are the
+same construction; after a recovery they are different numbers about the same session. Merging
+them is the defect #497 removed, and the labels are what keep them apart.
+`safety.persist_baseline` governs BOTH across a restart — deliberately one switch, because a
+session where only one survived would show two figures silently describing different periods.
+
 **How far the account actually moved.** The extremes are RUNNING MAXIMA, not the value at the end.
 A session that touched 18 % at hour three and recovered by hour four ends at −0 %, and read from a
 session-end snapshot it is indistinguishable from one that never moved. Over thirty unattended days

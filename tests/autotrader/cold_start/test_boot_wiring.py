@@ -24,12 +24,16 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import List, Optional, Set
 
+import pytest
+
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_cold_start
 from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
+from python.framework.types.autotrader_types.autotrader_config_types import SafetyConfig
 from python.framework.types.persistence_types import (
+    AccountDrawdownCarryOver,
     BaselineKind,
     ColdStartPayload,
     PositionCarryOver,
@@ -51,6 +55,8 @@ class SpyStore:
              keys_in_use: Optional[Set[str]] = None,
              open_positions: Optional[List[PositionCarryOver]] = None,
              risk_baseline: Optional[RiskBaseline] = None,
+             account_drawdown: Optional[AccountDrawdownCarryOver] = None,
+             deployment_id: Optional[str] = None,
              refresh_index: bool = True) -> None:
         if self._fail:
             raise OSError('disk full')
@@ -60,6 +66,8 @@ class SpyStore:
             'keys_in_use': set(keys_in_use or ()),
             'open_positions': open_positions,
             'risk_baseline': risk_baseline,
+            'account_drawdown': account_drawdown,
+            'deployment_id': deployment_id,
             'refresh_index': refresh_index,
         })
 
@@ -95,7 +103,7 @@ def _note() -> PositionCarryOver:
 
 
 def _main(executor, store, persist: bool, keys_in_use=None,
-          risk_baseline=None) -> AutotraderMain:
+          risk_baseline=None, persist_baseline: bool = True) -> AutotraderMain:
     """
     A session object carrying only what the carry-over write reads.
 
@@ -109,9 +117,19 @@ def _main(executor, store, persist: bool, keys_in_use=None,
         keys_in_use: Session halves the venue currently shows
         risk_baseline: The baseline tracker (#356), or None for a session that never got
             one — every abort before the cold start decided still reaches the write
+        persist_baseline: The switch that governs BOTH carried risk records — the
+            denominator (#356) and the reported drawdown curve (#497)
     """
     main = AutotraderMain.__new__(AutotraderMain)
     main._executor = executor
+    # Only `.safety` is read here, so the stand-in carries only that — the same
+    # duck-typing the spy store and the recording logger in this file already use.
+    main._config = SimpleNamespace(
+        safety=SafetyConfig(persist_baseline=persist_baseline))
+    # Minted at the first session of a deployment and carried by every successor; the
+    # write puts it on every carry-over so a session that dies early still leaves its
+    # membership behind.
+    main._deployment_id = 'deploy_20260914_080000'
     # The write promises to swallow its own failures into the session channel (§35), so the
     # channel has to exist for that promise to be testable at all.
     main._session_logger = RecordingLogger()
@@ -185,6 +203,85 @@ class TestWhatIsWritten:
         _main(spot_executor, store, persist=True)._persist_cold_start_carry_over()
 
         assert store.saves[0]['open_positions'] == []
+
+
+class TestTheReportedDrawdownReachesTheStore:
+    """
+    The curve is written on the same points as everything else here (#497).
+
+    It has no cadence of its own on purpose: one write plus its index rebuild costs tens of
+    milliseconds on this tree (§42) and has no business in a tick loop. So the boot write,
+    the shutdown write and every structural change of the open book carry it — and if the
+    wiring drops it, a thirty-day run reports the drawdown of its last segment while every
+    unit test stays green.
+    """
+
+    def test_a_measured_curve_is_written_beside_the_book(self, executor):
+        store = SpyStore()
+        executor.portfolio.sample_equity()
+
+        _main(executor, store, persist=True)._persist_cold_start_carry_over()
+
+        carried = store.saves[0]['account_drawdown']
+        assert carried is not None, (
+            'the successor starts its curve at its own opening balance and a month of '
+            'drawdown is gone')
+        assert carried.max_equity == pytest.approx(
+            executor.portfolio.get_portfolio_statistics().max_equity)
+
+    def test_the_boot_write_carries_nothing_before_the_first_sample(self, executor):
+        """
+        The boot write happens BEFORE the first tick, and that is the trap.
+
+        At that moment the peak is only the opening balance. Written as a measurement it
+        would hand the successor a high nobody reached — and a funded account opening below
+        it would report a drawdown that never happened. None is what the store reads as
+        "not supplied", so the predecessor's real record survives the boot instead of being
+        replaced by a placeholder.
+        """
+        store = SpyStore()
+
+        _main(executor, store, persist=True)._persist_cold_start_carry_over()
+
+        assert store.saves[0]['account_drawdown'] is None
+
+    def test_the_switch_withholds_it(self, executor):
+        """
+        `persist_baseline=false` is the deliberate escape for a fresh reference per start.
+
+        It governs BOTH records rather than only the denominator: a session where one
+        survives and the other does not produces two drawdown figures that silently describe
+        different periods, which is the confusion #497 exists to end.
+        """
+        store = SpyStore()
+        executor.portfolio.sample_equity()
+
+        _main(executor, store, persist=True,
+              persist_baseline=False)._persist_cold_start_carry_over()
+
+        assert store.saves[0]['account_drawdown'] is None
+
+
+class TestTheDeploymentIdentityReachesTheStore:
+    """
+    The join key that turns N session records into one history (#497).
+
+    It rides EVERY carry-over write rather than only the boot one, and the reason is the
+    failure this store exists for: a session killed hard (SIGKILL, OOM, power) before its
+    first structural write would otherwise leave a ledger row with no membership, and nothing
+    afterwards can say which deployment it belonged to. The profile name cannot stand in — the
+    same bot stopped for a month and restarted is a second deployment, and from outside the
+    two are identical.
+    """
+
+    def test_every_write_carries_it(self, executor):
+        store = SpyStore()
+
+        _main(executor, store, persist=True)._persist_cold_start_carry_over()
+
+        assert store.saves[0]['deployment_id'] == 'deploy_20260914_080000', (
+            'a session that dies before its first structural write leaves a ledger row that '
+            'can never be attached to its deployment')
 
 
 class TestTheWriteNeverEndsTheSession:

@@ -58,8 +58,13 @@ mounted, and has no update path by design, so it cannot know.
 | `test_a_run_that_read_nothing_says_so_without_inventing_a_value` | an empty scenario list yields zeros, never a placeholder |
 | `test_what_a_run_consumed_reaches_the_row` | the six columns survive into the ledger fragment |
 | `test_a_failed_run_still_records_what_it_read` | an ERROR row carries them too — a run that failed over development data and one that failed over production data are different failures |
+| `test_a_half_re_rendered_archive_answers_with_both_bases` | `price_bases` reports `order_driven,unknown` rather than collapsing to one value or borrowing the broker's declaration — the mixture is the condition the stamp exists to expose |
+| `test_a_scenario_that_mounted_no_bars_records_no_basis` | empty, because the basis is stamped on BAR files alone and a tick archive carries none |
+| `test_every_ledger_column_is_declared_on_the_typed_row` | `RunResultRow` covers `LEDGER_COLUMNS`. Pydantic drops an unknown key silently, so a column added to the table and forgotten on the model is written to disk and reaches no typed reader and no exported CSV — which is what had happened to the six #518 columns and to `r_win_count` / `r_loss_count` |
 
-`RunLedgerIndex.LOGIC_VERSION` moved 3 → 4. Unlike the rename that took it to 3, this appends
-columns and changes no existing value, so ranking across the boundary stays valid; what an older
-fragment cannot do is answer the question at all, and it reads back as None.
+`RunLedgerIndex.LOGIC_VERSION` moved 3 → 4 and then 4 → 5. Unlike the rename that took it to 3,
+both appends change no existing value, so ranking across the boundary stays valid; what an older
+fragment cannot do is answer the question at all, and it reads back as None. The 4 → 5 step added
+`price_bases` — its own column rather than part of `data_format_versions`, because the two come
+from different archives and answer different questions.
 

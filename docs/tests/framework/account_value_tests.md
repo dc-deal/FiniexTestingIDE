@@ -46,6 +46,33 @@ One definition, two consumers — the whole reason the method is public. While t
 the series and the breaker could disagree about whether the account had lost anything, and the
 report would show one of the two.
 
+### `TestTheDrawdownPercentageIsMeasuredAgainstThePeakOfTheMoment`
+
+The percentage is CARRIED per sample, never derived at the end from `max_drawdown / max_equity`.
+Those two floats belong to different instants: the deepest decline fell from whatever peak stood
+at the time, and a later, higher peak does not make it shallower. The quotient therefore
+understates every run that recovered — which is every profitable one. Asserted in BOTH account
+models (§31b), including the spot case the thirty-day run actually uses.
+
+### `TestTheCurveContinuesAcrossARestart`
+
+The same drift #356 removed for the risk baseline, at the reader #497 owns. Two portfolios stand
+in for two processes, which is what the quantity is: the state lives in memory and dies with it.
+Pinned here: the peak is not re-anchored at the drawn-down value, the deepest decline and its
+percentage come back with it, a later recovery does not flatten the earlier loss, a deeper decline
+after the restart still wins, and the figure says how many sessions it spans — without that count
+a month and an afternoon render identically.
+
+### `TestTheLedgerReductionOverADeployment`
+
+A live ledger row is CUMULATIVE over its deployment: after a restart the figure is the running
+one against the inherited peak, not that session's own. So the rows are not independent samples
+— `max()` is the right reduction and `sum()` would count one decline several times. Pinned on a
+drawdown that STRADDLES the restart (peak in session one, trough in session two), which is the
+case a per-session maximum cannot see at all and the one a thirty-day run is most likely to
+produce. The composition identity `max(rows) == the single-curve answer` holds only while the
+peak stays inherited, so it is asserted rather than commented.
+
 ### `TestTheMinFloorMeansTheSameThingInBothModels`
 
 The consequence, made explicit so it cannot drift back. `min_balance` and `min_equity` now
