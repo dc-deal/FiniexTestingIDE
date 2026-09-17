@@ -33,15 +33,16 @@ _RUN_ID = '20260830_120000_a1b2c3d4'
 
 
 def _pf(name, currency='USD', symbol='EURUSD', spot=False, trades=2, win=1, lose=1,
-        profit=100.0, loss=40.0, max_dd=12.0, max_eq=1000.0, fees=5.0, spread=3.0,
-        maker=0.0, taker=0.0, initial=1000.0, current=1060.0, long=1, short=1,
+        profit=100.0, loss=40.0, max_dd=12.0, max_eq=1000.0, max_dd_pct=0.0, fees=5.0,
+        spread=3.0, maker=0.0, taker=0.0, initial=1000.0, current=1060.0, long=1, short=1,
         balances=None, initial_balances=None, last_price=0.0) -> PortfolioUnitRow:
     return PortfolioUnitRow(
         name=name, symbol=symbol, currency=currency, total_trades=trades,
         winning_trades=win, losing_trades=lose, win_rate=(win / trades if trades else 0.0),
         profit_factor=(profit / loss if loss else 0.0), total_profit=profit, total_loss=loss,
-        net_profit=profit - loss, max_drawdown=max_dd, total_fees=fees, spot_mode=spot,
+        net_profit=profit - loss, account_max_drawdown=max_dd, total_fees=fees, spot_mode=spot,
         total_long_trades=long, total_short_trades=short, max_equity=max_eq,
+        account_max_dd_pct=max_dd_pct,
         current_balance=current, initial_balance=initial, total_spread_cost=spread,
         maker_fee=maker, taker_fee=taker,
         balances=balances or {}, initial_balances=initial_balances or {}, last_price=last_price)
@@ -163,3 +164,32 @@ class TestExecutionRateDerived:
     def test_zero_orders_sent_is_zero_not_a_division(self):
         report = _build([_pf('s1')], ex_rows=[_ex('s1', sent=0, executed=0)])
         assert report.currencies[0].combined.execution_rate_pct == 0.0
+
+
+class TestTheWorstDrawdownIsDescribedByOneScenario:
+    """
+    Amount, percentage and scenario name on the risk line must come from the SAME row.
+
+    The percentage used to be the worst absolute drawdown divided by the highest peak
+    equity in the group — and those two can belong to different scenarios, so the console
+    printed one scenario's decline over another's peak, beside a third figure's name. An
+    aggregate is not a description: the deepest decline happened somewhere, and the line
+    has to say where and how deep it was THERE (#497).
+    """
+
+    def test_the_percentage_belongs_to_the_worst_drawdown_not_to_the_highest_peak(self):
+        deepest = _pf('deep', max_dd=300.0, max_eq=1_000.0, max_dd_pct=30.0)
+        richest = _pf('rich', max_dd=50.0, max_eq=9_000.0, max_dd_pct=0.6)
+
+        row = _build([deepest, richest]).currencies[0].combined
+
+        assert row.account_max_drawdown_scenario == 'deep'
+        assert row.max_equity_scenario == 'rich'
+        assert row.account_max_dd_pct == pytest.approx(30.0), (
+            'the old construction gave 300 / 9000 = 3.3 % — one scenario\'s decline over '
+            'another scenario\'s peak, which describes neither of them')
+
+    def test_a_group_that_never_declined_reports_no_percentage(self):
+        row = _build([_pf('a', max_dd=0.0, max_dd_pct=0.0)]).currencies[0].combined
+
+        assert row.account_max_dd_pct == 0.0

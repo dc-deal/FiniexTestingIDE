@@ -213,6 +213,16 @@ class TickIndexManager:
         collected_end = int(df['collected_msc'].iloc[-1]
                             ) if 'collected_msc' in df else 0
 
+        # The collector's clock-correction record, cumulative over its session.
+        # A file whose closing count exceeds its opening one absorbed a backward
+        # step of the OS clock — which the collector clamps, so collected_msc
+        # never goes backwards and the monotonicity check cannot see it. These
+        # two are the only durable trace of such an event.
+        anchor_resyncs = self._meta_int(
+            custom_metadata, b'source_meta_anchor_resyncs')
+        anchor_max_correction_ms = self._meta_int(
+            custom_metadata, b'source_meta_anchor_max_correction_ms')
+
         return {
             'file': parquet_file.name,
             'path': str(parquet_file.absolute()),
@@ -221,6 +231,8 @@ class TickIndexManager:
             'end_time': end_time.isoformat(),
             'collected_start': collected_start,
             'collected_end': collected_end,
+            'anchor_resyncs': anchor_resyncs,
+            'anchor_max_correction_ms': anchor_max_correction_ms,
             'tick_count': tick_count,
             'file_size_mb': file_size_mb,
             'source_file': source_file,
@@ -238,6 +250,30 @@ class TickIndexManager:
             'data_format_version': custom_metadata.get(
                 b'data_format_version', b'unknown').decode('utf-8')
         }
+
+    @staticmethod
+    def _meta_int(custom_metadata: Dict[bytes, bytes],
+                  key: bytes) -> Optional[int]:
+        """
+        Read an integer from the Parquet key/value metadata.
+
+        Args:
+            custom_metadata: Parquet custom metadata of the scanned file
+            key: Metadata key to read
+
+        Returns:
+            The value as int, or None when the key is absent or unreadable —
+            absent means the collector never reported it, which is a different
+            statement from a reported zero
+        """
+        raw = custom_metadata.get(key)
+        if raw is None:
+            return None
+
+        try:
+            return int(raw.decode('utf-8'))
+        except (AttributeError, UnicodeDecodeError, ValueError):
+            return None
 
     def needs_rebuild(self) -> bool:
         """Check if index needs rebuilding."""
@@ -316,6 +352,9 @@ class TickIndexManager:
                         'num_row_groups': entry['num_row_groups'],
                         'collected_start': entry.get('collected_start', 0),
                         'collected_end': entry.get('collected_end', 0),
+                        'anchor_resyncs': entry.get('anchor_resyncs'),
+                        'anchor_max_correction_ms': entry.get(
+                            'anchor_max_correction_ms'),
                         # Nested dicts as JSON strings
                         'statistics': json.dumps(entry.get('statistics', {})),
                         'sessions': json.dumps(entry.get('sessions', {})),
@@ -330,6 +369,7 @@ class TickIndexManager:
             'broker_type', 'symbol', 'file', 'path', 'start_time', 'end_time',
             'tick_count', 'file_size_mb', 'source_file', 'num_row_groups',
             'collected_start', 'collected_end',
+            'anchor_resyncs', 'anchor_max_correction_ms',
             'statistics', 'sessions', 'data_format_version'
         ]
         df = pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(
@@ -386,6 +426,12 @@ class TickIndexManager:
                 # persisted have no such column - they read as 0 until rebuilt.
                 'collected_start': int(row['collected_start']) if 'collected_start' in row and pd.notna(row['collected_start']) else 0,
                 'collected_end': int(row['collected_end']) if 'collected_end' in row and pd.notna(row['collected_end']) else 0,
+                # Tolerant, and None rather than 0: an index written before the
+                # anchor counters were persisted has no such column, and a file
+                # predating format 1.4.0 never carried them. Both mean "not
+                # reported", never "no correction happened".
+                'anchor_resyncs': int(row['anchor_resyncs']) if 'anchor_resyncs' in row and pd.notna(row['anchor_resyncs']) else None,
+                'anchor_max_correction_ms': int(row['anchor_max_correction_ms']) if 'anchor_max_correction_ms' in row and pd.notna(row['anchor_max_correction_ms']) else None,
                 'statistics': json.loads(row['statistics']) if row['statistics'] else {},
                 'sessions': json.loads(row['sessions']) if row['sessions'] else {},
                 'broker_type': broker_type,

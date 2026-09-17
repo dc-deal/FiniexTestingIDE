@@ -22,11 +22,11 @@ from python.framework.autotrader.autotrader_startup import (
 )
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_cold_start
-from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.reporting.autotrader_report_coordinator import (
     AutotraderReportCoordinator,
 )
+from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.autotrader.tick_sources.tick_source_setup import setup_tick_source
 from python.framework.bars.bar_rendering_controller import BarRenderingController
@@ -57,8 +57,8 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 )
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
-from python.framework.types.persistence_types import BaselineKind
 from python.framework.types.live_types.reconciliation_types import FlatCheckResult
+from python.framework.types.persistence_types import BaselineKind
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.framework.types.signal_data_types import (
@@ -66,6 +66,7 @@ from python.framework.types.signal_data_types import (
 )
 from python.framework.types.validation_types import ValidationFinding, ValidationResult
 from python.framework.utils.scenario_set_utils import ScenarioSetUtils
+from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
 from python.framework.validators.component_metadata_advisory import check_market_fit
@@ -794,7 +795,7 @@ class AutotraderMain:
                     self._executor.get_protective_level_enforcement().value)
                 try:
                     bid, ask = self._executor.get_current_price(self._config.symbol)
-                    stats.last_price = (bid + ask) / 2.0
+                    stats.last_price = mid_price(bid, ask)
                 except ValueError:
                     # No tick ever arrived (a boot that aborted before the first one).
                     # last_price stays 0.0, which is how the report says "not valued" —

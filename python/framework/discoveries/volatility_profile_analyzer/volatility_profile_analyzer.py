@@ -30,6 +30,7 @@ from python.framework.types.trading_env_types.broker_types import SymbolSpecific
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
+from python.framework.utils.trading_math.indicators.atr import atr_series
 from python.framework.utils.trading_math.pip_math import derive_pip_size
 
 vLog = get_global_logger()
@@ -432,16 +433,8 @@ class VolatilityProfileAnalyzer:
         """
         period = self._config.atr_period
 
-        # True Range components
-        high_low = df['high'] - df['low']
-        high_close = abs(df['high'] - df['close'].shift(1))
-        low_close = abs(df['low'] - df['close'].shift(1))
-
-        # True Range = max of the three
-        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-
-        # ATR = EMA of True Range
-        df['atr'] = tr.ewm(span=period, adjust=False).mean()
+        # ATR = Wilder's average of True Range
+        df['atr'] = atr_series(df['high'], df['low'], df['close'], period)
 
         return df
 
@@ -493,6 +486,14 @@ class VolatilityProfileAnalyzer:
                 continue
 
             avg_atr = group['atr'].mean()
+            if not np.isfinite(avg_atr):
+                # Every bar of this period sits inside the ATR's warmup, so it has no
+                # volatility to report. It must not enter the global average either:
+                # np.mean does NOT skip a NaN, and one of them turns every ratio below
+                # into NaN — which reads downstream as "no candidate anywhere" and makes
+                # the splitter cut at its minimum block size.
+                continue
+
             valid_period_data.append({
                 'period_start': period_start,
                 'group': group,

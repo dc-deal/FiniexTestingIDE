@@ -9,7 +9,7 @@ Two paths:
 Direct Bar object creation — no subprocess serialization round-trip.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 import pandas as pd
 
@@ -18,6 +18,7 @@ from python.framework.autotrader.kraken_ohlc_bar_fetcher import KrakenOhlcBarFet
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.exceptions.connection_errors import ConnectionInadmissibleError
+from python.framework.exceptions.timeframe_errors import UnsupportedTimeframeError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
@@ -194,6 +195,29 @@ class AutotraderWarmupPreparator:
     # LIVE PATH — Broker API bar fetching
     # =========================================================================
 
+    def _require_venue_can_serve(self, timeframes: Iterable[str]) -> None:
+        """
+        Refuse a live session whose workers need a timeframe the venue cannot warm up from.
+
+        Args:
+            timeframes: The timeframes the workers require
+
+        Returns:
+            None
+        """
+        supported = KrakenOhlcBarFetcher.supported_warmup_timeframes()
+        unservable = sorted(tf for tf in timeframes if tf not in supported)
+        if not unservable:
+            return
+
+        raise UnsupportedTimeframeError(
+            unservable[0],
+            f'The broker cannot serve warmup bars for {unservable}. '
+            f'Supported by this venue: {sorted(supported)}. '
+            f'A timeframe may exist in the project registry and be renderable from the '
+            f'archive without the venue offering it live.',
+        )
+
     def _fetch_bars_from_api(
         self,
         symbol: str,
@@ -220,6 +244,12 @@ class AutotraderWarmupPreparator:
         Returns:
             Dict[timeframe, List[Bar]]
         """
+        # The project's timeframe vocabulary is wider than any one venue's: M10 is an
+        # archive and analysis timeframe and Kraken publishes no ten-minute interval. Ask
+        # once, before the first fetch, so the session refuses naming EVERY unservable
+        # timeframe rather than dying on whichever one the loop reached first.
+        self._require_venue_can_serve(warmup_by_tf.keys())
+
         fetcher = KrakenOhlcBarFetcher(
             logger=self._logger, request_timeout_s=policy.request_timeout_s)
         ladder = ConnectionLadder(

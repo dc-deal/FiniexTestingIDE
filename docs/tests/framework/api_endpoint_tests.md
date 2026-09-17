@@ -71,3 +71,21 @@ and what the sweep view must:
 | `test_each_combination_carries_its_run_id` | The hinge into the report routes; without it a sweep view is a dead end |
 | `test_unknown_sweep_is_a_404` | An id with no ledger rows |
 
+## TestGaps — `/brokers/{broker}/symbols/{symbol}/gaps`
+
+| Test | Description |
+|------|-------------|
+| `test_gaps_ok` | Both categories survive the projection — a weekend closure and a real outage |
+| `test_empty_categories_are_not_reported` | A zero count is noise; the reader wants what DID happen |
+| `test_missing_report_is_a_404` | No coverage report is a 404, not an empty success |
+
+## TestAtrIndicator — `/brokers/{broker}/symbols/{symbol}/indicators/atr`
+
+| Test | Description |
+|------|-------------|
+| `test_atr_ok` | A series whose every bar spans exactly 100 smooths to 100, whichever average is used |
+| `test_the_response_declares_its_smoothing` | The default is Wilder and the headers say so — a caller cannot tell from the rows |
+| `test_a_named_variant_is_reachable_and_declared` | `smoothing=ema` works and is reported back |
+| `test_an_unknown_smoothing_is_refused` | An invented name is a 422, not a silent fallback to the default |
+| `test_an_out_of_range_period_is_refused_not_clamped` | 400 `invalid_period` — a cap applied behind the caller's back is worse than a refusal |
+| `test_an_empty_range_is_a_404` | A range with no bars is a 404, not an empty array |

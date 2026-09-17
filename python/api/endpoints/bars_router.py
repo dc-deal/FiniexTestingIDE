@@ -2,7 +2,9 @@
 Coverage and bars endpoints.
 
 GET /api/v1/brokers/{broker}/symbols/{symbol}/coverage
+GET /api/v1/brokers/{broker}/symbols/{symbol}/gaps
 GET /api/v1/brokers/{broker}/symbols/{symbol}/bars?timeframe=M30&from=<iso>&to=<iso>&limit=<n>
+GET /api/v1/brokers/{broker}/symbols/{symbol}/indicators/atr?timeframe=M5&from=&to=&period=14
 """
 
 from datetime import datetime, timezone
@@ -11,12 +13,23 @@ import pandas as pd
 from fastapi import APIRouter, Query, Response
 
 from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
+    DataCoverageReportCache,
+)
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.types.api.api_types import (
     BarResponse,
+    CoverageGapsResponse,
     CoverageResponse,
+    GapResponse,
+    IndicatorPointResponse,
 )
+from python.framework.types.indicator_types import MaType
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
+from python.framework.utils.trading_math.indicators.atr import atr_series
+from python.framework.utils.trading_math.indicators.wilder_moving_average import (
+    rma_warmup_bars,
+)
 
 router = APIRouter()
 
@@ -39,7 +52,21 @@ HEADER_PRICE_BASIS = 'X-Bar-Price-Basis'
 
 TIME_BASIS = 'open'
 TIMEZONE = 'UTC'
-PRICE_BASIS = 'mid'
+# The price basis is NOT a constant and no longer read from config: it is a property of the
+# FILE, stamped when it was rendered and carried in the bar index. Config says what a render
+# would produce today; during a re-render half the archive still holds the previous basis,
+# and a header that declares the config is wrong for exactly those files.
+PRICE_BASIS_UNKNOWN = 'unknown'
+
+# An indicator's value means nothing without the convention behind it, and the convention
+# is exactly what a reader cannot infer from the rows. "ATR" means Wilder's smoothing
+# everywhere outside a given repository, so the response says which one it actually used
+# rather than leaving the caller to assume.
+HEADER_SMOOTHING = 'X-Indicator-Smoothing'
+HEADER_PERIOD = 'X-Indicator-Period'
+HEADER_TIMEFRAME = 'X-Indicator-Timeframe'
+
+MAX_INDICATOR_PERIOD = 500
 
 
 def _load_index() -> BarsIndexManager:
@@ -53,6 +80,28 @@ def _require_broker_symbol(index: BarsIndexManager, broker: str, symbol: str) ->
         raise ApiException(404, 'not_found', f"Broker '{broker}' not found.")
     if symbol not in index.list_symbols(broker_type=broker):
         raise ApiException(404, 'not_found', f"Symbol '{symbol}' not found for broker '{broker}'.")
+
+
+def _price_basis(index: BarsIndexManager, broker: str, symbol: str, timeframe: str) -> str:
+    """
+    The basis the requested bar file was actually rendered from.
+
+    Read from the index row rather than from configuration, so a file written before the
+    basis was stamped answers 'unknown' instead of borrowing today's declaration.
+
+    Args:
+        index: Loaded bar index
+        broker: Broker type
+        symbol: Trading symbol
+        timeframe: Timeframe key
+
+    Returns:
+        The stamped basis, or 'unknown' where the file predates the stamp
+    """
+    entry = index.index.get(broker, {}).get(symbol, {}).get(timeframe)
+    if not entry:
+        return PRICE_BASIS_UNKNOWN
+    return entry.get('price_basis') or PRICE_BASIS_UNKNOWN
 
 
 def _utc(dt: datetime) -> datetime:
@@ -153,7 +202,7 @@ def get_bars(
     response.headers[HEADER_TRUNCATED] = 'true' if total > limit else 'false'
     response.headers[HEADER_TIME_BASIS] = TIME_BASIS
     response.headers[HEADER_TIMEZONE] = TIMEZONE
-    response.headers[HEADER_PRICE_BASIS] = PRICE_BASIS
+    response.headers[HEADER_PRICE_BASIS] = _price_basis(index, broker, symbol, timeframe)
 
     return [
         BarResponse(
@@ -167,3 +216,161 @@ def get_bars(
         )
         for _, row in page.iterrows()
     ]
+
+
+@router.get('/brokers/{broker}/symbols/{symbol}/gaps', response_model=CoverageGapsResponse)
+def get_gaps(broker: str, symbol: str) -> CoverageGapsResponse:
+    """
+    Return every interruption in a symbol's archive, with what each one was.
+
+    A venue outage and a quiet weekend are different facts, and a caller should not have to
+    infer which from a duration. The categories come from the market's own rules — a forex
+    weekend is expected closure, a crypto one is not, because crypto never closes.
+
+    Served from the discovery cache, which invalidates on the source bars and on its own
+    configuration; this route computes nothing of its own.
+
+    Args:
+        broker: Broker type identifier
+        symbol: Trading symbol
+
+    Returns:
+        The coverage span, the gap count per category, and every gap
+    """
+    index = _load_index()
+    _require_broker_symbol(index, broker, symbol)
+
+    report = DataCoverageReportCache().get_report(broker, symbol)
+    if report is None or report.start_time is None:
+        raise ApiException(
+            404, 'not_found', f"No coverage report available for '{broker}/{symbol}'.")
+
+    return CoverageGapsResponse(
+        symbol=symbol,
+        broker=broker,
+        start=report.start_time.isoformat(),
+        end=report.end_time.isoformat(),
+        gap_counts={k: v for k, v in report.gap_counts.items() if v},
+        gaps=[
+            GapResponse(
+                start=gap.gap_start.isoformat() if gap.gap_start else '',
+                end=gap.gap_end.isoformat() if gap.gap_end else '',
+                seconds=gap.gap_seconds,
+                category=gap.category.value,
+                reason=gap.reason,
+            )
+            for gap in report.gaps
+        ],
+    )
+
+
+@router.get(
+    '/brokers/{broker}/symbols/{symbol}/indicators/atr',
+    response_model=list[IndicatorPointResponse],
+)
+def get_atr(
+    response: Response,
+    broker: str,
+    symbol: str,
+    timeframe: str,
+    from_time: datetime = Query(..., alias='from'),
+    to_time: datetime = Query(..., alias='to'),
+    period: int = Query(14),
+    smoothing: MaType = Query(MaType.RMA),
+    limit: int = Query(MAX_BARS),
+) -> list[IndicatorPointResponse]:
+    """
+    Return the Average True Range over a range, one value per bar.
+
+    The smoothing is RECURSIVE, so the value at the first requested bar depends on bars
+    BEFORE it. This route therefore computes over a lead-in ahead of `from` and returns only
+    the requested span — asking for a range and computing only that range would hand back a
+    seed, not an ATR, and it would look like a number.
+
+    Which average smoothed it is declared in the response, because "ATR" means Wilder's
+    everywhere outside this project and a caller cannot tell from the rows.
+
+    Args:
+        response: FastAPI response, carries the convention headers
+        broker: Broker type identifier
+        symbol: Trading symbol
+        timeframe: Timeframe key (M1, M5, ...)
+        from_time: Range start, inclusive
+        to_time: Range end, inclusive
+        period: ATR period
+        smoothing: Which average smooths the true range; Wilder by definition
+        limit: Maximum rows to return, at most MAX_BARS
+
+    Returns:
+        One value per bar in the range, oldest first
+    """
+    if not TimeframeConfig.exists(timeframe):
+        raise ApiException(
+            400, 'invalid_timeframe',
+            f"Timeframe '{timeframe}' is not valid. Valid: {TimeframeConfig.sorted()}",
+        )
+
+    if period < 1 or period > MAX_INDICATOR_PERIOD:
+        raise ApiException(
+            400, 'invalid_period',
+            f"'period' must be between 1 and {MAX_INDICATOR_PERIOD}, got {period}.",
+        )
+
+    if limit < 1 or limit > MAX_BARS:
+        raise ApiException(
+            400, 'invalid_limit',
+            f"'limit' must be between 1 and {MAX_BARS}, got {limit}.",
+        )
+
+    from_utc = _utc(from_time)
+    to_utc = _utc(to_time)
+
+    if from_utc >= to_utc:
+        raise ApiException(400, 'invalid_range', "'from' must be earlier than 'to'.")
+
+    index = _load_index()
+    _require_broker_symbol(index, broker, symbol)
+
+    bar_file = index.get_bar_file(broker, symbol, timeframe)
+    if bar_file is None:
+        raise ApiException(
+            404, 'not_found',
+            f"No bars for '{broker}/{symbol}' at timeframe '{timeframe}'.",
+        )
+
+    df = pd.read_parquet(bar_file)
+
+    # The lead-in: enough history before `from` for the smoothing to have shed its seed.
+    # Taken by ROW COUNT, not by a calendar offset — a calendar window silently under-delivers
+    # across a market closure, which is how a warmup ends up short without anyone noticing.
+    lead_in = df[df['timestamp'] < from_utc].tail(rma_warmup_bars(period))
+    requested = df[(df['timestamp'] >= from_utc) & (df['timestamp'] <= to_utc)]
+    window = pd.concat([lead_in, requested])
+
+    if requested.empty:
+        raise ApiException(
+            404, 'not_found', 'No bars in the requested range.')
+
+    values = atr_series(
+        window['high'], window['low'], window['close'], period, smoothing=smoothing,
+    ).tail(len(requested))
+
+    rows = [
+        IndicatorPointResponse(t=int(stamp.timestamp()), v=float(value))
+        for stamp, value in zip(requested['timestamp'], values)
+        if pd.notna(value)
+    ]
+    total = len(rows)
+    page = rows[:limit]
+
+    response.headers[HEADER_COUNT] = str(len(page))
+    response.headers[HEADER_TOTAL] = str(total)
+    response.headers[HEADER_LIMIT] = str(limit)
+    response.headers[HEADER_TRUNCATED] = 'true' if total > limit else 'false'
+    response.headers[HEADER_TIME_BASIS] = TIME_BASIS
+    response.headers[HEADER_TIMEZONE] = TIMEZONE
+    response.headers[HEADER_SMOOTHING] = smoothing.value
+    response.headers[HEADER_PERIOD] = str(period)
+    response.headers[HEADER_TIMEFRAME] = timeframe
+
+    return page

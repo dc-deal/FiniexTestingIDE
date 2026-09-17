@@ -308,11 +308,11 @@ autotrader_profiles/*.json           ← Level 2 (session-specific overrides)
 | Source | Status | Description |
 |--------|--------|-------------|
 | `MockTickSource` | ✅ Built | Scenario base-data replay (#438) — ticks as fast as possible, optional `tick_delay_ms` for visual debugging |
-| `KrakenTickSource` | ✅ Built (#232) | Kraken WS v2 trade channel, auto-reconnect |
+| `KrakenTickSource` | ✅ Built (#232, #520) | Kraken WS v2 trade + ticker channel, auto-reconnect |
 
 ### KrakenTickSource (#232)
 
-Live tick stream from the Kraken WebSocket v2 trade channel. Runs `asyncio.run()` in a daemon thread (Threading model 8.a), pushes `TickData` to `queue.Queue`.
+Live tick stream from the Kraken WebSocket v2 trade channel, with the ticker channel beside it supplying the quote each trade executed against. Runs `asyncio.run()` in a daemon thread (Threading model 8.a), pushes `TickData` to `queue.Queue`.
 
 **Key features:**
 - Endless reconnect with exponential backoff (1s → 60s cap)
@@ -320,8 +320,27 @@ Live tick stream from the Kraken WebSocket v2 trade channel. Runs `asyncio.run()
 - SSL via certifi (cross-platform: Linux Docker + Windows server)
 - Single symbol per session (matches bot architecture)
 - Concurrent asyncio tasks: `_receive_loop` + `_connection_monitor` via `asyncio.wait(FIRST_COMPLETED)`
+- Two subscriptions on one connection, matched by the channel Kraken names in each acknowledgement
 
-**Data Consistency Principle:** KrakenTickSource uses the **same trade channel** as DataCollector, ensuring backtesting data matches live data format. `bid=ask=trade_price` (spread=0) — crypto fees are handled by `MakerTakerFee`, not by spread.
+**Data Consistency Principle:** the two sides agree because they read the **same channels**, and
+which channels those are changed with collector format 1.6.0.
+
+Up to 1.5.0 both read only the trade channel. An execution happens at one price, so every tick
+carried `bid == ask == last` and the zero spread was correct rather than missing. From 1.6.0 the
+collector also reads `ticker` and stamps each trade with the quote it executed against;
+`KrakenTickSource` does the same, which is what keeps an archived tick and a live one the same
+shape (#520 step B). It is switchable per profile — `tick_source.quote_channel_enabled`, on by
+default — and its failure is degraded rather than fatal: trades keep flowing without a quote, and
+the age reported beside the spread says so by growing.
+
+A tick's spread is therefore a property of the **format version it came from**, never of the venue.
+A backtest window spanning the rollout sees both regimes.
+
+What this does *not* change is the strategy's price. `last` is the traded price on both sides, and
+bars, indicators and decisions read `tick.price` — see [Market Model](../architecture/market_model.md).
+The quote moves `mid`, and with it the valuation plane: equity, drawdown, the mark price and the
+slippage baseline. The cost model stays `MakerTakerFee` — the spread is now crossed as well as
+charged, not a second fee.
 
 ```
 DataCollector            AutoTrader (live)

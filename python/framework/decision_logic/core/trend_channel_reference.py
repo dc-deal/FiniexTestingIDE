@@ -59,6 +59,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
 )
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
+from python.framework.utils.trading_math.price_trigger import taken_price
 
 
 class TrendChannelReference(AbstractDecisionLogic):
@@ -257,7 +258,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     def get_metadata(cls) -> ComponentMetadata:
         """Didactic CORE reference logic — teaching example, no profitability claim."""
         return ComponentMetadata(
-            version='1.2.0',
+            version='1.4.0',
             doc_link='docs/user_guides/trend_channel_reference_guide.md',
             recommended_markets=('forex',),
         )
@@ -425,7 +426,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         side = OrderSide.BUY if gate == 'up' else OrderSide.SELL
         entry_price, stop_loss, take_profit = self._entry_geometry(side)
 
-        if not self._is_armed(side, tick.mid, entry_price, pos_raw):
+        if not self._is_armed(side, tick.price, entry_price, pos_raw):
             self.notify_awareness(
                 f'Gate {gate} — no {self.entry_mode} setup (%B {pos_raw:.2f})',
                 AwarenessLevel.INFO, 'no_setup',
@@ -657,20 +658,21 @@ class TrendChannelReference(AbstractDecisionLogic):
             if self.trading_api.is_pending_close(pid):
                 continue
 
-            self._maybe_partial_close(pos)
-            self._maybe_trail(pos)
+            self._maybe_partial_close(pos, tick)
+            self._maybe_trail(pos, tick)
 
-    def _maybe_partial_close(self, pos) -> None:
+    def _maybe_partial_close(self, pos, tick: TickData) -> None:
         """
         Close `partial_fraction` of the original lots once the R rung is reached.
 
         Args:
             pos: Open Position
+            tick: The tick this pass is reacting to — the price R is measured at
         """
         pid = pos.position_id
         if pid in self._partial_done:
             return
-        if self._current_r(pos) < self.partial_rr:
+        if self._current_r(pos, tick) < self.partial_rr:
             return
 
         close_lots = round(pos.original_lots * self.partial_fraction, 2)
@@ -684,12 +686,13 @@ class TrendChannelReference(AbstractDecisionLogic):
             AwarenessLevel.NOTICE, 'partial_close',
         )
 
-    def _maybe_trail(self, pos) -> None:
+    def _maybe_trail(self, pos, tick: TickData) -> None:
         """
         Ratchet the stop loss toward price in the profit direction (never backward).
 
         Args:
             pos: Open Position
+            tick: The tick this pass is reacting to — the price the stop trails behind
         """
         pid = pos.position_id
         if self.trading_api.has_in_flight_operation(pid):
@@ -702,7 +705,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         if offset <= 0.0:
             return
         epsilon = risk * 0.1   # ignore sub-noise moves (no modify spam)
-        price = pos.current_price
+        price = self._mark_price(pos, tick)
 
         if pos.direction == OrderDirection.LONG:
             new_sl = price - offset
@@ -713,12 +716,40 @@ class TrendChannelReference(AbstractDecisionLogic):
             if pos.stop_loss is None or new_sl < pos.stop_loss - epsilon:
                 self.trading_api.modify_position(pid, stop_loss=new_sl)
 
-    def _current_r(self, pos) -> float:
+    def _mark_price(self, pos, tick: TickData) -> float:
+        """
+        The price this position would be closed at right now, read from THIS tick.
+
+        Read from the tick rather than from `pos.current_price`, and that is the point:
+        `PortfolioManager.get_open_positions()` hands out positions WITHOUT marking them —
+        its own docstring says the values may be stale — so a decision reading the marked
+        price got whatever the last unrelated caller happened to leave there. The behaviour
+        of the strategy then depended on who else asked for a mark-to-market that tick,
+        which is a reproducibility leak, not a stale number (#497).
+
+        Closing a LONG sells into the bid and closing a SHORT buys the ask — the same
+        convention `Position.update_current_price` marks with, so the R measured here and
+        the position's own excursion stay on one scale. Routed through the centralized
+        predicate (§45) with the CLOSING direction.
+
+        Args:
+            pos: Open Position
+            tick: The tick to read the price from
+
+        Returns:
+            The side of the book this position would exit at
+        """
+        closing = (OrderDirection.SHORT if pos.direction == OrderDirection.LONG
+                   else OrderDirection.LONG)
+        return taken_price(closing, tick.bid, tick.ask)
+
+    def _current_r(self, pos, tick: TickData) -> float:
         """
         Current R-multiple of an open position (favourable move / initial risk).
 
         Args:
             pos: Open Position
+            tick: The tick the move is measured at
 
         Returns:
             R-multiple, or 0.0 when the initial risk is unknown
@@ -726,10 +757,11 @@ class TrendChannelReference(AbstractDecisionLogic):
         risk = self._initial_risk.get(pos.position_id)
         if not risk:
             return 0.0
+        price = self._mark_price(pos, tick)
         if pos.direction == OrderDirection.LONG:
-            move = pos.current_price - pos.entry_price
+            move = price - pos.entry_price
         else:
-            move = pos.entry_price - pos.current_price
+            move = pos.entry_price - price
         return move / risk
 
     # ============================================
@@ -766,7 +798,7 @@ class TrendChannelReference(AbstractDecisionLogic):
 
             # Re-price toward the current band edge while it rests (bar-close bounded)
             if oid in active_ids:
-                self._maybe_reprice(oid, info, tick.mid)
+                self._maybe_reprice(oid, info, tick.price)
 
     def _gate_flipped_against(self, direction: OrderDirection) -> bool:
         """

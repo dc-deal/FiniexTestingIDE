@@ -27,9 +27,18 @@ class BasePortfolioStats:
     total_profit: float
     total_loss: float
 
-    # Risk metrics
-    max_drawdown: float
+    # Risk metrics — ACCOUNT drawdown: the total account value from its own high to its
+    # own low. NOT a trade's excursion, which is `TradeRecord.mae_pnl` and is measured
+    # against that ONE position's entry (#389); with several positions open, or with a
+    # spot holding that is a balance rather than a position, the two are different
+    # numbers and neither can be derived from the other. And NOT the SAFETY reading,
+    # which is measured against a configured baseline — `SafetyConfig.max_drawdown_pct`
+    # is that THRESHOLD, not this measurement (#497).
+    account_max_drawdown: float
     max_equity: float
+    # Worst decline as a share of the peak it fell FROM, carried per tick rather than
+    # derived from the two floats above — those two belong to different instants (#497).
+    account_max_drawdown_pct: float
 
     # Calculated metrics
     win_rate: float

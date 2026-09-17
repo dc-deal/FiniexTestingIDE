@@ -14,7 +14,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.optimization.optimization_analysis import rank, sensitivity, summarize_sweeps
+from python.framework.optimization.optimization_analysis import (
+    DegenerateRankingAdvisory,
+    MixedLogicVersionAdvisory,
+    degenerate_ranking_advisory,
+    mixed_logic_version_advisory,
+    rank,
+    sensitivity,
+    summarize_sweeps,
+)
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import RunResultRow
 
@@ -91,6 +99,8 @@ def render_sweep_report(
     _print_header_meta(rows)
 
     ranked = rank(rows, objective, maximize, objective_currency)
+    _print_mixed_logic_version(mixed_logic_version_advisory(ranked))
+    _print_degenerate_ranking(degenerate_ranking_advisory(ranked, objective))
     _print_ranking(ranked, objective, top_n)
     _print_sensitivity(rows, objective, objective_currency)
     _print_errors(error_rows)
@@ -131,6 +141,80 @@ def _fmt_duration(seconds: float) -> str:
     if m:
         return f'{m}m {s}s'
     return f'{s}s'
+
+
+def _print_mixed_logic_version(advisory: Optional[MixedLogicVersionAdvisory]) -> None:
+    """
+    Warn when the ranked rows were not all produced by the same logic.
+
+    Args:
+        advisory: The analyzer's result, None when every row agrees
+
+    Returns:
+        None — prints to the console
+    """
+    if advisory is None:
+        return
+
+    print('\n' + '-' * 80)
+    print('⚠️  THIS RANKING SPANS SEVERAL LOGIC VERSIONS')
+    print('-' * 80)
+    for version, count in zip(advisory.versions, advisory.counts):
+        label = 'unknown (written before rows carried a version)' if version is None else f'v{version}'
+        print(f'  {count:>5} rows  ·  {label}')
+    print('\nA ledger column can keep its name while the measure behind it changes — the '
+          'account\ndrawdown did exactly that. Rows from different versions therefore answer '
+          'different\nquestions, and a best-first list over them looks like a valid ranking. '
+          'Restrict the\nsweep to one version, or re-run the older combinations.')
+
+
+def _print_degenerate_ranking(advisory: Optional[DegenerateRankingAdvisory]) -> None:
+    """
+    Warn when the ranking's winner never traded — printed BEFORE the table it describes.
+
+    Deliberately concrete rather than a sentence of caution: it says how many combinations
+    are empty, shows the ones standing at the top, and names the best one that actually
+    traded with its rank, so the reader can act on the ranking instead of distrusting all
+    of it.
+
+    Args:
+        advisory: The analyzer's result, None when the winner did trade
+
+    Returns:
+        None — prints to the console
+    """
+    if advisory is None:
+        return
+
+    print('\n' + '-' * 80)
+    print(f'⚠️  THE BEST-RANKED COMBINATION MADE NO TRADE — '
+          f'{advisory.zero_trade_count} of {advisory.total_ranked} traded nothing')
+    print('-' * 80)
+    print(f"A combination that never opened a position scores perfectly on any measure of "
+          f"loss or risk:\nit has no drawdown because it took none. Ranking by "
+          f"'{advisory.objective}' therefore puts\ndoing nothing first, and that is a "
+          f"property of the objective, not a result.")
+    print('\nRanked at the top, with no trades:')
+    for i, row in enumerate(advisory.zero_trade_leaders, start=1):
+        params = ', '.join(
+            f'{_short_path(k)}={v}' for k, v in sorted((row.sweep_params or {}).items()))
+        print(f'  {i:>2}. {getattr(row, advisory.objective):>12.4f}  |  {params}')
+
+    if advisory.best_trading_row is None:
+        print('\nNo combination in this sweep traded at all — the grid, the data window or '
+              'the\nentry condition is what to look at, not the ranking.')
+    else:
+        row = advisory.best_trading_row
+        params = ', '.join(
+            f'{_short_path(k)}={v}' for k, v in sorted((row.sweep_params or {}).items()))
+        print(f'\nBest combination that actually traded — rank '
+              f'{advisory.best_trading_rank} of {advisory.total_ranked}:')
+        print(f'  {getattr(row, advisory.objective):>12.4f}  |  {row.total_trades} trades  '
+              f'|  net {row.net_pnl:.2f}  |  {params}')
+
+    print('\nA risk measure is a THRESHOLD — reject what exceeds it — not a criterion to '
+          'rank on\nalone. Pair it with a return objective, or rank on return and cut by '
+          'this one.')
 
 
 def _print_ranking(ranked: List[RunResultRow], objective: str, top_n: int) -> None:

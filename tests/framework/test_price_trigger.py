@@ -25,11 +25,15 @@ The DIRECTIONS are the part worth pinning, because they are easy to reason about
 Pure arithmetic — no tick, no order, no I/O.
 """
 
+from datetime import datetime, timezone
+
 import pytest
 
 from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.utils.trading_math.price_trigger import (
     is_limit_reached,
+    mid_price,
     is_stop_reached,
     taken_price,
 )
@@ -156,3 +160,48 @@ class TestAZeroSpreadQuoteIsAnswerable:
 
         assert (taken_price(OrderDirection.LONG, flat, flat)
                 == taken_price(OrderDirection.SHORT, flat, flat))
+
+
+class TestTheMidpointOfAQuote:
+    """
+    `mid_price` exists for callers holding a raw (bid, ask) pair rather than a tick.
+
+    It was written down because eight hand-written copies of this expression existed and a
+    search for `.mid` could not find any of them — four of those sat on the money path
+    (equity, drawdown, the entry and exit fee's conversion factor). `TickData.mid` answers
+    the same question where a tick IS in scope and stays inline there: delegating was
+    measured at +30 % on the property access, and it sits in the tick loop.
+    """
+
+    def test_it_is_the_middle_of_the_two_sides(self):
+        assert mid_price(100.0, 100.2) == pytest.approx(100.1)
+
+    def test_a_zero_spread_quote_answers_with_that_price(self):
+        """Every Kraken tick below collector format 1.6.0 — bid, ask and mid are one number."""
+        assert mid_price(4000.0, 4000.0) == 4000.0
+
+    def test_it_agrees_with_tick_data_mid(self):
+        """
+        The property that makes two definitions acceptable instead of a §19 violation.
+
+        They are two bodies of one rule, so this is what keeps them from drifting apart.
+        """
+        tick = TickData(
+            timestamp=datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc),
+            symbol='BTCUSD', bid=88000.1, ask=88000.3)
+
+        assert mid_price(tick.bid, tick.ask) == tick.mid
+
+    def test_a_buy_pays_more_than_the_middle_and_a_sell_receives_less(self):
+        """
+        Why a valuation marks to this and not to the last print.
+
+        A single fill costs half the spread against the midpoint; the midpoint is the only
+        neutral number between the two sides, which is what makes it the right basis for
+        equity, drawdown and a slippage baseline.
+        """
+        bid, ask = 100.0, 100.2
+        mid = mid_price(bid, ask)
+
+        assert taken_price(OrderDirection.LONG, bid, ask) > mid
+        assert taken_price(OrderDirection.SHORT, bid, ask) < mid

@@ -20,13 +20,15 @@ from tests.data.import_pipeline.conftest import (
 )
 
 
-def _import_ticks(tmp_path, symbol='BTCUSD', data_format_version='1.3.0') -> Path:
+def _import_ticks(tmp_path, symbol='BTCUSD', data_format_version='1.3.0',
+                  extra_metadata=None) -> Path:
     """Helper: import one synthetic JSON and return the target dir (index included).
 
     Args:
         tmp_path: Pytest tmp_path fixture
         symbol: Symbol name
         data_format_version: Version written into the JSON metadata
+        extra_metadata: Additional metadata fields merged into the JSON
 
     Returns:
         Path of the import target directory
@@ -37,6 +39,7 @@ def _import_ticks(tmp_path, symbol='BTCUSD', data_format_version='1.3.0') -> Pat
         symbol=symbol,
         broker_type='kraken_spot',
         data_format_version=data_format_version,
+        extra_metadata=extra_metadata,
     )
     write_json_fixture(source, f'{symbol}_ticks.json', data)
 
@@ -145,3 +148,75 @@ class TestArrivalBoundsRoundTrip:
         df = pd.read_parquet(empty_dir / TickIndexManager.INDEX_FILE_PARQUET)
         assert 'collected_start' in df.columns
         assert 'collected_end' in df.columns
+
+
+class TestAnchorCountersRoundTrip:
+    """
+    Verify the collector's clock-correction record survives into the index.
+
+    The collector clamps a backward step of the OS clock, so collected_msc never
+    goes backwards and the monotonicity check cannot see that it happened. These
+    two counters are the only durable trace, which is why they have to reach the
+    index rather than staying in the parquet metadata nobody queries.
+    """
+
+    def test_reported_counters_in_persisted_index_parquet(self, tmp_path):
+        """A file reporting corrections should carry both counters as columns."""
+        target = _import_ticks(
+            tmp_path,
+            symbol='BTCUSD',
+            extra_metadata={'anchor_resyncs': 3,
+                            'anchor_max_correction_ms': 7},
+        )
+
+        df = pd.read_parquet(target / TickIndexManager.INDEX_FILE_PARQUET)
+        assert 'anchor_resyncs' in df.columns
+        assert 'anchor_max_correction_ms' in df.columns
+        assert df['anchor_resyncs'].iloc[0] == 3
+        assert df['anchor_max_correction_ms'].iloc[0] == 7
+
+    def test_reported_counters_survive_reload(self, tmp_path):
+        """A manager loading the persisted index should see the reported values."""
+        target = _import_ticks(
+            tmp_path,
+            symbol='ETHUSD',
+            extra_metadata={'anchor_resyncs': 14,
+                            'anchor_max_correction_ms': 1},
+        )
+
+        manager = TickIndexManager(data_dir=str(target))
+        manager.build_index()
+
+        entry = manager.index['kraken_spot']['ETHUSD'][0]
+        assert entry['anchor_resyncs'] == 14
+        assert entry['anchor_max_correction_ms'] == 1
+
+    def test_absent_counters_read_as_none_not_zero(self, tmp_path):
+        """
+        A file predating format 1.4.0 carries neither counter.
+
+        None is the honest answer there: 'the collector did not report' and 'no
+        correction happened' are different statements, and a zero would make a
+        silent clock step indistinguishable from a clean run.
+        """
+        target = _import_ticks(tmp_path, symbol='SOLUSD',
+                               data_format_version='1.3.0')
+
+        manager = TickIndexManager(data_dir=str(target))
+        manager.build_index()
+
+        entry = manager.index['kraken_spot']['SOLUSD'][0]
+        assert entry['anchor_resyncs'] is None
+        assert entry['anchor_max_correction_ms'] is None
+
+    def test_empty_index_carries_anchor_columns(self, tmp_path):
+        """The empty-schema branch should declare the same columns as a populated index."""
+        empty_dir = tmp_path / 'empty'
+        empty_dir.mkdir()
+
+        manager = TickIndexManager(data_dir=str(empty_dir))
+        manager.save_index()
+
+        df = pd.read_parquet(empty_dir / TickIndexManager.INDEX_FILE_PARQUET)
+        assert 'anchor_resyncs' in df.columns
+        assert 'anchor_max_correction_ms' in df.columns

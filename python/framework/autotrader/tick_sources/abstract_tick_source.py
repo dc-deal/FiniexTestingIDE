@@ -7,6 +7,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Optional
 
+from python.framework.types.autotrader_types.autotrader_display_types import QuoteFeedStats
+
 
 class AbstractTickSource(ABC):
     """
@@ -103,6 +105,20 @@ class AbstractTickSource(ABC):
             Total ticks emitted (0 if not tracked)
         """
         return 0
+
+    def get_quote_stats(self) -> Optional[QuoteFeedStats]:
+        """
+        Condition of the venue's quote channel, where the source has one (#520 step B).
+
+        Override in sources that subscribe to a quote channel beside their trade stream.
+        None means the concept does not apply — a replay has no live quote feed — and the
+        display then renders nothing rather than an idle one.
+        GIL-safe: display thread reads this directly.
+
+        Returns:
+            A consistent snapshot, or None for sources without a quote channel
+        """
+        return None
 
     def get_injected_outage_label(self) -> str:
         """

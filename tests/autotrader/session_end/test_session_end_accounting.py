@@ -68,8 +68,8 @@ class TestTheEquitySampleIsSpotAware:
 
         # Fee plus the spread between ask (bought) and mid (valued) — a couple of dollars
         # on a 1000 USD account, not six hundred.
-        assert stats.max_drawdown < 10.0, (
-            f'a purchase read as a {stats.max_drawdown:.0f} USD drawdown — the sample used '
+        assert stats.account_max_drawdown < 10.0, (
+            f'a purchase read as a {stats.account_max_drawdown:.0f} USD drawdown — the sample used '
             f'the margin-style equity, which leaves the coin out')
 
     def test_the_margin_formula_would_have_reported_a_phantom(self):
@@ -83,7 +83,7 @@ class TestTheEquitySampleIsSpotAware:
         portfolio = executor.portfolio
 
         portfolio.sample_equity()
-        spot_drawdown = portfolio.get_portfolio_statistics().max_drawdown
+        spot_drawdown = portfolio.get_portfolio_statistics().account_max_drawdown
         naive_drawdown = portfolio._max_equity - portfolio._calculate_equity()
 
         assert naive_drawdown > 50 * max(spot_drawdown, 0.01), (
@@ -112,7 +112,7 @@ class TestTheEquitySampleIsSpotAware:
 
         portfolio.sample_equity()
 
-        assert portfolio.get_portfolio_statistics().max_drawdown == 0.0
+        assert portfolio.get_portfolio_statistics().account_max_drawdown == 0.0
 
     def test_the_curve_keeps_one_scale_across_a_close(self):
         """
@@ -158,8 +158,8 @@ class TestTheEquitySampleIsSpotAware:
         # so the window is what is pinned and not a point value. It has to be closed on BOTH
         # sides — a one-sided `> 100` passes against the mixed version as well, which is how
         # the first two attempts at this test slipped through.
-        assert 100.0 < stats.max_drawdown < 300.0, (
-            f'drawdown {stats.max_drawdown:.2f} on a portfolio that fell ~150: above the '
+        assert 100.0 < stats.account_max_drawdown < 300.0, (
+            f'drawdown {stats.account_max_drawdown:.2f} on a portfolio that fell ~150: above the '
             f'window means the close wrote a quote-scale point under a portfolio-scale '
             f'peak, below it means the peak is on the quote scale')
 

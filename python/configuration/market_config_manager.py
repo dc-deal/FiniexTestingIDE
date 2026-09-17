@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 
 from python.configuration.market_config_loader import MarketConfigFileLoader
 from python.framework.types.config_types.market_config_types import (
+    PriceFormation,
     BrokerEntryConfig,
     ConfigMode,
     MarketConfigModel,
@@ -188,6 +189,29 @@ class MarketConfigManager:
         """
         market_type = self.get_market_type(broker_type)
         return self.get_market_rules(market_type).pip_mode
+
+    def get_price_formation(self, broker_type: str) -> PriceFormation:
+        """
+        Get how this venue forms its prices — order-driven or quote-driven.
+
+        Decides whether a traded price (`last`) exists at all, and therefore which price a
+        bar is rendered from. A property of the VENUE, so it sits on the broker entry rather
+        than on market_rules: a crypto CFD at an MT5 broker shares `market_type` with Kraken
+        and forms its prices the opposite way.
+
+        NOTE 2026-09-16 — resolves per BROKER, while MT5 resolves per SYMBOL
+        (SYMBOL_CHART_MODE, and our own collector EA already branches on
+        SYMBOL_CALC_MODE_EXCH_* for real volume). Sufficient while every MT5 symbol we pull
+        is quote-driven forex; a broker serving exchange-traded stocks beside CFDs needs
+        per-symbol resolution. Tracked at #209.
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            PriceFormation declared for that broker
+        """
+        return self.get_broker_entry(broker_type).price_formation
 
     def get_config_mode(self, broker_type: str) -> ConfigMode:
         """

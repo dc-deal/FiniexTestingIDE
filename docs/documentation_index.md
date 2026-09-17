@@ -46,7 +46,10 @@
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
 | [Broker Trade Records](architecture/broker_trade_records.md) | Order ↔ executions pairing model, BrokerTrade type, Tier-3 trades-query layer |
 | [Trade Execution Visibility](architecture/trade_execution_visibility.md) | Trigger / BrokerOrder / Fills three-level model, Position.entry_trades + TradeRecord.entry_trades / exit_trades propagation, sub-line rendering, long-format event-stream CSV (#330) |
+| [Market Model](architecture/market_model.md) | The three independent axes describing a venue — asset class, how a position is financed, and how prices come about — all eight combinations with what this project supports, and which price the strategy plane reads against the valuation plane |
 | [Data Storage Layout](architecture/data_storage_layout.md) | The store catalog — eleven data stores by kind (record · carry-over · archive · derived · special) and retrieval form, the index obligation, why the bulk form stays outside the abstraction (#486) |
+| [Accounting Periods](architecture/accounting_periods.md) | Which clock resets what — the swap rollover at 17:00 New York against the risk day at midnight UTC, the tick-level equity sample, the two carry-over cadences, and what deliberately does not reset |
+| [Credentials Layout](architecture/credentials_layout.md) | Which secret points which way — the inbound consumer registry against the outbound peer and venue credentials, why an address never travels apart from its credential, and when the folder splits |
 | [External Connection Policy](architecture/external_connection_policy.md) | One retry ladder, one give-up rule, one classification for all seven outbound connections — TRANSIENT / TERMINAL / INADMISSIBLE, why a write is resolved by asking rather than retried, the `cl_ord_id` wire key, who owns the wait (#473) |
 | [Drift Audit](architecture/drift_audit.md) | Read-only local-vs-broker drift telemetry (#327) — FEE / VOLUME / PRICE counters, async trades-query consumer, live-display footer |
 | [Decision Event Channel](architecture/decision_event_channel.md) | Typed ordered event channel — order/fill/cancel/partial-close/session-end hooks for decision logic, drain-at-boundary, request_session_end (#348) |
@@ -103,6 +106,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | Document | Description |
 |----------|-------------|
 | [Test Runner](tests/tests_runner_docs.md) | Unified runner, configuration, fail-fast |
+| [Benchmark Baseline History](tests/simulation/benchmark_baseline_history.md) | Why the throughput baseline is what it is — what a re-registration has to carry, and the evidence behind each change |
 | [Bar Parity Tests](tests/parity/bar_parity_tests.md) | Cross-pipeline parity: simulation vs. AutoTrader bar identity |
 | [Heartbeat Ghost-Pass Parity](tests/parity/heartbeat_ghost_tests.md) | Sim ghost-pass between ticks + weekend-gap gate (#360 Stage 2) |
 | [AutoTrader Config](tests/autotrader/config_tests.md) | What the live pipeline resolves before a session starts: `dry_run`, profile loadability, the account fee tier |
@@ -112,6 +116,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Field Study Machine](tests/autotrader/field_study_machine_tests.md) | The offline state machine behind that run — every phase outcome reachable without spending money (#332) |
 | [Live Signal Feed Certificate](tests/live_signal_feed/signal_feed_certificate_guide.md) | Producer contract proof + PASS/FAIL certificate — operator-driven, release-gate (#466) |
 | [Safety Circuit Breaker](tests/autotrader/safety_tests.md) | Account-value safety, phantom drawdown fix, config split, the baseline across a restart, the hard flatten, and what the session recorded |
+| [Tick Sources](tests/autotrader/tick_source_tests.md) | What a live tick IS before anything sees it: the quote a trade executed against, two subscriptions on one connection (#520) |
 | [Live Executor](tests/autotrader/live_executor_tests.md) | LiveTradeExecutor pipeline |
 | [Loop Cadence](tests/autotrader/loop_cadence_tests.md) | Clock injection, heartbeat re-poll, decision ghost-pass (#360) |
 | [Algo State Persistence](tests/autotrader/state_persistence_tests.md) | Snapshot store, corrupt/stale policy, weekend-aware staleness, pre-flight (#354) |
@@ -162,6 +167,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Data Coverage Tests](tests/framework/data_coverage_tests.md) | Data format version spans — which collector schema produced which archive window |
 | [Normalizer Tests](tests/framework/normalizer_tests.md) | Central rescale/clamp/normalize apparatus |
 | [Account Value Tests](tests/framework/account_value_tests.md) | One account-value definition per account model — the input every circuit-breaker limit sits on, and why spot answers None rather than guessing |
+| [Indicator Tests](tests/framework/indicator_tests.md) | The shared indicator library: what each name means, that the per-tick and bulk forms of one indicator agree, and how much history each average needs |
 | [Price Trigger Tests](tests/framework/price_trigger_tests.md) | The shared order-vs-quote predicate: has the market reached this price, and which side of the book does this direction trade at |
 | [Market Calendar / Swap Rollover](tests/framework/market_calendar_tests.md) | Swap-rollover + DST calendar helpers + MarketClock awareness (#365) |
 | [Diagnostics CSV Sink Tests](tests/framework/diagnostics_csv_sink_tests.md) | Strategy-owned diagnostics CSV channel + flush helper |

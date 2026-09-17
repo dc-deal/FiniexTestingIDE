@@ -62,6 +62,7 @@ def setup_tick_source(
             ws_pair=ws_pair,
             tick_queue=tick_queue,
             ws_url=config.tick_source.ws_url,
+            quote_channel_enabled=config.tick_source.quote_channel_enabled,
             reconnect_initial_delay_s=config.tick_source.reconnect_initial_delay_s,
             reconnect_max_delay_s=config.tick_source.reconnect_max_delay_s,
             connection_check_interval_s=config.tick_source.connection_check_interval_s,

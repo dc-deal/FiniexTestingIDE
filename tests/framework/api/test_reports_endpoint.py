@@ -133,11 +133,11 @@ def _portfolio_report() -> PortfolioReport:
     unit = PortfolioUnitRow(
         name='s1', symbol='EURUSD', currency='USD', total_trades=10, winning_trades=6,
         losing_trades=4, win_rate=0.6, profit_factor=2.5, total_profit=100.0,
-        total_loss=40.0, net_profit=60.0, max_drawdown=12.0, total_fees=5.0)
+        total_loss=40.0, net_profit=60.0, account_max_drawdown=12.0, total_fees=5.0)
     agg = PortfolioAggregateRow(
         currency='USD', unit_count=1, total_trades=10, winning_trades=6, losing_trades=4,
         win_rate=0.6, profit_factor=2.5, total_profit=100.0, total_loss=40.0,
-        net_profit=60.0, max_drawdown=12.0, total_fees=5.0)
+        net_profit=60.0, account_max_drawdown=12.0, total_fees=5.0)
     return PortfolioReport(run_id=_RUN_ID, units=[unit], aggregates=[agg])
 
 
@@ -173,7 +173,7 @@ def _scenario_details_report() -> ScenarioDetailsReport:
 def _run_summary() -> RunSummary:
     return RunSummary(run_id=_RUN_ID, 
         currencies=[RunSummaryCurrency(
-            currency='USD', net_pnl=60.0, profit_factor=2.5, win_rate=0.6, max_drawdown=12.0,
+            currency='USD', net_pnl=60.0, profit_factor=2.5, win_rate=0.6, account_max_drawdown=12.0,
             total_fees=5.0, total_trades=10, winning_trades=6, losing_trades=4,
             expectancy=0.5, avg_win_r=2.0, avg_loss_r=-1.0, r_trade_count=4)],
         orders_sent=5, orders_executed=4, orders_rejected=1, sl_tp_triggered=2, unit_count=1)
@@ -219,7 +219,7 @@ def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
     headline = PortfolioAggregateRow(
         currency='USD', unit_count=1, total_trades=10, winning_trades=6, losing_trades=4,
         win_rate=0.6, profit_factor=2.5, total_profit=100.0, total_loss=40.0, net_profit=60.0,
-        max_drawdown=12.0, total_fees=5.0)
+        account_max_drawdown=12.0, total_fees=5.0)
     return AggregatedPortfolioReport(run_id=_RUN_ID, currencies=[AggregatedPortfolioCurrency(
         currency='USD', scenario_count=1, scenario_names=['s1'],
         combined=AggregatedPortfolioRow(headline=headline, initial_balance=1000.0))])

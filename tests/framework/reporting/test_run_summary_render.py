@@ -30,7 +30,7 @@ def _currency(currency='USD', net_pnl=6.0, win_rate=0.6667, winners=2, losers=1,
               profit_factor=4.33, total_fees=3.70, expectancy=0.0, r_trade_count=0):
     return RunSummaryCurrency(
         currency=currency, net_pnl=net_pnl, profit_factor=profit_factor, win_rate=win_rate,
-        max_drawdown=1.8, total_fees=total_fees, total_trades=winners + losers,
+        account_max_drawdown=1.8, total_fees=total_fees, total_trades=winners + losers,
         winning_trades=winners, losing_trades=losers, expectancy=expectancy,
         avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=r_trade_count)
 

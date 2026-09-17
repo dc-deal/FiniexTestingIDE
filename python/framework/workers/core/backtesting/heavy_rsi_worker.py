@@ -11,6 +11,7 @@ import numpy as np
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
+from python.framework.utils.trading_math.indicators.rsi import rsi
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 
 
@@ -107,23 +108,16 @@ class HeavyRsiWorker(AbstractIndicatorWorker):
         if current_bar:  # Check if Bar exists (not Dict!)
             bars = list(bars) + [current_bar]
 
+        # The window stays at the period deliberately, unlike CORE/rsi: this worker is a
+        # load generator, and over exactly one period of deltas Wilder's smoothing returns
+        # its own seed, so the number is unchanged and the benchmark keeps its baseline.
         close_prices = np.array(
             [bar.close for bar in bars[-(period + 1):]])
-        deltas = np.diff(close_prices)
-        gains = np.where(deltas > 0, deltas, 0)
-        losses = np.where(deltas < 0, -deltas, 0)
 
-        avg_gain = np.mean(gains)
-        avg_loss = np.mean(losses)
-
-        if avg_loss == 0:
-            rsi = 100.0
-        else:
-            rs = avg_gain / avg_loss
-            rsi = 100.0 - (100.0 / (1.0 + rs))
+        values = rsi(close_prices, period)
 
         return WorkerResult(outputs={
-            'rsi_value': float(rsi),
+            'rsi_value': values.value,
             'artificial_load_ms': self.artificial_load_ms,
         })
 

@@ -17,6 +17,9 @@
     "mql5.mql5-vscode",
     // Vue / TypeScript — the FiniexViewer companion (docs/user_guides/finiexviewer_setup.md)
     "Vue.volar",
+    // Copies a path with line numbers — the form every code reference in this project's
+    // reviews and issue bodies uses (path/to/file.py#L12-L20).
+    "ezforo.copy-relative-path-and-line-numbers",
     // Docker / Dev Containers — HOST side only
     "ms-vscode-remote.remote-containers"
   ]

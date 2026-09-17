@@ -52,6 +52,19 @@
     "require_auth": false
   },
   "autotrader": {
+    "tick_source": {
+      "_comment": "How ticks are DELIVERED. A profile overrides any of these; the mock-only and kraken-only fields sit together because one block per concern beats two that a reader has to join. quote_channel_enabled subscribes to Kraken's ticker channel beside trades, so a live tick carries the real bid/ask it executed against - the same thing an archived tick has carried since collector format 1.6.0.",
+      "type": "mock",
+      "tick_delay_ms": 0,
+      "ws_url": "wss://ws.kraken.com/v2",
+      "quote_channel_enabled": true,
+      "reconnect_initial_delay_s": 1.0,
+      "reconnect_max_delay_s": 60.0,
+      "connection_check_interval_s": 30.0,
+      "connection_dead_s": 90.0,
+      "freeze_after_ticks": 0,
+      "freeze_duration_s": 0.0
+    },
     "execution": {
       "parallel_workers": false,
       "bar_max_history": 1000,

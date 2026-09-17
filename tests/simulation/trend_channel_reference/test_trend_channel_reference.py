@@ -94,19 +94,34 @@ class TestPartialClose:
 
 
 class TestTrailingStop:
-    def test_trailing_stop_can_close_in_profit(self, all_trades):
-        # An SL that closes a trade in profit can only happen if the always-on trailing
-        # stop ratcheted it past breakeven (the initial SL is always at a loss).
-        trailed = [
+    def test_the_trail_ratchets_the_stop_past_breakeven(self, all_trades):
+        """
+        The property is that the stop moves past the entry, making the position risk-free.
+
+        This used to assert the CONJUNCTION — an SL_TRIGGERED exit that also closed in
+        profit — which additionally requires the trailed stop to beat the take profit to
+        the exit. That is a race between two levels, decided by the window and the
+        parameter set, not by whether the trail works: measured 2026-09-15, both positions
+        whose stop was ratcheted past entry ran on into their TP, so the trail did its job
+        and the old assertion still read "trailing did not ratchet". The message was right
+        and the assertion was narrower than the message.
+        """
+        ratcheted = [
             t for t in all_trades
-            if t.close_reason == CloseReason.SL_TRIGGERED and t.gross_pnl > 0
+            if t.stop_loss is not None and (
+                t.stop_loss > t.entry_price if t.direction == OrderDirection.LONG
+                else t.stop_loss < t.entry_price)
         ]
-        assert trailed, 'no SL-triggered trade closed in profit — trailing did not ratchet'
-        for t in trailed:
+        assert ratcheted, 'no stop was trailed past its entry — trailing did not ratchet'
+
+        for t in ratcheted:
             if t.direction == OrderDirection.LONG:
                 assert t.stop_loss > t.entry_price   # LONG SL trailed above entry
             else:
                 assert t.stop_loss < t.entry_price   # SHORT SL trailed below entry
+            assert t.gross_pnl > 0, (
+                'a stop ratcheted past the entry must not be able to close at a loss — '
+                'that would mean the trail moved the wrong way')
 
 
 class TestMultiPosition:

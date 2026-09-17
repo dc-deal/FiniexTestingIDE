@@ -27,12 +27,19 @@ from python.framework.types.run_results_types import RunProvenance
 # Fixed column order — kept stable so fragments stay schema-compatible across runs.
 
 LEDGER_COLUMNS: List[str] = [
+    # Which version of the producing LOGIC wrote this row. The index stamps the same number
+    # into its own metadata, but that says what the INDEX was built with — it cannot say what
+    # a given ROW means. Without it a ranking cannot tell that it is comparing a drawdown
+    # measured one way against one measured another, which is exactly what happened when the
+    # measure changed under a stable column name (#497). Absent on fragments written before
+    # this column existed, which reads back as None — unknown, never a made-up version.
+    'logic_version',
     'param_hash', 'status', 'error', 'run_id', 'run_timestamp', 'sweep_id', 'sweep_params',
     'sweep_objective', 'sweep_maximize',
     'scenario_set_name', 'app_version', 'git_commit', 'git_branch', 'git_dirty',
     'decision_logic_type', 'decision_version', 'worker_versions',
     'config_snapshot', 'symbols', 'data_broker_type', 'currency',
-    'net_pnl', 'expectancy', 'profit_factor', 'win_rate', 'max_drawdown',
+    'net_pnl', 'expectancy', 'profit_factor', 'win_rate', 'account_max_drawdown',
     # #492 — realised (net_pnl) and valued (final_equity) side by side. A ranking on
     # net_pnl alone rates a variant still HOLDING a winner below one that closed it, and
     # a run end no longer closes anything. Appended, so older fragments stay readable.
@@ -164,6 +171,7 @@ class RunResultsLedger:
             'config_snapshot': p.config_snapshot,
             'symbols': json.dumps(p.symbols),
             'data_broker_type': p.data_broker_type,
+            'logic_version': RunLedgerIndex.LOGIC_VERSION,
         }
 
     def _row(self, p: RunProvenance, currency, run_summary: RunSummary) -> Dict[str, Any]:
@@ -177,7 +185,7 @@ class RunResultsLedger:
             'expectancy': currency.expectancy,
             'profit_factor': currency.profit_factor,
             'win_rate': currency.win_rate,
-            'max_drawdown': currency.max_drawdown,
+            'account_max_drawdown': currency.account_max_drawdown,
             'unrealized_pnl': currency.unrealized_pnl,
             'final_equity': currency.final_equity,
             'open_position_count': currency.open_position_count,

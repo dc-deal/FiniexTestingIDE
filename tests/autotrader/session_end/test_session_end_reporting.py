@@ -33,7 +33,7 @@ def _buy_and_hold_row() -> PortfolioUnitRow:
         name='session_end_probe', symbol='BTCUSD', currency='USD',
         total_trades=0, winning_trades=0, losing_trades=0, win_rate=0.0,
         profit_factor=None, total_profit=0.0, total_loss=0.0, net_profit=0.0,
-        max_drawdown=0.0, total_fees=1.57,
+        account_max_drawdown=0.0, total_fees=1.57,
         spot_mode=True, current_balance=358.80, initial_balance=1000.0,
         base_currency='BTC', quote_currency='USD',
         balances={'USD': 358.80, 'BTC': 0.014}, initial_balances={'USD': 1000.0},

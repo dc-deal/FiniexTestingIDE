@@ -71,6 +71,129 @@ def summarize_sweeps(rows: List[RunResultRow]) -> List[SweepSummary]:
     return sorted(summaries, key=lambda s: s.sweep_id)
 
 
+@dataclass
+class DegenerateRankingAdvisory:
+    """
+    The ranking's winner made no trade, so the objective is not measuring the strategy.
+
+    Args:
+        objective: The KPI the sweep ranked by
+        zero_trade_count: How many combinations produced no trade at all
+        zero_trade_leaders: The zero-trade rows standing at the TOP of the ranking
+        best_trading_row: The best-ranked combination that actually traded, None when none did
+        best_trading_rank: That row's 1-based position in the ranking, 0 when there is none
+        total_ranked: How many combinations the ranking covers
+    """
+    objective: str
+    zero_trade_count: int
+    zero_trade_leaders: List[RunResultRow]
+    best_trading_row: Optional[RunResultRow]
+    best_trading_rank: int
+    total_ranked: int
+
+
+@dataclass
+class MixedLogicVersionAdvisory:
+    """
+    The ranking spans rows written by different versions of the producing logic.
+
+    Args:
+        versions: The versions present, ascending; None reads as "written before row
+            versioning existed", which is unknown rather than old
+        counts: How many rows carry each of them, in the same order
+        unknown_count: Rows whose version is None
+    """
+    versions: List[Optional[int]]
+    counts: List[int]
+    unknown_count: int
+
+
+def mixed_logic_version_advisory(
+    rows: List[RunResultRow],
+) -> Optional[MixedLogicVersionAdvisory]:
+    """
+    Detect a ranking built from rows that were not produced by the same logic.
+
+    A ledger column keeps its name while the measure behind it changes — that is what
+    happened to the account drawdown (#497), and nothing in a fragment said so. Ranking
+    across such a boundary produces a best-first list whose entries answer different
+    questions, and it looks exactly like a valid ranking.
+
+    This is an analyzer, not a validator — it returns the facts and renders no verdict.
+
+    Args:
+        rows: The ledger rows a ranking is about to be built from
+
+    Returns:
+        The advisory, or None when every row carries the same version
+
+    """
+    if not rows:
+        return None
+
+    tally: Dict[Optional[int], int] = {}
+    for row in rows:
+        tally[row.logic_version] = tally.get(row.logic_version, 0) + 1
+    if len(tally) < 2:
+        return None
+
+    # None sorts first: it is the oldest thing present, and it is what a reader has to
+    # resolve by hand because no fragment recorded it.
+    ordered = sorted(tally, key=lambda v: (v is not None, v))
+    return MixedLogicVersionAdvisory(
+        versions=ordered,
+        counts=[tally[v] for v in ordered],
+        unknown_count=tally.get(None, 0),
+    )
+
+
+def degenerate_ranking_advisory(
+    ranked: List[RunResultRow],
+    objective: str,
+    max_leaders: int = 3,
+) -> Optional[DegenerateRankingAdvisory]:
+    """
+    Detect a ranking whose best combination never traded.
+
+    Pardo states the case for drawdown (line 4232): *"minimum drawdown is not enough as a
+    sole criterion, since a drawdown of zero occurs when a model has no losing trades and
+    possibly no winning trades"*. An honest measure does not fix that — a model that never
+    opened a position genuinely has no drawdown, and minimising the measure genuinely
+    prefers it. So the condition tested here is the general one and names no KPI: the
+    ranking is misleading exactly when its WINNER did nothing, whatever it was ranked by.
+
+    This is an analyzer, not a validator — it returns the facts and renders no verdict.
+
+    Args:
+        ranked: The rows in ranking order, best first
+        objective: The KPI they were ranked by, carried for the message
+        max_leaders: How many of the leading zero-trade rows to carry
+
+    Returns:
+        The advisory, or None when the best-ranked combination did trade
+    """
+    if not ranked or ranked[0].total_trades > 0:
+        return None
+
+    leaders = []
+    for row in ranked:
+        if row.total_trades > 0:
+            break
+        leaders.append(row)
+
+    best_trading = next(
+        ((i, r) for i, r in enumerate(ranked, start=1) if r.total_trades > 0), None)
+
+    return DegenerateRankingAdvisory(
+        objective=objective,
+        zero_trade_count=sum(1 for r in ranked if r.total_trades == 0),
+        zero_trade_leaders=leaders[:max_leaders],
+        best_trading_row=best_trading[1] if best_trading else None,
+        best_trading_rank=best_trading[0] if best_trading else 0,
+        total_ranked=len(ranked),
+    )
+
+
 def rank(
     rows: List[RunResultRow],
     objective: str,

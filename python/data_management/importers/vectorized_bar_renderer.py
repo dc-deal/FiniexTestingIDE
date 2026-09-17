@@ -15,6 +15,7 @@ from typing import Dict, Optional
 
 import pandas as pd
 
+from python.configuration.import_config_manager import ImportConfigManager
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
@@ -47,10 +48,12 @@ class VectorizedBarRenderer:
         """
         self.symbol = symbol
         self._log_buffer = log_buffer
-        # Pandas resample() rules for each timeframe
+        # Pandas resample() rules for each timeframe the import is configured to
+        # materialize — the registry says which names EXIST, the config which ones are
+        # written to disk, because every one of them costs a file per symbol
         self._resample_rules = {
             tf: TimeframeConfig.get_resample_rule(tf)
-            for tf in TimeframeConfig.sorted()
+            for tf in ImportConfigManager().get_render_timeframes()
         }
 
     def _log(self, level: str, message: str) -> None:
@@ -127,10 +130,16 @@ class VectorizedBarRenderer:
                 "Use read_tick_parquet() to load with normalized columns."
             )
 
-        # === 1. CALCULATE MID-PRICE ===
-        # We use (bid + ask) / 2 for bar OHLC
-        # This is standard in algo trading - most strategies use mid-price
-        df['mid'] = (df['bid'] + df['ask']) / 2.0
+        # === 1. RESOLVE THE BAR PRICE ===
+        # Supplied by read_tick_parquet: the traded price on an order-driven venue, the
+        # bid/ask midpoint on a quote-driven one. Derived there rather than here so the rule
+        # exists once and this renderer stays a pure transformation — it runs in a worker
+        # pool and must not read config per process.
+        if 'price' not in df.columns:
+            raise ValueError(
+                "Missing 'price' column in tick data. "
+                'Use read_tick_parquet() to load with normalized columns.'
+            )
 
         # === 2. ENSURE DATETIME ===
         # CRITICAL: timestamp must be datetime for resample()
@@ -178,9 +187,9 @@ class VectorizedBarRenderer:
         # Build aggregation dict
         # volume: actual trade volume (crypto) or 0.0 (forex CFD)
         agg_dict = {
-            'mid': ['first', 'max', 'min', 'last'],  # OHLC from mid-price
-            'bid': 'count',                          # Tick count
-            'volume': 'sum'                          # Trade volume
+            'price': ['first', 'max', 'min', 'last'],  # OHLC from the venue's own price basis
+            'bid': 'count',                            # Tick count
+            'volume': 'sum'                            # Trade volume
         }
 
         bars = prepared_df.resample(rule).agg(agg_dict)

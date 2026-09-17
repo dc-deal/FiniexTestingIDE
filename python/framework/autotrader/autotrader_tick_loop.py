@@ -428,7 +428,7 @@ class AutotraderTickLoop:
 
             # Capture spot equity baseline on first tick (first live price available)
             if ticks_processed == 1 and self._trading_model == TradingModel.SPOT:
-                first_price = (tick.bid + tick.ask) / 2.0
+                first_price = tick.mid
                 self._initial_spot_equity = self._executor.portfolio.get_spot_equity(first_price)
             # #356 — the RISK baseline, which is a different question and answers it once:
             # `ensure_taken` does nothing when a record was restored from the predecessor, so
@@ -461,6 +461,15 @@ class AutotraderTickLoop:
             safety_value = self._executor.portfolio.get_account_value()
             safety_baseline = self._safety_baseline_value()
             if safety_value is not None:
+                # #497 — the REPORT's drawdown reads the same per-tick value the breaker
+                # does, and pays nothing for it: the evaluation above is already done. The
+                # series was otherwise written only when a position CLOSED, which measures
+                # the largest decline across closed trades rather than the largest decline
+                # of the equity curve. Two different measures; only the second is what the
+                # word means. (#366 will add the sim's own per-tick pass — it rides this
+                # same seam rather than opening a second one.)
+                self._executor.portfolio.sample_equity(safety_value)
+
                 # Record the excursion BEFORE the checks and from the same two values they
                 # read. A report measuring a different number from the one that decides is
                 # the defect this issue removes, one layer up.
@@ -986,7 +995,7 @@ class AutotraderTickLoop:
         mark_price: Optional[float] = None
         quantities: Optional[BaselineQuantities] = None
         if self._trading_model == TradingModel.SPOT:
-            mark_price = (tick.bid + tick.ask) / 2.0
+            mark_price = tick.mid
             quantities = self._spot_quantities()
 
         self._risk_baseline.ensure_taken(value, mark_price, quantities)

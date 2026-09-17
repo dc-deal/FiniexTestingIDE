@@ -107,7 +107,7 @@ class SentimentProducerEndpoint(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     base_url: str
-    credentials_file: str = 'rag_credentials.json'
+    credentials_file: str = 'peers/rag_credentials.json'
 
 
 class SentimentProducerConfig(BaseModel):

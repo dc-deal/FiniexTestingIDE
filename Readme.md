@@ -173,6 +173,12 @@ data/processed/
 
 **Total: ~254M ticks across 16 instruments (8 Forex pairs + 8 Crypto), with auto-rendered M1–D1 bars**
 
+The two brokers differ in more than their instruments: Kraken publishes a central order book
+where every trade prints at a price, while MT5 forex is dealer-quoted and has no traded price
+at all. That changes what a bar is made of, so it is declared per broker rather than assumed —
+see [Market Model](docs/architecture/market_model.md) for the three axes that describe a venue
+and which combinations the framework currently supports.
+
 Sentiment signals are included as a separate data source: ~4.9M rows across crypto and
 forex macro sentiment, covering Jan → Aug 2026 (synthetic backfill up to 2026-07-15,
 collected from a live feed afterwards).

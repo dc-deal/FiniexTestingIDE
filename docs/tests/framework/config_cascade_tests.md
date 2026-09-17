@@ -137,6 +137,29 @@ extended for every new field, which is the maintenance trap the test exists to c
 must not reproduce it. Values are generated per type: another `Literal` member, the negated
 boolean, a shifted number, a suffixed string.
 
+## Price Formation Declared (`test_price_formation_declared.py`)
+
+`price_formation` decides whether a traded price exists and therefore what a bar is rendered
+from. It is a **required** field on every broker entry with no default, because a default is
+how the next broker silently inherits the wrong basis — which is the defect the field exists
+to remove.
+
+That only holds while nothing supplies one by accident, so it is asserted rather than trusted.
+
+| Test | What it verifies |
+|---|---|
+| `test_an_entry_without_it_is_refused` | The refusal itself — without it the field would be advisory |
+| `test_an_unknown_value_is_refused` | Only the two structures exist; a typo must not become a third |
+| `test_every_broker_resolves_to_a_known_structure` | Every configured broker declares it, read through the manager the way production reads it |
+| `test_the_two_shipped_venues_are_declared_correctly` | Kraken order-driven, MT5 quote-driven, pinned by name |
+
+**Why the last one is pinned by name rather than left generic:** on current data a swapped
+declaration would change nothing at all — Kraken resolves to the midpoint because `bid == ask`,
+MT5 because its zero falls back — so the error would stay invisible until the first file with a
+real spread arrives, and then change every bar at once.
+
+Background: [Market Model](../../architecture/market_model.md).
+
 ### When to Touch This Suite
 
 - **A new config block on `AutoTraderConfig`** — nothing to do; it is discovered automatically

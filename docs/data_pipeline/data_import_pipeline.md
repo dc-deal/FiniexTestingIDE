@@ -585,8 +585,8 @@ Allowed gap categories are configured in `app_config.json` → `data_validation.
 
 ```
 data/processed/
-├── .parquet_tick_index.json
-├── .parquet_bars_index.json
+├── ticks_index.parquet
+├── bars_index.parquet
 ├── {broker_type}/
 │   ├── ticks/
 │   │   └── {SYMBOL}/
@@ -597,3 +597,63 @@ data/processed/
 │           ├── {SYMBOL}_M5_BARS.parquet
 │           └── ...
 ```
+
+## What the archive guarantees about a bar file
+
+A bar parquet can be corrupt in a single column while every cheap check passes. The
+footer keeps reporting the right row count, and a projection of one column reads
+cleanly — measured on a real case, projecting `timestamp` reported 128 healthy files
+while one of them carried an unreadable `low`. Such a file survived a day and two green
+test runs before anything noticed.
+
+Two checks exist, and they answer different questions.
+
+**At write time** the renderer reads each bar file back in full immediately after
+writing it and compares the row count against what it wrote
+(`bar_importer.py::_verify_bar_file`). A file that cannot be read back raises
+`BarFileVerificationException`, which fails that symbol's render while the cause is
+still known; other symbols continue. The read costs roughly 1 % of a render.
+
+**At index time** every bar file is opened and read completely — the index needs the
+tick-count and volume aggregates, so the scan already decodes every column. A file the
+scan cannot read is therefore detected, but the consequence used to be invisible: the
+row is simply absent from the index, and the failure surfaces much later, somewhere
+else, as `Timeframe 'M1' not found`. The build now ends with an explicit balance — how
+many of the files scanned could not be read, and which — on error level as its own
+block. That makes the index rebuild the archive's integrity check; no separate command is
+needed — but pass `--no-caches` when that is all you want, because the rebuild otherwise
+also regenerates every discovery cache, which costs far more than the scan:
+
+```bash
+python python/cli/bar_index_cli.py rebuild --no-caches
+```
+
+Measured 2026-09-16 over 128 bar files: the index rebuild alone **3.4 s**, the discovery
+caches on top of it **2 min 15 s**.
+
+**What is NOT guaranteed.** Neither check says anything about whether the bars are
+*correct* — only that the file is readable and carries the rows it claims. Nothing
+detects a bar file that has silently gone stale against its ticks, and nothing runs on a
+schedule: between one render and the next index build, a file damaged by something
+outside this pipeline is unnoticed.
+
+**The repair is always the same, because bars are DERIVED** — see
+[Data Storage Layout](../architecture/data_storage_layout.md): delete and re-render.
+Nothing is lost.
+
+```bash
+python python/cli/bar_index_cli.py render --all --clean
+```
+
+## Scope of an import
+
+`BarImporter` and both index managers accept a `data_dir`. An import directed at a
+scratch directory writes its bars, its tick index and its bar index there and leaves the
+real archive alone.
+
+The discovery caches are the one exception, and it is a stated limitation rather than an
+oversight: `DiscoveryCacheManager` resolves its own paths through `AppConfigManager` and
+builds four sub-caches that each do the same, so it cannot be pointed anywhere. An
+import that is scoped elsewhere therefore **skips** the cache rebuild and says so,
+instead of rebuilding production caches from bars it never touched. Scoping them belongs
+to the index-manager convergence in #175.

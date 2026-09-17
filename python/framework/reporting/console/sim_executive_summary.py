@@ -467,8 +467,12 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
                 f'Final Equity:       {format_currency_simple(h.final_equity, currency)}')
 
         print('')
+        # "curve" names the measure (#497) — see portfolio_summary for why the word alone
+        # is not enough once a second honest reading exists.
         print(
-            f'Max Drawdown:       {format_currency_simple(abs(h.max_drawdown), currency)} ({row.max_dd_pct:.1f}%)')
+            f'Max Drawdown (account, curve): '
+            f'{format_currency_simple(abs(h.account_max_drawdown), currency)} '
+            f'({row.account_max_dd_pct:.1f}%)')
         print(
             f'Max Equity:         {format_currency_simple(row.max_equity, currency)}')
         print(f'Recovery Factor:    {row.recovery_factor:.2f}')

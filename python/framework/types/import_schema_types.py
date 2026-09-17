@@ -1,7 +1,8 @@
 """
 Import Pipeline Schema Types.
 
-TypedDict definitions for MQL5 JSON tick data export format.
+TypedDict definitions for the collector JSON tick export format, shared by
+the MetaTrader 5 EA and the Kraken collector.
 Defines mandatory and optional fields for import validation.
 """
 
@@ -9,7 +10,7 @@ from typing import Dict, List, TypedDict
 
 
 class SymbolInfoSchema(TypedDict, total=False):
-    """Symbol info sub-structure from MQL5 metadata."""
+    """Symbol info sub-structure from collector metadata."""
     point_value: float
     digits: int
     tick_size: float
@@ -17,7 +18,7 @@ class SymbolInfoSchema(TypedDict, total=False):
 
 
 class CollectionSettingsSchema(TypedDict, total=False):
-    """Collection settings sub-structure from MQL5 metadata."""
+    """Collection settings sub-structure from collector metadata."""
     max_ticks_per_file: int
     max_errors_per_file: int
     include_real_volume: bool
@@ -26,7 +27,7 @@ class CollectionSettingsSchema(TypedDict, total=False):
 
 
 class ErrorTrackingSchema(TypedDict, total=False):
-    """Error tracking sub-structure from MQL5 metadata."""
+    """Error tracking sub-structure from collector metadata."""
     enabled: bool
     log_negligible: bool
     log_serious: bool
@@ -63,7 +64,7 @@ class CollectedMscRestorationSchema(TypedDict, total=False):
 
 class ImportMetadataSchema(TypedDict, total=False):
     """
-    Metadata section of MQL5 JSON tick export.
+    Metadata section of a collector JSON tick export.
 
     Required fields: symbol, broker_type (or legacy data_collector), start_time.
     All other fields are optional and version-dependent (v1.0.5+).
@@ -116,7 +117,7 @@ class ImportMetadataSchema(TypedDict, total=False):
 
 class ImportTickSchema(TypedDict, total=False):
     """
-    Single tick entry from MQL5 JSON export.
+    Single tick entry from a collector JSON export.
 
     Required: timestamp, bid, ask.
     All other fields are optional and version-dependent.
@@ -143,10 +144,15 @@ class ImportTickSchema(TypedDict, total=False):
     session: str
     collected_msc: int
 
+    # Optional (collector v1.6.0+) — age of the quote the trade executed against,
+    # in milliseconds. Null, never zero, where no quote had been observed yet:
+    # a zero would assert a quote seen in that same millisecond.
+    quote_age_ms: int
+
 
 class ImportJsonSchema(TypedDict):
     """
-    Top-level structure of MQL5 JSON tick data export.
+    Top-level structure of a collector JSON tick data export.
 
     Args:
         metadata: Import metadata dict

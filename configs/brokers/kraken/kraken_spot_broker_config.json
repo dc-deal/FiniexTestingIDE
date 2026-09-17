@@ -10,8 +10,7 @@
   "export_info": {
     "timestamp": "2026-05-04T18:49:02.239693+00:00",
     "source": "Kraken REST API (live fetch)",
-    "exporter_version": "1.01",
-    "symbols_total": 1
+    "exporter_version": "1.01"
   },
   "broker_info": {
     "company": "Kraken",

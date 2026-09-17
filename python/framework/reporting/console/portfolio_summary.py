@@ -141,9 +141,14 @@ class PortfolioSummary(AbstractBatchSummarySection):
             if line:
                 print(f'   {line}')
 
+        # "curve" names the measure (#497): the largest peak-to-trough decline of the
+        # equity curve, which is what the word means outside this repository. The live
+        # display's `safety_dd` is a different reading — against a configured baseline —
+        # and the two may legitimately differ.
         print(
-            f'   Max DD: {renderer.pnl(force_negative(unit.max_drawdown), unit.currency)} '
-            f'({unit.max_dd_pct:.1f}%) | '
+            f'   Max DD (account, curve): '
+            f'{renderer.pnl(force_negative(unit.account_max_drawdown), unit.currency)} '
+            f'({unit.account_max_dd_pct:.1f}%) | '
             f'Max Equity: {renderer.pnl(force_positive(unit.max_equity), unit.currency)}')
 
         print(
@@ -489,8 +494,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
               f'Total Fees: {renderer.pnl(force_negative(total_costs), currency)}')
 
         print('\n   📉 RISK METRICS:')
-        print(f'      Max Drawdown: {renderer.pnl(force_negative(h.max_drawdown), currency)} '
-              f'({row.max_dd_pct:.1f}%) - Scenario: {row.max_drawdown_scenario}')
+        print(f'      Max Drawdown (account, curve): '
+              f'{renderer.pnl(force_negative(h.account_max_drawdown), currency)} '
+              f'({row.account_max_dd_pct:.1f}%) - Scenario: {row.account_max_drawdown_scenario}')
         print(f'      Max Equity: {renderer.pnl(force_positive(row.max_equity), currency)} '
               f'- Scenario: {row.max_equity_scenario}')
 

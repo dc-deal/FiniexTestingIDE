@@ -138,7 +138,9 @@ class BarRenderer:
         """
         symbol = tick_data.symbol
         timestamp = tick_data.timestamp  # Already datetime!
-        mid_price = tick_data.mid
+        # The venue's own basis, resolved by the tick itself — so a bar this session
+        # renders matches the archive's bars and the venue's own warmup OHLC.
+        bar_price = tick_data.price
         volume = tick_data.volume
 
         updated_bars = {}
@@ -181,7 +183,7 @@ class BarRenderer:
                 self._current_bar_starts[timeframe][symbol] = bar_start_time
 
             # Update bar with tick
-            current_bar.update_with_tick(mid_price, volume)
+            current_bar.update_with_tick(bar_price, volume)
 
             # Check if bar is complete (time-based)
             if self.is_bar_complete(bar_start_time, timestamp, timeframe):

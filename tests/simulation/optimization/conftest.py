@@ -32,7 +32,7 @@ def make_run_summary():
         return RunSummary(run_id=_RUN_ID, 
             currencies=[RunSummaryCurrency(
                 currency=currency, net_pnl=net_pnl, profit_factor=profit_factor,
-                win_rate=win_rate, max_drawdown=max_drawdown, total_fees=0.0,
+                win_rate=win_rate, account_max_drawdown=max_drawdown, total_fees=0.0,
                 total_trades=total_trades, winning_trades=0, losing_trades=0,
                 expectancy=expectancy, avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0)],
             orders_sent=orders_sent, orders_executed=orders_executed,

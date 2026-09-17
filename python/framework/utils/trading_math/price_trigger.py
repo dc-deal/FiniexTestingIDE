@@ -96,3 +96,26 @@ def taken_price(
         The price that side trades at
     """
     return ask if direction == OrderDirection.LONG else bid
+
+
+def mid_price(bid: float, ask: float) -> float:
+    """
+    The midpoint of a quote, for callers that hold a raw bid/ask pair.
+
+    `TickData.mid` answers the same question where a tick is in scope and stays inline there
+    because it sits in the tick loop — measured 2026-09-16, delegating costs 30 % of the
+    property access. This exists for the places that have no tick: a `(bid, ask)` tuple from
+    the executor's price cache, from a portfolio re-mark, or from a close path.
+
+    Written down for the same reason as `taken_price` above, and the reason is sharper here:
+    eight hand-written copies of this expression existed, so a search for `.mid` could not
+    find them — and four of those sat on the money path.
+
+    Args:
+        bid: Current bid
+        ask: Current ask
+
+    Returns:
+        The midpoint between the two
+    """
+    return (bid + ask) / 2.0

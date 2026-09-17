@@ -29,6 +29,7 @@ from python.framework.types.discovery_types import (
     MoveDirection,
 )
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
+from python.framework.utils.trading_math.indicators.atr import atr_series
 from python.framework.utils.trading_math.pip_math import derive_pip_size
 
 vLog = get_global_logger()
@@ -132,11 +133,7 @@ class ExtremeMoveScanner:
 
         # ATR calculation
         atr_period = self._config.get('atr_period', 14)
-        high_low = df['high'] - df['low']
-        high_close = abs(df['high'] - df['close'].shift(1))
-        low_close = abs(df['low'] - df['close'].shift(1))
-        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        df['atr'] = tr.ewm(span=atr_period, adjust=False).mean()
+        df['atr'] = atr_series(df['high'], df['low'], df['close'], atr_period)
 
         return df
 
@@ -199,8 +196,10 @@ class ExtremeMoveScanner:
             for start_idx in range(0, total_bars - window_size + 1, step):
                 end_idx = start_idx + window_size
 
-                window_atr = float(np.mean(atrs[start_idx:end_idx]))
-                if window_atr <= 0:
+                window_atr = float(np.nanmean(atrs[start_idx:end_idx]))
+                # NaN <= 0 is False, so a window still inside the ATR's warmup would pass
+                # this guard and carry a NaN into every measurement below it.
+                if not np.isfinite(window_atr) or window_atr <= 0:
                     continue
 
                 entry_price = float(opens[start_idx])

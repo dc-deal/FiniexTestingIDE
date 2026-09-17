@@ -33,9 +33,16 @@ def assert_real_credential(credential_path: Path, purpose: str) -> None:
             have to work out which call tripped
     """
     path = Path(credential_path)
-    parent = path.parent
-    if not (parent.name == CREDENTIALS_DIR_NAME
-            and parent.parent.name == TRACKED_CREDENTIALS_PARENT):
+    # Matched at ANY depth below configs/credentials, not only as the immediate parent:
+    # the folder is subdivided (inbound / peers / venues), and a parent-only test stops
+    # guarding the moment a file moves one level down — silently, on a money path.
+    parts = path.parts
+    tracked = any(
+        parts[i] == TRACKED_CREDENTIALS_PARENT
+        and parts[i + 1] == CREDENTIALS_DIR_NAME
+        for i in range(len(parts) - 1)
+    )
+    if not tracked:
         return
 
     raise ValueError(

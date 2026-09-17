@@ -47,6 +47,22 @@ All tests use **synthetic parquet files** generated via `tmp_path` fixtures (no 
 - `legacy_parquet` — No volume columns at all
 - `already_normalized_parquet` — Pre-normalized with `volume` column
 
+### Traded Price Across Its Boundaries (`test_traded_price_transport.py`)
+
+`TickData.price` resolves a venue's basis from the data itself — the traded price where there
+is one, the midpoint where there is not. That rests on a single invariant: **an absent traded
+price arrives as `None`, never as `0.0`.** A zero is a price to everything downstream and
+would render an entire quote-driven archive at zero, since `dropna` drops NaN and not zeros.
+
+Two boundaries carry a tick and both are covered:
+
+- **The pickle transport** between the main process and a scenario subprocess
+  (`TickTransportColumn`). Every other optional column defaults to `0.0` on unpack, so the
+  traded price is the deliberate exception — a zero must come back as `None`.
+- **`TickData.to_dict()`**, which feeds the coordinator tick log and two executor forensics
+  records. It carries `mid`, `last` and `price` together: `mid` is what a valuation used and
+  `price` what a strategy saw, and a record with only one cannot tell them apart afterwards.
+
 ## Files
 
 - `tests/framework/tick_parquet_reader/test_tick_parquet_reader.py` — Test suite

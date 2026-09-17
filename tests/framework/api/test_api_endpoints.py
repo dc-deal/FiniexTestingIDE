@@ -1,7 +1,8 @@
 """
 FiniexTestingIDE - API Endpoint Tests
 
-Tests for all HTTP API endpoints: health, brokers, symbols, coverage, bars.
+Tests for all HTTP API endpoints: health, brokers, symbols, coverage, gaps, bars,
+and the ATR indicator series.
 Uses FastAPI TestClient with mocked BarsIndexManager and MarketConfigManager
 so no actual parquet data or index files are required.
 
@@ -49,6 +50,23 @@ def _mock_index(broker_types=None, symbols=None, stats=None, bar_file=None):
         },
     }
     m.get_bar_file.return_value = bar_file or Path('/fake/bars.parquet')
+    # The nested index the router reads the stamped price basis from. A MagicMock would
+    # answer every lookup with another mock, which is not a header value — and would hide
+    # that the basis now comes from the FILE rather than from a constant.
+    m.index = {
+        'kraken_spot': {
+            'BTCUSD': {'M30': {'price_basis': 'order_driven'},
+                       'H1': {'price_basis': 'order_driven'}},
+            'ETHUSD': {'M30': {'price_basis': 'order_driven'},
+                       'H1': {'price_basis': 'order_driven'}},
+        },
+        'mt5': {
+            'BTCUSD': {'M30': {'price_basis': 'quote_driven'},
+                       'H1': {'price_basis': 'quote_driven'}},
+            'ETHUSD': {'M30': {'price_basis': 'quote_driven'},
+                       'H1': {'price_basis': 'quote_driven'}},
+        },
+    }
     return m
 
 
@@ -279,7 +297,10 @@ class TestBars:
             )
         assert r.headers['X-Bar-Time-Basis'] == 'open'
         assert r.headers['X-Bar-Timezone'] == 'UTC'
-        assert r.headers['X-Bar-Price-Basis'] == 'mid'
+        # Read from the FILE's stamp, not from a constant and not from config: during a
+        # re-render half the archive still carries the previous basis, and a header taken
+        # from configuration would be wrong for exactly those files.
+        assert r.headers['X-Bar-Price-Basis'] == 'order_driven'
 
     def test_a_limit_above_the_cap_is_refused_rather_than_clamped(self, client):
         r = client.get(
@@ -441,4 +462,149 @@ class TestSweeps:
         ledger.read_rows.return_value = []
         with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
             r = client.get('/api/v1/sweeps/nope')
+        assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Gaps
+# ---------------------------------------------------------------------------
+
+def _mock_coverage_report():
+    """A coverage report with one expected closure and one real outage."""
+    from python.framework.types.coverage_report_types import Gap, GapCategory
+
+    report = MagicMock()
+    report.start_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    report.end_time = datetime(2026, 1, 31, tzinfo=timezone.utc)
+    report.gap_counts = {'weekend': 4, 'large': 1, 'seamless': 0}
+    report.gaps = [
+        Gap(gap_seconds=172800.0, category=GapCategory.WEEKEND, reason='market closed',
+            gap_start=datetime(2026, 1, 3, tzinfo=timezone.utc),
+            gap_end=datetime(2026, 1, 5, tzinfo=timezone.utc)),
+        Gap(gap_seconds=7200.0, category=GapCategory.LARGE, reason='no ticks received',
+            gap_start=datetime(2026, 1, 8, 10, tzinfo=timezone.utc),
+            gap_end=datetime(2026, 1, 8, 12, tzinfo=timezone.utc)),
+    ]
+    return report
+
+
+class TestGaps:
+    """A venue outage and a quiet weekend are different facts; the category is what says so."""
+
+    def test_gaps_ok(self, client):
+        cache = MagicMock()
+        cache.get_report.return_value = _mock_coverage_report()
+        with (
+            patch('python.api.endpoints.bars_router.BarsIndexManager', return_value=_mock_index()),
+            patch('python.api.endpoints.bars_router.DataCoverageReportCache', return_value=cache),
+        ):
+            r = client.get('/api/v1/brokers/kraken_spot/symbols/BTCUSD/gaps')
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body['symbol'] == 'BTCUSD'
+        assert len(body['gaps']) == 2
+        assert {g['category'] for g in body['gaps']} == {'weekend', 'large'}
+
+    def test_empty_categories_are_not_reported(self, client):
+        """A zero count is noise — the reader wants what DID happen."""
+        cache = MagicMock()
+        cache.get_report.return_value = _mock_coverage_report()
+        with (
+            patch('python.api.endpoints.bars_router.BarsIndexManager', return_value=_mock_index()),
+            patch('python.api.endpoints.bars_router.DataCoverageReportCache', return_value=cache),
+        ):
+            r = client.get('/api/v1/brokers/kraken_spot/symbols/BTCUSD/gaps')
+
+        assert 'seamless' not in r.json()['gap_counts']
+
+    def test_missing_report_is_a_404(self, client):
+        cache = MagicMock()
+        cache.get_report.return_value = None
+        with (
+            patch('python.api.endpoints.bars_router.BarsIndexManager', return_value=_mock_index()),
+            patch('python.api.endpoints.bars_router.DataCoverageReportCache', return_value=cache),
+        ):
+            r = client.get('/api/v1/brokers/kraken_spot/symbols/BTCUSD/gaps')
+
+        assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Indicators — ATR
+# ---------------------------------------------------------------------------
+
+def _long_bars_df(rows: int = 200) -> pd.DataFrame:
+    """Enough bars that a 14-period ATR is past its warmup well before the requested range."""
+    stamps = pd.date_range('2026-01-01', periods=rows, freq='30min', tz='UTC')
+    closes = [40000.0 + i * 5 for i in range(rows)]
+    return pd.DataFrame({
+        'timestamp': stamps,
+        'open': closes,
+        'high': [c + 50 for c in closes],
+        'low': [c - 50 for c in closes],
+        'close': closes,
+        'volume': [1.0] * rows,
+        'tick_count': [10] * rows,
+    })
+
+
+class TestAtrIndicator:
+
+    def _call(self, client, **params):
+        query = {
+            'timeframe': 'M30',
+            'from': '2026-01-03T00:00:00Z',
+            'to': '2026-01-04T00:00:00Z',
+        }
+        query.update(params)
+        with (
+            patch('python.api.endpoints.bars_router.BarsIndexManager', return_value=_mock_index()),
+            patch('python.api.endpoints.bars_router.pd.read_parquet', return_value=_long_bars_df()),
+        ):
+            return client.get(
+                '/api/v1/brokers/kraken_spot/symbols/BTCUSD/indicators/atr', params=query)
+
+    def test_atr_ok(self, client):
+        r = self._call(client)
+
+        assert r.status_code == 200
+        points = r.json()
+        assert points, 'the range must produce values'
+        assert all(set(p) == {'t', 'v'} for p in points)
+        # Every bar spans exactly 100 with no gaps, so any average of the true range is 100.
+        assert all(p['v'] == pytest.approx(100.0, abs=1.0) for p in points)
+
+    def test_the_response_declares_its_smoothing(self, client):
+        """
+        "ATR" means Wilder's outside this project, and a caller cannot tell from the rows.
+        The default is the standard and the header says so.
+        """
+        r = self._call(client)
+
+        assert r.headers['X-Indicator-Smoothing'] == 'rma'
+        assert r.headers['X-Indicator-Period'] == '14'
+        assert r.headers['X-Indicator-Timeframe'] == 'M30'
+        assert r.headers['X-Bar-Time-Basis'] == 'open'
+
+    def test_a_named_variant_is_reachable_and_declared(self, client):
+        r = self._call(client, smoothing='ema')
+
+        assert r.status_code == 200
+        assert r.headers['X-Indicator-Smoothing'] == 'ema'
+
+    def test_an_unknown_smoothing_is_refused(self, client):
+        r = self._call(client, smoothing='wilder')
+
+        assert r.status_code == 422
+
+    def test_an_out_of_range_period_is_refused_not_clamped(self, client):
+        r = self._call(client, period=9999)
+
+        assert r.status_code == 400
+        assert r.json()['error'] == 'invalid_period'
+
+    def test_an_empty_range_is_a_404(self, client):
+        r = self._call(client, **{'from': '2030-01-01T00:00:00Z', 'to': '2030-01-02T00:00:00Z'})
+
         assert r.status_code == 404

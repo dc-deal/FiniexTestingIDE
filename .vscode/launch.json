@@ -1582,18 +1582,6 @@
             }
         },
         {
-            "name": "📊 Report collected_msc quality",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/experiments/report_collected_msc.py",
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "10_experiments",
-                "order": 2
-            }
-        },
-        {
             "name": "📐 Normalization Demo (cross-instrument)",
             "type": "debugpy",
             "request": "launch",
@@ -1603,22 +1591,6 @@
             "presentation": {
                 "group": "10_experiments",
                 "order": 3
-            }
-        },
-        {
-            "name": "🔧 Restore collected_msc (apply + force)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/experiments/restore_collected_msc.py",
-            "args": [
-                "--apply",
-                "--force"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "10_experiments",
-                "order": 4
             }
         },
         {
@@ -1659,6 +1631,22 @@
             "presentation": {
                 "group": "10_experiments",
                 "order": 7
+            }
+        },
+        {
+            "name": "🔭 Venue Probe: Kraken quote channel (#520, READ-ONLY)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/venue_probes/probe_kraken_quote_channel.py",
+            "args": [
+                "BTC/USD",
+                "25"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_experiments",
+                "order": 8
             }
         },
         // ====================================================
@@ -2079,6 +2067,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Indicators (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/indicators/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 13
+            }
+        },
+        {
             "name": "🧩 Pytest: Inter Tick Interval (All)",
             "type": "debugpy",
             "request": "launch",
@@ -2110,6 +2115,23 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 21
+            }
+        },
+        {
+            "name": "🧩 Pytest: Kraken Tick Source (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/tick_sources",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 21.5
             }
         },
         {
@@ -3184,6 +3206,22 @@
             "args": [
                 "run",
                 "backtesting/event_channel_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 78
+            }
+        },
+        {
+            "name": "🧪 Simulation: Indicator Reference (Generated Blocks)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "indicator_reference_generated.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,

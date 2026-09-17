@@ -6,10 +6,11 @@ Public endpoint — no authentication required.
 """
 
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, FrozenSet, List, Optional, Set
 
 import requests
 
+from python.framework.exceptions.timeframe_errors import UnsupportedTimeframeError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
@@ -33,11 +34,16 @@ class KrakenOhlcBarFetcher:
 
     API_BASE = 'https://api.kraken.com'
 
-    # Kraken OHLC interval codes (minutes)
-    TIMEFRAME_TO_INTERVAL: Dict[str, int] = {
-        'M1': 1, 'M5': 5, 'M15': 15, 'M30': 30,
-        'H1': 60, 'H4': 240, 'D1': 1440,
-    }
+    # The ONE venue fact: which OHLC interval lengths this endpoint publishes, in minutes.
+    #
+    # Deliberately NOT a timeframe table. A second name->minutes map beside
+    # TimeframeConfig._REGISTRY would be the same rule written twice, and the two would
+    # disagree the first time either moved — which is exactly what happened when M10 was
+    # added to the vocabulary. Names and durations belong to the registry; what belongs
+    # here is only which of those durations the venue will serve.
+    PUBLISHED_INTERVAL_MINUTES: FrozenSet[int] = frozenset(
+        {1, 5, 15, 30, 60, 240, 1440, 10080, 21600}
+    )
 
     # Standard symbol → Kraken pair name for OHLC endpoint
     SYMBOL_TO_KRAKEN_PAIR: Dict[str, str] = {
@@ -60,6 +66,23 @@ class KrakenOhlcBarFetcher:
         self._logger = logger
         self._request_timeout_s = request_timeout_s
 
+    @classmethod
+    def supported_warmup_timeframes(cls) -> Set[str]:
+        """
+        Timeframes this venue can serve as warmup bars.
+
+        Derived from the project's timeframe vocabulary rather than listed again here, so
+        a timeframe added to the registry is answered correctly without anyone remembering
+        to update a second table.
+
+        Returns:
+            The registry timeframes whose duration the venue publishes
+        """
+        return {
+            timeframe for timeframe in TimeframeConfig.sorted()
+            if TimeframeConfig.get_minutes(timeframe) in cls.PUBLISHED_INTERVAL_MINUTES
+        }
+
     def fetch_bars(
         self,
         symbol: str,
@@ -80,17 +103,23 @@ class KrakenOhlcBarFetcher:
         Returns:
             List of Bar objects (oldest first)
         """
-        interval = self.TIMEFRAME_TO_INTERVAL.get(timeframe)
-        if interval is None:
-            raise ValueError(
-                f"Unsupported timeframe '{timeframe}' for Kraken OHLC. "
-                f"Supported: {list(self.TIMEFRAME_TO_INTERVAL.keys())}"
+        # One lookup for both uses: the venue's interval code IS the timeframe's duration
+        # in minutes, so there is nothing to translate and nothing to keep in step.
+        interval_minutes = TimeframeConfig.get_minutes(timeframe)
+        if interval_minutes not in self.PUBLISHED_INTERVAL_MINUTES:
+            raise UnsupportedTimeframeError(
+                timeframe,
+                f"Kraken's OHLC endpoint does not publish a {interval_minutes}-minute "
+                f"interval, so '{timeframe}' cannot be warmed up from it. "
+                f'Supported: {sorted(self.supported_warmup_timeframes())}. '
+                f'A timeframe may exist in the project registry and be renderable from '
+                f'the archive without the venue offering it live.',
             )
+        interval = interval_minutes
 
         pair = self.SYMBOL_TO_KRAKEN_PAIR.get(symbol, symbol)
 
         # Request slightly more bars than needed to handle gaps
-        interval_minutes = TimeframeConfig.get_minutes(timeframe)
         since_ts = int(
             (datetime.now(timezone.utc).timestamp())
             - (count + 10) * interval_minutes * 60

@@ -35,6 +35,7 @@
         {
             "broker_type": "mt5",
             "market_type": "forex",
+            "price_formation": "quote_driven",
             "trading_model": "margin",
             "config_mode": "static",
             "broker_config_path": "configs/brokers/mt5/mt5_broker_config.json",
@@ -43,10 +44,11 @@
         {
             "broker_type": "kraken_spot",
             "market_type": "crypto",
+            "price_formation": "order_driven",
             "trading_model": "spot",
             "config_mode": "dynamic",
             "broker_config_path": "configs/brokers/kraken/kraken_spot_broker_config.json",
-            "credentials_file": "kraken_credentials.json",
+            "credentials_file": "venues/kraken_credentials.json",
             "dry_run": true,
             "session_end_orders": "cancel",
             "auto_detect_fee_tier": false,

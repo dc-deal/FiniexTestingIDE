@@ -5,9 +5,11 @@ High-level API for import pipeline configuration.
 Provides typed accessors for offset registry, paths, and processing settings.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from python.configuration.import_config_loader import ImportConfigFileLoader
+from python.framework.exceptions.timeframe_errors import UnsupportedTimeframeError
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
 class ImportConfigManager:
@@ -267,3 +269,27 @@ class ImportConfigManager:
         """
         processing = self.get_processing_config()
         return processing.get('bar_render_workers', 2)
+
+    def get_render_timeframes(self) -> List[str]:
+        """
+        Get the timeframes the import materializes.
+
+        Which NAMES exist is the timeframe registry's question; which of them are written
+        to disk is this one, because each costs a parquet file per symbol. An unknown name
+        here is a config error and refused rather than silently skipped (§33).
+
+        Returns:
+            Timeframe names in registry order
+        """
+        processing = self.get_processing_config()
+        configured = processing.get('render_timeframes', TimeframeConfig.sorted())
+
+        for timeframe in configured:
+            if not TimeframeConfig.exists(timeframe):
+                raise UnsupportedTimeframeError(
+                    timeframe,
+                    f"import_config.json 'render_timeframes' names an unknown timeframe "
+                    f"'{timeframe}'. Known: {TimeframeConfig.sorted()}",
+                )
+
+        return [tf for tf in TimeframeConfig.sorted() if tf in configured]

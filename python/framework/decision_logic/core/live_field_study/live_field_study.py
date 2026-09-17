@@ -381,7 +381,11 @@ class LiveFieldStudy(AbstractDecisionLogic):
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         self._symbol = tick.symbol
-        self._last_mid = (tick.bid + tick.ask) / 2.0
+        # Deliberately `mid`, not `price`: this is a release GATE that exercises the
+        # execution stack at known offsets from a reference, not a strategy deciding on a
+        # market price — and `mid_price` is the declared semantic all the way through
+        # PhaseContext into the phase machine. Real money, and no test covers it.
+        self._last_mid = tick.mid
         return self._advance_phase_machine(is_ghost=False)
 
     def compute_heartbeat(

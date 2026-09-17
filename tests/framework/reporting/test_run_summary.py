@@ -31,14 +31,14 @@ def _agg(currency='USD', net=60.0) -> PortfolioAggregateRow:
     return PortfolioAggregateRow(
         currency=currency, unit_count=1, total_trades=10, winning_trades=6, losing_trades=4,
         win_rate=0.6, profit_factor=2.5, total_profit=100.0, total_loss=40.0,
-        net_profit=net, max_drawdown=12.0, total_fees=5.0)
+        net_profit=net, account_max_drawdown=12.0, total_fees=5.0)
 
 
 def _unit(currency='USD') -> PortfolioUnitRow:
     return PortfolioUnitRow(
         name='s1', symbol='EURUSD', currency=currency, total_trades=10, winning_trades=6,
         losing_trades=4, win_rate=0.6, profit_factor=2.5, total_profit=100.0, total_loss=40.0,
-        net_profit=60.0, max_drawdown=12.0, total_fees=5.0)
+        net_profit=60.0, account_max_drawdown=12.0, total_fees=5.0)
 
 
 def _analytics(currency='USD', expectancy=0.5) -> TradeAnalytics:
@@ -62,7 +62,7 @@ class TestBuild:
         c = rs.currencies[0]
         assert c.currency == 'USD'
         assert (c.net_pnl, c.profit_factor, c.win_rate) == (60.0, 2.5, 0.6)
-        assert (c.max_drawdown, c.total_fees) == (12.0, 5.0)
+        assert (c.account_max_drawdown, c.total_fees) == (12.0, 5.0)
         assert (c.expectancy, c.avg_win_r, c.r_trade_count) == (0.5, 2.0, 4)
         assert (rs.orders_sent, rs.orders_executed, rs.sl_tp_triggered) == (5, 4, 2)
         assert rs.unit_count == 1

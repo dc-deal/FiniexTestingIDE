@@ -30,6 +30,10 @@ from python.framework.exceptions.data_quality_errors import (
 )
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.reporting.duplicate_report import DuplicateReport
+from python.framework.types.import_schema_types import (
+    ALREADY_CAPTURED_METADATA_KEYS,
+    NESTED_METADATA_KEYS,
+)
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
 from python.framework.validators.tick_import_validator import TickImportValidator
 
@@ -340,7 +344,12 @@ class TickDataImporter:
             file_name=json_file.name,
             declared_tick_count=data.get('summary', {}).get('total_ticks'),
             collected_msc_is_utc=metadata.get(
-                'collected_msc_timebase') == 'utc'
+                'collected_msc_timebase') == 'utc',
+            # Where trades print centrally, a tick without a traded price is malformed
+            # producer output. Refusing here is what keeps `price_formation` a checked
+            # expectation instead of a declaration the data may quietly contradict.
+            price_formation=MarketConfigManager().get_price_formation(
+                broker_type_normalized)
         )
         for warning in validation.warnings:
             vLog.warning(f'   ⚠️  {warning}')
@@ -387,13 +396,14 @@ class TickDataImporter:
         }
 
         # Preserve original MQL5 metadata for traceability (source_meta_ prefix)
-        _NESTED_META_KEYS = {'symbol_info',
-                             'collection_settings', 'error_tracking'}
+        # Both key lists are declared in import_schema_types, beside the schema
+        # they describe. A nested block that is missing from NESTED_METADATA_KEYS
+        # falls to str() and lands as a Python repr rather than as JSON.
         for meta_key, meta_value in metadata.items():
-            if meta_key in _NESTED_META_KEYS:
+            if meta_key in NESTED_METADATA_KEYS:
                 parquet_metadata[f'source_meta_{meta_key}'] = json.dumps(
                     meta_value)
-            elif meta_key not in ('symbol', 'broker', 'ticks'):
+            elif meta_key not in ALREADY_CAPTURED_METADATA_KEYS:
                 parquet_metadata[f'source_meta_{meta_key}'] = str(meta_value)
 
         # ===========================================
@@ -426,7 +436,7 @@ class TickDataImporter:
             'timestamp', 'time_msc', 'collected_msc',
             'bid', 'ask', 'last',
             'tick_volume', 'real_volume', 'chart_tick_volume',
-            'spread_points', 'spread_pct',
+            'spread_points', 'spread_pct', 'quote_age_ms',
             'tick_flags', 'session',
         ]
         extra_cols = [c for c in df.columns if c not in _PARQUET_COLUMNS]
@@ -617,6 +627,15 @@ class TickDataImporter:
         for col in int64_cols:
             if col in df.columns:
                 df[col] = df[col].astype('int64')
+
+        # Nullable by contract (collector format 1.6.0+): the age of the quote a
+        # trade executed against, or null where no quote had been observed yet.
+        # Pandas' capitalised Int32 is the one integer type that carries a null —
+        # plain int32 cannot, and float64 would silently restate an integer age.
+        nullable_int_cols = ['quote_age_ms']
+        for col in nullable_int_cols:
+            if col in df.columns:
+                df[col] = df[col].astype('Int32')
 
         return df
 

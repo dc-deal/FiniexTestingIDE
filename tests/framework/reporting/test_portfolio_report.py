@@ -47,7 +47,7 @@ def _stats(
     win_rate: float = 0.6,
     profit_factor: float = 2.5,
     total_fees: float = 5.0,
-    max_drawdown: float = 12.0,
+    account_max_drawdown: float = 12.0,
 ) -> PortfolioStats:
     """A real PortfolioStats fixture with sensible headline numbers."""
     return PortfolioStats(
@@ -55,7 +55,7 @@ def _stats(
         total_trades=total_trades, total_long_trades=total_trades, total_short_trades=0,
         winning_trades=winning_trades, losing_trades=losing_trades,
         total_profit=total_profit, total_loss=total_loss,
-        max_drawdown=max_drawdown, max_equity=1100.0,
+        account_max_drawdown=account_max_drawdown, max_equity=1100.0, account_max_drawdown_pct=0.0,
         win_rate=win_rate, profit_factor=profit_factor,
         total_spread_cost=2.0, total_commission=2.0, total_swap=1.0,
         maker_fee=0.7, taker_fee=0.9, total_fees=total_fees,
@@ -186,15 +186,24 @@ def _single_unit_batch(stats: PortfolioStats, name: str = 'u1') -> BatchExecutio
 class TestDerivedInBuilder:
     """Figures the renderers used to compute themselves now come off the model (#391)."""
 
-    def test_max_dd_pct_is_derived(self):
-        report = build_portfolio_report(_RUN_ID, run_units_from_batch(_single_unit_batch(_stats())))
-        assert report.units[0].max_dd_pct == pytest.approx(12.0 / 1100.0 * 100)
+    def test_max_dd_pct_is_carried_rather_than_divided_out_at_the_end(self):
+        """
+        The builder must NOT rebuild the percentage from the two figures beside it.
 
-    def test_max_dd_pct_zero_without_equity(self):
+        Those two belong to different instants — the deepest decline fell from the peak
+        standing at the time, not from the highest point the run ever reached — so the
+        quotient understates every run that recovered. The portfolio carries the right
+        number per sample; the builder's only job is to pass it through (#497).
+        """
         stats = _stats()
-        stats.max_equity = 0.0
+        stats.account_max_drawdown_pct = 4.25
         report = build_portfolio_report(_RUN_ID, run_units_from_batch(_single_unit_batch(stats)))
-        assert report.units[0].max_dd_pct == 0.0
+
+        assert report.units[0].account_max_dd_pct == pytest.approx(4.25)
+        assert report.units[0].account_max_dd_pct != pytest.approx(
+            stats.account_max_drawdown / stats.max_equity * 100), (
+            'the fixture is chosen so the two constructions disagree — if they agree, this '
+            'test cannot tell a carried value from a re-derived one')
 
     def test_spot_estimate_uses_the_stamped_currency_split(self):
         """#265: the split is broker-config truth carried on the record — never symbol[-3:]."""
