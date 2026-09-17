@@ -148,6 +148,42 @@ still hold the previous answer.
 **The identity travels beside the resolved class, verbatim.** A class can be re-derived later only
 if the identity survived; a resolved class alone is a conclusion whose premise has been discarded.
 
+### And a finished run records what it consumed — in the LEDGER, not the header
+
+```
+per-scenario lists at mount
+      ▼
+run provenance ──► ledger row: input_plane · data_format_versions · origin_classes ·
+      ▼                        origin_evidence_grades · input_files · unstamped_input_files
+runs/ledger/ ─────► one fragment per run, ranked over by the optimizer
+```
+
+The issue's own body said the RUN HEADER should carry this. It cannot. The header is written at
+the run's **start**, before anything is mounted, and has a write and a read and no update path *by
+design* — a run that crashes is exactly the run somebody needs to identify, so an artifact produced
+on the way out is missing whenever it matters most. At that moment nothing is known about what will
+be read. `RunProvenance` is built from a **finished** run and is therefore the first artifact that
+can answer the question at all.
+
+The argument is `logic_version`'s, one column over in the same table: that one exists because a
+ranking cannot otherwise tell it is comparing a measure taken one way against one taken another.
+These say the same about the INPUT. **For the thirty-day parity proof it is not a nicety** — a live
+run and the backtest it is compared against have to be *shown* to have read the same archive, and
+the ledger is where that survives.
+
+**Two grains, and the finer one answers what the roll-up cannot.** The ledger records per RUN;
+`scenario_details.json` records the same three values per SCENARIO, in the same encoding. A run-level
+`origin_evidence_grades: attested,stamped` says the run mixed data it may measure against with data
+it may not — it cannot say WHICH scenario, and for a set mixing brokers that is exactly the question
+it raises. The scenario row answers it, and it is filled for a FAILED scenario too: a run that failed
+over development data and one that failed over production data are different failures.
+
+**`input_plane` is what keeps an empty value honest.** A live session consumes a socket, so its
+three joined strings are empty by construction; without that field the emptiness would be
+indistinguishable from a sim row whose recording broke — the same bytes for "nothing to read" and
+"we were not looking". The distinct strings say WHAT was read and collapse multiplicity; the two
+counts say how much and cannot be recovered from them.
+
 **Never on a tick row.** A live tick has no origin — it comes from a socket, and this side is the
 source. A field present in the archive and absent live is a parity break, so origin is file
 metadata plus an index column and never a row.

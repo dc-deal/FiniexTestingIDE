@@ -10,6 +10,7 @@ must still appear (the section is the full scenario status view).
 
 from python.framework.types.api.report_types import ScenarioDetailsReport, ScenarioDetailsRow
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.data_origin_types import joined_distinct
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 
@@ -41,6 +42,12 @@ def _to_row(result: ProcessResult, scenario: SingleScenario) -> ScenarioDetailsR
         name=result.scenario_name,
         symbol=scenario.symbol,
         data_source=scenario.data_broker_type,
+        # In `common`, so a FAILED row carries it too: a scenario that failed over development
+        # data and one that failed over production data are different failures, and this row is
+        # the only per-scenario place that distinction survives the run.
+        data_format_versions=joined_distinct(scenario.data_format_versions),
+        origin_classes=joined_distinct(scenario.origin_classes),
+        origin_evidence_grades=joined_distinct(scenario.origin_evidence_grades),
         account_currency=scenario.account_currency or '',
         account_currency_explicit=bool(
             (scenario.trade_simulator_config or {}).get('account_currency')),

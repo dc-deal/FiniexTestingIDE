@@ -387,6 +387,13 @@ class ScenarioDetailsRow(BaseModel):
     name: str
     symbol: str
     data_source: str = ''           # data broker type ("Symbol: <data_source>/<symbol>")
+    # WHICH DATA this one scenario read (#518), beside the broker key it read it from. The
+    # ledger records the same answer per RUN; this is the grain that says WHICH scenario, and
+    # a set mixing brokers or eras is exactly where the run-level roll-up stops being enough.
+    # Distinct, sorted, comma-joined by the shared encoding, so the two can be compared.
+    data_format_versions: str = ''
+    origin_classes: str = ''
+    origin_evidence_grades: str = ''
     account_currency: str = ''      # resolved P&L denomination currency
     account_currency_explicit: bool = False  # True when set in config (not auto-derived)
     status: str = 'success'         # 'success' | 'failed' | 'hybrid' (partial + error)

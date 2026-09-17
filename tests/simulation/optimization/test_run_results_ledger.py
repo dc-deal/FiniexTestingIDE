@@ -154,3 +154,43 @@ def test_read_handles_schema_evolution(tmp_path, tmp_ledger, make_run_summary, m
     assert rows['old'].net_pnl == 2.0
     assert rows['new'].status == 'error'     # the current fragment's status survives the union
     assert rows['new'].error == 'boom'
+
+
+def test_what_a_run_consumed_reaches_the_row(tmp_ledger, make_run_summary, make_provenance):
+    """
+    The consumption record (#518) survives into the ledger, where a ranking can see it.
+
+    Recorded here rather than in the run header: the header is written at the run's START,
+    before anything is mounted, and cannot know. This row is written from a finished run.
+    """
+    prov = make_provenance(
+        run_id='r1', input_plane='archive', data_format_versions='1.5.0,1.7.0',
+        origin_classes='production', origin_evidence_grades='attested,stamped',
+        input_files=41, unstamped_input_files=3)
+    tmp_ledger.append(make_run_summary(), prov)
+
+    row = tmp_ledger.read().iloc[0]
+    assert row['input_plane'] == 'archive'
+    assert row['data_format_versions'] == '1.5.0,1.7.0'
+    assert row['origin_classes'] == 'production'
+    assert row['origin_evidence_grades'] == 'attested,stamped'
+    assert row['input_files'] == 41
+    assert row['unstamped_input_files'] == 3
+
+
+def test_a_failed_run_still_records_what_it_read(tmp_ledger, make_run_summary, make_provenance):
+    """
+    An error row carries provenance too — and that is the row where it matters most.
+
+    A run that failed over development data and one that failed over production data are
+    different failures, and the ledger is the only place that distinction survives.
+    """
+    prov = make_provenance(run_id='r1', status='error', error='boom',
+                           input_plane='archive', origin_classes='development',
+                           input_files=7, unstamped_input_files=7)
+    tmp_ledger.append(make_run_summary(), prov)
+
+    row = tmp_ledger.read().iloc[0]
+    assert row['status'] == 'error'
+    assert row['origin_classes'] == 'development'
+    assert row['unstamped_input_files'] == 7

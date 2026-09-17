@@ -48,6 +48,16 @@ LEDGER_COLUMNS: List[str] = [
     'avg_win_r', 'avg_loss_r', 'r_trade_count', 'r_win_count', 'r_loss_count',
     'orders_sent', 'orders_executed', 'orders_rejected', 'sl_tp_triggered',
     'signal_fresh_ratio',
+    # #518 — WHICH DATA this row was produced over. The same argument as `logic_version` at the
+    # top of this list, one drawer over: that one says a measure may have changed under a stable
+    # column name, these say the INPUT may have. A ranking across rows that read different
+    # archives compares runs that are not comparable, and the thirty-day parity proof rests on
+    # being able to show a live run and its backtest read the same thing. `input_plane` is what
+    # keeps an empty triple honest — a live session reads a socket, so empty MEANS something
+    # there and would otherwise be indistinguishable from a sim row that recorded nothing.
+    # Appended, so older fragments stay readable and read back as None.
+    'input_plane', 'data_format_versions', 'origin_classes', 'origin_evidence_grades',
+    'input_files', 'unstamped_input_files',
 ]
 
 
@@ -171,6 +181,12 @@ class RunResultsLedger:
             'config_snapshot': p.config_snapshot,
             'symbols': json.dumps(p.symbols),
             'data_broker_type': p.data_broker_type,
+            'input_plane': p.input_plane,
+            'data_format_versions': p.data_format_versions,
+            'origin_classes': p.origin_classes,
+            'origin_evidence_grades': p.origin_evidence_grades,
+            'input_files': p.input_files,
+            'unstamped_input_files': p.unstamped_input_files,
             'logic_version': RunLedgerIndex.LOGIC_VERSION,
         }
 

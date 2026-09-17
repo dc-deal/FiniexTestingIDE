@@ -45,7 +45,12 @@ class RunLedgerIndex(AbstractStoreIndex):
     # Fragments written before this version carry the old column name and were renamed in
     # place by `python/experiments/migrate_ledger_drawdown_column.py`; their VALUES are
     # still the old measure, so a sweep must not rank across the boundary.
-    LOGIC_VERSION: int = 3
+    #
+    # 3 → 4 (#518): six columns appended saying WHICH DATA a row was produced over. Unlike the
+    # rename above this changes no existing value, so ranking across the boundary stays valid —
+    # what an older fragment cannot do is answer the question at all, and it reads back as None
+    # rather than as a made-up answer.
+    LOGIC_VERSION: int = 4
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

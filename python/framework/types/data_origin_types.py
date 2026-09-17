@@ -7,7 +7,7 @@ from a claim we recorded are the same word and a different fact.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 from python.framework.types.config_types.data_origin_config_types import (
     OriginClass,
@@ -40,6 +40,27 @@ class OriginResolution:
         """
         return is_admissible_for_measurement(
             self.origin_class.value, self.evidence.value)
+
+
+def joined_distinct(values: List[str]) -> str:
+    """
+    The one encoding provenance uses when a list of files becomes a single recorded value.
+
+    Written once because two surfaces record the same answer at different grains — the ledger
+    per RUN, the scenario detail row per SCENARIO — and the whole point of having both is that
+    a reader can compare them. Two encodings of "which classes did this read" would make that
+    comparison a parsing exercise.
+
+    Sorted, so the value is stable: the same set of files must produce the same string whatever
+    order they were read in, or two identical runs would look different in the ledger.
+
+    Args:
+        values: The per-file values to collapse
+
+    Returns:
+        The distinct values, sorted, comma-joined; empty for an empty input
+    """
+    return ','.join(sorted(set(values)))
 
 
 def is_admissible_for_measurement(origin_class: str, evidence: str) -> bool:

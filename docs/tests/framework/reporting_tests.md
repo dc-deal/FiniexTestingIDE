@@ -102,3 +102,18 @@ python -m pytest tests/framework/reporting/ -v
 ```
 
 Or via launch.json: `🧩 Pytest: Reporting (All)`.
+
+## `test_scenario_details_origin.py` — which SCENARIO read what (#518)
+
+The ledger records per run; this row records per scenario, in the same encoding, so the two can
+be compared rather than parsed against each other. The run-level roll-up raises the question a
+mixed set poses and cannot answer it — two brokers exist here and they differ on the account
+model, the price formation and the market type at once.
+
+| Test | What it pins |
+|------|-------------|
+| `test_the_three_values_reach_the_row` | the distinct values arrive at the per-scenario grain |
+| `test_a_FAILED_scenario_still_says_what_it_read` | the row an early return could have skipped — failing over development data and over production data are different failures |
+| `test_the_encoding_is_the_one_the_ledger_uses` | sorted AND distinct: the same files in a different read order must produce the same string, or two identical runs look different |
+| `test_a_scenario_that_read_nothing_reports_empty_rather_than_a_placeholder` | empty is empty, never a stand-in |
+

@@ -42,3 +42,24 @@ The **error path** is likewise covered as units (error-flagged rows + ranking ex
 structural/runtime validation split). The full out-of-range end-to-end (a real combination that fails
 at setup → error row → excluded → warned in the report) is verified manually with a 2-combo sweep
 (one valid, one out-of-range value), kept out of the suite to stay fast + data-independent.
+
+## What a run consumed (#518)
+
+`test_run_provenance.py::TestWhatARunConsumed` and two cases in `test_run_results_ledger.py` pin
+the record that says WHICH DATA a run was produced over. It lives in `RunProvenance` and the ledger
+row, never in the run header — the header is written at the run's start, before anything is
+mounted, and has no update path by design, so it cannot know.
+
+| Test | What it pins |
+|------|-------------|
+| `test_a_live_session_says_it_read_a_stream_rather_than_leaving_it_blank` | `input_plane='stream'` and empty strings. The emptiness has to MEAN something, or it is the same bytes as a sim row whose recording broke |
+| `test_a_sim_run_reports_the_distinct_values_and_the_counts` | both halves: the joined distinct values say WHAT, the counts say HOW MUCH, and neither is recoverable from the other |
+| `test_only_production_AND_stamped_counts_as_stamped` | the count asks the shared admissibility rule rather than spelling it out a third time |
+| `test_a_run_that_read_nothing_says_so_without_inventing_a_value` | an empty scenario list yields zeros, never a placeholder |
+| `test_what_a_run_consumed_reaches_the_row` | the six columns survive into the ledger fragment |
+| `test_a_failed_run_still_records_what_it_read` | an ERROR row carries them too — a run that failed over development data and one that failed over production data are different failures |
+
+`RunLedgerIndex.LOGIC_VERSION` moved 3 → 4. Unlike the rename that took it to 3, this appends
+columns and changes no existing value, so ranking across the boundary stays valid; what an older
+fragment cannot do is answer the question at all, and it reads back as None.
+

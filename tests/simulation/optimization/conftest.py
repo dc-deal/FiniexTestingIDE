@@ -46,7 +46,7 @@ def make_provenance():
     def _make(param_hash='hash', run_id='20260101_000000',
               scenario_set_name='set', sweep_id=None, sweep_params=None,
               status='ok', error=None, sweep_objective=None, sweep_maximize=None,
-              run_timestamp=None):
+              run_timestamp=None, **consumed):
         return RunProvenance(
             param_hash=param_hash, status=status, error=error, run_id=run_id,
             run_timestamp=run_timestamp or datetime(2026, 1, 1, tzinfo=timezone.utc),
@@ -56,5 +56,8 @@ def make_provenance():
             worker_versions={'rsi_fast': '1.0.0'}, config_snapshot='{}',
             symbols=['BTCUSD'], data_broker_type='kraken_spot',
             sweep_id=sweep_id, sweep_params=sweep_params,
-            sweep_objective=sweep_objective, sweep_maximize=sweep_maximize)
+            sweep_objective=sweep_objective, sweep_maximize=sweep_maximize,
+            # What the run consumed (#518) — passed straight through, so a test that does not
+            # care about it gets the dataclass defaults rather than a second set of stand-ins.
+            **consumed)
     return _make

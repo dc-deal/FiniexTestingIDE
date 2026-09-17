@@ -13,7 +13,7 @@ degrades to an empty version, not an error.
 
 import json
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
@@ -22,8 +22,12 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.api.report_types import WarningsErrorsReport
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.data_origin_types import (
+    is_admissible_for_measurement,
+    joined_distinct,
+)
 from python.framework.types.run_results_types import RunProvenance, SweepContext
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
+from python.framework.types.scenario_types.scenario_set_types import ScenarioSet, SingleScenario
 from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
 from python.framework.utils.git_info_utils import get_git_info
 
@@ -88,6 +92,7 @@ def build_run_provenance(
         sweep_params=sweep_context.sweep_params if sweep_context else None,
         sweep_objective=sweep_context.objective if sweep_context else None,
         sweep_maximize=sweep_context.maximize if sweep_context else None,
+        **_consumption_record(scenarios),
     )
 
 
@@ -138,7 +143,51 @@ def build_run_provenance_from_session(
         config_snapshot=json.dumps(strategy_config, sort_keys=True),
         symbols=[config.symbol],
         data_broker_type=config.broker_type,
+        # A live session consumes a socket, not an archive, so the consumption record is empty
+        # and `input_plane` is what says that on purpose rather than by omission.
+        input_plane='stream',
     )
+
+
+def _consumption_record(scenarios: List[SingleScenario]) -> Dict[str, Any]:
+    """
+    What the scenarios of one run actually read, flattened to a ledger row.
+
+    Reads the per-scenario lists the mount already fills — the same seam
+    `data_format_version` has travelled since #520 — rather than resolving anything again.
+    Resolving here would report today's registry against files imported under an older one,
+    which is the mistake the whole provenance contract is built to avoid.
+
+    The distinct values say WHAT was read; the two counts say how much, which the joined
+    strings cannot because they collapse multiplicity. Both are needed: "this run read
+    production data" and "this run read 3 development files out of 41" are different answers.
+
+    Args:
+        scenarios: The run's scenarios, after the mount filled their input lists
+
+    Returns:
+        The consumption fields of `RunProvenance`, ready to splat into its constructor
+    """
+    versions: List[str] = []
+    classes: List[str] = []
+    grades: List[str] = []
+    for scenario in scenarios:
+        versions.extend(scenario.data_format_versions)
+        classes.extend(scenario.origin_classes)
+        grades.extend(scenario.origin_evidence_grades)
+
+    unstamped = sum(
+        1 for origin_class, evidence in zip(classes, grades)
+        if not is_admissible_for_measurement(origin_class, evidence))
+
+    return {
+        'input_plane': 'archive',
+        'data_format_versions': joined_distinct(versions),
+        'origin_classes': joined_distinct(classes),
+        'origin_evidence_grades': joined_distinct(grades),
+        'input_files': len(classes),
+        'unstamped_input_files': unstamped,
+    }
 
 
 def _run_status(report: Optional[WarningsErrorsReport]) -> Tuple[str, Optional[str]]:
