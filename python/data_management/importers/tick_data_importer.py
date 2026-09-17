@@ -19,6 +19,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from python.configuration.data_origin_registry import DataOriginRegistry
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.bar_importer import BarImporter
 from python.data_management.index.tick_index_manager import TickIndexManager
@@ -380,6 +381,14 @@ class TickDataImporter:
         parquet_name = f"{symbol}_{start_time.strftime('%Y%m%d_%H%M%S')}.parquet"
         parquet_path = target_path / parquet_name
 
+        # Where this file came from, resolved ONCE and stamped (#518). Resolved here rather
+        # than read back later for the same reason the price basis is: the registry is a
+        # judgement that can be edited, so a surface re-resolving it would report the meaning
+        # of TODAY against a file imported under the meaning of the day it arrived. The
+        # identity itself travels verbatim beside it, as `source_meta_origin`.
+        origin = DataOriginRegistry().resolve(
+            metadata, broker_type_normalized, data_format_version)
+
         # Metadata for Parquet header
         parquet_metadata = {
             'source_file': json_file.name,
@@ -393,6 +402,9 @@ class TickDataImporter:
             'importer_version': self.VERSION,
             'user_time_offset_hours': str(file_offset),
             'utc_conversion_applied': 'true' if should_apply_offset else 'false',
+            'origin_instance_id': origin.instance_id or '',
+            'origin_class': origin.origin_class.value,
+            'origin_evidence': origin.evidence.value,
         }
 
         # Preserve original MQL5 metadata for traceability (source_meta_ prefix)

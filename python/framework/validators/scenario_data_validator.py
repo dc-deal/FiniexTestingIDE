@@ -5,6 +5,7 @@ Validates scenario configurations against data availability and quality requirem
 Phase 1.5: Post-Load Data Quality Validation
 """
 
+from collections import Counter
 from typing import Dict, List, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
@@ -67,6 +68,7 @@ class ScenarioDataValidator:
         # Load validation settings from config
         self._warmup_quality_mode = app_config.get_warmup_quality_mode()
         self._allowed_gap_categories = self._load_allowed_gap_categories()
+        self._admitted_origin_classes = app_config.get_admitted_origin_classes()
 
     def _load_allowed_gap_categories(self) -> List[GapCategory]:
         """
@@ -483,7 +485,56 @@ class ScenarioDataValidator:
         signal_errors = self._validate_signal_stretch(scenario, scenario_package)
         findings.extend(_as(signal_errors, Severity.ERROR, 'signal_stretch_gap'))
 
+        # === VALIDATION 5: Where the data this scenario reads came from ===
+        # The GATE only. How far the archive still is from producer-stamped data is a
+        # measurement over the whole run, and it lives in PostRunValidator beside the same
+        # question for `data_format_version` — one finding per run rather than one per
+        # scenario. A warning that fires on every scenario of every run teaches people to
+        # skip warnings, which costs more than the measurement is worth.
+        origin_errors = self._validate_data_origin(scenario)
+        findings.extend(_as(origin_errors, Severity.ERROR, 'data_origin'))
+
         return ValidationResult(scenario.name, findings)
+
+    def _validate_data_origin(
+        self,
+        scenario: SingleScenario
+    ) -> List[str]:
+        """
+        Check whether this scenario is allowed to read the files it loaded.
+
+        A class outside the admitted list excludes the scenario, and every other scenario in
+        the set still runs (§33). The list starts open, because until a producer stamps an
+        identity every file resolves to `unknown` — a strict default would refuse every
+        scenario on the day it shipped, which is how a gate gets switched off permanently
+        instead of being narrowed once.
+
+        Args:
+            scenario: The scenario whose loaded files are judged
+
+        Returns:
+            Error messages; the scenario is excluded when the list is non-empty
+        """
+        classes = scenario.origin_classes
+        if not classes:
+            return []
+
+        total = len(classes)
+        refused = Counter(
+            origin_class for origin_class in classes
+            if origin_class not in self._admitted_origin_classes)
+
+        errors: List[str] = []
+        if refused:
+            detail = ', '.join(f'{count}x {name}' for name, count in sorted(refused.items()))
+            errors.append(
+                f'Data origin not admissible: {sum(refused.values())}/{total} tick file(s) '
+                f'resolve to {detail}\n'
+                f'  → admitted today: {", ".join(self._admitted_origin_classes)}\n'
+                f'  → widen backtesting.data_validation.admitted_origin_classes to admit them '
+                f'deliberately, or import the data this scenario needs')
+
+        return errors
 
     def _validate_start_date_not_in_gap(
         self,

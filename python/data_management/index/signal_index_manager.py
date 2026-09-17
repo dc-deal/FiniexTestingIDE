@@ -28,6 +28,15 @@ from python.framework.types.signal_data_types import SIGNAL_ENVELOPE_SYMBOL, Sig
 vLog = get_global_logger()
 
 
+# The version of the index's own SCHEMA — bumped whenever a column is added or its meaning
+# changes. `needs_rebuild()` compares mtimes alone, so an index written before a new column
+# existed stays "valid" and keeps serving rows without it. The field was already being written
+# and read by nothing; giving it a read path is what makes a column addition safe to deploy.
+# The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which this legacy manager does not
+# have — adopting it is #175's, and this is the stopgap until then.
+INDEX_SCHEMA_VERSION = b'1.0'
+
+
 class SignalIndexManager:
     """
     Manages the signal parquet index for fast time-based file selection.
@@ -69,6 +78,14 @@ class SignalIndexManager:
             force_rebuild: Force complete rebuild, ignore an existing index
             check_stale: Rebuild only if newer parquet files exist (filesystem scan)
         """
+        # An index written under an older schema is rebuilt regardless of mtimes: its
+        # rows are complete for the columns that existed then and silently missing the
+        # ones added since.
+        if not force_rebuild and self.index_file.exists() and self._schema_outdated():
+            self.logger.info(
+                '🔄 The signal index was written under an older schema — rebuilding')
+            force_rebuild = True
+
         if not force_rebuild and self.index_file.exists():
             if not check_stale:
                 self._load_index()
@@ -278,12 +295,28 @@ class SignalIndexManager:
         metadata = {
             b'created_at': datetime.now(timezone.utc).isoformat().encode(),
             b'data_dir': str(self.data_dir).encode(),
-            b'index_version': b'1.0',
+            b'index_version': INDEX_SCHEMA_VERSION,
         }
         table = pa.Table.from_pandas(df)
         table = table.replace_schema_metadata({**table.schema.metadata, **metadata})
         pq.write_table(table, self.index_file)
         self.logger.debug(f'💾 Signal index saved to {self.index_file}')
+
+    def _schema_outdated(self) -> bool:
+        """
+        Whether the index on disk was written under an older schema version.
+
+        An unreadable or unstamped index counts as outdated: every index written before the
+        field had a read path is exactly the one whose columns cannot be trusted.
+
+        Returns:
+            True when the stored version differs from the current one
+        """
+        try:
+            stored = pq.read_schema(self.index_file).metadata or {}
+        except Exception:
+            return True
+        return stored.get(b'index_version') != INDEX_SCHEMA_VERSION
 
     def _load_index(self) -> None:
         """Load the index from parquet into the nested dict."""

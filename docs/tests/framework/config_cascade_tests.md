@@ -167,3 +167,20 @@ Background: [Market Model](../../architecture/market_model.md).
 - **A field type the generator cannot vary** (a dict, a list, a new nested model deeper than
   one level) — extend `_probe_value` / the nesting branch, or the field is silently skipped
 - **A new mock-auto-disable resolution** — add it to the third test
+
+
+## `test_data_origin_registry.py` — what an identity MEANS here
+
+Guards the judgement the provenance contract rests on
+([`data_provenance.md`](../../architecture/data_provenance.md)). The distinction under test is
+between the two evidence grades rather than between the classes: `production` resolved from a
+producer's own stamp and `production` resolved from a claim we recorded are the same word and a
+different fact, and only the second one is a sentence somebody wrote.
+
+| Group | What it pins |
+|------|-------------|
+| `TestAStatedIdentityIsJudgedByItself` | a registered identity is `stamped`; an unregistered one does **not** fall back to an attestation |
+| `TestAFileWithoutAnIdentityFallsToTheClaim` | the boundary is inclusive, does not cross archives, and an unreadable version matches nothing |
+| `TestTheDefaultAnswerIsUnknown` | an empty registry and a malformed block both resolve to `unknown` |
+| `TestTheRegistryRefusesAFileItCannotTrust` | an unknown class or a typo'd key fails at parse time, not as an unexplainable answer later |
+| `TestTheTrackedFileIsSafeByItself` | the repository's own registry admits nothing for measurement — a fresh clone cannot silently pass production data |

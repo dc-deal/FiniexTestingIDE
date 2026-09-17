@@ -61,9 +61,20 @@ class MonitoringConfig(BaseModel):
 
 
 class DataValidationConfig(BaseModel):
-    """Warmup and data gap validation settings."""
+    """
+    Warmup, data gap and data-origin validation settings.
+
+    `admitted_origin_classes` is the gate #518 builds, and it starts OPEN on purpose. Until a
+    producer stamps an identity and the legacy archive is attested, every file resolves to
+    `unknown` — so a strict default would refuse every scenario on the day it shipped, which is
+    how a gate gets switched off permanently instead of being narrowed once. It therefore ramps:
+    a scenario reading anything other than production data the producer itself stamped is
+    WARNED about from the start, so the refusal can be measured before it is armed, and
+    narrowing this list is what turns the warning into an exclusion.
+    """
     warmup_quality_mode: str = 'standard'
     allowed_gap_categories: List[str] = ['seamless', 'short', 'weekend', 'holiday']
+    admitted_origin_classes: List[str] = ['production', 'development', 'unknown']
 
 
 class BacktestingPaths(BaseModel):

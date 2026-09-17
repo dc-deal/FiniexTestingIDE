@@ -5,6 +5,8 @@ Covers:
 - validate_data_availability() — a coverage report with no date range is reported as a
   scenario error rather than crashing the batch, and the range checks still fire when
   a range is present
+- the data-origin gate (#518) — which origins a scenario may READ, and the warning that
+  measures what arming the gate would cost before it is armed
 """
 
 from datetime import datetime, timezone
@@ -145,3 +147,69 @@ class TestRangeChecksStillFire:
         )
         assert len(errors) == 1
         assert 'AFTER' in errors[0]
+
+
+def _origin_validator(admitted: list) -> ScenarioDataValidator:
+    """
+    Build a validator with an explicit origin policy.
+
+    Args:
+        admitted: The origin classes a scenario may read
+
+    Returns:
+        Validator instance
+    """
+    app_config = MagicMock()
+    app_config.get_admitted_origin_classes.return_value = admitted
+    return ScenarioDataValidator(
+        data_coverage_reports={},
+        app_config=app_config,
+        logger=MagicMock(),
+    )
+
+
+def _origin_scenario(classes: list, grades: list) -> MagicMock:
+    """
+    Build a scenario stub carrying what its loaded files resolved to.
+
+    Args:
+        classes: One origin class per overlapping archive file
+        grades: One evidence grade per overlapping archive file
+
+    Returns:
+        Scenario stub
+    """
+    scenario = MagicMock()
+    scenario.name = 'btcusd_60d'
+    scenario.origin_classes = classes
+    scenario.origin_evidence_grades = grades
+    return scenario
+
+
+class TestTheDataOriginGate:
+
+    def test_an_inadmissible_class_excludes_the_scenario(self):
+        errors = _origin_validator(['production'])._validate_data_origin(
+            _origin_scenario(['production', 'development'], ['stamped', 'stamped']))
+        assert len(errors) == 1
+        assert '1/2' in errors[0]
+        assert 'development' in errors[0]
+
+    def test_an_admitted_class_passes(self):
+        errors = _origin_validator(
+            ['production', 'development'])._validate_data_origin(
+            _origin_scenario(['production', 'development'], ['stamped', 'stamped']))
+        assert errors == []
+
+    def test_the_open_default_admits_everything(self):
+        # The state this ships in, and the reason it does: every file resolves to `unknown`
+        # until a producer stamps an identity, so a strict default would refuse every scenario
+        # on day one — which is how a gate gets switched off rather than narrowed.
+        errors = _origin_validator(
+            ['production', 'development', 'unknown'])._validate_data_origin(
+            _origin_scenario(['unknown', 'unknown'], ['unknown', 'unknown']))
+        assert errors == []
+
+    def test_a_scenario_that_loaded_nothing_is_not_judged(self):
+        assert _origin_validator(['production'])._validate_data_origin(
+            _origin_scenario([], [])) == []

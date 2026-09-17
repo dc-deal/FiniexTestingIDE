@@ -100,7 +100,12 @@ class SingleScenario:
         default_factory=list, init=False)
 
     # === DATA SOURCE METADATA (populated during data loading) ===
+    # What this scenario actually READ, per overlapping archive file. Per SCENARIO and not per
+    # run on purpose: one set spans symbols, brokers and windows, so a run-level answer would
+    # be an aggregate over things that do not share one — and an aggregate is not a description.
     data_format_versions: List[str] = field(default_factory=list)
+    origin_classes: List[str] = field(default_factory=list)
+    origin_evidence_grades: List[str] = field(default_factory=list)
 
     # === PROFILE RUN METADATA (populated from a WindowSet) ===
     is_profile_run: bool = False

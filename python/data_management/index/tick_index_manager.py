@@ -23,6 +23,16 @@ from python.framework.types.store_types import StoreId
 vLog = get_global_logger()
 
 
+# The version of the index's own SCHEMA — bumped whenever a column is added or its meaning
+# changes. It closes a trap that has no other guard here: `needs_rebuild()` compares mtimes,
+# so an index written before a new column existed stays "valid" and keeps serving rows without
+# it until an import happens to touch a parquet. The field was already being written and read
+# by nothing; giving it a read path is what makes a column addition safe to deploy.
+# The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which these three legacy managers
+# do not have — adopting it is #175's, and this is the stopgap until then.
+INDEX_SCHEMA_VERSION = b'2.2'
+
+
 class TickIndexManager:
     """
     Manages Parquet file index for fast time-based file selection.
@@ -72,6 +82,13 @@ class TickIndexManager:
             check_stale: Check if index is outdated (expensive filesystem scan)
                         Default False - assumes index is current
         """
+        # An index written under an older schema is rebuilt regardless of mtimes: its rows are
+        # complete for the columns that existed then and silently missing the ones added since.
+        if not force_rebuild and self.index_file.exists() and self._schema_outdated():
+            self.logger.info(
+                '🔄 Tick index was written under an older schema — rebuilding')
+            force_rebuild = True
+
         # Fast path: Load existing index without checking staleness
         if not force_rebuild and self.index_file.exists():
             if not check_stale:
@@ -223,6 +240,18 @@ class TickIndexManager:
         anchor_max_correction_ms = self._meta_int(
             custom_metadata, b'source_meta_anchor_max_correction_ms')
 
+        # Where this file came from, as it was RESOLVED at import (#518). Read back from the
+        # stamp and never re-resolved: the registry is a judgement that can be edited, so
+        # asking it again would report today's meaning against a file imported under the
+        # meaning of the day it arrived. 'unknown' for anything written before the stamp
+        # existed — honest, and distinguishable from a resolved class.
+        origin_instance_id = custom_metadata.get(
+            b'origin_instance_id', b'').decode('utf-8')
+        origin_class = custom_metadata.get(
+            b'origin_class', b'unknown').decode('utf-8')
+        origin_evidence = custom_metadata.get(
+            b'origin_evidence', b'unknown').decode('utf-8')
+
         return {
             'file': parquet_file.name,
             'path': str(parquet_file.absolute()),
@@ -248,7 +277,10 @@ class TickIndexManager:
 
             'broker_type': broker_type,
             'data_format_version': custom_metadata.get(
-                b'data_format_version', b'unknown').decode('utf-8')
+                b'data_format_version', b'unknown').decode('utf-8'),
+            'origin_instance_id': origin_instance_id,
+            'origin_class': origin_class,
+            'origin_evidence': origin_evidence,
         }
 
     @staticmethod
@@ -360,6 +392,9 @@ class TickIndexManager:
                         'sessions': json.dumps(entry.get('sessions', {})),
                         'data_format_version': entry.get(
                             'data_format_version', 'unknown'),
+                        'origin_instance_id': entry.get('origin_instance_id', ''),
+                        'origin_class': entry.get('origin_class', 'unknown'),
+                        'origin_evidence': entry.get('origin_evidence', 'unknown'),
                     }
                     rows.append(row)
 
@@ -370,7 +405,8 @@ class TickIndexManager:
             'tick_count', 'file_size_mb', 'source_file', 'num_row_groups',
             'collected_start', 'collected_end',
             'anchor_resyncs', 'anchor_max_correction_ms',
-            'statistics', 'sessions', 'data_format_version'
+            'statistics', 'sessions', 'data_format_version',
+            'origin_instance_id', 'origin_class', 'origin_evidence',
         ]
         df = pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(
             columns=columns)
@@ -379,7 +415,7 @@ class TickIndexManager:
         metadata = {
             b'created_at': datetime.now(timezone.utc).isoformat().encode(),
             b'data_dir': str(self.data_dir).encode(),
-            b'index_version': b'2.1'  # Parquet format version
+            b'index_version': INDEX_SCHEMA_VERSION
         }
 
         table = pa.Table.from_pandas(df)
@@ -388,6 +424,22 @@ class TickIndexManager:
 
         pq.write_table(table, self.index_file)
         self.logger.debug(f'💾 Tick index saved to {self.index_file}')
+
+    def _schema_outdated(self) -> bool:
+        """
+        Whether the index on disk was written under an older schema version.
+
+        An unreadable or unstamped index counts as outdated: every index written before the
+        field had a read path is exactly the one whose columns cannot be trusted.
+
+        Returns:
+            True when the stored version differs from the current one
+        """
+        try:
+            stored = pq.read_schema(self.index_file).metadata or {}
+        except Exception:
+            return True
+        return stored.get(b'index_version') != INDEX_SCHEMA_VERSION
 
     def _load_index(self) -> None:
         """Load index from Parquet file and convert to nested dict."""
@@ -437,7 +489,13 @@ class TickIndexManager:
                 'broker_type': broker_type,
                 # Tolerant: index files written before the field was persisted
                 # have no such column - they read as 'unknown' until rebuilt.
-                'data_format_version': row.get('data_format_version', 'unknown')
+                'data_format_version': row.get('data_format_version', 'unknown'),
+                # Tolerant in the same way, and for the same reason: an index written before
+                # the origin stamp existed has no such column. 'unknown' is the honest reading
+                # and is exactly what the gate refuses for a measurement run.
+                'origin_instance_id': row.get('origin_instance_id', ''),
+                'origin_class': row.get('origin_class', 'unknown'),
+                'origin_evidence': row.get('origin_evidence', 'unknown'),
             }
 
             result[broker_type][symbol].append(entry)

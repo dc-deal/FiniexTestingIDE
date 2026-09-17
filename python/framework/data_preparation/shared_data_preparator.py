@@ -84,10 +84,12 @@ class SharedDataPreparator:
         self._logger = logger
 
         # Cache for pre-converted file timestamps: (broker_type, symbol) →
-        # List[Tuple[Timestamp, Timestamp, str]] (start, end, version)
-        # Avoids repeated pd.to_datetime calls in _collect_parquet_versions (O(n_scenarios×n_files) → O(n_files))
+        # List[Tuple[Timestamp, Timestamp, entry]] (start, end, the index entry itself)
+        # Avoids repeated pd.to_datetime calls in _collect_overlapping_files
+        # (O(n_scenarios×n_files) → O(n_files)). The entry is held by REFERENCE — it is the
+        # same dict the index already keeps resident, so this costs pointers, not rows.
         self._file_ts_cache: Dict[Tuple[str, str],
-                                  List[Tuple[Any, Any, str]]] = {}
+                                  List[Tuple[Any, Any, Dict[str, Any]]]] = {}
 
         # Use existing index managers
         self._logger.debug('📚 Initializing index managers...')
@@ -232,11 +234,18 @@ class SharedDataPreparator:
                 signal_series=signal_series,
             )
 
-            # Collect data_format_versions from actually loaded Parquet files
+            # What this scenario actually read, taken from the index entries of the files its
+            # loaded range overlaps — one scan, three answers, so the overlap rule exists once.
             tick_range = scenario_ticks['ranges'].get(scenario.symbol)
-            scenario.data_format_versions = self._collect_parquet_versions(
+            overlapping = self._collect_overlapping_files(
                 scenario.data_broker_type, scenario.symbol, tick_range
             )
+            scenario.data_format_versions = [
+                entry.get('data_format_version', 'unknown') for entry in overlapping]
+            scenario.origin_classes = [
+                entry.get('origin_class', 'unknown') for entry in overlapping]
+            scenario.origin_evidence_grades = [
+                entry.get('origin_evidence', 'unknown') for entry in overlapping]
 
             # Log package size
             tick_count = sum(scenario_ticks['counts'].values())
@@ -384,14 +393,19 @@ class SharedDataPreparator:
             )
         return series_by_kind
 
-    def _collect_parquet_versions(
+    def _collect_overlapping_files(
         self,
         broker_type: str,
         symbol: str,
         tick_range: Optional[Tuple[datetime, datetime]] = None
-    ) -> List[str]:
+    ) -> List[Dict[str, Any]]:
         """
-        Collect data_format_version from Parquet files that overlap the loaded time range.
+        Collect the index entries of the Parquet files overlapping the loaded time range.
+
+        It returns the ENTRIES rather than one field of them, because several questions are
+        asked of the same overlap — which format versions were read, and which data origins.
+        A second method would have to repeat the overlap rule, and two copies of a rule are
+        how they come to disagree.
 
         Args:
             broker_type: Broker type identifier
@@ -399,7 +413,7 @@ class SharedDataPreparator:
             tick_range: (first_tick, last_tick) of actually loaded data, None = all files
 
         Returns:
-            List of version strings from matching Parquet files
+            Index entries of the matching Parquet files
         """
         if broker_type not in self.tick_index_manager.index:
             return []
@@ -409,7 +423,7 @@ class SharedDataPreparator:
         files = self.tick_index_manager.index[broker_type][symbol]
 
         if tick_range is None:
-            return [f.get('data_format_version', 'unknown') for f in files]
+            return list(files)
 
         # Pre-convert file timestamps once per (broker_type, symbol).
         # pd.to_datetime on a single string is ~150-200µs — calling it N_scenarios × N_files
@@ -420,7 +434,7 @@ class SharedDataPreparator:
                 (
                     pd.to_datetime(f['start_time'], utc=True),
                     pd.to_datetime(f['end_time'], utc=True),
-                    f.get('data_format_version', 'unknown')
+                    f
                 )
                 for f in files
             ]
@@ -429,8 +443,8 @@ class SharedDataPreparator:
         # File overlaps if it starts before range ends AND ends after range starts
         range_start, range_end = tick_range
         return [
-            version
-            for file_start, file_end, version in file_ranges
+            entry
+            for file_start, file_end, entry in file_ranges
             if file_start <= range_end and file_end >= range_start
         ]
 

@@ -1,0 +1,25 @@
+{
+  "_comment": "instance_id -> what that producing instance MEANS here. A producer states an identity it cannot falsify and says nothing about its meaning; this file is where the meaning lives. Only `class` is read by code — role, name, note and registered_at are for people, and nothing branches on them. An identity that is not listed resolves to `unknown`, which is a rule rather than a setting: `unknown` is refused for a measurement run once the gate is armed. Keys are 12 lowercase hex and are refused in any other shape, because a key that cannot match leaves its data `unknown` without saying so. TRACKED COPY — it carries the schema and DEVELOPMENT entries only. Production entries belong in user_configs/data_origins.json, which takes precedence and is not tracked.",
+  "origins": {
+    "ee5aa1436824": {
+      "class": "development",
+      "role": "primary",
+      "name": "data collector — development box",
+      "note": "reported by the collector 2026-09-16; the machine whose file reached this importer on 2026-09-15 and started the provenance contract",
+      "registered_at": "2026-09-17"
+    }
+  },
+  "attestations": [
+    {
+      "_comment": "A dated claim about files written before their producer could state an identity. It is a PREDICATE, not a list, because the archive keeps growing until the block ships — and it closes itself the moment it does. The grade is assigned by the resolver and is always `attested`, never `stamped`. THE SCOPE BELOW COVERS NOTHING (0.0.0 matches no file): the real claim is the operator's and belongs in user_configs/. When writing it, note that the boundary is 1.5.0 and NOT 1.6.0 — no production file will ever carry 1.6.0 (the collector goes 1.5.0 -> 1.7.0 in one step), while DEVELOPMENT files at 1.6.0 do exist and must not be swept in.",
+      "scope": {
+        "broker_type": "kraken_spot",
+        "up_to_format": "0.0.0"
+      },
+      "class": "production",
+      "attested_by": "example",
+      "attested_at": "2026-09-17",
+      "basis": "placeholder scope — matches no file until an operator sets the real boundary in user_configs/"
+    }
+  ]
+}
