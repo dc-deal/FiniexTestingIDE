@@ -528,7 +528,7 @@ class ScenarioDataValidator:
         if refused:
             detail = ', '.join(f'{count}x {name}' for name, count in sorted(refused.items()))
             errors.append(
-                f'Data origin not admissible: {sum(refused.values())}/{total} tick file(s) '
+                f'Data origin not admissible: {sum(refused.values())}/{total} input file(s) '
                 f'resolve to {detail}\n'
                 f'  → admitted today: {", ".join(self._admitted_origin_classes)}\n'
                 f'  → widen backtesting.data_validation.admitted_origin_classes to admit them '

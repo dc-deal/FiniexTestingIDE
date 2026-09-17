@@ -184,3 +184,34 @@ different fact, and only the second one is a sentence somebody wrote.
 | `TestTheDefaultAnswerIsUnknown` | an empty registry and a malformed block both resolve to `unknown` |
 | `TestTheRegistryRefusesAFileItCannotTrust` | an unknown class or a typo'd key fails at parse time, not as an unexplainable answer later |
 | `TestTheTrackedFileIsSafeByItself` | the repository's own registry admits nothing for measurement — a fresh clone cannot silently pass production data |
+| `TestAClaimIsBoundToOneArchive` | a claim reaches the archive it names and no other; a scope naming neither archive or both is refused when the registry loads |
+
+The last group exists because the scope was first written beside tick archives alone. A signal
+envelope carries neither a `broker_type` nor a `data_format_version`, so a claim keyed on those
+covered one archive and matched nothing in the other — present, and unable to fire.
+
+
+## `test_app_config_strictness.py` — a key the file declares and no model knows
+
+The mirror of the loader coverage suite above. That one asks whether every field a MODEL declares
+is reachable from JSON; this one asks whether a key the FILE declares and no model knows is
+refused rather than dropped.
+
+It was not. `AppConfig` and its whole tree inherited a plain `BaseModel`, whose default is
+`extra='ignore'`, so a section added to `app_config.json` but never declared in the model was
+allowed through, merged, and read by nobody — invisible from every side, because the file looks
+configured and validation passes. Same shape as the `market_config.json` gap that
+`StrictConfigModel` was written for.
+
+| Group | What it pins |
+|------|-------------|
+| `TestEveryAppConfigModelRefusesAnUnknownKey` | every model reachable from `AppConfig` forbids extras; a misspelled section and a misspelled nested key both raise; the real config still loads |
+| `TestAConfigFileMayStillExplainItself` | `_comment` and `_comment_<what>` pass at every level — §28 makes them how a config file documents itself |
+
+Two properties are deliberate and will look like omissions otherwise. The model tree is **walked**,
+never listed, because a fixture naming today's models would be the maintenance trap the suite
+exists to close. And **one model is exempt by name**: `TradeSimulatorDefaults` is the base layer of
+a three-level cascade whose dict the application itself writes to at runtime
+(`autotrader_data_preparer` injects `account_currency`), so making it strict would refuse a key we
+add ourselves. Whether that key should become a declared field is a design question, and the
+exemption names it rather than hiding it.

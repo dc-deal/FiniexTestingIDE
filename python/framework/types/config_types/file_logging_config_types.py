@@ -5,13 +5,13 @@ Pydantic models for the file_logging section of app_config.json.
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel
+from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
 from python.framework.types.log_layout_types import SWEEPS_SUBDIR
 from python.framework.types.log_level import LogLevel
 
 
-class RunLogPaths(BaseModel):
+class RunLogPaths(StrictConfigModel):
     """
     Where each run type writes its logs — the ONE source for writers and readers alike.
 
@@ -37,14 +37,14 @@ class RunLogPaths(BaseModel):
         return self.simulation / SWEEPS_SUBDIR
 
 
-class ScenarioFileLoggingConfig(BaseModel):
+class ScenarioFileLoggingConfig(StrictConfigModel):
     """Scenario-level file logging config. None fields inherit from global."""
     enabled: Optional[bool] = None
     log_level: Optional[LogLevel] = None
     file_name_prefix: str
 
 
-class FileLoggingConfig(BaseModel):
+class FileLoggingConfig(StrictConfigModel):
     """
     File logging configuration with global/scenario separation.
 

@@ -387,7 +387,8 @@ class TickDataImporter:
         # of TODAY against a file imported under the meaning of the day it arrived. The
         # identity itself travels verbatim beside it, as `source_meta_origin`.
         origin = DataOriginRegistry().resolve(
-            metadata, broker_type_normalized, data_format_version)
+            DataOriginRegistry.read_nested_instance_id(metadata), data_format_version,
+            broker_type=broker_type_normalized)
 
         # Metadata for Parquet header
         parquet_metadata = {

@@ -212,7 +212,7 @@ class SharedDataPreparator:
             # scenario range entirely outside the signal coverage) excludes ONLY this
             # scenario (§33) — never crashes the batch. A partial overlap is fine.
             try:
-                signal_series = self._load_signals_for_scenario(
+                signal_series, signal_entries = self._load_signals_for_scenario(
                     scenario, requirements_map, stale_cfg)
             except SignalDataUnavailableError as e:
                 self._logger.error(f'❌ {scenario.name}: {e}')
@@ -242,10 +242,15 @@ class SharedDataPreparator:
             )
             scenario.data_format_versions = [
                 entry.get('data_format_version', 'unknown') for entry in overlapping]
+            # Ticks AND signals in one list, because the question the gate asks is about
+            # everything this scenario read, not about one archive. A run that consumed
+            # development SIGNAL data is exactly as incomparable as one that consumed
+            # development ticks, and a per-archive answer would let one of the two through.
+            inputs = overlapping + signal_entries
             scenario.origin_classes = [
-                entry.get('origin_class', 'unknown') for entry in overlapping]
+                entry.get('origin_class', 'unknown') for entry in inputs]
             scenario.origin_evidence_grades = [
-                entry.get('origin_evidence', 'unknown') for entry in overlapping]
+                entry.get('origin_evidence', 'unknown') for entry in inputs]
 
             # Log package size
             tick_count = sum(scenario_ticks['counts'].values())
@@ -309,7 +314,7 @@ class SharedDataPreparator:
         scenario: SingleScenario,
         requirements_map: RequirementsMap,
         stale_cfg: Optional[StressTestStaleDataConfig] = None,
-    ) -> Dict[str, SignalSeries]:
+    ) -> Tuple[Dict[str, SignalSeries], List[Dict[str, Any]]]:
         """
         Load the SIGNAL worker archives for one scenario (#141).
 
@@ -325,9 +330,14 @@ class SharedDataPreparator:
             stale_cfg: Validated stale_data_stress config (None = no stress)
 
         Returns:
-            Dict[source, SignalSeries] (empty when the scenario has no SIGNAL worker)
+            The series per source, and the index entries they were read from — the
+            second is what carries their resolved provenance to the scenario gate
         """
         series_by_kind: Dict[str, SignalSeries] = {}
+        # Only the indexed path contributes entries. A `data_path` override reads a raw
+        # JSONL that no index describes, so it has no resolved provenance to report —
+        # and that is the honest answer for a developer override, not a gap to fill in.
+        origin_entries: List[Dict[str, Any]] = []
         for req in requirements_map.signal_requirements:
             if req.scenario_name != scenario.name:
                 continue
@@ -354,6 +364,9 @@ class SharedDataPreparator:
                         f"(range {req.start_time} → {req.end_time}). Run the signal import "
                         f"or check the scenario's 'data_sentiment_type'."
                     )
+                origin_entries.extend(self.signal_index_manager.get_relevant_entries(
+                    req.data_sentiment_type, req.symbol,
+                    ensure_utc_aware(req.start_time), lookup_end))
                 series = load_signal_series_from_parquet(
                     files, signal_kind=req.signal_kind, symbol=req.symbol,
                     start=req.start_time, end=req.end_time)
@@ -391,7 +404,7 @@ class SharedDataPreparator:
                 f"📡 Loaded signal '{req.signal_kind}' for {scenario.name}: "
                 f"{len(series.snapshots)} snapshots"
             )
-        return series_by_kind
+        return series_by_kind, origin_entries
 
     def _collect_overlapping_files(
         self,

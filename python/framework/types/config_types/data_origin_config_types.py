@@ -72,18 +72,45 @@ class AttestationScope(StrictConfigModel):
     version written without an identity, the scope closes itself: once the block ships, every
     new file carries an identity and none of them can fall under this.
 
-    It keys on `broker_type` rather than on the producer NAME, and that is not a detail: a file
+    It keys on the archive rather than on the producer NAME, and that is not a detail: a file
     without an origin block has no producer field either — it is the whole reason the claim
-    exists. The scope has to be checkable against what such a file actually carries, and what
-    it carries is its broker.
+    exists. The scope has to be checkable against what such a file actually carries.
+
+    Which is why there are TWO keys and a scope sets exactly one. That is the same rule applied
+    to two archives that answer it differently: a tick file carries its BROKER, while a signal
+    envelope carries neither a broker nor a `data_format_version` — it carries its PIPELINE and
+    calls its version `schema_version`. A single key would have covered one archive and silently
+    matched nothing in the other.
 
     Args:
-        broker_type: The archive this claim covers, as the file names it
-        up_to_format: The highest `data_format_version` this claim covers, inclusive
+        broker_type: The tick archive this claim covers, as the file names it
+        pipeline_id: The signal archive this claim covers, as the envelope names it
+        up_to_format: The highest version this claim covers, inclusive
     """
 
-    broker_type: str
+    broker_type: str = ''
+    pipeline_id: str = ''
     up_to_format: str
+
+    @model_validator(mode='after')
+    def _names_exactly_one_archive(self) -> 'AttestationScope':
+        """
+        Refuse a scope that names no archive or both.
+
+        Neither leaves a claim that can never match, which is the silent failure this whole
+        file is built to avoid; both would let one claim reach across two archives that have
+        no version line in common.
+
+        Returns:
+            The validated scope
+        """
+        if bool(self.broker_type) == bool(self.pipeline_id):
+            raise ValueError(
+                'An attestation scope names exactly one archive: `broker_type` for a tick '
+                'archive or `pipeline_id` for a signal archive. A scope with neither can '
+                'never match a file, and one with both claims across two archives whose '
+                'version numbers mean different things.')
+        return self
 
 
 class Attestation(StrictConfigModel):

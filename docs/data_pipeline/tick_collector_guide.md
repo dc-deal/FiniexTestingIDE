@@ -136,6 +136,44 @@ warningDataGapSeconds = 60;    // Warning at 1 min gap
 }
 ```
 
+### Who Wrote the File
+
+From data format **1.7.0** every exported file carries an `origin` block:
+
+```json
+"origin": {
+  "instance_id": "dc0db6a25f15",
+  "collected_on": "LAPTOP-Q267UHDA",
+  "producer": "finiex-mt5-collector",
+  "producer_version": "1.2.0"
+}
+```
+
+**The collector states an identity and says nothing about what it means.** Whether a terminal is
+a development machine or the production one is decided downstream, in a registry the consumer
+owns — never by a word written into the file. The reason is that a copied configuration copies
+its own declaration with it, and a file that describes itself can therefore describe itself
+wrongly. An identity cannot: it is minted once and it is the same value or a different one.
+
+**The identity belongs to the terminal, not to a chart.** It is minted into `MQL5\Files\instance.json`
+of that terminal — never `FILE_COMMON`, which every terminal on the machine would share — from a
+SHA-256 of the terminal data path, the account login and the microsecond at first mint. Every
+symbol collected in that terminal writes the same value, because the identity describes the
+archive rather than the collector instance. Two terminals on one machine get two identities; so
+does a clone of one terminal, which the first two components alone could not distinguish.
+
+Three consequences worth knowing before running it:
+
+- **The EA refuses to start without an identity** — the same posture as the clock check, for the
+  same reason: a file written without one can never be attributed afterwards, and collecting
+  anyway would produce that problem quietly rather than loudly.
+- **Deleting `instance.json` mints a new identity**, and every consumer reads the result as a new
+  producer whose data is unclassified until somebody registers it.
+- **Copying `instance.json` to another terminal is the one thing not to do.** Two writers under
+  one identity is exactly the situation the block exists to make visible.
+
+What the consumer does with it: `docs/architecture/data_provenance.md`.
+
 ### Metadata Section
 
 The metadata block carries the collection context: which collector wrote the file, for which
@@ -168,6 +206,8 @@ data format 1.3.0, the MT5 file 1.1.0.
   resolved from `broker_type` and decides weekend and trading rules. Same field name, different
   vocabulary — do not read one as the other.
 - `collection_purpose`: Use case identifier (e.g. "backtesting")
+- `origin` (data format 1.7.0 and later): who WROTE the file — see the section below. Only
+  `instance_id` is decided on, and the decision is made downstream, never here.
 - `volume_timeframe`: Volume aggregation period (e.g. "PERIOD_M1")
 - `error_tracking.enabled`: Error system active
 

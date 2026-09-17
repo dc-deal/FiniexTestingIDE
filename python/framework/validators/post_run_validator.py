@@ -17,10 +17,7 @@ from python.framework.reporting.builders.robustness_report_builder import (
     build_robustness_report_from_batch,
 )
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.config_types.data_origin_config_types import (
-    OriginClass,
-    OriginEvidence,
-)
+from python.framework.types.data_origin_types import is_admissible_for_measurement
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.scenario_types.scenario_set_performance_types import (
     EXPECTED_OPERATIONS,
@@ -163,8 +160,11 @@ class PostRunValidator:
             for origin_class, evidence in zip(scenario.origin_classes,
                                               scenario.origin_evidence_grades):
                 total_files += 1
-                if not (origin_class == OriginClass.PRODUCTION.value
-                        and evidence == OriginEvidence.STAMPED.value):
+                # Asked of the shared rule rather than spelled out here. It decides whether
+                # a measurement may use a file, and a second copy of that sentence would
+                # eventually answer a different question than the first — with the copy
+                # nobody reads being the one that decays.
+                if not is_admissible_for_measurement(origin_class, evidence):
                     unstamped_files += 1
 
         if unstamped_files == 0:

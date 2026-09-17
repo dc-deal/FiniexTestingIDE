@@ -68,21 +68,26 @@ class DataOriginRegistry:
         self._config_path = config_path or _CONFIG_PATH
         self._user_config_path = user_config_path or _USER_CONFIG_PATH
 
-    def resolve(self, source_metadata: Dict[str, Any], broker_type: str,
-                data_format_version: str) -> OriginResolution:
+    def resolve(self, instance_id: Optional[str], format_version: str, *,
+                broker_type: str = '', pipeline_id: str = '') -> OriginResolution:
         """
-        Judge one file from what it carries.
+        Judge one file from the identity it stated and the archive it belongs to.
+
+        The identity is passed IN rather than parsed here, because every producer states it in
+        its own shape — the collector nests it in an `origin` block, the signal producer carries
+        it top-level beside `data_origin` — and reading a shape is not deciding a meaning. This
+        class owns the meaning; each importer owns its own producer's wire format.
 
         Args:
-            source_metadata: The file's own metadata, as the importer read it
-            broker_type: The archive this file belongs to
-            data_format_version: The schema version the producer declared
+            instance_id: The identity the file stated, or None when it stated none
+            format_version: The version the producer declared, in that archive's own terms
+            broker_type: The tick archive this file belongs to, when it is one
+            pipeline_id: The signal archive this file belongs to, when it is one
 
         Returns:
             The identity it stated, the class that identity means here, and how well it is known
         """
         config = self._load()
-        instance_id = self._read_instance_id(source_metadata)
 
         if instance_id:
             entry = config.origins.get(instance_id)
@@ -92,7 +97,8 @@ class DataOriginRegistry:
             return OriginResolution(instance_id, entry.origin_class,
                                     OriginEvidence.STAMPED)
 
-        attested = self._match_attestation(config, broker_type, data_format_version)
+        attested = self._match_attestation(
+            config, format_version, broker_type=broker_type, pipeline_id=pipeline_id)
         if attested is not None:
             return OriginResolution(None, attested, OriginEvidence.ATTESTED)
 
@@ -122,9 +128,15 @@ class DataOriginRegistry:
             cls._config = None
 
     @staticmethod
-    def _read_instance_id(source_metadata: Dict[str, Any]) -> Optional[str]:
+    def read_nested_instance_id(source_metadata: Dict[str, Any]) -> Optional[str]:
         """
-        Read the stated identity out of a file's metadata.
+        Read the identity out of a NESTED origin block — the tick collectors' shape.
+
+        The signal producer states its identity top-level instead, beside `data_origin`, and
+        deliberately so: that envelope already uses the word origin for whether the data is live
+        or synthetic, and two neighbouring fields called origin with different meanings is a pair
+        that gets misread once and stays misread. So there is no second reader here — the signal
+        importer reads its own field and hands the value to `resolve`.
 
         Args:
             source_metadata: The file's own metadata
@@ -139,10 +151,15 @@ class DataOriginRegistry:
         return instance_id if isinstance(instance_id, str) and instance_id else None
 
     @staticmethod
-    def _match_attestation(config: DataOriginConfig, broker_type: str,
-                           data_format_version: str) -> Optional[OriginClass]:
+    def _match_attestation(config: DataOriginConfig, format_version: str, *,
+                           broker_type: str = '',
+                           pipeline_id: str = '') -> Optional[OriginClass]:
         """
         Find the claim covering a file that stated no identity.
+
+        A scope names exactly one archive, so it is compared against exactly one of the two
+        keys — and an empty key never matches, which is what keeps a tick claim from reaching a
+        signal file and back.
 
         An unparseable version matches nothing. That is the honest answer rather than an
         inconvenience: a claim is bounded by a version, and a file whose version cannot be read
@@ -150,20 +167,24 @@ class DataOriginRegistry:
 
         Args:
             config: The loaded registry
-            broker_type: The archive the file belongs to
-            data_format_version: The schema version the producer declared
+            format_version: The version the producer declared, in that archive's own terms
+            broker_type: The tick archive the file belongs to, when it is one
+            pipeline_id: The signal archive the file belongs to, when it is one
 
         Returns:
             The claimed class, or None when no claim covers this file
         """
-        version = parse_version(data_format_version)
+        version = parse_version(format_version)
         if version is None:
             return None
 
         for attestation in config.attestations:
-            if attestation.scope.broker_type != broker_type:
+            scope = attestation.scope
+            key = scope.broker_type or scope.pipeline_id
+            against = broker_type if scope.broker_type else pipeline_id
+            if not against or key != against:
                 continue
-            boundary = parse_version(attestation.scope.up_to_format)
+            boundary = parse_version(scope.up_to_format)
             if boundary is not None and version <= boundary:
                 return attestation.origin_class
         return None

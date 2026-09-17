@@ -90,9 +90,17 @@ keyed on the archive plus the last format version written without an identity, a
 itself: once a producer ships the block, every new file carries an identity and none can fall
 under the claim again. A list would be stale the moment another file was written.
 
-It keys on `broker_type` rather than on a producer name for a reason that is easy to miss: a file
+It keys on the archive rather than on a producer name for a reason that is easy to miss: a file
 without an origin block has no producer field either — that absence is the whole reason the claim
 exists — so the scope has to be checkable against what such a file actually carries.
+
+**Which is why a scope names exactly one of two keys.** The same rule, applied to two archives
+that answer it differently: a tick file carries its `broker_type` and a `data_format_version`,
+while a signal envelope carries neither — it carries a `pipeline_id` and calls its version
+`schema_version`. A single key covered one archive and matched nothing in the other, silently,
+which is the same failure the identity-key shape check exists to prevent one level up: an entry
+that looks present and can never fire. A scope naming neither archive, or both, is refused when
+the registry loads.
 
 An attestation carries no evidence grade. It can only ever BE attested, and a field that accepts
 one value is a field somebody can eventually use to write a lie.
@@ -143,6 +151,43 @@ if the identity survived; a resolved class alone is a conclusion whose premise h
 **Never on a tick row.** A live tick has no origin — it comes from a socket, and this side is the
 source. A field present in the archive and absent live is a parity break, so origin is file
 metadata plus an index column and never a row.
+
+### The signal archive records the same answer in a different place
+
+```
+archived envelope (top-level instance_id)
+      ▼
+signal importer ──► three parquet COLUMNS, resolved per ENVELOPE
+      ▼
+signal index ─────► the same three, collapsed per file
+      ▼
+scenario mount ───► the same per-scenario lists the ticks land in
+```
+
+Three differences from the tick path, each one following from how that archive is already built
+rather than from a second opinion about provenance.
+
+**The identity is top-level, not nested in an `origin` block.** The signal producer already
+carries `data_origin` — whether the data is live or synthetic — at the top level, and an
+`origin.instance_id` block beside a `data_origin` field is two things called origin with two
+meanings, one line apart. Agreed with the producer rather than imposed.
+
+**It is a row column, not file metadata.** Every provenance fact in that archive already is one:
+`schema_version`, `pipeline_id`, `data_origin`. The tick side uses file metadata because §41
+forbids a column repeated across fifty thousand ticks; a signal file holds orders of magnitude
+fewer rows and parquet dictionary-encodes a constant column to almost nothing. Like `data_origin`,
+the three stay **out** of `SIGNAL_RUNTIME_COLUMNS`, so no worker can reach them.
+
+**It is resolved per envelope, not per file.** A producer may legitimately re-mint its identity
+when an instance is cloned, and a daily bucket can straddle that moment; resolved per file, one of
+the two writers would be recorded under the other's identity. The index entry is per file, so a
+file whose envelopes disagree collapses to `unknown` rather than to either answer — the weakest
+element governs admissibility, because part of that file was written by somebody nobody has
+adjudicated.
+
+**And the gate asks one question about both.** A run that consumed development signal data is
+exactly as incomparable as one that consumed development ticks, so the per-scenario lists hold the
+inputs of both archives and one rule reads them.
 
 ## The gate, and why it starts open
 

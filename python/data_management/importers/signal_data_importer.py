@@ -21,6 +21,7 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from python.configuration.data_origin_registry import DataOriginRegistry
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.framework.exceptions.signal_data_errors import (
     SignalAlreadyImportedError,
@@ -318,8 +319,16 @@ class SignalDataImporter:
     def _explode(self, snapshots: List[SignalSnapshot]) -> List[Dict]:
         """One row per (collected_msc, symbol) + one envelope-level sentinel row each."""
         rows: List[Dict] = []
+        registry = DataOriginRegistry()
         for snap in snapshots:
             msc = int(snap.collected_msc.timestamp() * 1000)
+            # Resolved per ENVELOPE rather than per file, and that is not caution for its own
+            # sake: the producer may legitimately re-mint its identity when an instance is
+            # cloned, and a day bucket can straddle that moment. Per file, one of the two
+            # writers would be recorded under the other's identity.
+            origin = registry.resolve(
+                snap.instance_id or None, snap.schema_version,
+                pipeline_id=snap.pipeline_id)
             envelope = {
                 SignalParquetColumn.STATUS.value: snap.status,
                 SignalParquetColumn.SCHEMA_VERSION.value: snap.schema_version,
@@ -329,6 +338,11 @@ class SignalDataImporter:
                 SignalParquetColumn.PROMPT_HASH.value: snap.prompt_hash,
                 SignalParquetColumn.DATA_ORIGIN.value: snap.data_origin,
                 SignalParquetColumn.CONFIG_FINGERPRINT.value: snap.config_fingerprint,
+                # What the producer stated, and what this side makes of it. Written here and
+                # read back everywhere else — the resolution never runs twice on one file.
+                SignalParquetColumn.ORIGIN_INSTANCE_ID.value: origin.instance_id or '',
+                SignalParquetColumn.ORIGIN_CLASS.value: origin.origin_class.value,
+                SignalParquetColumn.ORIGIN_EVIDENCE.value: origin.evidence.value,
                 # Lives in metadata, not top-level. Missing key and null collapse to the
                 # same '' = unknown state — never to 'scheduled' (a boot pass would be
                 # mislabelled as a grid point).

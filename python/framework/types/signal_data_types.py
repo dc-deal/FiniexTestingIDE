@@ -131,6 +131,14 @@ class AnalysisEnvelope(BaseModel):
     prompt_id: str = ''                    # prompt identity — traceability, must not be lost
     prompt_hash: str = ''                  # prompt content hash — traceability
     data_origin: str = ''                  # 'synthetic' / 'live'; empty = producer predates the field
+    # The producing instance's identity (#518), 12 lowercase hex, minted by the producer and
+    # unfalsifiable by it. Top-level beside data_origin by agreement with the producer rather
+    # than nested in an `origin` block the way the tick collectors write it: this envelope
+    # already uses the word origin for whether the data is live or synthetic, and two adjacent
+    # fields called origin with different meanings is a pair that gets misread once and stays
+    # misread. Empty means the line was written before the field existed — NEVER "same as the
+    # neighbouring line", which is why an attestation and not a default covers that era.
+    instance_id: str = ''
     config_fingerprint: str = ''           # hash of the producer's effective input config; empty = pre-contract
     timestamp: Optional[datetime] = None   # analysis wall-clock — NOT the merge key
     # When the envelope became fetchable at the producer — the honest availability instant,
@@ -638,6 +646,15 @@ class SignalParquetColumn(str, Enum):
     PROMPT_HASH = 'prompt_hash'
     DATA_ORIGIN = 'data_origin'          # 'synthetic' (generated) / 'live' / '' (pre-contract)
     CONFIG_FINGERPRINT = 'config_fingerprint'   # producer input-config hash / '' (pre-contract)
+    # Resolved provenance (#518). The producer states an identity; the class and the grade are
+    # THIS side's judgement of it, resolved once at import from the registry and stamped — never
+    # re-resolved, because the registry is editable and a later read would report today's opinion
+    # about a file imported under yesterday's. Same placement as DATA_ORIGIN above and for the
+    # same reason: admissibility information about the archive, never a basis for a decision, so
+    # deliberately absent from SIGNAL_RUNTIME_COLUMNS.
+    ORIGIN_INSTANCE_ID = 'origin_instance_id'
+    ORIGIN_CLASS = 'origin_class'               # production / development / unknown
+    ORIGIN_EVIDENCE = 'origin_evidence'         # stamped / attested / unknown
     # Why the producing pass ran: scheduled / boot / breaking / manual / external / ''.
     # The ONE field lifted out of the envelope's `metadata` (which is otherwise archive-only,
     # see SIGNAL_RUNTIME_COLUMNS' note) — it is a short scalar of the same weight class as the

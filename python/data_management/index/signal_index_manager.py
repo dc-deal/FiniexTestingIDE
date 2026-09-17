@@ -34,7 +34,47 @@ vLog = get_global_logger()
 # and read by nothing; giving it a read path is what makes a column addition safe to deploy.
 # The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which this legacy manager does not
 # have — adopting it is #175's, and this is the stopgap until then.
-INDEX_SCHEMA_VERSION = b'1.0'
+INDEX_SCHEMA_VERSION = b'1.1'
+
+
+def _present(parquet_file: Path, columns: List[str]) -> List[str]:
+    """
+    Narrow a wanted column list to what this file actually carries.
+
+    A parquet written before the origin columns existed is still perfectly readable, and only a
+    re-import gives it those columns. Until then the scan must not fail on their absence — an
+    index that refuses to build is worse than one that reports `unknown`.
+
+    Args:
+        parquet_file: The file about to be read
+        columns: The columns the scan would like to read
+
+    Returns:
+        Those of them the file carries, in the order given
+    """
+    have = set(pq.read_schema(parquet_file).names)
+    return [name for name in columns if name in have]
+
+
+def _uniform(df: pd.DataFrame, column: str, absent: str) -> str:
+    """
+    The one value a whole file carries in a column, or `absent` when its rows disagree.
+
+    Disagreement is not averaged and not majority-voted. An index entry describes a FILE, so a
+    file holding two answers has no single answer, and saying so is the only honest reading.
+
+    Args:
+        df: The scanned rows
+        column: The column to collapse to one value
+        absent: What to report when the column is missing or the rows disagree
+
+    Returns:
+        The single value, else `absent`
+    """
+    if column not in df.columns:
+        return absent
+    values = {str(value) for value in df[column].dropna().unique()}
+    return values.pop() if len(values) == 1 else absent
 
 
 class SignalIndexManager:
@@ -153,8 +193,11 @@ class SignalIndexManager:
             SignalParquetColumn.COLLECTED_MSC.value,
             SignalParquetColumn.SYMBOL.value,
             SignalParquetColumn.PIPELINE_ID.value,
+            SignalParquetColumn.ORIGIN_INSTANCE_ID.value,
+            SignalParquetColumn.ORIGIN_CLASS.value,
+            SignalParquetColumn.ORIGIN_EVIDENCE.value,
         ]
-        df = pd.read_parquet(parquet_file, columns=cols)
+        df = pd.read_parquet(parquet_file, columns=_present(parquet_file, cols))
 
         pipeline_col = df[SignalParquetColumn.PIPELINE_ID.value]
         sentiment_type = str(pipeline_col.iloc[0]) if len(
@@ -178,6 +221,17 @@ class SignalIndexManager:
             'end_time': end_time.isoformat(),
             'row_count': int(len(df)),
             'file_size_mb': file_size_mb,
+            # Read back from the stamp, never re-resolved. Collapsed per FILE because an index
+            # entry is per file while the stamp is per envelope — and a file whose envelopes
+            # disagree is collapsed to `unknown` rather than to either answer, because a
+            # producer that re-minted mid-bucket wrote part of it under an identity nobody has
+            # adjudicated. Conservative on purpose: the weakest element governs admissibility.
+            'origin_instance_id': _uniform(
+                df, SignalParquetColumn.ORIGIN_INSTANCE_ID.value, ''),
+            'origin_class': _uniform(
+                df, SignalParquetColumn.ORIGIN_CLASS.value, 'unknown'),
+            'origin_evidence': _uniform(
+                df, SignalParquetColumn.ORIGIN_EVIDENCE.value, 'unknown'),
         }
 
     def needs_rebuild(self) -> bool:
@@ -232,6 +286,33 @@ class SignalIndexManager:
             carrier of the last pre-start snapshot where one is needed (empty if
             the source/symbol is unknown)
         """
+        return [Path(entry['path']) for entry in self.get_relevant_entries(
+            data_sentiment_type, symbol, start_date, end_date)]
+
+    def get_relevant_entries(
+        self,
+        data_sentiment_type: str,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> List[Dict]:
+        """
+        The same selection as `get_relevant_files`, as INDEX ENTRIES.
+
+        Split out rather than duplicated because two questions are asked of one
+        selection — which files to read, and what their provenance resolved to — and
+        the predecessor rule above is subtle enough that a second copy of it would
+        eventually answer a different question than the first.
+
+        Args:
+            data_sentiment_type: Source identity (= pipeline_id)
+            symbol: Trading symbol
+            start_date: Range start (UTC)
+            end_date: Range end (UTC)
+
+        Returns:
+            The selected index entries, in the same order the paths come back in
+        """
         if data_sentiment_type not in self.index:
             self.logger.warning(
                 f"Sentiment source '{data_sentiment_type}' not found in signal index")
@@ -252,7 +333,7 @@ class SignalIndexManager:
             file_end = pd.to_datetime(entry['end_time'], utc=True)
 
             if file_start <= end_date and file_end >= start_date:
-                relevant.append(Path(entry['path']))
+                relevant.append(entry)
                 if file_start <= start_date:
                     covers_start = True
             elif file_end < start_date:
@@ -261,7 +342,7 @@ class SignalIndexManager:
                 preceding = entry
 
         if not covers_start and preceding is not None:
-            relevant.insert(0, Path(preceding['path']))
+            relevant.insert(0, preceding)
 
         return relevant
 
@@ -284,11 +365,15 @@ class SignalIndexManager:
                         'end_time': pd.to_datetime(entry['end_time']),
                         'row_count': entry['row_count'],
                         'file_size_mb': entry['file_size_mb'],
+                        'origin_instance_id': entry.get('origin_instance_id', ''),
+                        'origin_class': entry.get('origin_class', 'unknown'),
+                        'origin_evidence': entry.get('origin_evidence', 'unknown'),
                     })
 
         columns = [
             'data_sentiment_type', 'symbol', 'file', 'path',
             'start_time', 'end_time', 'row_count', 'file_size_mb',
+            'origin_instance_id', 'origin_class', 'origin_evidence',
         ]
         df = pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(columns=columns)
 
@@ -342,6 +427,9 @@ class SignalIndexManager:
                 'end_time': row['end_time'].isoformat() if pd.notna(row['end_time']) else None,
                 'row_count': int(row['row_count']),
                 'file_size_mb': float(row['file_size_mb']),
+                'origin_instance_id': row.get('origin_instance_id', ''),
+                'origin_class': row.get('origin_class', 'unknown'),
+                'origin_evidence': row.get('origin_evidence', 'unknown'),
             }
             result.setdefault(sentiment_type, {}).setdefault(symbol, []).append(entry)
 

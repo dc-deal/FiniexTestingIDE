@@ -4,7 +4,7 @@ Top-level Pydantic model for app_config.json.
 """
 from typing import List
 
-from pydantic import BaseModel
+from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
 from python.framework.types.config_types.api_auth_config_types import ApiAuthConfig
 from python.framework.types.config_types.autotrader_defaults_config_types import (
@@ -15,7 +15,7 @@ from python.framework.types.config_types.console_logging_config_types import Con
 from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
 
 
-class SharedPaths(BaseModel):
+class SharedPaths(StrictConfigModel):
     """Filesystem paths shared across both pipelines."""
     data_processed: str
     user_algo_dirs: List[str] = ['user_algos/']
@@ -25,19 +25,19 @@ class SharedPaths(BaseModel):
     run_ledger: str = 'runs/ledger'
 
 
-class HistoryConfig(BaseModel):
+class HistoryConfig(StrictConfigModel):
     """In-memory history retention limits (shared across both pipelines)."""
     bar_max_history: int = 1000
     order_history_max: int = 10000
     trade_history_max: int = 5000
 
 
-class DevelopmentConfig(BaseModel):
+class DevelopmentConfig(StrictConfigModel):
     """Development / debug flags."""
     dev_mode: bool = False
 
 
-class AppConfig(BaseModel):
+class AppConfig(StrictConfigModel):
     """
     Top-level model for app_config.json.
 

@@ -309,9 +309,22 @@ class SignalFeedContractValidator:
         symptom with the wrong diagnosis. The certificate is the only thing that survives
         between runs, so this is where the comparison belongs.
 
-        Comparison is bounded to ONE journal: a development certificate beside a
-        production one would otherwise read as a rewind, because the two instances share
-        a seq range.
+        Comparison is bounded to ONE journal — and that bound is WEAKER than it reads, which
+        is why it is spelled out rather than assumed. The intent is to keep a development
+        certificate from being compared against a production one, because two instances share
+        a seq range and the lower one would look like a rewind. But `journal_id` is derived
+        from the PostgreSQL cluster's `system_identifier`, so it fingerprints the CLUSTER and
+        not the writer: a second instance on the same cluster — a second database, or the
+        producer's own test schema inside the production database, which their release rule
+        runs on the production machine at every version bump — reports the SAME `journal_id`.
+        The bound then does not hold, and the two directions fail differently: a test run's
+        low `seq_last` reports a rewind that never happened, while a real rewind can be masked
+        by a low water mark left behind by one.
+
+        Reported by the producer 2026-09-17 and answered: they are minting a per-schema
+        `instance_id` that identifies the WRITER. This comparison binds to that instead once
+        the field ships, which is tracked on #518. Until then the check is honest about what
+        it compared rather than claiming a guarantee it cannot give.
 
         Args:
             journal_id: Journal this run read from
@@ -344,7 +357,8 @@ class SignalFeedContractValidator:
                 'journal_matches_previous_certificate',
                 journal_id == previous_journal,
                 f'{journal_id} vs {previous_journal} in the certificate of '
-                f'{previous_stamp}'),
+                f'{previous_stamp} — cluster-level identity, so this does not separate two '
+                f'instances sharing one cluster (#518)'),
             FeedCheck(
                 'seq_did_not_rewind_since_last_certificate',
                 not rewound,
