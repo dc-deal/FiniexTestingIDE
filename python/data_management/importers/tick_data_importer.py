@@ -449,7 +449,7 @@ class TickDataImporter:
             'timestamp', 'time_msc', 'collected_msc',
             'bid', 'ask', 'last',
             'tick_volume', 'real_volume', 'chart_tick_volume',
-            'spread_points', 'spread_pct', 'quote_age_ms',
+            'spread_points', 'spread_pct', 'quote_age_ms', 'trade_id',
             'tick_flags', 'session',
         ]
         extra_cols = [c for c in df.columns if c not in _PARQUET_COLUMNS]
@@ -649,6 +649,15 @@ class TickDataImporter:
         for col in nullable_int_cols:
             if col in df.columns:
                 df[col] = df[col].astype('Int32')
+
+        # The venue's per-pair trade id (collector 1.7.0+) — Int64 rather than Int32
+        # because it is a counter that only grows, and null where the venue has none:
+        # a quote-driven venue has no central place where trades happen, so absence is
+        # correct rather than missing (§31c).
+        nullable_int64_cols = ['trade_id']
+        for col in nullable_int64_cols:
+            if col in df.columns:
+                df[col] = df[col].astype('Int64')
 
         return df
 
