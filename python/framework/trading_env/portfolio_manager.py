@@ -5,7 +5,7 @@ Tracks account balance, equity, open positions, and P&L with full fee tracking
 
 from collections import deque
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Union
 
 from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
@@ -19,7 +19,10 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.trading_fees import MakerTakerFee, SwapFee
 from python.framework.types.config_types.market_config_types import SwapRolloverConfig
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.persistence_types import PositionCarryOver
+from python.framework.types.persistence_types import (
+    AccountDrawdownCarryOver,
+    PositionCarryOver,
+)
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
@@ -157,6 +160,22 @@ class PortfolioManager:
         self._account_max_drawdown = 0.0
         self._max_equity = self.balance
         self._account_max_drawdown_pct = 0.0
+        # Which period the three figures above describe (#497). Set only by
+        # `restore_drawdown_state`, i.e. only in a LIVE session that inherited a predecessor's
+        # curve. A simulation starts at its scenario start by definition and never touches them.
+        self._drawdown_carried_from = ''
+        self._drawdown_restarts = 0
+        # When the curve BEGAN — minted once at the first sample and copied forward verbatim.
+        # Deliberately NOT `taken_at_utc`, which is re-stamped on every write and therefore
+        # walks toward the present while the session count grows: a report asking "since when"
+        # and reading the handoff stamp understates exactly the span the count exists to show.
+        self._drawdown_started_at = ''
+        # Whether the three figures above describe anything MEASURED yet. A live boot writes
+        # the carry-over before the first tick, and at that moment `_max_equity` is only the
+        # opening balance — writing it as a peak would hand the successor a high nobody
+        # reached, and a funded account starting below it would report a drawdown that never
+        # happened. Set by the first successful sample, and by a restore.
+        self._drawdown_established = False
 
         # Current market state (lazy evaluation)
         self._current_tick: Optional[TickData] = None
@@ -1226,6 +1245,12 @@ class PortfolioManager:
         if equity is None:
             return
 
+        if not self._drawdown_established:
+            self._drawdown_established = True
+            if not self._drawdown_started_at:
+                # Wall-clock, and legitimately so (§9): it records when WE began measuring,
+                # an observation of our own act that nothing decides on.
+                self._drawdown_started_at = datetime.now(timezone.utc).isoformat()
         if equity > self._max_equity:
             self._max_equity = equity
         drawdown = self._max_equity - equity
@@ -1267,6 +1292,75 @@ class PortfolioManager:
             None — updates the running maximum and drawdown in place
         """
         self._extend_equity_curve(equity)
+
+    def restore_drawdown_state(self, carried: AccountDrawdownCarryOver) -> None:
+        """
+        Continue a predecessor's equity curve instead of starting a new one (#497).
+
+        A thirty-day unattended run restarts, and #476 rehearses restarts on purpose. Without
+        this the reported drawdown describes the segment since the last one — silently, because
+        nothing in the figure says which period it covers. It is the same drift #356 fixed for
+        the risk baseline one plane up, at the reader this issue owns.
+
+        The PEAK is restored rather than re-anchored: a session resuming at a drawn-down value
+        would otherwise treat that value as its high and report no loss at all. The deepest
+        decline and its percentage come back with it, because a past trough leaves no other
+        trace and the percentage cannot be re-derived from the two floats — it was measured
+        against the peak standing at that moment.
+
+        LIVE ONLY, by construction rather than by convention: the caller is the AutoTrader boot
+        path, and nothing in the simulation constructs a cold-start store. A backtest that read
+        a predecessor's peak would depend on a file outside its own inputs, which is a
+        reproducibility leak rather than a feature.
+
+        Args:
+            carried: The predecessor's record, read from the cold-start carry-over
+        """
+        self._max_equity = carried.max_equity
+        self._account_max_drawdown = carried.max_drawdown
+        self._account_max_drawdown_pct = carried.max_drawdown_pct
+        self._drawdown_carried_from = carried.taken_at_utc
+        self._drawdown_restarts = carried.restarts + 1
+        # The START is inherited unchanged — a restart does not begin a new curve. A record
+        # written before the field existed carries '', and the first sample then mints one:
+        # a late start is a worse answer than the real one, and the honest one for a curve
+        # whose beginning was never recorded.
+        self._drawdown_started_at = carried.curve_started_utc
+        self._drawdown_established = True
+
+    def get_account_drawdown_carry_over(self) -> Optional[AccountDrawdownCarryOver]:
+        """
+        The record the next session continues from (#497).
+
+        Written at the cold-start store's existing points — boot, shutdown, and a structural
+        change of the open book — never on a tick cadence: one write costs 11 ms plus the
+        index rebuild on this tree (§42), which has no business in a tick loop. A crash
+        between two of those loses the deepening since the last one; sealing the report plane
+        against that is #476's subject, not this one.
+
+        None until the curve describes something real, and the boot write is exactly why:
+        it happens before the first tick, when `_max_equity` is still only the opening
+        balance. Written as a peak, that number would hand the successor a high nobody
+        reached — and a funded account opening below it would report a drawdown that never
+        happened. The store reads None as "not supplied" and leaves the predecessor's record
+        untouched, which is the right answer in both cases.
+
+        Returns:
+            The current peak, deepest decline and its percentage stamped for the successor,
+            or None while nothing has been measured or inherited
+        """
+        if not self._drawdown_established:
+            return None
+        return AccountDrawdownCarryOver(
+            max_equity=self._max_equity,
+            max_drawdown=self._account_max_drawdown,
+            max_drawdown_pct=self._account_max_drawdown_pct,
+            # Wall-clock is correct here (§9): this stamps when WE wrote the record, an
+            # observation of our own act, and nothing decides on it.
+            taken_at_utc=datetime.now(timezone.utc).isoformat(),
+            restarts=self._drawdown_restarts,
+            curve_started_utc=self._drawdown_started_at,
+        )
 
     def get_total_trades(self) -> int:
         """Get total number of completed trades."""
@@ -1384,6 +1478,9 @@ class PortfolioManager:
             account_max_drawdown=self._account_max_drawdown,
             max_equity=self._max_equity,
             account_max_drawdown_pct=self._account_max_drawdown_pct,
+            drawdown_carried_from=self._drawdown_carried_from,
+            drawdown_restarts=self._drawdown_restarts,
+            drawdown_started_at=self._drawdown_started_at,
             win_rate=win_rate,
             profit_factor=profit_factor,
             total_spread_cost=self._cost_tracking.total_spread_cost,
@@ -1427,6 +1524,12 @@ class PortfolioManager:
         self._account_max_drawdown = 0.0
         self._max_equity = self.balance
         self._account_max_drawdown_pct = 0.0
+        # A reset discards an inherited curve along with the figures it produced — keeping the
+        # provenance beside zeroed floats would claim a month of history for an empty record.
+        self._drawdown_carried_from = ''
+        self._drawdown_restarts = 0
+        self._drawdown_started_at = ''
+        self._drawdown_established = False
 
     def _log_trade_record(self, record: TradeRecord) -> None:
         """

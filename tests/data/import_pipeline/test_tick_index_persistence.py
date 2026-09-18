@@ -87,15 +87,26 @@ class TestVersionRoundTrip:
         assert 'data_format_version' in df.columns
 
 
-class TestLegacyIndexTolerance:
-    """An index file written before the version field existed must still load."""
+class TestAnIndexWrittenUnderAnOlderSchema:
+    """
+    An index missing a column is REBUILT rather than read tolerantly (#518).
 
-    def test_index_without_version_column_loads_as_unknown(self, tmp_path):
-        """Missing column reads as 'unknown' — never an exception that empties the index."""
+    It used to be read tolerantly, with the absent column answering 'unknown' — the best
+    available answer while nothing could tell a stale index from a current one. The schema
+    version now can, so the honest-but-wrong answer is replaced by the correct one: the index
+    is rebuilt from the files it describes and the column comes back with its real value.
+
+    The tolerant defaults in the load path stay where they are. They guard a half-written
+    index, which is a different failure from an outdated one, and this test no longer reaches
+    them — which is the point.
+    """
+
+    def test_an_index_without_a_version_stamp_is_rebuilt(self, tmp_path):
         target = _import_ticks(tmp_path, symbol='SOLUSD', data_format_version='1.3.0')
         index_file = target / TickIndexManager.INDEX_FILE_PARQUET
 
-        # Simulate a pre-fix index: same rows, no version column
+        # Rewriting through pandas drops the Arrow metadata — which is exactly the state an
+        # index written before the schema stamp had a read path is in.
         df = pd.read_parquet(index_file)
         df.drop(columns=['data_format_version']).to_parquet(index_file)
 
@@ -104,7 +115,23 @@ class TestLegacyIndexTolerance:
 
         entries = manager.index['kraken_spot']['SOLUSD']
         assert len(entries) == 1
-        assert entries[0]['data_format_version'] == 'unknown'
+        assert entries[0]['data_format_version'] == '1.3.0'
+
+    def test_a_rebuild_restores_the_columns_that_were_missing(self, tmp_path):
+        # The trap this closes: a column added to the index while every index already on
+        # disk stays "valid", so reports keep serving rows without it and nothing goes red.
+        target = _import_ticks(tmp_path, symbol='SOLUSD', data_format_version='1.3.0')
+        index_file = target / TickIndexManager.INDEX_FILE_PARQUET
+
+        df = pd.read_parquet(index_file)
+        df.drop(columns=['origin_class', 'origin_evidence']).to_parquet(index_file)
+
+        manager = TickIndexManager(data_dir=str(target))
+        manager.build_index()
+
+        entry = manager.index['kraken_spot']['SOLUSD'][0]
+        assert entry['origin_class'] == 'unknown'
+        assert entry['origin_evidence'] == 'unknown'
 
 
 class TestArrivalBoundsRoundTrip:

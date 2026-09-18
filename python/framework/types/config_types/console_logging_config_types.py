@@ -4,26 +4,26 @@ Pydantic models for the console_logging section of app_config.json.
 """
 from typing import Optional
 
-from pydantic import BaseModel
+from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
 from python.framework.types.log_level import LogLevel
 
 
-class ScenarioLoggingConfig(BaseModel):
+class ScenarioLoggingConfig(StrictConfigModel):
     """Scenario-level console logging overrides. None fields inherit from global."""
     enabled: Optional[bool] = None
     log_level: Optional[LogLevel] = None
     write_system_info: bool
 
 
-class SummaryLoggingConfig(BaseModel):
+class SummaryLoggingConfig(StrictConfigModel):
     """Batch summary display settings."""
     show_global_log: bool = True
     detail: bool = False
     scenario_detail_threshold: int = 9
 
 
-class ConsoleLoggingConfig(BaseModel):
+class ConsoleLoggingConfig(StrictConfigModel):
     """
     Console logging configuration with inheritance support.
 

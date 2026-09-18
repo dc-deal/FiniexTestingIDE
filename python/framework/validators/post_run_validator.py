@@ -17,6 +17,7 @@ from python.framework.reporting.builders.robustness_report_builder import (
     build_robustness_report_from_batch,
 )
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.data_origin_types import is_admissible_for_measurement
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.scenario_types.scenario_set_performance_types import (
     EXPECTED_OPERATIONS,
@@ -63,6 +64,7 @@ class PostRunValidator:
         self._check_debug_mode()
         self._check_stress_test()
         self._check_data_version()
+        self._check_data_origin()
         self._check_budget()
         self._check_budget_granularity()
         self._check_budget_too_high()
@@ -138,6 +140,41 @@ class PostRunValidator:
             f'the tick index carries no version for them\n'
             f'  → If the index predates the version field, rebuild it:\n'
             f'    python python/cli/tick_index_cli.py rebuild'))
+
+    def _check_data_origin(self) -> None:
+        """
+        Report how much of what this run read carries no production stamp of its own.
+
+        One finding for the whole run, deliberately. The per-scenario gate decides whether a
+        scenario may run at all; this measures the distance to a state where a parity
+        comparison is possible, and that distance is a property of the archive rather than of
+        any one scenario. Reported as a count rather than a verdict: the data is usable, and it
+        is not comparable, which are two different sentences.
+
+        It stays silent once every file read carries a producer's own stamp — which is the
+        state the thirty-day run needs and the only one that says nothing.
+        """
+        total_files = 0
+        unstamped_files = 0
+        for scenario in self._batch.single_scenario_list:
+            for origin_class, evidence in zip(scenario.origin_classes,
+                                              scenario.origin_evidence_grades):
+                total_files += 1
+                # Asked of the shared rule rather than spelled out here. It decides whether
+                # a measurement may use a file, and a second copy of that sentence would
+                # eventually answer a different question than the first — with the copy
+                # nobody reads being the one that decays.
+                if not is_admissible_for_measurement(origin_class, evidence):
+                    unstamped_files += 1
+
+        if unstamped_files == 0:
+            return
+
+        self._add('data_origin_unstamped', ValidationDomain.DATA, (
+            f'Data origin not producer-stamped for {unstamped_files}/{total_files} file(s) — '
+            f'usable, and NOT comparable\n'
+            f'  → a parity measurement reads only data a producer stamped itself\n'
+            f'  → docs/architecture/data_provenance.md'))
 
     def _check_budget(self) -> None:
         """Warn when avg tick processing exceeds the P5 interval (consider setting a budget)."""

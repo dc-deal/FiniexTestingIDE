@@ -263,6 +263,55 @@ class TestTheAppLevelRoutesAreADecision:
         assert client.get('/api/v1/brokers', headers=_headers('t-none')).status_code == 200
 
 
+class TestTheSchemaSurfaceIsOffWhereItCannotBeGuarded:
+    """
+    `/openapi.json`, `/docs` and `/redoc` are FastAPI's own, mounted at the app root.
+
+    Three properties put them outside every guard this application has, and each one alone
+    would be enough to make them a decision rather than a default. They sit outside
+    `/api/v1`, so a reverse proxy scoped to the versioned prefix does not reach them.
+    Authentication is attached per ROUTER, which cannot cover a route the framework mounts
+    itself. And the walk that proves no identity route is ungated filters on a path
+    parameter, so a parameterless root route is outside it BY CONSTRUCTION — it reported
+    nothing because it never looked.
+
+    Gating them was considered and does not work: Swagger UI fetches the schema from the
+    browser with no bearer, so a gated `/docs` is a broken `/docs`. They are therefore tied
+    to the auth posture — present while nobody is configured, gone the moment somebody is.
+    """
+
+    def test_the_schema_is_gone_once_a_consumer_exists(self):
+        client = _client(ConsumerToken(token='t-any', grants=['bars:*'], note='c'))
+
+        for path in ('/openapi.json', '/docs', '/redoc'):
+            assert client.get(path).status_code == 404, path
+
+    def test_a_token_does_not_bring_it_back(self):
+        """Not gated, absent — so holding a credential is not a way in either."""
+        client = _client(ConsumerToken(token='t-any', grants=['bars:*'], note='c'))
+
+        assert client.get('/openapi.json', headers=_headers('t-any')).status_code == 404
+
+    def test_it_is_there_while_no_consumer_is_configured(self):
+        """
+        The scaffold state keeps the development convenience it is there for.
+
+        `require_auth=False` is what models it: with nobody configured the real
+        `setup_api_auth` builds no bearer dependency at all, which is the state this
+        switch reads.
+        """
+        client = _client(require_auth=False)
+
+        assert client.get('/openapi.json').status_code == 200
+        assert client.get('/docs').status_code == 200
+
+    def test_the_data_routes_are_unaffected_either_way(self):
+        """The schema going away must not be a way to break the API it describes."""
+        client = _client(ConsumerToken(token='t-any', grants=['bars:*'], note='c'))
+
+        assert client.get('/api/v1/timeframes').status_code == 200
+
+
 class TestTheCorsPreflightIsNeverGated:
     """
     A browser sends OPTIONS before a cross-origin request carrying a custom header, and that

@@ -114,6 +114,7 @@ class AutotraderTickLoop:
         display_queue: Optional[queue.Queue] = None,
         session_start: Optional[datetime] = None,
         dry_run: bool = True,
+        deployment_id: str = '',
         display_label_cache: Optional[DisplayLabelCache] = None,
         drift_auditor: Optional[DriftAuditor] = None,
         decision_event_dispatcher: Optional[DecisionEventDispatcher] = None,
@@ -148,6 +149,8 @@ class AutotraderTickLoop:
         self._display_queue = display_queue
         self._session_start = session_start or datetime.now(timezone.utc)
         self._dry_run = dry_run
+        # The RESOLVED deployment, '' for a session that stands alone (#497).
+        self._deployment_id = deployment_id
         self._display_label_cache = display_label_cache or DisplayLabelCache()
         self._drift_auditor = drift_auditor
         self._decision_event_dispatcher = decision_event_dispatcher
@@ -296,6 +299,7 @@ class AutotraderTickLoop:
             quote_currency=self._quote_currency,
             session_start=self._session_start,
             dry_run=self._dry_run,
+            deployment_id=self._deployment_id,
             display_label_cache=self._display_label_cache,
             drift_auditor=self._drift_auditor,
             reconciler=self._reconciler,

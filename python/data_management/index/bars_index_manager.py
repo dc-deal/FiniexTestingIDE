@@ -27,6 +27,20 @@ from python.framework.types.store_types import StoreId
 vLog = get_global_logger()
 
 
+# The version of the index's own SCHEMA — bumped whenever a column is added or its meaning
+# changes. `needs_rebuild()` compares mtimes alone, so an index written before a new column
+# existed stays "valid" and keeps serving rows without it. The field was already being written
+# and read by nothing; giving it a read path is what makes a column addition safe to deploy.
+# The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which this legacy manager does not
+# have — adopting it is #175's, and this is the stopgap until then.
+INDEX_SCHEMA_VERSION = b'2.0'
+
+# What a bar file answers when it was written before the price basis was stamped, or when it
+# is not in the index at all. Never a declared basis: 'unknown' is a statement, a borrowed
+# declaration is a guess wearing the shape of a measurement (§31c).
+PRICE_BASIS_UNKNOWN = 'unknown'
+
+
 class BarsIndexManager:
     """
     Manages index for pre-rendered bar parquet files.
@@ -75,6 +89,14 @@ class BarsIndexManager:
             check_stale: Check if index is outdated (expensive filesystem scan)
                         Default False - assumes index is current
         """
+        # An index written under an older schema is rebuilt regardless of mtimes: its
+        # rows are complete for the columns that existed then and silently missing the
+        # ones added since.
+        if not force_rebuild and self.index_file.exists() and self._schema_outdated():
+            self.logger.info(
+                '🔄 The bar index was written under an older schema — rebuilding')
+            force_rebuild = True
+
         # Fast path: Load existing index without checking staleness
         if not force_rebuild and self.index_file.exists():
             if not check_stale:
@@ -322,6 +344,29 @@ class BarsIndexManager:
         entry = self.index[broker_type][symbol][timeframe]
         return Path(entry['path'])
 
+    def get_price_basis(self, broker_type: str, symbol: str, timeframe: str) -> str:
+        """
+        The basis this bar file was actually RENDERED from (§31c).
+
+        Read from the index row rather than from configuration, and that is the whole point:
+        during a re-render the configuration describes what a render WOULD produce while half
+        the files on disk still hold the previous answer. A file written before the basis was
+        stamped answers 'unknown' rather than borrowing today's declaration.
+
+        Args:
+            broker_type: Broker the bars belong to
+            symbol: Trading symbol
+            timeframe: Timeframe key
+
+        Returns:
+            'order_driven', 'quote_driven', or 'unknown' where the file predates the stamp
+            or is not in the index at all
+        """
+        entry = self.index.get(broker_type, {}).get(symbol, {}).get(timeframe)
+        if not entry:
+            return PRICE_BASIS_UNKNOWN
+        return entry.get('price_basis') or PRICE_BASIS_UNKNOWN
+
     def get_available_timeframes(self, broker_type: str, symbol: str) -> List[str]:
         """Get list of available timeframes for a symbol."""
         if broker_type not in self.index:
@@ -385,7 +430,7 @@ class BarsIndexManager:
         metadata = {
             b'created_at': datetime.now(timezone.utc).isoformat().encode(),
             b'data_dir': str(self.data_dir).encode(),
-            b'index_version': b'2.0'
+            b'index_version': INDEX_SCHEMA_VERSION
         }
 
         table = pa.Table.from_pandas(df)
@@ -394,6 +439,22 @@ class BarsIndexManager:
 
         pq.write_table(table, self.index_file)
         self.logger.debug(f'💾 Bar index saved to {self.index_file}')
+
+    def _schema_outdated(self) -> bool:
+        """
+        Whether the index on disk was written under an older schema version.
+
+        An unreadable or unstamped index counts as outdated: every index written before the
+        field had a read path is exactly the one whose columns cannot be trusted.
+
+        Returns:
+            True when the stored version differs from the current one
+        """
+        try:
+            stored = pq.read_schema(self.index_file).metadata or {}
+        except Exception:
+            return True
+        return stored.get(b'index_version') != INDEX_SCHEMA_VERSION
 
     def _load_index(self) -> None:
         """Load index from Parquet file and convert to nested dict."""

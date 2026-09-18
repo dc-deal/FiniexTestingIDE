@@ -17,7 +17,6 @@ from typing import Dict, List, Optional
 import psutil
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
 )
@@ -228,35 +227,35 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             print(tracking_line)
 
     def _render_data_sources(self, renderer: ConsoleRenderer):
-        """Render data sources summary section."""
-        # Aggregate by data broker type — from the scenario-details model (one row per scenario)
-        broker_type_stats = {}
-        for unit in self._scenario_details.units:
-            bt = unit.data_source
-            if bt not in broker_type_stats:
-                broker_type_stats[bt] = {
-                    'count': 0,
-                    'symbols': set()
-                }
-            broker_type_stats[bt]['count'] += 1
-            broker_type_stats[bt]['symbols'].add(unit.symbol)
+        """
+        Render the data-source roll-up — formatting only.
 
-        # Render section
+        The grouping and the market-type resolution both live in the builder now. This used to
+        instantiate a config manager here and group the scenario rows itself, which the
+        reporting-pipeline rule forbids for a reason that is not tidiness: config answers what
+        a broker is TODAY, so the console could print one thing while the artifact beside it
+        held another, and no other surface got the roll-up at all.
+
+        Args:
+            renderer: Console renderer
+        """
         renderer.print_bold('DATA SOURCES')
         renderer.print_separator(width=68)
 
-        market_config = MarketConfigManager()
-
-        for broker_type, stats in sorted(broker_type_stats.items()):
-            symbols_str = ', '.join(sorted(stats['symbols']))
+        for source in self._scenario_details.data_sources:
+            symbols_str = ', '.join(source.symbols)
             # Truncate if too long
             if len(symbols_str) > 40:
                 symbols_str = symbols_str[:37] + '...'
 
-            market_type = market_config.get_market_type(broker_type).value
             print(
-                f'{broker_type} [{market_type}]'.ljust(24) +
-                f"{stats['count']} scenario(s) ({symbols_str})")
+                f'{source.broker_type} [{source.market_type}]'.ljust(24) +
+                f'{source.scenario_count} scenario(s) ({symbols_str})')
+            # The price basis the bars were RENDERED from (§31c), not what config declares
+            # today. Printed only where the archive knows — a run over tick data alone has
+            # no basis to report, and an empty line would read as an answer.
+            if source.price_bases:
+                print(f'{"":24}price basis: {source.price_bases}')
 
     def _render_first_failure(self, renderer: ConsoleRenderer):
         """

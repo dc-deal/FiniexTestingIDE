@@ -7,14 +7,14 @@ AutoTraderConfig profile type defined in autotrader_config_types.py.
 """
 from typing import Literal
 
-from pydantic import BaseModel
+from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
 from python.framework.types.config_types.performance_tracking_config_types import (
     AutoTraderPerformanceTrackingConfig,
 )
 
 
-class UnresolvedResolutionDefaults(BaseModel):
+class UnresolvedResolutionDefaults(StrictConfigModel):
     """
     How a write whose answer was lost gets resolved by ASKING (#487).
 
@@ -42,7 +42,7 @@ class UnresolvedResolutionDefaults(BaseModel):
     max_window_seconds: float = 120.0
 
 
-class AutotraderExecutionDefaults(BaseModel):
+class AutotraderExecutionDefaults(StrictConfigModel):
     """AutoTrader tick-loop execution defaults."""
     parallel_workers: bool = False
     bar_max_history: int = 1000
@@ -82,7 +82,7 @@ class AutotraderExecutionDefaults(BaseModel):
     performance_tracking: AutoTraderPerformanceTrackingConfig = AutoTraderPerformanceTrackingConfig()
 
 
-class ClippingMonitorDefaults(BaseModel):
+class ClippingMonitorDefaults(StrictConfigModel):
     """Clipping monitor defaults."""
     report_interval_s: float = 60.0
     strategy: str = 'queue_all'
@@ -94,13 +94,13 @@ class ClippingMonitorDefaults(BaseModel):
     warn_above_ratio: float = 0.05
 
 
-class DisplayDefaults(BaseModel):
+class DisplayDefaults(StrictConfigModel):
     """Live console dashboard defaults."""
     enabled: bool = True
     update_interval_ms: int = 300
 
 
-class OrderGuardDefaults(BaseModel):
+class OrderGuardDefaults(StrictConfigModel):
     """Order guard pre-validation defaults."""
     cooldown_seconds: float = 60.0
     max_consecutive_rejections: int = 2
@@ -109,7 +109,7 @@ class OrderGuardDefaults(BaseModel):
     block_stale_market_data: bool = True
 
 
-class DriftAuditConfig(BaseModel):
+class DriftAuditConfig(StrictConfigModel):
     """
     Read-only drift telemetry defaults (#327).
 
@@ -126,7 +126,7 @@ class DriftAuditConfig(BaseModel):
     sample_rate: float = 1.0             # Reserved notausgang; V1.3 default = audit every fill
 
 
-class ReconciliationDefaults(BaseModel):
+class ReconciliationDefaults(StrictConfigModel):
     """
     Live reconciliation defaults (#151) — broker truth-pull cadence + mode.
 
@@ -140,7 +140,7 @@ class ReconciliationDefaults(BaseModel):
     min_interval_seconds: float = 60.0  # ... OR every M wall-clock seconds (hybrid)
 
 
-class ApiMonitorConfig(BaseModel):
+class ApiMonitorConfig(StrictConfigModel):
     """
     Broker REST transport-latency monitor defaults (#351).
 
@@ -152,7 +152,7 @@ class ApiMonitorConfig(BaseModel):
     slow_call_threshold_ms: float = 3000.0  # calls slower than this are logged + flagged
 
 
-class StatePersistenceDefaults(BaseModel):
+class StatePersistenceDefaults(StrictConfigModel):
     """
     Algo state persistence defaults (#354) — restart-safe algo memory (Category B).
 
@@ -171,7 +171,7 @@ class StatePersistenceDefaults(BaseModel):
     on_stale: Literal['warn_reset', 'halt'] = 'warn_reset'     # too-old state: reset fresh or halt boot
 
 
-class ColdStartDefaults(BaseModel):
+class ColdStartDefaults(StrictConfigModel):
     """
     Cold-start recovery defaults (#355) — adopting our own resting orders on boot.
 
@@ -202,7 +202,7 @@ class ColdStartDefaults(BaseModel):
     book_drift_interval_ticks: int = 500
 
 
-class CapitalDefaults(BaseModel):
+class CapitalDefaults(StrictConfigModel):
     """
     What the bot may assume about the account it trades (#489).
 
@@ -234,7 +234,7 @@ class CapitalDefaults(BaseModel):
     exclusive_account: bool = False
 
 
-class SessionEndDefaults(BaseModel):
+class SessionEndDefaults(StrictConfigModel):
     """
     What a live session does with what it still holds when it ends (#492).
 
@@ -270,7 +270,7 @@ class SessionEndDefaults(BaseModel):
     positions: Literal['close', 'leave'] = 'leave'
 
 
-class TickSourceConfig(BaseModel):
+class TickSourceConfig(StrictConfigModel):
     """
     Configuration for the tick TRANSPORT (how ticks are delivered).
 
@@ -307,7 +307,7 @@ class TickSourceConfig(BaseModel):
     freeze_after_ticks: int = 0
     freeze_duration_s: float = 0.0
 
-class AutotraderDefaultsConfig(BaseModel):
+class AutotraderDefaultsConfig(StrictConfigModel):
     """
     Top-level model for app_config.json::autotrader.
     Provides global defaults merged into every AutoTrader profile at load time.

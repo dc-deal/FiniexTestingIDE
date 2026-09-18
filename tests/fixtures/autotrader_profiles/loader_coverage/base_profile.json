@@ -3,6 +3,9 @@
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",
+  "deployment": {
+    "continuous": false
+  },
   "strategy_config": {
     "decision_logic_type": "CORE/aggressive_trend",
     "worker_instances": {},

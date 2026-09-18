@@ -159,6 +159,18 @@ also less alike than their method names suggest: `data_format_version` lives in 
 legitimately, because bars inherit it from the ticks they were rendered from and signals carry the
 producer's own `schema_version`. What they inherit later is the `LOGIC_VERSION` field, under #175.
 
+**Until then the tick index carries its own schema stamp**, and that is the stopgap rather than the
+design. `needs_rebuild()` compares mtimes alone, so an index written before a column existed stays
+"valid" and keeps serving rows without it until an import happens to touch a parquet — the trap that
+makes adding a column unsafe to deploy. `index_version` was already being written by all three
+managers and read by none; the tick index now reads it back and rebuilds when it differs. Bump
+`INDEX_SCHEMA_VERSION` whenever a column is added or its meaning changes. The other two still write
+a version nobody reads, which is the gap #175 closes properly.
+
+**Its provenance columns** — `origin_instance_id`, `origin_class`, `origin_evidence` — are resolved
+ONCE at import and read back from the stamp, never re-resolved from the registry. Full contract:
+[`data_provenance.md`](data_provenance.md).
+
 ---
 
 ## Two rules the catalog enforces with tests

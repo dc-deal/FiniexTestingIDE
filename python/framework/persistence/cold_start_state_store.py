@@ -28,6 +28,7 @@ from pydantic import ValidationError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.persistence.cold_start_state_index import ColdStartStateIndex
 from python.framework.types.persistence_types import (
+    AccountDrawdownCarryOver,
     CarryOverEnvelope,
     ColdStartPayload,
     PositionCarryOver,
@@ -160,6 +161,8 @@ class ColdStartStateStore:
         keys_in_use: Optional[Set[str]] = None,
         open_positions: Optional[List[PositionCarryOver]] = None,
         risk_baseline: Optional[RiskBaseline] = None,
+        account_drawdown: Optional[AccountDrawdownCarryOver] = None,
+        deployment_id: Optional[str] = None,
         refresh_index: bool = True,
     ) -> None:
         """
@@ -191,6 +194,14 @@ class ColdStartStateStore:
                 drawdown on the next boot, i.e. reintroduce the exact drift this persists
                 against. There is no "clear it" case, so unlike the book there is no empty
                 value that overwrites
+            account_drawdown: The REPORT's peak and deepest decline (#497). Same convention
+                and the same reason as the baseline above — a partial write that erased it
+                would let the next session start its curve at its own opening balance and
+                report a month's drawdown as an afternoon's
+            deployment_id: Which continuous deployment this bot's sessions belong to. Same
+                None convention once more, and here it is what makes N session records one
+                history: a join key not written WHILE the sessions ran cannot be added
+                afterwards, because nothing left behind says which of them belonged together
             refresh_index: Whether to rebuild the store index afterwards. False for the
                 writes that happen DURING a session: the rebuild reads every bot's document
                 and costs 26-40 ms on this project's tree (§42), which has no business inside
@@ -219,6 +230,10 @@ class ColdStartStateStore:
             payload.open_positions = list(open_positions)
         if risk_baseline is not None:
             payload.risk_baseline = risk_baseline
+        if account_drawdown is not None:
+            payload.account_drawdown = account_drawdown
+        if deployment_id is not None:
+            payload.deployment_id = deployment_id
 
         envelope = CarryOverEnvelope(
             schema_version=_SCHEMA_VERSION,

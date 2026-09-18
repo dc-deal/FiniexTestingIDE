@@ -49,10 +49,23 @@ def create_app() -> FastAPI:
     # reached by forgetting. Empty while no consumer is configured (the scaffold state).
     guarded = [Depends(auth.bearer)] if auth.bearer is not None else []
 
+    # The schema and its two browsers are DEVELOPMENT surfaces, and they are switched off the
+    # moment a consumer is configured. Three properties make this the seam rather than a
+    # nicety. FastAPI mounts them at the APP ROOT, outside `/api/v1`, so a reverse proxy
+    # scoped to the versioned prefix does not reach them either way. Authentication is
+    # attached per ROUTER (below), which cannot cover a route the framework mounts itself.
+    # And the walk that proves no identity route is ungated filters on a path parameter, so a
+    # parameterless root route is outside it BY CONSTRUCTION — it reports nothing because it
+    # never looks. Gating them instead of removing them would not work: Swagger UI fetches the
+    # schema from the browser with no bearer, so a gated `/docs` is a broken `/docs`.
+    interactive = auth.bearer is None
     app = FastAPI(
         title='FiniexTestingIDE API',
         version=app_version,
         description='Read-only HTTP interface for tick and bar data.',
+        openapi_url='/openapi.json' if interactive else None,
+        docs_url='/docs' if interactive else None,
+        redoc_url='/redoc' if interactive else None,
     )
 
     app.add_middleware(

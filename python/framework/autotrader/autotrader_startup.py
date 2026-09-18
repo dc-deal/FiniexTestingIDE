@@ -71,7 +71,8 @@ _DEGRADED_REPLAY_WINDOW_HOURS: float = 24.0
 
 def create_autotrader_loggers(
     config: AutoTraderConfig,
-    run_timestamp: datetime
+    run_timestamp: datetime,
+    deployment_id: str = '',
 ) -> AutotraderLoggerBundle:
     """
     Create all loggers for an AutoTrader session.
@@ -152,7 +153,13 @@ def create_autotrader_loggers(
             start_time=run_timestamp,
             run_type=RUN_TYPE_LIVE,
             run_name=session_name,
-            parent_id=None,
+            # Which continuous DEPLOYMENT this session belongs to (#497). The same field a
+            # sweep's combination uses for its sweep, and the same KIND of parent: an identity
+            # that groups runs without being one, defined by the runs that name it. Written
+            # here because the header has a write and a read and no update path — a join key
+            # missing from the run that produced it cannot be added afterwards, and nothing
+            # else left behind says which sessions belonged together.
+            parent_id=deployment_id or None,
             config_snapshot='autotrader_config.json',
             app_version=AppConfigManager().get_version(),
             git_commit=get_git_commit(),

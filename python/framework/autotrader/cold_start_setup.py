@@ -41,8 +41,15 @@ class ColdStartSetup:
             session log, and therefore in the error pot (§35)
         store: The carry-over, or None when this session has none (Field Study, disabled,
             or a simulation executor)
-        persist: Whether this session may WRITE the carry-over. False for a dry run, which
-            sent no order to any venue, and False for a boot that never got through
+        persist: Whether this session may WRITE the carry-over at all. False only for a boot
+            that never got through — a refused boot must not append its key, or a restart
+            loop consumes its own key window
+        persist_venue_claims: Whether it may write the half of the payload that makes a CLAIM
+            ABOUT THE VENUE — the session key and the open position book. False for a dry run,
+            which sent no order anywhere, so the venue holds nothing those fields describe.
+            The other half — the risk baseline, the reported drawdown curve, the deployment
+            identity — is OUR OWN record: numbers we computed, true whether or not the venue
+            was real, and written either way
         keys_in_use: Session discriminators the venue currently shows on orders of our shape.
             Protected from eviction, so the key that owns a resting order cannot age out
         situation: What the boot found, as the decision logic saw it — None for a dry run,
@@ -52,6 +59,7 @@ class ColdStartSetup:
     proceed: bool = True
     store: Optional[ColdStartStateStore] = None
     persist: bool = False
+    persist_venue_claims: bool = False
     keys_in_use: Set[str] = field(default_factory=set)
     situation: Optional[ColdStartSituation] = None
     verdict: Optional[ColdStartVerdict] = None
@@ -149,7 +157,14 @@ def setup_cold_start(
     return ColdStartSetup(
         proceed=True,
         store=store,
-        persist=not dry_run,
+        # A dry run writes too, but only what it can honestly claim. Splitting the two halves
+        # is what makes the mechanism rehearsable at all: a mock session is a dry run by
+        # definition (`_is_dry_run` answers on the adapter type), so before this the deployment
+        # identity and the drawdown curve could not be exercised without a real venue — while
+        # the reason for the old blanket refusal only ever applied to the session KEY and the
+        # position BOOK, which describe orders the venue does not hold.
+        persist=True,
+        persist_venue_claims=not dry_run,
         keys_in_use=adopter.get_venue_session_keys(),
         situation=adopter.get_situation(),
         verdict=adopter.get_verdict(),

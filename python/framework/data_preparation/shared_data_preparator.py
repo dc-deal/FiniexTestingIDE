@@ -17,18 +17,18 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
-from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 from python.framework.exceptions.data_quality_errors import TradedPriceMissingException
-from python.framework.types.config_types.market_config_types import PriceFormation
 from python.framework.exceptions.signal_data_errors import SignalDataUnavailableError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.signal_data.signal_jsonl_loader import load_signal_series
 from python.framework.signal_data.signal_parquet_reader import load_signal_series_from_parquet
 from python.framework.stress_test.stale_data_slicer import StaleDataSlicer
+from python.framework.types.config_types.market_config_types import PriceFormation
 from python.framework.types.process_data_types import (
     BarRequirement,
     ClippingStats,
@@ -84,10 +84,12 @@ class SharedDataPreparator:
         self._logger = logger
 
         # Cache for pre-converted file timestamps: (broker_type, symbol) →
-        # List[Tuple[Timestamp, Timestamp, str]] (start, end, version)
-        # Avoids repeated pd.to_datetime calls in _collect_parquet_versions (O(n_scenarios×n_files) → O(n_files))
+        # List[Tuple[Timestamp, Timestamp, entry]] (start, end, the index entry itself)
+        # Avoids repeated pd.to_datetime calls in _collect_overlapping_files
+        # (O(n_scenarios×n_files) → O(n_files)). The entry is held by REFERENCE — it is the
+        # same dict the index already keeps resident, so this costs pointers, not rows.
         self._file_ts_cache: Dict[Tuple[str, str],
-                                  List[Tuple[Any, Any, str]]] = {}
+                                  List[Tuple[Any, Any, Dict[str, Any]]]] = {}
 
         # Use existing index managers
         self._logger.debug('📚 Initializing index managers...')
@@ -210,7 +212,7 @@ class SharedDataPreparator:
             # scenario range entirely outside the signal coverage) excludes ONLY this
             # scenario (§33) — never crashes the batch. A partial overlap is fine.
             try:
-                signal_series = self._load_signals_for_scenario(
+                signal_series, signal_entries = self._load_signals_for_scenario(
                     scenario, requirements_map, stale_cfg)
             except SignalDataUnavailableError as e:
                 self._logger.error(f'❌ {scenario.name}: {e}')
@@ -232,11 +234,34 @@ class SharedDataPreparator:
                 signal_series=signal_series,
             )
 
-            # Collect data_format_versions from actually loaded Parquet files
+            # What this scenario actually read, taken from the index entries of the files its
+            # loaded range overlaps — one scan, three answers, so the overlap rule exists once.
             tick_range = scenario_ticks['ranges'].get(scenario.symbol)
-            scenario.data_format_versions = self._collect_parquet_versions(
+            overlapping = self._collect_overlapping_files(
                 scenario.data_broker_type, scenario.symbol, tick_range
             )
+            scenario.data_format_versions = [
+                entry.get('data_format_version', 'unknown') for entry in overlapping]
+            # Ticks AND signals in one list, because the question the gate asks is about
+            # everything this scenario read, not about one archive. A run that consumed
+            # development SIGNAL data is exactly as incomparable as one that consumed
+            # development ticks, and a per-archive answer would let one of the two through.
+            inputs = overlapping + signal_entries
+            scenario.origin_classes = [
+                entry.get('origin_class', 'unknown') for entry in inputs]
+            scenario.origin_evidence_grades = [
+                entry.get('origin_evidence', 'unknown') for entry in inputs]
+            # The price basis comes from the BAR index, because the bar files are the only
+            # place it is stamped — a tick parquet carries no basis at all. So a scenario
+            # that mounted no bar file records NOTHING here rather than the broker's
+            # declaration: borrowing config is exactly what the stamp exists to prevent, and
+            # during a re-render config describes what a render WOULD produce while half the
+            # archive still holds the previous answer (§31c).
+            scenario.price_bases = [
+                self.bar_index_manager.get_price_basis(
+                    scenario.data_broker_type, symbol, timeframe)
+                for symbol, timeframe, _ in scenario_bars['bars']
+            ]
 
             # Log package size
             tick_count = sum(scenario_ticks['counts'].values())
@@ -300,7 +325,7 @@ class SharedDataPreparator:
         scenario: SingleScenario,
         requirements_map: RequirementsMap,
         stale_cfg: Optional[StressTestStaleDataConfig] = None,
-    ) -> Dict[str, SignalSeries]:
+    ) -> Tuple[Dict[str, SignalSeries], List[Dict[str, Any]]]:
         """
         Load the SIGNAL worker archives for one scenario (#141).
 
@@ -316,9 +341,14 @@ class SharedDataPreparator:
             stale_cfg: Validated stale_data_stress config (None = no stress)
 
         Returns:
-            Dict[source, SignalSeries] (empty when the scenario has no SIGNAL worker)
+            The series per source, and the index entries they were read from — the
+            second is what carries their resolved provenance to the scenario gate
         """
         series_by_kind: Dict[str, SignalSeries] = {}
+        # Only the indexed path contributes entries. A `data_path` override reads a raw
+        # JSONL that no index describes, so it has no resolved provenance to report —
+        # and that is the honest answer for a developer override, not a gap to fill in.
+        origin_entries: List[Dict[str, Any]] = []
         for req in requirements_map.signal_requirements:
             if req.scenario_name != scenario.name:
                 continue
@@ -345,6 +375,9 @@ class SharedDataPreparator:
                         f"(range {req.start_time} → {req.end_time}). Run the signal import "
                         f"or check the scenario's 'data_sentiment_type'."
                     )
+                origin_entries.extend(self.signal_index_manager.get_relevant_entries(
+                    req.data_sentiment_type, req.symbol,
+                    ensure_utc_aware(req.start_time), lookup_end))
                 series = load_signal_series_from_parquet(
                     files, signal_kind=req.signal_kind, symbol=req.symbol,
                     start=req.start_time, end=req.end_time)
@@ -382,16 +415,21 @@ class SharedDataPreparator:
                 f"📡 Loaded signal '{req.signal_kind}' for {scenario.name}: "
                 f"{len(series.snapshots)} snapshots"
             )
-        return series_by_kind
+        return series_by_kind, origin_entries
 
-    def _collect_parquet_versions(
+    def _collect_overlapping_files(
         self,
         broker_type: str,
         symbol: str,
         tick_range: Optional[Tuple[datetime, datetime]] = None
-    ) -> List[str]:
+    ) -> List[Dict[str, Any]]:
         """
-        Collect data_format_version from Parquet files that overlap the loaded time range.
+        Collect the index entries of the Parquet files overlapping the loaded time range.
+
+        It returns the ENTRIES rather than one field of them, because several questions are
+        asked of the same overlap — which format versions were read, and which data origins.
+        A second method would have to repeat the overlap rule, and two copies of a rule are
+        how they come to disagree.
 
         Args:
             broker_type: Broker type identifier
@@ -399,7 +437,7 @@ class SharedDataPreparator:
             tick_range: (first_tick, last_tick) of actually loaded data, None = all files
 
         Returns:
-            List of version strings from matching Parquet files
+            Index entries of the matching Parquet files
         """
         if broker_type not in self.tick_index_manager.index:
             return []
@@ -409,7 +447,7 @@ class SharedDataPreparator:
         files = self.tick_index_manager.index[broker_type][symbol]
 
         if tick_range is None:
-            return [f.get('data_format_version', 'unknown') for f in files]
+            return list(files)
 
         # Pre-convert file timestamps once per (broker_type, symbol).
         # pd.to_datetime on a single string is ~150-200µs — calling it N_scenarios × N_files
@@ -420,7 +458,7 @@ class SharedDataPreparator:
                 (
                     pd.to_datetime(f['start_time'], utc=True),
                     pd.to_datetime(f['end_time'], utc=True),
-                    f.get('data_format_version', 'unknown')
+                    f
                 )
                 for f in files
             ]
@@ -429,8 +467,8 @@ class SharedDataPreparator:
         # File overlaps if it starts before range ends AND ends after range starts
         range_start, range_end = tick_range
         return [
-            version
-            for file_start, file_end, version in file_ranges
+            entry
+            for file_start, file_end, entry in file_ranges
             if file_start <= range_end and file_end >= range_start
         ]
 

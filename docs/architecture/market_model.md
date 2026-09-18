@@ -102,8 +102,8 @@ noticing — comparing a high against a low is satisfied by `0 >= 0`.
 
 ## Where the declaration is checked
 
-A declaration that nothing verifies is a comment. `price_formation` is read in two places,
-neither of them in the tick loop:
+A declaration that nothing verifies is a comment. `price_formation` is read where it can be
+checked or recorded, and never in the tick loop:
 
 - **At import.** A venue declared order-driven must deliver a traded price on every tick; a
   file that does not is refused by name rather than falling back quietly to the midpoint,
@@ -113,6 +113,13 @@ neither of them in the tick loop:
   API reports the basis from that stamp rather than from configuration — during a re-render,
   configuration describes what a render *would* produce while half the files still hold the
   previous answer.
+- **When a run is recorded.** A finished run states which basis its bars were rendered from,
+  per scenario in the run report and per run in the results ledger. It reads the stamp, not
+  the configuration, and a scenario that mounted no bar file records nothing rather than
+  borrowing the declaration. The one exception is a LIVE session: it renders its bars at
+  runtime, so there is no file to stamp and the declaration is all there is — which is why the
+  run record also says whether its input was an archive or a stream. Without that pair the
+  parity proof could not compare the live basis against the backtest's at all.
 
 ## Known limit
 

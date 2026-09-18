@@ -1,6 +1,8 @@
 """Run-results ledger tests (#390) — append per run + read all + filter."""
 
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
+from python.framework.types.api.report_types import RunResultRow
+from python.framework.types.log_layout_types import RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -154,3 +156,168 @@ def test_read_handles_schema_evolution(tmp_path, tmp_ledger, make_run_summary, m
     assert rows['old'].net_pnl == 2.0
     assert rows['new'].status == 'error'     # the current fragment's status survives the union
     assert rows['new'].error == 'boom'
+
+
+def test_what_a_run_consumed_reaches_the_row(tmp_ledger, make_run_summary, make_provenance):
+    """
+    The consumption record (#518) survives into the ledger, where a ranking can see it.
+
+    Recorded here rather than in the run header: the header is written at the run's START,
+    before anything is mounted, and cannot know. This row is written from a finished run.
+    """
+    prov = make_provenance(
+        run_id='r1', input_plane='archive', data_format_versions='1.5.0,1.7.0',
+        origin_classes='production', origin_evidence_grades='attested,stamped',
+        input_files=41, unstamped_input_files=3, price_bases='order_driven')
+    tmp_ledger.append(make_run_summary(), prov)
+
+    row = tmp_ledger.read().iloc[0]
+    assert row['input_plane'] == 'archive'
+    assert row['data_format_versions'] == '1.5.0,1.7.0'
+    assert row['origin_classes'] == 'production'
+    assert row['origin_evidence_grades'] == 'attested,stamped'
+    assert row['input_files'] == 41
+    assert row['unstamped_input_files'] == 3
+    assert row['price_bases'] == 'order_driven'
+
+
+def test_a_failed_run_still_records_what_it_read(tmp_ledger, make_run_summary, make_provenance):
+    """
+    An error row carries provenance too — and that is the row where it matters most.
+
+    A run that failed over development data and one that failed over production data are
+    different failures, and the ledger is the only place that distinction survives.
+    """
+    prov = make_provenance(run_id='r1', status='error', error='boom',
+                           input_plane='archive', origin_classes='development',
+                           input_files=7, unstamped_input_files=7,
+                           price_bases='quote_driven')
+    tmp_ledger.append(make_run_summary(), prov)
+
+    row = tmp_ledger.read().iloc[0]
+    assert row['status'] == 'error'
+    assert row['origin_classes'] == 'development'
+    assert row['unstamped_input_files'] == 7
+    assert row['price_bases'] == 'quote_driven'
+
+
+def test_every_ledger_column_is_declared_on_the_typed_row():
+    """
+    The projection must cover the table, or a column is written and reaches no reader.
+
+    `RunResultRow` is the typed read of a ledger row AND the field list the optimizer's CSV
+    export is built from. Pydantic ignores an unknown key without a word, so a column added to
+    `LEDGER_COLUMNS` and forgotten here lands on disk, parses cleanly, and is invisible to
+    every consumer — which is what had happened to the six #518 columns and to
+    r_win_count / r_loss_count. A pass count cannot catch that; only this comparison can.
+    """
+    missing = [c for c in LEDGER_COLUMNS if c not in RunResultRow.model_fields]
+
+    assert missing == [], (
+        f'{missing} are written to the ledger and dropped on the way back in — the data is on '
+        f'disk and no typed reader or exported CSV can see it')
+
+
+def test_every_declared_column_is_a_typed_field():
+    """
+    A column on disk that the typed row does not declare is written and read by nobody.
+
+    This is the shape of a defect that had been standing for months: eight columns were
+    appended to `LEDGER_COLUMNS`, written into every fragment, and silently dropped on the
+    way in — Pydantic discards an unknown key without a word, so the parquet held the answer
+    and every reader saw a default. `_write_csv` builds the optimizer's export from the
+    model's field list too, which is the second surface the same omission reaches.
+
+    The guard is a derivation rather than a copy: it asks the two declarations to agree,
+    so a column added tomorrow is covered the moment it is added.
+    """
+    missing = [c for c in LEDGER_COLUMNS if c not in RunResultRow.model_fields]
+    assert not missing, (
+        f'declared in LEDGER_COLUMNS but not on RunResultRow, so written and never read: '
+        f'{missing}')
+
+
+def test_a_live_row_carries_its_deployment_and_profile_hash(
+        tmp_ledger, make_run_summary, make_provenance):
+    """
+    The two columns #497 appended survive the round trip through parquet.
+
+    They are what makes a restarted bot readable as one history, and they are written by the
+    LIVE path only — which has no sweep id, so nothing else in the row groups it.
+    """
+    tmp_ledger.append(
+        make_run_summary(net_pnl=12.5),
+        make_provenance(run_id='20260917_080000_aaaabbbb',
+                        deployment_id='deploy_20260917_080000_ab12',
+                        profile_hash='opa1b2c3'))
+
+    row = tmp_ledger.read_rows()[0]
+    assert row.deployment_id == 'deploy_20260917_080000_ab12'
+    assert row.profile_hash == 'opa1b2c3'
+
+
+def test_a_one_off_row_names_no_deployment(tmp_ledger, make_run_summary, make_provenance):
+    """
+    A session that stands alone writes an EMPTY deployment, never a placeholder.
+
+    The empty value is what a history reader skips on. Inventing an identity for an
+    ungrouped session would manufacture exactly the continuity nobody declared.
+    """
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='20260917_090000_ccccdddd'))
+    assert tmp_ledger.read_rows()[0].deployment_id == ''
+
+
+def test_a_row_says_which_pipeline_produced_it(tmp_ledger, make_run_summary, make_provenance):
+    """
+    `run_type` is DECLARED, not inferred.
+
+    Before it, telling a backtest from a live session meant reading `input_plane` — a field
+    that answers a different question and arrived only with #518, so 520 of 616 rows could
+    not say what they were. The value comes from the same constants the run tree is laid out
+    with, so the ledger, the run index and the directory on disk cannot drift apart.
+    """
+    tmp_ledger.append(make_run_summary(),
+                      make_provenance(run_id='r_sim', run_type=RUN_TYPE_SIMULATION))
+    tmp_ledger.append(make_run_summary(),
+                      make_provenance(run_id='r_live', scenario_set_name='my_bot',
+                                      run_type=RUN_TYPE_LIVE))
+
+    by_run = {row.run_id: row for row in tmp_ledger.read_rows()}
+    assert by_run['r_sim'].run_type == RUN_TYPE_SIMULATION
+    assert by_run['r_live'].run_type == RUN_TYPE_LIVE
+
+
+def test_the_kind_is_derived_from_what_the_row_already_carries(
+        tmp_ledger, make_run_summary, make_provenance):
+    """
+    The SUBTYPE is not a column, and must not become one.
+
+    `sweep_id` and `deployment_id` already carry it; a stored subtype would be the same fact
+    written twice, and the copy nobody maintains is the one that eventually disagrees (§19).
+    Derived, it cannot drift — the same reason `RunInfo.has_reports` is computed.
+    """
+    tmp_ledger.append(make_run_summary(),
+                      make_provenance(run_id='r_plain', run_type=RUN_TYPE_SIMULATION))
+    tmp_ledger.append(make_run_summary(),
+                      make_provenance(run_id='r_sweep', scenario_set_name='set__c000',
+                                      sweep_id='sweep_1', run_type=RUN_TYPE_SIMULATION))
+    tmp_ledger.append(make_run_summary(),
+                      make_provenance(run_id='r_deployed', scenario_set_name='my_bot',
+                                      deployment_id='deploy_1', run_type=RUN_TYPE_LIVE))
+
+    by_run = {row.run_id: row for row in tmp_ledger.read_rows()}
+    assert by_run['r_plain'].run_kind == 'single_run'
+    assert by_run['r_sweep'].run_kind == 'sweep'
+    assert by_run['r_deployed'].run_kind == 'continuous'
+
+
+def test_an_untyped_row_claims_no_kind_either(tmp_ledger, make_run_summary, make_provenance):
+    """
+    A fragment written before the column existed reads back as UNKNOWN, never as a guess —
+    and the derived kind refuses to answer as well, rather than reporting 'single_run' for a
+    row whose pipeline nobody knows.
+    """
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='r_old'))
+    row = tmp_ledger.read_rows()[0]
+    assert row.run_type == ''
+    assert row.run_kind == ''

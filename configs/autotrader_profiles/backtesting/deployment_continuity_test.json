@@ -1,0 +1,67 @@
+{
+  "name": "deployment_continuity_test",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "mock",
+  "deployment": {
+    "_comment": "The one tracked profile that declares TRUE. Two sessions of it must land in one history: the first mints the identity, the second inherits it from the carry-over. Everything else here is kept minimal so the pair runs twice in a test.",
+    "continuous": true
+  },
+  "strategy_config": {
+    "decision_logic_type": "CORE/simple_consensus",
+    "worker_instances": {
+      "rsi_fast": "CORE/rsi",
+      "bollinger_main": "CORE/bollinger",
+      "obv_volume": "CORE/obv"
+    },
+    "workers": {
+      "rsi_fast": {
+        "periods": {
+          "M5": 14
+        }
+      },
+      "bollinger_main": {
+        "periods": {
+          "M30": 20
+        },
+        "deviation": 2
+      },
+      "obv_volume": {
+        "periods": {
+          "M5": 20
+        }
+      }
+    },
+    "decision_logic_config": {
+      "rsi_oversold": 30,
+      "rsi_overbought": 70,
+      "bollinger_lower_threshold": 0.3,
+      "bollinger_upper_threshold": 0.7,
+      "min_confidence": 0.5,
+      "lot_size": 0.001,
+      "min_free_margin": 1000
+    }
+  },
+  "tick_source": {
+    "type": "mock"
+  },
+  "execution": {
+    "bar_max_history": 30
+  },
+  "cold_start": {
+    "_comment": "The carry-over is what hands the deployment identity from one session to the next. 'auto' because an unattended restart is the case this exists for — a prompt would hang it.",
+    "adoption_mode": "auto"
+  },
+  "display": {
+    "enabled": false
+  },
+  "scenario_settings": {
+    "start_date": "2026-01-24T14:19:46+00:00",
+    "max_ticks": 300,
+    "data_mode": "realistic",
+    "balances": {
+      "USD": 10000.0,
+      "BTC": 0.0
+    }
+  }
+}

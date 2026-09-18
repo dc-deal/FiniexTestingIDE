@@ -8,10 +8,11 @@ project actually serves.
 from typing import ClassVar, Tuple
 
 from finiex_auth.consumer_token_base import ConsumerTokenBase
-from pydantic import BaseModel
+
+from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
 
-class ApiAuthConfig(BaseModel):
+class ApiAuthConfig(StrictConfigModel):
     """
     Whether the API requires a token, independent of whether any token is configured.
 

@@ -33,6 +33,7 @@
 |----------|-------------|
 | [AutoTrader Architecture](autotrader/autotrader_architecture.md) | Pipeline, threading model, config, tick sources, clipping monitor |
 | [Live Outage Handling](user_guides/live_outage_handling_guide.md) | Connection/feed outages — mandatory staleness hooks, escalation ladder, OrderGuard floor, outage drills (#434/#436) |
+| [Live Deployment & Ledger](user_guides/live_deployment_ledger_guide.md) | Reading a bot across its restarts — the mandatory `deployment` declaration, the history command, gaps and parameter changes (#497) |
 | [Adapter Development Guide](user_guides/adapter/adapter_development_guide.md) | How to implement a new broker adapter (Tier 1/2/3, config files, credentials, test suite) |
 | [Kraken Adapter Setup](user_guides/adapter/setup_kraken_adapter.md) | API keys, broker settings, dry-run, first live run |
 
@@ -49,6 +50,7 @@
 | [Market Model](architecture/market_model.md) | The three independent axes describing a venue — asset class, how a position is financed, and how prices come about — all eight combinations with what this project supports, and which price the strategy plane reads against the valuation plane |
 | [Data Storage Layout](architecture/data_storage_layout.md) | The store catalog — eleven data stores by kind (record · carry-over · archive · derived · special) and retrieval form, the index obligation, why the bulk form stays outside the abstraction (#486) |
 | [Accounting Periods](architecture/accounting_periods.md) | Which clock resets what — the swap rollover at 17:00 New York against the risk day at midnight UTC, the tick-level equity sample, the two carry-over cadences, and what deliberately does not reset |
+| [Data Provenance](architecture/data_provenance.md) | Who wrote an imported file and what that is allowed to mean — the identity a producer states, the registry that maps it here, the three evidence grades, and the gate that keeps development data out of a measurement |
 | [Credentials Layout](architecture/credentials_layout.md) | Which secret points which way — the inbound consumer registry against the outbound peer and venue credentials, why an address never travels apart from its credential, and when the folder splits |
 | [External Connection Policy](architecture/external_connection_policy.md) | One retry ladder, one give-up rule, one classification for all seven outbound connections — TRANSIENT / TERMINAL / INADMISSIBLE, why a write is resolved by asking rather than retried, the `cl_ord_id` wire key, who owns the wait (#473) |
 | [Drift Audit](architecture/drift_audit.md) | Read-only local-vs-broker drift telemetry (#327) — FEE / VOLUME / PRICE counters, async trades-query consumer, live-display footer |
@@ -157,7 +159,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Tick Processing Budget](tests/data/tick_processing_budget_tests.md) | Virtual clock filtering, ClippingStats |
 | [Scenario Generator](generator/tests_scenario_generator_docs.md) | Block generation tests |
 | [Batch Validations](tests/framework/batch_validations_tests.md) | Phase 0 validation: ScenarioValidator, BrokerDataPreparator map filtering |
-| [Config Tests (Cascade + Merge Utility + Loader Field Coverage)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests, every AutoTrader config-block field reachable from JSON |
+| [Config Tests (Cascade + Merge Utility + Loader Field Coverage)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests, every AutoTrader config-block field reachable from JSON, app_config strictness, and what a producing instance's identity means here |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
 | [Live Telemetry Tests](tests/framework/live_telemetry_tests.md) | Frame serialization + the signal-transport block in the operator's CONNECTION panel |
 | [Reporting Pipeline Tests](tests/framework/reporting_tests.md) | Unified reporting (#391–#403): builders, IO/store, console renderers — including the two signal planes and what a live run may not claim |

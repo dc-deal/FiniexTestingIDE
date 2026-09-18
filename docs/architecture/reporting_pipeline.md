@@ -38,7 +38,7 @@ see *Pipeline in detail* below.
 | Shared core | `framework/reporting/shared_report_coordinator.py` — `SharedReportCoordinator.derive_and_persist(run_id, units, io_dir, signal_scenario_map)` (+ `builders/unified_reports.py` — `UnifiedReports`) | the **units-derived DERIVE+PERSIST core both pipelines delegate to** (#403): builds + writes the 9 sections identical across sim + live (trade / order / portfolio / pending / execution-stats / run-summary / worker-decision / signal / feed-stability) and returns them as `UnifiedReports`, which each coordinator reuses for its own console + ledger. Its `record_run_artifacts(run_dir)` is called LAST by each pipeline — deliberately not inside `derive_and_persist`, because both pipelines write further artifacts of their own after it returns, so a list taken there would be short by exactly those |
 | IO | `framework/reporting/io/` — `artifact_specs.py` (the 17 specs: file name + model) · `report_artifact_io.py` (`write_artifact` / `read_artifact`, generic and typed) · `report_csv_io.py` (the 3 CSV surfaces) · `report_filters.py` (the 2 API row filters) | write the artifact(s); read back + filter (the API path). One writer and one reader for every artifact since #486 — it used to be one unit per artifact, eighteen of them differing in a file name and a model class |
 | Store | `framework/reporting/store/report_store.py` — `ReportStore` | resolves a run's artifacts through the **run index** (`run_index.py`), never by walking the tree: a run is looked up by id, and its directory is a column. The lookup is an EXACT match against the index, and that is the guard: the id arrives from a URL and was previously interpolated into a glob (`'*'` matched the first run). Membership in a table of known ids is strictly stronger than a shape check, which accepts anything well-formed. The depth-dependent search this used to need is gone with it. **One typed getter serves every artifact** (#486): `get(run_id, BROKER_ARTIFACT)` is statically `Optional[BrokerReport]`. The two artifacts the API filters server-side keep their own methods — `get_trade_history` / `get_order_history` — because filtering is a store concern, so console, file and API cannot disagree |
-| Ledger | `framework/reporting/store/run_results_ledger.py` — `RunResultsLedger` | the **cross-run** PERSIST sink (#390): appends one flat row per (run × currency) — the `RunSummary` KPIs + provenance (`param_hash`, git, component versions, config snapshot, sweep tagging) — to `runs/ledger/` as one parquet fragment per run. Separate from the per-run API artifacts above; it is the substrate the Parameter Optimization system ranks over. Provenance via `store/run_provenance_builder.py` — `build_run_provenance` (sim) / `build_run_provenance_from_session` (live, #403 · 5.a); **both pipelines append**. See [Parameter Optimization System](parameter_optimization_system.md) |
+| Ledger | `framework/reporting/store/run_results_ledger.py` — `RunResultsLedger` | the **cross-run** PERSIST sink (#390): appends one flat row per (run × currency) — the `RunSummary` KPIs + provenance (`param_hash`, git, component versions, config snapshot, sweep tagging) — to `runs/ledger/` as one parquet fragment per run. Separate from the per-run API artifacts above; it is the substrate the Parameter Optimization system ranks over. Since #518 the row also records **which DATA the run was produced over** (`input_plane`, the distinct format versions / origin classes / evidence grades, the input-file counts, and `price_bases` — which price the bars it read were rendered from, §31c) — recorded here rather than in the run header, which is written before anything is mounted and cannot know. Provenance via `store/run_provenance_builder.py` — `build_run_provenance` (sim) / `build_run_provenance_from_session` (live, #403 · 5.a); **both pipelines append**. See [Parameter Optimization System](parameter_optimization_system.md) |
 | Console | `framework/reporting/console/run_console_renderer.py` — `RunConsoleRenderer` (+ the `*_summary` sub-presenters) | the **PRESENT** layer: `RunConsoleRenderer` owns the one canonical end-of-run section order both pipelines render through (#403 Phase 2). A `None` slot is skipped (render-if-present → live omits the sim-only sections); the per-currency AGGREGATE blocks render only for a multi-unit run (`unit_count > 1`); the closing block is pipeline-specific — `sim_executive_summary` (sim) / `live_session_summary` (live) |
 | Persist (sim) | `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()` | consumes the finished `BatchExecutionSummary`; delegates the 8 shared sections to `SharedReportCoordinator`, derives + writes its sim-only sections, renders the console via `RunConsoleRenderer` (Executive Summary closing), and appends to the ledger |
 | Persist (live) | `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()` | the live mirror: consumes the finished `AutoTraderResult`; same shared core, writes its live-specific sections, renders the **same** `RunConsoleRenderer` (the shared sections in sim order + the live Session Summary closing, #403 Phase 2), and appends to the ledger (5.a) |
@@ -238,7 +238,41 @@ Three consequences worth knowing before touching a figure here:
   `balance` is the QUOTE balance alone, so a held coin contributes only its unrealised gain and
   never its value. Measured on a 1000 USD account buying 0.01 BTC: **1.57 USD** the right way
   (fee plus spread, real) against **603 USD** the wrong way — 384×, and the wrong one looks
-  like a 60 % drawdown caused by a purchase. #497 owns the definition itself.
+  like a 60 % drawdown caused by a purchase.
+- **The drawdown, defined.** The reported figure is the largest peak-to-trough decline of the
+  ACCOUNT's equity curve — what the word means outside this repository. Three properties are
+  load-bearing and none of them is obvious from the number:
+  - It is sampled on **every tick in both pipelines**, before the clipping gate. A drawdown
+    measures what the market did, not whether the algo was looking.
+  - Its **percentage is carried per sample**, measured against the peak standing at that
+    moment — never `max_drawdown / max_equity` at the end. Those two floats belong to
+    different instants, and dividing them understates every run that recovered, which is
+    every profitable one.
+  - **A live figure may span several sessions.** A restart used to open a new curve at
+    whatever the account was worth on boot, so a resumed session reported no loss at all.
+    The peak, the deepest decline and its percentage now travel through the cold-start
+    carry-over, governed by `safety.persist_baseline`. `drawdown_carried_from` and
+    `drawdown_restarts` on the unit say which period the number covers — without them a
+    month and an afternoon render identically. Both are always empty in the simulation: a
+    backtest starts at its own start, and a peak read from outside its inputs would make two
+    runs over identical data disagree. Crash-safety between the store's write points is
+    #476's subject, not this one.
+  - **A LIVE ledger row is therefore CUMULATIVE over its deployment, not session-local**, and
+    that decides how to read several of them. Each session writes its own fragment under its
+    own run id; the rows are grouped by the deployment identity the run header carries as its
+    `parent_id` — the same field, and the same kind of parent, a sweep's combinations use.
+    Because every row holds the RUNNING figure against the inherited peak, **`max()` is the
+    right reduction over a deployment's rows and `sum()` or `mean()` would count one decline
+    several times.** The identity `max(rows) == the carried figure` holds only while the peak
+    stays inherited; a per-session peak would read more naturally and break it silently, which
+    is why a test asserts it rather than a comment.
+    The row carries `max_equity` and `account_max_drawdown_pct` beside the amount, because the
+    percentage cannot be re-derived from the other two — it was measured against the peak
+    standing at the time.
+  Two other readings exist and are deliberately NOT this one: a TRADE's own excursion
+  (`TradeRecord.mae_pnl`, #389, measured against that one position's entry) and the live
+  SAFETY reading (measured against a configured baseline, `fixed` or `high_water_mark`).
+  Each renders under its own label; merging them is the defect #497 removed.
 - **The ledger carries both.** `unrealized_pnl`, `final_equity` and `open_position_count` are
   ledger columns, because a sweep ranking on `net_pnl` alone rates a variant still HOLDING a
   winner below one that closed it — the same distortion the force-close caused in the other

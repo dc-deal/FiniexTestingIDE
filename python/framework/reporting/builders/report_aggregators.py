@@ -157,10 +157,16 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
     else:
         profit_factor = total_profit / total_loss if total_loss > 0 else (
             0.0 if total_profit == 0 else None)
-    max_drawdown = 0.0
+    # The three travel together: whichever unit owns the deepest decline also supplies the
+    # peak it fell from and the share it was. Taking each by its own max would pair one
+    # scenario's trough with another's peak — the defect #497 removed from the console
+    # aggregate, and it would be back here the moment they are reduced separately.
+    max_drawdown, max_equity, max_dd_pct = 0.0, 0.0, 0.0
     for r in rows:
         if abs(r.account_max_drawdown) > abs(max_drawdown):
             max_drawdown = r.account_max_drawdown
+            max_equity = r.max_equity
+            max_dd_pct = r.account_max_dd_pct
     return PortfolioAggregateRow(
         currency=currency,
         unit_count=len(rows),
@@ -173,6 +179,8 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
         total_loss=total_loss,
         net_profit=total_profit - total_loss,
         account_max_drawdown=max_drawdown,
+        max_equity=max_equity,
+        account_max_dd_pct=max_dd_pct,
         total_fees=sum(r.total_fees for r in rows),
         unrealized_pnl=sum(r.unrealized_pnl for r in rows),
         final_equity=sum(r.final_equity for r in rows),

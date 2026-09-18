@@ -14,7 +14,10 @@ from python.configuration.autotrader.autotrader_config_loader import load_autotr
 
 def _write_profile(tmp_path, extra: dict):
     profile = tmp_path / 'api_monitor_profile.json'
-    base = {'broker_type': 'kraken_spot', 'adapter_type': 'mock'}
+    # `deployment` is mandatory since #497 — the loader refuses a profile without it,
+    # and a hand-built fixture is exactly where that is easy to forget.
+    base = {'broker_type': 'kraken_spot', 'adapter_type': 'mock',
+            'deployment': {'continuous': False}}
     base.update(extra)
     profile.write_text(json.dumps(base))
     return str(profile)

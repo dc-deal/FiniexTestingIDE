@@ -47,3 +47,49 @@ class RunProvenance:
     sweep_params: Optional[Dict[str, Any]] = None
     sweep_objective: Optional[str] = None    # the sweep spec's objective (report defaults to it)
     sweep_maximize: Optional[bool] = None    # the sweep spec's rank direction
+    # ---- What this run CONSUMED (#518) -------------------------------------------------
+    # Recorded HERE and deliberately not in the run header. The header is written at the run's
+    # START, before anything is mounted, and has a write and a read and no update path by
+    # design — at that moment nothing is known about what will be read. This record is built
+    # from a FINISHED run, so it is the first artifact that can answer the question at all.
+    #
+    # The argument is `logic_version`'s, one drawer over: a ranking that cannot tell which DATA
+    # a row was produced over is comparing runs that read different things under one column
+    # name. For the thirty-day parity proof that is not a nicety — a live run and the backtest
+    # it is compared against have to be shown to have read the same archive.
+    #
+    # They sit apart from `data_broker_type`, which they belong beside, only because a dataclass
+    # puts every defaulted field after every undefaulted one.
+    #
+    # `input_plane` is what keeps an empty value honest: a LIVE session consumes a socket and
+    # has no archive input, so its three joined strings are empty BY CONSTRUCTION. Without this
+    # field that emptiness would be indistinguishable from a sim run whose recording broke —
+    # the same bytes for "nothing to read" and "we were not looking".
+    input_plane: str = ''                   # 'archive' (sim) | 'stream' (live)
+    data_format_versions: str = ''          # distinct, sorted, comma-joined
+    origin_classes: str = ''                # distinct, sorted, comma-joined
+    origin_evidence_grades: str = ''        # distinct, sorted, comma-joined
+    input_files: int = 0                    # files the scenarios actually read
+    unstamped_input_files: int = 0          # of those, the ones not production-and-stamped
+    # WHICH PRICE the bars this run read were rendered from (§31c). Joined-distinct like the
+    # three above, because a run spans brokers and timeframes and a half-re-rendered archive
+    # legitimately answers 'order_driven,unknown' — which is the condition the stamp exists to
+    # expose rather than to smooth over. On the LIVE side it is a DECLARATION and not a stamp;
+    # `input_plane` is what tells the two apart.
+    price_bases: str = ''                   # distinct, sorted, comma-joined
+    # WAS this run declared part of a continuous deployment, and WHICH one (#497). The
+    # RESOLVED answer: a profile declaring continuous under `--one-off` records ''. Without
+    # it a reader cannot tell a session that belongs to no deployment from one whose
+    # grouping was simply never written — the same distinction `input_plane` draws for the
+    # empty consumption fields.
+    deployment_id: str = ''
+    # Fingerprint of the OPERATIONAL half of the profile — everything except strategy_config,
+    # which `param_hash` already covers. Two hashes because they answer two questions: whether
+    # the STRATEGY moved (what #512 compares on) and whether the OPERATION moved (a risk
+    # threshold, a timeout, a guard). One value answering both would answer neither — a
+    # changed stop level must not read as a different strategy.
+    profile_hash: str = ''
+    # WHICH PIPELINE produced this run — 'simulation' | 'live', taken from the same constants
+    # the run tree is laid out with (`log_layout_types.RUN_TYPE_*`) rather than a literal, so
+    # the ledger, the run index and the directory on disk cannot drift into three vocabularies.
+    run_type: str = ''

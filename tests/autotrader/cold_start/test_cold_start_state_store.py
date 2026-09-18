@@ -17,6 +17,7 @@ import pytest
 from python.framework.persistence.cold_start_state_index import ColdStartStateIndex
 from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.types.persistence_types import (
+    AccountDrawdownCarryOver,
     BaselineKind,
     BaselineOrigin,
     BaselineQuantities,
@@ -182,6 +183,132 @@ class TestTheRiskBaselineSurvivesTheDisk:
     def test_a_first_boot_has_none_rather_than_a_default(self, store):
         """A zero-valued record would be a denominator nobody took."""
         assert store.load().risk_baseline is None
+
+
+class TestTheReportedDrawdownSurvivesTheDisk:
+    """
+    The same proof one reader over (#497).
+
+    The baseline above is what a LIMIT measures against; this is what the REPORT states. Both
+    used to die with the process and #356 fixed only the first, so a thirty-day run with
+    rehearsed restarts (#476) reported the drawdown of its last segment and said nothing about
+    the rest — silently, because a carried figure and a fresh one look identical.
+
+    Asserted at the DISK rather than in memory for the reason the baseline suite states: a
+    field can be declared, restored and rendered correctly and still be dropped by the one
+    write that carries it, and every in-memory test stays green while the drift is back.
+    """
+
+    @staticmethod
+    def _drawdown() -> AccountDrawdownCarryOver:
+        # A run that peaked at 11 000, fell to 9 500, then recovered: 13.6 % against the peak
+        # standing at the time, where the quotient of the two finished figures would say less.
+        return AccountDrawdownCarryOver(
+            max_equity=12_000.0,
+            max_drawdown=1_500.0,
+            max_drawdown_pct=13.636363636363637,
+            taken_at_utc='2026-09-10T08:00:00+00:00',
+            restarts=2,
+            curve_started_utc='2026-09-01T06:00:00+00:00')
+
+    def test_it_comes_back_field_for_field(self, store):
+        store.save(session_key='1641', highest_position_counter=1,
+                   account_drawdown=self._drawdown())
+
+        assert store.load().account_drawdown == self._drawdown(), (
+            'the successor cannot continue a curve it cannot read')
+
+    def test_the_percentage_is_carried_rather_than_recomputed(self, store):
+        """
+        The defect #497 removed, now across a process boundary.
+
+        `max_drawdown / max_equity` is a SMALLER number than the truth on every run that
+        recovered — which is every profitable one — because the two floats belong to different
+        instants. A successor that stored only the two and re-derived the share would
+        reintroduce it at the one point nobody looks.
+        """
+        store.save(session_key='1641', highest_position_counter=1,
+                   account_drawdown=self._drawdown())
+
+        restored = store.load().account_drawdown
+        quotient = restored.max_drawdown / restored.max_equity * 100
+
+        assert restored.max_drawdown_pct == pytest.approx(13.6363636)
+        assert restored.max_drawdown_pct > quotient, (
+            f'the carried share is {restored.max_drawdown_pct:.2f} % and the quotient of the '
+            f'two finished figures is {quotient:.2f} % — storing only the floats would ship '
+            f'the smaller one')
+
+    def test_not_supplying_it_leaves_the_stored_one_untouched(self, store):
+        """
+        The store's `None` convention, on the field that would silently lose a month.
+
+        The book is written on every structural change of the open positions. If one of those
+        writes erased the curve, the next restart would start at its own opening balance and
+        the thirty-day drawdown would describe whatever happened after the last position
+        opened.
+        """
+        store.save(session_key='1641', highest_position_counter=1,
+                   account_drawdown=self._drawdown())
+
+        store.save(session_key='1641', highest_position_counter=2)
+
+        assert store.load().account_drawdown == self._drawdown()
+
+    def test_a_first_boot_has_none_rather_than_a_default(self, store):
+        """A zero-valued record would claim a peak of zero and never report a decline."""
+        assert store.load().account_drawdown is None
+
+    def test_the_curve_start_is_not_the_handover_stamp(self):
+        """
+        Two stamps, and confusing them understates exactly what the count exists to show.
+
+        `taken_at_utc` is re-written on every carry-over write, so it walks toward the present
+        while the deployment grows. `curve_started_utc` is minted once and copied forward — a
+        restart does not begin a new curve, the same convention the risk baseline states for
+        its own restored record.
+        """
+        record = self._drawdown()
+
+        assert record.curve_started_utc == '2026-09-01T06:00:00+00:00'
+        assert record.taken_at_utc == '2026-09-10T08:00:00+00:00'
+        assert record.curve_started_utc < record.taken_at_utc, (
+            'the start must be the older of the two, or the line reading "in force since" is '
+            'reporting the handover')
+
+    def test_the_deployment_identity_survives_so_the_sessions_can_be_joined(self, store):
+        """
+        The join key, and it is the one thing here that cannot be reconstructed afterwards.
+
+        Each session writes its own ledger fragment under its own run id; the profile name
+        says which BOT, never which deployment — the same profile stopped for a month and
+        restarted is a second one. Written while the sessions run, the rows assemble into one
+        history; missing, they are N records nobody can attach to each other.
+        """
+        store.save(session_key='1641', highest_position_counter=1,
+                   deployment_id='deploy_20260901_060000')
+
+        store.save(session_key='8b3f', highest_position_counter=2)
+
+        assert store.load().deployment_id == 'deploy_20260901_060000', (
+            'the successor minted its own identity and the deployment silently became two')
+
+    def test_the_baseline_and_the_curve_are_two_records(self, store):
+        """
+        They answer different questions and must not be merged (#497 phase 2).
+
+        The baseline is a denominator a limit compares against; the curve is the account's own
+        peak-to-trough history. The peak here is deliberately NOT the baseline's value — if one
+        were derived from the other, this is where it would show.
+        """
+        store.save(session_key='1641', highest_position_counter=1,
+                   risk_baseline=TestTheRiskBaselineSurvivesTheDisk._baseline(),
+                   account_drawdown=self._drawdown())
+
+        payload = store.load()
+
+        assert payload.risk_baseline.value == pytest.approx(10_231.5)
+        assert payload.account_drawdown.max_equity == pytest.approx(12_000.0)
 
 
 class TestUnreadableDocument:

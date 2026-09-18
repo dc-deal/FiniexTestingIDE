@@ -74,7 +74,7 @@ python python/cli/api_server_cli.py --reload
 
 Or use the VS Code launch entry **🚀 API Server (Dev)**.
 
-The API is available at `http://localhost:8000`. OpenAPI UI: `http://localhost:8000/docs`.
+The API is available at `http://localhost:8000`. OpenAPI UI: `http://localhost:8000/docs` — served only while no consumer token is configured, because the schema routes sit outside the prefix everything else is gated under (`docs/architecture/api_server_architecture.md`, *Schema surface*).
 
 The base `docker-compose.yml` publishes that port as `127.0.0.1:8000:8000` — the operator's own
 machine and nothing else. That is deliberate rather than cautious: the `reports` surface names

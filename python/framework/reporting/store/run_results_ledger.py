@@ -14,6 +14,7 @@ provenance. The logical leading key for ranking is `param_hash`; filter by any c
 
 import json
 import math
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -40,6 +41,12 @@ LEDGER_COLUMNS: List[str] = [
     'decision_logic_type', 'decision_version', 'worker_versions',
     'config_snapshot', 'symbols', 'data_broker_type', 'currency',
     'net_pnl', 'expectancy', 'profit_factor', 'win_rate', 'account_max_drawdown',
+    # The drawdown's two companions. The PERCENTAGE cannot be re-derived from the amount
+    # and the peak — it was measured against the peak standing at the time, and dividing
+    # the two finished figures understates every run that recovered (#497). A live row is
+    # CUMULATIVE over its deployment, so `max()` is the right reduction over a deployment's
+    # rows and `sum()` would count one decline several times.
+    'max_equity', 'account_max_drawdown_pct',
     # #492 — realised (net_pnl) and valued (final_equity) side by side. A ranking on
     # net_pnl alone rates a variant still HOLDING a winner below one that closed it, and
     # a run end no longer closes anything. Appended, so older fragments stay readable.
@@ -48,6 +55,38 @@ LEDGER_COLUMNS: List[str] = [
     'avg_win_r', 'avg_loss_r', 'r_trade_count', 'r_win_count', 'r_loss_count',
     'orders_sent', 'orders_executed', 'orders_rejected', 'sl_tp_triggered',
     'signal_fresh_ratio',
+    # #518 — WHICH DATA this row was produced over. The same argument as `logic_version` at the
+    # top of this list, one drawer over: that one says a measure may have changed under a stable
+    # column name, these say the INPUT may have. A ranking across rows that read different
+    # archives compares runs that are not comparable, and the thirty-day parity proof rests on
+    # being able to show a live run and its backtest read the same thing. `input_plane` is what
+    # keeps an empty triple honest — a live session reads a socket, so empty MEANS something
+    # there and would otherwise be indistinguishable from a sim row that recorded nothing.
+    # Appended, so older fragments stay readable and read back as None.
+    'input_plane', 'data_format_versions', 'origin_classes', 'origin_evidence_grades',
+    'input_files', 'unstamped_input_files', 'price_bases',
+    # WHICH deployment this row belongs to and what the OPERATIONAL half of the
+    # profile looked like (#497). The pair is what lets a reader attribute a change:
+    # the rows of one deployment, and the hash that says where the parameters moved.
+    'deployment_id', 'profile_hash',
+    # WHICH PIPELINE produced this row — 'simulation' or 'live', from the same two constants
+    # the run tree and the run index are named after (`log_layout_types`). Declared rather
+    # than inferred: before it, telling a backtest from a live session meant reading
+    # `input_plane`, which exists to answer a different question and is empty on everything
+    # written before #518 — measured 2026-09-18, 520 of 616 rows could not say what they were.
+    # The SUBTYPE is deliberately NOT a column: `sweep_id` and `deployment_id` already carry
+    # it, and a second encoding of a fact is the copy that eventually disagrees (§19).
+    # `RunResultRow.run_kind` derives it instead.
+    'run_type',
+    # WHEN this row was written, which is within seconds of when the run ENDED — the reports
+    # are persisted at its close and the append is the last step. The ledger had no end of any
+    # kind, and `SweepSummary.duration_s` says so in its own comment ("last - first run start,
+    # no per-run end in the ledger"). Without it a deployment's gap can only be measured
+    # between two STARTS, which counts the previous session's whole runtime as downtime: a
+    # bot that ran 06:00-18:00 and restarted at 19:00 reads as a 13-hour gap instead of one.
+    # A pure PROVENANCE stamp off the wall clock, and legitimately so (§9): it records when WE
+    # wrote this, nothing decides on it, and the gap it feeds is REPORTED and never judged.
+    'recorded_at_utc',
 ]
 
 
@@ -171,6 +210,17 @@ class RunResultsLedger:
             'config_snapshot': p.config_snapshot,
             'symbols': json.dumps(p.symbols),
             'data_broker_type': p.data_broker_type,
+            'input_plane': p.input_plane,
+            'data_format_versions': p.data_format_versions,
+            'origin_classes': p.origin_classes,
+            'origin_evidence_grades': p.origin_evidence_grades,
+            'input_files': p.input_files,
+            'unstamped_input_files': p.unstamped_input_files,
+            'price_bases': p.price_bases,
+            'deployment_id': p.deployment_id,
+            'profile_hash': p.profile_hash,
+            'run_type': p.run_type,
+            'recorded_at_utc': datetime.now(timezone.utc).isoformat(),
             'logic_version': RunLedgerIndex.LOGIC_VERSION,
         }
 
@@ -186,6 +236,8 @@ class RunResultsLedger:
             'profit_factor': currency.profit_factor,
             'win_rate': currency.win_rate,
             'account_max_drawdown': currency.account_max_drawdown,
+            'max_equity': currency.max_equity,
+            'account_max_drawdown_pct': currency.account_max_dd_pct,
             'unrealized_pnl': currency.unrealized_pnl,
             'final_equity': currency.final_equity,
             'open_position_count': currency.open_position_count,

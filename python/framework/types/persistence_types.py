@@ -288,6 +288,51 @@ class RiskBaseline(BaseModel):
     exclusive_account: bool = False
 
 
+class AccountDrawdownCarryOver(BaseModel):
+    """
+    The REPORT's drawdown figures, carried across a restart (#497).
+
+    The sibling of RiskBaseline one plane over, and it exists for the same reason at a
+    different reader. The baseline is the denominator a risk LIMIT measures against; these
+    three floats are the account's own peak-to-trough history as the REPORT states it. Both
+    used to die with the process, and #356 fixed only the first.
+
+    Why all three travel together: restoring the peak alone is worse than restoring nothing,
+    because the reference comes back while the deepest excursion under it is forgotten — a
+    month in which the account was once 1500 down would then report a drawdown of whatever
+    happened after the last restart. And `max_drawdown_pct` cannot be derived from the other
+    two: it is measured against the peak STANDING AT THE TIME, which is the construction #497
+    put in place precisely because the quotient of the two finished figures understates every
+    run that recovered.
+
+    It is NOT folded into RiskBaseline. That record answers "which denominator produced this
+    percentage"; this one is a running extremum pair. Merging them would re-join the two
+    readings this issue separated.
+
+    Args:
+        max_equity: The highest account value ever reached, across all sessions so far
+        max_drawdown: The deepest decline in account currency
+        max_drawdown_pct: The deepest decline as a share of the peak standing at that moment
+        taken_at_utc: When this record was last written, ISO-8601 UTC. Wall-clock, and
+            legitimately so (§9): it stamps our own act of writing and nothing decides on it
+        restarts: How many sessions these figures now span. Zero means one session, so the
+            reader can tell a carried figure from a fresh one — without it a thirty-day
+            drawdown is indistinguishable from an afternoon's
+        curve_started_utc: When the curve BEGAN, minted once and copied forward verbatim.
+            Distinct from `taken_at_utc`, which is re-stamped on every write and therefore
+            walks toward the present while the span grows — a report asking "since when" and
+            reading the handoff stamp understates exactly the period the count exists to
+            make visible. Same convention as `BaselineOrigin.RESTORED_CARRY_OVER`: a restart
+            does not begin a new curve, so nothing may re-stamp its start
+    """
+    max_equity: float
+    max_drawdown: float
+    max_drawdown_pct: float
+    taken_at_utc: str
+    restarts: int = 0
+    curve_started_utc: str = ''
+
+
 class ColdStartPayload(BaseModel):
     """
     The framework's own carry-over: what the NEXT session needs to recognise its predecessor
@@ -317,11 +362,22 @@ class ColdStartPayload(BaseModel):
         risk_baseline: The denominator every risk limit measures against (#356). None means
             no session has written one yet — the successor then takes a fresh baseline,
             which is the correct first-run behaviour and the only case in which it should
+        account_drawdown: The REPORT's peak and deepest decline (#497). Same convention as
+            the baseline above and for the same reason: None means no session has written
+            one, and the successor starts its curve at its own opening balance
+        deployment_id: Which continuous DEPLOYMENT this bot's sessions belong to — the span
+            across restarts. An identity and nothing else, which is what a carry-over is for:
+            the successor names the same one, so N session records become one history. It is
+            NOT derivable afterwards, because the profile name says which bot rather than
+            which deployment — the same profile stopped for a month and restarted is a second
+            one, and from outside the two look identical
     """
     session_keys: List[str] = Field(default_factory=list)
     highest_position_counter: int = 0
     open_positions: List[PositionCarryOver] = Field(default_factory=list)
     risk_baseline: Optional[RiskBaseline] = None
+    account_drawdown: Optional[AccountDrawdownCarryOver] = None
+    deployment_id: Optional[str] = None
 
 
 class CarryOverEnvelope(BaseModel):

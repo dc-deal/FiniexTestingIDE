@@ -181,3 +181,20 @@ pytest tests/data/signal_import/ -v
 Related: the SIGNAL worker capability itself is covered by `tests/framework/signal_workers/`
 ([Signal Worker Tests](../framework/signal_workers_tests.md)); the data source is documented in
 [Signal Data Source](../../data_pipeline/signal_data_source.md).
+
+## Data origin on the signal side (#518)
+
+The signal importer resolves each envelope's stated `instance_id` through `DataOriginRegistry`
+and stamps three columns beside `data_origin` — `origin_instance_id`, `origin_class`,
+`origin_evidence` — which stay out of `SIGNAL_RUNTIME_COLUMNS` so no worker can reach them.
+The index carries the same three, collapsed per file, and `SignalIndexManager`'s schema version
+moved to `1.1` so an index written before them rebuilds rather than serving blanks.
+
+Two properties are worth knowing when reading those tests:
+
+- **Resolution is per ENVELOPE, not per file.** The producer may re-mint its identity when an
+  instance is cloned, and a daily bucket can straddle that moment.
+- **A file whose envelopes disagree collapses to `unknown`** in the index, never to either
+  answer — an index entry describes a file, and a file holding two answers has none.
+
+Contract and reasoning: [`data_provenance.md`](../../architecture/data_provenance.md).

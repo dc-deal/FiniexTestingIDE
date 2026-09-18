@@ -282,6 +282,15 @@ class AppConfigManager:
         """
         return self._app_config.backtesting.data_validation.allowed_gap_categories
 
+    def get_admitted_origin_classes(self) -> List[str]:
+        """
+        Get the data origin classes a scenario may read.
+
+        Returns:
+            List of admitted class strings; narrowing it arms the gate
+        """
+        return self._app_config.backtesting.data_validation.admitted_origin_classes
+
     # ============================================
     # Centralized Path Methods (Validated)
     # ============================================

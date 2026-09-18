@@ -7,14 +7,19 @@ the index follow afterwards. A prune that edited index rows without removing dir
 the reverse — would break the one invariant #475 rests on.
 """
 
+import os
 import shutil
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.io.run_header_io import RUN_HEADER_ARTIFACT
-from python.framework.reporting.store.run_index import RunIndex
+from python.framework.reporting.store.run_index import (
+    RunIndex,
+    dir_size,
+    own_files_size,
+)
 from python.framework.types.api.report_types import RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import IO_SUBDIR
@@ -35,26 +40,6 @@ FIELD_STUDY_ARTIFACT = 'field_study.jsonl'
 _RUN_SUBDIRS = {IO_SUBDIR, 'scenario_logs', 'session_logs', 'diagnostics', 'events'}
 
 
-def _dir_size(path: Path) -> int:
-    """
-    Bytes a directory occupies, including everything below it.
-
-    Args:
-        path: The directory
-
-    Returns:
-        Total size in bytes; 0 for anything unreadable
-    """
-    total = 0
-    for item in path.rglob('*'):
-        try:
-            if item.is_file():
-                total += item.stat().st_size
-        except OSError:
-            continue
-    return total
-
-
 class RunTreePruner:
     """Decides what may be removed from the run tree, and removes exactly that."""
 
@@ -71,21 +56,42 @@ class RunTreePruner:
         self._roots = run_logs or file_logging.run_logs
         self._index = RunIndex(run_index_path or file_logging.run_index, self._roots)
 
-    def plan(self, selectors: PruneSelectors) -> PruneReport:
+    def size_figures_available(self) -> bool:
+        """
+        Whether the index can answer how much disk each run occupies.
+
+        False right after the column was added and before the first rebuild: the rows are
+        there, the figure is not. Asked so the report can say UNKNOWN instead of printing
+        0.0 MB, which on a delete screen reads as "this run is empty".
+
+        Returns:
+            True when the index was built by the current logic
+        """
+        return self._index.is_current()
+
+    def plan(self, selectors: PruneSelectors,
+             progress: Optional[Callable[[int, int], None]] = None) -> PruneReport:
         """
         Classify the tree without touching it.
 
         Args:
             selectors: What the operator asked to be removed
+            progress: Called as (done, total) while the runs are classified, so a caller can
+                show that the pass is moving. Every step here touches the filesystem, which
+                costs 65-616x on this tree (§42), and silence looks like a hang
 
         Returns:
             The full classification — what would go, what stays, and why
         """
         report = PruneReport()
         runs = self._index.list_runs()
-        run_dirs = {r.run_id: self._index.run_dir(r.run_id) for r in runs}
+        # ONE read, not one per run: `run_dir()` opens the whole index each time it is asked,
+        # so the comprehension that used to call it per run re-read the same file 118 times.
+        # Measured 2026-09-18: 0.88 s against 0.003 s for reading it once into a dict.
+        stored = self._index.run_dirs_of(r.run_id for r in runs)
+        run_dirs = {r.run_id: Path(d) if d else None for r, d in zip(runs, stored)}
 
-        deletable = self._classify_runs(runs, run_dirs, selectors, report)
+        deletable = self._classify_runs(runs, run_dirs, selectors, report, progress)
 
         if selectors.orphans:
             self._collect_orphans(set(run_dirs.values()), report)
@@ -98,8 +104,8 @@ class RunTreePruner:
         """
         Remove exactly what the report decided, then let the index follow.
 
-        Takes the report rather than re-classifying: a dry run that showed one thing while the
-        apply did another would defeat the reason the dry run is the default.
+        Takes the report rather than re-classifying: a preview that showed one thing while the
+        apply did another would defeat the reason the preview is the default.
 
         Args:
             report: The classification produced by `plan()`
@@ -126,7 +132,8 @@ class RunTreePruner:
     # =========================================================================
 
     def _classify_runs(self, runs: List[RunInfo], run_dirs: Dict[str, Optional[Path]],
-                       selectors: PruneSelectors, report: PruneReport) -> List[Path]:
+                       selectors: PruneSelectors, report: PruneReport,
+                       progress: Optional[Callable[[int, int], None]] = None) -> List[Path]:
         """
         Sort every indexed run into exactly one group.
 
@@ -142,19 +149,24 @@ class RunTreePruner:
         keepers = self._keep_last_survivors(runs, selectors.keep_last)
         deletable: List[Path] = []
 
-        for run in runs:
+        for done, run in enumerate(runs, 1):
+            if progress is not None:
+                progress(done, len(runs))
             run_dir = run_dirs.get(run.run_id)
             if run_dir is None or not run_dir.exists():
                 # The row outlived its directory. There is nothing to delete, but the rebuild
-                # will drop the row — so it is reported rather than passed over: a dry run that
+                # will drop the row — so it is reported rather than passed over: a preview that
                 # showed an empty report while three rows were about to vanish would be lying
                 # by omission.
                 report.stale_rows.append(PruneCandidate(
                     path=run_dir or Path(run.run_id), size_bytes=0, run_id=run.run_id,
                     run_type=run.group, run_name=run.name))
                 continue
+            # The size comes from the INDEX, where it was stamped once when this run
+            # finished. Walking for it here measured 42 s over the whole tree, most of it
+            # spent on runs that were then kept (#486 / the index\'s own `size_bytes` note).
             candidate = PruneCandidate(
-                path=run_dir, size_bytes=_dir_size(run_dir), run_id=run.run_id,
+                path=run_dir, size_bytes=run.size_bytes, run_id=run.run_id,
                 run_type=run.group, run_name=run.name)
 
             # The guard first, so nothing below can reach it: a run that crashed before
@@ -162,7 +174,10 @@ class RunTreePruner:
             if run.reporting == RunReporting.EXPECTED and not run.artifacts:
                 report.kept_incomplete.append(candidate)
                 continue
-            # Evidence behind a release gate — untouchable by every selector.
+            # Evidence behind a release gate — untouchable by every selector. Asked of the
+            # FILESYSTEM and never of the index, unlike the size above: this one is a GUARD,
+            # and a guard that trusts a derived file deletes real evidence the day that file
+            # is stale. One stat per run is what the guarantee costs.
             if (run_dir / FIELD_STUDY_ARTIFACT).exists():
                 report.kept_field_study.append(candidate)
                 continue
@@ -184,14 +199,19 @@ class RunTreePruner:
         """
         The run ids `--keep-last N` spares.
 
-        Two units, because a sweep is not a run and must not be counted like one:
+        Two units, because a parent is not a run and must not be counted like one:
 
         - a standalone run belongs to the family `(group, run_name)` — the redundancy this
           removes comes from running the same scenario set or profile again
-        - a sweep's combinations are NOT a family among themselves. The SWEEP is the unit: the N
-          newest sweeps survive WHOLE, the rest go WHOLE. Counting combinations instead would
+        - the children of one parent are NOT a family among themselves. The PARENT is the unit:
+          the N newest parents survive WHOLE, the rest go WHOLE. Counting children instead would
           keep 2 of 4 and leave a `ranked.csv` ranking runs that no longer exist — a half-pruned
           sweep is worse than an unpruned one
+
+        There are TWO kinds of parent since #497 and they are counted alike: a sweep, whose
+        children are its combinations, and a DEPLOYMENT, whose children are the sessions of one
+        live bot across its restarts. Both are an identity that groups runs without being one,
+        so `--keep-last N` spares the N newest of each — whole.
 
         Args:
             runs: The index rows
@@ -204,10 +224,10 @@ class RunTreePruner:
             return None
 
         standalone: Dict[str, List[RunInfo]] = defaultdict(list)
-        by_sweep: Dict[str, List[RunInfo]] = defaultdict(list)
+        by_parent: Dict[str, List[RunInfo]] = defaultdict(list)
         for run in runs:
             if run.parent_id:
-                by_sweep[run.parent_id].append(run)
+                by_parent[run.parent_id].append(run)
             else:
                 standalone[f'{run.group}/{run.name}'].append(run)
 
@@ -218,10 +238,10 @@ class RunTreePruner:
             survivors.update(
                 r.run_id for r in sorted(members, key=lambda r: r.run_id, reverse=True)[:keep_last])
 
-        # The sweep ids themselves carry a timestamp prefix, so the same ordering applies one
-        # level up. Every combination of a surviving sweep survives with it.
-        for sweep_id in sorted(by_sweep, reverse=True)[:keep_last]:
-            survivors.update(r.run_id for r in by_sweep[sweep_id])
+        # Both parent identities carry a timestamp prefix, so the same ordering applies one
+        # level up. Every child of a surviving parent survives with it.
+        for parent_id in sorted(by_parent, reverse=True)[:keep_last]:
+            survivors.update(r.run_id for r in by_parent[parent_id])
         return survivors
 
     def _collect_orphans(self, known_dirs: set, report: PruneReport) -> None:
@@ -232,6 +252,14 @@ class RunTreePruner:
         substructure (it goes with its run), a sweep directory (correctly header-less — a sweep
         is not a run), and any directory the index knows.
 
+        Walks with `os.walk` and PRUNES at every known run, which is the whole cost of this
+        pass: an orphan is by definition a directory that is not a run and not inside one, so
+        descending into a run can only ever find things this method must reject. Measured
+        2026-09-18 on a tree of 733 directories and 7409 files: `rglob('*')` over everything
+        took 17.7 s of an 18.7 s prune, because it stats each of those files to ask whether it
+        is a directory. `os.walk` also hands back the file names per directory, which answers
+        "does this hold anything" without a second listing.
+
         Args:
             known_dirs: The directories the index lists
             report: Filled in place
@@ -239,18 +267,29 @@ class RunTreePruner:
         for root in (Path(self._roots.simulation), Path(self._roots.live)):
             if not root.exists():
                 continue
-            for path in root.rglob('*'):
-                if not path.is_dir() or path in known_dirs:
-                    continue
-                if path.name in _RUN_SUBDIRS or self._inside_run_dir(path, known_dirs):
+            for dirpath, dirnames, filenames in os.walk(root):
+                path = Path(dirpath)
+                # Cut the branches at the PARENT, before os.walk lists them. A run's own
+                # substructure goes with the run, so a listing below one can produce no
+                # answer this method is allowed to give — and a listing is the single most
+                # expensive operation on this mount (§42: a directory walk costs 282x).
+                # Filtering here rather than skipping after the fact saved one listing per
+                # run: 2.79 s down to 0.9 s over 118 runs, measured 2026-09-18.
+                dirnames[:] = [d for d in dirnames
+                               if d not in _RUN_SUBDIRS and (path / d) not in known_dirs]
+                if path == root or path in known_dirs:
                     continue
                 if self._is_sweep_dir(path):
+                    # Its OWN files only. A sweep's combinations are runs in their own right
+                    # and are already counted in their group, so a recursive size here would
+                    # report the same bytes twice — and it was the expensive half of this
+                    # pass, because it walked every combination's whole tree.
                     report.skipped_sweep_dirs.append(
-                        PruneCandidate(path=path, size_bytes=_dir_size(path)))
+                        PruneCandidate(path=path, size_bytes=own_files_size(path)))
                     continue
-                if any(child.is_file() for child in path.iterdir()):
+                if filenames:
                     report.to_delete_orphans.append(
-                        PruneCandidate(path=path, size_bytes=_dir_size(path)))
+                        PruneCandidate(path=path, size_bytes=dir_size(path)))
 
     @staticmethod
     def _inside_run_dir(path: Path, known_dirs: set) -> bool:
@@ -301,8 +340,10 @@ class RunTreePruner:
             if not combinations:
                 continue
             if all(header.parent in going for header in combinations):
+                # Same reason as the skipped ones above: the combinations are already in
+                # the delete groups with their own sizes.
                 report.emptied_sweep_dirs.append(
-                    PruneCandidate(path=sweep_dir, size_bytes=_dir_size(sweep_dir)))
+                    PruneCandidate(path=sweep_dir, size_bytes=own_files_size(sweep_dir)))
 
     @staticmethod
     def _count_ledger_rows() -> int:

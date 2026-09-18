@@ -122,8 +122,25 @@ def _merge_lists_by_key(
     return list(by_id.values())
 
 
-# Keys allowed in any config section — JSON documentation convention.
-_CONFIG_META_KEYS: frozenset = frozenset({'_comment'})
+# Keys allowed in any config section — JSON documentation convention. A PREFIX rather than
+# one name, because a section with several settings can explain only one of them with a single
+# `_comment`, and the suffixed form (`_comment_render_timeframes`) had already grown twice in
+# the tracked configs to work around exactly that. Blessing the shape it took is better than a
+# whitelist that two existing keys already fall outside of.
+_CONFIG_META_PREFIX = '_comment'
+
+
+def is_meta_key(key: str) -> bool:
+    """
+    Whether a config key is documentation rather than a setting.
+
+    Args:
+        key: The key as it appears in the JSON
+
+    Returns:
+        True for `_comment` and any `_comment_<what>` variant
+    """
+    return key.startswith(_CONFIG_META_PREFIX)
 
 
 def check_unknown_keys(
@@ -137,14 +154,14 @@ def check_unknown_keys(
     Used by config loaders before deep_merge to detect typos with full
     level provenance (global vs. per-scenario, section name).
     Hard fail — unknown keys indicate a structural misconfiguration.
-    Meta keys (e.g. '_comment') are universally allowed.
+    Meta keys (`_comment`, `_comment_<what>`) are universally allowed.
 
     Args:
         location: Human-readable path (e.g. 'global.execution_config')
         config: Raw config dict to inspect
         known: Set of valid key names for this section
     """
-    unknown = set(config.keys()) - known - _CONFIG_META_KEYS
+    unknown = {key for key in config if key not in known and not is_meta_key(key)}
     if unknown:
         raise ValueError(f'Unknown keys in {location}: {unknown} — check for typos or add to known keys')
 
@@ -164,7 +181,7 @@ def without_meta_keys(config: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         A copy without the meta keys
     """
-    return {k: v for k, v in config.items() if k not in _CONFIG_META_KEYS}
+    return {k: v for k, v in config.items() if not is_meta_key(k)}
 
 
 def validate_merged_config(

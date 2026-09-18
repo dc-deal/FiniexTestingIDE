@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
 from python.configuration.app_config_manager import AppConfigManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.api.report_types import RunInfo, RunResultRow
 
 # ---------------------------------------------------------------------------
@@ -67,6 +68,12 @@ def _mock_index(broker_types=None, symbols=None, stats=None, bar_file=None):
                        'H1': {'price_basis': 'quote_driven'}},
         },
     }
+    # The REAL accessor over that data, not a canned return value: the lookup and its
+    # 'unknown' fallback are the behaviour under test, and a mocked answer would pass just as
+    # happily if the router stopped consulting the index at all.
+    m.get_price_basis.side_effect = (
+        lambda broker, symbol, timeframe: BarsIndexManager.get_price_basis(
+            m, broker, symbol, timeframe))
     return m
 
 

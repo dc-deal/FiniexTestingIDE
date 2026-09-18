@@ -18,7 +18,7 @@ remote-monitoring or tooling integrations.
 
 | Feature | Value |
 |---|---|
-| OpenAPI/Swagger UI | Available at `/docs` out of the box — no extra setup |
+| OpenAPI/Swagger UI | At `/docs` while no consumer is configured; switched off once one is (see *Schema surface* below) |
 | Pydantic response models | Typed schema, automatic serialization, validated API surface |
 | ASGI / uvicorn | Async-capable, low overhead, industry standard for Python APIs |
 | Minimal boilerplate | Route definitions stay close to the handler logic |
@@ -119,6 +119,29 @@ preflight — which carries no `Authorization`, by specification — is never ga
 lists `WWW-Authenticate` and `Retry-After`, because a browser hides every response header that is
 not CORS-safelisted: without it a cross-origin client sees a 401's status and not the scheme to
 retry with.
+
+### Schema surface — present in development, gone in production
+
+`/openapi.json`, `/docs` and `/redoc` are FastAPI's own routes, and the framework mounts them at
+the **app root** — outside `/api/v1`, where every endpoint of this application lives. Three
+consequences follow, and each one alone would make their availability a decision rather than a
+default:
+
+- A reverse proxy scoped to the versioned prefix does not forward them either way.
+- Authentication is attached per **router** (see above), so it cannot reach a route the framework
+  mounts itself.
+- The walk that proves no identity route is ungated filters on a path parameter, so a
+  parameterless root route is outside it **by construction**. It reported nothing because it never
+  looked, which is the worst shape a check can have.
+
+**They are therefore tied to the auth posture: present while no consumer is configured, absent the
+moment one is.** Gating them instead was considered and does not work — Swagger UI fetches the
+schema from the browser with no bearer, so a gated `/docs` is a broken `/docs`. Absent is also the
+stronger answer: holding a credential is not a way back in.
+
+The practical effect is that the schema is a development convenience and never a production
+surface. A consumer that needs the contract reads this document and the router modules, which is
+what the other two peers already do.
 
 ### Who can reach the port at all, and where that is decided
 

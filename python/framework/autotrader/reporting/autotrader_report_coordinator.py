@@ -89,6 +89,7 @@ class AutotraderReportCoordinator:
         broker_config: Optional[BrokerConfig] = None,
         signal_scenario_map: Optional[Dict[Tuple[str, str], SignalScenarioInfo]] = None,
         observed_feed: Optional[SignalObservedSeries] = None,
+        deployment_id: str = '',
     ):
         """
         Initialize the report coordinator.
@@ -111,6 +112,8 @@ class AutotraderReportCoordinator:
         self._result = result
         self._run_dir = run_dir
         self._run_id = run_id
+        # The RESOLVED deployment, '' when this session stands alone (#497).
+        self._deployment_id = deployment_id
         self._run_timestamp = run_timestamp
         self._config = config
         self._decision_logic = decision_logic
@@ -225,7 +228,8 @@ class AutotraderReportCoordinator:
         # pipeline; the profile's strategy_config makes the param_hash comparable to the backtest
         # (sim/live parity). A live session is never swept; an emergency → status='error' row.
         provenance = build_run_provenance_from_session(
-            self._config, self._run_id, self._run_timestamp, warnings_errors_report)
+            self._config, self._run_id, self._run_timestamp, warnings_errors_report,
+            deployment_id=self._deployment_id)
         append_run_to_ledger(unified.run_summary, provenance)
 
         # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.

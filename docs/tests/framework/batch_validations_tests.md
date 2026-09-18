@@ -8,7 +8,10 @@ Unit tests for batch pipeline validation and configuration components:
 `MarketConfigManager` (`ConfigMode` parsing),
 `BrokerConfigFactory` (symbol integrity validation and the two identity hashes), and
 `KrakenConfigFetcher` (runtime cache merge behavior, lazy symbol addition, and the
-account's fee tier).
+account's fee tier), and `ScenarioDataValidator`'s **data-origin gate** — which archive
+origins a scenario may read, and the warning that measures what arming the gate would
+cost before it is armed (see
+[`data_provenance.md`](../../architecture/data_provenance.md)).
 
 ## What Is Tested
 
@@ -323,3 +326,23 @@ pytest tests/framework/batch_validations/ -v --tb=short
 ```
 
 VS Code: **"Pytest: Batch Validations (All)"** launch configuration.
+
+
+### `test_scenario_data_validator.py` — the data-origin gate
+
+Two questions with deliberately different answers. The ERROR excludes one scenario and lets
+every other one in the set run; the WARNING reports what a narrower policy WOULD refuse, so
+the cost of arming the gate is a number rather than a surprise.
+
+| Test | Description |
+|------|-------------|
+| `test_an_inadmissible_class_excludes_the_scenario` | a class outside `admitted_origin_classes` is an error naming how many files carry it |
+| `test_an_admitted_class_passes` | a widened policy admits it |
+| `test_the_open_default_admits_everything` | the state this ships in — every file resolves to `unknown` until a producer stamps an identity, so a strict default would refuse every scenario on day one |
+| `test_a_scenario_that_loaded_nothing_is_not_judged` | no loaded files, no finding |
+
+**The measurement is not here.** How far the archive still is from producer-stamped data is a
+property of the archive rather than of one scenario, so it is one finding per run in
+`PostRunValidator._check_data_origin`, beside the same question for `data_format_version`. A
+per-scenario warning would fire on every scenario of every run until a producer stamps an identity,
+and a warning that always fires teaches people to skip warnings.

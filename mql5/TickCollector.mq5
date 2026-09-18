@@ -9,11 +9,26 @@
 #property copyright "FiniexTestingIDE"
 #property strict
 
-#define EA_VERSION           "V1.1.0"
+// One number, two renderings. The bare form goes on the wire as `producer_version`,
+// because a consumer reads that field across three producers and two spellings of a
+// version is two things to get wrong; the "V" form is for the console only.
+#define PRODUCER_VERSION     "1.2.0"
+#define EA_VERSION           "V" PRODUCER_VERSION
 // Schema version of the exported JSON. A constant, not an input: the version
 // identifies the code that wrote the file and must not be set per chart.
 // collected_msc is UTC - it comes from the OS clock, not from device local time.
-#define DATA_FORMAT_VERSION  "1.5.0"
+// 1.7.0 is the first version carrying the `origin` block. The number is shared
+// across the producers rather than per-EA, because it names the SCHEMA and a
+// consumer reads one contract. 1.6.0 is skipped deliberately: it exists only as
+// a development build elsewhere and no production file will ever carry it.
+#define DATA_FORMAT_VERSION  "1.7.0"
+// Program identity written into every file. Fixed, never an input - it says which
+// program wrote the bytes, and a field a chart could set would say nothing.
+#define PRODUCER_NAME        "finiex-mt5-collector"
+// Where this terminal's identity lives. MQL5\Files of THIS terminal, never
+// FILE_COMMON: the identity belongs to one terminal's archive, and a shared
+// folder would hand the same identity to every terminal on the machine.
+#define INSTANCE_FILE        "instance.json"
 // 100-ns intervals between the FILETIME epoch (1601-01-01) and the Unix epoch.
 #define FILETIME_UNIX_OFFSET 116444736000000000
 
@@ -24,6 +39,7 @@
 // functions that header happens to export. Requires "Allow DLL imports".
 #import "kernel32.dll"
    void GetSystemTimePreciseAsFileTime(ulong &lpSystemTimeAsFileTime);
+   int  GetComputerNameA(uchar &lpBuffer[], uint &nSize);
 #import
 
 // Error-Severity-Enum
@@ -88,6 +104,8 @@ bool dataStreamCorrupted = false;
 
 // collected_msc is read from the OS clock per tick. Only a backwards step of
 // that clock (NTP correction) needs handling - it is clamped and counted.
+string g_instanceId     = "";  // this terminal's identity - resolved once in OnInit
+string g_collectedOn    = "";  // hostname, forensic only; nothing decides on it
 long  g_collectedMs     = 0;   // last emitted collection timestamp (epoch ms, UTC)
 int   g_anchorResyncs   = 0;   // how often the OS clock jumped backwards
 long  g_maxCorrectionMs = 0;   // largest backwards jump absorbed
@@ -97,6 +115,148 @@ double maxSpreadPercent = 5.0;        // Max 5% Spread
 double maxPriceJumpPercent = 10.0;    // Max 10% Preis-Sprung
 int maxDataGapSeconds = 300;          // Max 5 Min Datenlücke
 int warningDataGapSeconds = 60;       // Warning bei 1 Min Lücke
+
+//+------------------------------------------------------------------+
+//| Instance identity                                                 |
+//|                                                                   |
+//| The producer states an identity it cannot falsify and says nothing |
+//| about what that identity MEANS. Whether this terminal is a         |
+//| development box or the production one is the consumer's judgement, |
+//| made in a registry on its side - never a word written into a file  |
+//| here, because a copied configuration copies its own declaration    |
+//| with it and then lies about itself.                                |
+//|                                                                   |
+//| One identity per TERMINAL, shared by every symbol collected in it: |
+//| it belongs to the archive, not to a chart.                         |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Hostname for the forensic `collected_on` field                    |
+//+------------------------------------------------------------------+
+string HostName()
+{
+    uchar buffer[64];
+    uint  size = 64;
+    ArrayInitialize(buffer, 0);
+    if (GetComputerNameA(buffer, size) != 0 && size > 0)
+        return CharArrayToString(buffer, 0, (int)size);
+    return "unknown";
+}
+
+//+------------------------------------------------------------------+
+//| Escape a value for embedding in JSON                              |
+//+------------------------------------------------------------------+
+string JsonEscape(string value)
+{
+    StringReplace(value, "\\", "\\\\");
+    StringReplace(value, "\"", "\\\"");
+    return value;
+}
+
+//+------------------------------------------------------------------+
+//| Mint a new identity: 12 lowercase hex from a SHA256               |
+//+------------------------------------------------------------------+
+string MintInstanceId()
+{
+    // The data path and the login separate two terminals on one machine. The
+    // microsecond reading separates two CLONES of one terminal, which those two
+    // cannot - a copied installation carries both of them unchanged.
+    string seed = TerminalInfoString(TERMINAL_DATA_PATH) + "|" +
+                  IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "|" +
+                  IntegerToString(UtcMscPrecise()) + "|" +
+                  IntegerToString(GetMicrosecondCount());
+
+    uchar data[], key[], hash[];
+    StringToCharArray(seed, data, 0, StringLen(seed));
+    ArrayResize(key, 0);
+
+    if (CryptEncode(CRYPT_HASH_SHA256, data, key, hash) != 32)
+        return "";
+
+    // Six bytes -> twelve lowercase hex. The consumer refuses a key in any other
+    // shape when it loads its registry, because a key that can never match would
+    // leave these files unattributed with no error anywhere.
+    string id = "";
+    for (int i = 0; i < 6; i++)
+        id += StringFormat("%02x", hash[i]);
+    return id;
+}
+
+//+------------------------------------------------------------------+
+//| Read the identity out of the instance file                        |
+//+------------------------------------------------------------------+
+string ParseInstanceId(string json)
+{
+    string field = "\"instance_id\"";
+    int at = StringFind(json, field);
+    if (at < 0) return "";
+    int quoteOpen = StringFind(json, "\"", at + StringLen(field));
+    if (quoteOpen < 0) return "";
+    int quoteClose = StringFind(json, "\"", quoteOpen + 1);
+    if (quoteClose <= quoteOpen) return "";
+    return StringSubstr(json, quoteOpen + 1, quoteClose - quoteOpen - 1);
+}
+
+//+------------------------------------------------------------------+
+//| Resolve this terminal's identity - read it, or mint it exactly once|
+//+------------------------------------------------------------------+
+string ResolveInstanceId()
+{
+    // FILE_READ|FILE_WRITE opens an existing file WITHOUT truncating it and
+    // creates it when absent, and with no FILE_SHARE_* flag the handle is
+    // EXCLUSIVE. That is what makes this correct with eight charts starting at
+    // once: the first EA to win the handle mints and writes, the others fail the
+    // open, wait, retry, and then read what the first one wrote. Testing
+    // FileIsExist() first would NOT do it - two EAs can both see "absent" and
+    // both mint, and the terminal would then have two identities.
+    for (int attempt = 0; attempt < 20; attempt++)
+    {
+        int handle = FileOpen(INSTANCE_FILE, FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI);
+        if (handle == INVALID_HANDLE)
+        {
+            Sleep(50);
+            continue;
+        }
+
+        string existing = "";
+        while (!FileIsEnding(handle))
+            existing += FileReadString(handle);
+
+        string id = ParseInstanceId(existing);
+        if (StringLen(id) == 12)
+        {
+            FileClose(handle);
+            return id;
+        }
+
+        id = MintInstanceId();
+        if (StringLen(id) != 12)
+        {
+            FileClose(handle);
+            return "";
+        }
+
+        FileSeek(handle, 0, SEEK_SET);
+        FileWriteString(handle, StringFormat(
+            "{\n"
+            "  \"instance_id\": \"%s\",\n"
+            "  \"producer\": \"%s\",\n"
+            "  \"minted_at_utc\": \"%s\",\n"
+            "  \"terminal_data_path\": \"%s\",\n"
+            "  \"account_login\": %I64d,\n"
+            "  \"note\": \"Minted once for THIS terminal. Every symbol collected here shares it. Do not copy this file to another terminal - two writers under one identity is the failure it exists to prevent. Deleting it mints a new one, which every consumer reads as a new producer.\"\n"
+            "}\n",
+            id,
+            PRODUCER_NAME,
+            TimeToString(TimeGMT(), TIME_DATE | TIME_SECONDS),
+            JsonEscape(TerminalInfoString(TERMINAL_DATA_PATH)),
+            AccountInfoInteger(ACCOUNT_LOGIN)));
+        FileFlush(handle);
+        FileClose(handle);
+        return id;
+    }
+    return "";
+}
 
 //+------------------------------------------------------------------+
 //| Expert Advisor Initialisierung                                  |
@@ -141,6 +301,23 @@ int OnInit()
     }
     Print("   collected_msc source: GetSystemTimePreciseAsFileTime (UTC), start ", g_collectedMs);
     Print("   Abgleich mit TimeGMT(): ", deviation, " ms Abweichung");
+
+    // Resolve this terminal's identity before a single tick is written. The refusal
+    // below is deliberate and matches the clock check above: a file written without
+    // an identity can never be attributed afterwards, and unattributable data is
+    // exactly what this contract exists to prevent. Collecting anyway would produce
+    // the problem quietly instead of loudly.
+    g_instanceId  = ResolveInstanceId();
+    g_collectedOn = HostName();
+    if (StringLen(g_instanceId) != 12)
+    {
+        Print("❌ FATAL: Instanz-Identität konnte nicht ermittelt werden - keine Sammlung.");
+        Print("   Erwartet: 12 Zeichen, erhalten: '", g_instanceId, "'");
+        Print("   Datei: MQL5\\Files\\", INSTANCE_FILE);
+        Print("   Prüfen: 'Allow DLL imports' aktiv, Schreibrecht auf MQL5\\Files.");
+        return INIT_FAILED;
+    }
+    Print("   instance_id: ", g_instanceId, " (", g_collectedOn, ") - ein Wert je Terminal");
 
     // Error-System initialisieren
     ArrayResize(errorBuffer, 0);
@@ -499,6 +676,16 @@ bool CreateNewExportFile()
         "    \"volume_timeframe_minutes\": %d,\n"
         "    \"data_format_version\": \"%s\",\n"
         "    \"data_collector\": \"%s\",\n"
+        // Who wrote these bytes. `instance_id` is the only field anyone decides on,
+        // and the decision is the consumer's; the rest is forensic. Named `origin`
+        // rather than `provenance` to leave that word free for a future `transport`
+        // block, for the case where one service serves files it did not write.
+        "    \"origin\": {\n"
+        "      \"instance_id\": \"%s\",\n"
+        "      \"collected_on\": \"%s\",\n"
+        "      \"producer\": \"%s\",\n"
+        "      \"producer_version\": \"%s\"\n"
+        "    },\n"
         "    \"collected_msc_timebase\": \"utc\",\n"
         "    \"anchor_resyncs\": %d,\n"
         "    \"anchor_max_correction_ms\": %I64d,\n"
@@ -541,6 +728,10 @@ bool CreateNewExportFile()
         PeriodSeconds(VolumeTimeframe) / 60,
         DATA_FORMAT_VERSION,
         DataCollectorName,
+        g_instanceId,
+        g_collectedOn,
+        PRODUCER_NAME,
+        PRODUCER_VERSION,
         g_anchorResyncs,
         g_maxCorrectionMs,
         CollectionPurpose,

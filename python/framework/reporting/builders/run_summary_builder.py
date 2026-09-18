@@ -85,6 +85,8 @@ def _to_currency(
         profit_factor=agg.profit_factor,
         win_rate=agg.win_rate,
         account_max_drawdown=agg.account_max_drawdown,
+        max_equity=agg.max_equity,
+        account_max_dd_pct=agg.account_max_dd_pct,
         total_fees=agg.total_fees,
         unrealized_pnl=agg.unrealized_pnl,
         final_equity=agg.final_equity,

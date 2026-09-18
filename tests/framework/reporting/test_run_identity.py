@@ -22,10 +22,9 @@ from python.framework.reporting.io.run_header_io import (
     write_run_header,
 )
 from python.framework.reporting.store.run_index import RunIndex
-from python.framework.types.log_layout_types import IO_SUBDIR
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import IO_SUBDIR, RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
 from python.framework.utils.run_id_utils import mint_run_id
 
 _START = datetime(2026, 8, 30, 13, 20, 34, tzinfo=timezone.utc)
@@ -130,7 +129,20 @@ class TestTheIndexIsDerivedAndRebuildable:
         assert index.list_runs() == [], 'a deleted index must read as empty, not stale'
 
         assert index.rebuild() == len(planted)
-        assert index.list_runs() == before
+        rebuilt = index.list_runs()
+
+        # IDENTITY reproduces exactly — that is the property this test exists for.
+        identity = lambda rows: [r.model_dump(exclude={'size_bytes'}) for r in rows]
+        assert identity(rebuilt) == identity(before)
+
+        # `size_bytes` deliberately does NOT, and it is the one field that cannot: it is a
+        # MEASUREMENT taken when the run finished, where every other column comes from a
+        # header written at its start. Registration knows nothing about a directory that has
+        # not been filled yet, so it records 0; the rebuild reads what is actually there. A
+        # rebuilt index carrying the CURRENT truth is the repair path working, not drift.
+        assert all(r.size_bytes == 0 for r in before)
+        assert all(r.size_bytes > 0 for r in rebuilt), (
+            'the rebuild did not measure what each run occupies')
 
     def test_a_run_is_addressable_without_walking_the_tree(self, tmp_path):
         """The sweep combination sits one level deeper — the lookup no longer has to know that."""

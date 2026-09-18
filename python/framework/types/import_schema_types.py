@@ -193,6 +193,10 @@ NESTED_METADATA_KEYS: List[str] = [
     'symbol_info',
     'collection_settings',
     'error_tracking',
+    # Who wrote this file (#518). It travels VERBATIM: the block is the producer's statement
+    # and stays readable as such, beside the class this side resolved from it. Keeping both is
+    # the point — a resolved class can be re-derived later only if the identity survived.
+    'origin',
 ]
 
 # Metadata keys already captured at top level in Parquet header

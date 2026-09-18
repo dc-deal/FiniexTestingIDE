@@ -45,7 +45,46 @@ class RunLedgerIndex(AbstractStoreIndex):
     # Fragments written before this version carry the old column name and were renamed in
     # place by `python/experiments/migrate_ledger_drawdown_column.py`; their VALUES are
     # still the old measure, so a sweep must not rank across the boundary.
-    LOGIC_VERSION: int = 3
+    #
+    # 3 → 4 (#518): six columns appended saying WHICH DATA a row was produced over. Unlike the
+    # rename above this changes no existing value, so ranking across the boundary stays valid —
+    # what an older fragment cannot do is answer the question at all, and it reads back as None
+    # rather than as a made-up answer.
+    #
+    # 4 → 5 (#520 / §31c): `price_bases` appended — WHICH PRICE the bars a row was produced
+    # over were rendered from. Same shape as 3 → 4: one column, no existing value changes, so
+    # ranking across the boundary stays valid. It is its own column rather than part of
+    # `data_format_versions` because the two answer different questions and come from
+    # different archives — the format version from the tick files, the basis from the bar
+    # files, which are the only ones that stamp it.
+    #
+    # 5 → 6 (#497): `max_equity` and `account_max_drawdown_pct` appended. The percentage is not
+    # derivable from the amount and the peak — it was measured against the peak standing at the
+    # time — so without the column the ledger holds a drawdown it cannot express as a share.
+    # Same shape again: appended, no existing value changes.
+    #
+    # 6 → 7 (#497): `deployment_id` and `profile_hash` appended. The first is the join key that
+    # makes a restarted live bot readable as ONE history; the second is the fingerprint over the
+    # operational half of the profile, which `param_hash` deliberately does not cover — a raised
+    # stop level must not read as a different strategy. Appended, no existing value changes; an
+    # older fragment reads back None for both, which is honest: no live row before this version
+    # ever carried a deployment.
+    #
+    # 7 → 8 (#390): `run_type` appended — WHICH PIPELINE wrote the row, from the same two
+    # constants the run tree is laid out with. Before it, telling a backtest from a live
+    # session meant reading `input_plane`, which answers a different question and is empty on
+    # everything written before #518: measured 2026-09-18, 520 of 616 rows could not say what
+    # they were. Backfilled where it could be resolved rather than left blank
+    # (`python/experiments/backfill_ledger_run_type.py`), so this is the one appended column
+    # whose older rows DO carry an answer — and the ones that could not be resolved were
+    # removed rather than guessed.
+    #
+    # 8 → 9 (#497): `recorded_at_utc` appended — when the row was written, which is within
+    # seconds of when its run ended. The ledger had no end of any kind, so the only measurable
+    # gap between two sessions of a deployment ran from START to START and counted the
+    # previous session's whole runtime as downtime. Appended, no existing value changes; an
+    # older row reads back empty and its gap falls back to the old measure, labelled.
+    LOGIC_VERSION: int = 9
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

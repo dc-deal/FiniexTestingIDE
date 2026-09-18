@@ -6,14 +6,24 @@ Usage:
     python python/cli/run_index_cli.py rebuild
     python python/cli/run_index_cli.py status
     python python/cli/run_index_cli.py prune [--orphans] [--keep-last N] [--apply]
+    python python/cli/run_index_cli.py deployments [--id <deployment>]
 """
 
 import argparse
 import sys
+import time
 from typing import List
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.reporting.console.deployment_history_summary import (
+    build_deployment_histories,
+    deployment_comparability_advisory,
+    render_deployment_history,
+    render_deployment_list,
+    summarize_deployments,
+)
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.reporting.store.run_tree_pruner import RunTreePruner
 from python.framework.types.run_prune_types import PruneCandidate, PruneSelectors
 
@@ -68,6 +78,50 @@ class RunIndexCli:
         print()
         return 0
 
+    def cmd_deployments(self, deployment: str) -> int:
+        """
+        Show a live bot's sessions as one history (#497).
+
+        The ledger's only other reader filters on `sweep_id`, which a live session does not
+        have — so before this command a session's row was written and unreachable (§44: a
+        store with no read path). This is that path.
+
+        Args:
+            deployment: Show only this deployment, or '' for all of them
+
+        Returns:
+            Process exit code — 0 even when nothing is grouped, because "no deployment has
+            been declared yet" is a state, not a failure
+        """
+        ledger = RunResultsLedger(AppConfigManager().get_run_ledger_path())
+        rows = ledger.read_rows()
+        histories = build_deployment_histories(rows)
+        if deployment:
+            histories = {k: v for k, v in histories.items() if k == deployment}
+
+        if not histories:
+            print('No deployment found in the ledger.')
+            print('A session joins one only when its profile declares '
+                  '`deployment.continuous: true` — until then every start stands alone.')
+            return 0
+
+        advisories = {
+            name: deployment_comparability_advisory(
+                [r for r in rows if r.deployment_id == name])
+            for name in histories
+        }
+
+        # Two halves, and the split is the same one a sweep already has: the LIST answers
+        # "which one do I open", the DETAIL answers "what happened inside it". Printing every
+        # deployment's full table was neither — it buried the overview in the detail.
+        if not deployment:
+            render_deployment_list(summarize_deployments(histories, advisories))
+            return 0
+
+        for name in sorted(histories):
+            render_deployment_history(name, histories[name], advisories[name])
+        return 0
+
     def cmd_prune(self, orphans: bool, keep_last: int, apply: bool) -> int:
         """
         Remove what the run tree no longer needs — showing it first, deleting only on request.
@@ -83,12 +137,25 @@ class RunIndexCli:
         selectors = PruneSelectors(
             keep_last=keep_last if keep_last > 0 else None, orphans=orphans)
         pruner = RunTreePruner()
-        report = pruner.plan(selectors)
 
-        mode = 'APPLY' if apply else 'DRY RUN (nothing deleted; add --apply)'
+        # PREVIEW, not 'dry run': in this project `dry_run` names exactly one thing — a
+        # session that places no real orders — and reusing the words for 'shows what it
+        # would delete' puts an arming term on a housekeeping command.
+        mode = 'APPLY' if apply else 'PREVIEW (nothing deleted; add --apply)'
         print('\n' + '=' * 80)
         print(f'🧹 Prune Run Tree — {mode}')
         print('=' * 80 + '\n')
+        print('  Reading the run tree — every step here is a filesystem call, which costs')
+        print('  65-616x on this mount, so give it a moment.')
+
+        if not pruner.size_figures_available():
+            print('  ⚠ The run index predates the size column — every MB below reads 0.0.')
+            print('    Run `python python/cli/store_cli.py rebuild runs` once to fill it in.')
+
+        started = time.monotonic()
+        report = pruner.plan(selectors, progress=self._show_progress)
+        self._clear_progress()
+        print(f'  Plan ready in {time.monotonic() - started:.1f} s.\n')
 
         self._print_group('DELETE', report.to_delete_orphans,
                           'not runs (no header, not indexed)')
@@ -113,8 +180,10 @@ class RunIndexCli:
               f'including those of the runs above.\n')
 
         if not apply:
+            print(f'  Total {time.monotonic() - started:.1f} s.\n')
             return 0
 
+        print('  Deleting, then rebuilding the index — this walks the tree once more.')
         result = pruner.apply(report)
         print(f'  🗑️  {len(result.deleted)} director(ies) removed')
         for failure in result.failed:
@@ -122,8 +191,38 @@ class RunIndexCli:
         print(f'  📇 Index rebuilt — {result.indexed_after_rebuild} run(s)')
         for run_id in result.duplicate_ids:
             print(f'  ⚠️  duplicate id: {run_id}')
-        print()
+        print(f'  Total {time.monotonic() - started:.1f} s.\n')
         return 1 if result.failed else 0
+
+    @staticmethod
+    def _show_progress(done: int, total: int) -> None:
+        """
+        Overwrite one line with how far the classification has come.
+
+        A bar rather than a stream of lines, because the interesting output is the report
+        that follows and a scrolled-away progress log would push it off the screen.
+
+        Args:
+            done: Runs classified so far
+            total: Runs to classify
+        """
+        # Only where a carriage return actually overwrites. Piped or redirected, the bar
+        # becomes one enormous line and buries the report it was meant to introduce. This
+        # asks about the OUTPUT DEVICE, which isatty answers reliably — unlike "is a human
+        # watching", which it does not and which this project resolves by declaration.
+        if not sys.stdout.isatty():
+            return
+        width = 30
+        filled = int(width * done / total) if total else width
+        print(f'\r  [{"█" * filled}{"·" * (width - filled)}] {done}/{total} runs',
+              end='', flush=True)
+
+    @staticmethod
+    def _clear_progress() -> None:
+        """Wipe the progress line so the report starts on a clean one."""
+        if not sys.stdout.isatty():
+            return
+        print('\r' + ' ' * 60 + '\r', end='', flush=True)
 
     @staticmethod
     def _print_group(verb: str, candidates: List[PruneCandidate], reason: str,
@@ -178,6 +277,13 @@ def main() -> int:
         help='Actually delete. Without it nothing is touched — a run directory is the only '
              'copy of its logs')
 
+    deployments_parser = subparsers.add_parser(
+        'deployments',
+        help="Show a live bot's sessions as one history — the ledger's only live read path")
+    deployments_parser.add_argument(
+        '--id', default='', metavar='DEPLOYMENT',
+        help='Show only this deployment (default: all)')
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -186,6 +292,8 @@ def main() -> int:
     cli = RunIndexCli()
     if args.command == 'prune':
         return cli.cmd_prune(args.orphans, args.keep_last, args.apply)
+    if args.command == 'deployments':
+        return cli.cmd_deployments(args.id)
     return {'rebuild': cli.cmd_rebuild, 'status': cli.cmd_status}[args.command]()
 
 
