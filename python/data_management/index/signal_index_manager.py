@@ -152,9 +152,11 @@ class SignalIndexManager:
                 base = self._scan_file(parquet_file)
                 sentiment_type = base['data_sentiment_type']
                 symbols = base.pop('symbols')
+                symbol_row_counts = base.pop('symbol_row_counts')
 
                 for symbol in symbols:
-                    entry = {**base, 'symbol': symbol}
+                    entry = {**base, 'symbol': symbol,
+                             'row_count': symbol_row_counts[symbol]}
                     self.index.setdefault(sentiment_type, {}).setdefault(
                         symbol, []).append(entry)
             except Exception as e:
@@ -188,6 +190,10 @@ class SignalIndexManager:
         Scan one signal parquet: its data_sentiment_type, real symbols, and collected_msc
         range. The whole-file range is used per symbol — the envelope sentinel rows keep
         every symbol resolvable across the full window.
+
+        Row counts are per SYMBOL, not per file. An index entry is one
+        (data_sentiment_type, symbol, file) triple, so a file-wide count repeated on every
+        one of them multiplies by the symbol count as soon as anything sums the column.
         """
         cols = [
             SignalParquetColumn.COLLECTED_MSC.value,
@@ -207,8 +213,9 @@ class SignalIndexManager:
         start_time = datetime.fromtimestamp(int(msc.min()) / 1000.0, tz=timezone.utc)
         end_time = datetime.fromtimestamp(int(msc.max()) / 1000.0, tz=timezone.utc)
 
-        symbols = sorted(
-            set(df[SignalParquetColumn.SYMBOL.value].unique()) - {SIGNAL_ENVELOPE_SYMBOL})
+        symbol_series = df[SignalParquetColumn.SYMBOL.value]
+        symbols = sorted(set(symbol_series.unique()) - {SIGNAL_ENVELOPE_SYMBOL})
+        symbol_row_counts = symbol_series.value_counts()
 
         file_size_mb = round(parquet_file.stat().st_size / (1024 * 1024), 4)
 
@@ -217,9 +224,9 @@ class SignalIndexManager:
             'path': str(parquet_file.absolute()),
             'data_sentiment_type': sentiment_type,
             'symbols': symbols,
+            'symbol_row_counts': {s: int(symbol_row_counts[s]) for s in symbols},
             'start_time': start_time.isoformat(),
             'end_time': end_time.isoformat(),
-            'row_count': int(len(df)),
             'file_size_mb': file_size_mb,
             # Read back from the stamp, never re-resolved. Collapsed per FILE because an index
             # entry is per file while the stamp is per envelope — and a file whose envelopes
