@@ -73,6 +73,21 @@ run-keyed carry-over could then only be found by guessing. An envelope missing i
 refused. An empty snapshot is the default rather than an error, since the store writes no file for
 one.
 
+## `test_run_completion_audit.py`
+
+Which runs started and never reached their close. A run registers in the run index from its
+header, written before anything can fail; its ledger row is the last step at close. A process
+killed between the two exists in one store and not the other, and nothing said so.
+
+The set difference is deliberately **one-directional**. The ledger predates the run index, so it
+legitimately holds rows for runs the index never saw — reporting that direction would bury the
+one finding under ordinary history. Scoping to a `parent_id` is what lets a deployment name its
+own missing sessions, since its session table is built from the ledger and a killed session is
+absent from it by construction.
+
+One test pins a defect caught in review rather than a requirement: grouping by run group must
+keep every run, where a dict comprehension keyed on the group silently keeps only the last.
+
 ---
 
 ## Related coverage elsewhere
