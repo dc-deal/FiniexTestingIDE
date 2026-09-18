@@ -275,6 +275,10 @@ class AutoTraderDisplayStats:
     Args:
         session_start: Session start time (UTC)
         dry_run: Whether this is a dry-run session
+        deployment_id: The deployment this session joined, or '' when it stands alone
+            (#497). The RESOLVED answer, never the profile's declaration — a profile
+            that says continuous while `--one-off` is in force must read ONE-OFF, or
+            this is the `dry_run` near-miss in a new costume
         core: Shared live-telemetry core (symbol, ticks_processed, balances, trades, awareness)
         broker_type: Broker identifier
         open_positions: Current open position snapshots
@@ -305,6 +309,7 @@ class AutoTraderDisplayStats:
 
     # Broker config seed (8-char SHA256 of symbols block — empty if unavailable)
     config_hash: str = ''
+    deployment_id: str = ''
 
     # Equity + spot balances (spot mode populated, margin mode equity only)
     equity: float = 0.0

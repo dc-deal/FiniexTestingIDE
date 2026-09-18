@@ -30,6 +30,7 @@ Two rules the suite exists to defend:
 | **Signal** | `test_signal_report` | see below |
 | **Feed stability** | `test_feed_stability_report` | disturbance episodes across both staleness domains (#451) — every boundary derived from observed state, a stress config contributing only its label |
 | **Diagnostics** | `test_profiling_report` · `test_worker_decision_report` · `test_block_splitting_report` · `test_scenario_details_report` · `test_broker_report` | per-worker timing, decision breakdown, window splitting, broker facts; the #420 cadence figures derived once in the builder |
+| **Deployment** | `test_deployment_history` · `test_profile_fingerprint` | see below |
 | **Store & warnings** | `test_report_store` (31) · `test_warnings_errors_report` | the cross-run ledger; that a `run_group` does not hide a run from the index or from any report route; the tiered warning model (#395); that an operator Ctrl+C is told apart from a crash, both of which arrive as `shutdown_mode='emergency'`; that a finding's origin (`check` / `domain`) reaches `WarningRow`, that an advisory sharing a result with a rejection is kept, and that a Tier-2 log-pot row claims no origin |
 | **Persistence contract** | `test_report_io_encoding` | artifacts are UTF-8 on disk and read back as bytes, so neither writer nor reader lets its locale pick the codec — plus a drift guard that no IO unit reintroduces the platform default |
 
@@ -118,3 +119,35 @@ model, the price formation and the market type at once.
 | `test_the_price_basis_reaches_the_row_at_this_grain_too` | the basis is read from the BAR index, and per scenario because that is where a mixed archive is visible — a run-level `order_driven,unknown` is true and useless for deciding which scenario's numbers to trust |
 | `test_a_scenario_that_read_nothing_reports_empty_rather_than_a_placeholder` | empty is empty, never a stand-in |
 
+## `test_deployment_history.py` — a restarted bot read back as one history (#497)
+
+A live session's ledger row is written under its own run id, and until the deployment identity
+the ledger's only other reader filtered on `sweep_id` — which a live session does not have. So
+the row was written and unreachable (§44 calls that a store with no read path). These pin the
+grouping and, just as deliberately, what it refuses to do.
+
+| Test | What it pins |
+|------|-------------|
+| `test_sessions_of_one_deployment_become_one_history` | the grouping itself |
+| `test_a_one_off_row_joins_nothing` | not even a placeholder group — inventing one asserts a continuity nobody declared |
+| `test_sessions_are_ordered_by_start_not_by_arrival` | the ledger is a set of fragments; nothing about a read returns them in order |
+| `test_a_multi_currency_session_appears_once` | one run writes one row PER CURRENCY — counting rows would report a two-currency bot as twice-restarted |
+| `test_a_changed_operation_is_marked_separately` | a raised stop level is not a different strategy; that separation is why there are two hashes |
+| `test_an_unreadable_timestamp_yields_no_gap_rather_than_a_wrong_one` | an unmeasurable duration reported as unmeasured costs a blank; reported as a figure it costs an investigation |
+| `test_the_rows_carry_the_running_figure` | the drawdown column is CUMULATIVE — `max()` is the deployment's reduction and a sum double-counts |
+
+No threshold anywhere decides what counts as too long a gap: that is a judgement about the
+market and the operator's night, not about the data.
+
+## `test_profile_fingerprint.py` — two hashes over one profile (#497)
+
+`param_hash` covers `strategy_config` and is what #512 compares a backtest against;
+`profile_hash` covers the operational rest. The property pinned here is that each answers ONLY
+its own question — a value answering both would answer neither. A changed safety threshold moves
+`profile_hash` and not `param_hash`; a changed strategy parameter does the reverse; a renamed or
+moved profile moves neither, because where a file sits is not a property of the run.
+
+The projection (`_plain`) is pinned separately: config blocks come in both shapes §6 allows, a
+dict is ordered so a reformatted JSON file does not read as a change, and the result stays
+JSON-serialisable — the `repr` fallback exists to keep the function total, and a value reaching
+it would carry an address and make two identical runs fingerprint differently.

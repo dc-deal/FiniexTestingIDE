@@ -671,6 +671,8 @@ class RunResultRow(BaseModel):
     input_files: int = 0
     unstamped_input_files: int = 0
     price_bases: str = ''
+    deployment_id: str = ''
+    profile_hash: str = ''
     currency: str = ''
     # KPIs (the rankable objective fields)
     net_pnl: float = 0.0

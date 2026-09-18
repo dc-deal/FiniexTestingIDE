@@ -64,6 +64,10 @@ LEDGER_COLUMNS: List[str] = [
     # Appended, so older fragments stay readable and read back as None.
     'input_plane', 'data_format_versions', 'origin_classes', 'origin_evidence_grades',
     'input_files', 'unstamped_input_files', 'price_bases',
+    # WHICH deployment this row belongs to and what the OPERATIONAL half of the
+    # profile looked like (#497). The pair is what lets a reader attribute a change:
+    # the rows of one deployment, and the hash that says where the parameters moved.
+    'deployment_id', 'profile_hash',
 ]
 
 
@@ -194,6 +198,8 @@ class RunResultsLedger:
             'input_files': p.input_files,
             'unstamped_input_files': p.unstamped_input_files,
             'price_bases': p.price_bases,
+            'deployment_id': p.deployment_id,
+            'profile_hash': p.profile_hash,
             'logic_version': RunLedgerIndex.LOGIC_VERSION,
         }
 

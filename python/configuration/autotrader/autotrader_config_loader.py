@@ -11,6 +11,7 @@ from typing import Any, Dict
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.types.autotrader_types.autotrader_config_types import (
     AutoTraderConfig,
+    DeploymentConfig,
     SafetyConfig,
 )
 from python.framework.types.config_types.autotrader_defaults_config_types import (
@@ -71,6 +72,7 @@ _KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = _allowlist_from(StatePersistenceDe
 _KNOWN_COLD_START_KEYS: frozenset           = _allowlist_from(ColdStartDefaults)
 _KNOWN_SESSION_END_KEYS: frozenset          = _allowlist_from(SessionEndDefaults)
 _KNOWN_CAPITAL_KEYS: frozenset              = _allowlist_from(CapitalDefaults)
+_KNOWN_DEPLOYMENT_KEYS: frozenset           = _allowlist_from(DeploymentConfig)
 _KNOWN_PERFORMANCE_TRACKING_KEYS: frozenset = _allowlist_from(AutoTraderPerformanceTrackingConfig)
 _KNOWN_TICK_SOURCE_KEYS: frozenset          = _allowlist_from(TickSourceConfig)
 _KNOWN_SCENARIO_SETTINGS_KEYS: frozenset    = _allowlist_from(ScenarioSettingsConfig)
@@ -153,7 +155,24 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     cold_start_raw = raw.get('cold_start', {})
     session_end_raw = raw.get('session_end', {})
     capital_raw = raw.get('capital', {})
+    deployment_raw = raw.get('deployment', None)
     performance_tracking_raw = execution_raw.get('performance_tracking', {})
+
+    # MANDATORY, and the one block with no default to fall back on (#497). Every other
+    # section may be omitted because its default is the safe reading; this one has no safe
+    # reading. Omitted and read as one-off, a deployed bot's sessions never group and the join
+    # key cannot be added afterwards — a month of history is gone. Omitted and read as
+    # continuous, a field study's repeated runs are welded into a history that means nothing.
+    # So the profile has to say, and a profile that does not fails HERE — loudly, at load,
+    # before anything runs — rather than thirty days later as a missing column.
+    if deployment_raw is None or 'continuous' not in deployment_raw:
+        raise ValueError(
+            f'{path}: missing required block `deployment` with `continuous` (true|false). '
+            f'Every profile must declare whether its sessions form ONE continuous deployment '
+            f'(their ledger rows join into one history) or whether each start stands alone. '
+            f'There is no safe default: guessing one-off loses a deployment\'s history '
+            f'irrecoverably, guessing continuous welds unrelated runs together. Add '
+            f'"deployment": {{"continuous": false}} for an ordinary or one-off profile.')
 
     # Structural key validation — profile level (pre-construction, full provenance)
     check_unknown_keys('profile (top level)', raw,              _KNOWN_PROFILE_TOP_KEYS)
@@ -170,6 +189,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('cold_start',          cold_start_raw,   _KNOWN_COLD_START_KEYS)
     check_unknown_keys('session_end',         session_end_raw,  _KNOWN_SESSION_END_KEYS)
     check_unknown_keys('capital',             capital_raw,      _KNOWN_CAPITAL_KEYS)
+    check_unknown_keys('deployment',          deployment_raw,   _KNOWN_DEPLOYMENT_KEYS)
     check_unknown_keys('tick_source',         tick_source_raw,  _KNOWN_TICK_SOURCE_KEYS)
     if scenario_settings_raw is not None:
         check_unknown_keys('scenario_settings', scenario_settings_raw, _KNOWN_SCENARIO_SETTINGS_KEYS)
@@ -245,6 +265,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         cold_start=ColdStartDefaults(**_block(cold_start_raw)),
         session_end=SessionEndDefaults(**_block(session_end_raw)),
         capital=CapitalDefaults(**_block(capital_raw)),
+        deployment=DeploymentConfig(**_block(deployment_raw)),
         state_persistence=StatePersistenceDefaults(**_block(state_persistence_raw, enabled=state_persistence_enabled_resolved)),
         config_path=path,
     )

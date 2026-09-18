@@ -6,6 +6,7 @@ Usage:
     python python/cli/run_index_cli.py rebuild
     python python/cli/run_index_cli.py status
     python python/cli/run_index_cli.py prune [--orphans] [--keep-last N] [--apply]
+    python python/cli/run_index_cli.py deployments [--id <deployment>]
 """
 
 import argparse
@@ -13,7 +14,12 @@ import sys
 from typing import List
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.reporting.console.deployment_history_summary import (
+    build_deployment_histories,
+    render_deployment_history,
+)
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.reporting.store.run_tree_pruner import RunTreePruner
 from python.framework.types.run_prune_types import PruneCandidate, PruneSelectors
 
@@ -66,6 +72,36 @@ class RunIndexCli:
         if len(runs) > 20:
             print(f'  … and {len(runs) - 20} more')
         print()
+        return 0
+
+    def cmd_deployments(self, deployment: str) -> int:
+        """
+        Show a live bot's sessions as one history (#497).
+
+        The ledger's only other reader filters on `sweep_id`, which a live session does not
+        have — so before this command a session's row was written and unreachable (§44: a
+        store with no read path). This is that path.
+
+        Args:
+            deployment: Show only this deployment, or '' for all of them
+
+        Returns:
+            Process exit code — 0 even when nothing is grouped, because "no deployment has
+            been declared yet" is a state, not a failure
+        """
+        ledger = RunResultsLedger(AppConfigManager().get_run_ledger_path())
+        histories = build_deployment_histories(ledger.read_rows())
+        if deployment:
+            histories = {k: v for k, v in histories.items() if k == deployment}
+
+        if not histories:
+            print('No deployment found in the ledger.')
+            print('A session joins one only when its profile declares '
+                  '`deployment.continuous: true` — until then every start stands alone.')
+            return 0
+
+        for name in sorted(histories):
+            render_deployment_history(name, histories[name])
         return 0
 
     def cmd_prune(self, orphans: bool, keep_last: int, apply: bool) -> int:
@@ -178,6 +214,13 @@ def main() -> int:
         help='Actually delete. Without it nothing is touched — a run directory is the only '
              'copy of its logs')
 
+    deployments_parser = subparsers.add_parser(
+        'deployments',
+        help="Show a live bot's sessions as one history — the ledger's only live read path")
+    deployments_parser.add_argument(
+        '--id', default='', metavar='DEPLOYMENT',
+        help='Show only this deployment (default: all)')
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -186,6 +229,8 @@ def main() -> int:
     cli = RunIndexCli()
     if args.command == 'prune':
         return cli.cmd_prune(args.orphans, args.keep_last, args.apply)
+    if args.command == 'deployments':
+        return cli.cmd_deployments(args.id)
     return {'rebuild': cli.cmd_rebuild, 'status': cli.cmd_status}[args.command]()
 
 

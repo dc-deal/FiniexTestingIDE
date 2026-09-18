@@ -215,3 +215,52 @@ def test_every_ledger_column_is_declared_on_the_typed_row():
     assert missing == [], (
         f'{missing} are written to the ledger and dropped on the way back in — the data is on '
         f'disk and no typed reader or exported CSV can see it')
+
+
+def test_every_declared_column_is_a_typed_field():
+    """
+    A column on disk that the typed row does not declare is written and read by nobody.
+
+    This is the shape of a defect that had been standing for months: eight columns were
+    appended to `LEDGER_COLUMNS`, written into every fragment, and silently dropped on the
+    way in — Pydantic discards an unknown key without a word, so the parquet held the answer
+    and every reader saw a default. `_write_csv` builds the optimizer's export from the
+    model's field list too, which is the second surface the same omission reaches.
+
+    The guard is a derivation rather than a copy: it asks the two declarations to agree,
+    so a column added tomorrow is covered the moment it is added.
+    """
+    missing = [c for c in LEDGER_COLUMNS if c not in RunResultRow.model_fields]
+    assert not missing, (
+        f'declared in LEDGER_COLUMNS but not on RunResultRow, so written and never read: '
+        f'{missing}')
+
+
+def test_a_live_row_carries_its_deployment_and_profile_hash(
+        tmp_ledger, make_run_summary, make_provenance):
+    """
+    The two columns #497 appended survive the round trip through parquet.
+
+    They are what makes a restarted bot readable as one history, and they are written by the
+    LIVE path only — which has no sweep id, so nothing else in the row groups it.
+    """
+    tmp_ledger.append(
+        make_run_summary(net_pnl=12.5),
+        make_provenance(run_id='20260917_080000_aaaabbbb',
+                        deployment_id='deploy_20260917_080000_ab12',
+                        profile_hash='opa1b2c3'))
+
+    row = tmp_ledger.read_rows()[0]
+    assert row.deployment_id == 'deploy_20260917_080000_ab12'
+    assert row.profile_hash == 'opa1b2c3'
+
+
+def test_a_one_off_row_names_no_deployment(tmp_ledger, make_run_summary, make_provenance):
+    """
+    A session that stands alone writes an EMPTY deployment, never a placeholder.
+
+    The empty value is what a history reader skips on. Inventing an identity for an
+    ungrouped session would manufacture exactly the continuity nobody declared.
+    """
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='20260917_090000_ccccdddd'))
+    assert tmp_ledger.read_rows()[0].deployment_id == ''

@@ -127,13 +127,24 @@ class AutotraderMain:
         config: AutoTraderConfig instance
     """
 
-    def __init__(self, config: AutoTraderConfig, attended: bool = False):
+    def __init__(
+        self,
+        config: AutoTraderConfig,
+        attended: bool = False,
+        one_off: bool = False,
+        new_deployment: bool = False,
+    ):
         self._config = config
         # #355: a human DECLARED that they are watching this start (CLI --attended). Cold-start
         # adoption may ask only then. Inferring presence from a TTY does not work — this
         # project's own container sets `tty: true`, so isatty() is True with nobody reading,
         # and the prompt would block forever in exactly the unattended case it guards against.
         self._attended = attended
+        # Both narrow the profile's declaration and neither can widen it (#497). `_one_off`
+        # detaches this one start from its deployment; `_new_deployment` begins a fresh one
+        # instead of inheriting. A profile that declares nothing is unaffected by either.
+        self._one_off = one_off
+        self._new_deployment = new_deployment
         self._running = False
         self._shutdown_mode = 'normal'
         self._tick_loop_started = False
@@ -241,7 +252,7 @@ class AutotraderMain:
         # not open the same document again: this tree charges 110x for a file read (§42), and
         # two reads could straddle a write and describe two different predecessors.
         self._carried = self._read_carry_over(run_timestamp)
-        deployment_id = self._carried.deployment_id or _mint_deployment_id(run_timestamp)
+        deployment_id = self._resolve_deployment(run_timestamp)
 
         # === LOGGERS ===
         loggers = create_autotrader_loggers(
@@ -258,6 +269,22 @@ class AutotraderMain:
             f'🚀 AutotraderMain starting: {self._config.symbol} '
             f'({self._config.broker_type}, adapter={self._config.adapter_type})'
         )
+        # What this start RESOLVED to, in the channel a 03:00 restart leaves behind — the one
+        # a person reads the next morning. Always said, both ways: an absent line reads as
+        # "not checked", and a profile declaring continuous under `--one-off` must say
+        # ONE-OFF here or the declaration and the behaviour part company unnoticed (#497).
+        # The SESSION channel, not the global one (§35/§36): this is per-phase awareness a
+        # person reads, and `autotrader_global.log` is the framework's low-level last resort.
+        if self._deployment_id:
+            carried = self._carried.deployment_id == self._deployment_id
+            self._session_logger.info(
+                f'🔗 Deployment {self._deployment_id} — '
+                f'{"continuing" if carried else "starting"} a continuous run; this session\'s '
+                f'ledger row joins that history')
+        else:
+            self._session_logger.info(
+                '🔗 One-off session — its ledger row names no deployment. '
+                'Declare `deployment.continuous` in the profile to group a bot\'s restarts.')
 
         # Copy profile config snapshot to log directory (mirrors scenario_set.copy_config_snapshot)
         if self._config.config_path and self._run_dir:
@@ -625,6 +652,7 @@ class AutotraderMain:
             display_queue=self._display_queue,
             session_start=run_timestamp,
             dry_run=dry_run,
+            deployment_id=self._deployment_id,
             signal_inbox=self._signal_inbox,
             signal_transport=self._signal_transport,
             display_label_cache=self._display_label_cache,
@@ -929,6 +957,7 @@ class AutotraderMain:
             broker_config=self._executor.broker if self._executor else None,
             signal_scenario_map=self._signal_scenario_map,
             observed_feed=self._collect_observed_feed(),
+            deployment_id=self._deployment_id,
         ).generate_and_log()
 
         # Close all loggers
@@ -1018,6 +1047,32 @@ class AutotraderMain:
     # =========================================================================
     # HELPERS
     # =========================================================================
+
+    def _resolve_deployment(self, run_timestamp: datetime) -> str:
+        """
+        Decide whether this session joins a deployment, starts one, or stands alone (#497).
+
+        The profile DECLARES; the command line may only narrow. That asymmetry is the whole
+        design and it follows from one case: an unattended restart re-executes a command nobody
+        typed, so a deployment declared on the command line would fragment at exactly the
+        restarts it exists to span — silently, because a missing flag looks like a one-off.
+        The flag whose absence is expensive lives in the profile; the flags whose absence is
+        harmless live on the command line.
+
+        `--new-deployment` is safe to forget for the same reason in reverse: forgetting it
+        continues the existing deployment, which is the recoverable direction.
+
+        Args:
+            run_timestamp: This session's start, which names a newly minted deployment
+
+        Returns:
+            The deployment identity, or '' for a session that stands alone
+        """
+        if not self._config.deployment.continuous or self._one_off:
+            return ''
+        if self._new_deployment:
+            return _mint_deployment_id(run_timestamp)
+        return self._carried.deployment_id or _mint_deployment_id(run_timestamp)
 
     def _read_carry_over(self, run_timestamp: datetime) -> ColdStartPayload:
         """
@@ -1190,8 +1245,11 @@ class AutotraderMain:
                                   if self._config.safety.persist_baseline else None),
                 # The join key, written on every one of these points rather than once at boot:
                 # a session that dies before its first structural write must still leave its
-                # membership behind, or its ledger row is an orphan nobody can attach.
-                deployment_id=self._deployment_id,
+                # membership behind, or its ledger row is an orphan nobody can attach. None
+                # for a one-off, and the store's convention then LEAVES an existing identity
+                # alone — a debugging start of a deployed profile must not end the deployment
+                # it was asked to stay out of.
+                deployment_id=self._deployment_id or None,
                 refresh_index=refresh_index,
             )
             return True

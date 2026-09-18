@@ -4,6 +4,10 @@
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "live",
+  "deployment": {
+    "_comment": "Do this profile's sessions form ONE deployment whose ledger rows join into one history? MANDATORY — there is no safe default. Declare true only on a profile you are actually deploying; the CLI can narrow it (--one-off) but never widen it.",
+    "continuous": false
+  },
   "dry_run": false,
   "strategy_config": {
     "decision_logic_type": "CORE/live_field_study/live_field_study",

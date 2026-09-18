@@ -66,12 +66,14 @@ class AutoTraderLiveDisplay:
         tick_source: AbstractTickSource,
         config: AutoTraderConfig,
         dry_run: bool = True,
+        deployment_id: str = '',
         display_label_cache: Optional[DisplayLabelCache] = None,
     ):
         self._display_queue = display_queue
         self._tick_source = tick_source
         self._config = config
         self._dry_run = dry_run
+        self._deployment_id = deployment_id
         self._display_label_cache = display_label_cache or DisplayLabelCache()
         self._update_interval = config.display.update_interval_ms / 1000.0
 
@@ -203,6 +205,16 @@ class AutoTraderLiveDisplay:
             title.append(f' [{config_hash}]', style='bright_black')
         title.append(' — ')
         title.append('DRY RUN' if dry_run else 'LIVE TRADING', style='yellow' if dry_run else 'green bold')
+        # WHICH KIND OF RUN this is, from the RESOLVED answer rather than the profile's
+        # declaration (#497) — a profile that says continuous while `--one-off` is in force
+        # must read ONE-OFF here, or this is the `dry_run` near-miss in a new costume. Always
+        # shown, never only in the deployment case: an absent label reads as "not checked".
+        deployment = stats.deployment_id if stats else self._deployment_id
+        title.append(' · ')
+        if deployment:
+            title.append(f'DEPLOYMENT {deployment}', style='cyan bold')
+        else:
+            title.append('ONE-OFF', style='bright_black')
         return title
 
     # =========================================================================

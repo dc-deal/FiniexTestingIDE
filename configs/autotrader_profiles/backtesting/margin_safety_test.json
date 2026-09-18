@@ -3,6 +3,10 @@
   "symbol": "EURUSD",
   "broker_type": "mt5",
   "adapter_type": "mock",
+  "deployment": {
+    "_comment": "Do this profile's sessions form ONE deployment whose ledger rows join into one history? MANDATORY — there is no safe default. Declare true only on a profile you are actually deploying; the CLI can narrow it (--one-off) but never widen it.",
+    "continuous": false
+  },
   "strategy_config": {
     "decision_logic_type": "CORE/backtesting/backtesting_margin_stress",
     "worker_instances": {

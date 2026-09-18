@@ -30,6 +30,40 @@ The two that carry the most weight are the operator/safety pair: both arrive as
 deliberate stop from a safety-triggered one. Reading it off a missing reason would let the safety
 layer fire and still report success.
 
+### test_deployment_continuity.py
+
+The only end-to-end run of the deployment mechanism (#497). Four sessions through ONE carry-over
+directory, in sequence: mint → inherit → `--one-off` → `--new-deployment`. Everything else in the
+project pins a piece of this — the loader, the resolver, the history reader — and none of them
+prove the identity actually TRAVELS out of one session's carry-over, through a process that has
+ended, into the next session's ledger row.
+
+| Test | What it validates |
+|------|-------------------|
+| `test_the_first_session_mints_one` | A continuous profile with nothing to inherit names itself |
+| `test_the_second_session_inherits_it` | The carry-over reached the successor |
+| `test_both_ledger_rows_name_it` | It reached the RECORD, not only the running process |
+| `test_the_rows_read_back_as_one_history` | `build_deployment_histories` groups them, in order, with the gap |
+| `test_the_two_fingerprints_hold_across_a_restart` | Nothing changed, so `param_hash` and `profile_hash` must not move — a fingerprint that drifts would mark every restart |
+| `test_a_one_off_start_records_no_deployment` | `--one-off` writes `''` and joins no history |
+| `test_a_one_off_start_does_not_end_the_deployment` | It stays out of the history without destroying it |
+| `test_new_deployment_begins_a_second_history` | Two deployments over the same three rows |
+| `test_a_dry_run_session_leaves_no_carry_over` | The LIMIT of the mechanism, pinned rather than discovered live |
+
+**Why the sessions are armed.** A dry run writes no carry-over — it sent no order to any venue,
+so its session key is not one this bot sent orders under (#355) — and `_is_dry_run` answers
+`True` for a mock adapter before it looks at anything else. So a mock profile cannot reach this
+path, and the test resolves the session as armed instead. That changes exactly one thing:
+whether the carry-over may be written. The tick loop stays on its mock path regardless, and the
+mock adapter has no transport to arm.
+
+**Data Dependency:** `configs/autotrader_profiles/backtesting/deployment_continuity_test.json`
+— the only tracked profile declaring `deployment.continuous: true`. The carry-over goes to the
+test's own directory; the ledger is redirected for the whole suite by `tests/conftest.py`.
+
+**Runtime:** ~65 seconds — five sessions, chained in one module-scoped fixture because the
+properties are four questions about one sequence rather than four sequences.
+
 **Data Dependency:** Uses `configs/autotrader_profiles/backtesting/mock_session_test.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`.
 
 **Runtime:** ~6 seconds total (session shared across both tests via `scope='module'`).

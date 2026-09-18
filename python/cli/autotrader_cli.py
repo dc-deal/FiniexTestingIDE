@@ -44,6 +44,20 @@ def main():
              '— a TTY does not prove anybody is reading it (this project\'s own container '
              'allocates one), and a bot waiting forever at 03:00 has simply stopped.')
 
+    run_parser.add_argument(
+        '--one-off', action='store_true',
+        help='Detach THIS start from the profile\'s deployment (#497): its ledger row names '
+             'no deployment and joins no history. Narrows the profile, never widens it — a '
+             'deployment cannot be declared from the command line, because an unattended '
+             'restart re-executes a command nobody typed and would fragment the very history '
+             'the declaration exists to hold together.')
+    run_parser.add_argument(
+        '--new-deployment', action='store_true',
+        help='Begin a NEW deployment instead of continuing the one this bot last named '
+             '(#497). For a bot redeployed after a pause or with different parameters, where '
+             'continuing the old history would claim a continuity that does not exist. Safe '
+             'to forget: without it the existing deployment simply continues.')
+
     # ─────────────────────────────────────────────────────────────────────────
     # Parse and execute
     # ─────────────────────────────────────────────────────────────────────────
@@ -66,7 +80,9 @@ def main():
                 config.display.enabled = True
             if args.delay is not None:
                 config.tick_source.tick_delay_ms = args.delay
-            trader = AutotraderMain(config, attended=args.attended)
+            trader = AutotraderMain(
+                config, attended=args.attended,
+                one_off=args.one_off, new_deployment=args.new_deployment)
             result = trader.run()
 
             # The result carries the graded outcome; the CLI only maps it (#372)

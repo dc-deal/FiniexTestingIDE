@@ -77,3 +77,15 @@ class RunProvenance:
     # expose rather than to smooth over. On the LIVE side it is a DECLARATION and not a stamp;
     # `input_plane` is what tells the two apart.
     price_bases: str = ''                   # distinct, sorted, comma-joined
+    # WAS this run declared part of a continuous deployment, and WHICH one (#497). The
+    # RESOLVED answer: a profile declaring continuous under `--one-off` records ''. Without
+    # it a reader cannot tell a session that belongs to no deployment from one whose
+    # grouping was simply never written — the same distinction `input_plane` draws for the
+    # empty consumption fields.
+    deployment_id: str = ''
+    # Fingerprint of the OPERATIONAL half of the profile — everything except strategy_config,
+    # which `param_hash` already covers. Two hashes because they answer two questions: whether
+    # the STRATEGY moved (what #512 compares on) and whether the OPERATION moved (a risk
+    # threshold, a timeout, a guard). One value answering both would answer neither — a
+    # changed stop level must not read as a different strategy.
+    profile_hash: str = ''

@@ -60,6 +60,8 @@ class AutotraderDisplayExporter:
         quote_currency: Symbol quote currency
         session_start: Session start time (UTC)
         dry_run: Whether this is a dry-run session
+        deployment_id: The deployment this session RESOLVED to, '' when it
+            stands alone (#497)
         display_label_cache: Cached display=True key lists
         drift_auditor: DriftAuditor (footer counters, optional)
         reconciler: Reconciler (status line, optional)
@@ -80,6 +82,7 @@ class AutotraderDisplayExporter:
         session_start: datetime,
         dry_run: bool,
         display_label_cache: DisplayLabelCache,
+        deployment_id: str = '',
         drift_auditor: Optional[DriftAuditor] = None,
         reconciler: Optional[Reconciler] = None,
         api_monitor: Optional[ApiPerfMonitor] = None,
@@ -96,6 +99,7 @@ class AutotraderDisplayExporter:
         self._quote_currency = quote_currency
         self._session_start = session_start
         self._dry_run = dry_run
+        self._deployment_id = deployment_id
         self._display_label_cache = display_label_cache
         # #141 Part 2a Phase 3b: None in a mounted session, and then the panel says
         # "mounted (no transport)" rather than rendering an idle connection.
@@ -129,6 +133,7 @@ class AutotraderDisplayExporter:
             ),
             session_start=self._session_start,
             dry_run=self._dry_run,
+            deployment_id=self._deployment_id,
             broker_type=self._config.broker_type,
             config_hash=self._executor.broker.config_hash,
             equity=portfolio.balance,
@@ -310,6 +315,7 @@ class AutotraderDisplayExporter:
             ),
             session_start=self._session_start,
             dry_run=self._dry_run,
+            deployment_id=self._deployment_id,
             broker_type=self._config.broker_type,
             config_hash=self._executor.broker.config_hash,
             equity=equity,

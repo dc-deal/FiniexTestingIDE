@@ -12,8 +12,11 @@ degrades to an empty version, not an error.
 """
 
 import json
+from dataclasses import fields, is_dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
+
+from pydantic import BaseModel
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
@@ -102,6 +105,7 @@ def build_run_provenance_from_session(
     run_id: str,
     run_timestamp: datetime,
     warnings_errors_report: Optional[WarningsErrorsReport] = None,
+    deployment_id: str = '',
 ) -> RunProvenance:
     """
     Build a live session's provenance bundle for the results ledger.
@@ -154,7 +158,77 @@ def build_run_provenance_from_session(
         # backtest's, and `input_plane='stream'` is what tells a reader this one is DECLARED
         # rather than measured (§31c).
         price_bases=MarketConfigManager().get_price_formation(config.broker_type).value,
+        deployment_id=deployment_id,
+        profile_hash=_profile_fingerprint(config),
     )
+
+
+def _profile_fingerprint(config: AutoTraderConfig) -> str:
+    """
+    Fingerprint the OPERATIONAL half of a live profile — everything `param_hash` does not cover.
+
+    Two hashes rather than one wide one, because they answer two questions and a value that
+    answers both answers neither. `param_hash` covers `strategy_config` and is what #512
+    compares a backtest against — widening it would make a raised stop level read as a
+    different strategy and put the run beyond comparison for no reason. This one covers the
+    rest: the safety thresholds, the order guard, the execution and tick-source settings, the
+    capital declaration. Those change what a session DOES without changing what it decides,
+    and a reader asking "why did the breaker not fire on day 19" is asking about exactly them.
+
+    Derived from the loaded config rather than the file, so a value the loader resolved is
+    fingerprinted as resolved. `config_path` is excluded: where the profile sits on disk is
+    not a property of the run.
+
+    Args:
+        config: The loaded profile
+
+    Returns:
+        SHA256 hex digest over the operational sections
+    """
+    operational = {
+        field.name: _plain(getattr(config, field.name))
+        for field in fields(config)
+        if field.name not in _NON_OPERATIONAL_FIELDS
+    }
+    return generate_config_fingerprint(operational)
+
+
+def _plain(value: Any) -> Any:
+    """
+    Reduce one config value to something JSON can fingerprint deterministically.
+
+    The blocks come in BOTH shapes — §6 puts config schemas on Pydantic while a few settings
+    bundles stay dataclasses — so both are projected rather than one being assumed. Anything
+    else falls back to `repr`, which is the one case worth stating: a value whose repr carries
+    an address would make the fingerprint differ between two identical runs, so the fallback
+    exists to keep the function total and not because such a value is expected here.
+
+    Args:
+        value: A config field's value — a scalar, a Pydantic block, or a settings dataclass
+
+    Returns:
+        A JSON-serialisable projection of it
+    """
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode='json')
+    if is_dataclass(value) and not isinstance(value, type):
+        return {f.name: _plain(getattr(value, f.name)) for f in fields(value)}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in sorted(value.items())}
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return repr(value)
+
+
+# What `profile_hash` deliberately leaves out. `strategy_config` belongs to `param_hash`
+# and must not be counted twice — that is the whole point of having two. The rest are the
+# run's own identity rather than its configuration: a renamed profile or a moved file is not
+# an operational change.
+_NON_OPERATIONAL_FIELDS = frozenset({
+    'strategy_config', 'config_path', 'name', 'symbol', 'broker_type', 'scenario_settings',
+})
 
 
 def _consumption_record(scenarios: List[SingleScenario]) -> Dict[str, Any]:

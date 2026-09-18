@@ -184,14 +184,19 @@ class RunTreePruner:
         """
         The run ids `--keep-last N` spares.
 
-        Two units, because a sweep is not a run and must not be counted like one:
+        Two units, because a parent is not a run and must not be counted like one:
 
         - a standalone run belongs to the family `(group, run_name)` — the redundancy this
           removes comes from running the same scenario set or profile again
-        - a sweep's combinations are NOT a family among themselves. The SWEEP is the unit: the N
-          newest sweeps survive WHOLE, the rest go WHOLE. Counting combinations instead would
+        - the children of one parent are NOT a family among themselves. The PARENT is the unit:
+          the N newest parents survive WHOLE, the rest go WHOLE. Counting children instead would
           keep 2 of 4 and leave a `ranked.csv` ranking runs that no longer exist — a half-pruned
           sweep is worse than an unpruned one
+
+        There are TWO kinds of parent since #497 and they are counted alike: a sweep, whose
+        children are its combinations, and a DEPLOYMENT, whose children are the sessions of one
+        live bot across its restarts. Both are an identity that groups runs without being one,
+        so `--keep-last N` spares the N newest of each — whole.
 
         Args:
             runs: The index rows
@@ -204,10 +209,10 @@ class RunTreePruner:
             return None
 
         standalone: Dict[str, List[RunInfo]] = defaultdict(list)
-        by_sweep: Dict[str, List[RunInfo]] = defaultdict(list)
+        by_parent: Dict[str, List[RunInfo]] = defaultdict(list)
         for run in runs:
             if run.parent_id:
-                by_sweep[run.parent_id].append(run)
+                by_parent[run.parent_id].append(run)
             else:
                 standalone[f'{run.group}/{run.name}'].append(run)
 
@@ -218,10 +223,10 @@ class RunTreePruner:
             survivors.update(
                 r.run_id for r in sorted(members, key=lambda r: r.run_id, reverse=True)[:keep_last])
 
-        # The sweep ids themselves carry a timestamp prefix, so the same ordering applies one
-        # level up. Every combination of a surviving sweep survives with it.
-        for sweep_id in sorted(by_sweep, reverse=True)[:keep_last]:
-            survivors.update(r.run_id for r in by_sweep[sweep_id])
+        # Both parent identities carry a timestamp prefix, so the same ordering applies one
+        # level up. Every child of a surviving parent survives with it.
+        for parent_id in sorted(by_parent, reverse=True)[:keep_last]:
+            survivors.update(r.run_id for r in by_parent[parent_id])
         return survivors
 
     def _collect_orphans(self, known_dirs: set, report: PruneReport) -> None:

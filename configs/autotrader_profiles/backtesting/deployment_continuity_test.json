@@ -1,11 +1,11 @@
 {
-  "name": "minimal_warmup_test",
+  "name": "deployment_continuity_test",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",
   "deployment": {
-    "_comment": "Do this profile's sessions form ONE deployment whose ledger rows join into one history? MANDATORY — there is no safe default. Declare true only on a profile you are actually deploying; the CLI can narrow it (--one-off) but never widen it.",
-    "continuous": false
+    "_comment": "The one tracked profile that declares TRUE. Two sessions of it must land in one history: the first mints the identity, the second inherits it from the carry-over. Everything else here is kept minimal so the pair runs twice in a test.",
+    "continuous": true
   },
   "strategy_config": {
     "decision_logic_type": "CORE/simple_consensus",
@@ -47,6 +47,10 @@
   },
   "execution": {
     "bar_max_history": 30
+  },
+  "cold_start": {
+    "_comment": "The carry-over is what hands the deployment identity from one session to the next. 'auto' because an unattended restart is the case this exists for — a prompt would hang it.",
+    "adoption_mode": "auto"
   },
   "display": {
     "enabled": false

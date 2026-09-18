@@ -62,7 +62,14 @@ class RunLedgerIndex(AbstractStoreIndex):
     # derivable from the amount and the peak — it was measured against the peak standing at the
     # time — so without the column the ledger holds a drawdown it cannot express as a share.
     # Same shape again: appended, no existing value changes.
-    LOGIC_VERSION: int = 6
+    #
+    # 6 → 7 (#497): `deployment_id` and `profile_hash` appended. The first is the join key that
+    # makes a restarted live bot readable as ONE history; the second is the fingerprint over the
+    # operational half of the profile, which `param_hash` deliberately does not cover — a raised
+    # stop level must not read as a different strategy. Appended, no existing value changes; an
+    # older fragment reads back None for both, which is honest: no live row before this version
+    # ever carried a deployment.
+    LOGIC_VERSION: int = 7
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

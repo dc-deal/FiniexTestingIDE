@@ -285,6 +285,21 @@
             }
         },
         {
+            "name": "📈 Run Index: Deployments",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
+            "args": [
+                "deployments"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_index_management",
+                "order": 18.5
+            }
+        },
+        {
             "name": "📈 Run Index: Prune (dry run)",
             "type": "debugpy",
             "request": "launch",
@@ -2904,6 +2919,26 @@
             "presentation": {
                 "group": "11_pytest_validation",
                 "order": 62
+            }
+        },
+        {
+            "name": "🧪 AutoTrader: Deployment Continuity",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/deployment_continuity_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 62.5
             }
         },
         {

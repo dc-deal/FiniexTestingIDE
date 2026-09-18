@@ -15,6 +15,24 @@ miss this pins: a profile declared `dry_run: true`, the override said `false`, a
 field — declared, documented and parsed — was read by nothing. A session would have sent real
 orders on a funded account with no crash and no warning (#304).
 
+### `test_deployment_declaration.py`
+
+Who may say that a bot's sessions form ONE deployment, and who may only take it away (#497).
+Two halves:
+
+- **The loader refuses an undeclared profile.** `deployment.continuous` is the one block with no
+  default, because neither value is safe to inherit: forgotten on a deployed profile the history
+  is unrecoverable, set wrongly on a one-off profile unrelated runs are welded together. Pinned
+  with the refusal message, which has to name what to write.
+- **`_resolve_deployment()`, every combination.** The profile declares, `--one-off` and
+  `--new-deployment` may only narrow. The case that matters most is the one that must NOT work:
+  no flag can promote a profile declaring `false`, because an unattended restart re-executes a
+  command nobody typed and a command-line deployment would fragment at exactly the restarts it
+  exists to span.
+
+Plus a sweep over every tracked profile asserting the block is actually there — the loadability
+suite would fail too, but as "this file does not parse", which reads like a typo.
+
 ### `test_profile_loadability.py`
 
 Every shipped AutoTrader profile loads. A profile that cannot be constructed is a session that

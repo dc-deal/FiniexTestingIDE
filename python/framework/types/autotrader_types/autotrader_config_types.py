@@ -90,6 +90,36 @@ class SafetyConfig:
 
 
 @dataclass
+class DeploymentConfig:
+    """
+    Whether this profile's sessions form ONE continuous deployment (#497).
+
+    An ARMING declaration, in the same family as `dry_run` — and the reason it is MANDATORY
+    rather than defaulted is that the family's usual safe default does not exist here. With
+    `dry_run` the safe value is True: forgetting it prevents real orders. Here BOTH directions
+    cost something, and the expensive one is caused BY a default:
+
+    - forgotten on the deployed profile → the sessions never group, and the join key cannot be
+      added afterwards. A month of history is unrecoverable
+    - set wrongly on a one-off profile (a field study, an adapter certification) → unrelated
+      runs are grouped. Annoying, and every figure is still there to be read separately
+
+    So there is no value that is safe to inherit, and the loader refuses a profile that does not
+    say. The cost is one line per profile and the gain is that every profile states what it is —
+    which today cannot be read off one at all.
+
+    Args:
+        continuous: True = this bot's sessions are one deployment and their ledger rows join
+            into one history. False = each start is its own run and names no parent. The CLI
+            may only narrow this (`--one-off`); declaring a deployment from the command line
+            is deliberately impossible, because an unattended restart re-executes a command
+            nobody typed and the deployment would fragment at exactly the restarts it exists
+            to span
+    """
+    continuous: bool
+
+
+@dataclass
 class AutoTraderConfig:
     """
     Top-level configuration for FiniexAutoTrader live sessions.
@@ -113,6 +143,9 @@ class AutoTraderConfig:
         session_end: What the session does with resting orders and open positions when it
             ends (#492). Two axes; `orders: 'leave'` is the loosening one and needs the
             broker's posture behind it, the same way `dry_run` does
+        deployment: Whether this profile's sessions form one continuous deployment (#497).
+            MANDATORY — the loader refuses a profile without it, because neither value is
+            safe to inherit (see DeploymentConfig)
         dry_run: Optional per-profile dry-run override. None = use the broker's
             market_config default. A profile may only TIGHTEN the posture: True wins
             over a live broker default, while False against a dry-run broker default
@@ -128,6 +161,10 @@ class AutoTraderConfig:
     tick_source: TickSourceConfig = field(default_factory=TickSourceConfig)
     execution: AutotraderExecutionDefaults = field(default_factory=AutotraderExecutionDefaults)
     clipping_monitor: ClippingMonitorDefaults = field(default_factory=ClippingMonitorDefaults)
+    # Defaulted to the SAFE reading only so the dataclass stays constructible in tests;
+    # the loader refuses a real profile that does not declare it.
+    deployment: DeploymentConfig = field(
+        default_factory=lambda: DeploymentConfig(continuous=False))
     display: DisplayDefaults = field(default_factory=DisplayDefaults)
     safety: SafetyConfig = field(default_factory=SafetyConfig)
     order_guard: OrderGuardDefaults = field(default_factory=OrderGuardDefaults)
