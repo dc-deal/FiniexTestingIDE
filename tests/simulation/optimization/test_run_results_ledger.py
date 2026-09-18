@@ -2,6 +2,7 @@
 
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
 from python.framework.types.api.report_types import RunResultRow
+from python.framework.types.log_layout_types import RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -264,3 +265,59 @@ def test_a_one_off_row_names_no_deployment(tmp_ledger, make_run_summary, make_pr
     """
     tmp_ledger.append(make_run_summary(), make_provenance(run_id='20260917_090000_ccccdddd'))
     assert tmp_ledger.read_rows()[0].deployment_id == ''
+
+
+def test_a_row_says_which_pipeline_produced_it(tmp_ledger, make_run_summary, make_provenance):
+    """
+    `run_type` is DECLARED, not inferred.
+
+    Before it, telling a backtest from a live session meant reading `input_plane` — a field
+    that answers a different question and arrived only with #518, so 520 of 616 rows could
+    not say what they were. The value comes from the same constants the run tree is laid out
+    with, so the ledger, the run index and the directory on disk cannot drift apart.
+    """
+    tmp_ledger.append(make_run_summary(),
+                      make_provenance(run_id='r_sim', run_type=RUN_TYPE_SIMULATION))
+    tmp_ledger.append(make_run_summary(),
+                      make_provenance(run_id='r_live', scenario_set_name='my_bot',
+                                      run_type=RUN_TYPE_LIVE))
+
+    by_run = {row.run_id: row for row in tmp_ledger.read_rows()}
+    assert by_run['r_sim'].run_type == RUN_TYPE_SIMULATION
+    assert by_run['r_live'].run_type == RUN_TYPE_LIVE
+
+
+def test_the_kind_is_derived_from_what_the_row_already_carries(
+        tmp_ledger, make_run_summary, make_provenance):
+    """
+    The SUBTYPE is not a column, and must not become one.
+
+    `sweep_id` and `deployment_id` already carry it; a stored subtype would be the same fact
+    written twice, and the copy nobody maintains is the one that eventually disagrees (§19).
+    Derived, it cannot drift — the same reason `RunInfo.has_reports` is computed.
+    """
+    tmp_ledger.append(make_run_summary(),
+                      make_provenance(run_id='r_plain', run_type=RUN_TYPE_SIMULATION))
+    tmp_ledger.append(make_run_summary(),
+                      make_provenance(run_id='r_sweep', scenario_set_name='set__c000',
+                                      sweep_id='sweep_1', run_type=RUN_TYPE_SIMULATION))
+    tmp_ledger.append(make_run_summary(),
+                      make_provenance(run_id='r_deployed', scenario_set_name='my_bot',
+                                      deployment_id='deploy_1', run_type=RUN_TYPE_LIVE))
+
+    by_run = {row.run_id: row for row in tmp_ledger.read_rows()}
+    assert by_run['r_plain'].run_kind == 'single_run'
+    assert by_run['r_sweep'].run_kind == 'sweep'
+    assert by_run['r_deployed'].run_kind == 'continuous'
+
+
+def test_an_untyped_row_claims_no_kind_either(tmp_ledger, make_run_summary, make_provenance):
+    """
+    A fragment written before the column existed reads back as UNKNOWN, never as a guess —
+    and the derived kind refuses to answer as well, rather than reporting 'single_run' for a
+    row whose pipeline nobody knows.
+    """
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='r_old'))
+    row = tmp_ledger.read_rows()[0]
+    assert row.run_type == ''
+    assert row.run_kind == ''

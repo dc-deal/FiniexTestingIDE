@@ -32,7 +32,10 @@ from python.framework.autotrader.tick_sources.tick_source_setup import setup_tic
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
-from python.framework.exceptions.live_execution_errors import DryRunConflictError
+from python.framework.exceptions.live_execution_errors import (
+    DryRunConflictError,
+    OneOffInsideDeploymentError,
+)
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -1067,8 +1070,28 @@ class AutotraderMain:
 
         Returns:
             The deployment identity, or '' for a session that stands alone
+
+        Raises:
+            OneOffInsideDeploymentError: `--one-off` on a bot that already has a deployment
         """
-        if not self._config.deployment.continuous or self._one_off:
+        if not self._config.deployment.continuous:
+            return ''
+        if self._one_off:
+            # The intended ORDER is one-off first, continuous afterwards: a probe day, then
+            # the deployment. Reversed, the flag stops meaning "do not record this" and starts
+            # meaning "trade this account without appearing in its history".
+            if self._carried.deployment_id:
+                raise OneOffInsideDeploymentError(
+                    f'--one-off refused: this bot already belongs to deployment '
+                    f'{self._carried.deployment_id}.\n'
+                    f'A one-off start would still trade this account with real money — its '
+                    f'P&L would be MISSING from the deployment history while its drawdown '
+                    f'keeps running inside it, so two columns of one table would describe '
+                    f'different periods.\n'
+                    f'  • starting over on purpose?  --new-deployment\n'
+                    f'  • just trying something?     copy the profile and give it its own name\n'
+                    f'  • only probing before you deploy? that is what --one-off is for, and '
+                    f'it belongs BEFORE the first continuous start')
             return ''
         if self._new_deployment:
             return _mint_deployment_id(run_timestamp)
@@ -1218,17 +1241,24 @@ class AutotraderMain:
             return False
         try:
             portfolio = self._executor.portfolio
+            # Two halves, and a dry run may only write one of them (#355/#497). What follows
+            # here makes a CLAIM ABOUT THE VENUE — this key sent orders, this book is open —
+            # and a dry run sent nothing, so its successor must not inherit either. Everything
+            # below `risk_baseline` is OUR OWN record and is written regardless.
+            venue = self._cold_start.persist_venue_claims
             self._cold_start.store.save(
-                session_key=self._executor.get_session_key(),
-                highest_position_counter=portfolio.get_position_counter(),
-                keys_in_use=self._cold_start.keys_in_use,
+                session_key=self._executor.get_session_key() if venue else '',
+                highest_position_counter=(
+                    portfolio.get_position_counter() if venue else 0),
+                keys_in_use=self._cold_start.keys_in_use if venue else None,
                 # SPOT only. A spot holding is a balance the venue cannot describe as a
                 # position, so it only survives a restart if WE write it down; a margin
                 # position sits at the venue and comes back from there (#209). Passing None
                 # rather than an empty list in margin mode leaves any stored book untouched
                 # instead of erasing it.
                 open_positions=(
-                    portfolio.get_position_book() if portfolio.is_spot_mode() else None),
+                    portfolio.get_position_book()
+                    if venue and portfolio.is_spot_mode() else None),
                 # #356 — the denominator every risk limit measures against. Both account
                 # models write it, unlike the book above: a margin session has no book to
                 # carry but the same restart drift, and it was the model whose breaker could

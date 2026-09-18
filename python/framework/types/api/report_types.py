@@ -546,6 +546,11 @@ class RunInfo(BaseModel):
     # it was never meant to. Without the pair a crashed run looks like a deliberately silent
     # one, and a consumer cannot tell an incomplete run from an intentional one.
     reporting: RunReporting = RunReporting.EXPECTED
+    # Bytes on disk, stamped once when the run finished rather than measured when asked.
+    # 0 on a row written before the column existed AND on a run still in flight — the two are
+    # indistinguishable here on purpose, because both mean "no figure was recorded", and a
+    # consumer showing it says UNKNOWN rather than inventing an empty run.
+    size_bytes: int = 0
 
     @computed_field
     @property
@@ -673,6 +678,12 @@ class RunResultRow(BaseModel):
     price_bases: str = ''
     deployment_id: str = ''
     profile_hash: str = ''
+    # 'simulation' | 'live'; '' on a fragment written before the column existed, which means
+    # UNKNOWN and never a guess.
+    run_type: str = ''
+    # When this row was written — within seconds of the run's end. '' on an older fragment,
+    # which is what makes a gap measured from it fall back to start-to-start and SAY so.
+    recorded_at_utc: str = ''
     currency: str = ''
     # KPIs (the rankable objective fields)
     net_pnl: float = 0.0
@@ -702,6 +713,29 @@ class RunResultRow(BaseModel):
     sl_tp_triggered: int = 0
     # Weakest SIGNAL channel of the run (#433); None = no SIGNAL worker was involved
     signal_fresh_ratio: float | None = None
+
+    @computed_field
+    @property
+    def run_kind(self) -> str:
+        """
+        What KIND of run this row belongs to, within its pipeline.
+
+        Derived rather than stored, and for the same reason `has_reports` above is: the facts
+        are already in the row, so a stored subtype would be a second encoding of them — and
+        the copy nobody maintains is the one that eventually disagrees (§19). A sweep
+        combination names its sweep; a session of a deployment names its deployment; anything
+        else stands alone.
+
+        Returns:
+            'sweep' | 'continuous' | 'single_run', or '' when the pipeline itself is unknown
+        """
+        if not self.run_type:
+            return ''
+        if self.sweep_id:
+            return 'sweep'
+        if self.deployment_id:
+            return 'continuous'
+        return 'single_run'
 
 
 class SweepSummary(BaseModel):

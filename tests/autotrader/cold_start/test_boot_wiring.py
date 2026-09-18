@@ -103,7 +103,8 @@ def _note() -> PositionCarryOver:
 
 
 def _main(executor, store, persist: bool, keys_in_use=None,
-          risk_baseline=None, persist_baseline: bool = True) -> AutotraderMain:
+          risk_baseline=None, persist_baseline: bool = True,
+          persist_venue_claims: bool = True) -> AutotraderMain:
     """
     A session object carrying only what the carry-over write reads.
 
@@ -119,6 +120,8 @@ def _main(executor, store, persist: bool, keys_in_use=None,
             one — every abort before the cold start decided still reaches the write
         persist_baseline: The switch that governs BOTH carried risk records — the
             denominator (#356) and the reported drawdown curve (#497)
+        persist_venue_claims: Whether the half that CLAIMS SOMETHING ABOUT THE VENUE — the
+            session key and the open book — may be written. False for a dry run
     """
     main = AutotraderMain.__new__(AutotraderMain)
     main._executor = executor
@@ -138,6 +141,7 @@ def _main(executor, store, persist: bool, keys_in_use=None,
         proceed=True,
         store=store,
         persist=persist,
+        persist_venue_claims=persist_venue_claims,
         keys_in_use=set(keys_in_use or ()),
     )
     return main
@@ -146,7 +150,11 @@ def _main(executor, store, persist: bool, keys_in_use=None,
 class TestNothingIsWrittenWithoutPermission:
     """The flag is set only after adoption has actually gone through."""
 
-    def test_a_refused_or_dry_boot_writes_nothing(self, executor):
+    def test_a_refused_boot_writes_nothing(self, executor):
+        """
+        Not one field. A restart loop feeds on itself otherwise: the refusal grades the run
+        non-zero, a supervisor relaunches, and each boot consumes its own key window.
+        """
         store = SpyStore()
 
         _main(executor, store, persist=False)._persist_cold_start_carry_over()
@@ -156,6 +164,52 @@ class TestNothingIsWrittenWithoutPermission:
     def test_no_store_is_a_no_op(self, executor):
         # A Field Study session, or cold_start disabled: no store was ever built.
         _main(executor, None, persist=True)._persist_cold_start_carry_over()
+
+
+class TestADryRunWritesOnlyWhatItCanClaim:
+    """
+    The payload has two halves and a dry run may write one of them (#355/#497).
+
+    The session key and the open position book are CLAIMS ABOUT THE VENUE — this key sent
+    orders, this book is open. A dry run sent nothing anywhere, so a successor inheriting
+    either would believe in orders and positions that do not exist. The risk baseline, the
+    reported drawdown curve and the deployment identity are OUR OWN records: numbers this
+    process computed, true whether or not the venue was real.
+
+    Before the split the whole write was refused, which had a consequence nobody wanted: a
+    MOCK session is a dry run by definition (`_is_dry_run` answers on the adapter type), so
+    the deployment identity and the drawdown curve could not be exercised at all without a
+    real venue.
+    """
+
+    def test_it_claims_no_session_key_and_no_book(self, spot_executor):
+        store = SpyStore()
+
+        _main(spot_executor, store, persist=True,
+              keys_in_use={'8b3f'},
+              persist_venue_claims=False)._persist_cold_start_carry_over()
+
+        assert len(store.saves) == 1
+        written = store.saves[0]
+        assert written['session_key'] == '', 'a dry run recorded a key it never sent orders under'
+        assert written['keys_in_use'] == set(), 'a dry run protected a key it never used'
+        assert written['open_positions'] is None, (
+            'the successor would inherit a book the venue does not hold')
+
+    def test_it_still_carries_its_own_records(self, executor):
+        """The half that is ours: the curve, the denominator and the deployment identity."""
+        store = SpyStore()
+        tracker = RiskBaselineTracker(
+            mode=BaselineKind.SESSION_FIXED, restored=None, spot_mode=False,
+            exclusive_account=True, clock_fn=lambda: _CLOCK, logger=RecordingLogger())
+        tracker.ensure_taken(10_000.0)
+
+        _main(executor, store, persist=True, risk_baseline=tracker,
+              persist_venue_claims=False)._persist_cold_start_carry_over()
+
+        written = store.saves[0]
+        assert written['risk_baseline'] is not None
+        assert written['deployment_id'] == 'deploy_20260914_080000'
 
 
 class TestWhatIsWritten:

@@ -14,6 +14,7 @@ provenance. The logical leading key for ranking is `param_hash`; filter by any c
 
 import json
 import math
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -68,6 +69,24 @@ LEDGER_COLUMNS: List[str] = [
     # profile looked like (#497). The pair is what lets a reader attribute a change:
     # the rows of one deployment, and the hash that says where the parameters moved.
     'deployment_id', 'profile_hash',
+    # WHICH PIPELINE produced this row — 'simulation' or 'live', from the same two constants
+    # the run tree and the run index are named after (`log_layout_types`). Declared rather
+    # than inferred: before it, telling a backtest from a live session meant reading
+    # `input_plane`, which exists to answer a different question and is empty on everything
+    # written before #518 — measured 2026-09-18, 520 of 616 rows could not say what they were.
+    # The SUBTYPE is deliberately NOT a column: `sweep_id` and `deployment_id` already carry
+    # it, and a second encoding of a fact is the copy that eventually disagrees (§19).
+    # `RunResultRow.run_kind` derives it instead.
+    'run_type',
+    # WHEN this row was written, which is within seconds of when the run ENDED — the reports
+    # are persisted at its close and the append is the last step. The ledger had no end of any
+    # kind, and `SweepSummary.duration_s` says so in its own comment ("last - first run start,
+    # no per-run end in the ledger"). Without it a deployment's gap can only be measured
+    # between two STARTS, which counts the previous session's whole runtime as downtime: a
+    # bot that ran 06:00-18:00 and restarted at 19:00 reads as a 13-hour gap instead of one.
+    # A pure PROVENANCE stamp off the wall clock, and legitimately so (§9): it records when WE
+    # wrote this, nothing decides on it, and the gap it feeds is REPORTED and never judged.
+    'recorded_at_utc',
 ]
 
 
@@ -200,6 +219,8 @@ class RunResultsLedger:
             'price_bases': p.price_bases,
             'deployment_id': p.deployment_id,
             'profile_hash': p.profile_hash,
+            'run_type': p.run_type,
+            'recorded_at_utc': datetime.now(timezone.utc).isoformat(),
             'logic_version': RunLedgerIndex.LOGIC_VERSION,
         }
 

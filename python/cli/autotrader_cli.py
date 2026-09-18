@@ -12,6 +12,9 @@ import traceback
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.exceptions.live_execution_errors import (
+    OneOffInsideDeploymentError,
+)
 
 
 def main():
@@ -91,6 +94,12 @@ def main():
     except KeyboardInterrupt:
         print('\n\n👋 Interrupted by user')
         sys.exit(0)
+    except OneOffInsideDeploymentError as refusal:
+        # A refusal, not a fault: the message already says what to do instead, and a stack
+        # trace under it would suggest something broke. Same exit code as a framework
+        # emergency (#372) — the session did not start.
+        print(f'\n🔗 {refusal}\n')
+        sys.exit(2)
     except Exception as e:
         print(f'\n❌ Error: {e}')
         traceback.print_exc()

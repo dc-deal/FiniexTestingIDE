@@ -21,6 +21,24 @@ class DryRunConflictError(FiniexError):
     pass
 
 
+class OneOffInsideDeploymentError(FiniexError):
+    """
+    `--one-off` was passed to a bot that already belongs to a deployment (#497).
+
+    The flag is meant for the PROBE that comes BEFORE a deployment — the day you run the
+    profile to see that it behaves, before declaring it continuous. Once the deployment
+    exists, the same flag does something else entirely: the session still trades that
+    account with real money, but its row leaves no mark on the deployment's history — while
+    its drawdown keeps running inside that history, because the account's risk curve does
+    not care what stood on the command line. Two columns of one table would then describe
+    different periods, which is the confusion #497 exists to end.
+
+    Refused rather than warned: a warning at 03:00 reaches nobody, and the damage is in the
+    record afterwards.
+    """
+    pass
+
+
 class SessionEndPolicyConflictError(FiniexError):
     """
     A profile asked for `session_end.orders: 'leave'` where nothing would manage them.

@@ -40,20 +40,20 @@ class PruneReport:
     """
     The classification, computed without touching anything.
 
-    This IS the product of a dry run, and `RunTreePruner.apply()` consumes it rather than
+    This IS the product of a preview, and `RunTreePruner.apply()` consumes it rather than
     re-deriving the decision — so what the operator was shown is exactly what gets deleted.
     """
     to_delete_orphans: List[PruneCandidate] = field(default_factory=list)
     to_delete_redundant: List[PruneCandidate] = field(default_factory=list)
     to_delete_uncommissioned: List[PruneCandidate] = field(default_factory=list)
-    # The four kept groups, carried so the dry run can SAY why a run stayed rather than
+    # The four kept groups, carried so the preview can SAY why a run stayed rather than
     # leaving the operator to infer it from an absence.
     kept_incomplete: List[PruneCandidate] = field(default_factory=list)
     kept_field_study: List[PruneCandidate] = field(default_factory=list)
     kept_complete: List[PruneCandidate] = field(default_factory=list)
     skipped_sweep_dirs: List[PruneCandidate] = field(default_factory=list)
     # Index rows whose directory is gone — the tree was cleared by hand, or a run was removed
-    # outside this command. Nothing to delete, but the rebuild WILL drop them, so a dry run that
+    # outside this command. Nothing to delete, but the rebuild WILL drop them, so a preview that
     # stayed silent about it would hide a change it is supposed to announce.
     stale_rows: List[PruneCandidate] = field(default_factory=list)
     # Sweep directories left empty by this prune's own deletions — removed with them, never

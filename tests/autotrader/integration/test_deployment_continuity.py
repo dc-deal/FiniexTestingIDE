@@ -8,17 +8,15 @@ identity, the history reader groups the rows. None of them prove the identity ac
 ledger row. That journey crosses two stores and a shutdown, and when this was written no live
 ledger row had ever carried a deployment at all.
 
-**Why the sessions have to be armed, and why that is safe here.** A dry run writes no
-carry-over. The rule is older than this feature and it is a good one: a dry run sent no order to
-any venue, so its session key is not one this bot "sent orders under", and appending it would
-let a restart loop evict the key that owns a real resting order (#355). The consequence for a
-deployment is that a dry run cannot hand one on either — and a mock session is ALWAYS a dry run,
-`_is_dry_run` decides that on the adapter type before it looks at anything else. So a mock
-profile cannot reach this path on its own, and the test resolves the session as armed instead.
-What that changes is exactly one thing: whether the carry-over may be written. The tick loop
-stays on its mock path either way (it takes `adapter_type == 'mock'` as its own answer), and the
-mock adapter has no transport to arm — it mutates its own dictionaries and cannot reach a
-network. `configs/market_config.json` is never read differently.
+**These are ordinary mock sessions — nothing is armed and nothing is patched.** That became
+possible when the carry-over's write gate was split by what the payload CLAIMS: a dry run may
+not write the session key or the open position book, because those describe orders a venue does
+not hold, but it DOES write the deployment identity, the risk baseline and the drawdown curve,
+which are numbers this process computed and are true whether or not the venue was real. Before
+that split a mock profile could not reach this path at all — `_is_dry_run` answers True on the
+adapter type before it looks at anything else — and this test had to resolve the session as
+armed to get there. It no longer does, and that is the point: the chain below is exactly what an
+operator can run by hand.
 
 The chain runs ONCE for the whole module: a session costs about eleven seconds, nearly all of it
 warmup, and the four properties below are four questions about one sequence rather than four
@@ -26,6 +24,7 @@ sequences. The carry-over goes to the test's own directory (§34); the ledger is
 redirected for the whole suite by `tests/conftest.py`.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -33,6 +32,7 @@ import pytest
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.exceptions.live_execution_errors import OneOffInsideDeploymentError
 from python.framework.reporting.console.deployment_history_summary import (
     build_deployment_histories,
 )
@@ -42,15 +42,13 @@ from tests.shared.fixture_helpers import remove_run_dir
 PROFILE = 'configs/autotrader_profiles/backtesting/deployment_continuity_test.json'
 
 
-def run_session(carry_over_dir: Path, armed: bool = True, **flags) -> AutotraderMain:
+def run_session(carry_over_dir: Path, **flags) -> AutotraderMain:
     """
     Run one full session of the deployment profile and hand back the finished object.
 
     Args:
         carry_over_dir: Where this session reads and writes its cold-start document —
             shared across a chain, which is what makes the sessions a sequence
-        armed: Whether the session resolves as a non-dry run, which is what allows the
-            carry-over to be written at all
         flags: `one_off` / `new_deployment`, the two narrowing CLI flags
 
     Returns:
@@ -59,8 +57,6 @@ def run_session(carry_over_dir: Path, armed: bool = True, **flags) -> Autotrader
     config = load_autotrader_config(PROFILE)
     config.cold_start.path = str(carry_over_dir)
     trader = AutotraderMain(config, **flags)
-    if armed:
-        trader._is_dry_run = lambda: False
     trader.run()
     return trader
 
@@ -68,21 +64,25 @@ def run_session(carry_over_dir: Path, armed: bool = True, **flags) -> Autotrader
 @pytest.fixture(scope='module')
 def chain(tmp_path_factory):
     """
-    One carry-over directory, four sessions through it, in this order:
+    One carry-over directory, four sessions through it, in the order an operator actually
+    works:
 
-        1. `first`     — ordinary: nothing to inherit, so it mints
-        2. `second`    — ordinary: inherits what `first` left
-        3. `detached`  — `--one-off`: stands alone, and must not END the deployment
-        4. `fresh`     — `--new-deployment`: begins a second history
+        1. `probe`   — `--one-off` on a profile that declares `continuous` but has never run.
+                       The probe day. Nobody starts an algo for thirty days and then leaves
+        2. `first`   — ordinary: nothing to inherit, so it mints
+        3. `second`  — ordinary: inherits what `first` left
+        4. `fresh`   — `--new-deployment`: begins a second history
 
     A chain rather than four independent cases, because the interesting properties are all
-    about what the PREVIOUS session left behind.
+    about what the PREVIOUS session left behind — and because the ORDER is the contract:
+    `--one-off` is refused once the deployment exists, which `TestTheFlagsNarrowARealSession`
+    pins separately.
     """
     carry_over = tmp_path_factory.mktemp('cold_start_state')
     sessions = {
+        'probe': run_session(carry_over, one_off=True),
         'first': run_session(carry_over),
         'second': run_session(carry_over),
-        'detached': run_session(carry_over, one_off=True),
         'fresh': run_session(carry_over, new_deployment=True),
     }
     yield sessions
@@ -157,19 +157,35 @@ class TestNothingChangedSoNothingIsReported:
 class TestTheFlagsNarrowARealSession:
     """What the command line does to a profile that declares a deployment."""
 
-    def test_a_one_off_start_records_no_deployment(self, chain, rows):
-        assert chain['detached']._deployment_id == ''
-        assert rows['detached'].deployment_id == ''
-        assert build_deployment_histories([rows['detached']]) == {}
+    def test_the_probe_records_no_deployment(self, chain, rows):
+        """
+        A probe day before the bot is deployed: it runs, it produces a ledger row, and that
+        row joins no history — because at that moment there is no history to join.
+        """
+        assert chain['probe']._deployment_id == ''
+        assert rows['probe'].deployment_id == ''
+        assert build_deployment_histories([rows['probe']]) == {}
 
-    def test_a_one_off_start_does_not_end_the_deployment(self, chain):
+    def test_the_probe_does_not_become_the_deployment(self, chain):
+        """The session after it mints its own identity rather than adopting the probe's."""
+        assert chain['first']._deployment_id
+        assert chain['first']._deployment_id != chain['probe']._deployment_id
+
+    def test_one_off_is_refused_once_the_deployment_exists(self, chain, tmp_path_factory):
         """
-        A debugging start must stay OUT of the history without destroying it. The proof is
-        the session after it: `fresh` was asked for a new deployment, so what it must not
-        do is mint one because the carry-over was wiped — it must mint one although the
-        carry-over still holds the old identity.
+        The order is the contract. Past the first continuous start the same flag would let a
+        session trade this account while leaving no mark on the history its own drawdown
+        keeps running inside — so it is refused, with the three ways out named.
         """
-        assert chain['fresh']._deployment_id != chain['detached']._deployment_id
+        carry_over = tmp_path_factory.mktemp('refusal_carry_over')
+        deployed = run_session(carry_over)
+        try:
+            assert deployed._deployment_id
+            with pytest.raises(OneOffInsideDeploymentError) as caught:
+                run_session(carry_over, one_off=True)
+            assert deployed._deployment_id in str(caught.value)
+        finally:
+            remove_run_dir(deployed._run_dir)
 
     def test_new_deployment_begins_a_second_history(self, chain, rows):
         assert chain['fresh']._deployment_id
@@ -178,21 +194,28 @@ class TestTheFlagsNarrowARealSession:
             [rows['first'], rows['second'], rows['fresh']])) == 2
 
 
-class TestADryRunHandsNothingOn:
+class TestWhatADryRunMayNotHandOn:
     """
-    The limit of the mechanism, written down here rather than discovered on a live machine.
+    The other half of the split, checked on a real session rather than on a double.
 
-    A dry run writes no carry-over at all, so its successor finds nothing and mints its own
-    identity. Two dry-run sessions therefore never form a history — which is the older rule
-    (#355) doing its job and not a defect here, but it IS the first thing an operator would
-    try the feature with. The end-user guide says the same sentence.
+    These sessions ARE dry runs — every mock session is. What they write is the deployment
+    identity and the risk records; what they must never write is a claim about a venue that
+    holds nothing: the session key this bot supposedly sent orders under, and the open
+    position book. A successor inheriting either would trade beside orders that do not exist.
     """
 
-    def test_a_dry_run_session_leaves_no_carry_over(self, tmp_path):
-        session = run_session(tmp_path / 'cold_start_state', armed=False)
-        try:
-            assert session._deployment_id, 'it still resolves an identity for its own row'
-            assert not list((tmp_path / 'cold_start_state').glob('*.json')), (
-                'a dry run wrote a carry-over — it sent no order to any venue')
-        finally:
-            remove_run_dir(session._run_dir)
+    def test_the_document_carries_the_identity_but_no_venue_claim(self, chain):
+        carry_over = Path(chain['first']._config.cold_start.path)
+        documents = sorted(carry_over.glob('*.json'))
+        assert documents, 'the chain wrote no carry-over at all'
+
+        # The LAST session's identity: the carry-over is keyed by the bot and overwrites, so
+        # the document always describes the most recent start — here `fresh`, which was asked
+        # for a new deployment and therefore wrote a different one than `first` minted.
+        stored = json.loads(documents[0].read_text())['snapshot']
+        assert stored['deployment_id'] == chain['fresh']._deployment_id
+        assert stored['deployment_id'] != chain['first']._deployment_id
+        assert stored['session_keys'] == [], (
+            'a dry run recorded a key it never sent orders under')
+        assert stored['open_positions'] == [], (
+            'the successor would inherit a book the venue does not hold')

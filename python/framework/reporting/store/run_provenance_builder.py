@@ -30,6 +30,10 @@ from python.framework.types.data_origin_types import (
     is_admissible_for_measurement,
     joined_distinct,
 )
+from python.framework.types.log_layout_types import (
+    RUN_TYPE_LIVE,
+    RUN_TYPE_SIMULATION,
+)
 from python.framework.types.run_results_types import RunProvenance, SweepContext
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSet, SingleScenario
 from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
@@ -96,6 +100,7 @@ def build_run_provenance(
         sweep_params=sweep_context.sweep_params if sweep_context else None,
         sweep_objective=sweep_context.objective if sweep_context else None,
         sweep_maximize=sweep_context.maximize if sweep_context else None,
+        run_type=RUN_TYPE_SIMULATION,
         **_consumption_record(scenarios),
     )
 
@@ -160,6 +165,7 @@ def build_run_provenance_from_session(
         price_bases=MarketConfigManager().get_price_formation(config.broker_type).value,
         deployment_id=deployment_id,
         profile_hash=_profile_fingerprint(config),
+        run_type=RUN_TYPE_LIVE,
     )
 
 

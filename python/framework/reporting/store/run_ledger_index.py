@@ -69,7 +69,22 @@ class RunLedgerIndex(AbstractStoreIndex):
     # stop level must not read as a different strategy. Appended, no existing value changes; an
     # older fragment reads back None for both, which is honest: no live row before this version
     # ever carried a deployment.
-    LOGIC_VERSION: int = 7
+    #
+    # 7 → 8 (#390): `run_type` appended — WHICH PIPELINE wrote the row, from the same two
+    # constants the run tree is laid out with. Before it, telling a backtest from a live
+    # session meant reading `input_plane`, which answers a different question and is empty on
+    # everything written before #518: measured 2026-09-18, 520 of 616 rows could not say what
+    # they were. Backfilled where it could be resolved rather than left blank
+    # (`python/experiments/backfill_ledger_run_type.py`), so this is the one appended column
+    # whose older rows DO carry an answer — and the ones that could not be resolved were
+    # removed rather than guessed.
+    #
+    # 8 → 9 (#497): `recorded_at_utc` appended — when the row was written, which is within
+    # seconds of when its run ended. The ledger had no end of any kind, so the only measurable
+    # gap between two sessions of a deployment ran from START to START and counted the
+    # previous session's whole runtime as downtime. Appended, no existing value changes; an
+    # older row reads back empty and its gap falls back to the old measure, labelled.
+    LOGIC_VERSION: int = 9
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

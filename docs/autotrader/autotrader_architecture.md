@@ -324,8 +324,12 @@ the history is unrecoverable. Omitted and read as continuous, a field study's re
 welded into a history that means nothing. So the profile has to say, and one that does not fails
 at load, before anything runs.
 
-**The profile declares; the command line may only narrow.** `--one-off` detaches a single start;
-`--new-deployment` begins a fresh history instead of continuing the last one. Declaring a
+**The profile declares; the command line may only narrow.** `--one-off` is the PROBE that comes
+BEFORE a deployment — the day the profile is run to see that it behaves, on a profile that
+already declares `continuous` but has never started one. Once the deployment exists the flag is
+REFUSED (`OneOffInsideDeploymentError`), because past that point it means something else: the
+session still trades the account, but leaves no mark on the history its own drawdown keeps
+running inside. `--new-deployment` begins a fresh history instead of continuing the last one. Declaring a
 deployment from the command line is deliberately impossible: an unattended restart re-executes a
 command nobody typed, so a deployment declared there would fragment at exactly the restarts it
 exists to span — silently, because a missing flag looks like a one-off. **The flag whose absence
@@ -334,10 +338,20 @@ line.** Everything shown — the display title, the startup line in the session 
 row — is the RESOLVED answer, never the declaration.
 
 The identity travels through the cold-start carry-over (store 4b): a session writes it at boot
-and at shutdown, and the next session reads it before its own run header is written. A **dry run
-writes no carry-over at all**, so it hands nothing on — the same rule that keeps a dry run from
-claiming a real resting order (#355). A mock session is always a dry run, so a deployment chain
-cannot be rehearsed with one.
+and at shutdown, and the next session reads it before its own run header is written.
+
+**The carry-over's write gate is split by what each field CLAIMS**, which is what makes this
+rehearsable at all. The session key and the open position book are claims about the VENUE — this
+key sent orders, this book is open — and a dry run sent nothing anywhere, so its successor must
+not inherit either (#355: a key recorded by a dry run would let a restart loop evict the key that
+owns a real resting order). The risk baseline, the reported drawdown curve and the deployment
+identity are OUR OWN records: numbers this process computed, true whether or not the venue was
+real, and written either way. A refused boot still writes nothing at all.
+
+Before that split the whole write was refused for a dry run, and since `_is_dry_run()` answers
+True on `adapter_type == 'mock'` before it looks at anything else, a mock profile could not reach
+the path at all — which meant the deployment identity and the drawdown continuity had no
+end-to-end coverage and no manual rehearsal.
 
 `parent_id` on the run header carries the identity rather than a new field. A deployment is the
 same KIND of parent as a sweep: an identity that groups runs without being one, defined by the

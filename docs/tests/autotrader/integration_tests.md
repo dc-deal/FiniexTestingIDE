@@ -50,12 +50,12 @@ ended, into the next session's ledger row.
 | `test_new_deployment_begins_a_second_history` | Two deployments over the same three rows |
 | `test_a_dry_run_session_leaves_no_carry_over` | The LIMIT of the mechanism, pinned rather than discovered live |
 
-**Why the sessions are armed.** A dry run writes no carry-over — it sent no order to any venue,
-so its session key is not one this bot sent orders under (#355) — and `_is_dry_run` answers
-`True` for a mock adapter before it looks at anything else. So a mock profile cannot reach this
-path, and the test resolves the session as armed instead. That changes exactly one thing:
-whether the carry-over may be written. The tick loop stays on its mock path regardless, and the
-mock adapter has no transport to arm.
+**No arming, no patching.** These are ordinary mock sessions, which is possible because the
+carry-over's write gate is split by what each field CLAIMS: a dry run writes the deployment
+identity and the risk records, never the session key or the open position book. Before that
+split the test had to resolve the session as armed, because `_is_dry_run` answers `True` for a
+mock adapter before it looks at anything else — so the chain is now exactly what an operator can
+run by hand.
 
 **Data Dependency:** `configs/autotrader_profiles/backtesting/deployment_continuity_test.json`
 — the only tracked profile declaring `deployment.continuous: true`. The carry-over goes to the

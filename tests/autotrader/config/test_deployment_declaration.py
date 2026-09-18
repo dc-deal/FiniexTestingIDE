@@ -24,6 +24,7 @@ import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.exceptions.live_execution_errors import OneOffInsideDeploymentError
 from python.framework.types.autotrader_types.autotrader_config_types import DeploymentConfig
 from python.framework.types.persistence_types import ColdStartPayload
 
@@ -155,13 +156,35 @@ class TestTheCommandLineMayOnlyNarrow:
         assert resolve(continuous=True, carried='deploy_20260901_060000_ab12') \
             == 'deploy_20260901_060000_ab12'
 
-    def test_one_off_detaches_a_single_start(self):
+    def test_one_off_is_the_PROBE_before_a_deployment_exists(self):
         """
-        A debugging start of a deployed profile must not enter its history — and must not
-        end it either; the carry-over is left alone, which the store's convention handles.
+        The intended order: a probe day first, the continuous start afterwards. Nobody runs
+        an algo for thirty days and then leaves — so the flag has to work on a profile that
+        declares `continuous` but has never run.
         """
-        assert resolve(continuous=True, carried='deploy_20260901_060000_ab12',
-                       one_off=True) == ''
+        assert resolve(continuous=True, one_off=True) == ''
+
+    def test_one_off_is_REFUSED_once_the_deployment_exists(self):
+        """
+        Past that point the same flag means something else: the session still trades the
+        account, but leaves no mark on the history its drawdown keeps running inside. Two
+        columns of one table would then describe different periods.
+        """
+        with pytest.raises(OneOffInsideDeploymentError):
+            resolve(continuous=True, carried='deploy_20260901_060000_ab12', one_off=True)
+
+    def test_the_refusal_names_all_three_ways_out(self):
+        """
+        A refusal that does not say what to do instead gets worked around, and here every
+        workaround is worse than the thing refused.
+        """
+        with pytest.raises(OneOffInsideDeploymentError) as caught:
+            resolve(continuous=True, carried='deploy_20260901_060000_ab12', one_off=True)
+        message = str(caught.value)
+        assert 'deploy_20260901_060000_ab12' in message
+        assert '--new-deployment' in message
+        assert 'copy the profile' in message
+        assert 'BEFORE the first continuous start' in message
 
     def test_new_deployment_begins_a_fresh_one_instead_of_inheriting(self):
         minted = resolve(continuous=True, carried='deploy_20260901_060000_ab12',
@@ -169,9 +192,10 @@ class TestTheCommandLineMayOnlyNarrow:
         assert minted
         assert minted != 'deploy_20260901_060000_ab12'
 
-    def test_one_off_wins_over_new_deployment(self):
+    def test_one_off_wins_over_new_deployment_while_nothing_is_carried(self):
         """
         Both narrow; the narrower one decides. Standing alone is a stricter answer than
-        starting a fresh history, so a command carrying both records no deployment.
+        starting a fresh history, so a command carrying both records no deployment — as long
+        as there is no deployment yet to be refused over.
         """
         assert resolve(continuous=True, one_off=True, new_deployment=True) == ''

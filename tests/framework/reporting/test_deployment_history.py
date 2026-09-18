@@ -18,7 +18,10 @@ double-counts every session's share of the same decline.
 
 from python.framework.reporting.console.deployment_history_summary import (
     build_deployment_histories,
+    deployment_comparability_advisory,
     render_deployment_history,
+    render_deployment_list,
+    summarize_deployments,
 )
 from python.framework.types.api.report_types import RunResultRow
 
@@ -41,7 +44,8 @@ def row(run_id: str, timestamp: str, deployment: str = DEPLOYMENT, **overrides) 
     fields = dict(
         param_hash='strategy_v1', run_id=run_id, run_timestamp=timestamp,
         deployment_id=deployment, profile_hash='operation_v1', currency='USD',
-        net_pnl=0.0, account_max_drawdown=0.0, account_max_drawdown_pct=0.0)
+        net_pnl=0.0, account_max_drawdown=0.0, account_max_drawdown_pct=0.0,
+        recorded_at_utc='', scenario_set_name='a_bot')
     fields.update(overrides)
     return RunResultRow(**fields)
 
@@ -200,9 +204,11 @@ class TestRendering:
         printed = capsys.readouterr().out
         assert DEPLOYMENT in printed
         assert '2 session(s)' in printed
-        assert 'gap 2.0 d' in printed
-        assert 'strategy changed' in printed
-        assert 'operation changed' in printed
+        assert 'idle 2.0 d' in printed
+        # The change is drawn as a SEPARATOR between the rows, not as a mark on one of them:
+        # it belongs between two sessions, and that is also what it does to the numbers.
+        assert 'STRATEGY and OPERATION CHANGED HERE' in printed
+        assert 'answer different questions' in printed
 
     def test_the_drawdown_column_says_it_is_cumulative(self, capsys):
         """
@@ -212,3 +218,228 @@ class TestRendering:
         sessions = build_deployment_histories([row('r1', '2026-09-01T06:00:00+00:00')])[DEPLOYMENT]
         render_deployment_history(DEPLOYMENT, sessions)
         assert 'CUMULATIVE' in capsys.readouterr().out
+
+
+class TestTheGapIsDowntimeNotTheSpanBetweenStarts:
+    """
+    What an operator means by "the bot was down for N hours".
+
+    Measuring start to start counts the PREVIOUS session's whole runtime as downtime — on a
+    bot that runs twelve hours a day that is the difference between "one hour" and "thirteen".
+    The end comes from `recorded_at_utc`, written when the row was, which is within seconds of
+    when the session closed.
+    """
+
+    def test_it_runs_from_the_predecessor_s_record_to_this_start(self):
+        sessions = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00',
+                recorded_at_utc='2026-09-01T18:00:00+00:00'),
+            row('r2', '2026-09-01T19:00:00+00:00'),
+        ])[DEPLOYMENT]
+        assert sessions[1].gap_hours == 1.0, (
+            'measured start-to-start this reads 13 h — the twelve hours the bot was RUNNING')
+        assert sessions[1].gap_between_starts is False
+
+    def test_a_row_without_the_stamp_falls_back_and_says_so(self):
+        """
+        An older fragment has no end. The figure is still shown — it is the best available —
+        but it is MARKED, because silently mixing two measures under one column heading is
+        how a number stops meaning anything.
+        """
+        sessions = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00'),
+            row('r2', '2026-09-01T19:00:00+00:00'),
+        ])[DEPLOYMENT]
+        assert sessions[1].gap_hours == 13.0
+        assert sessions[1].gap_between_starts is True
+
+    def test_the_label_reaches_the_rendered_table(self, capsys):
+        sessions = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00'),
+            row('r2', '2026-09-01T19:00:00+00:00'),
+        ])[DEPLOYMENT]
+        render_deployment_history(DEPLOYMENT, sessions)
+        assert 'between starts' in capsys.readouterr().out
+
+
+class TestTheComparabilityAdvisory:
+    """
+    Whether the history may be read as ONE series — answered ABOVE the table.
+
+    The per-session marks say where something changed. On eleven sessions with three changes
+    the reader has usually summed the P&L column before reaching them, which is exactly the
+    mistake the advisory exists to prevent. Sibling of `mixed_logic_version_advisory` (#390).
+    """
+
+    def test_an_unchanged_deployment_raises_nothing(self):
+        """A warning that fires on the normal case is a warning that gets skipped."""
+        assert deployment_comparability_advisory([
+            row('r1', '2026-09-01T06:00:00+00:00'),
+            row('r2', '2026-09-02T06:00:00+00:00'),
+        ]) is None
+
+    def test_a_single_session_raises_nothing(self):
+        assert deployment_comparability_advisory([row('r1', '2026-09-01T06:00:00+00:00')]) is None
+
+    def test_it_counts_both_kinds_of_stand(self):
+        advisory = deployment_comparability_advisory([
+            row('r1', '2026-09-01T06:00:00+00:00'),
+            row('r2', '2026-09-02T06:00:00+00:00', param_hash='strategy_v2'),
+            row('r3', '2026-09-03T06:00:00+00:00', param_hash='strategy_v2',
+                profile_hash='operation_v2'),
+        ])
+        assert advisory is not None
+        assert advisory.sessions == 3
+        assert advisory.strategy_stands == 2
+        assert advisory.operation_stands == 2
+
+    def test_it_is_printed_above_the_table(self, capsys):
+        rows = [row('r1', '2026-09-01T06:00:00+00:00'),
+                row('r2', '2026-09-02T06:00:00+00:00', param_hash='strategy_v2')]
+        sessions = build_deployment_histories(rows)[DEPLOYMENT]
+        render_deployment_history(DEPLOYMENT, sessions,
+                                  deployment_comparability_advisory(rows))
+
+        printed = capsys.readouterr().out
+        assert 'SPANS MORE THAN ONE CONFIGURATION' in printed
+        assert printed.index('SPANS MORE THAN ONE') < printed.index('net P&L'), (
+            'the question has to reach the reader before the numbers do')
+
+
+class TestTheOverviewHalf:
+    """One line per deployment — which one to open, not what happened inside it."""
+
+    def test_pnl_sums_and_drawdown_does_not(self):
+        """
+        The two columns reduce differently, and getting it wrong is silent: P&L is per
+        session, the drawdown is the RUNNING figure against the inherited peak.
+        """
+        rows = [
+            row('r1', '2026-09-01T06:00:00+00:00', net_pnl=40.0, account_max_drawdown=-120.0),
+            row('r2', '2026-09-02T06:00:00+00:00', net_pnl=-15.0, account_max_drawdown=-450.0),
+            row('r3', '2026-09-03T06:00:00+00:00', net_pnl=5.0, account_max_drawdown=-450.0),
+        ]
+        histories = build_deployment_histories(rows)
+        summary = summarize_deployments(histories, {DEPLOYMENT: None})[0]
+
+        assert summary.sessions == 3
+        assert summary.net_pnl == 30.0
+        assert summary.max_drawdown == -450.0, 'the drawdown was summed instead of maxed'
+
+    def test_it_marks_a_deployment_whose_configuration_moved(self):
+        rows = [row('r1', '2026-09-01T06:00:00+00:00'),
+                row('r2', '2026-09-02T06:00:00+00:00', param_hash='strategy_v2')]
+        histories = build_deployment_histories(rows)
+        advisories = {DEPLOYMENT: deployment_comparability_advisory(rows)}
+
+        assert summarize_deployments(histories, advisories)[0].changed is True
+
+    def test_the_list_points_at_the_detail_view(self, capsys):
+        """An overview that does not say how to descend is a dead end."""
+        histories = build_deployment_histories([row('r1', '2026-09-01T06:00:00+00:00')])
+        render_deployment_list(summarize_deployments(histories, {DEPLOYMENT: None}))
+        assert '--id' in capsys.readouterr().out
+
+
+class TestTheDetailViewDescendsFromTheList:
+    """
+    The last step of the hierarchy: deployments → this deployment's sessions → THIS run.
+
+    Which is why the table is keyed by the run id rather than by a position, and why it reads
+    newest first: the first question about a deployment is what it is doing now, and the id is
+    the directory name the next question needs.
+    """
+
+    def test_the_newest_session_comes_first(self, capsys):
+        sessions = build_deployment_histories([
+            row('oldest', '2026-09-01T06:00:00+00:00'),
+            row('newest', '2026-09-03T06:00:00+00:00'),
+        ])[DEPLOYMENT]
+        render_deployment_history(DEPLOYMENT, sessions)
+
+        printed = capsys.readouterr().out
+        assert printed.index('newest') < printed.index('oldest')
+
+    def test_each_line_is_keyed_by_the_run_id(self, capsys):
+        """The id is what opens `runs/live/<profile>/<run id>/`; a position number is not."""
+        sessions = build_deployment_histories(
+            [row('20260916_060500_8e10', '2026-09-16T06:05:00+00:00')])[DEPLOYMENT]
+        render_deployment_history(DEPLOYMENT, sessions)
+
+        printed = capsys.readouterr().out
+        assert '20260916_060500_8e10' in printed
+        assert 'runs/live/<profile>/<run id>/' in printed
+
+    def test_a_session_reports_how_long_it_ran(self):
+        sessions = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00',
+                recorded_at_utc='2026-09-01T18:00:00+00:00'),
+        ])[DEPLOYMENT]
+        assert sessions[0].ran_hours == 12.0
+
+    def test_an_unmeasurable_duration_reports_as_unmeasured(self, capsys):
+        """
+        A row written before the end stamp existed has no length, and a made-up one would
+        land in a column a reader adds up. The same rule as a missing monotonic stamp.
+        """
+        sessions = build_deployment_histories(
+            [row('r1', '2026-09-01T06:00:00+00:00')])[DEPLOYMENT]
+        assert sessions[0].ran_hours is None
+        render_deployment_history(DEPLOYMENT, sessions)
+        assert '—' in capsys.readouterr().out
+
+
+class TestTheBreakIsDrawnBetweenTheRows:
+    """
+    A configuration change belongs BETWEEN two sessions, not on one of them.
+
+    A mark at the end of a line reads as a property of that session. A line across the table
+    reads as what it is: everything above was produced by a different configuration from
+    everything below. On a history long enough to matter, the eye has to be stopped.
+    """
+
+    def test_the_separator_sits_between_the_two_sessions(self, capsys):
+        sessions = build_deployment_histories([
+            row('older', '2026-09-01T06:00:00+00:00'),
+            row('newer', '2026-09-03T06:00:00+00:00', param_hash='strategy_v2'),
+        ])[DEPLOYMENT]
+        render_deployment_history(DEPLOYMENT, sessions)
+
+        printed = capsys.readouterr().out
+        assert printed.index('newer') < printed.index('CHANGED HERE') < printed.index('older')
+
+    def test_an_unchanged_history_draws_none(self, capsys):
+        sessions = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00'),
+            row('r2', '2026-09-03T06:00:00+00:00'),
+        ])[DEPLOYMENT]
+        render_deployment_history(DEPLOYMENT, sessions)
+        assert 'CHANGED HERE' not in capsys.readouterr().out
+
+
+class TestTheOverviewNamesTheBot:
+    """
+    `--new-deployment` mints a fresh identity and stores no link to the one it replaced.
+
+    Without the bot's name a deliberate restart reads as two unrelated deployments among all
+    the others — which is exactly the situation an operator is in after resetting one.
+    """
+
+    def test_two_deployments_of_one_bot_stand_together(self, capsys):
+        rows = [
+            row('old1', '2026-07-12T05:15:00+00:00', deployment='deploy_old',
+                scenario_set_name='dotusd_live'),
+            row('new1', '2026-09-01T06:00:00+00:00', deployment='deploy_new',
+                scenario_set_name='dotusd_live'),
+            row('other', '2026-08-20T09:00:00+00:00', deployment='deploy_other',
+                scenario_set_name='ethusd_live'),
+        ]
+        histories = build_deployment_histories(rows)
+        render_deployment_list(summarize_deployments(
+            histories, {k: None for k in histories}))
+
+        printed = capsys.readouterr().out
+        lines = [line for line in printed.splitlines() if 'deploy_' in line and 'usd_live' in line]
+        assert [l.split()[1] for l in lines] == ['ethusd_live', 'dotusd_live', 'dotusd_live'], (
+            'the two deployments of one bot did not end up adjacent')
+        assert '--new-deployment' in printed, 'the list does not say what two rows mean'
