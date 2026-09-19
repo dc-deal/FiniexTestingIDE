@@ -130,8 +130,12 @@ class RunIndexCli:
         # leaves. The run index registered it at start, so it is recoverable from there.
         runs = self._index.list_runs()
         for name in sorted(histories):
-            render_deployment_history(name, histories[name], advisories[name])
+            # Resolved BEFORE rendering: the table's own heading counts the sessions it can
+            # show, so it has to be told how many it cannot.
             missing = unfinished_by_group(runs, rows, parent_id=name)
+            render_deployment_history(
+                name, histories[name], advisories[name],
+                unfinished=sum(len(group) for group in missing.values()))
             if missing:
                 render_unfinished_runs(missing, indent='')
                 print()

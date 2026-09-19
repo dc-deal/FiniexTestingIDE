@@ -306,11 +306,13 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
 
 def render_deployment_history(
     deployment: str, sessions: List[DeploymentSessionRow],
-    advisory: Optional[DeploymentComparabilityAdvisory] = None) -> None:
+    advisory: Optional[DeploymentComparabilityAdvisory] = None,
+    unfinished: int = 0) -> None:
     """
     Print one deployment's sessions as a table — the detail half.
 
-    Formatting only; every value it shows was derived above (§12).
+    Formatting only; every value it shows was derived above (§12) — including `unfinished`,
+    which is a set difference over two stores and is computed by the caller.
 
     Args:
         deployment: The deployment identity
@@ -318,10 +320,16 @@ def render_deployment_history(
         advisory: What the comparability analyzer found, printed ABOVE the table when it
             found anything. Above, because the question it answers — may these rows be read
             as one series — has to reach the reader before the numbers do
+        unfinished: How many of this deployment's runs never reached their close. The table
+            is built from the LEDGER, whose row is written last, so those runs are absent
+            from it by construction — and a bare session count would then be a number the
+            reader has no reason to doubt. Zero leaves the line exactly as it was
     """
     currency = sessions[0].currency if sessions else ''
     first = sessions[0].started.strftime('%Y-%m-%d %H:%M') if sessions and sessions[0].started else '?'
-    print(f'\n{deployment} — {len(sessions)} session(s) · since {first} UTC')
+    recorded = (f'{len(sessions)} session(s) recorded + {unfinished} never completed'
+                if unfinished else f'{len(sessions)} session(s)')
+    print(f'\n{deployment} — {recorded} · since {first} UTC')
     if advisory is not None:
         print('─' * 104)
         print('⚠️  THIS DEPLOYMENT SPANS MORE THAN ONE CONFIGURATION')

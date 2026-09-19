@@ -166,6 +166,31 @@ zero-iteration trap as the opacity rule above.
 
 ---
 
+## Counting rows in the index (`test_signal_index_row_counts.py`)
+
+An index entry is one `(pipeline, symbol, file)` triple, so every count on it has to say which
+GRAIN it belongs to. It did not: `row_count` carried the whole FILE's total on every per-symbol
+row, and a coverage figure summed from it came out 8.5x too high before anyone noticed.
+
+The columns now name their own grain, and the tests pin the arithmetic rather than a value:
+
+| Column | Grain | May be summed |
+|---|---|---|
+| `row_count` | this symbol's rows in this file | yes |
+| `rows_success` · `rows_partial` · `rows_error` · `rows_other` | the same rows, split by the envelope's status | yes, and they add up to `row_count` |
+| `envelope_count` | how many envelopes the FILE holds | no — it is repeated on every symbol row |
+
+Two properties carry the weight. The buckets must **sum** to `row_count`, which is what catches a
+count taken at the wrong grain — a single value looks plausible under either reading and only the
+sum separates them. And `row_count` must never exceed `envelope_count`, because a symbol appears at
+most once per envelope; that ratio is therefore a coverage figure, and the fixture's error envelope
+(which scores nothing at all) is what makes it strictly less than one.
+
+`rows_other` exists because `status` is a free string on the wire. A value nobody has seen lands
+there instead of vanishing into a total that would then disagree with the file.
+
+---
+
 ## Fixture
 
 `tests/fixtures/signals/signal_import_sample.jsonl` — 6 envelopes (`pipeline_id = test_sentiment`,
