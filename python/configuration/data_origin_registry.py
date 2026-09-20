@@ -33,6 +33,12 @@ _USER_CONFIG_PATH = 'user_configs/data_origins.json'
 # from it. Everything else in the block is forensic and deliberately never decided on.
 ORIGIN_METADATA_KEY = 'origin'
 ORIGIN_INSTANCE_FIELD = 'instance_id'
+# The host the producer was running on. It is NOT part of the identity and nothing resolves on
+# it — an identity belongs to a DATA ROOT, so a move to another machine is legitimate. It is
+# read for one question only: has this identity been seen on more than one host, which is the
+# difference between a restore (the same series continuing) and a copy (two writers under one
+# identity, the failure the whole contract exists to prevent).
+ORIGIN_COLLECTED_ON_FIELD = 'collected_on'
 
 
 class DataOriginRegistry:
@@ -149,6 +155,27 @@ class DataOriginRegistry:
             return None
         instance_id = block.get(ORIGIN_INSTANCE_FIELD)
         return instance_id if isinstance(instance_id, str) and instance_id else None
+
+    @staticmethod
+    def read_nested_collected_on(source_metadata: Dict[str, Any]) -> str:
+        """
+        Read the producing HOST out of a nested origin block.
+
+        Returns a string rather than an Optional because the absence is not a distinct state
+        worth branching on: a file that names no host simply contributes nothing to the
+        comparison, and '' says that without a caller having to check for None first.
+
+        Args:
+            source_metadata: The file's own metadata
+
+        Returns:
+            The host name, or '' when the file carries none
+        """
+        block = source_metadata.get(ORIGIN_METADATA_KEY)
+        if not isinstance(block, dict):
+            return ''
+        collected_on = block.get(ORIGIN_COLLECTED_ON_FIELD)
+        return collected_on if isinstance(collected_on, str) else ''
 
     @staticmethod
     def _match_attestation(config: DataOriginConfig, format_version: str, *,

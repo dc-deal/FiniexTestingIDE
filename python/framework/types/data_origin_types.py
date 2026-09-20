@@ -13,6 +13,15 @@ from python.framework.types.config_types.data_origin_config_types import (
     OriginClass,
     OriginEvidence,
 )
+from python.framework.utils.version_utils import parse_version
+
+# The format version from which a producer states its own identity, so a file at or above it
+# that carries no `origin` block is a DEFECTIVE PRODUCER rather than grandfathered history.
+# Both producers step 1.5.0 -> 1.7.0 in one deployment and 1.6.0 never reaches production, so
+# the boundary sits above every file an attestation may legitimately claim and below every
+# file that must speak for itself. A development file at 1.6.0 exists and is deliberately
+# caught by neither: the boundary fails closed rather than widening quietly.
+ORIGIN_BLOCK_REQUIRED_FROM = '1.7.0'
 
 
 @dataclass
@@ -86,3 +95,26 @@ def is_admissible_for_measurement(origin_class: str, evidence: str) -> bool:
     """
     return (origin_class == OriginClass.PRODUCTION.value
             and evidence == OriginEvidence.STAMPED.value)
+
+
+def origin_block_is_required(format_version: str) -> bool:
+    """
+    Whether a file of this format version must carry an `origin` block.
+
+    An unparseable or empty version answers False. That is the safe direction here and the
+    opposite of the admissibility rule's: refusing a file over a version string we could not
+    read would reject real data for our own parsing, where letting it through costs only the
+    grade it already earns — `unknown`, which is not admissible anyway.
+
+    Args:
+        format_version: The `data_format_version` the file declares
+
+    Returns:
+        True when the version is at or above the boundary
+    """
+    if not format_version:
+        return False
+    try:
+        return parse_version(format_version) >= parse_version(ORIGIN_BLOCK_REQUIRED_FROM)
+    except (ValueError, TypeError, AttributeError):
+        return False

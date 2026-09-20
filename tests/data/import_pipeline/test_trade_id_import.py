@@ -52,6 +52,12 @@ def _import(tmp_path: Path, payload: dict, name: str) -> pd.DataFrame:
     return pd.read_parquet(written[0])
 
 
+# A 1.7.0 file states who wrote it — the importer refuses one that does not, so a fixture
+# without this block would be testing a file that can no longer exist.
+_ORIGIN = {'origin': {'instance_id': 'a7f21c0b4e88', 'collected_on': 'test-host',
+                      'producer': 'finiex-data-collector', 'producer_version': '1.2.1'}}
+
+
 def _with_trade_ids(first: int, count: int = 5, **kw) -> dict:
     """
     A 1.7.0 payload whose ticks carry consecutive trade ids.
@@ -65,7 +71,8 @@ def _with_trade_ids(first: int, count: int = 5, **kw) -> dict:
         The payload
     """
     payload = build_minimal_tick_json(
-        tick_count=count, data_format_version='1.7.0', **kw)
+        tick_count=count, data_format_version='1.7.0',
+        extra_metadata=_ORIGIN, **kw)
     for offset, tick in enumerate(payload['ticks']):
         tick['trade_id'] = first + offset
     return payload
@@ -104,7 +111,8 @@ class TestTheTradeIdSurvivesTheImport:
         An importer that renumbered, reindexed or filled would destroy exactly the quantity
         the field exists to carry.
         """
-        payload = build_minimal_tick_json(tick_count=4, data_format_version='1.7.0')
+        payload = build_minimal_tick_json(
+            tick_count=4, data_format_version='1.7.0', extra_metadata=_ORIGIN)
         for tick, tid in zip(payload['ticks'], [500, 501, 617, 618]):
             tick['trade_id'] = tid
 

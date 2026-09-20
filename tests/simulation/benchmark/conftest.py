@@ -27,6 +27,9 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.reporting.store.run_provenance_builder import (
+    consumption_record,
+)
 from python.framework.reporting.certificates.certificate_config_utils import (
     compare_config_contract,
 )
@@ -681,6 +684,14 @@ def benchmark_report(
                 benchmark_execution_runs[0].scenario_config_path),
             'required_effective': required_effective,
         },
+        # What this certificate READ, as opposed to what it was configured to run. Until this
+        # existed a certificate said which CODE produced it and nothing about the DATA, so one
+        # taken over development ticks was indistinguishable from one over production ticks —
+        # and a certificate is precisely the artifact somebody believes later, when the run
+        # itself is gone. Derived through the same function the run ledger uses; a second
+        # derivation would be the copy that stops matching (§19).
+        'data_provenance': consumption_record(
+            benchmark_execution_runs[0].summary.single_scenario_list or []),
         'overall_status': overall_status,
         'metrics': metrics_list,
         'raw_measurements': benchmark_metrics.get('raw_measurements', {}),

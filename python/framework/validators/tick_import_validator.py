@@ -21,6 +21,10 @@ import numpy as np
 import pandas as pd
 
 from python.framework.types.config_types.market_config_types import PriceFormation
+from python.framework.types.data_origin_types import (
+    ORIGIN_BLOCK_REQUIRED_FROM,
+    origin_block_is_required,
+)
 from python.framework.types.validation_types import TickFileValidationResult
 
 # Largest tolerated distance between collected_msc and the tick's UTC event time.
@@ -88,7 +92,9 @@ class TickImportValidator:
         file_name: str,
         declared_tick_count: Optional[int] = None,
         collected_msc_is_utc: bool = False,
-        price_formation: Optional[PriceFormation] = None
+        price_formation: Optional[PriceFormation] = None,
+        data_format_version: str = '',
+        stated_instance_id: Optional[str] = None
     ) -> TickFileValidationResult:
         """
         Validate one imported tick file.
@@ -105,6 +111,10 @@ class TickImportValidator:
                 reported as needing the migration
             price_formation: How the venue forms its prices, from market_config. An
                 order-driven venue must deliver a traded price; None skips the check
+            data_format_version: What the file declares. At or above the origin boundary a
+                missing identity is a defect rather than history; below it, nothing is asked
+            stated_instance_id: The identity read out of the file's `origin` block, or None
+                when the block is absent or carries none
 
         Returns:
             TickFileValidationResult carrying errors, warnings and metrics
@@ -118,6 +128,7 @@ class TickImportValidator:
         self._check_tick_count(df, declared_tick_count, result)
         self._check_prices(df, result)
         self._check_traded_price(df, price_formation, result)
+        self._check_origin_block(data_format_version, stated_instance_id, result)
 
         # Timing checks need both time columns. A file without them is not
         # rejected — pre-V1.3.0 exports legitimately lack collected_msc — but
@@ -214,6 +225,39 @@ class TickImportValidator:
                 f'{missing} ticks without a traded price, on a venue declared '
                 f'order_driven — `last` must be positive where trades print'
             )
+
+    def _check_origin_block(
+        self,
+        data_format_version: str,
+        stated_instance_id: Optional[str],
+        result: TickFileValidationResult
+    ) -> None:
+        """
+        From the origin boundary on, a producer must state who wrote the file.
+
+        Below the boundary a missing identity is history: those files were written before the
+        block existed and a dated attestation is what covers them. At or above it the producer
+        has the field and left it empty, which is malformed output — and the damage is that it
+        is SILENT. The file imports, resolves to `unknown`, and nothing names the producer that
+        stopped identifying itself. Refusing here is the same shape the traded-price check
+        uses, and for the same reason: an absence that reaches the archive unremarked becomes
+        indistinguishable from an absence that was always expected.
+
+        Args:
+            data_format_version: What the file declares
+            stated_instance_id: The identity from its `origin` block, or None
+            result: Collects the error
+        """
+        if not origin_block_is_required(data_format_version):
+            return
+        if stated_instance_id:
+            return
+
+        result.add_error(
+            f'No origin identity in a {data_format_version} file. From '
+            f'{ORIGIN_BLOCK_REQUIRED_FROM} a producer states its own identity, so this is a '
+            f'defective producer rather than an archive written before the block existed — '
+            f'an attestation cannot and must not cover it.')
 
     def _check_monotonic(self, df: pd.DataFrame, result: TickFileValidationResult) -> None:
         """

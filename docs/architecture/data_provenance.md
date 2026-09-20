@@ -267,6 +267,73 @@ that always fires teaches people to skip warnings, which costs more than the mea
 The gate decides per scenario because exclusion is per scenario; the distance to a comparable
 archive is a property of the archive.
 
+## Two checks that make the stamp mean something
+
+A stamp nobody ever compares is decoration. Two questions are asked of it, and neither is asked
+in the hot path.
+
+**From format 1.7.0 on, a file with no identity is REFUSED by name.** Below that boundary a
+missing identity is history — those files were written before the block existed and a dated
+attestation is what covers them. At or above it the producer HAS the field and left it empty,
+which is malformed output. The damage without the refusal is that it is silent: the file
+imports, resolves to `unknown`, and nothing names the producer that stopped identifying itself.
+The boundary sits at 1.7.0 because both producers step 1.5.0 → 1.7.0 in one deployment and
+1.6.0 never reaches production — so it is above every file an attestation may legitimately
+claim and below every file that must speak for itself. A development file at 1.6.0 is caught by
+neither, deliberately: the boundary fails closed rather than widening quietly.
+
+**`collected_on` is compared, never interpreted.** The producing host is read from the
+producer's own verbatim block and nothing resolves on it — an identity belongs to a DATA ROOT, so a move to another
+machine is legitimate. It is kept for one question: has ONE identity been seen on TWO hosts?
+That separates a RESTORE, where the same series continues on new hardware, from a COPY, where
+two writers now assert one identity — and nothing in the data itself can tell them apart, which
+is why the answer is a report rather than a verdict.
+
+The comparison is derived at the INDEX rather than at import. The index sees every file for an
+identity at once, where an importer mid-batch would compare against a stale picture and miss a
+change that arrived inside its own run. The host is also READ from the block rather than stamped
+beside it, unlike the identity, class and evidence: two of those are judgements that must never be
+re-derived, while the host is neither judged nor decided on — so a stamp would be the same fact
+written twice, and it would answer nothing on a file imported before the stamp existed, where the
+block has carried the value all along. A file carrying no host contributes nothing rather than
+an empty group: an absent value is not a second host, and counting it as one would report every
+file predating the field as having moved.
+
+## Where a certificate says what it READ
+
+A certificate records which COMMIT produced it. Until now it said nothing about which DATA it
+read, so one taken over development ticks was indistinguishable from one over production ticks —
+and a certificate is precisely the artifact somebody believes months later, when the run itself
+has been pruned.
+
+Only ONE of the four certificate families reads the archive at all. The live adapter, field study
+and signal feed certificates consume a venue or a socket, and for them `input_plane: 'stream'` is
+the honest answer rather than a missing stamp. The **benchmark** certificate runs a scenario set
+over archived ticks, and it now carries a `data_provenance` block beside `config_provenance` —
+what it was configured to run, and what it actually read:
+
+```json
+"data_provenance": {
+  "input_plane": "archive",
+  "data_format_versions": "1.5.0,1.7.0",
+  "origin_classes": "production",
+  "origin_evidence_grades": "attested,stamped",
+  "input_files": 3,
+  "unstamped_input_files": 2,
+  "price_bases": "order_driven"
+}
+```
+
+The two counts are what the joined strings cannot say: `origin_classes: "production"` alone reads
+as a clean certificate, while `2 of 3 files unstamped` says how much of it may enter a measurement.
+
+It is derived through the same function the run ledger uses. A second derivation of one answer is
+the pair that eventually disagrees, and the half nobody reads is the one that decays.
+
+**Nothing is written retroactively.** A report produced before the block existed FAILS its
+integrity check rather than being tolerated — the certificate suite already tells the reader to
+re-run the benchmark, and a release re-runs it anyway.
+
 ## What is deliberately not here
 
 - **Deduplication across two collectors capturing one symbol.** The origin stamp is its

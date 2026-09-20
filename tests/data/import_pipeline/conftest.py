@@ -23,6 +23,7 @@ from python.data_management.index.tick_index_manager import TickIndexManager
 import pytest
 
 from python.configuration.import_config_manager import ImportConfigManager
+from python.configuration.data_origin_registry import DataOriginRegistry
 from python.data_management.importers.tick_data_importer import TickDataImporter
 
 # =============================================================================
@@ -259,3 +260,54 @@ def populate_persistent_test_output():
     #   finished/  → 4 JSONs (raw files for inspection)
 
     yield
+
+
+@pytest.fixture
+def registry_at(tmp_path, monkeypatch):
+    """
+    Point the registry at a temporary file for the duration of one test.
+
+    The paths are module constants resolved at call time, so redirecting them reaches every
+    `DataOriginRegistry()` the importer builds without handing one in.
+    """
+    def _install(origins: dict, attestations: list = None) -> Path:
+        path = tmp_path / 'registry.json'
+        path.write_text(json.dumps({'origins': origins,
+                                    'attestations': attestations or []}), encoding='utf-8')
+        monkeypatch.setattr(
+            'python.configuration.data_origin_registry._CONFIG_PATH', str(path))
+        monkeypatch.setattr(
+            'python.configuration.data_origin_registry._USER_CONFIG_PATH',
+            str(tmp_path / 'absent.json'))
+        DataOriginRegistry.reload()
+        return path
+
+    yield _install
+    DataOriginRegistry.reload()
+
+
+@pytest.fixture
+def import_one():
+    """
+    Import ONE synthetic tick file into a scratch archive and hand back its parquet.
+
+    A fixture rather than a module function because three suites need it and §34 keeps
+    code-level helpers in one place — a second copy is the one that stops matching the
+    importer's signature.
+
+    Returns:
+        A callable (tmp_path, metadata_extra, version) -> the written tick parquet
+    """
+    def _run(tmp_path: Path, metadata_extra: Dict[str, Any], version: str) -> Path:
+        source = tmp_path / 'raw'
+        target = tmp_path / 'out'
+        source.mkdir(exist_ok=True)
+        data = build_minimal_tick_json(symbol='BTCUSD', broker_type='kraken_spot',
+                                       data_format_version=version,
+                                       extra_metadata=metadata_extra)
+        write_json_fixture(source, 'BTCUSD_ticks.json', data)
+        TickDataImporter(source_dir=str(source),
+                         target_dir=str(target)).process_all_exports()
+        return next((target / 'kraken_spot' / 'ticks' / 'BTCUSD').glob('*.parquet'))
+
+    return _run

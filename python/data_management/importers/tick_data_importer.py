@@ -340,6 +340,11 @@ class TickDataImporter:
         # No sort — collected_msc monotonicity depends on this
         df = df.reset_index(drop=True)
 
+        # Read once, here, because the validator needs it before the stamp does. It decides
+        # two different things: whether a missing origin block is a defect, and what goes into
+        # the parquet header.
+        data_format_version = metadata.get('data_format_version', '1.0.0')
+
         validation = self._validator.validate_file(
             df=df,
             file_name=json_file.name,
@@ -350,7 +355,13 @@ class TickDataImporter:
             # producer output. Refusing here is what keeps `price_formation` a checked
             # expectation instead of a declaration the data may quietly contradict.
             price_formation=MarketConfigManager().get_price_formation(
-                broker_type_normalized)
+                broker_type_normalized),
+            # From the origin boundary on, a file that names no producer is a defect rather
+            # than history. Passed here rather than resolved inside the validator so that
+            # exactly one place reads the block — the same reason the resolution below is
+            # done once and stamped.
+            data_format_version=data_format_version,
+            stated_instance_id=DataOriginRegistry.read_nested_instance_id(metadata)
         )
         for warning in validation.warnings:
             vLog.warning(f'   ⚠️  {warning}')
@@ -367,8 +378,6 @@ class TickDataImporter:
         start_time = pd.to_datetime(metadata.get(
             'start_time', datetime.now(timezone.utc)))
 
-        # Extract data_format_version (for metadata only)
-        data_format_version = metadata.get('data_format_version', '1.0.0')
 
         # Get market_type from MarketConfigManager (Single Source of Truth)
         market_config = MarketConfigManager()

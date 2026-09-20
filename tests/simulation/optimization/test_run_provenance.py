@@ -14,7 +14,7 @@ from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_session,
 )
 from python.framework.reporting.store.run_provenance_builder import (
-    _consumption_record,
+    consumption_record,
     build_run_provenance_from_session,
 )
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
@@ -147,7 +147,7 @@ class TestWhatARunConsumed:
             _scenario_reading(['1.7.0'], ['development'], ['stamped']),
         ]
 
-        record = _consumption_record(scenarios)
+        record = consumption_record(scenarios)
 
         assert record['input_plane'] == 'archive'
         assert record['data_format_versions'] == '1.5.0,1.7.0'
@@ -171,7 +171,7 @@ class TestWhatARunConsumed:
             ['1.7.0'], ['production'], ['stamped'],
             bases=['order_driven', 'unknown', 'order_driven'])]
 
-        record = _consumption_record(scenarios)
+        record = consumption_record(scenarios)
 
         assert record['price_bases'] == 'order_driven,unknown'
         # The file COUNT is unchanged: the basis comes from the bar archive and the count from
@@ -180,7 +180,7 @@ class TestWhatARunConsumed:
 
     def test_a_scenario_that_mounted_no_bars_records_no_basis(self):
         """Empty is the honest answer; the declaration would be a guess in its shape."""
-        record = _consumption_record([_scenario_reading(['1.7.0'], ['production'], ['stamped'])])
+        record = consumption_record([_scenario_reading(['1.7.0'], ['production'], ['stamped'])])
 
         assert record['price_bases'] == ''
 
@@ -197,13 +197,13 @@ class TestWhatARunConsumed:
             ['production', 'production', 'development', 'unknown'],
             ['stamped', 'attested', 'stamped', 'unknown'])]
 
-        record = _consumption_record(scenarios)
+        record = consumption_record(scenarios)
 
         assert record['input_files'] == 4
         assert record['unstamped_input_files'] == 3
 
     def test_a_run_that_read_nothing_says_so_without_inventing_a_value(self):
-        record = _consumption_record([])
+        record = consumption_record([])
 
         assert record['input_plane'] == 'archive'
         assert record['input_files'] == 0
