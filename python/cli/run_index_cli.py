@@ -22,6 +22,10 @@ from python.framework.reporting.console.deployment_history_summary import (
     render_deployment_list,
     summarize_deployments,
 )
+from python.framework.reporting.console.run_completion_summary import (
+    render_unfinished_runs,
+)
+from python.framework.reporting.store.run_completion_audit import unfinished_by_group
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.reporting.store.run_tree_pruner import RunTreePruner
@@ -76,6 +80,9 @@ class RunIndexCli:
         if len(runs) > 20:
             print(f'  … and {len(runs) - 20} more')
         print()
+        ledger = RunResultsLedger(AppConfigManager().get_run_ledger_path())
+        render_unfinished_runs(unfinished_by_group(runs, ledger.read_rows()))
+        print()
         return 0
 
     def cmd_deployments(self, deployment: str) -> int:
@@ -118,8 +125,20 @@ class RunIndexCli:
             render_deployment_list(summarize_deployments(histories, advisories))
             return 0
 
+        # The sessions ABOVE come from the ledger, so a session that never reached its close
+        # is missing from that table by construction — which is exactly the shape a hard kill
+        # leaves. The run index registered it at start, so it is recoverable from there.
+        runs = self._index.list_runs()
         for name in sorted(histories):
-            render_deployment_history(name, histories[name], advisories[name])
+            # Resolved BEFORE rendering: the table's own heading counts the sessions it can
+            # show, so it has to be told how many it cannot.
+            missing = unfinished_by_group(runs, rows, parent_id=name)
+            render_deployment_history(
+                name, histories[name], advisories[name],
+                unfinished=sum(len(group) for group in missing.values()))
+            if missing:
+                render_unfinished_runs(missing, indent='')
+                print()
         return 0
 
     def cmd_prune(self, orphans: bool, keep_last: int, apply: bool) -> int:

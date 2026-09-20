@@ -15,6 +15,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.data_origin_registry import (
+    ORIGIN_METADATA_KEY,
+    DataOriginRegistry,
+)
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.abstract_store_index import store_index_filename
@@ -31,6 +35,28 @@ vLog = get_global_logger()
 # The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which these three legacy managers
 # do not have — adopting it is #175's, and this is the stopgap until then.
 INDEX_SCHEMA_VERSION = b'2.2'
+
+
+def _json_or_none(raw: Optional[bytes]) -> Optional[dict]:
+    """
+    Decode a parquet metadata value that holds a JSON object.
+
+    A malformed or absent value answers None rather than raising: the index is built over the
+    whole archive, and one unreadable block must cost that file's host and nothing else.
+
+    Args:
+        raw: The raw metadata bytes, or None when the key is absent
+
+    Returns:
+        The decoded object, or None
+    """
+    if not raw:
+        return None
+    try:
+        decoded = json.loads(raw.decode('utf-8'))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
 
 
 class TickIndexManager:
@@ -251,6 +277,15 @@ class TickIndexManager:
             b'origin_class', b'unknown').decode('utf-8')
         origin_evidence = custom_metadata.get(
             b'origin_evidence', b'unknown').decode('utf-8')
+        # Read from the producer's VERBATIM block rather than from a stamp of its own. The
+        # three values above are stamped because `class` and `evidence` are JUDGEMENTS that
+        # must never be re-derived; the host is neither judged nor decided on, so a second
+        # copy beside the block would be the same fact written twice (§19) — and it would
+        # stay empty on every file imported before the copy existed, where the block has
+        # carried it all along.
+        origin_collected_on = DataOriginRegistry.read_nested_collected_on(
+            {ORIGIN_METADATA_KEY: _json_or_none(
+                custom_metadata.get(b'source_meta_origin'))})
 
         return {
             'file': parquet_file.name,
@@ -279,6 +314,7 @@ class TickIndexManager:
             'data_format_version': custom_metadata.get(
                 b'data_format_version', b'unknown').decode('utf-8'),
             'origin_instance_id': origin_instance_id,
+            'origin_collected_on': origin_collected_on,
             'origin_class': origin_class,
             'origin_evidence': origin_evidence,
         }
@@ -395,6 +431,7 @@ class TickIndexManager:
                         'origin_instance_id': entry.get('origin_instance_id', ''),
                         'origin_class': entry.get('origin_class', 'unknown'),
                         'origin_evidence': entry.get('origin_evidence', 'unknown'),
+                        'origin_collected_on': entry.get('origin_collected_on', ''),
                     }
                     rows.append(row)
 
@@ -406,7 +443,8 @@ class TickIndexManager:
             'collected_start', 'collected_end',
             'anchor_resyncs', 'anchor_max_correction_ms',
             'statistics', 'sessions', 'data_format_version',
-            'origin_instance_id', 'origin_class', 'origin_evidence',
+            'origin_instance_id', 'origin_collected_on', 'origin_class',
+            'origin_evidence',
         ]
         df = pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(
             columns=columns)
@@ -496,6 +534,7 @@ class TickIndexManager:
                 'origin_instance_id': row.get('origin_instance_id', ''),
                 'origin_class': row.get('origin_class', 'unknown'),
                 'origin_evidence': row.get('origin_evidence', 'unknown'),
+                'origin_collected_on': row.get('origin_collected_on', ''),
             }
 
             result[broker_type][symbol].append(entry)
@@ -579,6 +618,37 @@ class TickIndexManager:
     # UTILITY METHODS
     # =========================================================================
 
+    def identities_on_several_hosts(self) -> Dict[str, List[str]]:
+        """
+        Identities this archive has seen on more than one producing host.
+
+        An identity belongs to a DATA ROOT, never to a machine, so a move is legitimate and
+        this is not an error — it is the one observation that separates two cases the data
+        itself cannot: a RESTORE, where the same series continues on new hardware, and a
+        COPY, where two writers now assert one identity. Only the operator can say which,
+        and they can only say it if somebody noticed.
+
+        Derived at the INDEX rather than at import on purpose: the index sees every file for
+        an identity at once, where an importer mid-batch would compare against a stale
+        picture and miss a change that arrived inside its own run.
+
+        Files carrying no host contribute nothing rather than an empty group — an absent
+        value is not a second host.
+
+        Returns:
+            Identity -> the hosts it was seen on, sorted; identities on one host are omitted
+        """
+        hosts: Dict[str, set] = {}
+        for symbols in self.index.values():
+            for entries in symbols.values():
+                for entry in entries:
+                    identity = entry.get('origin_instance_id', '')
+                    host = entry.get('origin_collected_on', '')
+                    if identity and host:
+                        hosts.setdefault(identity, set()).add(host)
+        return {identity: sorted(seen)
+                for identity, seen in hosts.items() if len(seen) > 1}
+
     def list_symbols(self, broker_type: Optional[str] = None) -> List[str]:
         """List all available symbols."""
         if broker_type:
@@ -616,5 +686,16 @@ class TickIndexManager:
                 print(f"      Size:   {coverage['total_size_mb']:.1f} MB")
                 print(
                     f"      Range:  {coverage['start_time'][:10]} → {coverage['end_time'][:10]}")
+
+        # Printed here because this is where an operator already looks at the archive as a
+        # whole, and the question is archive-wide rather than per symbol. Silence is the
+        # normal answer and says the check ran.
+        moved = self.identities_on_several_hosts()
+        if moved:
+            print('\n⚠️  One identity, several producing hosts:')
+            for identity, hosts in sorted(moved.items()):
+                print(f"   {identity}  →  {', '.join(hosts)}")
+            print('   An identity belongs to a data root, so a MOVE is legitimate and a COPY')
+            print('   is not — and only the operator can say which this was.')
 
         print('='*60 + '\n')

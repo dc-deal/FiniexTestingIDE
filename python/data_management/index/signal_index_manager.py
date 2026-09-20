@@ -77,6 +77,44 @@ def _uniform(df: pd.DataFrame, column: str, absent: str) -> str:
     return values.pop() if len(values) == 1 else absent
 
 
+# The producer's envelope vocabulary. `other` is not decoration: the status is a free string
+# on the wire, so a value we have never seen has to land somewhere visible rather than be
+# dropped into a total that then disagrees with the file.
+_STATUS_BUCKETS = ('success', 'partial', 'error')
+_STATUS_OTHER = 'other'
+
+
+def _status_counts(df: pd.DataFrame, symbols: List[str]) -> Dict[str, Dict[str, int]]:
+    """
+    Per symbol, how many of its rows came from an envelope of each status.
+
+    The question this answers is not bookkeeping: a symbol's rows from `partial` and `error`
+    envelopes are the ones a consumer resolves to a substituted neutral result, and until
+    this existed that count could only be had by reading every parquet by hand.
+
+    Args:
+        df: The scanned rows, including the envelope sentinel rows
+        symbols: The real symbols in this file, sentinel excluded
+
+    Returns:
+        symbol -> bucket -> count; every bucket present, zeros included, so a reader never
+        has to distinguish "none" from "not measured"
+    """
+    empty = {bucket: 0 for bucket in (*_STATUS_BUCKETS, _STATUS_OTHER)}
+    if SignalParquetColumn.STATUS.value not in df.columns:
+        return {symbol: dict(empty) for symbol in symbols}
+
+    status = df[SignalParquetColumn.STATUS.value].fillna(_STATUS_OTHER).astype(str)
+    bucket = status.where(status.isin(_STATUS_BUCKETS), _STATUS_OTHER)
+    grouped = df.groupby([df[SignalParquetColumn.SYMBOL.value], bucket]).size()
+
+    counts = {symbol: dict(empty) for symbol in symbols}
+    for (symbol, name), value in grouped.items():
+        if symbol in counts:
+            counts[symbol][name] = int(value)
+    return counts
+
+
 class SignalIndexManager:
     """
     Manages the signal parquet index for fast time-based file selection.
@@ -152,9 +190,17 @@ class SignalIndexManager:
                 base = self._scan_file(parquet_file)
                 sentiment_type = base['data_sentiment_type']
                 symbols = base.pop('symbols')
+                symbol_row_counts = base.pop('symbol_row_counts')
+                symbol_status_counts = base.pop('symbol_status_counts')
 
                 for symbol in symbols:
-                    entry = {**base, 'symbol': symbol}
+                    status = symbol_status_counts[symbol]
+                    entry = {**base, 'symbol': symbol,
+                             'row_count': symbol_row_counts[symbol],
+                             'rows_success': status['success'],
+                             'rows_partial': status['partial'],
+                             'rows_error': status['error'],
+                             'rows_other': status['other']}
                     self.index.setdefault(sentiment_type, {}).setdefault(
                         symbol, []).append(entry)
             except Exception as e:
@@ -188,10 +234,20 @@ class SignalIndexManager:
         Scan one signal parquet: its data_sentiment_type, real symbols, and collected_msc
         range. The whole-file range is used per symbol — the envelope sentinel rows keep
         every symbol resolvable across the full window.
+
+        Every count says its own GRAIN in its name, because one column called `row_count`
+        carrying a file-wide number on a per-symbol row is how a coverage figure came out
+        8.5x too high. `row_count` and the `rows_*` breakdown are that SYMBOL's rows in this
+        file and may be summed; `envelope_count` is the FILE's and may not.
+
+        The status breakdown is what makes the pair readable rather than merely correct: a
+        symbol's rows against the file's envelopes says how often the producer actually
+        scored it, and the `partial` / `error` split says why it did not.
         """
         cols = [
             SignalParquetColumn.COLLECTED_MSC.value,
             SignalParquetColumn.SYMBOL.value,
+            SignalParquetColumn.STATUS.value,
             SignalParquetColumn.PIPELINE_ID.value,
             SignalParquetColumn.ORIGIN_INSTANCE_ID.value,
             SignalParquetColumn.ORIGIN_CLASS.value,
@@ -207,8 +263,15 @@ class SignalIndexManager:
         start_time = datetime.fromtimestamp(int(msc.min()) / 1000.0, tz=timezone.utc)
         end_time = datetime.fromtimestamp(int(msc.max()) / 1000.0, tz=timezone.utc)
 
-        symbols = sorted(
-            set(df[SignalParquetColumn.SYMBOL.value].unique()) - {SIGNAL_ENVELOPE_SYMBOL})
+        symbol_series = df[SignalParquetColumn.SYMBOL.value]
+        symbols = sorted(set(symbol_series.unique()) - {SIGNAL_ENVELOPE_SYMBOL})
+        symbol_row_counts = symbol_series.value_counts()
+
+        # One sentinel row per envelope, so counting them IS the envelope count — and it is
+        # the only row a file is guaranteed to carry for a moment at which the producer
+        # scored no symbol at all.
+        envelope_count = int((symbol_series == SIGNAL_ENVELOPE_SYMBOL).sum())
+        status_counts = _status_counts(df, symbols)
 
         file_size_mb = round(parquet_file.stat().st_size / (1024 * 1024), 4)
 
@@ -217,9 +280,11 @@ class SignalIndexManager:
             'path': str(parquet_file.absolute()),
             'data_sentiment_type': sentiment_type,
             'symbols': symbols,
+            'symbol_row_counts': {s: int(symbol_row_counts[s]) for s in symbols},
+            'symbol_status_counts': status_counts,
+            'envelope_count': envelope_count,
             'start_time': start_time.isoformat(),
             'end_time': end_time.isoformat(),
-            'row_count': int(len(df)),
             'file_size_mb': file_size_mb,
             # Read back from the stamp, never re-resolved. Collapsed per FILE because an index
             # entry is per file while the stamp is per envelope — and a file whose envelopes
@@ -364,6 +429,11 @@ class SignalIndexManager:
                         'start_time': pd.to_datetime(entry['start_time']),
                         'end_time': pd.to_datetime(entry['end_time']),
                         'row_count': entry['row_count'],
+                        'rows_success': entry['rows_success'],
+                        'rows_partial': entry['rows_partial'],
+                        'rows_error': entry['rows_error'],
+                        'rows_other': entry['rows_other'],
+                        'envelope_count': entry['envelope_count'],
                         'file_size_mb': entry['file_size_mb'],
                         'origin_instance_id': entry.get('origin_instance_id', ''),
                         'origin_class': entry.get('origin_class', 'unknown'),
@@ -372,7 +442,9 @@ class SignalIndexManager:
 
         columns = [
             'data_sentiment_type', 'symbol', 'file', 'path',
-            'start_time', 'end_time', 'row_count', 'file_size_mb',
+            'start_time', 'end_time', 'row_count',
+            'rows_success', 'rows_partial', 'rows_error', 'rows_other',
+            'envelope_count', 'file_size_mb',
             'origin_instance_id', 'origin_class', 'origin_evidence',
         ]
         df = pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(columns=columns)
@@ -426,6 +498,11 @@ class SignalIndexManager:
                 'start_time': row['start_time'].isoformat() if pd.notna(row['start_time']) else None,
                 'end_time': row['end_time'].isoformat() if pd.notna(row['end_time']) else None,
                 'row_count': int(row['row_count']),
+                'rows_success': int(row.get('rows_success', 0)),
+                'rows_partial': int(row.get('rows_partial', 0)),
+                'rows_error': int(row.get('rows_error', 0)),
+                'rows_other': int(row.get('rows_other', 0)),
+                'envelope_count': int(row.get('envelope_count', 0)),
                 'file_size_mb': float(row['file_size_mb']),
                 'origin_instance_id': row.get('origin_instance_id', ''),
                 'origin_class': row.get('origin_class', 'unknown'),

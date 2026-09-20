@@ -281,3 +281,38 @@ tolerantly, with the absent column answering `unknown` — the best available an
 could tell a stale index from a current one. The index now carries a schema stamp, so it is
 rebuilt instead and the column comes back with its real value. The tolerant defaults in the load
 path stay where they are; they guard a half-written index, which is a different failure.
+
+---
+
+## `test_origin_host_move.py` — one identity, two producing hosts
+
+An identity belongs to a data root rather than to a machine, so a move is legitimate — which is
+precisely why it has to be visible. A **restore** continues one series on new hardware; a **copy**
+makes two writers assert one identity, and that is the failure the provenance contract exists to
+prevent. Nothing in the data separates them, so the suite pins a REPORT rather than a verdict.
+
+| Test | What it holds |
+|---|---|
+| `test_it_reaches_the_index_from_the_block` | the host reaches the index, and the producer's block is read rather than replaced |
+| `test_a_file_without_a_host_reads_empty_rather_than_raising` | `''` is the honest reading, and it saves every caller a missing-key branch |
+| `test_two_hosts_under_one_identity_are_named` | the case the derivation exists for |
+| `test_one_identity_on_one_host_is_silent` | silence is the normal answer |
+| `test_two_identities_on_two_hosts_are_silent` | two producers on two machines is ordinary; only ONE identity on several hosts carries the question |
+| `test_a_missing_host_is_not_a_second_host` | the legacy archive carries no host, and counting `''` would report every pre-field identity as having moved |
+
+The derivation lives at the INDEX rather than at the import. The index sees every file for an
+identity at once, where an importer mid-batch compares against a stale picture and misses a change
+that arrived inside its own run — the reason is the same one that puts the origin RESOLUTION at
+import and the origin COMPARISON here.
+
+## The refusal, in `test_origin_stamp.py`
+
+From format 1.7.0 a file naming no producer is refused. The proof is the **absence of a parquet**
+rather than an exception: a data error is a scenario-level failure and not a crash (§33), so what
+matters downstream is that the file does not enter the archive.
+
+Two controls sit beside it and are what make the boundary readable. The same file WITH an identity
+imports, so the refusal is about the missing block and not about the version. And a 1.6.0 file is
+NOT refused and NOT attested — it resolves to `unknown`, which is the fail-closed direction the
+boundary was chosen for: 1.6.0 never reaches production, but a development file at that version
+exists and must not be swept into a claim written about the legacy archive.

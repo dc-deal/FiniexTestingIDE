@@ -1,5 +1,5 @@
 {
-  "_comment": "instance_id -> what that producing instance MEANS here. A producer states an identity it cannot falsify and says nothing about its meaning; this file is where the meaning lives. Only `class` is read by code — role, name, note and registered_at are for people, and nothing branches on them. An identity that is not listed resolves to `unknown`, which is a rule rather than a setting: `unknown` is refused for a measurement run once the gate is armed. Keys are 12 lowercase hex and are refused in any other shape, because a key that cannot match leaves its data `unknown` without saying so. TRACKED COPY — it carries the schema and DEVELOPMENT entries only. Production entries belong in user_configs/data_origins.json, which takes precedence and is not tracked.",
+  "_comment": "instance_id -> what that producing instance MEANS here. A producer states an identity it cannot falsify and says nothing about its meaning; this file is where the meaning lives. Only `class` is read by code — role, name, note and registered_at are for people, and nothing branches on them. An identity that is not listed resolves to `unknown`, which is a rule rather than a setting: `unknown` is refused for a measurement run once the gate is armed. Keys are 12 lowercase hex and are refused in any other shape, because a key that cannot match leaves its data `unknown` without saying so. TRACKED COPY — it carries the schema and the identities this gate is meant to admit, development and production alike. An identity is an opaque minted string and nothing about it is secret; what stays out of here is anything ABOUT the machine that holds it (an account number, a terminal path). user_configs/data_origins.json still takes precedence and is where an operator keeps a claim they do not want published.",
   "origins": {
     "ee5aa1436824": {
       "class": "development",
@@ -14,6 +14,13 @@
       "name": "MT5 terminal — development laptop",
       "note": "minted 2026-09-17 by TickCollector V1.2.0 on the operator's development machine; one identity for the whole terminal, shared by every symbol it collects. The Kraken collector on the SAME machine is ee5aa1436824 — one machine, two archives, two identities, which is the design working: the identity belongs to the data root, not to the host.",
       "registered_at": "2026-09-17"
+    },
+    "4abe814c11fa": {
+      "class": "production",
+      "role": "primary",
+      "name": "MT5 terminal — production",
+      "note": "Minted 2026-09-19 07:51:01 UTC by the MT5 collector in the production terminal's own Files directory; one identity for the whole terminal, shared by every symbol it collects. It writes data_format_version 1.7.0, so from its first file MT5 states its own identity and the 1.5.0 attestation can never reach it. The development terminal dc0db6a25f15 is a DIFFERENT machine and stays development. Registered before the first tick arrives (expected 2026-09-20 evening) so that nothing imports as `unknown` and silently leaves the admissible set.",
+      "registered_at": "2026-09-19"
     }
   },
   "attestations": [

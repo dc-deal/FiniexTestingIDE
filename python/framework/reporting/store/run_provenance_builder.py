@@ -101,7 +101,7 @@ def build_run_provenance(
         sweep_objective=sweep_context.objective if sweep_context else None,
         sweep_maximize=sweep_context.maximize if sweep_context else None,
         run_type=RUN_TYPE_SIMULATION,
-        **_consumption_record(scenarios),
+        **consumption_record(scenarios),
     )
 
 
@@ -237,9 +237,14 @@ _NON_OPERATIONAL_FIELDS = frozenset({
 })
 
 
-def _consumption_record(scenarios: List[SingleScenario]) -> Dict[str, Any]:
+def consumption_record(scenarios: List[SingleScenario]) -> Dict[str, Any]:
     """
     What the scenarios of one run actually read, flattened to a ledger row.
+
+    Public because the benchmark certificate needs the same answer: a certificate records
+    which CODE produced it and had no way to say which DATA it read, so one over development
+    ticks looked identical to one over production ticks. Two derivations of that would be the
+    pair §19 exists to prevent — and the second one would be the copy nobody updates.
 
     Reads the per-scenario lists the mount already fills — the same seam
     `data_format_version` has travelled since #520 — rather than resolving anything again.

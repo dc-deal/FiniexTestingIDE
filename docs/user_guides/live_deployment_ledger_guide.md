@@ -290,6 +290,39 @@ gone for good, because it happened in a session somebody ran with a flag.
 
 ---
 
+## A session that never reached its close
+
+The session table is built from the ledger, and a row is written as the **last** step at close.
+A session killed before that — a crash, a reboot, a hard stop in the debugger — therefore never
+appears in it. It is not hidden; it was never recorded.
+
+The run index is what still holds it, because a run registers from its header before anything
+can fail. The report reads both and names the difference:
+
+```
+⚠️  1 run(s) started and never completed — no ledger row was written.
+   A run registers at START; its ledger row is the LAST step at close. So
+   these ended abnormally — or one of them is running right now.
+   live session — traded, and left no record of what it did
+     20260918_174713_0dbd978c  2026-09-18T17:47:13  deployment_continuity_test  parent=deploy_...
+```
+
+Two things follow, and both matter more than they look.
+
+**The session count above the table counts completed sessions only.** A deployment whose bot was
+killed twice reports fewer sessions than it ran, and the block below the table is what reconciles
+them.
+
+**A session running RIGHT NOW looks exactly the same** — a header, no ledger row. The wording says
+"not completed" rather than "aborted" for that reason; whoever reads it knows whether a bot is up.
+
+What the killed session still leaves behind is the carry-over in `data/runtime/cold_start_state/`:
+the open position book, the risk baseline and the drawdown curve. So the next session resumes
+correctly even though the record of the previous one is missing — the loss is the account of what
+happened, never the state itself.
+
+---
+
 ## Where the rows live, and why most runs are gone
 
 The history is read from the results ledger in `runs/ledger/` — one small file per run, plus a

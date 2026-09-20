@@ -239,6 +239,13 @@ class TestBenchmarkCertificate:
             'runs',
             'debug_mode_detected',
             'config_provenance',
+            # What the run READ, not only what it was configured to run. Required rather than
+            # tolerated: a certificate that cannot say whether it measured production or
+            # development data is the one artifact somebody believes later, when the run
+            # itself is long pruned. A report written before this field existed therefore
+            # FAILS here — which is what the message below already tells the reader to do,
+            # and the benchmark is re-run at every release anyway.
+            'data_provenance',
             'overall_status',
             'metrics',
             'raw_measurements',

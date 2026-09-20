@@ -149,6 +149,19 @@ class ImportTickSchema(TypedDict, total=False):
     # a zero would assert a quote seen in that same millisecond.
     quote_age_ms: int
 
+    # Optional (collector v1.7.0+) — the venue's own per-pair sequential trade id.
+    # It is kept for ONE question a timestamp cannot answer: a gap in the data can
+    # mean the market was quiet or that we did not receive what happened, and those
+    # are the same bytes. With a sequential id they separate, and the jump size is
+    # exactly how many trades are missing. Measured by the collector across 311,436
+    # consecutive pairs: it never failed to increase, and every jump coincided with a
+    # logged reconnect — none anywhere else.
+    #
+    # Null, never zero, and its ABSENCE is not a defect: a quote-driven venue has no
+    # central place where trades happen, so MT5 forex has no trade id to give (§31c).
+    # A zero would be an id downstream, the same trap `last` and `quote_age_ms` carry.
+    trade_id: int
+
 
 class ImportJsonSchema(TypedDict):
     """

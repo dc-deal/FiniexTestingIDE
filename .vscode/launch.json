@@ -292,13 +292,13 @@
             "args": [
                 "deployments",
                 "--id",
-                "deploy_20260918_091413"
+                "${input:deploymentId}"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
                 "group": "03_index_management",
-                "order": 18.5
+                "order": 18.6
             }
         },
         {
@@ -3864,6 +3864,12 @@
             "id": "userAutotraderConfig",
             "type": "promptString",
             "description": "AutoTrader config path from project root (e.g. user_algos/my_algo/my_algo_symbol_live.json)"
+        },
+        {
+            "id": "deploymentId",
+            "type": "promptString",
+            "description": "Deployment id to report on (e.g. deploy_20260918_091413 — the `deployments` entry lists them)",
+            "default": "deploy_20260918_091413"
         },
         {
             "id": "optimizationSweepId",
