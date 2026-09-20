@@ -3,7 +3,8 @@ FiniexTestingIDE - Trading Fee System
 Polymorphic fee objects for different broker cost models
 
 Architecture:
-- SpreadFee - Bid/Ask spread cost (fully implemented)
+- SpreadFee - Bid/Ask spread cost. NO LONGER BOOKED (#244) — the crossing fill price
+  already carries it; scheduled for removal with #244's reporting half
 - SwapFee - Overnight interest (prepared, calculation deferred)
 - CommissionFee - ECN commission (prepared, calculation deferred)
 - MakerTakerFee - Crypto exchange fees (fully implemented)

@@ -35,6 +35,7 @@ from python.framework.types.trading_env_types.order_types import (
     StopOrder,
 )
 from python.framework.utils.trading_math.pip_math import derive_pip_size
+from python.framework.utils.trading_math.price_trigger import taken_price
 
 
 class AbstractAdapter(ABC):
@@ -199,22 +200,31 @@ class AbstractAdapter(ABC):
                         f"got '{margin_currency}'"
                     )
 
-        # Validate fee_structure if present
+        # Validate fee_structure — REQUIRED, not optional. The fee model is a property of
+        # the venue: an order-driven venue charges a commission per side while its spread is
+        # paid inside the fill price, a quote-driven venue earns the spread instead. An absent
+        # block used to fall through to a 'spread' default in the executor, which priced an
+        # undeclared venue as quote-driven with nothing going red.
         fee_structure = self.broker_config.get('fee_structure')
-        if fee_structure:
-            fee_model_str = fee_structure.get('model')
-            if not fee_model_str:
-                raise ValueError(
-                    "❌ fee_structure present but missing 'model' field"
-                )
-            # Validate model is valid FeeType
-            valid_models = [ft.value for ft in FeeType if ft in (
-                FeeType.SPREAD, FeeType.MAKER_TAKER)]
-            if fee_model_str not in valid_models:
-                raise ValueError(
-                    f"❌ Invalid fee_structure.model: '{fee_model_str}'\n"
-                    f"   Valid values: {valid_models}"
-                )
+        if not fee_structure:
+            raise ValueError(
+                "❌ Broker config declares no 'fee_structure' block\n"
+                "   A fee model is a property of the venue and is never defaulted.\n"
+                "   Valid models: ['spread', 'maker_taker']"
+            )
+        fee_model_str = fee_structure.get('model')
+        if not fee_model_str:
+            raise ValueError(
+                "❌ fee_structure present but missing 'model' field"
+            )
+        # Validate model is valid FeeType
+        valid_models = [ft.value for ft in FeeType if ft in (
+            FeeType.SPREAD, FeeType.MAKER_TAKER)]
+        if fee_model_str not in valid_models:
+            raise ValueError(
+                f"❌ Invalid fee_structure.model: '{fee_model_str}'\n"
+                f"   Valid values: {valid_models}"
+            )
 
     # ============================================
     # Required: Configuration
@@ -1175,7 +1185,7 @@ class AbstractAdapter(ABC):
             position_value = lots * contract_size
         else:
             # Margin in base currency, convert to quote via price
-            price = tick.ask if direction == OrderDirection.LONG else tick.bid
+            price = taken_price(direction, tick.bid, tick.ask)
             position_value = lots * contract_size * price
 
         # Apply leverage (spot: leverage=1, returns full value)

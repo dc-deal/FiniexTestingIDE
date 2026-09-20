@@ -2,7 +2,7 @@
 FiniexTestingIDE - Backtesting Pipeline Configuration Types
 Pydantic models for the app_config.json::backtesting section.
 """
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -41,17 +41,23 @@ class TradeSimulatorDefaults(StrictConfigModel):
     """
     Trade simulator defaults — the base layer of the 3-level cascade.
 
-    It is strict like every other block, and that is safe for a reason worth writing down,
-    because it looks unsafe. `account_currency` is a real setting two scenario sets use and it
-    is NOT a field here: it lives on the SCENARIO level, in the raw `trade_simulator_config`
-    dict that `set_scenario_account_currency` reads directly, and that dict never passes
-    through this model. What this model receives is `app_config.json`'s block alone, which is
-    dumped to a dict and merged UNDER the scenario's own. So a key appearing here is a key
-    somebody meant as a global default — and if that key is `account_currency` one day, the
-    right answer is to declare it rather than to drop it, which is what strictness forces.
+    It is strict like every other block. This docstring used to argue that the strictness was
+    safe because the SCENARIO-level dict "never passes through this model" — and that was
+    simply false: `scenario_config_loader` validates the merged scenario dict against this
+    model per scenario. So `account_currency`, a real setting two sandbox sets carry, was
+    refused as an extra input and BOTH sets died at startup, before a single scenario ran.
+    A validation whose justification rests on a path that does not exist fails on the day
+    somebody uses the feature it was meant to allow.
+
+    So the key is DECLARED, which is what the old docstring prescribed for exactly this case.
+    Declaring it is permissive only: the value is still read from the raw dict by
+    `ScenarioValidator.set_scenario_account_currency`, which is what actually applies it.
     """
     balances: Dict[str, float] = {'USD': 10000}
     seeds: TradeSimulatorSeeds = TradeSimulatorSeeds()
+    # Declared so the strict model accepts it on the SCENARIO level, where it is really used.
+    # None = the account currency is derived from the symbol's quote currency (#265).
+    account_currency: Optional[str] = None
     inbound_latency_min_ms: int = 20
     inbound_latency_max_ms: int = 80
 

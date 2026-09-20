@@ -7,10 +7,15 @@ exactly one fee — half the trading cost of a finished trade, in both pipelines
 Kraken on 2026-09-08: one real Field Study run booked $0.08412231 while the venue charged
 $0.37607000, and six of six exit legs booked exactly zero.
 
-`exit_fee=None` was NOT simply wrong. It is correct for a SPREAD broker: MT5 charges no
-per-side commission, the spread IS the round-trip price, and it is booked once at entry.
-Charging again at exit would double-count it. So the switch is the FEE MODEL, and that
-asymmetry is what these tests pin — the parity case is the point of the issue.
+`exit_fee=None` was NOT simply wrong. It is correct for a SPREAD broker, which charges no
+per-side commission at all. So the switch is the FEE MODEL, and that asymmetry is what these
+tests pin — the parity case is the point of the issue.
+
+The reason given for it at the time was "the spread IS the round-trip price and it is booked
+once at entry", and the second half of that turned out to be the defect (#244): the entry
+booking was itself a double charge, because a market entry takes the ask and the close takes
+the bid, so the spread is already inside `gross_pnl` before any fee. A spread broker now books
+NEITHER leg, and `_create_entry_fee` returns None for it just as `_create_exit_fee` always did.
 
 The second half is the money. `close_position_portfolio` runs its pre-close refresh BEFORE the
 exit fee is attached, so in MARGIN mode `unrealized_pnl` was still gross of it while
@@ -175,8 +180,9 @@ class TestTheFeeModelDecidesWhetherThereIsAnExitFee:
 
     def test_a_spread_broker_charges_nothing_per_side(self):
         """
-        The one `return None` that leaves MT5 untouched — its round-trip price is the spread
-        and it was already booked at entry, so a second charge would double-count it.
+        One of the two `return None`s that leave MT5 without a per-side charge. The entry leg
+        returns None as well since #244 — the spread is inside the crossing fill prices, so
+        booking it as a fee charged it twice.
         """
         executor = _executor('spread')
         spec = executor.broker.adapter.get_symbol_specification(_SYMBOL)
@@ -186,14 +192,27 @@ class TestTheFeeModelDecidesWhetherThereIsAnExitFee:
 
         assert fee is None
 
-    def test_an_absent_fee_structure_falls_back_to_spread(self):
-        """The default is the conservative side: no per-side charge invented from nothing."""
-        executor = _executor('absent')
-        spec = executor.broker.adapter.get_symbol_specification(_SYMBOL)
+    def test_an_absent_fee_structure_is_REFUSED_at_adapter_construction(self):
+        """
+        It used to fall back to SPREAD in the executor, reasoning that inventing no per-side
+        charge is the conservative side. That reasoning was about the FEE and missed what the
+        model also decides: a spread broker's cost is carried by the crossing fill price, so
+        the fallback silently priced an undeclared venue as quote-driven.
 
-        assert executor._fee_model() is FeeType.SPREAD
-        assert executor._create_exit_fee(
-            symbol_spec=spec, lots=_LOTS, exit_price=_EXIT) is None
+        The refusal sits in the ADAPTER rather than in `_fee_model()`, because the adapter
+        already validates the block when it is present — one gate, at construction, before a
+        single order can be priced.
+        """
+        with pytest.raises(ValueError, match="no 'fee_structure' block"):
+            _executor('absent')
+
+    def test_a_fee_model_nobody_prices_is_REFUSED(self):
+        """
+        `FeeType` also carries SWAP and COMMISSION — cost KINDS, not venue models. Passed
+        through, either would miss the maker/taker branch and be priced as a spread broker.
+        """
+        with pytest.raises(ValueError, match='Invalid fee_structure.model'):
+            _executor('commission')
 
     def test_the_entry_and_the_exit_read_ONE_model_lookup(self):
         """

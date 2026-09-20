@@ -85,6 +85,16 @@ Two prices exist once a venue has a spread, and the difference is not cosmetic.
 | **Slippage baseline** — what a fill is measured against | `tick.mid` | A benchmark has to be neutral between the two sides |
 | **Fills** | `bid` / `ask` | A buy pays the ask and a sell receives the bid, unchanged |
 
+**The fill row IS the cost model for a quote-driven venue, and that connection has to be stated
+here or it gets made twice.** A dealer's revenue is the spread; crossing it on entry and again on
+exit means one full spread width is already inside `gross_pnl` before any fee is looked at. So an
+MT5 broker books no per-side fee — not because its cost is zero, but because this row already
+charged it. Booking a `SpreadFee` beside it charged the same quantity twice, exactly, for as long
+as the execution layer has existed. The fee side of the same statement lives in the
+[execution layer](architecture_execution_layer.md) and in the
+[broker config guide](../broker_config_guide.md); each page used to carry one half and neither
+named the other.
+
 On an order-driven venue `bid` and `ask` are a real quote only where one was recorded. Kraken's
 trade channel alone reports executions, so a tick built from it carries `bid == ask`; the quote
 arrives on a separate channel, which the collector has read since format 1.6.0 and the live tick

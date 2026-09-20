@@ -83,8 +83,8 @@ class TestSimSyntheticTradeShape:
         synth_trades: list = []
         original_synth = sim_executor._synthesize_pending_trade
 
-        def _record_synth(pending_order, fill_price, filled_lots, entry_type, symbol_spec, fee_cost):
-            original_synth(pending_order, fill_price, filled_lots, entry_type, symbol_spec, fee_cost)
+        def _record_synth(pending_order, fill_price, filled_lots, is_maker, symbol_spec, fee_cost):
+            original_synth(pending_order, fill_price, filled_lots, is_maker, symbol_spec, fee_cost)
             synth_trades.append(list(pending_order.fills.trades))
 
         sim_executor._synthesize_pending_trade = _record_synth
@@ -119,9 +119,9 @@ class TestSimCloseEmitsTrade:
         # other than itself, so the caller resolves it and hands it in. The spy NAMES it
         # rather than swallowing it in **kwargs — a spy that accepts anything stops being
         # able to fail when the real signature moves.
-        def _record_synth(pending_order, fill_price, filled_lots, entry_type, symbol_spec,
+        def _record_synth(pending_order, fill_price, filled_lots, is_maker, symbol_spec,
                           fee_cost, position=None):
-            original_synth(pending_order, fill_price, filled_lots, entry_type, symbol_spec,
+            original_synth(pending_order, fill_price, filled_lots, is_maker, symbol_spec,
                            fee_cost, position)
             synth_calls.append({
                 'action': pending_order.order_action.value if pending_order.order_action else None,

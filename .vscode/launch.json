@@ -3370,6 +3370,22 @@
             }
         },
         {
+            "name": "🧪 Simulation: Crypto Spread Regime (1.5.0 vs 1.7.0)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/crypto_spread_regime_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_pytest_validation",
+                "order": 77
+            }
+        },
+        {
             "name": "🧪 Simulation: Event Channel",
             "type": "debugpy",
             "request": "launch",

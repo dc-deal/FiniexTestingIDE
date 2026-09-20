@@ -155,11 +155,16 @@ class FillType(Enum):
     How an order was filled — stored in OrderResult.metadata['fill_type'].
 
     Determines fill semantics:
-        MARKET: Standard market fill at current tick price (taker fee)
-        LIMIT: Limit order filled when price reached trigger level (maker fee)
-        LIMIT_IMMEDIATE: Limit filled immediately after latency — price already past limit (maker fee)
-        STOP: Stop trigger reached → filled at current market price (taker fee)
-        STOP_LIMIT: Stop trigger reached → filled at limit price (maker fee)
+        MARKET: Standard market fill at current tick price (taker)
+        LIMIT: Limit order filled when price reached its level — it RESTED, so it provided
+            liquidity (maker). This is the only maker fill.
+        LIMIT_IMMEDIATE: Limit filled immediately after latency, price already past the limit
+            — it crossed the book on arrival (TAKER). This line used to say "maker fee",
+            which is what made the wrong classification look deliberate; measured against
+            Kraken on 2026-09-08, such a fill really is charged the taker rate (#244).
+        STOP: Stop trigger reached → filled at current market price (taker)
+        STOP_LIMIT: Stop trigger reached and its limit already crossed → fills at once
+            (TAKER, for the same reason as LIMIT_IMMEDIATE)
 
     Note: No STOP_IMMEDIATE — if stop price is already exceeded after latency,
     the order fills immediately at current market price (same as STOP).

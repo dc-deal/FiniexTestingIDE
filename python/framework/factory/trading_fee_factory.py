@@ -9,6 +9,11 @@ from python.framework.trading_env.trading_fees import MakerTakerFee, SpreadFee
 from python.framework.types.market_types.market_data_types import TickData
 
 
+# UNCALLED since the spread stopped being booked as a fee (#244): a quote-driven venue's
+# spread is paid inside the crossing fill price, so charging it again here was an exact double
+# count. Kept for one step only — #244's reporting half replaces this with an ATTRIBUTED
+# effective half-spread that is measured and never subtracted, and deletes both this factory
+# and SpreadFee in the same change.
 def create_spread_fee_from_tick(
     tick: TickData,
     lots: float,

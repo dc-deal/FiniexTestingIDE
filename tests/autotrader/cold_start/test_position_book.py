@@ -488,6 +488,12 @@ class TestTheNoteCoversPosition:
         'close_price': 'only set once the position is closed',
         'exit_tick_value': 'only set once the position is closed',
         'exit_tick_index': 'only set once the position is closed',
+        # The ENTRY book is carried — it belongs to a position that is still open, and the
+        # effective spread of its opening leg cannot be recomputed after a restart. The exit
+        # book is the mirror and is deliberately NOT: a position in this store has no exit
+        # yet, and a carried value would be a claim about a fill that never happened (#244).
+        'exit_bid': 'only set once the position is closed',
+        'exit_ask': 'only set once the position is closed',
     }
 
     def test_every_position_field_is_carried_or_declared_not_to_be(self):

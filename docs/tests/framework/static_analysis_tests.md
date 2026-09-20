@@ -1,9 +1,10 @@
 # Static Analysis Tests
 
-`tests/framework/static_analysis/test_undefined_names.py` — the undefined-name gate.
-Runs in every suite.
+`tests/framework/static_analysis/` — two gates that answer questions a test suite cannot:
+`test_undefined_names.py` (a name that resolves nowhere) and `test_arithmetic_shapes.py` (a
+formula that lives in two places). Both run in every suite.
 
-Static analysis in this project has **two tiers**, and only the first one is a gate.
+Static analysis in this project has **two tiers**, and only the gates below belong to the first.
 
 ## Tier 1 — the gate: no undefined names
 
@@ -20,6 +21,46 @@ every file, including those branches.
 
 A failure is almost always a missing import in a path no test executes. **Fix the import,
 never silence the test.**
+
+## Tier 1 — the second gate: no formula leaves its single source
+
+`§38`, `§45` and `§46` each declare that a piece of mathematics lives in exactly one module,
+and each carries a REPORT RULE against reimplementing it. Those were held by review alone
+until a case slipped through and cost eleven months: `SpreadFee.calculate_cost` computed
+`(ask - bid) * 10**digits * tick_value * lots` while `gross_pnl_from_price_diff` computed
+`price_diff * 10**digits * tick_value * lots` — the same conversion of the same quantity, in
+two modules, under different names. The identifiers differ, so no text search finds the pair;
+two lines sit far below any clone detector's minimum token count. The spread was therefore
+charged twice in every MT5 backtest, and it was found by chance.
+
+`arithmetic_shape_scanner.py` reduces every arithmetic expression to a **shape**: identifiers,
+attributes, subscripts and calls collapse to `_`, while numeric literals are kept — `10 ** n`
+is what makes a points conversion recognisable. In clone-detection terms these are Type-2
+clones (same structure, different names), which is the tractable class; Type-4 — same meaning,
+different structure — is not attempted.
+
+| Test | Description |
+|------|-------------|
+| `test_no_new_leak_appeared` | No shape occurs both inside `trading_math/` and outside it, unless it is waived in `ACCEPTED_LEAKS` with a reason |
+| `test_no_waiver_outlived_its_leak` | A waiver whose leak is gone fails too, so a fix prunes its own entry and the baseline cannot grow into a heap |
+| `test_it_finds_the_case_it_was_built_from` | The two real formulas reduce to one shape — without it a threshold change blinds the scanner silently, which nearly happened on the day it was written |
+| `test_identifiers_do_not_matter_but_literals_do` | The method in two assertions: names collapse, numbers do not |
+
+**Read the site before adding a waiver.** The check is a ratchet, not a fund generator, and
+the honest numbers say so: on the tree it was written against it reported five shapes, of
+which exactly ONE was a real duplication — the one already known. The other four were shape
+collisions between unrelated code (a midpoint against an average of two confidence values, an
+EMA recursion against a timestamp offset). The question is never *is the shape the same* but
+*is the QUANTITY the same*. Its value is prospective: a new duplication becomes visible on the
+day it lands.
+
+Scope `python/` + `tests/` — 841 files, 8 MB of source, ~5 s.
+
+**And the limit worth knowing:** the scanner shows the LOCATION, never the MEANING. On its
+founding case a clone report would have said "centralise these two" — and that fix would have
+made the double charge permanent and deliberate-looking. The question that actually closes
+such a case is a human one: *when a cost is computed from a price difference, is that
+difference already inside the P&L?*
 
 ## Tier 2 — the backlog: measured, not gated
 

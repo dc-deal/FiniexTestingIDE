@@ -40,6 +40,7 @@ from python.framework.types.trading_env_types.broker_types import (
     SwapMode,
     SymbolSpecification,
 )
+from python.framework.utils.trading_math.price_trigger import taken_price
 from python.framework.types.trading_env_types.order_types import (
     LimitOrder,
     MarketOrder,
@@ -429,7 +430,7 @@ class MockBrokerAdapter(AbstractAdapter):
             return expected_price
         last_tick = self._last_ticks.get(symbol)
         if last_tick is not None:
-            return last_tick.ask if direction == OrderDirection.LONG else last_tick.bid
+            return taken_price(direction, last_tick.bid, last_tick.ask)
         # Legacy fallback — tests that never feed a tick still work.
         return 50000.0
 

@@ -8,6 +8,8 @@ Import these classes into suite-specific test_<suite>_pnl_calculation.py files.
 
 from typing import List
 
+import pytest
+
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.trading_env_types.order_types import OrderDirection
@@ -69,15 +71,50 @@ class TestPnLCalculation:
                 f'expected={expected_net:.4f} (gross={trade.gross_pnl:.4f} - fees={trade.total_fees:.4f})'
             )
 
-    def test_total_fees_breakdown(self, trade_history: List[TradeRecord]):
-        """Total fees should equal sum of fee components."""
+    def test_total_fees_is_the_sum_of_the_CHARGED_components(
+            self, trade_history: List[TradeRecord]):
+        """
+        `spread_cost` is deliberately NOT in this sum.
+
+        It used to be, and the equation held for one reason only: on a spread broker the
+        SpreadFee WAS the whole of `total_fees`, so the identity was satisfied BY the double
+        charge it should have exposed (#244). On a maker/taker venue the same equation was
+        false by the entire fee, and nothing noticed — all four suites asserting it run on
+        mt5. An invariant that only its own defect can satisfy certifies nothing.
+
+        Since the spread stopped being a fee, the charged side is commission (which now
+        receives maker/taker too) plus swap. The spread is measured against the midpoint at
+        each fill and reported BESIDE this sum, because it is already inside `gross_pnl`.
+        """
         for i, trade in enumerate(trade_history):
-            expected_fees = trade.spread_cost + trade.commission_cost + trade.swap_cost
+            expected_fees = trade.commission_cost + trade.swap_cost
             tolerance = 0.001
 
             assert abs(trade.total_fees - expected_fees) < tolerance, (
                 f'Trade {i+1}: total_fees={trade.total_fees:.4f}, '
-                f'components sum={expected_fees:.4f}'
+                f'charged components sum={expected_fees:.4f} '
+                f'(commission {trade.commission_cost:.4f} + swap {trade.swap_cost:.4f}); '
+                f'spread_cost {trade.spread_cost:.4f} is attributed, not charged'
+            )
+
+    def test_the_attributed_spread_is_not_inside_total_fees(
+            self, trade_history: List[TradeRecord]):
+        """
+        The regression guard for the double charge itself.
+
+        If `spread_cost` ever re-enters `total_fees`, the round trip pays the spread twice —
+        once in the crossing fill prices and once as a charge — which is the defect that ran
+        for eleven months in every MT5 backtest.
+        """
+        charged = [t for t in trade_history if abs(t.spread_cost) > 0.001]
+        if not charged:
+            pytest.skip('No trade in this scenario crossed a measurable spread')
+
+        for i, trade in enumerate(charged):
+            assert abs(trade.total_fees - trade.spread_cost) > 0.001 \
+                or abs(trade.spread_cost) < 0.001, (
+                f'Trade {i+1}: total_fees ({trade.total_fees:.4f}) equals spread_cost '
+                f'({trade.spread_cost:.4f}) — the spread looks charged again'
             )
 
     def test_gross_pnl_formula(self, trade_history: List[TradeRecord]):
