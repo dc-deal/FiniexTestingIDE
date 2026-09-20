@@ -104,8 +104,12 @@ def test_no_debug_mode_when_not_debug():
 def test_no_advisory_for_any_declared_version():
     # The version declares a schema, not data quality — no version value is an advisory.
     # '1.10.0' also guards the lexicographic trap ('1.10.0' < '1.3.0' is True as a string).
+    #
+    # Read on mt5 deliberately: since the spreadless-tick advisory a Kraken version below
+    # 1.6.0 IS a statement, about the collector having recorded no quote. That is a venue
+    # fact, not a version one, which is exactly what this test keeps separate.
     for version in ('1.2.0', '1.3.0', '1.10.0'):
-        assert _warnings(_batch([_scenario(versions=[version])])) == {}
+        assert _warnings(_batch([_scenario(versions=[version], broker='mt5')])) == {}
 
 
 def test_unknown_version_advisory():
@@ -136,7 +140,61 @@ def test_budget_granularity():
 
 
 def test_clean_batch_no_warnings():
-    assert _warnings(_batch([_scenario(versions=['1.3.0'])])) == {}
+    # 1.7.0 rather than 1.3.0: on Kraken the older formats carry no quote, and saying so is
+    # now an advisory. A clean batch is one whose data can answer every question asked of it.
+    assert _warnings(_batch([_scenario(versions=['1.7.0'])])) == {}
+
+
+class TestTheSpreadlessAdvisory:
+    """
+    A Kraken file below collector format 1.6.0 holds `bid == ask`, so its fills crossed no
+    spread. The cost breakdown then shows 0.00, and without a word beside it that reads as
+    "nothing was crossed" rather than "these data cannot say".
+    """
+
+    def test_a_pre_quote_kraken_file_is_reported(self):
+        out = _warnings(_batch([_scenario(versions=['1.5.0'])]))
+
+        assert 'spreadless_tick_data' in out
+        assert '1/1 Kraken tick file(s)' in out['spreadless_tick_data']
+        assert 'crossed NO spread' in out['spreadless_tick_data']
+
+    def test_quoted_kraken_data_says_nothing(self):
+        assert 'spreadless_tick_data' not in _warnings(
+            _batch([_scenario(versions=['1.7.0'])]))
+
+    def test_MT5_IS_NOT_THIS_CASE_however_old_its_format(self):
+        """
+        The venue gate, and it carries the whole check.
+
+        MT5 numbers its collector formats independently and its archive sits entirely below
+        1.6.0 — measured 2026-09-20 from the tick index: 1.0.3 through 1.5.0, 244.8 M ticks,
+        every one of them carrying a real spread since the day it was written. A version test
+        without the venue in front of it would report the entire forex archive as spreadless.
+        """
+        assert 'spreadless_tick_data' not in _warnings(
+            _batch([_scenario(versions=['1.0.3', '1.5.0'], broker='mt5')]))
+
+    def test_a_window_spanning_the_rollout_is_named(self):
+        """
+        The one distinction that carries a decision: wholly in the old regime, or across the
+        boundary. A mixed scenario is named, because its curve mixes two cost worlds.
+        """
+        out = _warnings(_batch([_scenario(name='spans', versions=['1.5.0', '1.7.0'])]))
+
+        assert '1/2 Kraken tick file(s)' in out['spreadless_tick_data']
+        assert 'span the boundary' in out['spreadless_tick_data']
+        assert 'spans' in out['spreadless_tick_data']
+
+    def test_it_counts_FILES_and_says_so(self):
+        """
+        Not ticks. A scenario reads a SLICE of a file, so a tick-exact share would need the
+        loaded frame rather than the index — a per-tick allocation on the data path for a
+        refinement nobody decides on. Saying "file(s)" is what keeps the number honest.
+        """
+        out = _warnings(_batch([_scenario(versions=['1.2.0', '1.3.0', '1.7.0'])]))
+
+        assert '2/3 Kraken tick file(s)' in out['spreadless_tick_data']
 
 
 def test_coordination_overhead():
