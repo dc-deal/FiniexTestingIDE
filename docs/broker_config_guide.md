@@ -138,12 +138,27 @@ The `fee_structure.model` field determines which fee calculation is used:
 
 | Model | FeeType Enum | Adapter | Calculation | Charged |
 |-------|--------------|---------|-------------|---------|
-| `"spread"` | `FeeType.SPREAD` | MT5 | `spread_points * tick_value * lots` | **once**, at entry — the spread IS the round-trip price |
+| `"spread"` | `FeeType.SPREAD` | MT5 | — no fee object is created | **never** — the spread is inside the fill price, not beside it |
 | `"maker_taker"` | `FeeType.MAKER_TAKER` | Kraken | `order_value * (rate / 100)` | **on every fill** — a round trip pays twice |
 
-The `Charged` column is the part that decides money rather than magnitude (#506): booking an
-exit fee on a spread broker would double-count its round-trip price, and NOT booking one on a
-maker/taker venue makes every completed trade cost half of what it says.
+The `Charged` column is the part that decides money rather than magnitude (#506): NOT booking a
+fee on a maker/taker venue makes every completed trade cost half of what it says.
+
+A spread broker is the opposite case and it used to be got wrong in the other direction. Its
+revenue is the spread, and the spread is **already paid in the fill price** — a market entry
+takes the ask and the close takes the bid ([market model](architecture/market_model.md), *Which
+price a component reads*), so one full spread width sits inside `gross_pnl` before any fee is
+considered. A `SpreadFee` booked on top charged it a second time, exactly: its formula
+`(ask - bid) * 10**digits * tick_value * lots` is this project's own `gross_pnl_from_price_diff`
+applied to the same quantity. On EURUSD, 0.1 lots, a market that never moved and a 1.50 spread,
+a round trip reported gross -1.50, fees 1.50 and **net -3.00**. So a spread broker now books no
+per-side fee on either leg.
+
+That the cost is not a FEE does not make it zero. It is an *implicit* cost — the standard
+split is explicit (commission, fees, taxes) against implicit (spread, impact, delay), and a
+round trip on a static book costs one spread in total, realised entirely in the two crossing
+prices. Reporting that measured quantity is #244; it is deliberately not a fee object, because
+anything in the fee hierarchy is subtracted.
 
 ### Fee Flow (both executors)
 

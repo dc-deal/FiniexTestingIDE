@@ -13,6 +13,7 @@ from python.framework.types.trading_env_types.order_types import (
 )
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
+from python.framework.utils.trading_math.price_trigger import mid_price
 
 
 class PositionStatus(Enum):
@@ -83,6 +84,14 @@ class Position:
     entry_tick_value: float = 0.0
     entry_bid: float = 0.0
     entry_ask: float = 0.0
+    # The book at the CLOSING fill, the mirror of entry_bid/entry_ask above. Stamped so the
+    # crossed spread stays measurable after the fact: the effective half-spread is the
+    # distance from each fill to the MIDPOINT at that moment, which is how the literature
+    # defines it (Johnson, *Algorithmic Trading & DMA*, ch. 6) and the only benchmark neutral
+    # between the two sides. NOT the submission mid — that one belongs to the slippage audit
+    # (#340) and answers how far the market moved while the order was in flight.
+    exit_bid: float = 0.0
+    exit_ask: float = 0.0
     exit_tick_value: float = 0.0
     digits: int = 5
     contract_size: int = 100000
@@ -187,15 +196,117 @@ class Position:
         """Get all fees of specific type"""
         return [fee for fee in self.fees if fee.fee_type == fee_type]
 
+    def _spread_leg(self, fill_price: float, bid: float, ask: float,
+                    tick_value: float, lots: float, is_entry: bool) -> float:
+        """
+        The effective half-spread of ONE leg, in account currency.
+
+        Signed by trade direction, which is the standard TCA construction
+        (`2 · q · (P − M)`, q = +1 buy / −1 sell): a fill on the far side of the mid is a
+        cost, a fill INSIDE the spread is a price improvement and comes out negative. Taking
+        an absolute value here would report a resting limit's improvement as a cost.
+
+        Args:
+            fill_price: The price this leg filled at
+            bid: Bid at that fill
+            ask: Ask at that fill
+            tick_value: Tick value at that fill
+            lots: Size to charge the distance over
+            is_entry: True for the opening leg, False for the closing one
+
+        Returns:
+            The leg's effective spread cost, 0.0 when no book was recorded
+        """
+        if bid <= 0.0 or ask <= 0.0:
+            return 0.0
+
+        mid = mid_price(bid, ask)
+        buying = (self.direction == OrderDirection.LONG) == is_entry
+        distance = (fill_price - mid) if buying else (mid - fill_price)
+        return gross_pnl_from_price_diff(distance, self.digits, tick_value, lots)
+
     def get_spread_cost(self) -> float:
-        """Get total spread cost"""
-        spread_fees = self.get_fees_by_type(FeeType.SPREAD)
-        return sum(fee.cost for fee in spread_fees)
+        """
+        The spread this position crossed — MEASURED, never charged.
+
+        It used to sum `SpreadFee` objects, and that was the double charge (#244): a market
+        entry takes the ask and the close takes the bid, so one full spread width is already
+        inside `gross_pnl` before any fee. Booking it again as a fee subtracted the same
+        quantity twice. The cost is real and is still paid; what it is not, is a fee — so it
+        is derived here and stays out of `get_total_fees()`.
+
+        On a static book a market round trip comes to exactly one full spread, which is the
+        textbook result: a buy at the ask and an immediate sell at the bid costs the spread,
+        half of it each way.
+
+        Sized on `original_lots`, because the caller that splits a partial close multiplies
+        by the closed fraction; the shrinking `lots` would apply that ratio twice.
+
+        Returns:
+            The effective spread cost of both legs, entry only while still open
+        """
+        cost = self._spread_leg(
+            self.entry_price, self.entry_bid, self.entry_ask,
+            self.entry_tick_value, self.original_lots, is_entry=True)
+
+        if self.close_price is not None:
+            cost += self._spread_leg(
+                self.close_price, self.exit_bid, self.exit_ask,
+                self.exit_tick_value, self.original_lots, is_entry=False)
+        return cost
+
+    def spread_cost_for_partial(self, close_ratio: float, exit_price: float,
+                                exit_bid: float, exit_ask: float,
+                                exit_tick_value: float) -> float:
+        """
+        The spread attributable to ONE partial close.
+
+        The position is still open here, so its own exit book is not set and cannot be —
+        the closing book belongs to this partial, not to the position. Hence the explicit
+        parameters: the entry leg is pro-rated by the closed fraction, the exit leg is
+        measured against the book this partial actually filled against.
+
+        Args:
+            close_ratio: Closed lots ÷ current lots
+            exit_price: Price this partial closed at
+            exit_bid: Bid at that fill
+            exit_ask: Ask at that fill
+            exit_tick_value: Tick value at that fill
+
+        Returns:
+            The partial's effective spread cost
+        """
+        entry_leg = self._spread_leg(
+            self.entry_price, self.entry_bid, self.entry_ask,
+            self.entry_tick_value, self.original_lots, is_entry=True) * close_ratio
+
+        exit_leg = self._spread_leg(
+            exit_price, exit_bid, exit_ask,
+            exit_tick_value, self.lots * close_ratio, is_entry=False)
+
+        return entry_leg + exit_leg
 
     def get_commission_cost(self) -> float:
-        """Get total commission cost"""
-        comm_fees = self.get_fees_by_type(FeeType.COMMISSION)
-        return sum(fee.cost for fee in comm_fees)
+        """
+        Get the total charged per-side cost — commission and maker/taker alike.
+
+        MAKER_TAKER belongs here and used to be missing, which is why every Kraken trade
+        record reported `commission_cost` 0.0 beside a real `total_fees`: the fee existed,
+        and no per-trade column received it. A per-side charge IS a commission in the
+        standard taxonomy (explicit costs: commission, fees, taxes), so this is where it
+        goes rather than into a fourth column.
+
+        The maker/taker SPLIT is not lost by folding: `ExecutionRow` carries `fee` and
+        `liquidity` per fill in both pipelines — finer than per trade, since one trade can
+        hold fills of both kinds — and `CostBreakdown` keeps its `maker_fee` / `taker_fee`
+        totals for the run.
+
+        Returns:
+            The sum of every charged per-side fee on this position
+        """
+        charged = (self.get_fees_by_type(FeeType.COMMISSION)
+                   + self.get_fees_by_type(FeeType.MAKER_TAKER))
+        return sum(fee.cost for fee in charged)
 
     def get_swap_cost(self) -> float:
         """Get total swap cost"""

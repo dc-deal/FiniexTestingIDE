@@ -1,0 +1,85 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "crypto_spread_regime_test",
+  "created": "2026-09-20T16:30:00.000000+00:00",
+  "description": "The same mechanical round trips over the two Kraken tick REGIMES, so the only thing that differs between the two scenarios is the data. `legacy` reads pre-1.6.0 files where bid == ask, so its fills cross no spread and the reported spread cost is honestly 0.00. `quoted` reads format 1.7.0, where the collector records the quote a trade executed against, so the same code measures a real effective spread. The decision logic is a fixed trade sequence on purpose: a signal-driven strategy would trade DIFFERENTLY in the two windows, and then the comparison would be between two strategies rather than between two data regimes.",
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/backtesting/backtesting_margin_stress",
+      "worker_instances": {
+        "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+      },
+      "workers": {
+        "backtesting_worker": {
+          "periods": {
+            "M5": 14,
+            "M30": 20
+          },
+          "bar_snapshot_checks": []
+        }
+      },
+      "decision_logic_config": {
+        "trade_sequence": [
+          {
+            "tick_number": 200,
+            "direction": "LONG",
+            "lot_size": 0.01,
+            "hold_ticks": 800,
+            "_comment": "Trade #0 \u2014 opens and closes inside the window, so a TradeRecord exists"
+          },
+          {
+            "tick_number": 1500,
+            "direction": "LONG",
+            "lot_size": 0.01,
+            "hold_ticks": 800,
+            "_comment": "Trade #1 \u2014 a second round trip, same size, for a per-trade average"
+          }
+        ],
+        "close_events": [],
+        "retry_events": [],
+        "edge_case_orders": [],
+        "lot_size": 0.01
+      }
+    },
+    "execution_config": {
+      "parallel_workers": false
+    },
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 100000
+      },
+      "seeds": {
+        "inbound_latency_seed": 42424
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "name": "ETHUSD_legacy_no_spread_in_data",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-02-10T10:00:00+00:00",
+      "end_date": "2026-02-10T20:00:00+00:00",
+      "max_ticks": 4000,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    },
+    {
+      "name": "ETHUSD_quoted_real_spread",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-09-19T00:00:00+00:00",
+      "end_date": "2026-09-20T09:00:00+00:00",
+      "max_ticks": 4000,
+      "data_mode": "realistic",
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {}
+    }
+  ]
+}

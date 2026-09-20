@@ -41,7 +41,6 @@ from typing import Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.factory.trading_fee_factory import (
     create_maker_taker_fee,
-    create_spread_fee_from_tick,
 )
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
@@ -882,12 +881,17 @@ class AbstractTradeExecutor(ABC):
         # Create entry fee based on broker fee model.
         # Derived from the ENTRY TYPE, which is an approximation with a known bias: a
         # limit-class order that crossed the book on arrival is a TAKER at a real venue,
-        # and both LIMIT_IMMEDIATE and an immediately-triggered STOP_LIMIT are exactly that
-        # — booked here as makers. `fill_type` can already tell the two apart, so the fix is
-        # reachable; it is not made here because it moves backtest P&L and belongs with the
-        # cost-realism work (#244 / #327). LIVE runs are unaffected either way: their
-        # BrokerTrades carry the venue's own `maker` flag (#326).
-        is_maker = entry_type in (EntryType.LIMIT, EntryType.STOP_LIMIT)
+        # and both LIMIT_IMMEDIATE and an immediately-triggered STOP_LIMIT are exactly that.
+        # They used to be booked as MAKERS, because the flag was derived from the order TYPE
+        # rather than from how it actually filled — so a limit that crossed the book paid the
+        # maker rate. Measured against Kraken 2026-09-08: `pos_ethusd_16` was charged
+        # 0.8001 % (the taker rate) while this booked 0.4 %, half the real cost.
+        #
+        # Only a fill that RESTED provided liquidity, and `FillType` already says which did.
+        # This is the single derivation — the synthetic BrokerTrade below reads the same
+        # boolean instead of repeating the test, which is how the two came to disagree.
+        # LIVE is unaffected: its BrokerTrades carry the venue's own `maker` flag (#326).
+        is_maker = fill_type is FillType.LIMIT
         entry_fee = self._create_entry_fee(
             symbol_spec=symbol_spec,
             lots=pending_order.lots,
@@ -1010,7 +1014,7 @@ class AbstractTradeExecutor(ABC):
                 pending_order=pending_order,
                 fill_price=entry_price,
                 filled_lots=pending_order.lots,
-                entry_type=entry_type,
+                is_maker=is_maker,
                 symbol_spec=symbol_spec,
                 fee_cost=(entry_fee.cost if entry_fee else 0.0),
             )
@@ -1054,9 +1058,9 @@ class AbstractTradeExecutor(ABC):
             # but this field — the one every cost reader uses — was zero (#506). Four Field
             # Study certificates in a row therefore recorded `realized_cost = 0`, and the
             # `max_session_cost_usd` self-abort could never fire.
-            # NOT model-specific: on a SPREAD broker this carries the spread cost, so
-            # "commission" here means "what this fill cost", not "a per-side commission".
-            commission=entry_fee.cost,
+            # NOT model-specific: it means "what this fill cost in FEES". A SPREAD broker
+            # books none — its spread is inside `executed_price` above, not beside it.
+            commission=entry_fee.cost if entry_fee else 0.0,
             position_id=position.position_id,
             action=OrderAction.OPEN,
             symbol=pending_order.symbol,
@@ -1064,8 +1068,8 @@ class AbstractTradeExecutor(ABC):
             requested_lots=pending_order.lots,
             submission=pending_order.submission,
             metadata={
-                'fee_cost': entry_fee.cost,
-                'fee_type': entry_fee.fee_type.value,
+                'fee_cost': entry_fee.cost if entry_fee else 0.0,
+                'fee_type': entry_fee.fee_type.value if entry_fee else '',
                 'fill_type': fill_type.value,
                 'filled_at_tick': self._tick_counter
             }
@@ -1230,7 +1234,7 @@ class AbstractTradeExecutor(ABC):
                     pending_order=pending_order,
                     fill_price=close_price,
                     filled_lots=executed_lots,
-                    entry_type=EntryType.MARKET,  # closes are market in V1
+                    is_maker=False,  # closes are market orders in V1 — always takers
                     symbol_spec=symbol_spec,
                     fee_cost=exit_fee.cost if exit_fee else 0.0,
                     position=position,
@@ -1250,6 +1254,11 @@ class AbstractTradeExecutor(ABC):
                 close_reason=close_reason,
                 exit_trades=exit_trades,
                 exit_submission=pending_order.submission,
+                # The book this close filled against — the mirror of entry_bid/entry_ask
+                # at open, and what keeps the crossed spread measurable after the
+                # fact (#244).
+                exit_bid=bid,
+                exit_ask=ask,
             )
             self.logger.debug(
                 f'📊 Partial close: {position_id} '
@@ -1265,6 +1274,11 @@ class AbstractTradeExecutor(ABC):
                 close_reason=close_reason,
                 exit_trades=exit_trades,
                 exit_submission=pending_order.submission,
+                # The book this close filled against — the mirror of entry_bid/entry_ask
+                # at open, and what keeps the crossed spread measurable after the
+                # fact (#244).
+                exit_bid=bid,
+                exit_ask=ask,
             )
             self.logger.debug(
                 f'💰 Position closed: {position_id} '
@@ -1571,9 +1585,10 @@ class AbstractTradeExecutor(ABC):
             # is the lower one, so a taker fill reserves slightly less than it spends,
             # bounded by the fee difference on one order.
             is_maker = order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT)
-            fee_cost = self._create_entry_fee(
+            entry_fee = self._create_entry_fee(
                 symbol_spec=symbol_spec, lots=lots, entry_price=price,
-                tick_value=tick_value, is_maker=is_maker).cost
+                tick_value=tick_value, is_maker=is_maker)
+            fee_cost = entry_fee.cost if entry_fee else 0.0
         return symbol_spec.quote_currency, lots * price + fee_cost
 
     def _pending_outflow(self, pending: PendingOrder) -> Tuple[Optional[str], float]:
@@ -2145,13 +2160,17 @@ class AbstractTradeExecutor(ABC):
         the entry and the exit have to agree about which world they are in, and one lookup
         is what guarantees it.
 
+        There is deliberately NO default here, and no second validation either. The block is
+        REQUIRED by `AbstractAdapter._validate_common_config`, which refuses a broker config
+        without one at construction — so by the time anything reads this, the value exists and
+        is one the executor prices. A default would substitute a venue model nobody declared
+        (an order-driven venue charges per side and its spread rides in the fill price; a
+        quote-driven venue earns the spread instead), and every gate would stay green.
+
         Returns:
-            The declared FeeType, defaulting to SPREAD when the config says nothing
+            The declared FeeType
         """
-        fee_model_str = self.broker.adapter.broker_config.get(
-            'fee_structure', {}
-        ).get('model', 'spread')
-        return FeeType(fee_model_str)
+        return FeeType(self.broker.adapter.broker_config['fee_structure']['model'])
 
     def _create_entry_fee(
         self,
@@ -2160,12 +2179,27 @@ class AbstractTradeExecutor(ABC):
         entry_price: float,
         tick_value: float,
         is_maker: bool = False
-    ) -> AbstractTradingFee:
+    ) -> Optional[AbstractTradingFee]:
         """
         Create entry fee based on broker fee model.
 
-        Determines fee type from broker config and creates appropriate fee object.
-        Spread-based (MT5) vs Maker/Taker (Kraken).
+        A MAKER/TAKER venue charges a commission per side, and that is a real fee. A SPREAD
+        broker charges NOTHING per side: its revenue is the spread, and the spread is already
+        paid inside the fill price — a market entry takes the ask and the close takes the bid,
+        so one full spread width is inside `gross_pnl` before any fee is booked. Booking a
+        SpreadFee on top charged it a second time, exactly, because its formula
+        `(ask-bid) * 10**digits * tick_value * lots` is the project's own
+        `gross_pnl_from_price_diff` applied to the same quantity. Measured on EURUSD 0.1 lots
+        with a market that never moved: gross -1.50, fees 1.50, net -3.00 for one 1.50 spread.
+
+        Present since the first `trading_env` commit (43d9844, 2025-10-05), where the crossing
+        fill and the SpreadFee were written nine lines apart. The literature is unambiguous —
+        a round trip on a static book costs ONE spread, realised entirely in the two crossing
+        prices (Johnson, *Algorithmic Trading & DMA*, ch. 4) — and classes the spread as an
+        IMPLICIT cost, never among the fees (Kissell ch. 3, table 3.1).
+
+        The implicit cost does not stop existing because no fee is booked; it stops being
+        DOUBLE-BOOKED. Reporting it as the measured quantity it is belongs to #244.
 
         Args:
             symbol_spec: Symbol specification with contract details
@@ -2173,6 +2207,9 @@ class AbstractTradeExecutor(ABC):
             entry_price: Fill price
             tick_value: Current tick value for spread calculation
             is_maker: True for limit orders (maker fee), False for market (taker fee)
+
+        Returns:
+            The entry fee, or None when the model has no per-side charge
         """
         if self._fee_model() == FeeType.MAKER_TAKER:
             return create_maker_taker_fee(
@@ -2184,13 +2221,8 @@ class AbstractTradeExecutor(ABC):
                 is_maker=is_maker
             )
 
-        # Default: Spread-based fee (MT5, Forex)
-        return create_spread_fee_from_tick(
-            tick=self._current_tick,
-            lots=lots,
-            tick_value=tick_value,
-            digits=symbol_spec.digits
-        )
+        # SPREAD model (MT5, Forex): the fill price already crossed it.
+        return None
 
     def _create_exit_fee(
         self,
@@ -2240,7 +2272,7 @@ class AbstractTradeExecutor(ABC):
         pending_order: PendingOrder,
         fill_price: float,
         filled_lots: float,
-        entry_type: EntryType,
+        is_maker: bool,
         symbol_spec: SymbolSpecification,
         fee_cost: float,
         position: Optional[Position] = None,
@@ -2262,7 +2294,9 @@ class AbstractTradeExecutor(ABC):
             pending_order: PendingOrder being filled
             fill_price: Single aggregate fill price
             filled_lots: Single aggregate filled volume
-            entry_type: How the position was opened (drives is_maker)
+            is_maker: Whether this fill provided liquidity, decided ONCE by the caller from
+                `FillType` and handed down — never re-derived here, because a second copy of
+                that test is how the fee and this record came to disagree (#244)
             symbol_spec: Symbol specification (for fee_currency = quote)
             fee_cost: Locally-computed entry fee in account currency
             position: The position a CLOSE settles, already resolved by the caller. It
@@ -2270,7 +2304,6 @@ class AbstractTradeExecutor(ABC):
                 venue-held protective order carries its OWN id, so looking the position
                 up by the order id misses and the side comes out inverted (#503)
         """
-        is_maker = entry_type in (EntryType.LIMIT, EntryType.STOP_LIMIT)
         self._synth_trade_seq += 1
         # Map (position direction, pending lifecycle action) → execution side.
         # Open LONG → BUY, close LONG → SELL, open SHORT → SELL, close SHORT → BUY.

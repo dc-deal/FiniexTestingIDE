@@ -49,6 +49,15 @@ class TradeHistoryRow(BaseModel):
     net_pnl: float
     currency: str = ''      # account currency (#393 — for console P&L formatting)
     swap_cost: float = 0.0  # signed overnight swap for this trade (+ debit, − credit; #365)
+    # The two cost columns that never reached a report surface (#244). `commission_cost`
+    # now receives maker/taker too, so on an order-driven venue a trade finally shows its
+    # charge instead of three zeros beside a real total. `spread_cost` is MEASURED, not
+    # charged: it is the effective spread the fills crossed and it is already inside
+    # gross_pnl, so it is reported beside total_fees and never inside it. Signed like
+    # swap_cost above — a negative value is a price improvement, which is what a resting
+    # limit order earns by filling inside the spread.
+    commission_cost: float = 0.0
+    spread_cost: float = 0.0
     # Trade analytics (#389) — excursion + risk-normalized result (defaulted: additive columns)
     mae_price: float = 0.0      # most adverse price reached while open
     mfe_price: float = 0.0      # most favorable price reached while open

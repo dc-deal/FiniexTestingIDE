@@ -306,9 +306,10 @@ class PortfolioManager:
         Args:
             fee: Trading fee to record (spread / commission / swap / maker-taker)
         """
-        if fee.fee_type == FeeType.SPREAD:
-            self._cost_tracking.total_spread_cost += fee.cost
-        elif fee.fee_type == FeeType.COMMISSION:
+        # FeeType.SPREAD is deliberately absent: the spread is no longer a fee object (#244).
+        # It is measured per trade against the midpoint at each fill and accumulated in
+        # `_record_spread_attribution` below — counted, never subtracted.
+        if fee.fee_type == FeeType.COMMISSION:
             self._cost_tracking.total_commission += fee.cost
         elif fee.fee_type == FeeType.SWAP:
             self._cost_tracking.total_swap += fee.cost
@@ -319,6 +320,20 @@ class PortfolioManager:
                 self._cost_tracking.taker_fee += fee.cost
 
         self._cost_tracking.total_fees += fee.cost
+
+    def _record_spread_attribution(self, spread_cost: float) -> None:
+        """
+        Accumulate one trade's measured spread into the run's cost breakdown.
+
+        Its own path, beside `_record_fee_cost` and deliberately not inside it: everything
+        that enters there also enters `total_fees` on the line below, and the whole point of
+        the spread is that it is already inside `gross_pnl` and must not be subtracted a
+        second time (#244). The field it feeds has always been labelled "(implicit)".
+
+        Args:
+            spread_cost: The trade's effective spread cost, signed
+        """
+        self._cost_tracking.total_spread_cost += spread_cost
 
     def open_position(
         self,
@@ -347,7 +362,8 @@ class PortfolioManager:
         """
         Open new position.
 
-        Accepts entry_fee (typically SpreadFee).
+        Accepts entry_fee, which is None on a quote-driven venue: its spread is paid inside
+        the crossing fill price, so there is no per-side fee to attach (#244).
 
         Args:
             broker_ref: External broker reference from PendingOrder (#330)
@@ -425,6 +441,8 @@ class PortfolioManager:
         close_reason: CloseReason = CloseReason.MANUAL,
         exit_trades: Optional[List[BrokerTrade]] = None,
         exit_submission: Optional[SubmissionMetadata] = None,
+        exit_bid: float = 0.0,
+        exit_ask: float = 0.0,
     ) -> float:
         """
         Close position and realize P&L.
@@ -438,6 +456,10 @@ class PortfolioManager:
             close_reason: Why the position was closed
             exit_trades: Per-execution BrokerTrade list from close PendingOrder (#330)
             exit_submission: Submission-moment snapshot from close PendingOrder (#340/#345)
+            exit_bid: Bid at the closing fill — with exit_ask, the book this close
+                crossed. It is what keeps the spread MEASURABLE after the fact (#244):
+                the spread is not charged as a fee, so nothing else records it
+            exit_ask: Ask at the closing fill
 
         Returns:
             Realized P&L amount
@@ -502,6 +524,10 @@ class PortfolioManager:
         position.close_price = exit_price
         position.exit_tick_value = exit_tick_value
         position.exit_tick_index = exit_tick_index
+        # The book this close crossed. Stamped BEFORE the record is built, because
+        # `get_spread_cost()` reads it to measure the exit half-spread (#244).
+        position.exit_bid = exit_bid
+        position.exit_ask = exit_ask
 
         # Create TradeRecord from closed position
         trade_record = self._create_trade_record(
@@ -509,6 +535,7 @@ class PortfolioManager:
             exit_trades=exit_trades,
             exit_submission=exit_submission,
         )
+        self._record_spread_attribution(trade_record.spread_cost)
         if (self._trade_history_max > 0
                 and not self._trade_history_limit_warned
                 and len(self._trade_history) >= self._trade_history_max):
@@ -537,6 +564,8 @@ class PortfolioManager:
         close_reason: CloseReason = CloseReason.MANUAL,
         exit_trades: Optional[List[BrokerTrade]] = None,
         exit_submission: Optional[SubmissionMetadata] = None,
+        exit_bid: float = 0.0,
+        exit_ask: float = 0.0,
     ) -> float:
         """
         Partially close a position: realize P&L on closed lots, keep remainder open.
@@ -551,6 +580,10 @@ class PortfolioManager:
             close_reason: Why the partial close happened
             exit_trades: Per-execution BrokerTrade list from close PendingOrder (#330)
             exit_submission: Submission-moment snapshot from close PendingOrder (#340/#345)
+            exit_bid: Bid at the closing fill — with exit_ask, the book this close
+                crossed. It is what keeps the spread MEASURABLE after the fact (#244):
+                the spread is not charged as a fee, so nothing else records it
+            exit_ask: Ask at the closing fill
 
         Returns:
             Realized P&L for the closed portion
@@ -621,7 +654,8 @@ class PortfolioManager:
             exit_tick_index=exit_tick_index,
             digits=position.digits,
             contract_size=position.contract_size,
-            spread_cost=position.get_spread_cost() * close_ratio,
+            spread_cost=position.spread_cost_for_partial(
+                close_ratio, exit_price, exit_bid, exit_ask, exit_tick_value),
             commission_cost=position.get_commission_cost() * close_ratio,
             swap_cost=position.get_swap_cost() * close_ratio,
             total_fees=closed_fees,
@@ -647,6 +681,7 @@ class PortfolioManager:
             pip_size=position.pip_size,
             price_unit=position.price_unit,
         )
+        self._record_spread_attribution(trade_record.spread_cost)
 
         # Append to trade history (with limit warning)
         if (self._trade_history_max > 0

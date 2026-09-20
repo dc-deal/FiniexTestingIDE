@@ -709,9 +709,16 @@ fee models (e.g. Kraken). Spread-based brokers (MT5) are unaffected.
 
 **How often each model charges** is the other half of the same question, and the two answer
 differently (#506). A maker/taker venue charges **every fill**, so a completed round trip pays
-**twice** — entry and exit. A spread broker charges **once**: the spread IS the round-trip price
-and it is booked at entry, which is why the exit fee is `None` there and a second charge would
-double-count it.
+**twice** — entry and exit. A spread broker charges **neither leg**: its revenue is the spread,
+and the spread is already paid in the fill price, because a market entry takes the ask and the
+close takes the bid (see [market model](market_model.md), *Which price a component reads*). One
+full spread width therefore sits inside `gross_pnl` before any fee is considered.
+
+This page and the market model each used to state one half of that and neither mentioned the
+other, which is how a `SpreadFee` came to be booked on top of the crossing price and charge the
+spread a second time — exactly, since its formula is `gross_pnl_from_price_diff` applied to
+`(ask - bid)`. The implicit cost is still real and still paid; it is reported as a measured
+quantity rather than as a fee (#244), because everything in the fee hierarchy is subtracted.
 
 A close is a MARKET order today, so its exit fee is always the **taker** rate
 (`is_maker=False`). That stops being a constant when a venue-held exit order can fill as a maker

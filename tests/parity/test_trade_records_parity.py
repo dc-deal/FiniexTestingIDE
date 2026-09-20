@@ -124,8 +124,8 @@ class TestTradeSynthesisParity:
         captured: list = []
         original = executor._synthesize_pending_trade
 
-        def _record(pending_order, fill_price, filled_lots, entry_type, symbol_spec, fee_cost):
-            original(pending_order, fill_price, filled_lots, entry_type, symbol_spec, fee_cost)
+        def _record(pending_order, fill_price, filled_lots, is_maker, symbol_spec, fee_cost):
+            original(pending_order, fill_price, filled_lots, is_maker, symbol_spec, fee_cost)
             # Capture from the just-appended BrokerTrade so `side` reflects
             # the new OrderSide (BUY/SELL) typing — not the OrderDirection
             # of the pending order (which is the position view).
@@ -134,7 +134,10 @@ class TestTradeSynthesisParity:
                 'order_id': pending_order.pending_order_id,
                 'volume': filled_lots,
                 'price': fill_price,
-                'entry_type': entry_type.value,
+                # Was `entry_type`; the helper now receives the liquidity decision
+                # itself, taken ONCE from `FillType` by the caller (#244), so there is
+                # no order-type field here to capture any more.
+                'is_maker': is_maker,
                 'trades_count_after': len(pending_order.fills.trades),
                 'cumulative_lots': pending_order.fills.cumulative_filled_lots,
                 'side': last_trade.side if last_trade else None,
@@ -154,8 +157,10 @@ class TestTradeSynthesisParity:
         _drive_live_market_fill(live_mock, live)
 
         # Exactly one synthesis call per pipeline (the open fill)
-        sim_opens = [s for s in sim_captured if s['entry_type'] in ('market', 'limit')]
-        live_opens = [s for s in live_captured if s['entry_type'] in ('market', 'limit')]
+        # Both drivers produce exactly the OPEN fill, which is what these assertions were
+        # always about — the old `entry_type in ('market', 'limit')` filter selected closes
+        # too (a close was handed EntryType.MARKET) and therefore filtered nothing.
+        sim_opens, live_opens = sim_captured, live_captured
         assert len(sim_opens) == len(live_opens) == 1
 
     def test_synthesis_volume_matches_in_both(self):
@@ -168,8 +173,10 @@ class TestTradeSynthesisParity:
         live_captured = self._capture_synth(live)
         _drive_live_market_fill(live_mock, live)
 
-        sim_opens = [s for s in sim_captured if s['entry_type'] in ('market', 'limit')]
-        live_opens = [s for s in live_captured if s['entry_type'] in ('market', 'limit')]
+        # Both drivers produce exactly the OPEN fill, which is what these assertions were
+        # always about — the old `entry_type in ('market', 'limit')` filter selected closes
+        # too (a close was handed EntryType.MARKET) and therefore filtered nothing.
+        sim_opens, live_opens = sim_captured, live_captured
         assert sim_opens[0]['volume'] == live_opens[0]['volume'] == 0.001
 
     def test_cumulative_lots_match_volume_in_both(self):
@@ -182,8 +189,10 @@ class TestTradeSynthesisParity:
         live_captured = self._capture_synth(live)
         _drive_live_market_fill(live_mock, live)
 
-        sim_opens = [s for s in sim_captured if s['entry_type'] in ('market', 'limit')]
-        live_opens = [s for s in live_captured if s['entry_type'] in ('market', 'limit')]
+        # Both drivers produce exactly the OPEN fill, which is what these assertions were
+        # always about — the old `entry_type in ('market', 'limit')` filter selected closes
+        # too (a close was handed EntryType.MARKET) and therefore filtered nothing.
+        sim_opens, live_opens = sim_captured, live_captured
         # cumulative_lots equals the trade volume (one trade per fill)
         assert sim_opens[0]['cumulative_lots'] == sim_opens[0]['volume']
         assert live_opens[0]['cumulative_lots'] == live_opens[0]['volume']
@@ -198,8 +207,10 @@ class TestTradeSynthesisParity:
         live_captured = self._capture_synth(live)
         _drive_live_market_fill(live_mock, live)
 
-        sim_opens = [s for s in sim_captured if s['entry_type'] in ('market', 'limit')]
-        live_opens = [s for s in live_captured if s['entry_type'] in ('market', 'limit')]
+        # Both drivers produce exactly the OPEN fill, which is what these assertions were
+        # always about — the old `entry_type in ('market', 'limit')` filter selected closes
+        # too (a close was handed EntryType.MARKET) and therefore filtered nothing.
+        sim_opens, live_opens = sim_captured, live_captured
         # BrokerTrade.side is now OrderSide (BUY/SELL — trade-event view)
         # rather than OrderDirection (LONG/SHORT — position view). Open LONG
         # produces a BUY trade in both pipelines.

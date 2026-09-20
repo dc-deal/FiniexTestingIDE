@@ -15,7 +15,7 @@ Expected trade_history: 4 TradeRecords (2 partial + 1 full for #0, 1 full for #1
 Test Groups:
 - TestTradeRecordCount: Correct number of records with right close types
 - TestPartialCloseProportionalPnL: P&L proportional to closed lots
-- TestPartialCloseFeeSplitting: Fees proportional to closed lots
+- TestASpreadBrokerSplitsNoFee: a quote-driven venue charges neither leg (#244)
 - TestPositionIsolation: Non-partial position unaffected
 - TestPortfolioAggregation: Sum of parts = portfolio total
 """
@@ -243,51 +243,57 @@ class TestPartialClosePnL:
 # TEST: Fee Splitting
 # =============================================================================
 
-class TestPartialCloseFeeSplitting:
-    """Validate that fees are proportionally split across partial closes."""
+class TestASpreadBrokerSplitsNoFee:
+    """
+    This scenario runs on **mt5**, a quote-driven venue, and that is why these tests now pin
+    the opposite of what they used to.
 
-    def test_each_partial_has_positive_fees(
+    They asserted `spread_cost > 0` and `total_fees > 0`, and both held — because a `SpreadFee`
+    was booked at entry. That fee was an exact double charge (#244): a market entry takes the
+    ask and the close takes the bid, so one full spread width is already inside `gross_pnl`
+    before any fee is considered, and the fee's own formula is `gross_pnl_from_price_diff`
+    applied to `(ask - bid)`. Measured on EURUSD 0.1 lots with a market that never moved:
+    gross -1.50, fees 1.50, net -3.00 for one 1.50 spread.
+
+    So on a spread broker there is now no per-side fee to split, and these tests are the
+    regression guard that keeps one from coming back.
+
+    **The proportional-split logic itself (`* close_ratio` in `PortfolioManager`) is NOT covered
+    here any more** — it cannot be, on a venue with no fees. Covering it needs a maker/taker
+    scenario AND a per-trade cost column that a maker/taker fee actually lands in; today it
+    lands in none of the three, because `Position.get_commission_cost()` reads only
+    `FeeType.COMMISSION`. Both belong to #244's reporting half, which is where this coverage
+    returns.
+    """
+
+    def test_a_spread_broker_charges_neither_leg(
         self, trade_history: List[TradeRecord]
     ):
-        """Each partial close record should have positive fees."""
-        partials = _partial_records(trade_history)
-        for i, trade in enumerate(partials):
-            assert trade.spread_cost > 0, (
-                f'Partial #{i}: spread_cost should be > 0, '
-                f'got {trade.spread_cost}'
-            )
-            assert trade.total_fees > 0, (
-                f'Partial #{i}: total_fees should be > 0, '
-                f'got {trade.total_fees}'
+        """The double charge, pinned at the record: no fee on any leg of a quote-driven venue."""
+        for i, trade in enumerate(_records_for_position(
+                trade_history, _partial_records(trade_history)[0].position_id)):
+            # spread_cost is NOT asserted to be zero any more: since #244's reporting half
+            # it carries the MEASURED effective spread, which on a quote-driven venue is
+            # exactly what the trader paid — inside the fill prices. What must stay zero is
+            # the CHARGED side, because charging it as well is the double count.
+            assert trade.total_fees == 0.0, (
+                f'Record #{i}: a spread broker charges neither leg, '
+                f'got total_fees {trade.total_fees}'
             )
 
-    def test_fee_sum_across_partials_is_consistent(
+    def test_net_pnl_equals_gross_pnl_when_nothing_is_charged(
         self, trade_history: List[TradeRecord]
     ):
         """
-        Sum of all spread costs for a position's records should be
-        approximately equal to what the full position would have paid.
-        (Not exact due to fee splitting rounding)
+        The consequence at the level where it is money. With no fee, the two must agree
+        exactly — the spread the trader really paid is already inside `gross_pnl`, taken out
+        by the crossing fill prices rather than by a charge beside them.
         """
-        partials = _partial_records(trade_history)
-        if not partials:
-            pytest.skip('No partial records')
-
-        pos_id = partials[0].position_id
-        all_for_pos = _records_for_position(trade_history, pos_id)
-        total_spread = sum(t.spread_cost for t in all_for_pos)
-
-        # Each record should contribute some fees
-        for i, trade in enumerate(all_for_pos):
-            assert trade.total_fees >= 0, (
-                f'Record #{i}: negative fees {trade.total_fees}'
+        for i, trade in enumerate(_partial_records(trade_history)):
+            assert trade.net_pnl == pytest.approx(trade.gross_pnl), (
+                f'Partial #{i}: net {trade.net_pnl} != gross {trade.gross_pnl} '
+                f'although no fee was booked'
             )
-
-        # Total spread should be positive
-        assert total_spread > 0, (
-            f'Total spread for partial position should be > 0, '
-            f'got {total_spread}'
-        )
 
 
 # =============================================================================
