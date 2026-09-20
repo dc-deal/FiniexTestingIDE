@@ -43,6 +43,13 @@ _BOTTLENECK_PCT = 15.0
 # Time-divergence threshold — a currency group spanning more days than this gets an advisory.
 _TIME_DIVERGENCE_DAYS = 30
 
+# The venue whose older archive carries no quote, and the format from which it does. Kraken's
+# collector read only the trade channel below 1.6.0, so those files hold `bid == ask`. MT5 is
+# NOT this case — it numbers its formats independently and has carried a real spread throughout,
+# which is why the check asks the broker before it asks the version.
+_SPREADLESS_BROKER = 'kraken_spot'
+_QUOTE_CHANNEL_FROM = (1, 6, 0)
+
 
 class PostRunValidator:
     """Emits the post-run batch-global advisory warnings into the batch-level validation channel."""
@@ -65,6 +72,7 @@ class PostRunValidator:
         self._check_stress_test()
         self._check_data_version()
         self._check_data_origin()
+        self._check_spreadless_ticks()
         self._check_budget()
         self._check_budget_granularity()
         self._check_budget_too_high()
@@ -175,6 +183,58 @@ class PostRunValidator:
             f'usable, and NOT comparable\n'
             f'  → a parity measurement reads only data a producer stamped itself\n'
             f'  → docs/architecture/data_provenance.md'))
+
+    def _check_spreadless_ticks(self) -> None:
+        """
+        Say when a run's fills crossed no spread, because the DATA carried none.
+
+        A Kraken tick written before collector format 1.6.0 has `bid == ask`: the collector
+        read only the trade channel, so no quote was ever recorded. A backtest over such data
+        is not wrong, it is incomplete in a known direction — and the cost breakdown shows
+        `Spread Cost: 0.00`, which without a word beside it reads as "nothing was crossed"
+        rather than "these data cannot say".
+
+        Keyed on the VENUE as well as the version, and that is load-bearing rather than
+        tidy: MT5 numbers its collector formats independently and its whole archive sits
+        below 1.6.0 — 244.8 M ticks, every one of them carrying a real spread all along. A
+        version test alone would report the entire forex archive as spreadless.
+
+        Counted in FILES, and it says so. The tick-exact share would need the loaded frame
+        rather than the index — a scenario reads a slice of a file, not the file — and that
+        is a per-tick allocation on the data path for a refinement nobody decides on. The
+        distinction that carries a decision is whether a window is wholly inside the old
+        regime or spans the boundary, and files answer that.
+        """
+        spreadless = 0
+        total = 0
+        mixed_scenarios = []
+        for scenario in self._batch.single_scenario_list:
+            if scenario.data_broker_type != _SPREADLESS_BROKER:
+                continue
+            versions = [parse_version(v) for v in scenario.data_format_versions]
+            without = [v for v in versions if v is not None and v < _QUOTE_CHANNEL_FROM]
+            with_quote = [v for v in versions if v is not None and v >= _QUOTE_CHANNEL_FROM]
+            spreadless += len(without)
+            total += len(versions)
+            if without and with_quote:
+                mixed_scenarios.append(scenario.name)
+
+        if spreadless == 0:
+            return
+
+        message = (
+            f'{spreadless}/{total} Kraken tick file(s) read predate collector format '
+            f'{".".join(str(part) for part in _QUOTE_CHANNEL_FROM)} — their fills crossed NO '
+            f'spread\n'
+            f'  → `bid == ask` in those files: the collector recorded no quote, so a zero '
+            f'spread cost is the DATA saying nothing, not the venue being free\n'
+            f'  → fees are unaffected and were charged in full')
+        if mixed_scenarios:
+            message += (
+                f'\n  → {len(mixed_scenarios)} scenario(s) span the boundary and read both '
+                f'regimes: {", ".join(sorted(mixed_scenarios))}')
+
+        self._add('spreadless_tick_data', ValidationDomain.DATA, message)
 
     def _check_budget(self) -> None:
         """Warn when avg tick processing exceeds the P5 interval (consider setting a budget)."""
