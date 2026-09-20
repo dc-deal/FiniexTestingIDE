@@ -15,6 +15,13 @@
       "note": "minted 2026-09-17 by TickCollector V1.2.0 on the operator's development machine; one identity for the whole terminal, shared by every symbol it collects. The Kraken collector on the SAME machine is ee5aa1436824 — one machine, two archives, two identities, which is the design working: the identity belongs to the data root, not to the host.",
       "registered_at": "2026-09-17"
     },
+    "1dcb470e3d17": {
+      "class": "production",
+      "role": "primary",
+      "name": "FiniexRAGEngine — signal producer, production",
+      "note": "Minted by the producer and live from 2026-09-20 12:04:15 UTC (engine 0.3.3, commit 0bd99c2), journal_id 138c68e48b15. It is minted per SCHEMA rather than per database, because their test schema lives inside the production database and journal_id alone therefore cannot separate two producers. Verified from THREE sources before registering: stated on the bus, answered by GET /v1/health from here, and carried on the envelopes of all three streams. First stamped `seq` per stream — crypto_sentiment 4420, forex_macro_sentiment 4269, crypto_sentiment_nano 14; everything below carries no identity and resolves to `unknown`, which is the truthful answer and NOT a claim that the same producer wrote it. `stream_epoch` stayed 1 across the deploy, so no cursor rewound. A schema CLONED from production keeps this id until someone re-mints it and no guard can see that, which is why re-minting is part of standing a copy up.",
+      "registered_at": "2026-09-20"
+    },
     "4abe814c11fa": {
       "class": "production",
       "role": "primary",
