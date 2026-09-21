@@ -26,6 +26,7 @@ from typing import List, Optional, Set
 from pydantic import ValidationError
 
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.persistence.carry_over_identity import carry_over_key
 from python.framework.persistence.cold_start_state_index import ColdStartStateIndex
 from python.framework.types.persistence_types import (
     AccountDrawdownCarryOver,
@@ -72,7 +73,7 @@ class ColdStartStateStore:
         self._symbol = symbol
         self._logger = logger
         self._run_id = run_id
-        self._path = self._root / f'{self._sanitize(profile)}_{self._sanitize(symbol)}.json'
+        self._path = self._root / f'{carry_over_key(profile, symbol)}.json'
         # Provenance from the last load: WHEN the document was written. Kept as the stamp and
         # never turned into an age — deriving one needs a "now", and at boot the canonical
         # clock is not injected yet (§9).
@@ -289,15 +290,3 @@ class ColdStartStateStore:
             f.write(payload)
         os.replace(tmp_path, self._path)
 
-    @staticmethod
-    def _sanitize(name: str) -> str:
-        """
-        Reduce an identity component to a safe filename token.
-
-        Args:
-            name: Raw profile or symbol string
-
-        Returns:
-            Lowercased token with non-alphanumerics collapsed to underscores
-        """
-        return ''.join(c if c.isalnum() else '_' for c in name).strip('_').lower()

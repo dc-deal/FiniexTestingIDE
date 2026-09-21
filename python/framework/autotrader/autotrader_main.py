@@ -79,6 +79,9 @@ from python.framework.utils.scenario_set_utils import ScenarioSetUtils
 from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
+from python.framework.validators.carry_over_identity_validator import (
+    validate_carry_over_identity_unique,
+)
 from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.validators.session_end_validator import resolve_session_end_policy
 from python.framework.validators.session_post_run_validator import SessionPostRunValidator
@@ -508,6 +511,19 @@ class AutotraderMain:
             [type(self._decision_logic)]
             + [type(worker) for worker in self._worker_orchestrator.workers.values()]
         )
+
+        # === CARRY-OVER IDENTITY (#355 / #354) ===
+        # Both carry-over stores file one document per BOT, keyed by `<name>_<symbol>` — two
+        # free-text halves. Two live profiles agreeing on that pair would share one position
+        # book, one position counter and one set of session keys, and neither store can see it:
+        # each asks whether a document belongs to THIS bot, which in a collision it does, for
+        # both. Checked HERE because it must land before anything reads or writes either store
+        # — `_restore_algo_state` is the next call, and cold start follows it.
+        validate_carry_over_identity_unique(
+            self._config.config_path,
+            self._config.name or self._config.symbol,
+            self._config.symbol,
+            self._config.adapter_type)
 
         # === SWAP-MODE VALIDATION (#407) ===
         # The swap engine models only POINTS (NONE = no swap). A symbol whose broker

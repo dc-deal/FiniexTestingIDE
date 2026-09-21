@@ -97,6 +97,28 @@ API type and carries no filesystem path.
 One test pins a defect caught in review rather than a requirement: grouping by run group must
 keep every run, where a dict comprehension keyed on the group silently keeps only the last.
 
+## `test_carry_over_identity.py`
+
+Two live bots must not share one carry-over document. The stores file one per BOT under
+`<profile name>_<symbol>`, and both halves are free text nothing validates — so a collision is
+invisible from inside either store: each asks whether a document belongs to THIS bot, and in a
+collision it does, for both. The check therefore runs once across the profile tree at boot,
+before anything reads or writes.
+
+The sanitiser being lossy is pinned as a **property**, not as a bug: a filename cannot carry
+every character, so `dot live` and `dot-live` legitimately meet. That is the reason for a check
+rather than for a stricter sanitiser.
+
+Three exclusions are pinned because each was reasoned about rather than assumed. A mock profile
+cannot collide — both stores are built only behind a live executor, so aborting a real session
+over one would be a false alarm on the money path. An **unknown** adapter still counts, because
+the test is negative on purpose: only mock is proven harmless, and an exemption in a guard is the
+failure the guard exists to prevent. And an unreadable profile elsewhere in the tree is skipped,
+because this check answers one question and must not become a second config validator.
+
+One test runs against the SHIPPED profiles rather than a fixture: a collision there would mean
+two of the operator's own bots share a position book.
+
 ---
 
 ## Related coverage elsewhere

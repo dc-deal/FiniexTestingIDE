@@ -15,3 +15,18 @@ class StatePersistenceError(FiniexError):
     'fail' policy, or for a stale state file under the 'halt' policy.
     """
     pass
+
+
+class CarryOverIdentityCollisionError(FiniexError):
+    """
+    Two AutoTrader profiles resolve to one carry-over identity.
+
+    The carry-over stores file one document per bot, keyed by the profile's declared name and
+    its symbol — both free text. Two profiles agreeing on that pair share a position book, a
+    position-counter high-water mark and a set of session keys, and neither notices: each store's
+    own identity check asks whether a document belongs to THIS bot, which it does for both.
+
+    Raised at startup rather than survived, because the state is genuinely ambiguous from that
+    moment on and a live session has no second chance (§35).
+    """
+    pass
