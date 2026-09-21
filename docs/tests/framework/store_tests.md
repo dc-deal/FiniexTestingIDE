@@ -79,11 +79,20 @@ Which runs started and never reached their close. A run registers in the run ind
 header, written before anything can fail; its ledger row is the last step at close. A process
 killed between the two exists in one store and not the other, and nothing said so.
 
-The set difference is deliberately **one-directional**. The ledger predates the run index, so it
+The plain reverse set difference stays **out**. The ledger predates the run index, so it
 legitimately holds rows for runs the index never saw — reporting that direction would bury the
 one finding under ordinary history. Scoping to a `parent_id` is what lets a deployment name its
 own missing sessions, since its session table is built from the ledger and a killed session is
 absent from it by construction.
+
+A second, narrower question lives in the same file: a booking whose run directory is gone. It is
+not the mirror of the first, and the tests pin exactly where the line runs — the run index must
+still KNOW the run (otherwise it is ordinary history), and the row must carry no
+`records_pruned_at` (otherwise a prune already accounted for it). Both currency rows of a
+two-currency run are returned rather than one per run, which pins the collapse this project has
+already measured elsewhere: keeping the first row per `run_id` silently drops the second currency.
+The directories arrive as a mapping rather than being read off `RunInfo`, because that model is an
+API type and carries no filesystem path.
 
 One test pins a defect caught in review rather than a requirement: grouping by run group must
 keep every run, where a dict comprehension keyed on the group silently keeps only the last.

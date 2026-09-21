@@ -10,6 +10,8 @@ For a set-shaped store the index and the compaction COINCIDE: what a caller want
 so the derived file holds every row rather than a pointer table.
 """
 
+import os
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -84,7 +86,16 @@ class RunLedgerIndex(AbstractStoreIndex):
     # gap between two sessions of a deployment ran from START to START and counted the
     # previous session's whole runtime as downtime. Appended, no existing value changes; an
     # older row reads back empty and its gap falls back to the old measure, labelled.
-    LOGIC_VERSION: int = 9
+    # 9 → 10 (#537): `gross_profit` / `gross_loss` appended, the two halves `profit_factor` is
+    # the quotient OF — without them a rate cannot be recovered from the rows it was folded out
+    # of, which is what a booking journal has to do. Nine columns that used to read back a
+    # measured 0.0 where nothing had been measured became nullable in the same step:
+    # `final_equity` was absent on 503 of 564 fragments and read as a balance of zero.
+    #
+    # 10 → 11 (#32): `trial_count` appended — how many candidates a run was selected from. Same
+    # shape as every append above: no existing value changes, so ranking across the boundary
+    # stays valid, and an older fragment answers None rather than a made-up number.
+    LOGIC_VERSION: int = 11
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)
@@ -139,11 +150,31 @@ class RunLedgerIndex(AbstractStoreIndex):
         Returns:
             How many rows the ledger holds
         """
+        # The instant the READ begins, not the one the write ends at. Reading 564 fragments
+        # took 3.5 s on a copy and 6.4 s on this mount, and a fragment written inside that
+        # window is not in the result — while the finished file's own mtime would be NEWER
+        # than it, so `staleness_reason` below would call the index fresh and the fragment
+        # would stay invisible until something else forced a rebuild. Stamping the start
+        # makes the mtime mean "the store as of this instant", which is what the comparison
+        # already assumes, and the missed fragment shows up as stale on the next read.
+        read_started_ns = time.time_ns()
         fragments = self.fragments()
         if not fragments:
             self.write(pd.DataFrame(columns=self.COLUMNS))
+            self._stamp(read_started_ns)
             return 0
         frame = pd.concat([pd.read_parquet(f) for f in fragments], ignore_index=True)
         frame = frame.reindex(columns=self.COLUMNS)
         self.write(frame)
+        self._stamp(read_started_ns)
         return len(frame)
+
+    def _stamp(self, read_started_ns: int) -> None:
+        """
+        Date the index by when its read began.
+
+        Args:
+            read_started_ns: The instant the fragment read started
+        """
+        path = self.get_path()
+        os.utime(path, ns=(read_started_ns, read_started_ns))

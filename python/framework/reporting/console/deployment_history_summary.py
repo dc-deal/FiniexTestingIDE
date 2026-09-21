@@ -231,7 +231,11 @@ def deployment_comparability_advisory(
     if len(strategy) < 2 and len(operation) < 2:
         return None
     return DeploymentComparabilityAdvisory(
-        sessions=len(rows),
+        # Distinct RUNS, not rows. A row is one (run × account currency), so counting rows
+        # reported a two-currency session as two sessions — and the number is rendered as
+        # "over N sessions", i.e. the denominator of the sentence that tells the operator
+        # how much of their deployment the advisory is about.
+        sessions=len({r.run_id for r in rows}),
         strategy_stands=max(1, len(strategy)),
         operation_stands=max(1, len(operation)),
     )

@@ -88,6 +88,8 @@ def _to_currency(
         max_equity=agg.max_equity,
         account_max_dd_pct=agg.account_max_dd_pct,
         total_fees=agg.total_fees,
+        gross_profit=agg.total_profit,
+        gross_loss=agg.total_loss,
         unrealized_pnl=agg.unrealized_pnl,
         final_equity=agg.final_equity,
         open_position_count=agg.open_position_count,

@@ -61,6 +61,11 @@ around the refusals first.
 | `TestASweepIsAFamily` | **the sweep is the unit, never the combination.** `--keep-last 1` over two 3-combination sweeps deletes all three of the older one and none of the newer — never 1 of 3, because a half-pruned sweep leaves a `ranked.csv` ranking runs that no longer exist. The sweep directory goes with its last combination, and is never itself classed as an orphan although it legitimately has no header |
 | `TestAnEmptyOrStaleTree` | the two states a hand-cleared tree reaches. An empty tree is a no-op that still writes an index. And index rows whose directory is gone are **reported** — the rebuild drops them either way, so a dry run that showed an empty report while three rows were about to vanish would be lying by omission. Found by trying it, not by design |
 | `TestApplyAndTheIndex` | `apply` removes exactly what `plan` decided · after a prune the index-header invariant holds in BOTH directions · one unremovable directory is reported and does not abort the rest |
+| `TestTheLedgerKeepsItsRowsAndSaysWhy` | a prune removes RECORDS, never RESULTS. The pruned run's ledger row survives with its figures untouched and gains a `records_pruned_at` stamp; a run that stays keeps an unstamped row. The two stores have opposite retention on purpose, and the stamp is what stops a surviving row from implying its figures can still be recomputed from entries that are gone |
+
+The ledger path is injected into the pruner exactly like the index and the roots, and for a
+sharper reason than either: this store is WRITTEN, so a suite pointed at a throwaway tree would
+otherwise stamp the real books.
 
 The guard test was mutation-checked: disabling the `reporting=expected` branch in the pruner turns
 exactly that one test red and leaves the other thirteen green.

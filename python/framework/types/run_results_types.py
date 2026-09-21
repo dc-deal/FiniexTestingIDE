@@ -4,11 +4,13 @@ Run-results ledger types.
 Runtime domain types for the persistent run-results ledger (the substrate of the
 Parameter Optimization system). `RunProvenance` is the per-run provenance bundle
 written alongside the run's KPIs; `SweepContext` is the optional sweep tagging a
-combination carries into a batch so the ledger row can be grouped by sweep.
+combination carries into a batch so the ledger row can be grouped by sweep;
+`BookingSegment` is one closed booking period of a live deployment (#537).
 """
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 
@@ -19,6 +21,9 @@ class SweepContext:
     sweep_params: Dict[str, Any]    # the combination's concrete grid point {path: value}
     objective: str = 'expectancy'   # the spec's ranking objective (recorded so report defaults to it)
     maximize: bool = True           # the spec's ranking direction
+    # How many combinations the SEARCH spans (#32). A property of the search rather than of any
+    # run in it, which is why it has to travel with the tagging: no run can count its siblings.
+    trial_count: int = 1
 
 
 @dataclass
@@ -93,3 +98,91 @@ class RunProvenance:
     # the run tree is laid out with (`log_layout_types.RUN_TYPE_*`) rather than a literal, so
     # the ledger, the run index and the directory on disk cannot drift into three vocabularies.
     run_type: str = ''
+    # How many candidates this run was selected FROM (#32). One for a run nobody swept, which is
+    # a statement and not a placeholder: an absent value means the row predates the field, while
+    # 1 means one attempt, and the two must not read alike.
+    #
+    # It is recorded because it CANNOT be recovered afterwards. Every other input to the Deflated
+    # Sharpe Ratio (Bailey & López de Prado) — which discounts a result by how many attempts
+    # produced it — can be re-derived from the stored runs; this one describes the SEARCH, and a
+    # search leaves no other trace once it is over. A strategy picked as the best of 500 grid
+    # points is not the evidence a strategy picked out of 5 is, and without this field the two
+    # are indistinguishable.
+    #
+    # It is the size of the search as PLANNED. How many of those combinations actually reached
+    # the ledger is countable from the rows carrying this `sweep_id`, so the pair says whether
+    # the search completed — the same self-checking shape as a control total (§48).
+    trial_count: int = 1
+
+
+class SegmentCloseReason(Enum):
+    """
+    Why a booking segment was closed. Recorded, never inferred.
+
+    Without it a hand-triggered close is indistinguishable from a shifted day boundary once
+    the run is over, and SESSION_END is load-bearing beyond readability: it is what tells a
+    reader that a deployment's books are complete. The two-store completion audit (§44) used
+    to derive that from the ledger row existing at all — which stops working the moment a
+    session books DURING its run (#537).
+    """
+    ANCHOR = 'anchor'               # the market's own trading-day boundary (§47)
+    SESSION_END = 'session_end'     # the session ended; the open segment is closed rather than dropped
+    OPERATOR = 'operator'           # a person asked for a close
+
+
+@dataclass
+class BookingSegment:
+    """
+    One closed booking period of a live deployment.
+
+    Keyed by a RUNNING NUMBER inside its deployment rather than by a date, deliberately: a
+    date cannot express two closes on one day, and the industry books more than once a day in
+    several places — perpetual funding every eight hours, an intraday margin call, an
+    operator's period close. A date would force `2026-09-21_2` on the next person.
+
+    Args:
+        segment_no: Running number within the deployment, starting at 1. Survives a restart
+            through the cold-start carry-over, the same way the position counter does (#355)
+        opened_at: When the period began, from the CANONICAL clock — the seal is an event (§9)
+        closed_at: When it ended, same clock. Read from the record and never re-derived from
+            config: during an anchor change the config describes what a run WOULD produce
+            while existing rows still hold the previous answer (§31c makes the same argument
+            for the bar basis)
+        reason: What closed it
+        trade_count: How many trade records the period's figures were derived from. This is a
+            CONTROL TOTAL (§48), not a statistic: it is what lets a reader re-derive the row
+            from the records and find out that it does not match
+    """
+    segment_no: int
+    opened_at: datetime
+    closed_at: datetime
+    reason: SegmentCloseReason
+    trade_count: int
+
+
+class Reduction(Enum):
+    """
+    How a ledger column combines when several rows are read as one.
+
+    The question a reader actually has is not "is this aggregated" but "how do I combine it",
+    and the two do not line up: `net_pnl` and `win_rate` are both aggregates, one sums and the
+    other cannot be combined at all. Marking both as aggregates would make them look alike,
+    which is precisely the confusion that produces a wrong total (CLAUDE.md §48).
+
+    Declared per column in `run_results_ledger.COLUMN_REDUCTION`, and a test holds that map and
+    LEDGER_COLUMNS to the same key set — so a new column cannot be added without saying how it
+    reduces.
+    """
+    SUM = 'sum'             # a flow or a counter: rows partition it, adding them is correct
+    MAX = 'max'             # a cumulative extremum. NEVER sum — one decline counted once per row
+    DERIVE = 'derive'       # a rate, a mean, a quotient: NOT combinable, re-derive from records
+    LAST = 'last'           # a stock read at an instant; the most recent row wins
+    IDENTITY = 'identity'   # must agree across the rows, or they were never comparable
+    UNION = 'union'         # a comma-joined set: combine by union, never by concatenation
+    SPAN = 'span'           # an instant: min and max both mean something, a single value does not
+    # Reduced WITH another column, never on its own. The drawdown trio is the case: whichever
+    # row owns the deepest decline also supplies the peak it fell from and the share it was,
+    # and taking each by its own max pairs one row's trough with another's peak — exactly the
+    # defect #497 removed from the console aggregate (report_aggregators.py:160-163 states it).
+    # The companion's comment names the column that LEADS it.
+    COMPANION = 'companion'

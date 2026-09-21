@@ -20,3 +20,16 @@ class StoreIndexSourceMissingError(FiniexError, RuntimeError):
     Not a silent empty rebuild: writing an empty index would report "no entries" for a store
     that is full, and the caller would have no way to tell that from the truth.
     """
+
+
+class LedgerRowUnreadableError(FiniexError, ValueError):
+    """A ledger row carries a structured column that will not parse back."""
+
+    def __init__(self, run_id: str, column: str, detail: str):
+        self.run_id = run_id
+        self.column = column
+        super().__init__(
+            f"Ledger row '{run_id}' has an unreadable '{column}' column: {detail}. "
+            f"The whole ledger reads as one table, so this one row stops every reader — "
+            f"the fragment is runs/ledger/*_{run_id}.parquet."
+        )

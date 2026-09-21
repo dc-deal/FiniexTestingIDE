@@ -156,18 +156,40 @@ Read the whole directory back as one table.
 - **No partition by config name** — all identity (`param_hash`, `sweep_id`, `scenario_set_name`,
   `decision_logic_type`, …) is **columns**, never folder structure. The leading key for ranking is
   the logical `param_hash`; filter by any column.
-- **Row grain:** one per (run × account currency) = a `RunSummary` currency row + provenance. A
-  **failed** run (every scenario failed — e.g. an out-of-range parameter combination) writes ONE
-  `status='error'` row instead: provenance + sweep tag intact, KPIs zero, the `error` column carrying
-  the reason. The run is recorded (never silently absent) but excluded from the ranking.
+- **Row grain:** one per (run × account currency) = a `RunSummary` currency row + provenance.
+- **`status` is a FLAG on the row, not a reason to empty it.** A run that errored still writes its
+  figures; `status='error'` and the `error` column travel beside them, and the ranking excludes the
+  row on that column. Only a run that produced NOTHING — no currencies at all, e.g. a combination
+  rejected at validation before it ever ran — writes the one figureless `status='error'` row. The
+  distinction matters because a live session has exactly one unit: any uncaught exception, including
+  one in the shutdown path, marks the whole session failed, and zeroing its KPIs discarded real
+  money figures (measured: a field-study session whose own artifact recorded a final equity of
+  71.97 USD had 0 in the ledger).
+- **A missing column reads as `None`, never as a measured zero.** Every KPI a fragment may predate
+  is `| None` on the typed row, so "nobody wrote this down" stays distinguishable from "this was
+  measured and it was zero".
 - **Read is schema-evolution safe:** fragments are read individually and unioned (then reindexed to the
   canonical columns), so adding a column later does not strip it from older fragments' siblings.
+- **The row records how many candidates it beat.** `trial_count` is the size of the search this run
+  belonged to — 1 for a run nobody swept, which is a statement rather than a placeholder and must
+  not be confused with the `None` an older fragment answers. It is written because it cannot be
+  recovered afterwards: it describes the SEARCH, not any run in it, and a search leaves no other
+  trace once it is over. It is the missing input to the Deflated Sharpe Ratio, which discounts a
+  result by how many attempts produced it — a variant picked as the best of 500 grid points is not
+  the evidence one picked out of 5 is. How many of those candidates actually reached the ledger is
+  countable from the rows sharing the `sweep_id`, so the pair also says whether the search finished.
+- **A row can outlive its records, and it says so.** `records_pruned_at` is stamped when a prune
+  removes that run's directory. The figures stay; what the stamp withdraws is the claim that they
+  can still be checked against the entries they came from. Empty means no prune took them — not
+  that they are there, which is a different question and is answered by
+  `run_index_cli.py status`.
 
 **Columns:** `param_hash` (leading) · `status` (`ok`/`error`) · `error` · `run_id` · `run_timestamp` ·
 `sweep_id` · `sweep_params` · `scenario_set_name` · `git_commit` / `git_branch` / `git_dirty` ·
 `decision_logic_type` · `decision_version` · `worker_versions` · `config_snapshot` (full resolved
 strategy_config) · `symbols` · `data_broker_type` · `currency` · the `RunSummary` KPIs (`net_pnl`,
-`expectancy`, `profit_factor`, `win_rate`, `max_drawdown`, trade / order counts …) · `signal_fresh_ratio`.
+`expectancy`, `profit_factor`, `win_rate`, `max_drawdown`, trade / order counts …) · `signal_fresh_ratio` ·
+`trial_count` · `records_pruned_at`.
 Typed read: `read_rows() -> List[RunResultRow]` (the JSON columns parsed; what the analysis + API consume).
 
 `signal_fresh_ratio` (#433) is the run's weakest SIGNAL channel — the share of ticks whose signal was

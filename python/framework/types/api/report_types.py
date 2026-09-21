@@ -599,6 +599,14 @@ class RunSummaryCurrency(BaseModel):
     max_equity: float = 0.0
     account_max_dd_pct: float = 0.0
     total_fees: float       # ← PortfolioAggregateRow.total_fees
+    # The two halves `profit_factor` is the quotient OF. Carried because a rate cannot be
+    # folded out of two rows while its COMPONENTS can be summed on any level: without these,
+    # a session's profit factor is not recoverable from its booking segments and a
+    # deployment's is not recoverable from its sessions (#537, CLAUDE.md §48). `win_rate`
+    # already had this property through winning_trades / total_trades; this gives it to the
+    # second rate. Appended, so older fragments read back as 0.0.
+    gross_profit: float = 0.0   # ← PortfolioAggregateRow.total_profit (Σ of winning trades)
+    gross_loss: float = 0.0     # ← PortfolioAggregateRow.total_loss  (Σ of losing trades, positive)
     total_trades: int
     winning_trades: int
     losing_trades: int
@@ -682,8 +690,8 @@ class RunResultRow(BaseModel):
     data_format_versions: str = ''
     origin_classes: str = ''
     origin_evidence_grades: str = ''
-    input_files: int = 0
-    unstamped_input_files: int = 0
+    input_files: int | None = None
+    unstamped_input_files: int | None = None
     price_bases: str = ''
     deployment_id: str = ''
     profile_hash: str = ''
@@ -693,6 +701,15 @@ class RunResultRow(BaseModel):
     # When this row was written — within seconds of the run's end. '' on an older fragment,
     # which is what makes a gap measured from it fall back to start-to-start and SAY so.
     recorded_at_utc: str = ''
+    # How many candidates this run was selected FROM (#32). None on a fragment written before the
+    # column existed — UNKNOWN — while 1 is a statement: this run was the only candidate. The
+    # distinction is the whole point of the field, because a result picked as the best of 500 and
+    # a result nobody compared cannot be discounted alike.
+    trial_count: int | None = None
+    # WHEN this row's run directory was deleted by a prune, empty while it was not. The row
+    # outlives its evidence on purpose; this is what stops it from silently claiming its figures
+    # can still be checked against the records they came from (§48).
+    records_pruned_at: str = ''
     currency: str = ''
     # KPIs (the rankable objective fields)
     net_pnl: float = 0.0
@@ -700,12 +717,23 @@ class RunResultRow(BaseModel):
     profit_factor: float | None = None  # None = undefined (no losing trade)
     win_rate: float = 0.0
     account_max_drawdown: float = 0.0
-    max_equity: float = 0.0
-    account_max_drawdown_pct: float = 0.0
-    unrealized_pnl: float = 0.0
-    final_equity: float = 0.0
-    open_position_count: int = 0
+    # None, never a zero. These arrive on a fragment only if the column existed when it was
+    # written, and a fabricated 0.0 asserts a measurement nobody took — an equity of zero, a
+    # drawdown of zero — where the truth is that the run predates the column. The same
+    # convention `logic_version` and `signal_fresh_ratio` already follow. A reader that needs a
+    # number then has to decide what an unknown means, which is the decision this default used
+    # to make for it, silently and wrongly (CLAUDE.md §48).
+    max_equity: float | None = None
+    account_max_drawdown_pct: float | None = None
+    unrealized_pnl: float | None = None
+    final_equity: float | None = None
+    open_position_count: int | None = None
     total_fees: float = 0.0
+    # None, never 0.0: 499 fragments on disk predate these two columns, and a fabricated zero
+    # would assert "this run won nothing and lost nothing" where the truth is "nobody wrote it
+    # down". Same convention as `logic_version` and `signal_fresh_ratio` above.
+    gross_profit: float | None = None
+    gross_loss: float | None = None
     total_trades: int = 0
     winning_trades: int = 0
     losing_trades: int = 0
@@ -714,8 +742,8 @@ class RunResultRow(BaseModel):
     r_trade_count: int = 0
     # In LEDGER_COLUMNS since #389 and missing here for the same reason as the block above —
     # declared on disk, dropped on the way in.
-    r_win_count: int = 0
-    r_loss_count: int = 0
+    r_win_count: int | None = None
+    r_loss_count: int | None = None
     orders_sent: int = 0
     orders_executed: int = 0
     orders_rejected: int = 0

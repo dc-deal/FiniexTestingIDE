@@ -24,7 +24,14 @@ from python.framework.reporting.store.run_tree_pruner import (
     FIELD_STUDY_ARTIFACT,
     RunTreePruner,
 )
-from python.framework.types.api.report_types import RunHeader, RunReporting
+from python.framework.reporting.store.run_results_ledger import RunResultsLedger
+from python.framework.types.api.report_types import (
+    RunHeader,
+    RunReporting,
+    RunSummary,
+    RunSummaryCurrency,
+)
+from python.framework.types.run_results_types import RunProvenance
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import (
     IO_SUBDIR,
@@ -42,8 +49,8 @@ def _roots(root: Path) -> RunLogPaths:
 
 
 def _pruner(root: Path) -> RunTreePruner:
-    """A pruner pointed entirely at the tmp tree — roots AND index."""
-    return RunTreePruner(_roots(root), root / 'index.parquet')
+    """A pruner pointed entirely at the tmp tree — roots, index AND ledger."""
+    return RunTreePruner(_roots(root), root / 'index.parquet', root / 'ledger')
 
 
 def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMULATION,
@@ -328,3 +335,59 @@ class TestApplyAndTheIndex:
 
         assert result.deleted == []
         assert len(result.failed) == len(report.all_deletions())
+
+
+class TestTheLedgerKeepsItsRowsAndSaysWhy:
+    """
+    A prune removes RECORDS, never RESULTS — the two stores have opposite retention (#390).
+
+    What the deletion costs is the ability to re-derive a row's figures from the entries behind
+    them, so the row is stamped rather than dropped: it keeps saying what the run produced, and
+    stops implying anyone can still check it (§48).
+    """
+
+    def test_a_pruned_run_s_row_survives_and_is_stamped(self, tmp_path):
+        _plant(tmp_path, 'r1', 'set', artifacts=False, reporting=RunReporting.NONE)
+        ledger = RunResultsLedger(tmp_path / 'ledger')
+        ledger.append(_summary(), _provenance('r1'))
+
+        pruner = _pruner(tmp_path)
+        result = pruner.apply(pruner.plan(PruneSelectors()))
+
+        assert result.ledger_rows_marked == 1
+        row = ledger.read_rows()[0]
+        assert row.records_pruned_at != ''
+        assert row.net_pnl == 412.0        # the figures are untouched
+
+    def test_a_run_that_stays_keeps_an_unstamped_row(self, tmp_path):
+        _plant(tmp_path, 'keeper', 'set', reporting=RunReporting.EXPECTED)
+        ledger = RunResultsLedger(tmp_path / 'ledger')
+        ledger.append(_summary(), _provenance('keeper'))
+
+        pruner = _pruner(tmp_path)
+        result = pruner.apply(pruner.plan(PruneSelectors()))
+
+        assert result.ledger_rows_marked == 0
+        assert ledger.read_rows()[0].records_pruned_at == ''
+
+
+def _summary() -> RunSummary:
+    """A one-currency summary whose figures the stamp must not touch."""
+    return RunSummary(
+        run_id='r1',
+        currencies=[RunSummaryCurrency(
+            currency='USD', net_pnl=412.0, profit_factor=1.5, win_rate=0.5,
+            account_max_drawdown=-10.0, total_fees=1.0, total_trades=7,
+            winning_trades=4, losing_trades=3, expectancy=0.3,
+            avg_win_r=1.0, avg_loss_r=-0.5, r_trade_count=7)])
+
+
+def _provenance(run_id: str) -> RunProvenance:
+    """Provenance for a finished run, enough for the ledger to write a row."""
+    return RunProvenance(
+        param_hash='h', status='ok', error=None, run_id=run_id,
+        run_timestamp=_START, scenario_set_name='set', app_version='1.3.1',
+        git_commit='abc1234', git_branch='main', git_dirty=False,
+        decision_logic_type='CORE/aggressive_trend', decision_version='1.0.0',
+        worker_versions={}, config_snapshot='{}', symbols=['BTCUSD'],
+        data_broker_type='kraken_spot')

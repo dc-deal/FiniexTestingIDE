@@ -92,3 +92,7 @@ class PruneResult:
     failed: List[str] = field(default_factory=list)
     indexed_after_rebuild: int = 0
     duplicate_ids: List[str] = field(default_factory=list)
+    # Ledger rows whose run directory this prune removed, stamped so they stop claiming their
+    # figures can be re-derived. The rows are NOT deleted — index and ledger keep opposite
+    # retention on purpose (#390), and a result outlives the evidence behind it.
+    ledger_rows_marked: int = 0

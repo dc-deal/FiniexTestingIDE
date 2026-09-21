@@ -100,6 +100,10 @@ def build_run_provenance(
         sweep_params=sweep_context.sweep_params if sweep_context else None,
         sweep_objective=sweep_context.objective if sweep_context else None,
         sweep_maximize=sweep_context.maximize if sweep_context else None,
+        # One when nobody swept this run — the run WAS the only candidate. The live builder
+        # below leaves the same default for the same reason, and neither writes an empty value:
+        # "not swept" is an answer, "no field" is the absence of one.
+        trial_count=sweep_context.trial_count if sweep_context else 1,
         run_type=RUN_TYPE_SIMULATION,
         **consumption_record(scenarios),
     )
