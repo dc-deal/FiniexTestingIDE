@@ -522,8 +522,7 @@ class AutotraderMain:
         validate_carry_over_identity_unique(
             self._config.config_path,
             self._config.name or self._config.symbol,
-            self._config.symbol,
-            self._config.adapter_type)
+            self._config.symbol)
 
         # === SWAP-MODE VALIDATION (#407) ===
         # The swap engine models only POINTS (NONE = no swap). A symbol whose broker
@@ -681,6 +680,10 @@ class AutotraderMain:
             api_monitor=self._api_monitor,
             state_store=self._state_store,
             risk_baseline=self._risk_baseline,
+            # The FLOOR this session's booking periods continue from (#537). Read from the
+            # carry-over the boot already opened, so a restarted deployment's Hauptbuch has one
+            # unbroken sequence instead of a second period 1.
+            carried_segment_no=self._carried.highest_segment_no,
             # Wired wherever a write can actually happen: a dry run and a refused boot
             # must not persist, which `persist` already answers on its own.
             # It used to be gated on SPOT as well, because a margin session has no book
@@ -937,6 +940,9 @@ class AutotraderMain:
             # there: the portfolio knows what the account is worth NOW, not what the
             # deepest excursion was thirty days ago.
             result.safety_session = self._tick_loop.get_safety_session()
+            # Seals the period that was still running, so the final and necessarily
+            # incomplete one is filed like every other (#537).
+            result.booking_segments = self._tick_loop.get_booking_segments()
         if self._worker_orchestrator:
             result.disturbance_episodes += self._worker_orchestrator.get_signal_episodes()
 
@@ -1266,6 +1272,14 @@ class AutotraderMain:
                 session_key=self._executor.get_session_key() if venue else '',
                 highest_position_counter=(
                     portfolio.get_position_counter() if venue else 0),
+                # OUR OWN record, not a claim about the venue — so it is written regardless of
+                # the dry-run split above. A dry run still books periods, and its successor
+                # must continue their numbering rather than start a second period 1 (#537).
+                # 0 before the loop exists — the carry-over is written at BOOT too, and the
+                # store treats the value as a FLOOR, so a zero leaves the stored count alone
+                # rather than resetting a deployment's period numbering to the start.
+                highest_segment_no=(
+                    self._tick_loop.get_highest_segment_no() if self._tick_loop else 0),
                 keys_in_use=self._cold_start.keys_in_use if venue else None,
                 # SPOT only. A spot holding is a balance the venue cannot describe as a
                 # position, so it only survives a restart if WE write it down; a margin

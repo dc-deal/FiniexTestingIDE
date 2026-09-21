@@ -1,5 +1,5 @@
 """
-Two live bots must not share one carry-over document.
+Two bots must not share one carry-over document.
 
 The carry-over stores file one document per BOT under `<profile name>_<symbol>`, and both halves
 are free text nothing validates. A collision is invisible from inside either store: each asks
@@ -75,7 +75,7 @@ class TestTheBootCheck:
         _profile(profiles, 'observation/dot.json', 'dot_live', 'DOTUSD')
 
         with pytest.raises(CarryOverIdentityCollisionError) as raised:
-            validate_carry_over_identity_unique(mine, 'dot_live', 'DOTUSD', 'live')
+            validate_carry_over_identity_unique(mine, 'dot_live', 'DOTUSD')
 
         # Both files are named: the operator has to edit one of them, and which one is their
         # decision — a message naming only "the other" would send them looking.
@@ -86,13 +86,13 @@ class TestTheBootCheck:
     def test_distinct_identities_pass(self, profiles):
         mine = _profile(profiles, 'production/dot.json', 'dot_live', 'DOTUSD')
         _profile(profiles, 'production/eth.json', 'eth_live', 'ETHUSD')
-        validate_carry_over_identity_unique(mine, 'dot_live', 'DOTUSD', 'live')
+        validate_carry_over_identity_unique(mine, 'dot_live', 'DOTUSD')
 
     def test_the_same_name_on_a_different_symbol_is_not_a_collision(self, profiles):
         # The identity is the PAIR. One bot per symbol under one name is the ordinary layout.
         mine = _profile(profiles, 'production/dot.json', 'crypto_live', 'DOTUSD')
         _profile(profiles, 'production/eth.json', 'crypto_live', 'ETHUSD')
-        validate_carry_over_identity_unique(mine, 'crypto_live', 'DOTUSD', 'live')
+        validate_carry_over_identity_unique(mine, 'crypto_live', 'DOTUSD')
 
     def test_a_collision_between_two_other_profiles_does_not_stop_this_one(self, profiles):
         # Real, but not this run's problem — and it is raised the moment either of them starts,
@@ -100,7 +100,7 @@ class TestTheBootCheck:
         mine = _profile(profiles, 'production/dot.json', 'dot_live', 'DOTUSD')
         _profile(profiles, 'production/a.json', 'shared', 'ETHUSD')
         _profile(profiles, 'observation/b.json', 'shared', 'ETHUSD')
-        validate_carry_over_identity_unique(mine, 'dot_live', 'DOTUSD', 'live')
+        validate_carry_over_identity_unique(mine, 'dot_live', 'DOTUSD')
 
     def test_a_config_outside_a_profile_tree_is_skipped(self, tmp_path):
         # A fixture assembled elsewhere has no tree to compare against, and guessing one would
@@ -108,45 +108,37 @@ class TestTheBootCheck:
         loose = tmp_path / 'somewhere' / 'profile.json'
         loose.parent.mkdir(parents=True)
         loose.write_text('{}', encoding='utf-8')
-        validate_carry_over_identity_unique(loose, 'dot_live', 'DOTUSD', 'live')
+        validate_carry_over_identity_unique(loose, 'dot_live', 'DOTUSD')
 
     def test_a_config_with_no_path_is_skipped(self):
-        validate_carry_over_identity_unique(None, 'dot_live', 'DOTUSD', 'live')
+        validate_carry_over_identity_unique(None, 'dot_live', 'DOTUSD')
 
 
-class TestWhatIsExcluded:
+class TestWhatCountsAndWhatDoesNot:
 
-    def test_a_mock_profile_cannot_collide(self, profiles):
-        # Both carry-over stores are built only behind a live executor, so a mock session writes
-        # no document. Aborting a real session over one would be a false alarm on the money path.
+    def test_a_mock_profile_COUNTS(self, profiles):
+        # The correction that matters. `adapter_type: mock` selects the tick SOURCE, not the
+        # executor — every AutoTrader session runs a LiveTradeExecutor and builds both carry-over
+        # stores. Measured 2026-09-21: 15 of the 16 documents in data/runtime/cold_start_state/
+        # belong to mock profiles, so excluding them would skip almost the whole population.
         mine = _profile(profiles, 'production/dot.json', 'dot_live', 'DOTUSD')
         _profile(profiles, 'backtesting/dot_mock.json', 'dot_live', 'DOTUSD', adapter='mock')
-        validate_carry_over_identity_unique(mine, 'dot_live', 'DOTUSD', 'live')
+        with pytest.raises(CarryOverIdentityCollisionError):
+            validate_carry_over_identity_unique(mine, 'dot_live', 'DOTUSD')
 
-    def test_an_unknown_adapter_still_counts(self, profiles):
-        # The test is NEGATIVE on purpose: only mock is proven harmless. An adapter added later
-        # (#209's MT5) must be included by default, because an exemption in a guard is the
-        # failure the guard exists to prevent.
+    def test_an_unknown_adapter_counts_too(self, profiles):
+        # Nothing is exempt, so an adapter added later (#209's MT5) needs no change here.
         mine = _profile(profiles, 'production/dot.json', 'dot_live', 'DOTUSD')
         _profile(profiles, 'production/dot_mt5.json', 'dot_live', 'DOTUSD', adapter='mt5')
         with pytest.raises(CarryOverIdentityCollisionError):
-            validate_carry_over_identity_unique(mine, 'dot_live', 'DOTUSD', 'live')
-
-    def test_a_mock_session_is_not_stopped_by_someone_else_s_collision(self, profiles):
-        # The mirror of the exclusion above. A mock run writes no carry-over, so nothing can be
-        # taken from it — and stopping a test run over a problem it cannot have is how a check
-        # earns the reputation of being in the way.
-        mine = _profile(profiles, 'backtesting/probe.json', 'shared', 'ETHUSD', adapter='mock')
-        _profile(profiles, 'production/a.json', 'shared', 'ETHUSD')
-        _profile(profiles, 'observation/b.json', 'shared', 'ETHUSD')
-        validate_carry_over_identity_unique(mine, 'shared', 'ETHUSD', 'mock')
+            validate_carry_over_identity_unique(mine, 'dot_live', 'DOTUSD')
 
     def test_an_unreadable_profile_does_not_abort_the_session(self, profiles):
         # This check answers one question and must not become a second config validator: a
         # broken file elsewhere in the tree is somebody else's error, not a reason to refuse.
         mine = _profile(profiles, 'production/dot.json', 'dot_live', 'DOTUSD')
         (profiles / 'production' / 'broken.json').write_text('{ not json', encoding='utf-8')
-        validate_carry_over_identity_unique(mine, 'dot_live', 'DOTUSD', 'live')
+        validate_carry_over_identity_unique(mine, 'dot_live', 'DOTUSD')
 
 
 class TestTheShippedProfiles:

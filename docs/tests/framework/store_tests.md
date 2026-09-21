@@ -109,12 +109,16 @@ The sanitiser being lossy is pinned as a **property**, not as a bug: a filename 
 every character, so `dot live` and `dot-live` legitimately meet. That is the reason for a check
 rather than for a stricter sanitiser.
 
-Three exclusions are pinned because each was reasoned about rather than assumed. A mock profile
-cannot collide — both stores are built only behind a live executor, so aborting a real session
-over one would be a false alarm on the money path. An **unknown** adapter still counts, because
-the test is negative on purpose: only mock is proven harmless, and an exemption in a guard is the
-failure the guard exists to prevent. And an unreadable profile elsewhere in the tree is skipped,
-because this check answers one question and must not become a second config validator.
+**Nothing is exempt, and one test exists to pin the correction that produced that rule.** The
+first version of the check excluded mock profiles on the reasoning that they run no live
+executor — which is wrong: `adapter_type: mock` selects the tick SOURCE, and every AutoTrader
+session runs a `LiveTradeExecutor` and builds both carry-over stores. Measured 2026-09-21, 15 of
+the 16 documents in `data/runtime/cold_start_state/` belong to mock profiles, so the exclusion
+would have skipped almost the entire population the check protects. An unknown adapter counts for
+the same reason, which is why #209's MT5 will need no change here.
+
+One thing IS skipped: an unreadable profile elsewhere in the tree. This check answers one
+question and must not become a second config validator.
 
 One test runs against the SHIPPED profiles rather than a fixture: a collision there would mean
 two of the operator's own bots share a position book.

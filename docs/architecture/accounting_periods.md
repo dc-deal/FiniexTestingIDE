@@ -22,7 +22,8 @@ does not describe the stores themselves (that is
 | Log rotation | the SAME anchor, read from the canonical clock | A new session log file. Fires on the heartbeat too, so a silent feed over the boundary still rotates |  live only |
 | Algo state | hybrid tick / second cadence | What the algo chose to remember. Discarded once older than `max_age_trading_days` | live |
 | Cold-start state | boot, shutdown, and a structural change of the open book; excursion extrema on a tick cadence | Session keys, the position-counter high-water mark, the open position book. Never discarded for age | live |
-| Session end | once, when the run ends | The final equity sample, the report, one ledger row | both |
+| **Booking period** | the SAME trading-day anchor, read from the canonical clock | One sealed `BookingSegment` per run unit: the period's realised figures, its control total and its own equity band. Fires on the heartbeat too, so a quiet feed over the boundary still books | live today, simulation next |
+| Session end | once, when the run ends | The final equity sample, the report, and the ledger rows — one per booking period, not one per session | both |
 
 **Both of those used to read midnight UTC off the TICK stamp, and both were corrected on
 2026-09-21 (#476).** Midnight is right for crypto by coincidence and wrong for forex, whose day
@@ -51,6 +52,47 @@ They used to be two answers. Both the log rotation and the risk day read midnigh
 TICK stamp, which is right for crypto by coincidence and wrong for forex by most of a session: a
 daily limit that reset in the middle of the trading day, and a boundary that a quiet feed could
 cross unnoticed. One owner answers it now, from the canonical clock (§47).
+
+## The three levels, and why they are named after a ledger
+
+The booking period is not a reporting convenience. It is the middle level of ordinary
+double-entry bookkeeping, and the project uses those names on purpose:
+
+| Level | Classical name | Here |
+|---|---|---|
+| individual bookings, chronological | **Grundbuch** (journal) | the `TradeRecord`s |
+| period summaries per account | **Hauptbuch** (ledger) | the booking-period rows |
+| figures over many periods | **Abschluss** (closing) | a deployment's total, a drawdown over a month, Sharpe / Calmar |
+
+Each level is believed because it can be **recomputed** from the one below it, and each carries
+a **control total** so it can disprove itself — `segment_trade_count` says how many records a
+period's figures came from, so a reader who re-derives them and gets a different count knows
+the row is wrong rather than merely surprising. That is the whole reason the construction has
+survived for centuries, and it is what CLAUDE.md §48 states in this project's own words.
+
+The practical consequence is that the third level costs nothing to add. A Sharpe ratio, a Calmar
+ratio, a monthly drawdown are not another layer of bookkeeping — they fall out of the period
+summaries the way a company's annual figures fall out of its daily closings.
+
+### The one thing a reader gets wrong
+
+**A trade belongs to the period it was CLOSED in.** Realised is booked. So a position opened on
+Monday and closed on Tuesday puts its ENTIRE result on Tuesday, although it worked overnight:
+
+```
+            Segment 1                    │            Segment 2
+            Mon 00:00 ──────────── Tue 00:00 ──────────── Wed 00:00
+                                          │
+T1          ╞═══════════╡                 │   wholly inside 1     →  booked in segment 1
+T2                   ╞════════════════════╪═══╡   CROSSES         →  booked in segment 2
+T4                                        │        ╞════════════▶  still open  →  a HOLDING
+```
+
+That is correct bookkeeping and it is not the whole story about Monday. Which is why a period
+carries its **equity band** beside its realised figures: the two differ by exactly the
+unrealised movement across the boundary. Flow is derived from records; stock is read at an
+instant (§48). A reader who takes one for the other will find a day whose booked result and
+whose account movement disagree, and conclude that something is broken.
 
 ## What does not reset
 

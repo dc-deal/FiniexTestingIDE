@@ -159,6 +159,7 @@ class ColdStartStateStore:
         self,
         session_key: str,
         highest_position_counter: int,
+        highest_segment_no: int = 0,
         keys_in_use: Optional[Set[str]] = None,
         open_positions: Optional[List[PositionCarryOver]] = None,
         risk_baseline: Optional[RiskBaseline] = None,
@@ -183,6 +184,9 @@ class ColdStartStateStore:
         Args:
             session_key: This session's client-order-id discriminator ('' when none is stamped)
             highest_position_counter: The largest position counter minted this session
+            highest_segment_no: The largest booking period sealed this session. A FLOOR like
+                the counter above — the stored value is never lowered, so a session that sealed
+                nothing cannot reset a deployment's period count
             keys_in_use: Session halves the venue currently shows on orders of our shape.
                 Protected from eviction. None means "unknown", which protects nothing
             open_positions: The open book at this moment. None means "not supplied" and leaves
@@ -227,6 +231,11 @@ class ColdStartStateStore:
         payload.session_keys = [k for k in keys if k in protected or k in kept]
         payload.highest_position_counter = max(
             payload.highest_position_counter, highest_position_counter)
+        # The same floor, for the same reason (#537): a session that sealed nothing — or a dry
+        # run, which writes 0 — must not lower a deployment's period count and hand its
+        # successor a number already in the books.
+        payload.highest_segment_no = max(
+            payload.highest_segment_no, highest_segment_no)
         if open_positions is not None:
             payload.open_positions = list(open_positions)
         if risk_baseline is not None:

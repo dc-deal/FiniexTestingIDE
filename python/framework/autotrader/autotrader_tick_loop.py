@@ -56,6 +56,11 @@ from python.framework.types.decision_event_types import SessionEndEvent, Session
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.reporting.booking_segment_recorder import (
+    BookingSegmentRecorder,
+    snapshot_from_portfolio,
+)
+from python.framework.types.run_results_types import BookingSegment
 from python.framework.utils.trading_day_anchor import trading_day_of
 from python.framework.types.persistence_types import (
     BaselineKind,
@@ -127,6 +132,7 @@ class AutotraderTickLoop:
         persist_carry_over: Optional[Callable[[], bool]] = None,
         signal_inbox: Optional[SignalInbox] = None,
         signal_transport: Optional[AbstractSignalTransport] = None,
+        carried_segment_no: int = 0,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -256,6 +262,7 @@ class AutotraderTickLoop:
         self._flatten_completed: Optional[bool] = None
         self._flatten_unconfirmed: List[str] = []
 
+
         # Last rejection (displayed until overwritten by next rejection)
         self._recent_rejections: Deque[RejectionEntry] = deque(maxlen=5)
         self._rejection_count: int = 0
@@ -284,6 +291,18 @@ class AutotraderTickLoop:
         # rotation and the daily-loss baseline below read the same answer, so a session
         # cannot rotate its log on one boundary and reset its limit on another.
         self._day_anchor = MarketConfigManager().get_trading_day_anchor(config.broker_type)
+
+        # === BOOKING SEGMENTS (#537) — the Hauptbuch of this session ===
+        # One recorder, shared with the simulation loop: the two are shaped differently (a class
+        # here, a function there) and a recorder each would be two implementations of one rule.
+        # It COLLECTS; the report coordinator writes every period at once when the run ends, so
+        # the parquet write stays out of what the throughput benchmark measures.
+        self._booking = BookingSegmentRecorder(
+            unit_name=config.name or config.symbol,
+            anchor=self._day_anchor,
+            carried_segment_no=carried_segment_no,
+            log=self._logger.info,
+        )
 
         # Daily rotation state
         self._current_log_date: Optional[str] = None
@@ -365,6 +384,10 @@ class AutotraderTickLoop:
                 # it reliable — a feed that goes quiet across the rollover would otherwise
                 # never rotate. The clock is set one line above, so the day is current.
                 self._check_daily_rotation()
+                # #537: the booking period seals on the SAME boundary, in its own pass — a
+                # booking must not depend on whether logs are being written.
+                self._booking.check_boundary(
+                    self._executor.get_current_time_if_set(), self._seal_source)
                 # #320 + #360: drain async responses + check timeouts + re-poll
                 # active orders (the fill/cancel-confirm query now fires during idle).
                 self._executor.heartbeat()
@@ -433,6 +456,8 @@ class AutotraderTickLoop:
             # heartbeat above has almost always rotated first; this covers a replay whose
             # queue never runs empty.
             self._check_daily_rotation()
+            self._booking.check_boundary(
+                self._executor.get_current_time_if_set(), self._seal_source)
 
             # #436: a real tick ends a stale episode (recovery, edge reset).
             if self._market_stale:
@@ -1021,6 +1046,9 @@ class AutotraderTickLoop:
         self._risk_baseline.ensure_taken(value, mark_price, quantities)
         self._risk_baseline.observe(value, mark_price, quantities)
         self._update_day_baseline(value, mark_price, quantities)
+        # The booking period's VALUATION half, beside the risk one (#537). Same tick, same
+        # value, so the two never describe different instants.
+        self._booking.observe_equity(value)
 
     def _update_day_baseline(
         self,
@@ -1101,6 +1129,44 @@ class AutotraderTickLoop:
         self._day_worst_loss_pct = 0.0
         self._day_worst_loss_at = ''
         self._day_limit_hit = False
+
+    def _seal_source(self):
+        """
+        The records and the stock reading a seal needs, at this instant.
+
+        Handed to the recorder as a CALLABLE rather than as values: a boundary check runs on
+        every pass and almost never seals, so the portfolio is only read when a period actually
+        closes.
+
+        Returns:
+            (trade records, SegmentSnapshot)
+        """
+        return snapshot_from_portfolio(self._executor.portfolio)
+
+    def get_highest_segment_no(self) -> int:
+        """
+        The largest booking period this session has sealed (#537).
+
+        Read by the carry-over so the next session continues the count.
+
+        Returns:
+            The high-water mark, which is the inherited floor when nothing was sealed
+        """
+        return self._booking.get_highest_segment_no()
+
+    def get_booking_segments(self) -> List[BookingSegment]:
+        """
+        This session's Hauptbuch — one entry per closed booking period (#537).
+
+        Seals the period that was still running, so the final and necessarily incomplete one is
+        filed like every other rather than dropped for having no successor. Exactly what
+        `get_safety_session` does for the day records, and for the same reason.
+
+        Returns:
+            The periods, oldest first
+        """
+        return self._booking.close(
+            self._executor.get_current_time_if_set(), self._seal_source)
 
     def _observe_safety_excursion(self, current_value: float, baseline: float) -> None:
         """

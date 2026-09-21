@@ -98,18 +98,33 @@ class TestGrouping:
 
 
 class TestMultiCurrency:
-    """One run writes one row PER CURRENCY, and a history counts sessions."""
+    """
+    One run writes one row PER CURRENCY, and both of them are a real result.
 
-    def test_a_multi_currency_session_appears_once(self):
-        """
-        Counting rows instead of runs would report a two-currency bot as twice-restarted —
-        and every gap between its sessions as zero.
-        """
+    This used to keep the FIRST row per run and drop the rest, which counted a two-currency bot
+    correctly as one session and silently lost half its money. The fix is not to count
+    differently but to keep both and separate them where they are added up — a P&L column over
+    two currencies is not a number.
+    """
+
+    def test_both_currencies_of_a_session_survive(self):
         histories = build_deployment_histories([
             row('r1', '2026-09-01T06:00:00+00:00', currency='USD'),
             row('r1', '2026-09-01T06:00:00+00:00', currency='BTC'),
         ])
-        assert len(histories[DEPLOYMENT]) == 1
+        assert sorted(s.currency for s in histories[DEPLOYMENT]) == ['BTC', 'USD']
+
+    def test_the_overview_reports_one_line_per_currency(self):
+        # Counting the rows of both currencies as sessions would report a two-currency bot as
+        # twice-restarted, with every gap between its "sessions" at zero.
+        histories = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', currency='USD'),
+            row('r1', '2026-09-01T06:00:00+00:00', currency='BTC'),
+        ])
+        summaries = summarize_deployments(histories, {DEPLOYMENT: None})
+        assert len(summaries) == 2
+        assert {s.currency for s in summaries} == {'USD', 'BTC'}
+        assert all(s.sessions == 1 for s in summaries)
 
 
 class TestWhatChangedBetweenSessions:

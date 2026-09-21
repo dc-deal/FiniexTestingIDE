@@ -112,6 +112,23 @@ class TradeAnalytics(BaseModel):
     gross_pnl: float = 0.0  # Σ gross P&L over the group
     net_pnl: float = 0.0    # Σ net P&L over the group
     total_fees: float = 0.0  # Σ fees over the group
+    # The WORST single excursion, beside the means above (#537). A mean says how much heat the
+    # average trade took; this says how much the worst one did, which is the figure a stop level
+    # is actually judged against. Stored as the P&L magnitude, like its means.
+    largest_mae: float = 0.0
+    largest_mfe: float = 0.0
+    # Mean holding time in seconds. Cheap here, and it is the axis a booking period makes
+    # readable at all: a period whose trades average four hours is a different strategy from one
+    # whose trades average four days, and net P&L cannot tell them apart.
+    avg_trade_duration_s: float = 0.0
+    # The longest unbroken run of winners / losers, in REALISATION order.
+    #
+    # It carries a warning with it: this figure is NOT combinable across groups, and it is the
+    # one KPI here where the obvious reduction is wrong. A streak can cross a period boundary, so
+    # `max()` of two periods understates the truth — 2 and 3 adjacent segments can be a run of 5.
+    # Its ledger column is therefore `DERIVE`, never `MAX`.
+    max_consecutive_wins: int = 0
+    max_consecutive_losses: int = 0
 
 
 class TradeScenarioTotals(BaseModel):
@@ -622,6 +639,71 @@ class RunSummaryCurrency(BaseModel):
     r_trade_count: int      # ← TradeAnalytics.r_trade_count
     r_win_count: int = 0
     r_loss_count: int = 0
+    # The excursion, duration and streak figures (#537) — the same shape TradeAnalytics computes,
+    # carried here so a booking period and a whole run describe themselves with one vocabulary.
+    # They are cheap: one pass over the records the analytics already walked.
+    avg_mae_winners: float = 0.0
+    avg_mae_losers: float = 0.0
+    avg_mfe_losers: float = 0.0
+    largest_mae: float = 0.0
+    largest_mfe: float = 0.0
+    avg_trade_duration_s: float = 0.0
+    max_consecutive_wins: int = 0
+    max_consecutive_losses: int = 0
+
+
+class BookingPeriodRow(BaseModel):
+    """
+    One booking period as the report renders it — the Hauptbuch, one line per entry.
+
+    Deliberately NOT the ledger row: this carries what a reader compares down a column, not what
+    a ranking needs. The ledger keeps the full figure set; this keeps the ones that make a period
+    legible beside its neighbours.
+    """
+    unit_name: str
+    segment_no: int
+    opened_at: str
+    closed_at: str
+    reason: str
+    currency: str
+    trade_count: int
+    net_pnl: float
+    total_fees: float
+    win_rate: float
+    profit_factor: float | None
+    final_equity: float
+    # The period's OWN band and decline, not the cumulative ones: on this table the question is
+    # what each period did, and the running figure would repeat the same number down the column.
+    min_equity: float
+    max_equity: float
+    max_drawdown: float
+
+
+class BookingPeriodsReport(RunScopedReport):
+    """
+    A run's booking periods, and whether they add up to the run (#537).
+
+    The last line is the point of the table. A period summary is trusted because it can be
+    recomputed from its records, and a column of them is trusted because it RECONCILES against
+    the figure the run reports by its own path — so the reconciliation is computed here and
+    stated, rather than left to a reader adding up a column by eye.
+
+    `reconciles` false is not an error to raise; it is the finding the table exists to surface
+    (§12: reports calculate and render, they do not judge).
+    """
+    periods: list[BookingPeriodRow] = Field(default_factory=list)
+    currency: str = ''
+    # The sums over the periods, and what the run reports independently of them.
+    total_net_pnl: float = 0.0
+    total_fees: float = 0.0
+    total_trades: int = 0
+    run_net_pnl: float = 0.0
+    run_total_trades: int = 0
+    reconciles: bool = True
+    # The deepest single-period decline and the band across all of them — the column's own
+    # extremes, which is what a reader scanning the table is comparing against.
+    deepest_period_drawdown: float = 0.0
+    final_equity: float = 0.0
 
 
 class RunSummary(RunScopedReport):
@@ -710,6 +792,30 @@ class RunResultRow(BaseModel):
     # outlives its evidence on purpose; this is what stops it from silently claiming its figures
     # can still be checked against the records they came from (§48).
     records_pruned_at: str = ''
+    # === THE BOOKING PERIOD (#537) ======================================================
+    # Which run unit booked it, its running number inside that unit, its two instants and
+    # what closed it. `None` / '' on a row that books no period, which is what every row
+    # written before this version is — absent, never a made-up period zero.
+    unit_name: str = ''
+    segment_no: int | None = None
+    segment_opened_at: str = ''
+    segment_closed_at: str = ''
+    segment_close_reason: str = ''
+    # The control total (§48): how many records the figures were derived from.
+    segment_trade_count: int | None = None
+    # The period's own equity band and its own decline, beside the cumulative trio above.
+    segment_max_equity: float | None = None
+    segment_min_equity: float | None = None
+    segment_max_drawdown: float | None = None
+    # What a period looks like beyond its net result.
+    avg_mae_winners: float | None = None
+    avg_mae_losers: float | None = None
+    avg_mfe_losers: float | None = None
+    largest_mae: float | None = None
+    largest_mfe: float | None = None
+    avg_trade_duration_s: float | None = None
+    max_consecutive_wins: int | None = None
+    max_consecutive_losses: int | None = None
     currency: str = ''
     # KPIs (the rankable objective fields)
     net_pnl: float = 0.0

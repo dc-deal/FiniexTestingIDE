@@ -13,6 +13,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from python.framework.types.api.report_types import RunSummaryCurrency
+
 
 @dataclass
 class SweepContext:
@@ -133,16 +135,30 @@ class SegmentCloseReason(Enum):
 @dataclass
 class BookingSegment:
     """
-    One closed booking period of a live deployment.
+    One closed booking period of one run unit — the HAUPTBUCH entry of this system.
 
-    Keyed by a RUNNING NUMBER inside its deployment rather than by a date, deliberately: a
-    date cannot express two closes on one day, and the industry books more than once a day in
+    The model is ordinary double-entry bookkeeping, and naming it that way is not decoration:
+    the trade records are the GRUNDBUCH (the journal of individual bookings, chronological),
+    a segment is the HAUPTBUCH entry (the period summary per account), and everything above
+    it — a deployment's total, a Sharpe ratio, a drawdown over a month — is the ABSCHLUSS
+    derived from those periods. The reason the construction is trustworthy is the same reason
+    it has been for centuries: the summary is believed because it can be RECOMPUTED from the
+    entries behind it, and it carries a control total that lets it disprove itself (§48).
+
+    Keyed by a RUNNING NUMBER inside its unit rather than by a date, deliberately: a date
+    cannot express two closes on one day, and the industry books more than once a day in
     several places — perpetual funding every eight hours, an intraday margin call, an
     operator's period close. A date would force `2026-09-21_2` on the next person.
 
     Args:
-        segment_no: Running number within the deployment, starting at 1. Survives a restart
-            through the cold-start carry-over, the same way the position counter does (#355)
+        segment_no: Running number within the UNIT, starting at 1. For a live session it
+            survives a restart through the cold-start carry-over, the same way the position
+            counter does (#355); a simulation scenario starts at 1 every time, because a
+            backtest has no history to inherit
+        unit_name: Which run unit this period belongs to — a scenario in the simulation, the
+            session in live. Load-bearing rather than decorative: a run's scenarios cover
+            DIFFERENT windows (measured 2026-09-21: 40 scenarios, 40 distinct windows), so
+            "day 1 of the run" is not a thing and only "day 1 of this unit" is
         opened_at: When the period began, from the CANONICAL clock — the seal is an event (§9)
         closed_at: When it ended, same clock. Read from the record and never re-derived from
             config: during an anchor change the config describes what a run WOULD produce
@@ -152,12 +168,28 @@ class BookingSegment:
         trade_count: How many trade records the period's figures were derived from. This is a
             CONTROL TOTAL (§48), not a statistic: it is what lets a reader re-derive the row
             from the records and find out that it does not match
+        figures: The period's KPIs for ONE account currency — the same shape a whole run
+            reports, so a period and a run describe themselves with one vocabulary. A unit
+            trading two account currencies emits one segment per currency
+        segment_max_equity: The highest account value seen INSIDE this period
+        segment_min_equity: The lowest. Not derivable from the two above it — the peak and the
+            trough belong to different moments, so `high - drawdown` is a different number
+            from the low whenever the peak came after it
+        segment_max_drawdown: The deepest decline inside this period, against ITS OWN running
+            peak. Beside it, `figures.account_max_drawdown` carries the CUMULATIVE decline of
+            the whole deployment, and both are needed: the cumulative one keeps `max()` correct
+            over rows, the own one answers how far this single day fell
     """
     segment_no: int
+    unit_name: str
     opened_at: datetime
     closed_at: datetime
     reason: SegmentCloseReason
     trade_count: int
+    figures: RunSummaryCurrency
+    segment_max_equity: float = 0.0
+    segment_min_equity: float = 0.0
+    segment_max_drawdown: float = 0.0
 
 
 class Reduction(Enum):
@@ -179,7 +211,13 @@ class Reduction(Enum):
     LAST = 'last'           # a stock read at an instant; the most recent row wins
     IDENTITY = 'identity'   # must agree across the rows, or they were never comparable
     UNION = 'union'         # a comma-joined set: combine by union, never by concatenation
-    SPAN = 'span'           # an instant: min and max both mean something, a single value does not
+    MIN = 'min'             # a cumulative minimum — the trough, the mirror of MAX
+    # An instant that is one END of a range. `SPAN` alone was not enough and the gap only showed
+    # when something finally READ the map: over several rows the earliest and the latest both
+    # mean something, while an aggregated row has ONE slot — so the declaration has to say which
+    # end belongs in it, or every caller decides for itself and they disagree.
+    SPAN_START = 'span_start'   # the earliest — a beginning, an opening
+    SPAN_END = 'span_end'       # the latest — an end, a close, a stamp
     # Reduced WITH another column, never on its own. The drawdown trio is the case: whichever
     # row owns the deepest decline also supplies the peak it fell from and the share it was,
     # and taking each by its own max pairs one row's trough with another's peak — exactly the

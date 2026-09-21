@@ -323,6 +323,49 @@ happened, never the state itself.
 
 ---
 
+## What a row IS, since the ledger books in periods
+
+A row used to be one session. It is now one **booking period** of one unit — for a live bot,
+one trading day of that session. A thirty-day run therefore leaves thirty rows instead of one,
+and the deployment view reads them as what they are: a column you can walk down until the day
+something happened.
+
+That is not a reporting preference. It is the reason the run exists: the thirty-day live run is
+a **parity proof**, and afterwards the same period is backtested and the divergence measured.
+With one row per month that divergence is a single number — it says THAT the two differ and
+never WHERE:
+
+```
+one row per session                      one row per booking period
+Live      +412.00                        segment  live      backtest      Δ
+Backtest  +487.50                           18    +18.30    +18.30      0.00
+          ───────                           19    -42.10    +11.80    -53.90   ← here
+          diverged by 75.50                 20    +31.40    +31.40      0.00
+```
+
+**The session no longer writes a row of its own.** It would be the same money in the same
+column twice, and nothing could tell the summary from its own evidence — the deployment history
+adds the rows up. The session's total is the sum of its periods, so every existing reader
+arrives at the same figure by adding thirty rows instead of reading one.
+
+### Two numbers per period, and they are not the same question
+
+```
+net_pnl            what was BOOKED     realised, from the trades closed in that period
+final_equity       what the ACCOUNT    read at the seal, including positions still open
+  + the equity band  DID
+```
+
+They differ by the unrealised movement across the boundary. A position opened on Monday and
+closed on Tuesday books its entire result on **Tuesday** — realised is booked — while the
+account moved on both days. So a Monday whose `net_pnl` is +60 and whose equity rose by +55 is
+not a contradiction: it is a position that was still open and was 5 down at midnight.
+
+The rule matters when you compare: **P&L answers "what did I earn that day", the equity band
+answers "what did my account do that day".** The risk-adjusted figures (Sharpe, Calmar) are
+built on the equity series, never on the booked P&L — otherwise a position held for ten days
+would read as nine flat days and one outlier.
+
 ## Where the rows live, and why most runs are gone
 
 The history is read from the results ledger in `runs/ledger/` — one small file per run, plus a

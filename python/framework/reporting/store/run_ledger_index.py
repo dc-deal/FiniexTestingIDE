@@ -92,9 +92,16 @@ class RunLedgerIndex(AbstractStoreIndex):
     # measured 0.0 where nothing had been measured became nullable in the same step:
     # `final_equity` was absent on 503 of 564 fragments and read as a balance of zero.
     #
-    # 10 → 11 (#32): `trial_count` appended — how many candidates a run was selected from. Same
-    # shape as every append above: no existing value changes, so ranking across the boundary
-    # stays valid, and an older fragment answers None rather than a made-up number.
+    # 10 → 11 (#32 / #537): `trial_count` appended — how many candidates a run was selected
+    # from — together with `records_pruned_at` and the seventeen booking-period columns. ONE
+    # version for the three because they shipped in one stretch and nothing was written between
+    # them; a version per column would say the ledger changed three times when it changed once.
+    #
+    # Same shape as every append above: no existing value changes, so ranking across the
+    # boundary stays valid, and an older fragment answers None rather than a made-up number.
+    # The booking columns carry the sharper form of that: absent means "this row books no
+    # period", which every row written before this version is, and it must never read as a
+    # period zero.
     LOGIC_VERSION: int = 11
 
     def __init__(self, ledger_dir: Path, columns: List[str]):

@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
 from python.framework.types.api.report_types import RunResultRow
 
 
@@ -150,30 +151,55 @@ def summarize_deployments(
         advisories: Deployment identity → its comparability advisory, or None
 
     Returns:
-        One summary per deployment, most recent first
+        One summary per (deployment × account currency), most recent first. Per currency and
+        not per deployment: a P&L column added up over two currencies is not a number, and the
+        row count would report a two-currency bot as having run twice as often
     """
     summaries: List[DeploymentSummary] = []
-    for deployment, sessions in histories.items():
-        if not sessions:
-            continue
-        # max(), never sum(): each live row carries the RUNNING decline against the inherited
-        # peak, so adding them counts one decline once per session that was still inside it.
-        deepest = max(sessions, key=lambda s: abs(s.max_drawdown))
-        gaps = [s.gap_hours for s in sessions if s.gap_hours is not None]
-        summaries.append(DeploymentSummary(
-            deployment_id=deployment,
-            sessions=len(sessions),
-            first_started=sessions[0].started,
-            last_started=sessions[-1].started,
-            net_pnl=sum(s.net_pnl for s in sessions),
-            max_drawdown=deepest.max_drawdown,
-            max_drawdown_pct=deepest.max_drawdown_pct,
-            currency=sessions[0].currency,
-            bot=sessions[0].bot,
-            longest_gap_hours=max(gaps) if gaps else None,
-            changed=advisories.get(deployment) is not None,
-        ))
-    return sorted(summaries, key=lambda s: s.deployment_id, reverse=True)
+    for deployment, all_sessions in histories.items():
+        by_currency: Dict[str, List[DeploymentSessionRow]] = {}
+        for session in all_sessions:
+            by_currency.setdefault(session.currency, []).append(session)
+        for sessions in by_currency.values():
+            if not sessions:
+                continue
+            summaries.append(_summarize_one(deployment, sessions, advisories))
+    return sorted(summaries, key=lambda s: (s.deployment_id, s.currency), reverse=True)
+
+
+def _summarize_one(
+    deployment: str,
+    sessions: List[DeploymentSessionRow],
+    advisories: Dict[str, Optional[DeploymentComparabilityAdvisory]],
+) -> DeploymentSummary:
+    """
+    One deployment's sessions in ONE currency, as a single line.
+
+    Args:
+        deployment: The deployment identity
+        sessions: Its sessions in one currency, ordered
+        advisories: Deployment identity → its comparability advisory, or None
+
+    Returns:
+        The summary line
+    """
+    # max(), never sum(): each live row carries the RUNNING decline against the inherited
+    # peak, so adding them counts one decline once per session that was still inside it.
+    deepest = max(sessions, key=lambda s: abs(s.max_drawdown))
+    gaps = [s.gap_hours for s in sessions if s.gap_hours is not None]
+    return DeploymentSummary(
+        deployment_id=deployment,
+        sessions=len(sessions),
+        first_started=sessions[0].started,
+        last_started=sessions[-1].started,
+        net_pnl=sum(s.net_pnl for s in sessions),
+        max_drawdown=deepest.max_drawdown,
+        max_drawdown_pct=deepest.max_drawdown_pct,
+        currency=sessions[0].currency,
+        bot=sessions[0].bot,
+        longest_gap_hours=max(gaps) if gaps else None,
+        changed=advisories.get(deployment) is not None,
+    )
 
 
 def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
@@ -266,15 +292,20 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
 
     histories: Dict[str, List[DeploymentSessionRow]] = {}
     for deployment, members in grouped.items():
-        # One row per (run × currency); a multi-currency session would appear twice, so the
-        # first row per run wins and the rest are dropped rather than double-counted.
-        by_run: Dict[str, RunResultRow] = {}
-        for row in sorted(members, key=lambda r: r.run_timestamp):
-            by_run.setdefault(row.run_id, row)
+        # One row per (run × currency), COMBINED rather than picked. Since #537 a session writes
+        # one row per booking period, so a run has many rows and the first-one-wins rule that
+        # used to guard against multi-currency double counting would now discard twenty-nine
+        # days of a thirty-day session — silently, because the survivor looks like a session.
+        #
+        # `aggregate_ledger_rows` folds them by their DECLARED reductions, so the session row is
+        # recomputed from its periods instead of being stored beside them. The currency stays in
+        # the key: a P&L column over two currencies is not a number.
+        by_session = aggregate_ledger_rows(members, by=('run_id', 'currency'))
 
         sessions: List[DeploymentSessionRow] = []
         previous: Optional[RunResultRow] = None
-        for position, row in enumerate(sorted(by_run.values(), key=lambda r: r.run_timestamp), 1):
+        for position, row in enumerate(
+                sorted(by_session, key=lambda r: (r.currency, r.run_timestamp)), 1):
             started = _parse(row.run_timestamp)
             # The gap runs from when the PREDECESSOR'S ROW WAS WRITTEN — i.e. from the end of
             # that session — to this one's start. Measuring start-to-start instead counts the

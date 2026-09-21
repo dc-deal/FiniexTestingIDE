@@ -70,6 +70,36 @@ otherwise stamp the real books.
 The guard test was mutation-checked: disabling the `reporting=expected` branch in the pruner turns
 exactly that one test red and leaves the other thirteen green.
 
+## `test_booking_segment_builder.py` — one booking period, from the records inside it
+
+The Hauptbuch step. Every case that matters is a trade that CROSSES a boundary, so the file is
+organised around the six shapes a trade can have against two periods: wholly inside the first,
+wholly inside the second, opened before the first, crossing, still open at the end, and closing
+exactly ON the boundary.
+
+The rule under test is that a trade belongs to the period it was **closed** in, window end
+exclusive. Two consequences are pinned as properties rather than as examples. The periods
+**partition** the records — `Σ trade_count` equals the closed trades and `Σ net_pnl` the realised
+total, so nothing is counted twice and nothing falls between. And a crossing trade books its
+**whole** result in the later period, which is correct bookkeeping and deliberately not the whole
+story about the earlier one: that is why a period also carries its equity band.
+
+One test exists only to stop a plausible shortcut: the period's LOW is tracked, not derived. A
+run of 100 → 90 → 120 has a peak of 120, a decline of 10 against the peak that stood then, and a
+low of 90 — so `peak − drawdown` answers 110, a value that never occurred.
+
+## `test_booking_periods_report.py` — the table, and the line that makes it trustworthy
+
+The reconciliation is the point. A column of period summaries is believed because it agrees with
+the figure the run reports by a **different** route (the portfolio aggregate) — two derivations
+of one number meeting is evidence, one number printed twice is not. A mismatch is reported rather
+than raised: it is the finding the table exists to surface, and a trade realised outside every
+period looks exactly like it.
+
+A tolerance test guards the opposite failure: thirty additions do not land on the same last bit
+as one aggregate over the same trades, and a table that cried mismatch over 1e-10 would be a
+table nobody reads.
+
 ## `test_signal_report.py` — two planes, and what each may claim
 
 The largest single file after the store, because the signal section is the one that renders

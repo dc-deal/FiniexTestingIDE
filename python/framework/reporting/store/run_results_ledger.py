@@ -25,7 +25,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.exceptions.store_errors import LedgerRowUnreadableError
 from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 from python.framework.types.api.report_types import RunResultRow, RunSummary
-from python.framework.types.run_results_types import Reduction, RunProvenance
+from python.framework.types.run_results_types import BookingSegment, Reduction, RunProvenance
 
 # Fixed column order — kept stable so fragments stay schema-compatible across runs.
 
@@ -110,6 +110,28 @@ LEDGER_COLUMNS: List[str] = [
     # directory removed by hand leaves this empty. That is why the symmetric check exists in
     # `run_completion_audit` — this column says what WE did, the check says what is THERE.
     'records_pruned_at',
+    # === THE BOOKING PERIOD (#537) — what turns this ledger into a Hauptbuch ==============
+    # Which run UNIT this period belongs to: a scenario in the simulation, the session in live.
+    # Part of the key rather than decoration — a run's scenarios cover DIFFERENT windows, so
+    # "day 1 of the run" is not a thing and only "day 1 of this unit" is.
+    'unit_name',
+    # The running number inside that unit, its two instants, and what closed it. A date is
+    # deliberately NOT the key: it cannot express two closes on one day, and the industry books
+    # more than once a day in several places (perp funding every 8 h, an intraday margin call,
+    # an operator's period close). Absent on a row that books no period.
+    'segment_no', 'segment_opened_at', 'segment_closed_at', 'segment_close_reason',
+    # The CONTROL TOTAL (§48): how many records this period's figures were derived from. It is
+    # what lets a reader re-derive the row from the records and find out that it does not match.
+    'segment_trade_count',
+    # The period's own equity band. `segment_min_equity` is tracked rather than derived — the
+    # peak and the trough are different moments, so `peak - drawdown` answers a value that never
+    # occurred. And the period's OWN drawdown sits beside the cumulative one above, because
+    # neither can be recovered from the other: the cumulative keeps `max()` correct across rows,
+    # the own one answers how far this single day fell.
+    'segment_max_equity', 'segment_min_equity', 'segment_max_drawdown',
+    # Excursion, holding time and streaks — what a period looks like beyond its net result.
+    'avg_mae_winners', 'avg_mae_losers', 'avg_mfe_losers', 'largest_mae', 'largest_mfe',
+    'avg_trade_duration_s', 'max_consecutive_wins', 'max_consecutive_losses',
 ]
 
 
@@ -159,12 +181,12 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     'input_files': Reduction.IDENTITY,
     'unstamped_input_files': Reduction.IDENTITY,
 
-    # --- an instant: the earliest and the latest both mean something, one value does not
-    'run_timestamp': Reduction.SPAN,
-    'recorded_at_utc': Reduction.SPAN,
+    # --- an instant, and WHICH END belongs in a combined row
+    'run_timestamp': Reduction.SPAN_START,
+    'recorded_at_utc': Reduction.SPAN_END,
     # An instant like the two above: over a set of rows the earliest and the latest both mean
     # something — when this history first lost evidence, and when it last did.
-    'records_pruned_at': Reduction.SPAN,
+    'records_pruned_at': Reduction.SPAN_END,
 
     # --- comma-joined sets: union, never concatenation
     'symbols': Reduction.UNION,
@@ -210,6 +232,57 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     'avg_win_r': Reduction.DERIVE,
     'avg_loss_r': Reduction.DERIVE,
     'signal_fresh_ratio': Reduction.DERIVE,
+
+    # --- the booking period (#537)
+    # Identical across the rows of one unit; across units it is what separates them, the same
+    # way `currency` does.
+    'unit_name': Reduction.IDENTITY,
+    'segment_no': Reduction.SPAN_END,
+    'segment_opened_at': Reduction.SPAN_START,
+    'segment_closed_at': Reduction.SPAN_END,
+    # The LAST period's reason is the one that says whether the books are complete: only a
+    # `session_end` means nothing was left open. An earlier row's `anchor` says nothing about it.
+    'segment_close_reason': Reduction.LAST,
+    'segment_trade_count': Reduction.SUM,
+    # The band of the widest period, and the deepest single-period decline. NOT the band or the
+    # decline of the UNION — a fall that runs across a boundary is deeper than either period's
+    # own, and `account_max_drawdown` above is the column that carries that.
+    'segment_max_equity': Reduction.MAX,
+    'segment_min_equity': Reduction.MIN,
+    'segment_max_drawdown': Reduction.MAX,
+    # The worst single excursion combines by magnitude; its MEANS do not.
+    'largest_mae': Reduction.MAX,
+    'largest_mfe': Reduction.MAX,
+    'avg_mae_winners': Reduction.DERIVE,
+    'avg_mae_losers': Reduction.DERIVE,
+    'avg_mfe_losers': Reduction.DERIVE,
+    'avg_trade_duration_s': Reduction.DERIVE,
+    # DERIVE, and this is the one where the obvious answer is wrong. A streak can CROSS a
+    # period boundary, so `max()` of two periods understates the truth: 2 and 3 in adjacent
+    # segments can be a run of 5. It has to be re-derived over the records of the wider window.
+    'max_consecutive_wins': Reduction.DERIVE,
+    'max_consecutive_losses': Reduction.DERIVE,
+}
+
+
+# The booking-period group (#537). Named once so a row that books NO period can leave them out
+# as a group rather than by luck: a blanket zero would give such a row `segment_no = 0`, which
+# reads as a period rather than as the absence of one — and on the string members it is not even
+# a valid value.
+BOOKING_COLUMNS: List[str] = [
+    'unit_name', 'segment_no', 'segment_opened_at', 'segment_closed_at',
+    'segment_close_reason', 'segment_trade_count',
+    'segment_max_equity', 'segment_min_equity', 'segment_max_drawdown',
+]
+
+
+# WHICH column a COMPANION follows. The comments beside the trio said this in prose and nothing
+# could read it — so the first caller that actually reduced the columns would have had to know
+# it by heart, which is precisely the state §49 exists to end. A test holds this map and the
+# COMPANION entries of `COLUMN_REDUCTION` to the same key set.
+COLUMN_COMPANION_OF: Dict[str, str] = {
+    'max_equity': 'account_max_drawdown',
+    'account_max_drawdown_pct': 'account_max_drawdown',
 }
 
 
@@ -224,7 +297,12 @@ class RunResultsLedger:
         self._dir = Path(ledger_dir)
         self._index = RunLedgerIndex(self._dir, LEDGER_COLUMNS)
 
-    def append(self, run_summary: RunSummary, provenance: RunProvenance) -> Path:
+    def append(
+        self,
+        run_summary: RunSummary,
+        provenance: RunProvenance,
+        segments: Optional[List[BookingSegment]] = None,
+    ) -> Path:
         """
         Write one fragment for a finished run.
 
@@ -252,7 +330,16 @@ class RunResultsLedger:
         Returns:
             Path of the written fragment
         """
-        if not run_summary.currencies:
+        if segments:
+            # The run booked in PERIODS, so the periods ARE the rows and no aggregate row is
+            # written beside them (#537). Writing both would put the same money in the same
+            # column twice, and no reader can tell a summary from its own evidence: the
+            # deployment history sums and would double every month, the sweep ranking sorts and
+            # would see one candidate four times. The aggregate is not information — since
+            # `COLUMN_REDUCTION` states how every column combines, it is derivable from these
+            # rows, and a derivable copy kept beside its source is the pair that drifts (§19).
+            rows = [self._segment_row(provenance, segment, run_summary) for segment in segments]
+        elif not run_summary.currencies:
             rows = [self._error_row(provenance, provenance.error or 'run produced no usable data')]
         else:
             rows = [self._row(provenance, currency, run_summary)
@@ -492,6 +579,81 @@ class RunResultsLedger:
             'signal_fresh_ratio': run_summary.signal_fresh_ratio,
         }
 
+    def _segment_row(
+        self,
+        p: RunProvenance,
+        segment: BookingSegment,
+        run_summary: RunSummary,
+    ) -> Dict[str, Any]:
+        """
+        One booking period as a ledger row — the Hauptbuch entry.
+
+        The order counters are deliberately ABSENT rather than zero. They live as monotonic
+        totals on the executor with no time argument, so a period's share of them cannot be
+        derived without differencing two readings — which §48 forbids, and which would be the
+        one measure here that silently looks right because it happens to be additive. #476's
+        sealed records are what will make them windowable; until then the column says
+        "not measured" and means it.
+
+        Args:
+            p: The run's provenance
+            segment: The sealed period
+            run_summary: The run's summary, for the figures that belong to the RUN rather than
+                to any one period
+
+        Returns:
+            The row as a column → value mapping
+        """
+        f = segment.figures
+        return {
+            **self._provenance_fields(p),
+            'status': p.status,
+            'error': p.error,
+            'currency': f.currency,
+            'net_pnl': f.net_pnl,
+            'expectancy': f.expectancy,
+            'profit_factor': f.profit_factor,
+            'win_rate': f.win_rate,
+            'account_max_drawdown': f.account_max_drawdown,
+            'max_equity': f.max_equity,
+            'account_max_drawdown_pct': f.account_max_dd_pct,
+            'unrealized_pnl': f.unrealized_pnl,
+            'final_equity': f.final_equity,
+            'open_position_count': f.open_position_count,
+            'total_fees': f.total_fees,
+            'gross_profit': f.gross_profit,
+            'gross_loss': f.gross_loss,
+            'total_trades': f.total_trades,
+            'winning_trades': f.winning_trades,
+            'losing_trades': f.losing_trades,
+            'avg_win_r': f.avg_win_r,
+            'avg_loss_r': f.avg_loss_r,
+            'r_trade_count': f.r_trade_count,
+            'r_win_count': f.r_win_count,
+            'r_loss_count': f.r_loss_count,
+            'avg_mae_winners': f.avg_mae_winners,
+            'avg_mae_losers': f.avg_mae_losers,
+            'avg_mfe_losers': f.avg_mfe_losers,
+            'largest_mae': f.largest_mae,
+            'largest_mfe': f.largest_mfe,
+            'avg_trade_duration_s': f.avg_trade_duration_s,
+            'max_consecutive_wins': f.max_consecutive_wins,
+            'max_consecutive_losses': f.max_consecutive_losses,
+            # Run-level and therefore identical on every period of this run: the data quality
+            # the whole run saw is not a property of one day in it.
+            'signal_fresh_ratio': run_summary.signal_fresh_ratio,
+            # --- the period itself
+            'unit_name': segment.unit_name,
+            'segment_no': segment.segment_no,
+            'segment_opened_at': segment.opened_at.isoformat(),
+            'segment_closed_at': segment.closed_at.isoformat(),
+            'segment_close_reason': segment.reason.value,
+            'segment_trade_count': segment.trade_count,
+            'segment_max_equity': segment.segment_max_equity,
+            'segment_min_equity': segment.segment_min_equity,
+            'segment_max_drawdown': segment.segment_max_drawdown,
+        }
+
     def _error_row(self, p: RunProvenance, error: str) -> Dict[str, Any]:
         """An error row: provenance + the failure reason; no usable KPIs (all zero/empty)."""
         row = {
@@ -501,13 +663,17 @@ class RunResultsLedger:
             'currency': '',
         }
         for column in LEDGER_COLUMNS:
+            if column in BOOKING_COLUMNS:
+                continue                # books no period — absent, never a period zero
             if column not in row:       # all KPI / order-count columns → 0
                 row[column] = 0
         return row
 
 
 def append_run_to_ledger(
-        run_summary: RunSummary, provenance: Optional[RunProvenance]) -> None:
+        run_summary: RunSummary,
+        provenance: Optional[RunProvenance],
+        segments: Optional[List[BookingSegment]] = None) -> None:
     """
     Append a finished run to the persistent run-results ledger (#390).
 
@@ -518,11 +684,14 @@ def append_run_to_ledger(
     Args:
         run_summary: The run's cross-section KPI summary
         provenance: The run's provenance bundle (None → skip)
+        segments: The run's booking periods, flattened across its units (#537). When present
+            they ARE the rows and no aggregate row is written; when absent the run books once,
+            as it always did
     """
     if provenance is None:
         return
     ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
-    ledger.append(run_summary, provenance)
+    ledger.append(run_summary, provenance, segments)
 
 
 def _none_if_missing(value: Any) -> Any:

@@ -30,7 +30,7 @@ worse. What they *can* share is how they describe themselves.
 | # | Store | Kind | Key | Index | Retrieval |
 |---|---|---|---|---|---|
 | 1 | `runs/` | RECORD | `run_id` | `runs_index.parquet`, from `header.json` | A · document |
-| 2 | `runs/ledger/` | RECORD | `run_id` (a column) | `run_ledger_index.parquet` | B · set |
+| 2 | `runs/ledger/` | RECORD | `(run_id, unit, segment_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
 | 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<profile>_<symbol>` | none — opened by key | A · document |
 | 4b | `data/runtime/cold_start_state/` | **CARRY-OVER** | `<profile>_<symbol>` | `cold_start_state_index.parquet` | A · document |
@@ -58,6 +58,29 @@ python python/cli/store_cli.py rebuild --all    # every index this model owns
 ```
 
 ---
+
+### The ledger's grain, and why it is four parts
+
+A ledger row used to be one per `(run, currency)`. Since #537 a run books in **periods**, so the
+grain is `(run_id, unit, segment_no, currency)` — and each part of that key earns its place:
+
+- **`unit`** because a run's scenarios cover DIFFERENT windows (measured: 40 scenarios, 40
+  distinct ones), so "day 1 of the run" is not a thing and only "day 1 of this unit" is.
+- **`segment_no`** rather than a date, because a date cannot express two closes on one day and
+  the industry books more than once a day in several places — perpetual funding every eight
+  hours, an intraday margin call, an operator's period close.
+- **`currency`** because P&L-denominated figures never mix currencies.
+
+**No aggregate row is written beside the periods.** The run's total is derivable from them —
+`COLUMN_REDUCTION` beside `LEDGER_COLUMNS` states how every column combines — and a derivable
+copy kept next to its source is the pair that drifts (§19). Keeping both would also be wrong in
+a way no reader could see: the deployment history SUMS rows and would count every month twice,
+the sweep ranking SORTS them and would see one candidate four times.
+
+The three levels this produces are ordinary double-entry bookkeeping, and
+[accounting_periods.md](accounting_periods.md) names them: the trade records are the
+**Grundbuch**, the ledger rows are the **Hauptbuch**, and everything over many periods — a
+deployment's total, a Sharpe ratio — is the **Abschluss**.
 
 ## Five kinds — a store is exactly one
 

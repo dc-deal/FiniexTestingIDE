@@ -374,6 +374,11 @@ class ColdStartPayload(BaseModel):
     """
     session_keys: List[str] = Field(default_factory=list)
     highest_position_counter: int = 0
+    # The largest booking-period number this bot has sealed (#537). The same FLOOR pattern as
+    # the counter above and for the same reason: a restart must not begin counting at 1 again,
+    # or a deployment's Hauptbuch would carry two period 1s and its rows could not be ordered.
+    # A simulation scenario has no carry-over and legitimately starts at 1 every time.
+    highest_segment_no: int = 0
     open_positions: List[PositionCarryOver] = Field(default_factory=list)
     risk_baseline: Optional[RiskBaseline] = None
     account_drawdown: Optional[AccountDrawdownCarryOver] = None
