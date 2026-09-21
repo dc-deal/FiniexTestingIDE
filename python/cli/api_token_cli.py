@@ -11,6 +11,7 @@ import argparse
 from typing import List
 
 from python.configuration.api_token_manager import ApiTokenManager
+from python.configuration.app_config_manager import AppConfigManager
 
 
 class ApiTokenCli:
@@ -33,7 +34,7 @@ class ApiTokenCli:
     def cmd_list(self) -> None:
         """Show which consumers are configured, and never their tokens."""
         registry = self._manager.build_registry()
-        print(self._manager.describe(registry))
+        print(self._manager.describe(registry, AppConfigManager().get_api_require_auth()))
         for name in registry.names():
             print(f'  {name:<16} {registry.grants_of(name):<40} {registry.note_of(name)}')
 
