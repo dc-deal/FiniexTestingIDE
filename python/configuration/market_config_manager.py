@@ -6,10 +6,12 @@ Provides lookup methods for market types and broker mappings
 from typing import Dict, List, Optional
 
 from python.configuration.market_config_loader import MarketConfigFileLoader
+from python.framework.exceptions.market_config_errors import TradingDayAnchorMissingError
 from python.framework.types.config_types.market_config_types import (
     PriceFormation,
     BrokerEntryConfig,
     ConfigMode,
+    DayAnchorConfig,
     MarketConfigModel,
     MarketRulesConfig,
     MarketType,
@@ -171,6 +173,32 @@ class MarketConfigManager:
         """
         market_type = self.get_market_type(broker_type)
         return self.get_market_rules(market_type).swap_rollover
+
+    def get_trading_day_anchor(self, broker_type: str) -> DayAnchorConfig:
+        """
+        Get the instant at which a broker's market flips its trading day (#476).
+
+        Reads `trading_day_anchor` and falls back to `swap_rollover`, because for forex the
+        two ARE the same instant and writing 17:00 New York twice is how the two copies
+        eventually disagree. Crypto charges no swap and therefore states its own anchor.
+
+        Neither present is a hard error rather than a midnight-UTC default: a default here
+        would be right for crypto and silently wrong for every quote-driven market, which
+        is the defect this resolver exists to remove.
+
+        Args:
+            broker_type: Broker type identifier
+
+        Returns:
+            DayAnchorConfig with the local time and its IANA timezone
+        """
+        market_type = self.get_market_type(broker_type)
+        rules = self.get_market_rules(market_type)
+        anchor = rules.trading_day_anchor or rules.swap_rollover
+
+        if anchor is None:
+            raise TradingDayAnchorMissingError(broker_type, market_type.value)
+        return anchor
 
     def get_pip_mode(self, broker_type: str) -> PipMode:
         """

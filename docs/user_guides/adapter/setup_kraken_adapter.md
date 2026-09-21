@@ -92,7 +92,7 @@ always `true`. Switch to live trading by overriding in `user_configs/market_conf
 
 ## 4. AutoTrader Profile
 
-AutoTrader profiles contain only algorithm config — no broker connection fields needed. Example `configs/autotrader_profiles/ethusd_live.json`:
+AutoTrader profiles contain only algorithm config — no broker connection fields needed. Example `configs/autotrader_profiles/production/ethusd_live.json`:
 
 ```json
 {
@@ -136,7 +136,7 @@ Credentials (user_configs/credentials/kraken_credentials.json)
 ## 5. First Run (Dry-Run)
 
 ```bash
-python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/ethusd_live.json
+python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/production/ethusd_live.json
 ```
 
 Expected startup output:

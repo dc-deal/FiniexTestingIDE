@@ -90,6 +90,13 @@ class SentimentSourceConfig(BaseModel):
     its snapshots stay usable. A scenario may still override the staleness locally —
     that is the exception, not the home.
     """
+    # UNWIRED, and deliberately kept: nothing reads `continuous` today (checked 2026-09-21
+    # across python/ and tests/). Its consumer is named — #258 gives it to gap
+    # classification, where true means a weekend hole is a real outage rather than a
+    # legitimate closure. Deleting it would remove finished work, so the note stands here
+    # instead of the field disappearing in the next dead-code sweep (§40, kind 2).
+    # NOTE: the word carries two other meanings in this project — a generation strategy and
+    # a deployment's continuity (#536). None of the three are related.
     continuous: bool = True
     cadence_minutes: float = 10.0
     max_staleness_minutes: float = 30.0

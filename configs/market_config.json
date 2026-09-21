@@ -28,6 +28,10 @@
                 "min_block_hours": 4,
                 "max_block_hours": 72,
                 "atr_percentile_threshold": 15
+            },
+            "trading_day_anchor": {
+                "local_time": "00:00",
+                "timezone": "UTC"
             }
         }
     },

@@ -1031,14 +1031,18 @@ python/cli/
   autotrader_cli.py              CLI: run --config
   broker_config_cli.py           CLI: sync — fetch + cache broker configs for dynamic brokers
 
-configs/autotrader_profiles/
-  ethusd_live.json               Live trading config (ETHUSD, Kraken API)
-  solusd_live.json               Live trading config (SOLUSD, Kraken API)
-  dotusd_live.json               Live trading config (DOTUSD — no index data, data-independence proof)
-  backtesting/
-    mock_session_test.json       Full mock session test (BTCUSD parquet replay)
-    trade_lifecycle_test.json  Trade lifecycle test (BTCUSD, 15K ticks)
-    btcusd_mock_safety.json    Safety circuit breaker test (aggressive thresholds)
+configs/autotrader_profiles/          One folder per PURPOSE — the parent holds no profile
+  production/                        the ones that trade for real, unattended
+    ethusd_live.json                 ETHUSD, Kraken API
+    solusd_live.json                 SOLUSD, Kraken API
+    dashusd_live.json                DASHUSD, Kraken API
+    dotusd_live.json                 DOTUSD — binds no signal source, a data-independence proof
+  observation/                       real feed, dry_run pinned true, nothing reaches the venue
+  field_study/                       the real-money acceptance test (#332)
+  backtesting/                       mock replay, one per test suite
+    mock_session_test.json           Full mock session test (BTCUSD parquet replay)
+    trade_lifecycle_test.json        Trade lifecycle test (BTCUSD, 15K ticks)
+    btcusd_mock_safety.json          Safety circuit breaker test (aggressive thresholds)
 
 configs/credentials/
   kraken_credentials.json        Mock/default credentials (tracked)
@@ -1190,7 +1194,7 @@ accumulates silently on the Kraken account. This is expected Spot behavior. The 
 Broker-specific live settings are stored in `market_config.json` alongside the broker entry — not in the AutoTrader profile:
 
 ```
-Profile (ethusd_live.json)           ← Algorithm config (strategy, workers, symbol)
+Profile (production/ethusd_live.json)           ← Algorithm config (strategy, workers, symbol)
   "broker_type": "kraken_spot"
         |
 market_config.json → kraken_spot     ← Broker connection config

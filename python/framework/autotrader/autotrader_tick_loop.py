@@ -11,10 +11,11 @@ Session log rotates daily: session_logs/autotrader_session_YYYYMMDD.log
 import queue
 import time
 from collections import deque
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable, Deque, Dict, List, Optional, Tuple
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.autotrader_display_exporter import AutotraderDisplayExporter
 from python.framework.autotrader.autotrader_startup import create_session_file_logger
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
@@ -55,6 +56,7 @@ from python.framework.types.decision_event_types import SessionEndEvent, Session
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.utils.trading_day_anchor import trading_day_of
 from python.framework.types.persistence_types import (
     BaselineKind,
     BaselineOrigin,
@@ -277,6 +279,12 @@ class AutotraderTickLoop:
         self._last_real_decision: Optional[Decision] = None
         self._last_real_tick_wall_time: float = 0.0
 
+        # #476 — where THIS market's trading day flips, resolved once. Crypto states
+        # 00:00 UTC, forex falls back to its swap rollover (17:00 New York). The log
+        # rotation and the daily-loss baseline below read the same answer, so a session
+        # cannot rotate its log on one boundary and reset its limit on another.
+        self._day_anchor = MarketConfigManager().get_trading_day_anchor(config.broker_type)
+
         # Daily rotation state
         self._current_log_date: Optional[str] = None
         # Track placeholder file for cleanup on first tick
@@ -353,6 +361,10 @@ class AutotraderTickLoop:
                 # advances during idle (phase/op timeouts track real elapsed time),
                 # then run the side-effect-free cadence — no tick state mutation.
                 self._executor.set_current_time(datetime.now(timezone.utc))
+                # #476: the boundary is checked HERE too, and this is the half that makes
+                # it reliable — a feed that goes quiet across the rollover would otherwise
+                # never rotate. The clock is set one line above, so the day is current.
+                self._check_daily_rotation()
                 # #320 + #360: drain async responses + check timeouts + re-poll
                 # active orders (the fill/cancel-confirm query now fires during idle).
                 self._executor.heartbeat()
@@ -393,9 +405,6 @@ class AutotraderTickLoop:
                     '📭 Tick source signaled end — ending session')
                 break
 
-            # === DAILY LOG ROTATION ===
-            self._check_daily_rotation(tick)
-
             # === TIMING START ===
             tick_start_ns = time.perf_counter_ns()
 
@@ -417,6 +426,13 @@ class AutotraderTickLoop:
 
             # === 1. Trade Executor — BROKER PATH (all ticks) ===
             self._executor.on_tick(tick)
+
+            # === DAILY LOG ROTATION ===
+            # After on_tick, because that is what advances the canonical clock to this
+            # tick's time — before it, the clock still holds the previous pass. In live the
+            # heartbeat above has almost always rotated first; this covers a replay whose
+            # queue never runs empty.
+            self._check_daily_rotation()
 
             # #436: a real tick ends a stale episode (recovery, edge reset).
             if self._market_stale:
@@ -1004,38 +1020,43 @@ class AutotraderTickLoop:
 
         self._risk_baseline.ensure_taken(value, mark_price, quantities)
         self._risk_baseline.observe(value, mark_price, quantities)
-        self._update_day_baseline(tick, value, mark_price, quantities)
+        self._update_day_baseline(value, mark_price, quantities)
 
     def _update_day_baseline(
         self,
-        tick: TickData,
         value: float,
         mark_price: Optional[float],
         quantities: Optional[BaselineQuantities],
     ) -> None:
         """
-        Start a new daily baseline when the tick crosses into a new UTC day (#314).
+        Start a new daily baseline when the market crosses into a new trading day (#314).
 
-        The date comes from the TICK, not from the wall clock, so a replay and a live
-        session answer the same way. The check is deliberately independent of
+        The day comes from the canonical clock and this market's anchor (#476), never from
+        the wall clock and no longer from the tick stamp: both event sources advance that
+        clock, so a replay and a live session still answer alike, and a quiet feed over the
+        boundary no longer hides it. The check stays deliberately independent of
         `_check_daily_rotation`: that one rotates a LOG file and returns early when there is
         no run directory, and a loss limit must not depend on whether logs are being written.
 
-        ⚠️ #476 — the boundary is midnight UTC on whatever tick arrives first, which is the
-        honest approximation until the market-anchor boundary event exists. A market whose
-        day rolls at 17:00 New York will see its daily limit reset mid-session until then.
+        Same ANCHOR as that rotation, but not the same MOMENT: the rotation also runs on the
+        heartbeat, while this reaches the boundary only on the next real TICK, because at spot
+        the baseline needs a mark price and a heartbeat carries none. The lateness is
+        self-limiting rather than a gap — nothing can move the account until a tick arrives,
+        and that is the same tick which resets the denominator.
 
         Args:
-            tick: The tick whose timestamp decides the day
             value: The account value at this moment
             mark_price: The price the holdings are valued at (spot only)
             quantities: What is held at that instant (spot only)
         """
-        tick_day = tick.timestamp.astimezone(timezone.utc).strftime('%Y-%m-%d')
-        if tick_day == self._safety_current_day:
+        current_day = self._trading_day()
+        if current_day is None:
+            return
+        day = current_day.isoformat()
+        if day == self._safety_current_day:
             return
         self._close_safety_day()
-        self._safety_current_day = tick_day
+        self._safety_current_day = day
         self._day_baseline = RiskBaselineTracker(
             mode=BaselineKind.DAY_START,
             restored=None,
@@ -1046,6 +1067,16 @@ class AutotraderTickLoop:
         )
         self._day_baseline.ensure_taken(
             value, mark_price, quantities, origin=BaselineOrigin.DAY_BOUNDARY)
+
+    def _trading_day(self) -> Optional[date]:
+        """
+        The trading day the canonical clock currently stands in (#476).
+
+        Returns:
+            The trading day's date, or None before the clock has been set for the first time
+        """
+        now = self._executor.get_current_time_if_set()
+        return trading_day_of(now, self._day_anchor) if now else None
 
     def _close_safety_day(self) -> None:
         """
@@ -1448,45 +1479,46 @@ class AutotraderTickLoop:
                     f'{safety.max_daily_loss_pct:.1f}%)')
                 self._day_limit_hit = True
 
-    def _check_daily_rotation(self, tick: TickData) -> None:
+    def _check_daily_rotation(self) -> None:
         """
-        Check if the tick date differs from the current log file date.
+        Rotate the session log when the market crosses into a new trading day (#476).
 
-        On first tick: set initial date and rotate to tick-date-based file
-        (startup creates a file from wall clock, which may differ in replay mode).
-        On subsequent ticks: rotate when midnight UTC is crossed.
+        On the first pass: set the initial date and rotate to a file named for the trading
+        day (startup creates one from the wall clock, which may differ in replay mode).
 
-        Args:
-            tick: Current tick data
+        The day comes from the canonical clock and this market's anchor, not from the tick
+        stamp. Two things that fixes: a forex session rolls at its swap rollover instead of
+        at midnight UTC, and a feed that goes silent across the boundary no longer keeps the
+        old file growing — the heartbeat advances the clock and calls this too.
         """
         if not self._run_dir:
             return
 
-        # Derive date from tick timestamp (milliseconds since epoch)
-        tick_date = datetime.fromtimestamp(
-            tick.time_msc / 1000.0, tz=timezone.utc
-        ).strftime('%Y%m%d')
+        current_day = self._trading_day()
+        if current_day is None:
+            return
+        day_label = current_day.strftime('%Y%m%d')
 
         if self._current_log_date is None:
-            # First tick — set initial date and ensure file matches tick date
+            # First pass — ensure the file matches the trading day
             new_file_logger = create_session_file_logger(
-                self._run_dir, tick_date
+                self._run_dir, day_label
             )
             self._logger.swap_file_logger(new_file_logger)
-            self._current_log_date = tick_date
+            self._current_log_date = day_label
             # Keep placeholder file — it contains pre-tick logs (warmup bars, pipeline setup)
             self._initial_placeholder_path = None
             return
 
-        if tick_date != self._current_log_date:
+        if day_label != self._current_log_date:
             self._logger.info(
-                f'📅 Date change detected: {self._current_log_date} → {tick_date} — rotating session log'
+                f'📅 Date change detected: {self._current_log_date} → {day_label} — rotating session log'
             )
             new_file_logger = create_session_file_logger(
-                self._run_dir, tick_date
+                self._run_dir, day_label
             )
             self._logger.swap_file_logger(new_file_logger)
-            self._current_log_date = tick_date
+            self._current_log_date = day_label
             self._logger.info(
-                f'📅 Session log rotated to autotrader_session_{tick_date}.log'
+                f'📅 Session log rotated to autotrader_session_{day_label}.log'
             )

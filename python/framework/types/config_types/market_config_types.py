@@ -81,7 +81,19 @@ class ProfileDefaultsConfig(StrictConfigModel):
     atr_percentile_threshold: int = 10
 
 
-class SwapRolloverConfig(StrictConfigModel):
+class DayAnchorConfig(StrictConfigModel):
+    """
+    Where a market's trading day flips: a local wall-clock time and its IANA timezone.
+
+    No defaults on purpose — an anchor that defaults is an anchor nobody declared, and the
+    two markets this project trades disagree about it (crypto 00:00 UTC, forex 17:00 New
+    York). Resolved per date, DST-aware, via `time_utils.local_time_to_utc`.
+    """
+    local_time: str
+    timezone: str
+
+
+class SwapRolloverConfig(DayAnchorConfig):
     """
     Daily swap / overnight-funding rollover anchor for a market.
 
@@ -89,6 +101,10 @@ class SwapRolloverConfig(StrictConfigModel):
     IANA timezone it is expressed in. Resolved per date (DST-aware) via zoneinfo.
     Present for markets that charge overnight financing (Forex); absent for spot
     markets without swap (crypto).
+
+    It derives from DayAnchorConfig because for forex the two ARE the same instant: the
+    trading day flips when the swap is booked. The inheritance is what keeps that one
+    value from being written twice — `get_trading_day_anchor` falls back to this field.
     """
     local_time: str = '17:00'
     timezone: str = 'America/New_York'
@@ -103,6 +119,10 @@ class MarketRulesConfig(StrictConfigModel):
     inter_tick_gap_threshold_s: float = 300.0
     generator_profile_defaults: Optional[ProfileDefaultsConfig] = None
     swap_rollover: Optional[SwapRolloverConfig] = None
+    # Declared only where it differs from the swap anchor above (#476). Crypto charges no
+    # swap and has no rollover, so it states its own; forex leaves this absent and the
+    # resolver reads swap_rollover, which is why 17:00 New York exists exactly once.
+    trading_day_anchor: Optional[DayAnchorConfig] = None
 
 
 class BrokerTransportConfig(StrictConfigModel):

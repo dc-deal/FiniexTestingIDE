@@ -136,7 +136,11 @@ def _run_autotrader(ticks):
     config = AutoTraderConfig(
         name='bar_parity_kraken_spot_ethusd',
         symbol=SYMBOL,
-        broker_type='mock',
+        # The VENUE, not the tick source: `adapter_type='mock'` is what makes this a mock
+        # session, while broker_type names the market whose rules apply — and since #476 the
+        # tick loop resolves this market's trading-day anchor at construction, so a broker
+        # market_config.json does not know is refused rather than silently defaulted.
+        broker_type='kraken_spot',
         adapter_type='mock',
     )
 
@@ -285,7 +289,11 @@ def _run_autotrader_trades(ticks):
     config = AutoTraderConfig(
         name='trade_parity_kraken_spot_ethusd',
         symbol=SYMBOL,
-        broker_type='mock',
+        # The VENUE, not the tick source: `adapter_type='mock'` is what makes this a mock
+        # session, while broker_type names the market whose rules apply — and since #476 the
+        # tick loop resolves this market's trading-day anchor at construction, so a broker
+        # market_config.json does not know is refused rather than silently defaulted.
+        broker_type='kraken_spot',
         adapter_type='mock',
     )
 
