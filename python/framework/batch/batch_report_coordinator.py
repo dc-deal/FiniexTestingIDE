@@ -65,6 +65,10 @@ from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
 from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_provenance_builder import build_run_provenance
+from python.framework.reporting.builders.booking_periods_report_builder import (
+    build_booking_periods_report,
+)
+from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.run_results_types import SweepContext
@@ -191,6 +195,10 @@ class BatchReportCoordinator:
             warnings_summary=WarningsSummary(warnings_errors_report),
             block_splitting_disposition=BlockSplittingDisposition(block_splitting_report),
             robustness_summary=RobustnessSummary(robustness_report),
+            # The run's Hauptbuch as an ordered section — inside the renderer, so the capture
+            # below carries it into `scenario_summary.log` like every other section (#537).
+            booking_periods_summary=BookingPeriodsSummary(
+                build_booking_periods_report(run_id, units, run_summary)),
             closing_block=SimExecutiveSummary(
                 self._app_config, run_summary, run_meta_report, profiling_report,
                 scenario_details_report, warnings_errors_report, aggregated_portfolio_report,
@@ -265,4 +273,10 @@ class BatchReportCoordinator:
         provenance = build_run_provenance(
             self._batch_execution_summary, self._scenario_set, run_id,
             self._sweep_context, warnings_errors_report)
-        append_run_to_ledger(run_summary, provenance)
+        # The run's Hauptbuch (#537): its booking periods ARE its ledger rows, and no aggregate
+        # row is written beside them — a summary standing next to its own evidence puts the same
+        # money in the same column twice, and every reader that sums or ranks would see it.
+        booking_segments = [
+            segment for unit in units for segment in unit.booking_segments]
+        append_run_to_ledger(run_summary, provenance, booking_segments)
+

@@ -216,7 +216,13 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             store_id=StoreId.GENERATOR_PROFILES,
             kind=StoreKind.DERIVED,
             root=PROFILE_OUTPUT_DIR,
-            key='mode / broker / symbol',
+            # The MINUTE is part of the key, not decoration: the name is
+            # `{broker}_{symbol}_profile_{cont|vol}_{YYYYmmdd_HHMM}.json`, so several profiles
+            # for one triple coexist by design — regenerating does not replace, it adds. Saying
+            # only the triple would describe a store that overwrites itself, which this one does
+            # not. `generate-profile --output <name>` replaces the whole mint, and then the file
+            # name carries none of this while the document inside still declares it.
+            key='mode / broker / symbol / generated_at (minute)',
             form=RetrievalForm.DOCUMENT,
             backend=StoreBackend.DISK,
             entry_glob='*/*/*.json',

@@ -11,6 +11,7 @@ here; the analytics roll-up is the shared aggregator (`report_aggregators`).
 """
 
 from datetime import datetime
+from enum import Enum
 from typing import List, Optional
 
 from python.framework.reporting.builders.report_aggregators import (
@@ -28,6 +29,22 @@ from python.framework.types.trading_env_types.broker_trade_types import BrokerTr
 from python.framework.types.trading_env_types.order_types import OrderSide
 
 
+class TradeWindowBasis(Enum):
+    """
+    Which of a trade's two instants a time filter reads.
+
+    ENTRY is the browsing question — "what did I open in this window" — and stays the default,
+    because that is what the existing filter has always meant and what its callers expect.
+
+    EXIT is the ACCOUNTING question, and it is a different one: a trade opened on Tuesday and
+    closed on Wednesday is REALISED on Wednesday, so its P&L belongs to Wednesday's books. A
+    booking period filtered by entry time would move that trade into the period it was opened
+    in and leave the period it actually paid out silently short (#537, CLAUDE.md §48).
+    """
+    ENTRY = 'entry'
+    EXIT = 'exit'
+
+
 def build_trade_history_report(
     run_id: str,
     units: List[RunUnit],
@@ -35,6 +52,7 @@ def build_trade_history_report(
     close_reason: Optional[str] = None,
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
+    window_basis: TradeWindowBasis = TradeWindowBasis.ENTRY,
 ) -> TradeHistoryReport:
     """
     Build the report from the run's units — each row tagged with its unit name.
@@ -43,12 +61,14 @@ def build_trade_history_report(
         run_id: The run this report belongs to
         units: The run's units (sim: scenarios; live: the session)
         symbol / close_reason / start / end: Optional filters
+        window_basis: Which instant start/end read — ENTRY (the default, what a browsing
+            filter has always meant) or EXIT (realisation, what a booking period needs)
 
     Returns:
         The filtered, mapped TradeHistoryReport
     """
     rows = [_to_row(trade, unit.name) for unit in units for trade in unit.trade_history]
-    return _assemble(run_id, rows, symbol, close_reason, start, end)
+    return _assemble(run_id, rows, symbol, close_reason, start, end, window_basis)
 
 
 def _assemble(
@@ -58,6 +78,7 @@ def _assemble(
     close_reason: Optional[str],
     start: Optional[datetime],
     end: Optional[datetime],
+    window_basis: TradeWindowBasis = TradeWindowBasis.ENTRY,
 ) -> TradeHistoryReport:
     """Apply the shared row filter + analytics and assemble the report (the one filter path)."""
     filtered: List[TradeHistoryRow] = []
@@ -66,10 +87,17 @@ def _assemble(
             continue
         if close_reason is not None and row.close_reason != close_reason:
             continue
-        if start is not None and datetime.fromisoformat(row.entry_time) < start:
+        stamp = row.entry_time if window_basis is TradeWindowBasis.ENTRY else row.exit_time
+        if start is not None and datetime.fromisoformat(stamp) < start:
             continue
-        if end is not None and datetime.fromisoformat(row.entry_time) > end:
-            continue
+        # END is EXCLUSIVE on the exit basis: a booking period runs [opened, closed), so the
+        # trade realised exactly at a boundary belongs to the period that OPENS there, never
+        # to both. On the entry basis the inclusive comparison is kept — existing callers
+        # read it that way and a browsing filter has no partition to keep whole.
+        if end is not None:
+            realised = datetime.fromisoformat(stamp)
+            if (realised >= end if window_basis is TradeWindowBasis.EXIT else realised > end):
+                continue
         filtered.append(row)
 
     symbols = sorted({row.symbol for row in filtered})

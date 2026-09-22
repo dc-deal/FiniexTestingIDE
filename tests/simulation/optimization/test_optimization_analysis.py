@@ -319,3 +319,75 @@ class TestTheLedgerStampsTheVersionItWroteWith:
         assert row.logic_version == RunLedgerIndex.LOGIC_VERSION, (
             'the row and the index must be stamped from the same constant, or the two '
             'disagree about which logic produced the data the index describes')
+
+
+class TestASweepRanksCandidatesNotDays:
+    """
+    Since #537 a run books one row per BOOKING PERIOD, so a combination writes several rows —
+    measured, a simulation scenario averages 3.4 days, which turns a sweep of 500 combinations
+    into about 1700 rows.
+
+    Sorted as they arrive, one candidate would appear several times and the top ten would be the
+    ten best DAYS rather than the ten best parameter sets. `_scope` folds them first, using the
+    declared reductions, so a ranking stays a ranking.
+    """
+
+    @staticmethod
+    def _periods(tmp_ledger, make_run_summary, make_provenance):
+        """Two combinations, each booking three periods that sum to its result."""
+        from datetime import datetime, timedelta, timezone
+
+        from python.framework.types.api.report_types import RunSummaryCurrency
+        from python.framework.types.run_results_types import BookingSegment, SegmentCloseReason
+
+        start = datetime(2026, 9, 21, tzinfo=timezone.utc)
+        for run, parts in (('rA', (10.0, -4.0, 6.0)), ('rB', (1.0, 1.0, 1.0))):
+            segments = [
+                BookingSegment(
+                    segment_no=i + 1, unit_name='scenario',
+                    opened_at=start + timedelta(days=i),
+                    closed_at=start + timedelta(days=i + 1),
+                    reason=SegmentCloseReason.ANCHOR, trade_count=1,
+                    figures=RunSummaryCurrency(
+                        currency='USD', net_pnl=part, profit_factor=None, win_rate=0.0,
+                        account_max_drawdown=0.0, total_fees=0.0, total_trades=1,
+                        winning_trades=1 if part > 0 else 0,
+                        losing_trades=0 if part > 0 else 1,
+                        expectancy=0.0, avg_win_r=None, avg_loss_r=None, r_trade_count=0))
+                for i, part in enumerate(parts)
+            ]
+            tmp_ledger.append(
+                make_run_summary(),
+                make_provenance(param_hash=f'h_{run}', run_id=run,
+                                scenario_set_name=f's__{run}',
+                                sweep_id='sweep_P', sweep_params={'x': run}),
+                segments)
+        return tmp_ledger.read_rows(sweep_id='sweep_P')
+
+    def test_each_candidate_appears_once(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        rows = self._periods(tmp_ledger, make_run_summary, make_provenance)
+        assert len(rows) == 6                      # three periods per combination, on disk
+        ranked = rank(rows, 'net_pnl', maximize=True)
+        assert len(ranked) == 2                    # two candidates in the ranking
+        assert [r.run_id for r in ranked] == ['rA', 'rB']
+
+    def test_the_ranked_figure_is_the_combination_s_total(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        # 10 − 4 + 6 = 12 for rA, and 3 for rB. Sorting the periods themselves would have put
+        # rA's best DAY (10) at the top and its worst (−4) below rB's every day.
+        rows = self._periods(tmp_ledger, make_run_summary, make_provenance)
+        ranked = rank(rows, 'net_pnl', maximize=True)
+        assert [r.net_pnl for r in ranked] == [12.0, 3.0]
+
+    def test_sensitivity_measures_the_combination_too(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        # `sensitivity` shares `_scope`, so it folds by the same rule — otherwise a parameter's
+        # marginal effect would be a mean over days weighted by how long each run happened
+        # to last.
+        rows = self._periods(tmp_ledger, make_run_summary, make_provenance)
+        effects = sensitivity(rows, 'net_pnl')
+        assert len(effects) == 1
+        # One level per combination, each holding that combination's TOTAL — not a mean over
+        # its days, which is what an unfolded input would have produced.
+        assert effects[0].level_means == {'rA': 12.0, 'rB': 3.0}

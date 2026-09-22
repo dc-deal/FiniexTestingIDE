@@ -32,6 +32,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalResolutionStats, SignalSeries
+from python.framework.types.run_results_types import BookingSegment
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
@@ -511,6 +512,12 @@ class ProcessTickLoopResult:
     - worker_statistics: From WorkerPerformanceTracker (per worker)
     - coordination_statistics: From WorkerOrchestrator
     """
+    # The scenario's HAUPTBUCH (#537) — one entry per closed booking period. Carried over the
+    # process bridge like every other result: a subprocess cannot write the ledger, so the
+    # periods travel back and the batch coordinator writes them all at once. That is also what
+    # keeps the parquet write out of what the throughput benchmark measures.
+    booking_segments: List[BookingSegment] = None
+
     # Decision logic statistics (signals + performance)
     decision_statistics: DecisionLogicStats = None
 

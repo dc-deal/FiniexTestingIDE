@@ -1260,7 +1260,7 @@ class PortfolioManager:
         self._ensure_positions_updated()
         return self._calculate_equity()
 
-    def _extend_equity_curve(self, equity: Optional[float] = None) -> None:
+    def _extend_equity_curve(self, equity: Optional[float] = None) -> Optional[float]:
         """
         Add one point to the equity curve and carry the running maximum and drawdown.
 
@@ -1273,12 +1273,15 @@ class PortfolioManager:
                 same quantity on the same tick. None evaluates it here
 
         Returns:
-            None — updates `_max_equity` / `_account_max_drawdown` in place
+            The value that was sampled, or None when none could be evaluated — handed back so a
+            caller that needs the same quantity does not pay for it twice (#537: the booking
+            period's equity band observes exactly this figure, and on MARGIN this evaluation is
+            6.7 % of tick time)
         """
         if equity is None:
             equity = self.get_account_value()
         if equity is None:
-            return
+            return None
 
         if not self._drawdown_established:
             self._drawdown_established = True
@@ -1304,8 +1307,9 @@ class PortfolioManager:
             drawdown_pct = drawdown / self._max_equity * 100.0
             if drawdown_pct > self._account_max_drawdown_pct:
                 self._account_max_drawdown_pct = drawdown_pct
+        return equity
 
-    def sample_equity(self, equity: Optional[float] = None) -> None:
+    def sample_equity(self, equity: Optional[float] = None) -> Optional[float]:
         """
         Add one point to the equity series (#492, widened by #497).
 
@@ -1324,9 +1328,12 @@ class PortfolioManager:
                 None evaluates it here
 
         Returns:
-            None — updates the running maximum and drawdown in place
+            The value that was sampled, or None when none could be evaluated. Returned rather
+            than discarded because the booking period's equity band needs exactly this number on
+            exactly this tick (#537), and evaluating it a second time would double a cost the
+            note above already measures
         """
-        self._extend_equity_curve(equity)
+        return self._extend_equity_curve(equity)
 
     def restore_drawdown_state(self, carried: AccountDrawdownCarryOver) -> None:
         """

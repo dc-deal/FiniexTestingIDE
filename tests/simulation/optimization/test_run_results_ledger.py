@@ -1,8 +1,16 @@
 """Run-results ledger tests (#390) — append per run + read all + filter."""
 
-from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
+from pathlib import Path
+
+import pandas as pd
+
+from python.framework.reporting.store.run_results_ledger import (
+    COLUMN_REDUCTION,
+    LEDGER_COLUMNS,
+)
 from python.framework.types.api.report_types import RunResultRow
 from python.framework.types.log_layout_types import RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
+from python.framework.types.run_results_types import Reduction
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -73,7 +81,6 @@ def test_sweep_params_persisted_as_json(tmp_ledger, make_run_summary, make_prove
 
 def test_read_rows_typed(tmp_ledger, make_run_summary, make_provenance):
     """read_rows returns typed RunResultRows with the JSON columns parsed back to structures."""
-    from python.framework.types.api.report_types import RunResultRow
     tmp_ledger.append(
         make_run_summary(currency='USD', net_pnl=-76.98, total_trades=10),
         make_provenance(param_hash='abc', run_id='r1', sweep_id='s',
@@ -110,17 +117,31 @@ def test_sweep_objective_persisted(tmp_ledger, make_run_summary, make_provenance
     assert row.sweep_maximize is False        # False (not None) survives the round-trip
 
 
-def test_explicit_error_writes_error_row(tmp_ledger, make_run_summary, make_provenance):
-    """A provenance status='error' → one error-flagged row (recorded, no KPIs), not silently absent."""
+def test_explicit_error_is_flagged_on_the_row_and_keeps_its_figures(
+        tmp_ledger, make_run_summary, make_provenance):
+    """
+    status='error' marks the row; it no longer decides whether the row has figures.
+
+    This test used to assert `net_pnl == 0.0` with the comment "no false KPIs", and for the
+    case it was written for — a sweep combination rejected at VALIDATION — that was right: it
+    never ran, so any figure would be invented. The reasoning does not generalise. A live
+    session has exactly one unit, so any uncaught exception (including one in the shutdown
+    path) marks the whole session a total failure, and the figures it really produced were
+    replaced by zeros on the way to the books.
+
+    The distinction now lives where it belongs: a run with NO currencies writes the
+    figureless error row (`test_no_currencies_writes_error_row` below); a run that produced
+    figures keeps them AND carries its status.
+    """
     tmp_ledger.append(
-        make_run_summary(net_pnl=999.0),   # KPIs ignored on an error run
+        make_run_summary(net_pnl=999.0),
         make_provenance(run_id='r1', sweep_id='s',
                         sweep_params={'decision_logic_config.touch_zone': 0.6},
                         status='error', error="'touch_zone' value 0.6 above maximum 0.5"))
     row = tmp_ledger.read_rows()[0]
     assert row.status == 'error'
     assert '0.6 above maximum' in row.error
-    assert row.net_pnl == 0.0                          # no false KPIs
+    assert row.net_pnl == 999.0
     assert row.sweep_params == {'decision_logic_config.touch_zone': 0.6}   # which combo failed
 
 
@@ -138,7 +159,6 @@ def test_no_currencies_writes_error_row(tmp_ledger, make_provenance):
 def test_read_handles_schema_evolution(tmp_path, tmp_ledger, make_run_summary, make_provenance):
     """Fragments written before a column existed (no 'status') still read — never collapse the
     whole read to a stripped common schema (the bug that hid error rows). Old → defaults 'ok'."""
-    import pandas as pd
     # A current fragment (carries status/error) — flagged as error.
     tmp_ledger.append(make_run_summary(),
                       make_provenance(run_id='new', scenario_set_name='s__new',
@@ -237,6 +257,146 @@ def test_every_declared_column_is_a_typed_field():
         f'{missing}')
 
 
+def test_a_rate_is_recoverable_from_its_components_across_rows(
+        tmp_ledger, make_run_summary, make_provenance):
+    """
+    The reason `gross_profit` / `gross_loss` are carried at all — measured, not asserted.
+
+    A rate cannot be folded out of two rows, but it CAN be re-derived from its numerator and
+    denominator when both are SUM columns. `win_rate` always had that property through
+    winning_trades / total_trades; `profit_factor` did not, so a session's profit factor was
+    not recoverable from its booking segments and a deployment's not from its sessions (#537).
+
+    Two rows of UNEQUAL size, because equal ones make the two methods agree by accident:
+
+        row 1   gross 300 / 100   pf 3.00   6 of 10 won
+        row 2   gross  50 / 200   pf 0.25   1 of  4 won
+        folding the rates  ->  pf 1.625   win_rate 42.5 %
+        from the components ->  pf 1.167   win_rate 50.0 %   <- the truth
+    """
+    for i, (gp, gl, won, trades) in enumerate([(300.0, 100.0, 6, 10), (50.0, 200.0, 1, 4)], 1):
+        tmp_ledger.append(
+            make_run_summary(gross_profit=gp, gross_loss=gl, net_pnl=gp - gl,
+                             winning_trades=won, total_trades=trades,
+                             profit_factor=gp / gl, win_rate=won / trades * 100),
+            make_provenance(run_id=f'r{i}', scenario_set_name=f'seg{i}'))
+
+    df = tmp_ledger.read()
+    from_components = df.gross_profit.sum() / df.gross_loss.sum()
+    folded = df.profit_factor.mean()
+
+    assert round(from_components, 4) == round(350.0 / 300.0, 4)
+    assert round(folded, 4) != round(from_components, 4), (
+        'the fixture no longer separates the two methods — pick sizes that make them diverge, '
+        'or this test proves nothing')
+
+
+def test_net_pnl_is_the_difference_of_the_two_gross_halves(
+        tmp_ledger, make_run_summary, make_provenance):
+    """
+    The three gross halves survive the parquet round trip and stay consistent.
+
+    HONEST LIMIT, because the first version of this docstring overclaimed: for a currency row
+    the identity holds BY CONSTRUCTION — `report_aggregators` builds `net_profit` as
+    `total_profit - total_loss` (:180) — so this cannot fail on a freshly built row and is a
+    round-trip pin rather than an audit. It earns its place because the three now travel
+    through parquet and back separately, and a column dropped on the way would break it.
+
+    The real control total is #537's `trade_count` against the records the figures were
+    derived from, which is a number the row cannot produce from itself.
+    """
+    tmp_ledger.append(
+        make_run_summary(gross_profit=300.0, gross_loss=200.0, net_pnl=100.0),
+        make_provenance(run_id='r1'))
+
+    row = tmp_ledger.read().iloc[0]
+    assert row['net_pnl'] == row['gross_profit'] - row['gross_loss']
+
+
+def test_an_errored_run_keeps_the_figures_it_produced(
+        tmp_ledger, make_run_summary, make_provenance):
+    """
+    `status` is a FLAG on the row, not a reason to throw the row's money away.
+
+    The defect this replaces, measured on a real-money field-study session: the run's own
+    `io/run_summary.json` held a final equity of 71.97 USD read from Kraken, and its ledger row
+    said 0 — because `append` branched on `provenance.status` and `_error_row` filled every
+    unset column with a literal zero. Live has exactly one unit, so ANY uncaught exception,
+    including one in the shutdown path, marks the whole session a total failure.
+
+    A ranking is unaffected: `optimization_analysis` filters on `status == 'ok'`.
+    """
+    tmp_ledger.append(
+        make_run_summary(net_pnl=-12.5, total_trades=4, gross_profit=30.0, gross_loss=42.5),
+        make_provenance(status='error', error='died in shutdown'))
+
+    row = tmp_ledger.read().iloc[0]
+    assert row['status'] == 'error'
+    assert row['error'] == 'died in shutdown'
+    assert row['net_pnl'] == -12.5, 'the figures the run produced must survive its status'
+    assert row['total_trades'] == 4
+    assert row['gross_profit'] == 30.0
+
+
+def test_every_column_declares_how_it_reduces():
+    """
+    A reader combining rows has to know per COLUMN, and the dangerous pairs look identical.
+
+    `net_pnl` and `win_rate` are both aggregates: one sums, the other cannot be combined at
+    all. `account_max_drawdown` and `total_fees` are both numbers that grow: one takes max(),
+    the other sum(), and summing the first counts one decline once per row that was still
+    inside it. None of that is visible from a column name, and before this map it was written
+    down for exactly one column, as a comment in a console renderer.
+
+    The guard is the same derivation the two tests above use: the map and the table have to
+    agree, so a column added tomorrow cannot arrive without an answer.
+    """
+    unclassified = [c for c in LEDGER_COLUMNS if c not in COLUMN_REDUCTION]
+    stale = [c for c in COLUMN_REDUCTION if c not in LEDGER_COLUMNS]
+
+    assert unclassified == [], (
+        f'{unclassified} are written to the ledger with no declared reduction — a reader '
+        f'combining rows has to guess, and the wrong guess is silent')
+    assert stale == [], (
+        f'{stale} declare a reduction and are no longer columns — the map outlived the table')
+
+
+def test_the_cumulative_extrema_are_not_summable():
+    """
+    The one classification whose wrong answer corrupts rather than merely confuses.
+
+    A live row carries the RUNNING decline against the inherited peak (#497), so adding two
+    of them counts one decline twice. This pins the three columns where that is true, because
+    the mistake is arithmetically invisible: the sum of two drawdowns is a plausible drawdown.
+    """
+    assert COLUMN_REDUCTION['account_max_drawdown'] is Reduction.MAX
+    # And the other two are COMPANIONS, not independent maxima. Taking each by its own max
+    # pairs one row's trough with another's peak — the defect #497 removed one layer down,
+    # and a map that said MAX three times would have walked back into it.
+    assert COLUMN_REDUCTION['max_equity'] is Reduction.COMPANION
+    assert COLUMN_REDUCTION['account_max_drawdown_pct'] is Reduction.COMPANION
+
+
+def test_a_rate_is_never_combined_from_row_values():
+    """
+    A rate over a wider window is re-derived from the records, never folded out of two rows.
+
+    Two segments of EQUAL size make the trap invisible: 10 trades with 6 winners and 10 with
+    4 read 60 % and 40 %, their average is 50 %, and the pair really is 10/20 = 50 %. Change
+    the second segment to 4 trades with 1 winner and the two answers part company:
+
+        average of the rates :  (60 % + 25 %) / 2  =  42.5 %
+        re-derived           :   7 / 14           =  50.0 %
+
+    Nothing in either number says which one you are looking at, and the equal-size case is
+    common enough that the wrong method survives a long time before it is noticed.
+    """
+    for column in ('win_rate', 'profit_factor', 'expectancy', 'avg_win_r', 'avg_loss_r'):
+        assert COLUMN_REDUCTION[column] is Reduction.DERIVE, (
+            f'{column} is a rate; combining it from row values rather than re-deriving it '
+            f'over the records is how a period report acquires a number about nothing')
+
+
 def test_a_live_row_carries_its_deployment_and_profile_hash(
         tmp_ledger, make_run_summary, make_provenance):
     """
@@ -321,3 +481,77 @@ def test_an_untyped_row_claims_no_kind_either(tmp_ledger, make_run_summary, make
     row = tmp_ledger.read_rows()[0]
     assert row.run_type == ''
     assert row.run_kind == ''
+
+
+def test_a_swept_run_records_how_many_candidates_it_beat(
+        tmp_ledger, make_run_summary, make_provenance):
+    # The one input to the Deflated Sharpe Ratio that cannot be recovered afterwards: it
+    # describes the SEARCH, and a search leaves no other trace once it is over (#32).
+    tmp_ledger.append(
+        make_run_summary(),
+        make_provenance(sweep_id='sweep_1', sweep_params={'a': 1}, trial_count=500))
+    assert tmp_ledger.read_rows()[0].trial_count == 500
+
+
+def test_an_unswept_run_says_one_candidate_rather_than_nothing(
+        tmp_ledger, make_run_summary, make_provenance):
+    # 1 is a statement — this run WAS the only candidate. It must not read like the None an
+    # older fragment answers, which means "nobody recorded it".
+    tmp_ledger.append(make_run_summary(), make_provenance())
+    assert tmp_ledger.read_rows()[0].trial_count == 1
+
+
+def test_an_older_fragment_claims_no_trial_count(tmp_path, tmp_ledger, make_run_summary,
+                                                 make_provenance):
+    # Schema evolution: the column simply is not there, and the typed row must answer UNKNOWN
+    # rather than inventing the 1 a fresh run would write.
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='old'))
+    fragment = next(Path(tmp_path / 'run_results').glob('*_old.parquet'))
+    frame = pd.read_parquet(fragment).drop(columns=['trial_count'])
+    frame.to_parquet(fragment, index=False)
+    tmp_ledger._index.rebuild()
+    assert tmp_ledger.read_rows()[0].trial_count is None
+
+
+def test_a_fresh_row_claims_no_pruning(tmp_ledger, make_run_summary, make_provenance):
+    tmp_ledger.append(make_run_summary(), make_provenance())
+    assert tmp_ledger.read_rows()[0].records_pruned_at == ''
+
+
+def test_pruning_stamps_the_row_and_keeps_its_figures(
+        tmp_ledger, make_run_summary, make_provenance):
+    # The row survives its evidence on purpose. What changes is what it CLAIMS: with the stamp
+    # set, nothing can re-derive these figures from the records, and the row says so (§48).
+    tmp_ledger.append(make_run_summary(net_pnl=412.0, total_trades=7),
+                      make_provenance(run_id='gone'))
+    assert tmp_ledger.mark_records_pruned(['gone']) == 1
+    row = tmp_ledger.read_rows()[0]
+    assert row.records_pruned_at != ''
+    assert row.net_pnl == 412.0 and row.total_trades == 7
+
+
+def test_pruning_marks_only_the_runs_it_was_given(
+        tmp_ledger, make_run_summary, make_provenance):
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='gone'))
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='kept'))
+    tmp_ledger.mark_records_pruned(['gone'])
+    stamped = {r.run_id: bool(r.records_pruned_at) for r in tmp_ledger.read_rows()}
+    assert stamped == {'gone': True, 'kept': False}
+
+
+def test_pruning_a_run_that_never_booked_changes_nothing(
+        tmp_ledger, make_run_summary, make_provenance):
+    # The ordinary case for a session killed before its close: it has no fragment at all, and
+    # the prune must not treat that as a failure.
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='booked'))
+    assert tmp_ledger.mark_records_pruned(['never_booked']) == 0
+
+
+def test_the_stamp_survives_the_index(tmp_ledger, make_run_summary, make_provenance):
+    # Rewriting a fragment moves its mtime, which is exactly what makes the index stale — so
+    # `mark_records_pruned` rebuilds it. Without that the reader would serve the old rows.
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='gone'))
+    tmp_ledger.read_rows()                      # build the index against the unstamped state
+    tmp_ledger.mark_records_pruned(['gone'])
+    assert tmp_ledger.read_rows()[0].records_pruned_at != ''
+

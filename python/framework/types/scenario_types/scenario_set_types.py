@@ -20,7 +20,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
-from python.framework.types.api.report_types import RunHeader, RunReporting
+from python.framework.types.api.report_types import ParentKind, RunHeader, RunReporting
 from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,
     RobustnessRole,
@@ -247,6 +247,9 @@ class ScenarioSet:
                 run_type=RUN_TYPE_SIMULATION,
                 run_name=self.scenario_set_name,
                 parent_id=sweep_id,
+                # Written WITH the id, never after it: a parent id whose kind is unknown is a
+                # row nothing can group correctly (#386).
+                parent_kind=ParentKind.SWEEP if sweep_id else None,
                 config_snapshot='scenario_config.json',
                 app_version=app_config.get_version(),
                 git_commit=get_git_commit(),

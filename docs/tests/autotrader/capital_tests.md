@@ -8,7 +8,7 @@ What the bot may actually spend — as opposed to what the account happens to ho
 | Harness | `MockOrderExecution` in spot mode — no network, no config files, no tick data |
 | Pytest mark | `autotrader` (auto-applied via path) |
 | Launch entry | `🧩 Pytest: Capital Allocation (#489)` |
-| Architecture doc | [autotrader_architecture.md](../../autotrader/autotrader_architecture.md) — *Capital — what the bot may spend* |
+| Architecture doc | [autotrader_capital_and_safety.md](../../autotrader/autotrader_capital_and_safety.md) — *Capital — what the bot may spend* |
 | Record coverage | `TestTheCommittedFundsRecord` in `tests/framework/reporting/test_portfolio_report.py` — see [Reporting Pipeline Tests](../framework/reporting_tests.md); the report half lives with the builder it tests |
 
 ---

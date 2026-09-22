@@ -75,7 +75,39 @@ def _trade_analytics(rows: List[TradeHistoryRow]) -> TradeAnalytics:
         gross_pnl=sum(r.gross_pnl for r in rows),
         net_pnl=sum(r.net_pnl for r in rows),
         total_fees=sum(r.total_fees for r in rows),
+        # The worst single excursion beside the means — max of magnitudes, because MAE is
+        # recorded as an adverse P&L and its sign convention is not worth relying on here.
+        largest_mae=max((abs(r.mae_pnl) for r in rows), default=0.0),
+        largest_mfe=max((abs(r.mfe_pnl) for r in rows), default=0.0),
+        avg_trade_duration_s=_mean([r.duration_s for r in rows]),
+        max_consecutive_wins=_longest_streak(rows, winners=True),
+        max_consecutive_losses=_longest_streak(rows, winners=False),
     )
+
+
+def _longest_streak(rows: List[TradeHistoryRow], winners: bool) -> int:
+    """
+    The longest unbroken run of winners or losers, in REALISATION order.
+
+    Ordered by exit time rather than taken as given: the rows arrive grouped by unit, and a
+    streak is a statement about the sequence the account actually experienced. A break-even
+    trade (net exactly zero) ends both streaks — it is neither, and treating it as either would
+    invent a run the account did not have.
+
+    Args:
+        rows: The trade rows of one currency group
+        winners: True for the winning streak, False for the losing one
+
+    Returns:
+        The longest run; 0 when the group holds none of that kind
+    """
+    longest = 0
+    current = 0
+    for row in sorted(rows, key=lambda r: r.exit_time):
+        hit = row.net_pnl > 0 if winners else row.net_pnl < 0
+        current = current + 1 if hit else 0
+        longest = max(longest, current)
+    return longest
 
 
 # --- Trade per-scenario totals (the per-scenario table footer) ------------------------

@@ -23,10 +23,15 @@ from datetime import datetime, timezone
 from multiprocessing import Queue
 from typing import List, Optional, Tuple
 
+from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
+from python.framework.reporting.booking_segment_recorder import (
+    BookingSegmentRecorder,
+    snapshot_from_portfolio,
+)
 from python.framework.process.process_live_export import process_live_export, process_live_setup
 from python.framework.process.tick_pipeline_core import (
     execute_algo_path,
@@ -169,6 +174,31 @@ def execute_tick_loop(
         tick_loop_error: Exception = None
         current_bars = {}
         current_tick = None
+
+        # === BOOKING SEGMENTS (#537) — this scenario's Hauptbuch ===
+        # Per SCENARIO and not per run: a run's scenarios cover different windows (measured:
+        # 40 scenarios, 40 distinct ones), so "day 1 of the run" is not a thing and only
+        # "day 1 of this unit" is. The recorder is the same one the live loop uses — that loop
+        # is a class and this one is a function, and a recorder each would be two
+        # implementations of one rule (§19).
+        #
+        # No floor is carried in: a backtest has no predecessor to inherit a period count from,
+        # so every scenario counts from 1. Resolved inside the try, so a market that declares no
+        # anchor fails THIS scenario rather than the batch (§33).
+        booking = BookingSegmentRecorder(
+            unit_name=config.name,
+            # None when the scenario declares no broker: it has no market, so it has no
+            # trading day, and it books nothing. A real scenario always declares one — this is
+            # the internal harness that builds a config without it.
+            anchor=(MarketConfigManager().get_trading_day_anchor(config.broker_type.value)
+                    if config.broker_type else None),
+            log=scenario_logger.info,
+        )
+
+        def seal_source():
+            """The records and the stock reading a seal needs, at this instant."""
+            return snapshot_from_portfolio(portfolio)
+
         current_index = 0
 
         # Count algo ticks (non-clipped) for log messages
@@ -225,6 +255,11 @@ def execute_tick_loop(
             if (decision_logic.wants_heartbeat()
                     and config.heartbeat_interval_ms > 0
                     and prev_interval_msc > 0 and current_msc > 0):
+                # #537: the boundary is checked on the heartbeat too, and this is the half
+                # that makes it reliable — the ghost passes are what advance the canonical
+                # clock across a gap, so a quiet stretch over a rollover would otherwise book
+                # one period spanning two trading days.
+                booking.check_boundary(trade_simulator.get_current_time(), seal_source)
                 if _run_sim_heartbeats(
                         prev_interval_msc, current_msc, config, trade_simulator,
                         worker_coordinator, decision_logic, decision_event_dispatcher):
@@ -278,7 +313,13 @@ def execute_tick_loop(
             # that crept in. #366's stop-out pass rides this sample rather than opening a
             # second one.
             if profiling_enabled: t14 = time.perf_counter()
-            portfolio.sample_equity()
+            # The booking period's VALUATION half rides this sample rather than opening a
+            # second evaluation: on MARGIN the note above measures it at 6.7 % of tick time,
+            # so asking twice would be the most expensive line in this loop (#537).
+            _equity = portfolio.sample_equity()
+            if _equity is not None:
+                booking.observe_equity(_equity)
+            booking.check_boundary(trade_simulator.get_current_time(), seal_source)
             if profiling_enabled:
                 profile_times['equity_sample'] += (time.perf_counter() - t14) * 1000
                 profile_counts['equity_sample'] += 1
@@ -469,7 +510,12 @@ def execute_tick_loop(
             live_update_count, scenario_logger, portfolio_stats
         )
 
+        # Seals the period that was still running, so the final and necessarily incomplete one
+        # is filed like every other rather than dropped for having no successor (#537).
+        booking_segments = booking.close(trade_simulator.get_current_time(), seal_source)
+
         return ProcessTickLoopResult(
+            booking_segments=booking_segments,
             decision_statistics=decision_statistics,
             worker_statistics=worker_statistics,
             signal_statistics=signal_statistics,

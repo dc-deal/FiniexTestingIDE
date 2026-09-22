@@ -7,7 +7,7 @@
 > a stranger's order on the bot's own instrument refuses the start, one elsewhere is a Tier-1
 > warning. Left at its default (`false`), the thresholds here still work — they simply measure a
 > denominator that may include capital this bot does not own. See
-> [autotrader_architecture.md](../autotrader/autotrader_architecture.md) — *Whose account is it*.
+> [autotrader_capital_and_safety.md](../autotrader/autotrader_capital_and_safety.md) — *Whose account is it*.
 
 ## Overview
 

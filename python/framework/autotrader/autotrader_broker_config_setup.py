@@ -230,9 +230,22 @@ def _create_live_broker_config_dynamic(
         dry_run=dry_run,
         transport=entry.broker_transport,
     )
-    mode_label = 'DRY RUN (validate only)' if dry_run else 'LIVE TRADING'
-    logger.info(f'🚀 Mode: {mode_label}')
-    print(f'  ▸ Mode: {mode_label}')
+    # LIVE is announced at WARNING level, whatever decided it. The override notice above
+    # fires only when the profile DISAGREES with market_config — so a profile that says
+    # nothing while the market_config default is live used to reach this line at INFO,
+    # indistinguishable from a dry run in a startup listing. The loudness belongs to the
+    # DANGER, not to the deviation, and a warning also reaches the session summary (§35)
+    # where an info line does not, so the run's own record says it traded for real.
+    if dry_run:
+        logger.info('🚀 Mode: DRY RUN (validate only)')
+        print('  ▸ Mode: DRY RUN (validate only)')
+    else:
+        decided_by = 'the profile' if config.dry_run is not None else 'market_config'
+        logger.warning(
+            f'⚠️ Mode: LIVE TRADING — real orders will be placed (dry_run=False, '
+            f'decided by {decided_by})'
+        )
+        print(f'  ⚠️  Mode: LIVE TRADING — real orders will be placed (by {decided_by})')
 
     # Pass the actual runtime cache file path so _log_broker_config_loaded can
     # surface cache age in the startup output (helps diagnose stale-fee issues).

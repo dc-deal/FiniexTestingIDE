@@ -79,14 +79,54 @@ Which runs started and never reached their close. A run registers in the run ind
 header, written before anything can fail; its ledger row is the last step at close. A process
 killed between the two exists in one store and not the other, and nothing said so.
 
-The set difference is deliberately **one-directional**. The ledger predates the run index, so it
+The plain reverse set difference stays **out**. The ledger predates the run index, so it
 legitimately holds rows for runs the index never saw — reporting that direction would bury the
 one finding under ordinary history. Scoping to a `parent_id` is what lets a deployment name its
 own missing sessions, since its session table is built from the ledger and a killed session is
 absent from it by construction.
 
+The scope takes a `parent_kind` beside the id, and the tests pin both directions of it: a
+deployment asking for `x` must not collect a sweep that is also called `x`, and a row indexed
+before the field existed is claimed by NEITHER kind. An unknown kind is not a claim — the same
+shape as a missing monotonic stamp yielding no number rather than a wall-clock substitute.
+
+A second, narrower question lives in the same file: a booking whose run directory is gone. It is
+not the mirror of the first, and the tests pin exactly where the line runs — the run index must
+still KNOW the run (otherwise it is ordinary history), and the row must carry no
+`records_pruned_at` (otherwise a prune already accounted for it). Both currency rows of a
+two-currency run are returned rather than one per run, which pins the collapse this project has
+already measured elsewhere: keeping the first row per `run_id` silently drops the second currency.
+The directories arrive as a mapping rather than being read off `RunInfo`, because that model is an
+API type and carries no filesystem path.
+
 One test pins a defect caught in review rather than a requirement: grouping by run group must
 keep every run, where a dict comprehension keyed on the group silently keeps only the last.
+
+## `test_carry_over_identity.py`
+
+Two live bots must not share one carry-over document. The stores file one per BOT under
+`<profile name>_<symbol>`, and both halves are free text nothing validates — so a collision is
+invisible from inside either store: each asks whether a document belongs to THIS bot, and in a
+collision it does, for both. The check therefore runs once across the profile tree at boot,
+before anything reads or writes.
+
+The sanitiser being lossy is pinned as a **property**, not as a bug: a filename cannot carry
+every character, so `dot live` and `dot-live` legitimately meet. That is the reason for a check
+rather than for a stricter sanitiser.
+
+**Nothing is exempt, and one test exists to pin the correction that produced that rule.** The
+first version of the check excluded mock profiles on the reasoning that they run no live
+executor — which is wrong: `adapter_type: mock` selects the tick SOURCE, and every AutoTrader
+session runs a `LiveTradeExecutor` and builds both carry-over stores. Measured 2026-09-21, 15 of
+the 16 documents in `data/runtime/cold_start_state/` belong to mock profiles, so the exclusion
+would have skipped almost the entire population the check protects. An unknown adapter counts for
+the same reason, which is why #209's MT5 will need no change here.
+
+One thing IS skipped: an unreadable profile elsewhere in the tree. This check answers one
+question and must not become a second config validator.
+
+One test runs against the SHIPPED profiles rather than a fixture: a collision there would mean
+two of the operator's own bots share a position book.
 
 ---
 

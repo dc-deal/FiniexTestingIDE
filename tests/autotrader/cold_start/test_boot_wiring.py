@@ -52,6 +52,7 @@ class SpyStore:
         self._fail = fail
 
     def save(self, session_key: str, highest_position_counter: int,
+             highest_segment_no: int = 0,
              keys_in_use: Optional[Set[str]] = None,
              open_positions: Optional[List[PositionCarryOver]] = None,
              risk_baseline: Optional[RiskBaseline] = None,
@@ -63,6 +64,7 @@ class SpyStore:
         self.saves.append({
             'session_key': session_key,
             'highest_position_counter': highest_position_counter,
+            'highest_segment_no': highest_segment_no,
             'keys_in_use': set(keys_in_use or ()),
             'open_positions': open_positions,
             'risk_baseline': risk_baseline,
@@ -137,6 +139,10 @@ def _main(executor, store, persist: bool, keys_in_use=None,
     # channel has to exist for that promise to be testable at all.
     main._session_logger = RecordingLogger()
     main._risk_baseline = risk_baseline
+    # None, because the write happens at BOOT too — before the loop exists. The carry-over
+    # reads the booking-period high-water mark from it (#537), and the store treats the value
+    # as a floor, so a zero here leaves a deployment's period count alone.
+    main._tick_loop = None
     main._cold_start = ColdStartSetup(
         proceed=True,
         store=store,

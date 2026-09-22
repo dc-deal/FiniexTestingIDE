@@ -125,8 +125,8 @@ class RunIndex(AbstractStoreIndex):
 
     # Fixed column order, so the file stays readable back across versions.
     COLUMNS: List[str] = [
-        'run_id', 'start_time', 'run_type', 'run_name', 'parent_id', 'run_dir', 'artifacts',
-        'app_version', 'git_commit', 'config_snapshot', 'reporting',
+        'run_id', 'start_time', 'run_type', 'run_name', 'parent_id', 'parent_kind', 'run_dir',
+        'artifacts', 'app_version', 'git_commit', 'config_snapshot', 'reporting',
         # How much disk this run occupies, stamped where it is CHEAP — once, over ONE run, at
         # the moment its reports land. Measured 2026-09-18: answering it at READ time cost the
         # pruner 42 s over 7409 files against a 0.62 s floor for everything else it does, and
@@ -138,7 +138,7 @@ class RunIndex(AbstractStoreIndex):
     # 1 → 2: `size_bytes` appended. A row written before it reads back as NaN, which means
     # UNKNOWN and is reported as such — never as 0 MB, which on the one screen an operator
     # uses to decide what to delete would read as "this run is empty".
-    LOGIC_VERSION: int = 2
+    LOGIC_VERSION: int = 3
 
     def __init__(self, path: Path, roots: Optional[RunLogPaths] = None):
         """
@@ -171,6 +171,7 @@ class RunIndex(AbstractStoreIndex):
             'run_type': header.run_type,
             'run_name': header.run_name,
             'parent_id': header.parent_id,
+            'parent_kind': str(header.parent_kind) if header.parent_kind else None,
             'run_dir': str(run_dir),
             'artifacts': [],
             'app_version': header.app_version,
@@ -226,7 +227,9 @@ class RunIndex(AbstractStoreIndex):
         frame = frame.sort_values('run_id', ascending=False)
         return [RunInfo(run_id=r.run_id, group=r.run_type, name=r.run_name,
                         artifacts=list(r.artifacts), start_time=r.start_time,
-                        parent_id=_or_none(r.parent_id), app_version=r.app_version or '',
+                        parent_id=_or_none(r.parent_id),
+                        parent_kind=_or_none(getattr(r, 'parent_kind', None)),
+                        app_version=r.app_version or '',
                         git_commit=_or_none(r.git_commit),
                         config_snapshot=r.config_snapshot or '',
                         reporting=r.reporting or RunReporting.EXPECTED,
@@ -295,6 +298,8 @@ class RunIndex(AbstractStoreIndex):
                     'run_type': header.run_type,
                     'run_name': header.run_name,
                     'parent_id': header.parent_id,
+                    'parent_kind': (str(header.parent_kind)
+                                    if header.parent_kind else None),
                     'run_dir': str(run_dir),
                     'artifacts': _artifact_names(run_dir),
                     'app_version': header.app_version,

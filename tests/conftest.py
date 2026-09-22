@@ -50,6 +50,13 @@ def _isolate_run_tree(tmp_path_factory):
     so a test may read its own run directory (two integration tests assert on artifacts, and
     §36 diagnosis stays possible), and a failing test's log is still there to look at — just
     under tmp.
+
+    `global_log_dir` joins them here (#476 part b). It is the one write plane nothing bounds
+    — no rotation, no retention, not per-run: every process of every run in both pipelines
+    appends to the same file forever. Measured 2026-09-21: 2,606,808 lines / 197 MB in the
+    operator's working tree, against 161,068 lines / 12 MB measured on 2026-08-31, i.e. a
+    sixteenfold growth in three weeks, of which the suite is a large part. Bounding the file
+    itself — rotation plus a retention window — is the other half and stays with #476/#357.
     """
     root = tmp_path_factory.mktemp('run_tree')
     real = AppConfigManager().get_file_logging_config_object()
@@ -57,6 +64,7 @@ def _isolate_run_tree(tmp_path_factory):
         'run_logs': RunLogPaths(simulation=root / 'simulation', live=root / 'live'),
         # Same naming rule as production (#486): <store_id>_index.parquet
         'run_index': root / store_index_filename(StoreId.RUNS),
+        'global_log_dir': root / 'global',
     })
     mp = pytest.MonkeyPatch()
     mp.setattr(AppConfigManager, 'get_file_logging_config_object', lambda self: isolated)

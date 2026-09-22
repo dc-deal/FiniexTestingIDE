@@ -17,14 +17,20 @@ import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import pytest
-
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_tree_pruner import (
     FIELD_STUDY_ARTIFACT,
     RunTreePruner,
 )
-from python.framework.types.api.report_types import RunHeader, RunReporting
+from python.framework.reporting.store.run_results_ledger import RunResultsLedger
+from python.framework.types.api.report_types import (
+    ParentKind,
+    RunHeader,
+    RunReporting,
+    RunSummary,
+    RunSummaryCurrency,
+)
+from python.framework.types.run_results_types import RunProvenance
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import (
     IO_SUBDIR,
@@ -42,13 +48,14 @@ def _roots(root: Path) -> RunLogPaths:
 
 
 def _pruner(root: Path) -> RunTreePruner:
-    """A pruner pointed entirely at the tmp tree — roots AND index."""
-    return RunTreePruner(_roots(root), root / 'index.parquet')
+    """A pruner pointed entirely at the tmp tree — roots, index AND ledger."""
+    return RunTreePruner(_roots(root), root / 'index.parquet', root / 'ledger')
 
 
 def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMULATION,
            artifacts: bool = True, reporting: RunReporting = RunReporting.EXPECTED,
-           parent: str = None, field_study: bool = False, minutes: int = 0) -> Path:
+           parent: str = None, parent_kind: ParentKind = None,
+           field_study: bool = False, minutes: int = 0) -> Path:
     """
     Write one run the way a real one writes itself: header first, index row with it.
 
@@ -59,7 +66,9 @@ def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMUL
         run_type: 'simulation' or 'live'
         artifacts: Whether it persisted report artifacts
         reporting: What it was commissioned to do
-        parent: The sweep it belongs to, when it is a combination
+        parent: The sweep or deployment it belongs to, when it belongs to one
+        parent_kind: Which of the two that is; defaults to a sweep, which is what a parented
+            SIMULATION always is
         field_study: Whether it holds the raw record behind a release certificate
         minutes: Offset from the base start time
 
@@ -67,7 +76,9 @@ def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMUL
         The run's directory
     """
     base = _roots(root)
-    if parent:
+    if parent and parent_kind is None:
+        parent_kind = ParentKind.SWEEP
+    if parent and parent_kind is ParentKind.SWEEP:
         run_dir = base.sweeps / parent / name / run_id
     elif run_type == RUN_TYPE_LIVE:
         run_dir = base.live / name / run_id
@@ -83,7 +94,7 @@ def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMUL
 
     header = RunHeader(
         run_id=run_id, start_time=_START + timedelta(minutes=minutes), run_type=run_type,
-        run_name=name, parent_id=parent, reporting=reporting)
+        run_name=name, parent_id=parent, parent_kind=parent_kind, reporting=reporting)
     index = RunIndex(root / 'index.parquet')
     index.register_run(header, run_dir)
     if artifacts:
@@ -328,3 +339,110 @@ class TestApplyAndTheIndex:
 
         assert result.deleted == []
         assert len(result.failed) == len(report.all_deletions())
+
+
+class TestTheLedgerKeepsItsRowsAndSaysWhy:
+    """
+    A prune removes RECORDS, never RESULTS — the two stores have opposite retention (#390).
+
+    What the deletion costs is the ability to re-derive a row's figures from the entries behind
+    them, so the row is stamped rather than dropped: it keeps saying what the run produced, and
+    stops implying anyone can still check it (§48).
+    """
+
+    def test_a_pruned_run_s_row_survives_and_is_stamped(self, tmp_path):
+        _plant(tmp_path, 'r1', 'set', artifacts=False, reporting=RunReporting.NONE)
+        ledger = RunResultsLedger(tmp_path / 'ledger')
+        ledger.append(_summary(), _provenance('r1'))
+
+        pruner = _pruner(tmp_path)
+        result = pruner.apply(pruner.plan(PruneSelectors()))
+
+        assert result.ledger_rows_marked == 1
+        row = ledger.read_rows()[0]
+        assert row.records_pruned_at != ''
+        assert row.net_pnl == 412.0        # the figures are untouched
+
+    def test_a_run_that_stays_keeps_an_unstamped_row(self, tmp_path):
+        _plant(tmp_path, 'keeper', 'set', reporting=RunReporting.EXPECTED)
+        ledger = RunResultsLedger(tmp_path / 'ledger')
+        ledger.append(_summary(), _provenance('keeper'))
+
+        pruner = _pruner(tmp_path)
+        result = pruner.apply(pruner.plan(PruneSelectors()))
+
+        assert result.ledger_rows_marked == 0
+        assert ledger.read_rows()[0].records_pruned_at == ''
+
+
+def _summary() -> RunSummary:
+    """A one-currency summary whose figures the stamp must not touch."""
+    return RunSummary(
+        run_id='r1',
+        currencies=[RunSummaryCurrency(
+            currency='USD', net_pnl=412.0, profit_factor=1.5, win_rate=0.5,
+            account_max_drawdown=-10.0, total_fees=1.0, total_trades=7,
+            winning_trades=4, losing_trades=3, expectancy=0.3,
+            avg_win_r=1.0, avg_loss_r=-0.5, r_trade_count=7)])
+
+
+def _provenance(run_id: str) -> RunProvenance:
+    """Provenance for a finished run, enough for the ledger to write a row."""
+    return RunProvenance(
+        param_hash='h', status='ok', error=None, run_id=run_id,
+        run_timestamp=_START, scenario_set_name='set', app_version='1.3.1',
+        git_commit='abc1234', git_branch='main', git_dirty=False,
+        decision_logic_type='CORE/aggressive_trend', decision_version='1.0.0',
+        worker_versions={}, config_snapshot='{}', symbols=['BTCUSD'],
+        data_broker_type='kraken_spot')
+
+
+class TestKeepLastCountsPerParentKind:
+    """
+    `--keep-last N` is a quota, and a quota shared between two populations belongs to the
+    louder one (#386).
+
+    Both parent ids are a prefix plus a timestamp, and the prefixes are `sweep_` and `deploy_`.
+    Sorting them together sorts by the PREFIX first, so `s` beats `d` on every comparison and a
+    deployment can never outrank a sweep — not even one minted years later. Pooled, the quota is
+    therefore not merely contended, it is unreachable for deployments whenever enough sweeps
+    exist. That is the case below.
+    """
+
+    @staticmethod
+    def _combinations(root: Path, sweep_id: str, minutes: int) -> list:
+        return [_plant(root, f'{sweep_id[6:]}_{i}{"a" * 7}', f'my_set__{sweep_id}_c00{i}',
+                       parent=sweep_id, minutes=minutes + i)
+                for i in range(2)]
+
+    @staticmethod
+    def _sessions(root: Path, deployment_id: str, minutes: int) -> list:
+        stamp = deployment_id.split('_', 1)[1]
+        return [_plant(root, f'{stamp}_{i}{"b" * 7}', 'my_bot',
+                       run_type=RUN_TYPE_LIVE, parent=deployment_id,
+                       parent_kind=ParentKind.DEPLOYMENT, minutes=minutes + i)
+                for i in range(2)]
+
+    def test_a_deployment_survives_although_two_sweeps_fill_the_quota(self, tmp_path):
+        self._combinations(tmp_path, 'sweep_20260830_130000', minutes=0)
+        self._combinations(tmp_path, 'sweep_20260830_140000', minutes=40)
+        sessions = self._sessions(tmp_path, 'deploy_20260918_091413', minutes=80)
+
+        report = _pruner(tmp_path).plan(PruneSelectors(keep_last=2))
+
+        # The live sessions are the NEWEST runs in the tree, and every sweep is older — yet
+        # pooled they lost to the prefix, whole.
+        assert not any(path in _deleted_paths(report) for path in sessions)
+
+    def test_the_older_parent_of_each_kind_still_goes(self, tmp_path):
+        older_sweep = self._combinations(tmp_path, 'sweep_20260830_130000', minutes=0)
+        newer_sweep = self._combinations(tmp_path, 'sweep_20260830_140000', minutes=40)
+        older_dep = self._sessions(tmp_path, 'deploy_20260901_091413', minutes=80)
+        newer_dep = self._sessions(tmp_path, 'deploy_20260918_091413', minutes=120)
+
+        deleted = _deleted_paths(_pruner(tmp_path).plan(PruneSelectors(keep_last=1)))
+
+        # One of each kind survives — the selector still SELECTS, it just no longer lets one
+        # kind spend the other's quota.
+        assert all(path in deleted for path in older_sweep + older_dep)
+        assert not any(path in deleted for path in newer_sweep + newer_dep)

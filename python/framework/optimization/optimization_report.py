@@ -289,8 +289,15 @@ def _write_csv(ranked: List[RunResultRow], sweep_id: str) -> Path:
     sweep_dir.mkdir(parents=True, exist_ok=True)
     path = sweep_dir / 'ranked.csv'
     flat = [_flat(row) for row in ranked]
+    # The header comes from a FLATTENED row, not from `model_fields`. `model_dump()` includes
+    # COMPUTED fields and `model_fields` does not, so `run_kind` was in every dict and in no
+    # header — and csv.DictWriter refuses a dict carrying a key it was not told about. The
+    # export raised on every non-empty sweep; no test ever called this with a real row, which
+    # is why it stood. Falling back to the declared fields keeps the empty case writing a
+    # header-only file rather than an empty one.
+    fieldnames = list(flat[0]) if flat else list(RunResultRow.model_fields)
     with open(path, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=list(RunResultRow.model_fields))
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(flat)
     return path

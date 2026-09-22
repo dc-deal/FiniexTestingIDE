@@ -20,6 +20,8 @@ from python.framework.reporting.store.run_index import (
     dir_size,
     own_files_size,
 )
+from python.framework.reporting.store.run_ledger_index import LEDGER_INDEX_FILE
+from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import IO_SUBDIR
@@ -44,17 +46,24 @@ class RunTreePruner:
     """Decides what may be removed from the run tree, and removes exactly that."""
 
     def __init__(self, run_logs: Optional[RunLogPaths] = None,
-                 run_index_path: Optional[Path] = None):
+                 run_index_path: Optional[Path] = None,
+                 run_ledger_path: Optional[Path] = None):
         """
         Args:
             run_logs: The run-type roots to walk; read from config when not given
             run_index_path: The index to read and rebuild; from config when not given.
                 Injectable for the same reason the roots are — a caller pointed at an isolated
                 tree must not ask the real index about runs that only exist there
+            run_ledger_path: The ledger whose rows are stamped when their run directory goes;
+                from config when not given. Injectable for exactly the reason above, and here
+                it is sharper: this store is WRITTEN, so a test pointed at a throwaway tree
+                would otherwise stamp the real books
         """
-        file_logging = AppConfigManager().get_file_logging_config_object()
+        app_config = AppConfigManager()
+        file_logging = app_config.get_file_logging_config_object()
         self._roots = run_logs or file_logging.run_logs
         self._index = RunIndex(run_index_path or file_logging.run_index, self._roots)
+        self._ledger_dir = Path(run_ledger_path or app_config.get_run_ledger_path())
 
     def size_figures_available(self) -> bool:
         """
@@ -125,6 +134,15 @@ class RunTreePruner:
 
         result.indexed_after_rebuild = self._index.rebuild()
         result.duplicate_ids = self._index.duplicate_ids()
+
+        # The ledger keeps its rows and says their evidence is gone (#390: the two stores have
+        # opposite retention). Marked AFTER the deletions and only for what actually went —
+        # `result.deleted` rather than the report — so a directory that refused to be removed
+        # does not get a row claiming it was. Orphans carry no run_id and contribute nothing.
+        removed = {c.run_id for c in report.all_deletions()
+                   if c.run_id and c.path in set(result.deleted)}
+        result.ledger_rows_marked = RunResultsLedger(
+            self._ledger_dir).mark_records_pruned(removed)
         return result
 
     # =========================================================================
@@ -208,10 +226,11 @@ class RunTreePruner:
           keep 2 of 4 and leave a `ranked.csv` ranking runs that no longer exist — a half-pruned
           sweep is worse than an unpruned one
 
-        There are TWO kinds of parent since #497 and they are counted alike: a sweep, whose
-        children are its combinations, and a DEPLOYMENT, whose children are the sessions of one
-        live bot across its restarts. Both are an identity that groups runs without being one,
-        so `--keep-last N` spares the N newest of each — whole.
+        There are TWO kinds of parent since #497: a sweep, whose children are its combinations,
+        and a DEPLOYMENT, whose children are the sessions of one live bot across its restarts.
+        Both are an identity that groups runs without being one, so `--keep-last N` spares the N
+        newest of each — whole, and per KIND, because a quota shared between the two is a quota
+        the busier kind takes entirely (#386).
 
         Args:
             runs: The index rows
@@ -224,10 +243,18 @@ class RunTreePruner:
             return None
 
         standalone: Dict[str, List[RunInfo]] = defaultdict(list)
-        by_parent: Dict[str, List[RunInfo]] = defaultdict(list)
+        # Bucketed by KIND first, and that is not tidiness: `keep_last` counts WITHIN a
+        # population, and a sweep and a deployment are two populations. Pooled — as this did
+        # until #386 gave the id a discriminator — a week of five sweeps fills the whole quota
+        # and every session of every deployment is pruned, because sorting ids descending puts
+        # the sweeps on top. The standalone branch beside it already separated by group.
+        # A row indexed before the discriminator existed carries no kind and lands in one
+        # shared bucket: the old behaviour, confined to the rows that cannot answer.
+        by_parent: Dict[str, Dict[str, List[RunInfo]]] = defaultdict(
+            lambda: defaultdict(list))
         for run in runs:
             if run.parent_id:
-                by_parent[run.parent_id].append(run)
+                by_parent[str(run.parent_kind or 'unknown')][run.parent_id].append(run)
             else:
                 standalone[f'{run.group}/{run.name}'].append(run)
 
@@ -238,10 +265,11 @@ class RunTreePruner:
             survivors.update(
                 r.run_id for r in sorted(members, key=lambda r: r.run_id, reverse=True)[:keep_last])
 
-        # Both parent identities carry a timestamp prefix, so the same ordering applies one
+        # Every parent identity carries a timestamp prefix, so the same ordering applies one
         # level up. Every child of a surviving parent survives with it.
-        for parent_id in sorted(by_parent, reverse=True)[:keep_last]:
-            survivors.update(r.run_id for r in by_parent[parent_id])
+        for parents in by_parent.values():
+            for parent_id in sorted(parents, reverse=True)[:keep_last]:
+                survivors.update(r.run_id for r in parents[parent_id])
         return survivors
 
     def _collect_orphans(self, known_dirs: set, report: PruneReport) -> None:
@@ -345,8 +373,7 @@ class RunTreePruner:
                 report.emptied_sweep_dirs.append(
                     PruneCandidate(path=sweep_dir, size_bytes=own_files_size(sweep_dir)))
 
-    @staticmethod
-    def _count_ledger_rows() -> int:
+    def _count_ledger_rows(self) -> int:
         """
         How many cross-run ledger fragments exist.
 
@@ -356,7 +383,10 @@ class RunTreePruner:
         Returns:
             The fragment count, or 0 when the ledger directory does not exist
         """
-        ledger_dir = Path(AppConfigManager().get_run_ledger_path())
+        ledger_dir = self._ledger_dir
         if not ledger_dir.exists():
             return 0
-        return len(list(ledger_dir.glob('*.parquet')))
+        # The index lives at the root of its own store (§44) and is not a fragment, so counting
+        # it reported one result more than the ledger holds — on a screen whose whole purpose is
+        # to say how much history is NOT being deleted.
+        return len([f for f in ledger_dir.glob('*.parquet') if f.name != LEDGER_INDEX_FILE])

@@ -53,6 +53,10 @@ from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_provenance_builder import (
     build_run_provenance_from_session,
 )
+from python.framework.reporting.builders.booking_periods_report_builder import (
+    build_booking_periods_report,
+)
+from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
@@ -223,6 +227,12 @@ class AutotraderReportCoordinator:
         # knows what it can fetch instead of discovering it by 404 (#475).
         SharedReportCoordinator.record_run_artifacts(self._run_dir)
 
+        # The booking periods, derived once and used twice: the table below and — through the
+        # segments themselves — the ledger rows. The reconciliation against the run's own
+        # figure is computed here rather than in the renderer (§12).
+        booking_periods = build_booking_periods_report(
+            self._run_id, units, unified.run_summary)
+
         # Run-results ledger (#390) — append the session to the persistent cross-run store the
         # Parameter Optimization system ranks over. Same RunSummary model + provenance as the sim
         # pipeline; the profile's strategy_config makes the param_hash comparable to the backtest
@@ -230,7 +240,12 @@ class AutotraderReportCoordinator:
         provenance = build_run_provenance_from_session(
             self._config, self._run_id, self._run_timestamp, warnings_errors_report,
             deployment_id=self._deployment_id)
-        append_run_to_ledger(unified.run_summary, provenance)
+        # The session's Hauptbuch (#537): its booking periods ARE its ledger rows, and no
+        # aggregate row is written beside them — the deployment history sums over rows, and a
+        # summary standing next to its own evidence would count the month twice.
+        append_run_to_ledger(
+            unified.run_summary, provenance,
+            [segment for unit in units for segment in unit.booking_segments])
 
         # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.
         if self._decision_logic:
@@ -256,6 +271,9 @@ class AutotraderReportCoordinator:
                 if unified.feed_stability.units else None),
             performance_summary=PerformanceSummary(unified.worker_decision),
             warnings_summary=WarningsSummary(warnings_errors_report),
+            # The session's Hauptbuch as an ordered section (#537) — live renders once, with
+            # detail ON, so it always gets the full table on the terminal AND in the file.
+            booking_periods_summary=BookingPeriodsSummary(booking_periods),
             closing_block=LiveSessionSummary(
                 result, unified.trade_history, self._run_dir, unified.run_summary,
                 warnings_errors_report, cold_start_report, safety_report),

@@ -280,3 +280,20 @@ Each `TradeRecord` contains full audit trail:
 - Account currency for verification
 
 This enables pen-and-paper verification of any trade's P&L calculation.
+
+## `test_booking_periods.py` — the simulation books, over the process bridge
+
+Every piece of the booking path is unit-tested elsewhere. What only an end-to-end run can show is
+that a SCENARIO reaches the seal at all — and that its periods survive being pickled and handed
+back, because a scenario runs in a SUBPROCESS and cannot write the ledger itself. Arriving empty
+would mean either that the seal never ran or that the field never made it onto the bridge: two
+different mistakes with one symptom, which is why the first test is about presence.
+
+The rest pin the properties the console prints: the periods count from 1 (no floor is carried
+into a backtest), the last one is closed by the run ending rather than by the market, the trade
+counts partition the scenario's trades, and the sum reconciles against the portfolio's own figure
+— two derivations over the same trades, arrived at by different routes.
+
+One test exists because of a defect found while building: the equity band was silently ZERO on
+every simulation period, because the per-tick sampling call did not hand its value back. Zero is
+a plausible drawdown, so nothing would have questioned it.

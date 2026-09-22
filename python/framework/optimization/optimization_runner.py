@@ -90,7 +90,12 @@ class OptimizationRunner:
             cfg = apply_overrides(base, combo, label)
             sweep_context = SweepContext(
                 sweep_id=sweep_id, sweep_params=combo,
-                objective=spec.objective, maximize=spec.maximize)
+                objective=spec.objective, maximize=spec.maximize,
+                # The size of the WHOLE search, not this combination's position in it: the
+                # figure exists to say how many candidates the winner beat (#32). It is written
+                # onto every row of the sweep, so it survives even when the sweep is abandoned
+                # part-way — the rows that made it can then be counted against it.
+                trial_count=len(combos))
             vLog.info(f'  [{index + 1}/{len(combos)}] {combo}')
             summary = initialize_batch_and_run(
                 cfg, self._app_config, sweep_context=sweep_context, mount=mount,

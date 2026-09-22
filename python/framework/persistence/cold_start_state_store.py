@@ -26,6 +26,7 @@ from typing import List, Optional, Set
 from pydantic import ValidationError
 
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.persistence.carry_over_identity import carry_over_key
 from python.framework.persistence.cold_start_state_index import ColdStartStateIndex
 from python.framework.types.persistence_types import (
     AccountDrawdownCarryOver,
@@ -72,7 +73,7 @@ class ColdStartStateStore:
         self._symbol = symbol
         self._logger = logger
         self._run_id = run_id
-        self._path = self._root / f'{self._sanitize(profile)}_{self._sanitize(symbol)}.json'
+        self._path = self._root / f'{carry_over_key(profile, symbol)}.json'
         # Provenance from the last load: WHEN the document was written. Kept as the stamp and
         # never turned into an age — deriving one needs a "now", and at boot the canonical
         # clock is not injected yet (§9).
@@ -158,6 +159,7 @@ class ColdStartStateStore:
         self,
         session_key: str,
         highest_position_counter: int,
+        highest_segment_no: int = 0,
         keys_in_use: Optional[Set[str]] = None,
         open_positions: Optional[List[PositionCarryOver]] = None,
         risk_baseline: Optional[RiskBaseline] = None,
@@ -182,6 +184,9 @@ class ColdStartStateStore:
         Args:
             session_key: This session's client-order-id discriminator ('' when none is stamped)
             highest_position_counter: The largest position counter minted this session
+            highest_segment_no: The largest booking period sealed this session. A FLOOR like
+                the counter above — the stored value is never lowered, so a session that sealed
+                nothing cannot reset a deployment's period count
             keys_in_use: Session halves the venue currently shows on orders of our shape.
                 Protected from eviction. None means "unknown", which protects nothing
             open_positions: The open book at this moment. None means "not supplied" and leaves
@@ -226,6 +231,11 @@ class ColdStartStateStore:
         payload.session_keys = [k for k in keys if k in protected or k in kept]
         payload.highest_position_counter = max(
             payload.highest_position_counter, highest_position_counter)
+        # The same floor, for the same reason (#537): a session that sealed nothing — or a dry
+        # run, which writes 0 — must not lower a deployment's period count and hand its
+        # successor a number already in the books.
+        payload.highest_segment_no = max(
+            payload.highest_segment_no, highest_segment_no)
         if open_positions is not None:
             payload.open_positions = list(open_positions)
         if risk_baseline is not None:
@@ -289,15 +299,3 @@ class ColdStartStateStore:
             f.write(payload)
         os.replace(tmp_path, self._path)
 
-    @staticmethod
-    def _sanitize(name: str) -> str:
-        """
-        Reduce an identity component to a safe filename token.
-
-        Args:
-            name: Raw profile or symbol string
-
-        Returns:
-            Lowercased token with non-alphanumerics collapsed to underscores
-        """
-        return ''.join(c if c.isalnum() else '_' for c in name).strip('_').lower()

@@ -2,583 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         // ====================================================
-        // 📊 DATA PIPELINE
-        // ====================================================
-        {
-            "name": "📊 Tick Data Report: kraken_spot",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
-            "args": [
-                "tick-data-report",
-                "kraken_spot"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 1
-            }
-        },
-        {
-            "name": "📊 Tick Data Report: mt5",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
-            "args": [
-                "tick-data-report",
-                "mt5"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 2
-            }
-        },
-        {
-            "name": "📥 Bar Render --all",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
-            "args": [
-                "render",
-                "--all",
-                "--clean"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 3
-            }
-        },
-        {
-            "name": "📥 Bar Render kraken_spot --clean",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
-            "args": [
-                "render",
-                "kraken_spot",
-                "--clean"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 4
-            }
-        },
-        {
-            "name": "📥 Import (Override)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
-            "args": [
-                "import",
-                "--override"
-            ],
-            "console": "integratedTerminal",
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 5
-            }
-        },
-        {
-            "name": "🛠️ Inspect Ticks&Bars: kraken_spot",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
-            "args": [
-                "inspect",
-                "kraken_spot",
-                "BTCUSD",
-                "M30"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 6
-            }
-        },
-        {
-            "name": "🛠️ Inspect Ticks&Bars: mt5",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
-            "args": [
-                "inspect",
-                "mt5",
-                "USDJPY",
-                "M30"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 7
-            }
-        },
-        {
-            "name": "📥 Signal Import (Override)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
-            "args": [
-                "import",
-                "--override"
-            ],
-            "console": "integratedTerminal",
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 8
-            }
-        },
-        {
-            "name": "🛠️ Inspect Sentiment: crypto_sentiment BTCUSD",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
-            "args": [
-                "inspect",
-                "crypto_sentiment_mock",
-                "BTCUSD"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 9
-            }
-        },
-        {
-            "name": "📡 Signal Connect Check (Producer)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
-            "args": [
-                "connect-check"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 10
-            }
-        },
-        {
-            "name": "📡 Signal Index: Status",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
-            "args": [
-                "status"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 11
-            }
-        },
-        {
-            "name": "📡 Signal Index: Rebuild",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
-            "args": [
-                "rebuild"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 12
-            }
-        },
-        {
-            "name": "📡 Signal Stream Probe (Mock, inject control code)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
-            "args": [
-                "stream-probe-mock",
-                "--seconds",
-                "15",
-                "--inject",
-                "${input:signalControlCode}"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 14
-            }
-        },
-        {
-            "name": "📡 Signal Stream Probe (Producer)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
-            "args": [
-                "stream-probe",
-                "--seconds",
-                "25"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 13
-            }
-        },
-        {
-            "name": "🧩 Pytest: Run All Core Tests",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/test_runner_cli.py",
-            "console": "integratedTerminal",
-            "presentation": {
-                "group": "02_data_pipeline",
-                "order": 12
-            }
-        },
-        // ====================================================
-        // 📚 INDEX MANAGEMENT
-        // ====================================================
-        {
-            "name": "💾 File Selection Demo: mt5/EURUSD (2 days)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
-            "args": [
-                "files",
-                "mt5",
-                "EURUSD",
-                "--start",
-                "2025-09-23T00:00:00+00:00",
-                "--end",
-                "2025-09-25T23:59:00+00:00"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03_index_management",
-                "order": 1
-            }
-        },
-        {
-            "name": "📈 Run Index: Deployments",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
-            "args": [
-                "deployments"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03_index_management",
-                "order": 18.5
-            }
-        },
-        {
-            "name": "📈 Run Index: Deployment - ID",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
-            "args": [
-                "deployments",
-                "--id",
-                "${input:deploymentId}"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03_index_management",
-                "order": 18.6
-            }
-        },
-        {
-            "name": "📈 Run Index: Prune (preview)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
-            "args": [
-                "prune",
-                "--orphans",
-                "--keep-last",
-                "3"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03_index_management",
-                "order": 19
-            }
-        },
-        {
-            "name": "📈 Run Index: Prune (APPLY — DELETES run directories)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
-            "args": [
-                "prune",
-                "--orphans",
-                "--keep-last",
-                "3",
-                "--apply"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03_index_management",
-                "order": 19.5
-            }
-        },
-        {
-            "name": "📈 Run Index: Status",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
-            "args": [
-                "status"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03_index_management",
-                "order": 21
-            }
-        },
-        {
-            "name": "📈 Store: Catalog",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/store_cli.py",
-            "args": [
-                "catalog"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03_index_management",
-                "order": 22
-            }
-        },
-        {
-            "name": "📶 Signal Index: Status",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
-            "args": [
-                "status"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03_index_management",
-                "order": 7
-            }
-        },
-        {
-            "name": "📈 Bar Index: Status",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
-            "args": [
-                "status"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03_index_management",
-                "order": 3
-            }
-        },
-        {
-            "name": "📚 File Coverage: mt5/EURUSD",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
-            "args": [
-                "file-coverage",
-                "mt5",
-                "EURUSD"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03_index_management",
-                "order": 4
-            }
-        },
-        {
-            "name": "📚 Tick Index: Status",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
-            "args": [
-                "status"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03_index_management",
-                "order": 6
-            }
-        },
-        // ====================================================
-        // 🔄 STORE INDEX REBUILD
-        // ====================================================
-        // One entry per store that HAS an index (§44). The three marked "own manager"
-        // do not go through store_cli — they predate the shared base and #175 converges
-        // them; until then the split is real and this group shows it.
-        {
-            "name": "🔄 Rebuild: All indexes the store model owns",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/store_cli.py",
-            "args": [
-                "rebuild",
-                "--all"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03b_store_rebuild",
-                "order": 1
-            }
-        },
-        {
-            "name": "🔄 Rebuild: bars (own manager, #175)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
-            "args": [
-                "rebuild"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03b_store_rebuild",
-                "order": 2
-            }
-        },
-        {
-            "name": "🔄 Rebuild: certificates",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/store_cli.py",
-            "args": [
-                "rebuild",
-                "certificates"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03b_store_rebuild",
-                "order": 3
-            }
-        },
-        {
-            "name": "🔄 Rebuild: cold_start_state",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/store_cli.py",
-            "args": [
-                "rebuild",
-                "cold_start_state"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03b_store_rebuild",
-                "order": 4
-            }
-        },
-        {
-            "name": "🔄 Rebuild: discovery_caches",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/store_cli.py",
-            "args": [
-                "rebuild",
-                "discovery_caches"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03b_store_rebuild",
-                "order": 5
-            }
-        },
-        {
-            "name": "🔄 Rebuild: run_ledger",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/store_cli.py",
-            "args": [
-                "rebuild",
-                "run_ledger"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03b_store_rebuild",
-                "order": 6
-            }
-        },
-        {
-            "name": "🔄 Rebuild: runs",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/store_cli.py",
-            "args": [
-                "rebuild",
-                "runs"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03b_store_rebuild",
-                "order": 7
-            }
-        },
-        {
-            "name": "🔄 Rebuild: signals (own manager, #175)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
-            "args": [
-                "rebuild"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03b_store_rebuild",
-                "order": 8
-            }
-        },
-        {
-            "name": "🔄 Rebuild: ticks (own manager, #175)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
-            "args": [
-                "rebuild"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "03b_store_rebuild",
-                "order": 9
-            }
-        },
-        // ====================================================
-        // 🔬 STRATEGY RUNNER
+        // 🔬 SIMULATION RUNS
         // ====================================================
         {
             "name": "📙 List Scenarios",
@@ -592,88 +16,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "04_strategy_runner",
+                "group": "01_runs_simulation",
                 "order": 1
-            }
-        },
-        {
-            "name": "🔬 Run BTCUSD_sandbox - algo:simple_consensus",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
-            "args": [
-                "run",
-                "BTCUSD_sandbox.json"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "04_strategy_runner",
-                "order": 2
-            }
-        },
-        {
-            "name": "🔬 Run cautious_macd_sandbox - tick processing budget",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
-            "args": [
-                "run",
-                "cautious_macd_sandbox.json"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "04_strategy_runner",
-                "order": 3
-            }
-        },
-        {
-            "name": "🔬 Run DASHUSD_sandbox - algo:simple_consensus",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
-            "args": [
-                "run",
-                "DASHUSD_sandbox.json"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "04_strategy_runner",
-                "order": 4
-            }
-        },
-        {
-            "name": "🔬 Run EURGBP_stress_test_config - stress test",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
-            "args": [
-                "run",
-                "EURGBP_stress_test_config.json"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "04_strategy_runner",
-                "order": 5
-            }
-        },
-        {
-            "name": "🔬 Run eurusd_3_windows_reference",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
-            "args": [
-                "run",
-                "eurusd_3_windows_reference.json"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "04_strategy_runner",
-                "order": 8
             }
         },
         // 📡 SIGNAL feature demo: forex_macro_sentiment on mt5/EURUSD. The window straddles the
@@ -692,8 +36,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "04_strategy_runner",
-                "order": 6
+                "group": "01_runs_simulation",
+                "order": 2
             }
         },
         // 📡 SIGNAL on REAL collected data — both planes real on both markets: live-collected
@@ -712,24 +56,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "04_strategy_runner",
-                "order": 7
-            }
-        },
-        {
-            "name": "🔬 Run eurusd_3_windows_sandbox - algo:aggressive_trend",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
-            "args": [
-                "run",
-                "eurusd_3_windows_sandbox.json"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "04_strategy_runner",
-                "order": 9
+                "group": "01_runs_simulation",
+                "order": 3
             }
         },
         {
@@ -744,8 +72,140 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "04_strategy_runner",
+                "group": "01_runs_simulation",
+                "order": 4
+            }
+        },
+        {
+            "name": "🔬 Profile Run: All continuous/ - Folder",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "eurusd_3_windows_sandbox.json",
+                "--generator-profile",
+                "${workspaceFolder}/configs/generator_profiles/continuous"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "01_runs_simulation",
+                "order": 5
+            }
+        },
+        {
+            "name": "🔬 Profile Run: All volatility_split/ Folder",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "eurusd_3_windows_sandbox.json",
+                "--generator-profile",
+                "${workspaceFolder}/configs/generator_profiles/volatility_split"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "01_runs_simulation",
+                "order": 6
+            }
+        },
+        {
+            "name": "🔬 Run BTCUSD_sandbox - algo:simple_consensus",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "BTCUSD_sandbox.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "01_runs_simulation",
+                "order": 7
+            }
+        },
+        {
+            "name": "🔬 Run DASHUSD_sandbox - algo:simple_consensus",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "DASHUSD_sandbox.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "01_runs_simulation",
+                "order": 8
+            }
+        },
+        {
+            "name": "🔬 Run EURGBP_stress_test_config - stress test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "EURGBP_stress_test_config.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "01_runs_simulation",
+                "order": 9
+            }
+        },
+        {
+            "name": "🔬 Run cautious_macd_sandbox - tick processing budget",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "cautious_macd_sandbox.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "01_runs_simulation",
                 "order": 10
+            }
+        },
+        {
+            "name": "🔬 Run eurusd_3_windows_reference",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "eurusd_3_windows_reference.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "01_runs_simulation",
+                "order": 11
+            }
+        },
+        {
+            "name": "🔬 Run eurusd_3_windows_sandbox - algo:aggressive_trend",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "eurusd_3_windows_sandbox.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "01_runs_simulation",
+                "order": 12
             }
         },
         {
@@ -760,8 +220,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "04_strategy_runner",
-                "order": 11
+                "group": "01_runs_simulation",
+                "order": 13
             }
         },
         {
@@ -778,49 +238,17 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "04_strategy_runner",
-                "order": 12
-            }
-        },
-        {
-            "name": "🤖🧪 AutoTrader: User Config (prompt)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
-            "args": [
-                "run",
-                "--config",
-                "${input:userAutotraderConfig}",
-                "--display"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "04_strategy_runner",
-                "order": 13
+                "group": "01_runs_simulation",
+                "order": 14
             }
         },
         // ====================================================
-        // 🔧 BROKER CONFIG
+        // 🤖 AUTOTRADER RUNS
         // ====================================================
-        {
-            "name": "🔧 Broker Config: Sync (all dynamic brokers)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/broker_config_cli.py",
-            "args": [
-                "sync"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "05_broker_config",
-                "order": 1
-            }
-        },
-        // ====================================================
-        // 🤖 AUTOTRADER
-        // ====================================================
+        // Day Boundary E2E (#476): set market_rules.crypto.trading_day_anchor in
+        // user_configs/market_config.json to a few minutes ahead, then start this. The
+        // session log rotates on the boundary and says so. dry_run is pinned in the
+        // profile, so it reads the real feed and places nothing.
         {
             "name": "🤖 AutoTrader: BTCUSD Mock -  Aggressive Trend",
             "type": "debugpy",
@@ -837,7 +265,7 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "06_autotrader",
+                "group": "02_runs_autotrader",
                 "order": 1
             }
         },
@@ -857,7 +285,7 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "06_autotrader",
+                "group": "02_runs_autotrader",
                 "order": 2
             }
         },
@@ -877,8 +305,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "06_autotrader",
-                "order": 2.5
+                "group": "02_runs_autotrader",
+                "order": 3
             }
         },
         {
@@ -897,8 +325,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "06_autotrader",
-                "order": 3
+                "group": "02_runs_autotrader",
+                "order": 4
             }
         },
         {
@@ -909,30 +337,48 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/dashusd_live.json"
+                "configs/autotrader_profiles/production/dashusd_live.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "06_autotrader",
-                "order": 4
+                "group": "02_runs_autotrader",
+                "order": 5
             }
         },
         {
-            "name": "🤖 AutoTrader: DOTUSD Live (no index data)",
+            "name": "🤖 AutoTrader: DOTUSD Live",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/dotusd_live.json"
+                "configs/autotrader_profiles/production/dotusd_live.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "06_autotrader",
-                "order": 5
+                "group": "02_runs_autotrader",
+                "order": 6
+            }
+        },
+        {
+            "name": "🤖 AutoTrader: Day Boundary E2E (ETHUSD, dry-run)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/observation/kraken_spot_ethusd_day_boundary.json",
+                "--attended"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_runs_autotrader",
+                "order": 7
             }
         },
         {
@@ -943,13 +389,13 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/ethusd_live.json"
+                "configs/autotrader_profiles/production/ethusd_live.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "06_autotrader",
-                "order": 6
+                "group": "02_runs_autotrader",
+                "order": 8
             }
         },
         {
@@ -960,34 +406,225 @@
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/solusd_live.json"
+                "configs/autotrader_profiles/production/solusd_live.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "06_autotrader",
-                "order": 7
+                "group": "02_runs_autotrader",
+                "order": 9
+            }
+        },
+        {
+            "name": "🤖🧪 AutoTrader: User Config (prompt)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "${input:userAutotraderConfig}",
+                "--display"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "02_runs_autotrader",
+                "order": 10
             }
         },
         // ====================================================
-        // 🔍 DISCOVERIES
+        // 📥 IMPORT
         // ====================================================
-        // --- Cache Management ---
         {
-            "name": "🔍 Disc - Cache: Rebuild All",
+            "name": "📥 Bar Render --all",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
             "args": [
-                "cache",
-                "rebuild-all",
-                "--force"
+                "render",
+                "--all",
+                "--clean"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "07_discoveries",
+                "group": "03_import",
                 "order": 1
+            }
+        },
+        {
+            "name": "📥 Bar Render kraken_spot --clean",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
+            "args": [
+                "render",
+                "kraken_spot",
+                "--clean"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "03_import",
+                "order": 2
+            }
+        },
+        {
+            "name": "📥 Import (Override)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "import",
+                "--override"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "03_import",
+                "order": 3
+            }
+        },
+        {
+            "name": "📥 Signal Import (Override)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "import",
+                "--override"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "03_import",
+                "order": 4
+            }
+        },
+        // ====================================================
+        // 📚 COVERAGE & GAPS — what data is there
+        // ====================================================
+        {
+            "name": "📈 Bar Index: Status",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
+            "args": [
+                "status"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_coverage",
+                "order": 1
+            }
+        },
+        {
+            "name": "📈 Run Index: Deployment - ID",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
+            "args": [
+                "deployments",
+                "--id",
+                "${input:deploymentId}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_coverage",
+                "order": 2
+            }
+        },
+        {
+            "name": "📈 Run Index: Deployments",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
+            "args": [
+                "deployments"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_coverage",
+                "order": 3
+            }
+        },
+        {
+            "name": "📈 Run Index: Status",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
+            "args": [
+                "status"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_coverage",
+                "order": 4
+            }
+        },
+        {
+            "name": "📈 Store: Catalog",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/store_cli.py",
+            "args": [
+                "catalog"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_coverage",
+                "order": 5
+            }
+        },
+        {
+            "name": "📚 File Coverage: mt5/EURUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
+            "args": [
+                "file-coverage",
+                "mt5",
+                "EURUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_coverage",
+                "order": 6
+            }
+        },
+        {
+            "name": "📚 Tick Index: Status",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
+            "args": [
+                "status"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_coverage",
+                "order": 7
+            }
+        },
+        {
+            "name": "📡 Signal Index: Status",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "status"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_coverage",
+                "order": 8
             }
         },
         {
@@ -1002,102 +639,42 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "07_discoveries",
-                "order": 2
+                "group": "04_coverage",
+                "order": 9
             }
         },
-        // --- Volatility Profile ---
         {
-            "name": "🔍 Disc - Volatility Profile: kraken_spot/BTCUSD",
+            "name": "🔍 Disc - Data Coverage: Status",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
-                "volatility-profile",
-                "kraken_spot",
-                "BTCUSD"
+                "data-coverage",
+                "status"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "07_discoveries",
-                "order": 3
+                "group": "04_coverage",
+                "order": 10
             }
         },
         {
-            "name": "🔍 Disc - Volatility Profile: mt5/EURUSD",
+            "name": "🔍 Disc - Data Coverage: Validate All",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
             "args": [
-                "volatility-profile",
-                "mt5",
-                "EURUSD"
+                "data-coverage",
+                "validate"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "07_discoveries",
-                "order": 4
+                "group": "04_coverage",
+                "order": 11
             }
         },
-        {
-            "name": "🔍 Disc - Volatility Profile: mt5/USDJPY",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "volatility-profile",
-                "mt5",
-                "USDJPY"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "07_discoveries",
-                "order": 5
-            }
-        },
-        // --- Extreme Moves ---
-        {
-            "name": "🔍 Disc - Extreme Moves: kraken_spot/BTCUSD",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "extreme-moves",
-                "kraken_spot",
-                "BTCUSD",
-                "--top",
-                "100"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "07_discoveries",
-                "order": 6
-            }
-        },
-        {
-            "name": "🔍 Disc - Extreme Moves: mt5/USDJPY",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "extreme-moves",
-                "mt5",
-                "USDJPY",
-                "--top",
-                "100"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "07_discoveries",
-                "order": 7
-            }
-        },
-        // --- Data Coverage ---
         {
             "name": "🔍 Disc - Data Coverage: kraken_spot/ADAUSD",
             "type": "debugpy",
@@ -1112,8 +689,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "07_discoveries",
-                "order": 8
+                "group": "04_coverage",
+                "order": 12
             }
         },
         {
@@ -1130,8 +707,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "07_discoveries",
-                "order": 9
+                "group": "04_coverage",
+                "order": 13
             }
         },
         {
@@ -1148,8 +725,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "07_discoveries",
-                "order": 10
+                "group": "04_coverage",
+                "order": 14
             }
         },
         {
@@ -1166,8 +743,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "07_discoveries",
-                "order": 11
+                "group": "04_coverage",
+                "order": 15
             }
         },
         {
@@ -1184,40 +761,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "07_discoveries",
-                "order": 12
-            }
-        },
-        {
-            "name": "🔍 Disc - Data Coverage: Status",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "data-coverage",
-                "status"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "07_discoveries",
-                "order": 13
-            }
-        },
-        {
-            "name": "🔍 Disc - Data Coverage: Validate All",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
-            "args": [
-                "data-coverage",
-                "validate"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "07_discoveries",
-                "order": 14
+                "group": "04_coverage",
+                "order": 16
             }
         },
         {
@@ -1234,8 +779,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "07_discoveries",
-                "order": 15
+                "group": "04_coverage",
+                "order": 17
             }
         },
         {
@@ -1252,8 +797,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "07_discoveries",
-                "order": 16
+                "group": "04_coverage",
+                "order": 18
             }
         },
         // ====================================================
@@ -1270,7 +815,7 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "08_api_server",
+                "group": "05_api_server",
                 "order": 1
             }
         },
@@ -1285,7 +830,7 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "08_api_server",
+                "group": "05_api_server",
                 "order": 2
             }
         },
@@ -1304,74 +849,442 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "08_api_server",
+                "group": "05_api_server",
                 "order": 3
             }
         },
         // ====================================================
-        // ✨ PARAMETER OPTIMIZATION
+        // 🔄 REBUILDS
         // ====================================================
+        // One entry per store that HAS an index (§44). The three marked "own manager"
+        // do not go through store_cli — they predate the shared base and #175 converges
+        // them; until then the split is real and this group shows it.
         {
-            "name": "✨ Optimization: Cautious MACD Grid",
+            "name": "📡 Signal Index: Rebuild",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/optimization_cli.py",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
             "args": [
-                "run",
-                "cautious_macd_grid.json"
+                "rebuild"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "08b_parameter_optimization",
+                "group": "06_rebuild",
                 "order": 1
             }
         },
+        // One entry per store that HAS an index (§44). The three marked "own manager"
+        // do not go through store_cli — they predate the shared base and #175 converges
+        // them; until then the split is real and this group shows it.
         {
-            "name": "✨ Optimization: List Sweeps",
+            "name": "🔄 Rebuild: All indexes the store model owns",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/optimization_cli.py",
+            "program": "${workspaceFolder}/python/cli/store_cli.py",
             "args": [
-                "list"
+                "rebuild",
+                "--all"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "08b_parameter_optimization",
+                "group": "06_rebuild",
                 "order": 2
             }
         },
         {
-            "name": "✨ Optimization: Report (prompt sweep id)",
+            "name": "🔄 Rebuild: bars (own manager, #175)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/optimization_cli.py",
+            "program": "${workspaceFolder}/python/cli/bar_index_cli.py",
             "args": [
-                "report",
-                "${input:optimizationSweepId}"
+                "rebuild"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "08b_parameter_optimization",
+                "group": "06_rebuild",
                 "order": 3
             }
         },
         {
-            "name": "✨ Optimization: Trend Channel Reference Grid",
+            "name": "🔄 Rebuild: certificates",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/optimization_cli.py",
+            "program": "${workspaceFolder}/python/cli/store_cli.py",
             "args": [
-                "run",
-                "trend_channel_reference_grid.json"
+                "rebuild",
+                "certificates"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "08b_parameter_optimization",
+                "group": "06_rebuild",
                 "order": 4
+            }
+        },
+        {
+            "name": "🔄 Rebuild: cold_start_state",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/store_cli.py",
+            "args": [
+                "rebuild",
+                "cold_start_state"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_rebuild",
+                "order": 5
+            }
+        },
+        {
+            "name": "🔄 Rebuild: discovery_caches",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/store_cli.py",
+            "args": [
+                "rebuild",
+                "discovery_caches"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_rebuild",
+                "order": 6
+            }
+        },
+        {
+            "name": "🔄 Rebuild: run_ledger",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/store_cli.py",
+            "args": [
+                "rebuild",
+                "run_ledger"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_rebuild",
+                "order": 7
+            }
+        },
+        {
+            "name": "🔄 Rebuild: runs",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/store_cli.py",
+            "args": [
+                "rebuild",
+                "runs"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_rebuild",
+                "order": 8
+            }
+        },
+        {
+            "name": "🔄 Rebuild: signals (own manager, #175)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "rebuild"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_rebuild",
+                "order": 9
+            }
+        },
+        {
+            "name": "🔄 Rebuild: ticks (own manager, #175)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
+            "args": [
+                "rebuild"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_rebuild",
+                "order": 10
+            }
+        },
+        {
+            "name": "🔍 Disc - Cache: Rebuild All",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "cache",
+                "rebuild-all",
+                "--force"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "06_rebuild",
+                "order": 11
+            }
+        },
+        // ====================================================
+        // 🛠️ INSPECT & PROBE
+        // ====================================================
+        {
+            "name": "💾 File Selection Demo: mt5/EURUSD (2 days)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/tick_index_cli.py",
+            "args": [
+                "files",
+                "mt5",
+                "EURUSD",
+                "--start",
+                "2025-09-23T00:00:00+00:00",
+                "--end",
+                "2025-09-25T23:59:00+00:00"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 1
+            }
+        },
+        {
+            "name": "📊 Tick Data Report: kraken_spot",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "tick-data-report",
+                "kraken_spot"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 2
+            }
+        },
+        {
+            "name": "📊 Tick Data Report: mt5",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "tick-data-report",
+                "mt5"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 3
+            }
+        },
+        {
+            "name": "📡 Signal Connect Check (Producer)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "connect-check"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 4
+            }
+        },
+        {
+            "name": "📡 Signal Stream Probe (Mock, inject control code)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "stream-probe-mock",
+                "--seconds",
+                "15",
+                "--inject",
+                "${input:signalControlCode}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 5
+            }
+        },
+        {
+            "name": "📡 Signal Stream Probe (Producer)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "stream-probe",
+                "--seconds",
+                "25"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 6
+            }
+        },
+        {
+            "name": "🛠️ Inspect Sentiment: crypto_sentiment BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/signal_index_cli.py",
+            "args": [
+                "inspect",
+                "crypto_sentiment_mock",
+                "BTCUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 7
+            }
+        },
+        {
+            "name": "🛠️ Inspect Ticks&Bars: kraken_spot",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "inspect",
+                "kraken_spot",
+                "BTCUSD",
+                "M30"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 8
+            }
+        },
+        {
+            "name": "🛠️ Inspect Ticks&Bars: mt5",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "inspect",
+                "mt5",
+                "USDJPY",
+                "M30"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 9
+            }
+        },
+        // ====================================================
+        // 🔍 DISCOVERY ANALYSIS
+        // ====================================================
+        {
+            "name": "🔍 Disc - Extreme Moves: kraken_spot/BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "extreme-moves",
+                "kraken_spot",
+                "BTCUSD",
+                "--top",
+                "100"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "08_discovery_analysis",
+                "order": 1
+            }
+        },
+        {
+            "name": "🔍 Disc - Extreme Moves: mt5/USDJPY",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "extreme-moves",
+                "mt5",
+                "USDJPY",
+                "--top",
+                "100"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "08_discovery_analysis",
+                "order": 2
+            }
+        },
+        {
+            "name": "🔍 Disc - Volatility Profile: kraken_spot/BTCUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "volatility-profile",
+                "kraken_spot",
+                "BTCUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "08_discovery_analysis",
+                "order": 3
+            }
+        },
+        {
+            "name": "🔍 Disc - Volatility Profile: mt5/EURUSD",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "volatility-profile",
+                "mt5",
+                "EURUSD"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "08_discovery_analysis",
+                "order": 4
+            }
+        },
+        {
+            "name": "🔍 Disc - Volatility Profile: mt5/USDJPY",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "volatility-profile",
+                "mt5",
+                "USDJPY"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "08_discovery_analysis",
+                "order": 5
             }
         },
         // ====================================================
@@ -1676,45 +1589,74 @@
                 "order": 13
             }
         },
-        // --- Profile Runs (multi-profile from directory) ---
+        // ====================================================
+        // ✨ PARAMETER OPTIMIZATION
+        // ====================================================
         {
-            "name": "🔬 Profile Run: All continuous/ - Folder",
+            "name": "✨ Optimization: Cautious MACD Grid",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "program": "${workspaceFolder}/python/cli/optimization_cli.py",
             "args": [
                 "run",
-                "eurusd_3_windows_sandbox.json",
-                "--generator-profile",
-                "${workspaceFolder}/configs/generator_profiles/continuous"
+                "cautious_macd_grid.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "09_scenario_generation",
-                "order": 14
+                "group": "10_optimization",
+                "order": 1
             }
         },
         {
-            "name": "🔬 Profile Run: All volatility_split/ Folder",
+            "name": "✨ Optimization: List Sweeps",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "program": "${workspaceFolder}/python/cli/optimization_cli.py",
             "args": [
-                "run",
-                "eurusd_3_windows_sandbox.json",
-                "--generator-profile",
-                "${workspaceFolder}/configs/generator_profiles/volatility_split"
+                "list"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "09_scenario_generation",
-                "order": 15
+                "group": "10_optimization",
+                "order": 2
+            }
+        },
+        {
+            "name": "✨ Optimization: Report (prompt sweep id)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/optimization_cli.py",
+            "args": [
+                "report",
+                "${input:optimizationSweepId}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_optimization",
+                "order": 3
+            }
+        },
+        {
+            "name": "✨ Optimization: Trend Channel Reference Grid",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/optimization_cli.py",
+            "args": [
+                "run",
+                "trend_channel_reference_grid.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "10_optimization",
+                "order": 4
             }
         },
         // ====================================================
-        // 🔬 EXPERIMENTS / PoC
+        // 🔧 MAINTENANCE
         // ====================================================
         {
             "name": "📁 Project Structure - Detailed",
@@ -1729,10 +1671,65 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "10_experiments",
+                "group": "11_maintenance",
                 "order": 1
             }
         },
+        {
+            "name": "📈 Run Index: Prune (APPLY — DELETES run directories)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
+            "args": [
+                "prune",
+                "--orphans",
+                "--keep-last",
+                "3",
+                "--apply"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_maintenance",
+                "order": 2
+            }
+        },
+        {
+            "name": "📈 Run Index: Prune (preview)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/run_index_cli.py",
+            "args": [
+                "prune",
+                "--orphans",
+                "--keep-last",
+                "3"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_maintenance",
+                "order": 3
+            }
+        },
+        {
+            "name": "🔧 Broker Config: Sync (all dynamic brokers)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/broker_config_cli.py",
+            "args": [
+                "sync"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_maintenance",
+                "order": 4
+            }
+        },
+        // ====================================================
+        // 🔭 EXPERIMENTS / PoC
+        // ====================================================
         {
             "name": "📐 Normalization Demo (cross-instrument)",
             "type": "debugpy",
@@ -1741,8 +1738,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "10_experiments",
-                "order": 3
+                "group": "12_experiments",
+                "order": 1
             }
         },
         {
@@ -1753,20 +1750,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "10_experiments",
-                "order": 5
-            }
-        },
-        {
-            "name": "🔭 Venue Probe: Kraken txid retention (READ-ONLY)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/experiments/venue_probes/probe_kraken_txid_retention.py",
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "10_experiments",
-                "order": 6
+                "group": "12_experiments",
+                "order": 2
             }
         },
         {
@@ -1781,8 +1766,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "10_experiments",
-                "order": 7
+                "group": "12_experiments",
+                "order": 3
             }
         },
         {
@@ -1797,81 +1782,25 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "10_experiments",
-                "order": 8
+                "group": "12_experiments",
+                "order": 4
+            }
+        },
+        {
+            "name": "🔭 Venue Probe: Kraken txid retention (READ-ONLY)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/experiments/venue_probes/probe_kraken_txid_retention.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "12_experiments",
+                "order": 5
             }
         },
         // ====================================================
         // 🧩 PYTEST VALIDATION
         // ====================================================
-        {
-            "name": "🧩 Pytest: Active Order Display (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/simulation/active_order_display/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 1
-            }
-        },
-        {
-            "name": "🧩 Pytest: Algo Clock Convention (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/framework/algo_clock/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 2
-            }
-        },
-        {
-            "name": "🧩 Pytest: Algo Clock Validator (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/framework/algo_clock_validator/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 3
-            }
-        },
-        {
-            "name": "🧩 Pytest: Algo State Persistence (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/autotrader/state_persistence/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 4
-            }
-        },
         {
             "name": "🧩 Pytest: API Endpoints (All)",
             "type": "debugpy",
@@ -1885,8 +1814,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 5
+                "group": "13_pytest_validation",
+                "order": 1
             }
         },
         {
@@ -1902,7 +1831,75 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
+                "group": "13_pytest_validation",
+                "order": 2
+            }
+        },
+        {
+            "name": "🧩 Pytest: Active Order Display (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/simulation/active_order_display/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 3
+            }
+        },
+        {
+            "name": "🧩 Pytest: Algo Clock Convention (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/algo_clock/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 4
+            }
+        },
+        {
+            "name": "🧩 Pytest: Algo Clock Validator (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/algo_clock_validator/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 5
+            }
+        },
+        {
+            "name": "🧩 Pytest: Algo State Persistence (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/state_persistence/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
                 "order": 6
             }
         },
@@ -1919,8 +1916,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 6.5
+                "group": "13_pytest_validation",
+                "order": 7
             }
         },
         {
@@ -1936,8 +1933,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 7
+                "group": "13_pytest_validation",
+                "order": 8
             }
         },
         {
@@ -1953,8 +1950,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 8
+                "group": "13_pytest_validation",
+                "order": 9
             }
         },
         {
@@ -1970,8 +1967,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 9
+                "group": "13_pytest_validation",
+                "order": 10
             }
         },
         {
@@ -1987,8 +1984,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 10
+                "group": "13_pytest_validation",
+                "order": 11
             }
         },
         {
@@ -2006,8 +2003,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 11
+                "group": "13_pytest_validation",
+                "order": 12
             }
         },
         {
@@ -2023,8 +2020,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 11.2
+                "group": "13_pytest_validation",
+                "order": 13
             }
         },
         {
@@ -2040,8 +2037,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 11.5
+                "group": "13_pytest_validation",
+                "order": 14
             }
         },
         {
@@ -2057,8 +2054,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 12
+                "group": "13_pytest_validation",
+                "order": 15
             }
         },
         {
@@ -2074,8 +2071,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 13
+                "group": "13_pytest_validation",
+                "order": 16
             }
         },
         {
@@ -2091,8 +2088,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 13
+                "group": "13_pytest_validation",
+                "order": 17
             }
         },
         {
@@ -2108,8 +2105,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 14
+                "group": "13_pytest_validation",
+                "order": 18
             }
         },
         {
@@ -2126,8 +2123,8 @@
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 15
+                "group": "13_pytest_validation",
+                "order": 19
             }
         },
         {
@@ -2143,8 +2140,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 16
+                "group": "13_pytest_validation",
+                "order": 20
             }
         },
         {
@@ -2160,8 +2157,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 17
+                "group": "13_pytest_validation",
+                "order": 21
             }
         },
         {
@@ -2178,8 +2175,8 @@
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 18
+                "group": "13_pytest_validation",
+                "order": 22
             }
         },
         {
@@ -2196,8 +2193,8 @@
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 18.5
+                "group": "13_pytest_validation",
+                "order": 23
             }
         },
         {
@@ -2213,8 +2210,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 19
+                "group": "13_pytest_validation",
+                "order": 24
             }
         },
         {
@@ -2230,8 +2227,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 13
+                "group": "13_pytest_validation",
+                "order": 25
             }
         },
         {
@@ -2247,8 +2244,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 20
+                "group": "13_pytest_validation",
+                "order": 26
             }
         },
         {
@@ -2264,8 +2261,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 21
+                "group": "13_pytest_validation",
+                "order": 27
             }
         },
         {
@@ -2281,8 +2278,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 21.5
+                "group": "13_pytest_validation",
+                "order": 28
             }
         },
         {
@@ -2298,8 +2295,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 22
+                "group": "13_pytest_validation",
+                "order": 29
             }
         },
         {
@@ -2315,8 +2312,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 23
+                "group": "13_pytest_validation",
+                "order": 30
             }
         },
         {
@@ -2332,8 +2329,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 24
+                "group": "13_pytest_validation",
+                "order": 31
             }
         },
         {
@@ -2349,8 +2346,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 25
+                "group": "13_pytest_validation",
+                "order": 32
             }
         },
         {
@@ -2366,8 +2363,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 26
+                "group": "13_pytest_validation",
+                "order": 33
             }
         },
         {
@@ -2383,8 +2380,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 26.5
+                "group": "13_pytest_validation",
+                "order": 34
             }
         },
         {
@@ -2400,8 +2397,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 27
+                "group": "13_pytest_validation",
+                "order": 35
             }
         },
         {
@@ -2418,8 +2415,8 @@
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 28
+                "group": "13_pytest_validation",
+                "order": 36
             }
         },
         {
@@ -2435,8 +2432,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 29
+                "group": "13_pytest_validation",
+                "order": 37
             }
         },
         {
@@ -2452,8 +2449,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 30
+                "group": "13_pytest_validation",
+                "order": 38
             }
         },
         {
@@ -2470,8 +2467,8 @@
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 31
+                "group": "13_pytest_validation",
+                "order": 39
             }
         },
         {
@@ -2489,8 +2486,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 32
+                "group": "13_pytest_validation",
+                "order": 40
             }
         },
         {
@@ -2506,8 +2503,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 33
+                "group": "13_pytest_validation",
+                "order": 41
             }
         },
         {
@@ -2524,8 +2521,8 @@
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 34
+                "group": "13_pytest_validation",
+                "order": 42
             }
         },
         {
@@ -2541,8 +2538,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 35
+                "group": "13_pytest_validation",
+                "order": 43
             }
         },
         {
@@ -2558,8 +2555,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 36
+                "group": "13_pytest_validation",
+                "order": 44
             }
         },
         {
@@ -2576,8 +2573,8 @@
             "justMyCode": false,
             "cwd": "${workspaceFolder}",
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 37
+                "group": "13_pytest_validation",
+                "order": 45
             }
         },
         {
@@ -2593,8 +2590,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 37.5
+                "group": "13_pytest_validation",
+                "order": 46
             }
         },
         {
@@ -2610,8 +2607,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 38
+                "group": "13_pytest_validation",
+                "order": 47
             }
         },
         {
@@ -2627,8 +2624,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 39
+                "group": "13_pytest_validation",
+                "order": 48
             }
         },
         {
@@ -2644,178 +2641,19 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 40
+                "group": "13_pytest_validation",
+                "order": 49
             }
         },
         {
-            "name": "🧩 Pytest: Safety Circuit Breaker (All)",
+            "name": "🧩 Pytest: Run All Core Tests",
             "type": "debugpy",
             "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/autotrader/safety/",
-                "-v",
-                "--tb=short"
-            ],
+            "program": "${workspaceFolder}/python/cli/test_runner_cli.py",
             "console": "integratedTerminal",
-            "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 41
-            }
-        },
-        {
-            "name": "🧩 Pytest: Safety Circuit Breaker Integration (AutoTrader only)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/autotrader/safety/test_safety_integration.py",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 42
-            }
-        },
-        {
-            "name": "🧩 Pytest: Scenario Generator (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/data/scenario_generator/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 43
-            }
-        },
-        {
-            "name": "🧩 Pytest: Session End (#492)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/autotrader/session_end",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 43.4
-            }
-        },
-        {
-            "name": "🧩 Pytest: Session Validation (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/autotrader/session_validation/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 43.5
-            }
-        },
-        {
-            "name": "🧩 Pytest: Signal Coverage (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/framework/signal_coverage/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 44
-            }
-        },
-        {
-            "name": "🧩 Pytest: Signal Import (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/data/signal_import/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 45
-            }
-        },
-        {
-            "name": "🧩 Pytest: Signal Workers (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/framework/signal_workers/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 46
-            }
-        },
-        {
-            "name": "🧩 Pytest: Sim Modify Lifecycle",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/simulation/modify_lifecycle/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 47
-            }
-        },
-        {
-            "name": "🧩 Pytest: Simulation Core (All)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/simulation/core/",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 48
+                "group": "13_pytest_validation",
+                "order": 50
             }
         },
         {
@@ -2831,8 +2669,178 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 49
+                "group": "13_pytest_validation",
+                "order": 51
+            }
+        },
+        {
+            "name": "🧩 Pytest: Safety Circuit Breaker (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/safety/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 52
+            }
+        },
+        {
+            "name": "🧩 Pytest: Safety Circuit Breaker Integration (AutoTrader only)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/safety/test_safety_integration.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 53
+            }
+        },
+        {
+            "name": "🧩 Pytest: Scenario Generator (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/data/scenario_generator/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 54
+            }
+        },
+        {
+            "name": "🧩 Pytest: Session End (#492)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/session_end",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 55
+            }
+        },
+        {
+            "name": "🧩 Pytest: Session Validation (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/autotrader/session_validation/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 56
+            }
+        },
+        {
+            "name": "🧩 Pytest: Signal Coverage (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/signal_coverage/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 57
+            }
+        },
+        {
+            "name": "🧩 Pytest: Signal Import (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/data/signal_import/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 58
+            }
+        },
+        {
+            "name": "🧩 Pytest: Signal Workers (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/signal_workers/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 59
+            }
+        },
+        {
+            "name": "🧩 Pytest: Sim Modify Lifecycle",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/simulation/modify_lifecycle/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 60
+            }
+        },
+        {
+            "name": "🧩 Pytest: Simulation Core (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/simulation/core/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 61
             }
         },
         {
@@ -2848,8 +2856,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 50
+                "group": "13_pytest_validation",
+                "order": 62
             }
         },
         {
@@ -2865,8 +2873,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 51
+                "group": "13_pytest_validation",
+                "order": 63
             }
         },
         {
@@ -2882,8 +2890,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 52
+                "group": "13_pytest_validation",
+                "order": 64
             }
         },
         {
@@ -2899,8 +2907,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 53
+                "group": "13_pytest_validation",
+                "order": 65
             }
         },
         {
@@ -2916,8 +2924,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 54
+                "group": "13_pytest_validation",
+                "order": 66
             }
         },
         {
@@ -2933,8 +2941,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 55
+                "group": "13_pytest_validation",
+                "order": 67
             }
         },
         {
@@ -2950,8 +2958,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 56
+                "group": "13_pytest_validation",
+                "order": 68
             }
         },
         {
@@ -2967,8 +2975,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 57
+                "group": "13_pytest_validation",
+                "order": 69
             }
         },
         {
@@ -2984,8 +2992,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 58
+                "group": "13_pytest_validation",
+                "order": 70
             }
         },
         {
@@ -3001,8 +3009,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 59
+                "group": "13_pytest_validation",
+                "order": 71
             }
         },
         {
@@ -3016,8 +3024,8 @@
             ],
             "console": "integratedTerminal",
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 60
+                "group": "13_pytest_validation",
+                "order": 72
             }
         },
         {
@@ -3033,28 +3041,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 61
-            }
-        },
-        {
-            "name": "🧪 AutoTrader: Diagnostics Probe",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
-            "args": [
-                "run",
-                "--config",
-                "configs/autotrader_profiles/backtesting/diagnostics_probe_test.json",
-                "--display",
-                "--delay",
-                "1"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 62
+                "group": "13_pytest_validation",
+                "order": 73
             }
         },
         {
@@ -3073,8 +3061,28 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 62.5
+                "group": "13_pytest_validation",
+                "order": 74
+            }
+        },
+        {
+            "name": "🧪 AutoTrader: Diagnostics Probe",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/diagnostics_probe_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 75
             }
         },
         {
@@ -3093,8 +3101,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 63
+                "group": "13_pytest_validation",
+                "order": 76
             }
         },
         {
@@ -3113,8 +3121,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 64
+                "group": "13_pytest_validation",
+                "order": 77
             }
         },
         {
@@ -3133,8 +3141,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 65
+                "group": "13_pytest_validation",
+                "order": 78
             }
         },
         {
@@ -3153,8 +3161,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 66
+                "group": "13_pytest_validation",
+                "order": 79
             }
         },
         {
@@ -3173,8 +3181,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 67
+                "group": "13_pytest_validation",
+                "order": 80
             }
         },
         {
@@ -3193,8 +3201,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 68
+                "group": "13_pytest_validation",
+                "order": 81
             }
         },
         {
@@ -3213,68 +3221,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 69
-            }
-        },
-        {
-            "name": "🧪 AutoTrader: Safety Circuit Breaker",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
-            "args": [
-                "run",
-                "--config",
-                "configs/autotrader_profiles/backtesting/btcusd_mock_safety.json",
-                "--display",
-                "--delay",
-                "1"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 70
-            }
-        },
-        {
-            "name": "🧪 AutoTrader: Sentiment Mock (BTCUSD)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
-            "args": [
-                "run",
-                "--config",
-                "configs/autotrader_profiles/backtesting/sentiment_mock_test.json",
-                "--display",
-                "--delay",
-                "1"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 71
-            }
-        },
-        {
-            "name": "🧪 AutoTrader: Sentiment Outage (BTCUSD, stale tail)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
-            "args": [
-                "run",
-                "--config",
-                "configs/autotrader_profiles/backtesting/sentiment_outage_test.json",
-                "--display",
-                "--delay",
-                "1"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 72
+                "group": "13_pytest_validation",
+                "order": 82
             }
         },
         {
@@ -3293,8 +3241,68 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 73
+                "group": "13_pytest_validation",
+                "order": 83
+            }
+        },
+        {
+            "name": "🧪 AutoTrader: Safety Circuit Breaker",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/btcusd_mock_safety.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 84
+            }
+        },
+        {
+            "name": "🧪 AutoTrader: Sentiment Mock (BTCUSD)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/sentiment_mock_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 85
+            }
+        },
+        {
+            "name": "🧪 AutoTrader: Sentiment Outage (BTCUSD, stale tail)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/sentiment_outage_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 86
             }
         },
         {
@@ -3313,8 +3321,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 74
+                "group": "13_pytest_validation",
+                "order": 87
             }
         },
         {
@@ -3333,8 +3341,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 75
+                "group": "13_pytest_validation",
+                "order": 88
             }
         },
         {
@@ -3349,8 +3357,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 76
+                "group": "13_pytest_validation",
+                "order": 89
             }
         },
         {
@@ -3365,8 +3373,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 77
+                "group": "13_pytest_validation",
+                "order": 90
             }
         },
         {
@@ -3381,8 +3389,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 77
+                "group": "13_pytest_validation",
+                "order": 91
             }
         },
         {
@@ -3397,8 +3405,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 78
+                "group": "13_pytest_validation",
+                "order": 92
             }
         },
         {
@@ -3413,8 +3421,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 78
+                "group": "13_pytest_validation",
+                "order": 93
             }
         },
         {
@@ -3429,8 +3437,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 79
+                "group": "13_pytest_validation",
+                "order": 94
             }
         },
         {
@@ -3445,8 +3453,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 80
+                "group": "13_pytest_validation",
+                "order": 95
             }
         },
         {
@@ -3461,8 +3469,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 81
+                "group": "13_pytest_validation",
+                "order": 96
             }
         },
         {
@@ -3477,8 +3485,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 82
+                "group": "13_pytest_validation",
+                "order": 97
             }
         },
         {
@@ -3493,8 +3501,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 83
+                "group": "13_pytest_validation",
+                "order": 98
             }
         },
         {
@@ -3509,40 +3517,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 84
-            }
-        },
-        {
-            "name": "🧪 Simulation: Sentiment Smoke (SIGNAL)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
-            "args": [
-                "run",
-                "backtesting/sentiment_smoke_test.json"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 85
-            }
-        },
-        {
-            "name": "🧪 Simulation: Signal Resolution (Stress-Carved)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
-            "args": [
-                "run",
-                "tests/fixtures/scenario_sets/signal_resolution/signal_resolution_cases.json"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "11_pytest_validation",
-                "order": 86
+                "group": "13_pytest_validation",
+                "order": 99
             }
         },
         {
@@ -3557,8 +3533,40 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 87
+                "group": "13_pytest_validation",
+                "order": 100
+            }
+        },
+        {
+            "name": "🧪 Simulation: Sentiment Smoke (SIGNAL)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/sentiment_smoke_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 101
+            }
+        },
+        {
+            "name": "🧪 Simulation: Signal Resolution (Stress-Carved)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "tests/fixtures/scenario_sets/signal_resolution/signal_resolution_cases.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 102
             }
         },
         {
@@ -3573,8 +3581,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 88
+                "group": "13_pytest_validation",
+                "order": 103
             }
         },
         {
@@ -3589,8 +3597,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 89
+                "group": "13_pytest_validation",
+                "order": 104
             }
         },
         {
@@ -3605,8 +3613,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 90
+                "group": "13_pytest_validation",
+                "order": 105
             }
         },
         {
@@ -3621,8 +3629,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 91
+                "group": "13_pytest_validation",
+                "order": 106
             }
         },
         {
@@ -3637,8 +3645,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "11_pytest_validation",
-                "order": 92
+                "group": "13_pytest_validation",
+                "order": 107
             }
         },
         // ====================================================
@@ -3659,7 +3667,7 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "12_release_gate",
+                "group": "14_release_gate",
                 "order": 1
             }
         },
@@ -3679,7 +3687,7 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "12_release_gate",
+                "group": "14_release_gate",
                 "order": 2
             }
         },
@@ -3698,8 +3706,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "12_release_gate",
-                "order": 2.3
+                "group": "14_release_gate",
+                "order": 3
             }
         },
         {
@@ -3715,8 +3723,49 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "12_release_gate",
-                "order": 2.6
+                "group": "14_release_gate",
+                "order": 4
+            }
+        },
+        {
+            "name": "🧩 Pytest: Live Signal Feed (All) - production producer",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/live_signal_feed/",
+                "-v",
+                "--tb=short",
+                "-m",
+                "live_signal_feed",
+                "--release-version",
+                "dev"
+            ],
+            "env": {
+                "FINIEX_CONFIG_ISOLATION": "0"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "14_release_gate",
+                "order": 5
+            }
+        },
+        {
+            "name": "🧩 Pytest: Live Signal Feed Certificate (validate committed)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/live_signal_feed/test_signal_feed_certificate.py",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "14_release_gate",
+                "order": 6
             }
         },
         // #505 probe — a dry-run RESTING order against the real venue. Places NOTHING
@@ -3741,8 +3790,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "12_release_gate",
-                "order": 2.5
+                "group": "14_release_gate",
+                "order": 7
             }
         },
         {
@@ -3761,8 +3810,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "12_release_gate",
-                "order": 3
+                "group": "14_release_gate",
+                "order": 8
             }
         },
         {
@@ -3781,8 +3830,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "12_release_gate",
-                "order": 4
+                "group": "14_release_gate",
+                "order": 9
             }
         },
         {
@@ -3797,8 +3846,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "12_release_gate",
-                "order": 5
+                "group": "14_release_gate",
+                "order": 10
             }
         },
         {
@@ -3813,49 +3862,8 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
-                "group": "12_release_gate",
-                "order": 6
-            }
-        },
-        {
-            "name": "🧩 Pytest: Live Signal Feed (All) - production producer",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/live_signal_feed/",
-                "-v",
-                "--tb=short",
-                "-m",
-                "live_signal_feed",
-                "--release-version",
-                "dev"
-            ],
-            "env": {
-                "FINIEX_CONFIG_ISOLATION": "0"
-            },
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "12_release_gate",
-                "order": 7
-            }
-        },
-        {
-            "name": "🧩 Pytest: Live Signal Feed Certificate (validate committed)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "tests/live_signal_feed/test_signal_feed_certificate.py",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "presentation": {
-                "group": "12_release_gate",
-                "order": 8
+                "group": "14_release_gate",
+                "order": 11
             }
         }
     ],

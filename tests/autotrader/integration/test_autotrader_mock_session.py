@@ -166,6 +166,56 @@ class TestAutotraderMockSession:
         assert report.worst_drawdown_abs >= 0.0
 
 
+class TestTheSessionBooks:
+    """
+    The end-to-end proof the unit tests cannot give: a real session seals a real period.
+
+    Every piece of the booking path is unit-tested — the derivation, the ledger row, the table.
+    None of them shows that a SESSION reaches the seal at all, and that is the half where a
+    wiring mistake hides: the loop collects, the result carries, the coordinator writes, and any
+    one of those links could be missing without a single unit test noticing.
+    """
+
+    def test_the_replay_crosses_a_boundary_and_seals_there(self, mock_session):
+        # This profile's replay runs from 2026-01-24 14:19 to 2026-01-25 14:13 and therefore
+        # crosses midnight UTC, which is where a crypto trading day flips. So the session must
+        # produce MORE than the closing seal: the anchor one is the half that only fires if the
+        # boundary check is wired into the loop at all.
+        result, _ = mock_session
+        reasons = [segment.reason.value for segment in result.booking_segments]
+        assert len(reasons) >= 2
+        assert reasons[:-1] == ['anchor'] * (len(reasons) - 1)
+
+    def test_the_last_period_says_the_books_are_complete(self, mock_session):
+        # Only a `session_end` on the final period says nothing was left open. A session that
+        # died before its first boundary would otherwise book nothing at all, which is the hole
+        # this feature exists to close.
+        result, _ = mock_session
+        assert result.booking_segments[-1].reason.value == 'session_end'
+
+    def test_the_periods_partition_the_session_s_trades(self, mock_session):
+        # The control total: each period's count is what its figures were derived from, so the
+        # counts have to add up to the trades the session actually closed — no trade in two
+        # periods, none in neither.
+        result, _ = mock_session
+        booked = sum(segment.trade_count for segment in result.booking_segments)
+        assert booked == len(result.trade_history or [])
+
+    def test_the_numbers_run_without_a_gap(self, mock_session):
+        # Consecutive, not starting at 1: this profile has a carry-over on disk from earlier
+        # runs, and the count CONTINUES across restarts by design. A hole would mean a seal
+        # advanced the counter without filing its period.
+        result, _ = mock_session
+        numbers = [segment.segment_no for segment in result.booking_segments]
+        assert numbers == list(range(numbers[0], numbers[0] + len(numbers)))
+
+    def test_every_period_is_bounded_and_named(self, mock_session):
+        result, _ = mock_session
+        for segment in result.booking_segments:
+            assert segment.opened_at < segment.closed_at
+            assert segment.unit_name
+
+
 class TestProfileLoader:
     """Profile → AutoTraderConfig parse guards (no session run)."""
 

@@ -88,6 +88,8 @@ def _to_currency(
         max_equity=agg.max_equity,
         account_max_dd_pct=agg.account_max_dd_pct,
         total_fees=agg.total_fees,
+        gross_profit=agg.total_profit,
+        gross_loss=agg.total_loss,
         unrealized_pnl=agg.unrealized_pnl,
         final_equity=agg.final_equity,
         open_position_count=agg.open_position_count,
@@ -100,4 +102,14 @@ def _to_currency(
         r_trade_count=analytics.r_trade_count if analytics else 0,
         r_win_count=analytics.r_win_count if analytics else 0,
         r_loss_count=analytics.r_loss_count if analytics else 0,
+        # Carried rather than recomputed (#391: no measures outside DERIVE) — the aggregator
+        # already walked these records once.
+        avg_mae_winners=analytics.avg_mae_winners if analytics else 0.0,
+        avg_mae_losers=analytics.avg_mae_losers if analytics else 0.0,
+        avg_mfe_losers=analytics.avg_mfe_losers if analytics else 0.0,
+        largest_mae=analytics.largest_mae if analytics else 0.0,
+        largest_mfe=analytics.largest_mfe if analytics else 0.0,
+        avg_trade_duration_s=analytics.avg_trade_duration_s if analytics else 0.0,
+        max_consecutive_wins=analytics.max_consecutive_wins if analytics else 0,
+        max_consecutive_losses=analytics.max_consecutive_losses if analytics else 0,
     )

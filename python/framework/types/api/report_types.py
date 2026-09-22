@@ -112,6 +112,23 @@ class TradeAnalytics(BaseModel):
     gross_pnl: float = 0.0  # Σ gross P&L over the group
     net_pnl: float = 0.0    # Σ net P&L over the group
     total_fees: float = 0.0  # Σ fees over the group
+    # The WORST single excursion, beside the means above (#537). A mean says how much heat the
+    # average trade took; this says how much the worst one did, which is the figure a stop level
+    # is actually judged against. Stored as the P&L magnitude, like its means.
+    largest_mae: float = 0.0
+    largest_mfe: float = 0.0
+    # Mean holding time in seconds. Cheap here, and it is the axis a booking period makes
+    # readable at all: a period whose trades average four hours is a different strategy from one
+    # whose trades average four days, and net P&L cannot tell them apart.
+    avg_trade_duration_s: float = 0.0
+    # The longest unbroken run of winners / losers, in REALISATION order.
+    #
+    # It carries a warning with it: this figure is NOT combinable across groups, and it is the
+    # one KPI here where the obvious reduction is wrong. A streak can cross a period boundary, so
+    # `max()` of two periods understates the truth — 2 and 3 adjacent segments can be a run of 5.
+    # Its ledger column is therefore `DERIVE`, never `MAX`.
+    max_consecutive_wins: int = 0
+    max_consecutive_losses: int = 0
 
 
 class TradeScenarioTotals(BaseModel):
@@ -481,6 +498,24 @@ class RunReporting(StrEnum):
     NONE = 'none'
 
 
+class ParentKind(StrEnum):
+    """
+    What KIND of thing a run's `parent_id` names.
+
+    The id alone is an untagged union: a sweep id and a deployment id are both an identity that
+    groups runs without being one, and they are stored in one column with the same shape. A
+    reader that must treat them differently — and the pruner does — has nothing to tell them
+    apart by.
+
+    Deriving it from `run_type` would be right today and silently wrong later: a simulation's
+    parent is a sweep and a live session's is a deployment ONLY until #476 gives a live day
+    fragment a parent that is itself a SESSION. A rule that expires without saying so is worse
+    than a column.
+    """
+    SWEEP = 'sweep'
+    DEPLOYMENT = 'deployment'
+
+
 class RunHeader(BaseModel):
     """
     What a run IS — written once, at the run's START, into its own directory.
@@ -498,11 +533,16 @@ class RunHeader(BaseModel):
         start_time: When the run began (UTC, tz-aware)
         run_type: Its category, the same value the API serves as `RunInfo.group`
         run_name: The owning scenario set (sim) or profile (live)
-        parent_id: What this run belongs to, or None when it stands alone. Today a sweep's id
-            for one of its combinations. Named `parent_id` and not `parent_run_id` on purpose:
-            a sweep is NOT itself a run (it has no header — it is defined by the runs naming
-            it), while the daily fragments of #476 will point at a parent that IS one. One
-            field, two kinds of parent, and the name has to stay true for both
+        parent_id: What this run belongs to, or None when it stands alone — a sweep's id for one
+            of its combinations, a deployment's id for one of its sessions. Named `parent_id`
+            and not `parent_run_id` on purpose: a sweep is NOT itself a run (it has no header —
+            it is defined by the runs naming it), while the daily fragments of #476 will point
+            at a parent that IS one. One field, several kinds of parent, and the name has to
+            stay true for all of them
+        parent_kind: WHICH kind of parent `parent_id` names. Written together with it and never
+            apart: the id alone is an untagged union, so a consumer that has to treat the kinds
+            differently can only guess. None on a standalone run — and also on a run written
+            before this field existed, which is why nothing refuses the pair
         config_snapshot: File name of the config this run was commissioned with
         app_version: The app version that produced it
         git_commit: The commit it ran from, when the working tree exposes one
@@ -520,6 +560,7 @@ class RunHeader(BaseModel):
     run_type: str
     run_name: str
     parent_id: Optional[str] = None
+    parent_kind: Optional[ParentKind] = None
     config_snapshot: str = ''
     app_version: str = ''
     git_commit: Optional[str] = None
@@ -544,9 +585,13 @@ class RunInfo(BaseModel):
     # Straight from the run's header (#475) — the list answers "what was this run" on its own,
     # instead of making a consumer open each run to find out.
     start_time: str = ''
-    # The run this one belongs to: a sweep for one of its combinations, and — once the daily
-    # cycle lands (#476) — the session a day fragment was cut from. None means it stands alone.
+    # The run this one belongs to: a sweep for one of its combinations, a deployment for one of
+    # its sessions, and — once the daily cycle lands (#476) — the session a day fragment was cut
+    # from. None means it stands alone. `parent_kind` says WHICH of those the id is; read the
+    # two together, because the ids are indistinguishable by shape. None on a row indexed before
+    # the discriminator existed, where the kind is genuinely unknown rather than absent.
     parent_id: Optional[str] = None
+    parent_kind: Optional[ParentKind] = None
     app_version: str = ''
     git_commit: Optional[str] = None
     config_snapshot: str = ''
@@ -599,6 +644,14 @@ class RunSummaryCurrency(BaseModel):
     max_equity: float = 0.0
     account_max_dd_pct: float = 0.0
     total_fees: float       # ← PortfolioAggregateRow.total_fees
+    # The two halves `profit_factor` is the quotient OF. Carried because a rate cannot be
+    # folded out of two rows while its COMPONENTS can be summed on any level: without these,
+    # a session's profit factor is not recoverable from its booking segments and a
+    # deployment's is not recoverable from its sessions (#537, CLAUDE.md §48). `win_rate`
+    # already had this property through winning_trades / total_trades; this gives it to the
+    # second rate. Appended, so older fragments read back as 0.0.
+    gross_profit: float = 0.0   # ← PortfolioAggregateRow.total_profit (Σ of winning trades)
+    gross_loss: float = 0.0     # ← PortfolioAggregateRow.total_loss  (Σ of losing trades, positive)
     total_trades: int
     winning_trades: int
     losing_trades: int
@@ -614,6 +667,71 @@ class RunSummaryCurrency(BaseModel):
     r_trade_count: int      # ← TradeAnalytics.r_trade_count
     r_win_count: int = 0
     r_loss_count: int = 0
+    # The excursion, duration and streak figures (#537) — the same shape TradeAnalytics computes,
+    # carried here so a booking period and a whole run describe themselves with one vocabulary.
+    # They are cheap: one pass over the records the analytics already walked.
+    avg_mae_winners: float = 0.0
+    avg_mae_losers: float = 0.0
+    avg_mfe_losers: float = 0.0
+    largest_mae: float = 0.0
+    largest_mfe: float = 0.0
+    avg_trade_duration_s: float = 0.0
+    max_consecutive_wins: int = 0
+    max_consecutive_losses: int = 0
+
+
+class BookingPeriodRow(BaseModel):
+    """
+    One booking period as the report renders it — the Hauptbuch, one line per entry.
+
+    Deliberately NOT the ledger row: this carries what a reader compares down a column, not what
+    a ranking needs. The ledger keeps the full figure set; this keeps the ones that make a period
+    legible beside its neighbours.
+    """
+    unit_name: str
+    segment_no: int
+    opened_at: str
+    closed_at: str
+    reason: str
+    currency: str
+    trade_count: int
+    net_pnl: float
+    total_fees: float
+    win_rate: float
+    profit_factor: float | None
+    final_equity: float
+    # The period's OWN band and decline, not the cumulative ones: on this table the question is
+    # what each period did, and the running figure would repeat the same number down the column.
+    min_equity: float
+    max_equity: float
+    max_drawdown: float
+
+
+class BookingPeriodsReport(RunScopedReport):
+    """
+    A run's booking periods, and whether they add up to the run (#537).
+
+    The last line is the point of the table. A period summary is trusted because it can be
+    recomputed from its records, and a column of them is trusted because it RECONCILES against
+    the figure the run reports by its own path — so the reconciliation is computed here and
+    stated, rather than left to a reader adding up a column by eye.
+
+    `reconciles` false is not an error to raise; it is the finding the table exists to surface
+    (§12: reports calculate and render, they do not judge).
+    """
+    periods: list[BookingPeriodRow] = Field(default_factory=list)
+    currency: str = ''
+    # The sums over the periods, and what the run reports independently of them.
+    total_net_pnl: float = 0.0
+    total_fees: float = 0.0
+    total_trades: int = 0
+    run_net_pnl: float = 0.0
+    run_total_trades: int = 0
+    reconciles: bool = True
+    # The deepest single-period decline and the band across all of them — the column's own
+    # extremes, which is what a reader scanning the table is comparing against.
+    deepest_period_drawdown: float = 0.0
+    final_equity: float = 0.0
 
 
 class RunSummary(RunScopedReport):
@@ -682,8 +800,8 @@ class RunResultRow(BaseModel):
     data_format_versions: str = ''
     origin_classes: str = ''
     origin_evidence_grades: str = ''
-    input_files: int = 0
-    unstamped_input_files: int = 0
+    input_files: int | None = None
+    unstamped_input_files: int | None = None
     price_bases: str = ''
     deployment_id: str = ''
     profile_hash: str = ''
@@ -693,6 +811,39 @@ class RunResultRow(BaseModel):
     # When this row was written — within seconds of the run's end. '' on an older fragment,
     # which is what makes a gap measured from it fall back to start-to-start and SAY so.
     recorded_at_utc: str = ''
+    # How many candidates this run was selected FROM (#32). None on a fragment written before the
+    # column existed — UNKNOWN — while 1 is a statement: this run was the only candidate. The
+    # distinction is the whole point of the field, because a result picked as the best of 500 and
+    # a result nobody compared cannot be discounted alike.
+    trial_count: int | None = None
+    # WHEN this row's run directory was deleted by a prune, empty while it was not. The row
+    # outlives its evidence on purpose; this is what stops it from silently claiming its figures
+    # can still be checked against the records they came from (§48).
+    records_pruned_at: str = ''
+    # === THE BOOKING PERIOD (#537) ======================================================
+    # Which run unit booked it, its running number inside that unit, its two instants and
+    # what closed it. `None` / '' on a row that books no period, which is what every row
+    # written before this version is — absent, never a made-up period zero.
+    unit_name: str = ''
+    segment_no: int | None = None
+    segment_opened_at: str = ''
+    segment_closed_at: str = ''
+    segment_close_reason: str = ''
+    # The control total (§48): how many records the figures were derived from.
+    segment_trade_count: int | None = None
+    # The period's own equity band and its own decline, beside the cumulative trio above.
+    segment_max_equity: float | None = None
+    segment_min_equity: float | None = None
+    segment_max_drawdown: float | None = None
+    # What a period looks like beyond its net result.
+    avg_mae_winners: float | None = None
+    avg_mae_losers: float | None = None
+    avg_mfe_losers: float | None = None
+    largest_mae: float | None = None
+    largest_mfe: float | None = None
+    avg_trade_duration_s: float | None = None
+    max_consecutive_wins: int | None = None
+    max_consecutive_losses: int | None = None
     currency: str = ''
     # KPIs (the rankable objective fields)
     net_pnl: float = 0.0
@@ -700,12 +851,23 @@ class RunResultRow(BaseModel):
     profit_factor: float | None = None  # None = undefined (no losing trade)
     win_rate: float = 0.0
     account_max_drawdown: float = 0.0
-    max_equity: float = 0.0
-    account_max_drawdown_pct: float = 0.0
-    unrealized_pnl: float = 0.0
-    final_equity: float = 0.0
-    open_position_count: int = 0
+    # None, never a zero. These arrive on a fragment only if the column existed when it was
+    # written, and a fabricated 0.0 asserts a measurement nobody took — an equity of zero, a
+    # drawdown of zero — where the truth is that the run predates the column. The same
+    # convention `logic_version` and `signal_fresh_ratio` already follow. A reader that needs a
+    # number then has to decide what an unknown means, which is the decision this default used
+    # to make for it, silently and wrongly (CLAUDE.md §48).
+    max_equity: float | None = None
+    account_max_drawdown_pct: float | None = None
+    unrealized_pnl: float | None = None
+    final_equity: float | None = None
+    open_position_count: int | None = None
     total_fees: float = 0.0
+    # None, never 0.0: 499 fragments on disk predate these two columns, and a fabricated zero
+    # would assert "this run won nothing and lost nothing" where the truth is "nobody wrote it
+    # down". Same convention as `logic_version` and `signal_fresh_ratio` above.
+    gross_profit: float | None = None
+    gross_loss: float | None = None
     total_trades: int = 0
     winning_trades: int = 0
     losing_trades: int = 0
@@ -714,8 +876,8 @@ class RunResultRow(BaseModel):
     r_trade_count: int = 0
     # In LEDGER_COLUMNS since #389 and missing here for the same reason as the block above —
     # declared on disk, dropped on the way in.
-    r_win_count: int = 0
-    r_loss_count: int = 0
+    r_win_count: int | None = None
+    r_loss_count: int | None = None
     orders_sent: int = 0
     orders_executed: int = 0
     orders_rejected: int = 0

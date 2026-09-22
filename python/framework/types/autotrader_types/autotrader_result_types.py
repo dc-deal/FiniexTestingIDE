@@ -12,6 +12,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartVerdict,
 )
 from python.framework.types.autotrader_types.safety_session_types import SafetySessionRecord
+from python.framework.types.run_results_types import BookingSegment
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
@@ -96,6 +97,10 @@ class AutoTraderResult:
     cold_start_situation: Optional[ColdStartSituation] = None
     cold_start_verdict: Optional[ColdStartVerdict] = None
     safety_session: Optional[SafetySessionRecord] = None
+    # The session's HAUPTBUCH (#537) — one entry per closed booking period. Collected in the
+    # loop and written by the report coordinator, so the parquet write stays off the measured
+    # path and the simulation's subprocess can carry the same shape back over its bridge.
+    booking_segments: List[BookingSegment] = field(default_factory=list)
     session_validation_result: List[ValidationResult] = field(default_factory=list)
 
     def add_session_validation_result(self, result: ValidationResult) -> None:

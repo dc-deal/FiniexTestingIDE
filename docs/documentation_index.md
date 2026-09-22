@@ -31,7 +31,13 @@
 
 | Document | Description |
 |----------|-------------|
-| [AutoTrader Architecture](autotrader/autotrader_architecture.md) | Pipeline, threading model, config, tick sources, clipping monitor |
+| [AutoTrader Architecture](autotrader/autotrader_architecture.md) | Start here — what it is, how a tick travels, where every file lives, and the map to the six documents below |
+| [AutoTrader Runtime Model](autotrader/autotrader_runtime_model.md) | Threading, tick source vs broker adapter, session lifecycle, what survives a restart |
+| [AutoTrader Configuration](autotrader/autotrader_configuration.md) | The profile cascade, the deployment declaration, the two fingerprints |
+| [AutoTrader Data Intake](autotrader/autotrader_data_intake.md) | Tick sources, sentiment feed, the staleness contract, live warmup |
+| [AutoTrader Capital and Safety](autotrader/autotrader_capital_and_safety.md) | What the bot may spend, committed funds, whose account it is, protective levels, the circuit breaker |
+| [AutoTrader Venue Integration](autotrader/autotrader_venue_integration.md) | Broker config acquisition, the Kraken execution tier, polling, drift audit, the connection ladder |
+| [AutoTrader Observability](autotrader/autotrader_observability.md) | The live console, the clipping monitor, the three log channels |
 | [Live Outage Handling](user_guides/live_outage_handling_guide.md) | Connection/feed outages — mandatory staleness hooks, escalation ladder, OrderGuard floor, outage drills (#434/#436) |
 | [Live Deployment & Ledger](user_guides/live_deployment_ledger_guide.md) | Reading a bot across its restarts — the mandatory `deployment` declaration, the history command, gaps and parameter changes (#497) |
 | [Adapter Development Guide](user_guides/adapter/adapter_development_guide.md) | How to implement a new broker adapter (Tier 1/2/3, config files, credentials, test suite) |
@@ -171,6 +177,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Account Value Tests](tests/framework/account_value_tests.md) | One account-value definition per account model — the input every circuit-breaker limit sits on, and why spot answers None rather than guessing |
 | [Indicator Tests](tests/framework/indicator_tests.md) | The shared indicator library: what each name means, that the per-tick and bulk forms of one indicator agree, and how much history each average needs |
 | [Price Trigger Tests](tests/framework/price_trigger_tests.md) | The shared order-vs-quote predicate: has the market reached this price, and which side of the book does this direction trade at |
+| [Trading Day Anchor Tests](tests/framework/trading_day_anchor_tests.md) | Where a market flips its trading day, and which day an instant belongs to — DST-aware, one answer for the log rotation, the daily-loss baseline and the record seal |
 | [Market Calendar / Swap Rollover](tests/framework/market_calendar_tests.md) | Swap-rollover + DST calendar helpers + MarketClock awareness (#365) |
 | [Diagnostics CSV Sink Tests](tests/framework/diagnostics_csv_sink_tests.md) | Strategy-owned diagnostics CSV channel + flush helper |
 | [Bar Rendering Consistency](tests/framework/bar_rendering_tests.md) | BarRenderer vs VectorizedBarRenderer equivalence |

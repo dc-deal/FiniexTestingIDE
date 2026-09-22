@@ -33,7 +33,7 @@ from python.framework.signal_data.transport.signal_boot_resolver import prepare_
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
-from python.framework.types.api.report_types import RunHeader
+from python.framework.types.api.report_types import ParentKind, RunHeader
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
@@ -160,6 +160,7 @@ def create_autotrader_loggers(
             # missing from the run that produced it cannot be added afterwards, and nothing
             # else left behind says which sessions belonged together.
             parent_id=deployment_id or None,
+            parent_kind=ParentKind.DEPLOYMENT if deployment_id else None,
             config_snapshot='autotrader_config.json',
             app_version=AppConfigManager().get_version(),
             git_commit=get_git_commit(),

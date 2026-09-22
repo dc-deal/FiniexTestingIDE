@@ -32,6 +32,7 @@ from pydantic import ValidationError
 
 from python.framework.exceptions.persistence_errors import StatePersistenceError
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.persistence.carry_over_identity import carry_over_key
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     StatePersistenceDefaults,
 )
@@ -83,7 +84,7 @@ class AlgoStateStore:
         self._logger = logger
         self._run_id = run_id
 
-        self._path = Path(config.path) / f'{self._sanitize(profile)}_{self._sanitize(symbol)}.json'
+        self._path = Path(config.path) / f'{carry_over_key(profile, symbol)}.json'
 
         self._last_save_tick: int = 0
         self._last_save_time: float = time.monotonic()
@@ -318,15 +319,3 @@ class AlgoStateStore:
             f.write(payload)
         os.replace(tmp_path, self._path)
 
-    @staticmethod
-    def _sanitize(name: str) -> str:
-        """
-        Reduce an identity component to a safe filename token.
-
-        Args:
-            name: Raw profile or symbol string
-
-        Returns:
-            Lowercased token with non-alphanumerics collapsed to underscores
-        """
-        return ''.join(c if c.isalnum() else '_' for c in name).strip('_').lower()
