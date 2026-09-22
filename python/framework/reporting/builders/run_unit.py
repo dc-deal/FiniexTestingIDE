@@ -113,6 +113,7 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
                 tick_loop.disturbance_episodes or [], result.scenario_name, scenario.symbol),
             market_data_tick_stats=tick_loop.market_data_tick_stats,
             planned_outages=_planned_outages(scenario.stress_test_config),
+            booking_segments=tick_loop.booking_segments or [],
         ))
     return units
 

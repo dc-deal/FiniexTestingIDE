@@ -71,6 +71,10 @@ grain is `(run_id, unit, segment_no, currency)` — and each part of that key ea
   hours, an intraday margin call, an operator's period close.
 - **`currency`** because P&L-denominated figures never mix currencies.
 
+Both pipelines book: a live session writes one row per trading day, a simulation scenario one
+per trading day of ITS window. A run whose scenarios are shorter than a day writes one row each,
+which is the shape the ledger had before — the grain widened, it did not change meaning.
+
 **No aggregate row is written beside the periods.** The run's total is derivable from them —
 `COLUMN_REDUCTION` beside `LEDGER_COLUMNS` states how every column combines — and a derivable
 copy kept next to its source is the pair that drifts (§19). Keeping both would also be wrong in

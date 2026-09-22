@@ -43,7 +43,11 @@ class BookingSegmentRecorder:
         unit_name: The run unit this books for — a scenario in the simulation, the session in
             live. It is part of the period's identity, not a label: a run's scenarios cover
             different windows, so only "day 1 of this unit" is a thing
-        anchor: Where this market's trading day flips (§47), resolved once by the caller
+        anchor: Where this market's trading day flips (§47), resolved once by the caller. None
+            when the unit declares no market — an internal harness builds scenarios without a
+            broker, and a unit with no market has no trading day to book against. The recorder
+            then collects nothing rather than refusing: refusing would make a legitimate test
+            fixture unrunnable to protect a figure it was never going to produce
         carried_segment_no: The FLOOR this unit continues from. A live session inherits it from
             the cold-start carry-over so a deployment's numbering survives a restart; a
             simulation scenario starts at 0, because a backtest has no history to inherit
@@ -55,7 +59,7 @@ class BookingSegmentRecorder:
     def __init__(
         self,
         unit_name: str,
-        anchor: DayAnchorConfig,
+        anchor: Optional[DayAnchorConfig],
         carried_segment_no: int = 0,
         log: Optional[Callable[[str], None]] = None,
     ):
@@ -120,13 +124,16 @@ class BookingSegmentRecorder:
         Called from BOTH event sources. Nothing happens before the canonical clock has been set
         — a period needs an instant to open at, and a clock that was never set has none.
 
+        Nothing happens without an anchor either: a unit with no declared market cannot say
+        where its trading day flips, so it never opens a period and therefore never seals one.
+
         Args:
             now: The canonical clock's current instant, or None before it was first set
             snapshot_for_seal: Callable returning the `SegmentSnapshot` and the records, invoked
                 only when a seal actually happens — so a boundary check on a quiet tick costs
                 nothing beyond a date comparison
         """
-        if now is None:
+        if now is None or self._anchor is None:
             return
         current_day = trading_day_of(now, self._anchor)
         if self._opened_at is None:

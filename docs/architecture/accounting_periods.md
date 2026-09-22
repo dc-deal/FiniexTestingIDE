@@ -22,7 +22,7 @@ does not describe the stores themselves (that is
 | Log rotation | the SAME anchor, read from the canonical clock | A new session log file. Fires on the heartbeat too, so a silent feed over the boundary still rotates |  live only |
 | Algo state | hybrid tick / second cadence | What the algo chose to remember. Discarded once older than `max_age_trading_days` | live |
 | Cold-start state | boot, shutdown, and a structural change of the open book; excursion extrema on a tick cadence | Session keys, the position-counter high-water mark, the open position book. Never discarded for age | live |
-| **Booking period** | the SAME trading-day anchor, read from the canonical clock | One sealed `BookingSegment` per run unit: the period's realised figures, its control total and its own equity band. Fires on the heartbeat too, so a quiet feed over the boundary still books | live today, simulation next |
+| **Booking period** | the SAME trading-day anchor, read from the canonical clock | One sealed `BookingSegment` per run unit: the period's realised figures, its control total and its own equity band. Fires on the heartbeat too, so a quiet feed over the boundary still books | both — live per session, simulation per SCENARIO |
 | Session end | once, when the run ends | The final equity sample, the report, and the ledger rows — one per booking period, not one per session | both |
 
 **Both of those used to read midnight UTC off the TICK stamp, and both were corrected on
@@ -73,6 +73,21 @@ survived for centuries, and it is what CLAUDE.md §48 states in this project's o
 The practical consequence is that the third level costs nothing to add. A Sharpe ratio, a Calmar
 ratio, a monthly drawdown are not another layer of bookkeeping — they fall out of the period
 summaries the way a company's annual figures fall out of its daily closings.
+
+### Why a simulation books per SCENARIO and not per run
+
+A run's scenarios cover DIFFERENT windows — measured 2026-09-21 over the shipped sets, a
+40-scenario robustness run has 40 distinct ones, and a 5-scenario set walks five consecutive
+two-hour windows of one day. "Day 1 of the run" is therefore not a thing; only "day 1 of this
+scenario" is, and each scenario counts its periods from 1.
+
+A live session is the same rule with one unit. That is not a coincidence: the reporting pipeline
+already models both pipelines as a list of RUN UNITS (`sim = N scenarios, live = 1 session`), and
+the booking period hangs off that unit rather than off the run.
+
+No count is carried into a backtest. A live session inherits its period number from the
+cold-start carry-over so a restarted deployment has one unbroken sequence; a scenario has no
+predecessor to inherit from.
 
 ### The one thing a reader gets wrong
 

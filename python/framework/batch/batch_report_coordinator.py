@@ -65,6 +65,10 @@ from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
 from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.reporting.store.run_provenance_builder import build_run_provenance
+from python.framework.reporting.builders.booking_periods_report_builder import (
+    build_booking_periods_report,
+)
+from python.framework.reporting.console.booking_periods_summary import render_booking_periods
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.run_results_types import SweepContext
@@ -265,4 +269,17 @@ class BatchReportCoordinator:
         provenance = build_run_provenance(
             self._batch_execution_summary, self._scenario_set, run_id,
             self._sweep_context, warnings_errors_report)
-        append_run_to_ledger(run_summary, provenance)
+        # The run's Hauptbuch (#537): its booking periods ARE its ledger rows, and no aggregate
+        # row is written beside them — a summary standing next to its own evidence puts the same
+        # money in the same column twice, and every reader that sums or ranks would see it.
+        booking_segments = [
+            segment for unit in units for segment in unit.booking_segments]
+        append_run_to_ledger(run_summary, provenance, booking_segments)
+
+        # The run's Hauptbuch as a table, printed after the sections above and collapsed to one
+        # line per scenario when the run has more units than the console detail threshold — a
+        # robustness set books one period per trading day PER SCENARIO, and forty of those is a
+        # hundred and twenty lines nobody reads.
+        render_booking_periods(
+            build_booking_periods_report(run_id, units, run_summary),
+            detail_threshold=threshold)

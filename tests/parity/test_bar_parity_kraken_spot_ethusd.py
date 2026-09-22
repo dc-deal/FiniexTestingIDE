@@ -98,6 +98,11 @@ def _run_simulation(ticks):
     portfolio_stats.total_loss = 0.0
     portfolio_stats.currency = 'USD'
     trade_simulator.portfolio.get_portfolio_statistics.return_value = portfolio_stats
+    # The loop asks the canonical clock on every pass since #537 — the booking period's
+    # boundary is an instant, and a MagicMock cannot be compared with a date. The stub answers
+    # with the first tick's time, which is what a real executor holds before the first on_tick.
+    trade_simulator.get_current_time.return_value = ticks[0].timestamp
+    trade_simulator.portfolio.sample_equity.return_value = None
 
     worker_coordinator = MagicMock()
     worker_coordinator.process_tick.return_value = MagicMock()
@@ -156,6 +161,11 @@ def _run_autotrader(ticks):
     # a mock executor that answers a number where the loop needs a number.
     executor.portfolio.get_account_value.return_value = 1000.0
     executor.portfolio.initial_balance = 1000.0
+    # Same reason as the stubs around it: since #537 the loop asks the canonical clock on every
+    # pass to see whether the booking period's boundary was crossed, and a bare MagicMock
+    # cannot be compared with a date. None is what a real executor answers before its first
+    # tick, and it is what tells the recorder there is no instant to open a period at yet.
+    executor.get_current_time_if_set.return_value = None
     # No session-end request in this fixture — a bare MagicMock would return a
     # truthy mock and break the loop after the first tick (#348).
     executor.is_session_end_requested.return_value = False

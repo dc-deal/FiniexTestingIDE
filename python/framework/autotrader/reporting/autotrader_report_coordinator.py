@@ -284,7 +284,7 @@ class AutotraderReportCoordinator:
         # The session's Hauptbuch, after the shared sections and before the summary file is
         # written — so it lands in the artifact too, not only on the terminal. Silent when the
         # session booked no period, which is every run written before #537.
-        render_booking_periods(booking_periods)
+        render_booking_periods(booking_periods, detail_threshold=threshold)
         sys.stdout = old_stdout
         full_output = capture.getvalue()
 

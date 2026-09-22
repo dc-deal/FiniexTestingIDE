@@ -90,6 +90,12 @@ def _build_mocks():
     portfolio_stats.total_loss = 0.0
     portfolio_stats.currency = 'USD'
     trade_simulator.portfolio.get_portfolio_statistics.return_value = portfolio_stats
+    # Since #537 the loop asks the canonical clock on every pass to see whether a booking
+    # period's boundary was crossed, and a bare MagicMock cannot be compared with a date. Left
+    # unstubbed the comparison raises, the loop aborts after ONE tick, and the failure shows up
+    # as a wrong bar volume — three tests red for one missing stub.
+    trade_simulator.get_current_time.return_value = BAR_START
+    trade_simulator.portfolio.sample_equity.return_value = None
 
     worker_coordinator = MagicMock()
     worker_coordinator.process_tick.return_value = MagicMock()
@@ -264,6 +270,9 @@ def _build_autotrader_tick_loop(ticks_with_flags):
     # the circuit breaker is armed or not (#356) — a bare MagicMock reaches a comparison
     # and raises. Same reason the stub above exists.
     executor.portfolio.get_account_value.return_value = 1000.0
+    # The live loop asks the same question; None is what a real executor answers before its
+    # first tick, and it tells the recorder there is no instant to open a period at yet.
+    executor.get_current_time_if_set.return_value = None
     executor.portfolio.initial_balance = 1000.0
 
     # execute_decision must return an object whose .is_rejected is False,

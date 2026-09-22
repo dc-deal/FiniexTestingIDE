@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, get_args
 
+from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
 from python.framework.types.api.report_types import RunResultRow, SweepSummary
 
 # A KPI that may be undefined cannot order a ranking: the comparison against None
@@ -265,10 +266,22 @@ def _scope(
     rows: List[RunResultRow], objective: str, objective_currency: Optional[str]
 ) -> List[RunResultRow]:
     """
-    Validate the objective + restrict to the evaluable rows.
+    Validate the objective, restrict to the evaluable rows, and fold the booking periods back
+    into one row per combination.
 
     Error-flagged rows (status != 'ok') are excluded from the evaluation everywhere — they are
     recorded in the ledger but never rank or contribute to sensitivity (#1).
+
+    **The fold is what keeps a ranking a ranking.** Since #537 a run books one row per booking
+    period — measured, a simulation scenario averages 3.4 days, so a sweep of 500 combinations
+    writes about 1700 rows. Sorted as they are, one candidate would appear several times and the
+    top ten would be the ten best DAYS rather than the ten best parameter sets.
+
+    Folding rather than filtering, because there is nothing to filter to: no aggregate row is
+    stored beside the periods any more. `aggregate_ledger_rows` rebuilds it from the declared
+    reductions — the rates from their summed components, the drawdown trio from the row that
+    won it — which is the same figure the stored row used to carry and can no longer drift from
+    the periods it came from.
     """
     if objective not in RunResultRow.model_fields:
         raise ValueError(
@@ -280,4 +293,4 @@ def _scope(
     scoped = [r for r in rows if r.status == 'ok']
     if objective_currency is not None:
         scoped = [r for r in scoped if r.currency == objective_currency]
-    return scoped
+    return aggregate_ledger_rows(scoped, by=('run_id', 'currency'))

@@ -184,6 +184,15 @@ Read the whole directory back as one table.
   that they are there, which is a different question and is answered by
   `run_index_cli.py status`.
 
+**A ranking FOLDS the booking periods first.** Since #537 a run writes one row per booking
+period, so a combination contributes several — measured, a simulation scenario averages 3.4 days,
+which turns a 500-combination sweep into about 1700 rows. `_scope` (shared by `rank` and
+`sensitivity`) calls `aggregate_ledger_rows` before anything sorts, folding by each column's
+declared reduction: the rates from their summed components, the drawdown trio from the row that
+won it. Without it the top ten would be the ten best DAYS rather than the ten best parameter
+sets. No aggregate row is stored beside the periods — it is derived on read, so it cannot drift
+from what it summarises.
+
 **Columns:** `param_hash` (leading) · `status` (`ok`/`error`) · `error` · `run_id` · `run_timestamp` ·
 `sweep_id` · `sweep_params` · `scenario_set_name` · `git_commit` / `git_branch` / `git_dirty` ·
 `decision_logic_type` · `decision_version` · `worker_versions` · `config_snapshot` (full resolved

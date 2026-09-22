@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from python.framework.reporting.builders.booking_periods_report_builder import (
     build_booking_periods_report,
 )
+from python.framework.reporting.console.booking_periods_summary import render_booking_periods
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import RunSummary, RunSummaryCurrency
 from python.framework.types.run_results_types import BookingSegment, SegmentCloseReason
@@ -123,3 +124,70 @@ class TestWhenThereIsNothingToShow:
             _summary(net_pnl=60.0, total_trades=2), currency='USD')
         assert {row.currency for row in report.periods} == {'USD'}
         assert report.total_net_pnl == 60.0
+
+
+class TestManyUnitsCollapse:
+    """
+    A robustness set books one period per trading day PER SCENARIO. Forty scenarios over
+    three-day windows is a hundred and twenty console lines, which pushes the run summary off
+    the screen and tells the reader nothing they could act on.
+
+    The threshold is the console's existing `scenario_detail_threshold`, deliberately: this is
+    the same question the per-scenario detail already answers, and a second rule would be a
+    second answer that drifts from the first.
+    """
+
+    @staticmethod
+    def _multi_unit(units: int, periods_each: int):
+        """A run of `units` scenarios, each booking `periods_each` periods."""
+        return [
+            RunUnit(name=f'scenario_{u:02d}', symbol='DOTUSD', booking_segments=[
+                BookingSegment(
+                    segment_no=p + 1, unit_name=f'scenario_{u:02d}',
+                    opened_at=_MON + timedelta(days=p), closed_at=_MON + timedelta(days=p + 1),
+                    reason=SegmentCloseReason.ANCHOR, trade_count=1,
+                    figures=_figures(net_pnl=1.0, total_trades=1, final_equity=10_001.0),
+                    segment_max_equity=10_010.0, segment_min_equity=9_990.0,
+                    segment_max_drawdown=-20.0)
+                for p in range(periods_each)])
+            for u in range(units)
+        ]
+
+    def test_the_report_itself_is_unchanged_by_the_collapse(self, capsys):
+        # The collapse is a RENDERING decision. Every period stays in the report, in the
+        # artifact and in the ledger — what changes is only how many lines the console spends.
+        units = self._multi_unit(units=40, periods_each=3)
+        report = build_booking_periods_report(
+            'r', units, _summary(net_pnl=120.0, total_trades=120))
+        assert len(report.periods) == 120
+        assert report.reconciles is True
+
+    def test_above_the_threshold_one_line_per_unit(self, capsys):
+        units = self._multi_unit(units=12, periods_each=3)
+        report = build_booking_periods_report(
+            'r', units, _summary(net_pnl=36.0, total_trades=36))
+        render_booking_periods(report, detail_threshold=9)
+        out = capsys.readouterr().out
+        # The count is on the heading, so nothing is dropped silently.
+        assert '36 period(s) over 12 unit(s)' in out
+        assert 'scenario_00' in out and 'scenario_11' in out
+        # …and no individual period line survives the collapse.
+        assert out.count('scenario_00') == 1
+
+    def test_at_or_below_the_threshold_every_period_is_printed(self, capsys):
+        units = self._multi_unit(units=3, periods_each=2)
+        report = build_booking_periods_report(
+            'r', units, _summary(net_pnl=6.0, total_trades=6))
+        render_booking_periods(report, detail_threshold=9)
+        out = capsys.readouterr().out
+        assert '6 period(s)' in out
+        # Three sub-headings, one per unit, and six period lines beneath them.
+        assert out.count('▸ scenario_') == 3
+
+    def test_one_unit_gets_no_sub_heading(self, capsys):
+        # The live session and the comparison backtest the parity proof uses are both one unit,
+        # so the sub-heading would be the same string on every line.
+        report = build_booking_periods_report(
+            'r', _units(_segment(1, 0, 60.0, 2)), _summary(net_pnl=60.0, total_trades=2))
+        render_booking_periods(report, detail_threshold=9)
+        assert '▸' not in capsys.readouterr().out
