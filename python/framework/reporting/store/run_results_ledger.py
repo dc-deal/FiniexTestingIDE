@@ -80,7 +80,7 @@ LEDGER_COLUMNS: List[str] = [
     # WHICH deployment this row belongs to and what the OPERATIONAL half of the
     # profile looked like (#497). The pair is what lets a reader attribute a change:
     # the rows of one deployment, and the hash that says where the parameters moved.
-    'deployment_id', 'profile_hash',
+    'deployment_id', 'bot_id', 'profile_hash',
     # WHICH PIPELINE produced this row — 'simulation' or 'live', from the same two constants
     # the run tree and the run index are named after (`log_layout_types`). Declared rather
     # than inferred: before it, telling a backtest from a live session meant reading
@@ -170,6 +170,7 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     'currency': Reduction.IDENTITY,
     'input_plane': Reduction.IDENTITY,
     'deployment_id': Reduction.IDENTITY,
+    'bot_id': Reduction.IDENTITY,
     'profile_hash': Reduction.IDENTITY,
     'run_type': Reduction.IDENTITY,
     # Every row of one sweep was selected from the same search, so the rows agree by
@@ -516,6 +517,7 @@ class RunResultsLedger:
             'unstamped_input_files': p.unstamped_input_files,
             'price_bases': p.price_bases,
             'deployment_id': p.deployment_id,
+            'bot_id': p.bot_id,
             'profile_hash': p.profile_hash,
             'run_type': p.run_type,
             'trial_count': p.trial_count,

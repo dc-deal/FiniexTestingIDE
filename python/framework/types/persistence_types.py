@@ -409,6 +409,12 @@ class CarryOverEnvelope(BaseModel):
         written_by_run_id: The run that wrote it, or None when the writer had no run identity
         profile: The bot's profile name — half of the identity check on load
         symbol: The traded symbol — the other half
+        bot_id: The identity the profile DECLARED when this was written, or empty when it
+            declared none (#538). It is what the FILE NAME was derived from, so without it the
+            document cannot say what it is filed under — and anything recomputing that name from
+            `profile` and `symbol` alone would compute a different one and orphan the file. Read
+            it together with the two above: they answer "whose state is this", this answers
+            "under which name does it live"
         snapshot: The store's own payload, opaque to the envelope
     """
     schema_version: int
@@ -417,4 +423,5 @@ class CarryOverEnvelope(BaseModel):
     written_by_run_id: Optional[str] = None
     profile: str
     symbol: str
+    bot_id: str = ''
     snapshot: Dict[str, Any] = Field(default_factory=dict)

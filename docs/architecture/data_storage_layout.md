@@ -126,6 +126,12 @@ everything else.
 bot written two ways rather than two bots merging, and the startup validator is the answer — it
 compares the DECLARED identity where there is one.
 
+The declared id also reaches the LEDGER (`bot_id`, IDENTITY reduction), so a report can say
+which BOT a row belongs to rather than only what the profile was called at the time. And the
+carry-over ENVELOPE records it, because a document that cannot say what it is filed under is a
+document nothing can safely rename — the migration below is the first caller that would have got
+that wrong.
+
 Changing the rule ORPHANS every document on disk, so it shipped with the migration that renamed
 them (`python/experiments/migrate_carry_over_keys/`). Any further change needs the same.
 

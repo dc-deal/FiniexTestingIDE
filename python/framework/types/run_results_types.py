@@ -90,6 +90,14 @@ class RunProvenance:
     # grouping was simply never written — the same distinction `input_plane` draws for the
     # empty consumption fields.
     deployment_id: str = ''
+    # WHICH BOT this was, as the profile DECLARED it (#538) — live only, empty in the
+    # simulation and on a profile that declares none. It is the one identity here that does not
+    # move: `run_name` is what the profile is CALLED and an operator improves that, while
+    # `deployment_id` is minted per deployment and a `--new-deployment` starts a fresh one. So a
+    # reader asking "is this the same bot as the row above" has no other column to ask. It is
+    # also what the bot's carry-over state is filed under, which is what makes the ledger row and
+    # the position book joinable at all.
+    bot_id: str = ''
     # Fingerprint of the OPERATIONAL half of the profile — everything except strategy_config,
     # which `param_hash` already covers. Two hashes because they answer two questions: whether
     # the STRATEGY moved (what #512 compares on) and whether the OPERATION moved (a risk

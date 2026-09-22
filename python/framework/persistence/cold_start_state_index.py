@@ -37,10 +37,10 @@ class ColdStartStateIndex(AbstractStoreIndex):
     """
 
     COLUMNS: List[str] = [
-        'profile', 'symbol', 'file', 'saved_at_utc', 'written_by_run_id',
+        'profile', 'symbol', 'bot_id', 'file', 'saved_at_utc', 'written_by_run_id',
         'session_keys', 'highest_position_counter', 'status', 'modified_at',
     ]
-    LOGIC_VERSION: int = 1
+    LOGIC_VERSION: int = 2
 
     def __init__(self, state_root: Path):
         super().__init__(Path(state_root) / COLD_START_INDEX_FILE)
@@ -104,7 +104,8 @@ class ColdStartStateIndex(AbstractStoreIndex):
                 payload = ColdStartPayload.model_validate(envelope.snapshot)
             except (ValidationError, OSError, ValueError):
                 rows.append({
-                    'profile': '', 'symbol': '', 'file': path.name, 'saved_at_utc': '',
+                    'profile': '', 'symbol': '', 'bot_id': '', 'file': path.name,
+                    'saved_at_utc': '',
                     'written_by_run_id': '', 'session_keys': 0,
                     'highest_position_counter': 0, 'status': 'unreadable',
                     'modified_at': datetime.fromtimestamp(path.stat().st_mtime, timezone.utc),
@@ -113,6 +114,11 @@ class ColdStartStateIndex(AbstractStoreIndex):
             rows.append({
                 'profile': envelope.profile,
                 'symbol': envelope.symbol,
+                # What the FILE column was derived from. Without it the index states a name it
+                # cannot explain: `profile` and `symbol` reconstruct it only for a bot that
+                # declared no identity, and for one that did they reconstruct a DIFFERENT name
+                # (#538). Empty on a document written before the field existed.
+                'bot_id': envelope.bot_id,
                 'file': path.name,
                 'saved_at_utc': envelope.saved_at_utc,
                 'written_by_run_id': envelope.written_by_run_id or '',

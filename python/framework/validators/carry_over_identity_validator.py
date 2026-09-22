@@ -1,5 +1,8 @@
 """
-FiniexTestingIDE - Carry-Over Identity Collision Check
+FiniexTestingIDE - Carry-Over Identity Checks
+
+Two things a bot's carry-over identity has to be before a session may start: DECLARED where it
+matters, and UNIQUE always.
 
 Two profiles must not resolve to one carry-over document.
 
@@ -28,14 +31,76 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from python.framework.exceptions.persistence_errors import CarryOverIdentityCollisionError
-from python.framework.persistence.carry_over_identity import carry_over_key
+from python.framework.exceptions.persistence_errors import (
+    CarryOverIdentityCollisionError,
+    ContinuousDeploymentNeedsBotIdError,
+)
+from python.framework.persistence.carry_over_identity import (
+    carry_over_key,
+    sanitize_identity_part,
+)
 
 # The directory every AutoTrader profile lives under, whatever purpose folder it sits in
 # (#31: production / observation / field_study / backtesting). Found by walking UP from the
 # profile in hand rather than configured, because the profile path is what a session is
 # started with and a second declaration of the same root could disagree with it.
 PROFILES_ROOT_NAME = 'autotrader_profiles'
+
+
+def validate_continuous_deployment_declares_bot_id(
+    profile_name: str,
+    symbol: str,
+    bot_id: str,
+    continuous: bool,
+) -> None:
+    """
+    Refuse to start a CONTINUOUS deployment whose identity is only its display name.
+
+    A continuous deployment is precisely the case where state must survive a restart, and without
+    a declared identity that state is filed under what the profile is CALLED. Renaming the profile
+    then does not fail — the next session simply looks somewhere else, finds nothing, and reads
+    its own holding as flat while the venue still holds it.
+
+    A one-off session is exempt by construction: it inherits nothing and leaves nothing that a
+    successor has to find, so there is no identity to protect.
+
+    The message carries a SUGGESTION rather than only a complaint, because the value is arbitrary
+    and the operator has no reason to invent one — what matters is that it is unique and never
+    changes again.
+
+    Args:
+        profile_name: The profile's declared name, or its symbol when it declares none
+        symbol: The traded symbol
+        bot_id: The identity the profile declares, or empty
+        continuous: Whether this session belongs to a continuous deployment
+
+    Returns:
+        None — raises ContinuousDeploymentNeedsBotIdError when a continuous profile declares none
+    """
+    if not continuous or bot_id:
+        return
+
+    suggestion = sanitize_identity_part(profile_name)
+    raise ContinuousDeploymentNeedsBotIdError(
+        f"The profile '{profile_name}' declares `deployment.continuous: true` but no `bot_id`.\n"
+        f'    A continuous deployment carries state across restarts — the open position book, '
+        f'the position\n'
+        f'    counter, the session keys. Without a declared identity that state is filed under '
+        f'the profile\n'
+        f'    NAME, so renaming the profile points the next session at an empty document while '
+        f'the venue\n'
+        f'    still holds the position.\n'
+        f'\n'
+        f'    Add it to the profile, beside `name`:\n'
+        f'\n'
+        f'        "bot_id": "{suggestion}"\n'
+        f'\n'
+        f'    It may be anything — what it has to be is UNIQUE across every profile and never '
+        f'changed\n'
+        f'    again. The identity this session would file under is '
+        f"'{carry_over_key(profile_name, symbol, suggestion)}'."
+    )
+
 
 def validate_carry_over_identity_unique(
     config_path: Optional[Path],

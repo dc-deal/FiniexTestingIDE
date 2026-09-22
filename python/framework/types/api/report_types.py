@@ -813,6 +813,10 @@ class RunResultRow(BaseModel):
     unstamped_input_files: int | None = None
     price_bases: str = ''
     deployment_id: str = ''
+    # The bot's DECLARED identity (#538) — live only, and the one identity on this row that does
+    # not move. `scenario_set_name` is what the profile is CALLED, `deployment_id` is minted per
+    # deployment; only this answers "is this the same bot as the row above" across both.
+    bot_id: str = ''
     profile_hash: str = ''
     # 'simulation' | 'live'; '' on a fragment written before the column existed, which means
     # UNKNOWN and never a guess.

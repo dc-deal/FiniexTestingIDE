@@ -17,6 +17,25 @@ class StatePersistenceError(FiniexError):
     pass
 
 
+class ContinuousDeploymentNeedsBotIdError(FiniexError):
+    """
+    A profile declares a continuous deployment but not the identity its state is filed under.
+
+    A continuous deployment is precisely the case where state has to survive a restart: the open
+    position book, the position-counter high-water mark, the session keys its orders were sent
+    under. Without a declared `bot_id` that state is filed under what the profile is CALLED — and
+    a display name is the thing an operator improves. The rename does not fail; the next session
+    simply looks somewhere else, finds nothing, and reads its own holding as flat while the venue
+    still holds it. At spot that is unrecoverable, because a holding is a balance the venue cannot
+    describe as a position.
+
+    Raised at startup rather than warned about, because a warning on a thirty-day unattended run
+    is a warning nobody is there to read, and the cost of being wrong is a position nobody knows
+    about (§35: the live side aborts at boot — it has one session).
+    """
+    pass
+
+
 class CarryOverIdentityCollisionError(FiniexError):
     """
     Two AutoTrader profiles resolve to one carry-over identity.

@@ -168,6 +168,7 @@ def build_run_provenance_from_session(
         # rather than measured (§31c).
         price_bases=MarketConfigManager().get_price_formation(config.broker_type).value,
         deployment_id=deployment_id,
+        bot_id=config.bot_id,
         profile_hash=_profile_fingerprint(config),
         run_type=RUN_TYPE_LIVE,
     )

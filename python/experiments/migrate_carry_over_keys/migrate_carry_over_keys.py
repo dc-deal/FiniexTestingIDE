@@ -41,7 +41,8 @@ def planned_renames(root: Path) -> List[Tuple[Path, Path]]:
 
     The identity is read from the document's OWN envelope rather than parsed back out of its
     file name — the file name is exactly what cannot be parsed back, which is the defect being
-    migrated.
+    migrated. That includes the DECLARED `bot_id` where the envelope carries one: without it this
+    would compute the composed name and rename a correctly-filed document into an orphan.
 
     Args:
         root: A carry-over store directory
@@ -65,7 +66,12 @@ def planned_renames(root: Path) -> List[Tuple[Path, Path]]:
             print(f'  ⚠️  no identity in the envelope, left alone: {path.name}')
             continue
 
-        target = path.with_name(f'{carry_over_key(profile, symbol)}.json')
+        # The DECLARED id wins, exactly as it does when the name is composed in the first place.
+        # Recomputing from profile+symbol alone would rename a document that was filed under a
+        # declared id back to the composed name — which orphans it. A document written before
+        # the field existed carries none, and then the composed name IS its name.
+        target = path.with_name(
+            f'{carry_over_key(profile, symbol, envelope.get("bot_id") or "")}.json')
         if target != path:
             renames.append((path, target))
     return renames

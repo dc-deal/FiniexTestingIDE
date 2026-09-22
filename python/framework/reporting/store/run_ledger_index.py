@@ -102,7 +102,7 @@ class RunLedgerIndex(AbstractStoreIndex):
     # The booking columns carry the sharper form of that: absent means "this row books no
     # period", which every row written before this version is, and it must never read as a
     # period zero.
-    LOGIC_VERSION: int = 11
+    LOGIC_VERSION: int = 12
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

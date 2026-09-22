@@ -81,6 +81,7 @@ from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
 from python.framework.validators.carry_over_identity_validator import (
     validate_carry_over_identity_unique,
+    validate_continuous_deployment_declares_bot_id,
 )
 from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.validators.session_end_validator import resolve_session_end_policy
@@ -519,6 +520,16 @@ class AutotraderMain:
         # each asks whether a document belongs to THIS bot, which in a collision it does, for
         # both. Checked HERE because it must land before anything reads or writes either store
         # — `_restore_algo_state` is the next call, and cold start follows it.
+        # An identity a continuous deployment does not DECLARE is one that moves when the
+        # profile is renamed — and the rename does not fail, it silently points the next session
+        # at an empty document (#538). `--one-off` is exempt: it inherits nothing and leaves
+        # nothing a successor must find.
+        validate_continuous_deployment_declares_bot_id(
+            self._config.name or self._config.symbol,
+            self._config.symbol,
+            self._config.bot_id,
+            continuous=self._config.deployment.continuous and not self._one_off)
+
         validate_carry_over_identity_unique(
             self._config.config_path,
             self._config.name or self._config.symbol,

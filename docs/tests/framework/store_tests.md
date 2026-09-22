@@ -121,6 +121,11 @@ carry every character, so `dot live` and `dot-live` legitimately meet. That is o
 two ways rather than two bots merging, and it is the reason for a check rather than for a
 stricter sanitiser.
 
+**A continuous deployment MUST declare one**, and four tests pin the refusal: a continuous
+profile without a `bot_id` is rejected at boot, the message carries a usable suggestion and shows
+the identity it would produce (a complaint the operator cannot act on is one they work around), a
+declared one passes, and `--one-off` is exempt because it inherits nothing.
+
 **A declared `bot_id` takes precedence over the name**, and three tests pin why: it produces the
 key, it survives a rename of everything else, and leaving it empty composes from the name exactly
 as before — so no profile changes key by the field existing. Without it the identity moves when

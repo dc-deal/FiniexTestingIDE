@@ -76,6 +76,7 @@ class ColdStartStateStore:
         self._symbol = symbol
         self._logger = logger
         self._run_id = run_id
+        self._bot_id = bot_id
         self._path = self._root / f'{carry_over_key(profile, symbol, bot_id)}.json'
         # Provenance from the last load: WHEN the document was written. Kept as the stamp and
         # never turned into an age — deriving one needs a "now", and at boot the canonical
@@ -259,6 +260,9 @@ class ColdStartStateStore:
             written_by_run_id=self._run_id,
             profile=self._profile,
             symbol=self._symbol,
+            # What the FILE NAME was derived from — without it nothing can recompute this
+            # document's own name, and anything that tried would orphan it (#538).
+            bot_id=self._bot_id,
             snapshot=payload.model_dump(),
         )
         self._atomic_write(json.dumps(envelope.model_dump(), indent=2))

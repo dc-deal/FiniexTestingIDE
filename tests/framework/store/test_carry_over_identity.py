@@ -16,11 +16,15 @@ from pathlib import Path
 
 import pytest
 
-from python.framework.exceptions.persistence_errors import CarryOverIdentityCollisionError
+from python.framework.exceptions.persistence_errors import (
+    CarryOverIdentityCollisionError,
+    ContinuousDeploymentNeedsBotIdError,
+)
 from python.framework.persistence.carry_over_identity import carry_over_key
 from python.framework.validators.carry_over_identity_validator import (
     collisions,
     validate_carry_over_identity_unique,
+    validate_continuous_deployment_declares_bot_id,
 )
 
 _REAL_PROFILES = Path('configs/autotrader_profiles')
@@ -100,6 +104,47 @@ class TestTheKeyHasOneHome:
         # two bots merging. The sanitiser is lossy because a filename cannot carry every
         # character, so the boot check is the right answer to it rather than a stricter rule.
         assert carry_over_key('dot live', 'DOTUSD') == carry_over_key('dot-live', 'DOTUSD')
+
+
+class TestAContinuousDeploymentMustDeclareItsIdentity:
+    """
+    The one case where composing the identity from the NAME is not good enough (#538).
+
+    A continuous deployment is by definition the case where state survives a restart. Without a
+    declared identity that state is filed under what the profile is CALLED — and renaming does
+    not fail, it silently points the next session at an empty document while the venue still
+    holds the position. So it is a REFUSAL at boot, not a warning: a warning on a thirty-day
+    unattended run is a warning nobody is there to read.
+    """
+
+    def test_a_continuous_profile_without_one_is_refused(self):
+        with pytest.raises(ContinuousDeploymentNeedsBotIdError):
+            validate_continuous_deployment_declares_bot_id(
+                'dotusd_live', 'DOTUSD', '', continuous=True)
+
+    def test_the_message_carries_a_usable_suggestion(self):
+        """
+        A complaint the operator cannot act on is a complaint they will work around. The value is
+        arbitrary — what matters is that it is unique and never changes — so the message proposes
+        one rather than leaving them to invent it.
+        """
+        with pytest.raises(ContinuousDeploymentNeedsBotIdError) as raised:
+            validate_continuous_deployment_declares_bot_id(
+                'DOTUSD Live Bot', 'DOTUSD', '', continuous=True)
+
+        message = str(raised.value)
+        assert '"bot_id": "dotusd-live-bot"' in message
+        assert 'dotusd-live-bot_dotusd' in message, 'the resulting identity is not shown'
+        assert 'UNIQUE' in message
+
+    def test_a_declared_one_passes(self):
+        validate_continuous_deployment_declares_bot_id(
+            'dotusd_live', 'DOTUSD', 'dotusd-live', continuous=True)
+
+    def test_a_one_off_session_is_exempt(self):
+        """It inherits nothing and leaves nothing a successor must find."""
+        validate_continuous_deployment_declares_bot_id(
+            'dotusd_live', 'DOTUSD', '', continuous=False)
 
 
 class TestTheBootCheck:

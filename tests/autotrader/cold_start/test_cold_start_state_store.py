@@ -109,6 +109,24 @@ class TestRoundTrip:
         assert store.get_state_path().name == 'btcusd-test_btcusd.json'
         assert raw['store_id'] == 'cold_start_state'
 
+    def test_the_envelope_records_the_identity_its_name_came_from(self, tmp_path, logger):
+        """
+        Without it the document cannot say what it is filed under, and anything recomputing that
+        name from `profile` + `symbol` alone computes a DIFFERENT one and orphans the file — the
+        migration script being the first such caller (#538).
+        """
+        store = ColdStartStateStore(
+            root=tmp_path, profile='dotusd_live', symbol='DOTUSD',
+            logger=logger, run_id='20260901_120000_abcdef12', bot_id='dot-usd-main')
+        store.save(session_key='1641', highest_position_counter=1)
+
+        raw = json.loads(store.get_state_path().read_text(encoding='utf-8'))
+
+        assert store.get_state_path().name == 'dot-usd-main_dotusd.json'
+        assert raw['bot_id'] == 'dot-usd-main'
+        # The composed name is NOT the file name here — which is the whole point.
+        assert raw['profile'] == 'dotusd_live' and raw['symbol'] == 'DOTUSD'
+
 
 class TestTheRiskBaselineSurvivesTheDisk:
     """
