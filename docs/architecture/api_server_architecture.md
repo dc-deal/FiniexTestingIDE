@@ -29,7 +29,7 @@ remote-monitoring or tooling integrations.
 python/
   api/
     api_app.py          ← FastAPI app factory (create_app())
-    endpoints/          ← Router modules (broker_router, bars_router, reports_router)
+    endpoints/          ← Router modules, one per domain — the surface table below lists them
   cli/
     api_server_cli.py   ← Entry point (argparse, no logic)
   framework/
@@ -39,7 +39,7 @@ python/
         report_types.py ← Unified report models (#391) served by reports_router
 ```
 
-The `endpoints/` directory holds one `APIRouter` module per domain. The §26 threshold is reached (`broker_router`, `bars_router`, `reports_router`), each registered in `create_app()` via `app.include_router(..., prefix='/api/v1')`.
+The `endpoints/` directory holds one `APIRouter` module per domain, well past the §26 threshold. Each is registered in `create_app()` from `ROUTER_SURFACES` — the mount table that pairs a router with the surface its grants name — via `app.include_router(..., prefix='/api/v1')`.
 
 ## Request Lifecycle
 
@@ -90,6 +90,7 @@ realistic grant there — the model degrades to surface level by design.
 |---|---|---|
 | `brokers` | `broker_router` | `brokers:*` |
 | `bars` | `bars_router` | `bars:kraken_spot`, `bars:mt5` |
+| `deployments` | `deployments_router` | `deployments:*`, `deployments:deploy_20260918_091413` |
 | `reports` | `reports_router` | `reports:*` |
 | `sweeps` | `sweeps_router` | `sweeps:*` |
 
@@ -228,6 +229,10 @@ It is a state to pass through, not one to stay in.
 | GET | `/api/v1/reports/runs/{run_id}/warnings-errors` | Warnings/errors report (the run's tiered advisory + error pot). `errors[].logged_errors` carries `LogEntryRow` objects — level, `observed_at`, `event_time`, `scope`, `message` — not bare strings. An artifact written before that shape answers **409 `artifact_unreadable`**, never 500: run output is regenerated, not migrated (§27) |
 | GET | `/api/v1/reports/runs/{run_id}/broker` | Broker report (broker + symbol specifications the run executed against) |
 | GET | `/api/v1/reports/runs/{run_id}/feed-stability` | Feed-stability report (disturbance episodes as observed spans) |
+| GET | `/api/v1/reports/runs/{run_id}/booking-periods` | The run's Hauptbuch (#537): one summary per booking period — a trading day, or the stretch the run actually covered — plus the RECONCILIATION against the figure the run derived by its own independent path. Served from the stored artifact, never rebuilt from the ledger: recomputed there the check would be `sum(rows) − sum(rows)`, a control total that holds by construction and can never fail. A run from before the artifact existed answers 404, the same semantics as any other section |
+| GET | `/api/v1/deployments` | Every recorded deployment, newest first — one entry per (deployment × account currency), because a P&L column added over two currencies is not a number. `net_pnl` SUMS over the sessions; `max_drawdown` is their MAXIMUM and never a sum, since each live row carries the running decline against the inherited peak. `changed` marks a deployment whose sessions were not all produced by one configuration. Served from the run-results ledger (#497) |
+| GET | `/api/v1/deployments/{deployment_id}` | One deployment's sessions, OLDEST first — a life reads forwards, the opposite order to the console. Each session carries `ran_hours`, the `gap_hours` BEFORE it (with `gap_between_starts` where only a start-to-start measure was possible, which overstates it) and the two change marks. `advisory` says whether the rows may be read as one series at all; `unfinished` counts the runs that never reached their close, absent from the sessions by construction because the ledger row is written last (§44). **No reconciliation line, and there cannot be one** — over many runs there is no single run summary to sum against |
+| GET | `/api/v1/deployments/{deployment_id}/booking-periods` | Every booking period the deployment booked, across ALL of its sessions — the thirty-day picture in one call, where the run-scoped route would be an N+1 walk. Same row shape as `/reports/runs/{run_id}/booking-periods` plus `run_id`, which across a deployment is the only thing that tells two periods apart (`segment_no` is a per-BOT counter and restarts wherever a session wrote no carry-over floor) and is the hinge into that run's report routes. Rows that book no period are skipped and their sessions counted in `sessions_without_periods`, so an incomplete history is not read as a quiet one. **No reconciliation, by construction** — see the note under the route above |
 
 ### Timeframes Endpoint Details
 

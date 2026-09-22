@@ -137,7 +137,7 @@ LEDGER_COLUMNS: List[str] = [
 
 # HOW each column combines when several rows are read as one — declared, not remembered.
 #
-# `deployment_history_summary` already carries the reasoning for ONE of these in a comment
+# `deployment_history_builder` already carries the reasoning for ONE of these in a comment
 # ("max(), never sum(): each live row carries the RUNNING decline against the inherited peak"),
 # and nothing said it for the other fifty-six. A reader combining rows has to know per column,
 # and the dangerous pairs look identical: `net_pnl` and `win_rate` are both aggregates, one
@@ -428,6 +428,8 @@ class RunResultsLedger:
         self,
         sweep_id: Optional[str] = None,
         scenario_set_name: Optional[str] = None,
+        deployment_id: Optional[str] = None,
+        run_id: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Read the whole ledger as one table, optionally filtered.
@@ -435,6 +437,10 @@ class RunResultsLedger:
         Args:
             sweep_id: Keep only rows of this sweep
             scenario_set_name: Keep only rows of this scenario set
+            deployment_id: Keep only rows of this deployment — the live counterpart of
+                `sweep_id`, and its absence is why a live row was written and unreachable (#539)
+            run_id: Keep only the rows of this one run. Since #537 a run writes one row per
+                booking period, so this is a SET and not a single row
 
         Returns:
             DataFrame of ledger rows (empty if the ledger does not exist yet)
@@ -448,12 +454,18 @@ class RunResultsLedger:
             df = df[df['sweep_id'] == sweep_id]
         if scenario_set_name is not None:
             df = df[df['scenario_set_name'] == scenario_set_name]
+        if deployment_id is not None:
+            df = df[df['deployment_id'] == deployment_id]
+        if run_id is not None:
+            df = df[df['run_id'] == run_id]
         return df.reset_index(drop=True)
 
     def read_rows(
         self,
         sweep_id: Optional[str] = None,
         scenario_set_name: Optional[str] = None,
+        deployment_id: Optional[str] = None,
+        run_id: Optional[str] = None,
     ) -> List[RunResultRow]:
         """
         Read the ledger as typed rows (the JSON columns parsed back to structured types).
@@ -461,12 +473,15 @@ class RunResultsLedger:
         Args:
             sweep_id: Keep only rows of this sweep
             scenario_set_name: Keep only rows of this scenario set
+            deployment_id: Keep only rows of this deployment
+            run_id: Keep only the rows of this one run
 
         Returns:
             Typed ledger rows — what the optimization analysis + the API consume
         """
         return [self._to_row(record)
-                for record in self.read(sweep_id, scenario_set_name).to_dict('records')]
+                for record in self.read(
+                    sweep_id, scenario_set_name, deployment_id, run_id).to_dict('records')]
 
     def _to_row(self, record: Dict[str, Any]) -> RunResultRow:
         """Build a typed RunResultRow from a raw parquet record (parse the JSON columns)."""

@@ -963,6 +963,198 @@ class SweepDetailResponse(BaseModel):
     count: int
 
 
+class DeploymentSessionRow(BaseModel):
+    """
+    One session of a deployment, as the history reads it (#497).
+
+    Args:
+        index: Position in the deployment, 1-based
+        run_id: The session's own run identity
+        started: Its start, parsed from the run timestamp
+        net_pnl: Realised P&L of that session
+        max_drawdown: The CUMULATIVE account drawdown as of that session — a live row carries
+            the running figure against the inherited peak, never that session's own
+        max_drawdown_pct: Its share of the peak standing at the time
+        bot: Which bot ran it — the AutoTrader profile's name, which the ledger stores in
+            `scenario_set_name` for a live row. Carried so the OVERVIEW can show that two
+            deployments belong to the same bot: `--new-deployment` mints a fresh identity and
+            records no link back, so without the name a deliberate restart reads as two
+            unrelated bots
+        currency: The row's account currency
+        ended: When its ledger row was written, i.e. when it stopped — None on a row written
+            before that stamp existed
+        ran_hours: How long it ran, None when its end is unknown. Derived from the two
+            stamps rather than stored: the row is written as the session closes, so this is
+            the session's length plus the seconds its reports took
+        gap_hours: Hours the bot was NOT running before this session, None for the first
+        gap_between_starts: True when the gap could only be measured from one START to the
+            next, because the predecessor's row predates `recorded_at_utc`. That figure
+            contains the predecessor's whole runtime and overstates the downtime, so it is
+            marked rather than quietly shown as the same measure
+        strategy_changed: True when `param_hash` differs from the previous session's
+        operation_changed: True when `profile_hash` differs from the previous session's
+    """
+    index: int
+    run_id: str
+    started: Optional[datetime]
+    net_pnl: float
+    max_drawdown: float
+    max_drawdown_pct: float
+    currency: str
+    bot: str = ''
+    ended: Optional[datetime] = None
+    ran_hours: Optional[float] = None
+    gap_hours: Optional[float] = None
+    gap_between_starts: bool = False
+    strategy_changed: bool = False
+    operation_changed: bool = False
+
+
+class DeploymentComparabilityAdvisory(BaseModel):
+    """
+    A deployment whose sessions were not all produced by the same configuration.
+
+    The per-session marks say WHERE something changed; this says WHETHER the history can be
+    read as one series at all, and it says it BEFORE the table rather than inside it. The
+    difference matters on a thirty-day run: eleven sessions with three parameter changes show
+    three marks somewhere in the middle, and the reader has already added up the P&L column by
+    the time they reach them.
+
+    The sibling of `mixed_logic_version_advisory` (#390), which answers the same question for a
+    sweep's ranking. Like it, this is an ANALYZER and renders no verdict — whether the halves
+    may be compared is a judgement a person makes with what it reports.
+
+    Args:
+        sessions: How many sessions the deployment holds
+        strategy_stands: Distinct `param_hash` values across them — what the bot DECIDED
+        operation_stands: Distinct `profile_hash` values — what a session DID without changing
+            what it decided (a safety threshold, a guard, a timeout, the capital declaration)
+        longest_gap_hours: The longest stretch the bot was not running, None when no gap could
+            be measured
+    """
+    sessions: int
+    strategy_stands: int
+    operation_stands: int
+    longest_gap_hours: Optional[float] = None
+
+
+class DeploymentSummary(BaseModel):
+    """
+    One deployment's at-a-glance line, for the list view.
+
+    The sibling of `SweepSummary` (#390) and deliberately the same shape of answer: a reader
+    scanning a dozen deployments wants to know which one to open, not what happened inside it.
+
+    Args:
+        deployment_id: The identity its sessions name
+        sessions: How many sessions it holds
+        first_started: When the deployment began
+        last_started: When its most recent session began
+        net_pnl: Realised P&L summed over its sessions — this one DOES add up
+        max_drawdown: The deepest decline, which is the LARGEST of the rows and never a sum:
+            a live row carries the running figure against the inherited peak
+        max_drawdown_pct: That decline as a share of the peak standing when it happened
+        bot: The AutoTrader profile that ran it
+        currency: The account currency the figures are in
+        longest_gap_hours: The longest stretch the bot was not running
+        changed: True when the sessions were not all produced by the same configuration
+    """
+    deployment_id: str
+    sessions: int
+    first_started: Optional[datetime]
+    last_started: Optional[datetime]
+    net_pnl: float
+    max_drawdown: float
+    max_drawdown_pct: float
+    currency: str
+    bot: str = ''
+    longest_gap_hours: Optional[float] = None
+    changed: bool = False
+
+
+class DeploymentListResponse(BaseModel):
+    """
+    Every recorded deployment, newest first (#539).
+
+    One entry per (deployment x account currency), because a P&L column added up over two
+    currencies is not a number — the same split the summary rows carry.
+    """
+    deployments: list[DeploymentSummary]
+    count: int
+
+
+class DeploymentDetailResponse(BaseModel):
+    """
+    One deployment's sessions, oldest first — a life reads forwards.
+
+    `unfinished` is the count of this deployment's runs that never reached their close. The
+    sessions are built from the LEDGER, whose row is written last (§44), so those runs are
+    absent from the list by construction — and a bare session count would then be a number the
+    reader has no reason to doubt.
+
+    There is deliberately NO reconciliation line here, and there cannot be one: over many runs
+    no single run summary exists to sum against, so the second, independent derivation that
+    makes a check a check is missing. Stated rather than left out — a missing check read as a
+    passed one is the more expensive mistake.
+    """
+    deployment_id: str
+    sessions: list[DeploymentSessionRow]
+    count: int
+    unfinished: int = 0
+    advisory: Optional[DeploymentComparabilityAdvisory] = None
+
+
+class DeploymentBookingPeriodRow(BookingPeriodRow):
+    """
+    A booking period seen from a DEPLOYMENT, which needs one field more than a run does.
+
+    Inside a run report `run_id` would be redundant — the report is run-scoped and says it
+    once. Across a deployment it is the only thing that tells two periods apart: `segment_no`
+    is a per-BOT counter carried through the cold-start state, and a session that writes no
+    carry-over (a dry run, a mock) leaves the floor at zero, so its successor starts at 1
+    again. Three sessions of such a deployment then produce three rows numbered 1 — measured
+    2026-09-22 on the only deployment in this tree.
+
+    It is also the hinge: `run_id` is what the report routes and the run directory are
+    addressed by, so a bar on a chart can be clicked through to the session that booked it.
+
+    Additive by design — it IS a `BookingPeriodRow`, so a renderer written for the run report
+    serves this without a change.
+    """
+    run_id: str = ''
+
+
+class DeploymentBookingPeriodsResponse(BaseModel):
+    """
+    One deployment's booking periods, across every session it holds (#539).
+
+    The thirty-day picture: one entry per booking period — a trading day, or the stretch a
+    session actually covered — for a bot that restarted a dozen times. `/reports/runs/{run_id}/
+    booking-periods` answers the same shape for ONE run, so a consumer renders both with one
+    component and this route saves it the N+1 walk over the sessions.
+
+    Read from the LEDGER, which is the only store that holds a deployment's periods together.
+    The rows are `BookingPeriodRow`s plus the one field a deployment needs — see
+    `DeploymentBookingPeriodRow` — so a renderer written for the run report serves this too.
+
+    **There is deliberately NO reconciliation here, and there cannot be one.** A run's table
+    checks its periods against the figure the run derived by its own independent path; across
+    many runs no such second figure exists, so the check would be `sum(rows) - sum(rows)` — a
+    control total that holds by construction and can never fail (§48). Stated rather than left
+    out: a missing check read as a passed one is the more expensive mistake.
+
+    `sessions_without_periods` is what keeps a short list honest. A session whose ledger row
+    predates the booking journal books nothing, so it contributes no bar — and without the
+    count an incomplete history is indistinguishable from a quiet one.
+    """
+    deployment_id: str
+    periods: list[DeploymentBookingPeriodRow] = Field(default_factory=list)
+    count: int = 0
+    currencies: list[str] = Field(default_factory=list)
+    sessions: int = 0
+    sessions_without_periods: int = 0
+
+
 class RunMetaReport(RunScopedReport):
     """
     Run-level execution facts the orchestrator measures primarily (sim): scenario identity +

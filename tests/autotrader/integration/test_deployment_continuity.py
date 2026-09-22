@@ -33,7 +33,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.exceptions.live_execution_errors import OneOffInsideDeploymentError
-from python.framework.reporting.console.deployment_history_summary import (
+from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
 )
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger

@@ -402,6 +402,35 @@ every ordinary prune is one nobody reads.
 
 ---
 
+## The same history over HTTP
+
+Everything above is also served read-only by the API server, for the viewer and for anything
+else that reads rather than prints:
+
+```
+GET /api/v1/deployments                                   every deployment, newest first
+GET /api/v1/deployments/{deployment_id}                   one deployment's sessions
+GET /api/v1/deployments/{deployment_id}/booking-periods   its periods, across all sessions
+```
+
+The third one is the whole history at the grain the ledger actually books in: one entry per
+trading day for a bot that restarted a dozen times, in one call. Each entry names the `run_id`
+that booked it — necessary, because `segment_no` is a per-BOT counter that restarts wherever a
+session wrote no carry-over floor, so two periods of one deployment can both be number 1.
+
+Two differences from the terminal, both deliberate. The sessions come back **oldest first** — a
+life reads forwards, where the table above puts the newest on top because that is the row you
+open it for. And the warning block is a field on the response (`advisory`) rather than a banner,
+so a client cannot render the table and drop the sentence that says whether the rows may be
+added up at all.
+
+The response also carries `unfinished`: the sessions come from the ledger, whose row is written
+last, so a session killed before its close is missing from the list by construction. A bare
+count would be a number with nothing to doubt about it.
+
+A token needs the `deployments` grant — `deployments:*` for every bot, or one deployment's id
+for one of them.
+
 ## Checking what a session decided
 
 Every session says its resolved answer in two places, and both say the *resolved* one — a

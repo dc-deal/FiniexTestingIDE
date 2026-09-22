@@ -20,6 +20,8 @@ from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
     BookingPeriodRow,
     BookingPeriodsReport,
+    DeploymentBookingPeriodRow,
+    RunResultRow,
     RunSummary,
 )
 
@@ -112,6 +114,59 @@ def _row(segment) -> BookingPeriodRow:
         max_equity=segment.segment_max_equity,
         max_drawdown=segment.segment_max_drawdown,
     )
+
+
+def booking_periods_from_ledger_rows(
+    rows: List[RunResultRow],
+) -> List[DeploymentBookingPeriodRow]:
+    """
+    Ledger rows read back as booking-period rows — the same shape the run report renders.
+
+    The deployment-wide counterpart of the report above, and deliberately NOT a report: it
+    returns ROWS and no reconciliation. Across many runs there is no second, independently
+    derived figure to check the sum against, so a check here could only compare the rows with
+    themselves (§48). The caller states that absence rather than printing a total that cannot
+    fail.
+
+    Rows that book no period are skipped, not defaulted. Every row written before the booking
+    journal is one of those — an aggregate per currency with no period at all — and an empty
+    `segment_opened_at` is what says so. A made-up period zero would put a bar with no start
+    on a chart.
+
+    Args:
+        rows: Ledger rows, in any order, usually of ONE deployment
+
+    Returns:
+        One row per booked period, ordered by currency and then by when the period opened —
+        a currency's bars stay contiguous and read forwards inside it. Each carries its
+        `run_id`, which across a deployment is the only thing that tells two periods apart:
+        `segment_no` restarts wherever a session wrote no carry-over floor
+    """
+    periods = [
+        DeploymentBookingPeriodRow(
+            run_id=row.run_id,
+            unit_name=row.unit_name,
+            segment_no=row.segment_no or 0,
+            opened_at=row.segment_opened_at,
+            closed_at=row.segment_closed_at,
+            reason=row.segment_close_reason,
+            currency=row.currency,
+            trade_count=row.segment_trade_count or 0,
+            net_pnl=row.net_pnl,
+            total_fees=row.total_fees,
+            win_rate=row.win_rate,
+            profit_factor=row.profit_factor,
+            final_equity=row.final_equity,
+            # The period's OWN band and decline, never the cumulative trio beside them on the
+            # row: on this table the question is what each period did, and the running figure
+            # would repeat the same number down the column.
+            min_equity=row.segment_min_equity or 0.0,
+            max_equity=row.segment_max_equity or 0.0,
+            max_drawdown=row.segment_max_drawdown or 0.0,
+        )
+        for row in rows if row.segment_opened_at
+    ]
+    return sorted(periods, key=lambda p: (p.currency, p.opened_at))
 
 
 def _run_figures(run_summary: RunSummary, currency: str):

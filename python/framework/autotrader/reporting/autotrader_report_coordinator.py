@@ -42,6 +42,7 @@ from python.framework.reporting.console.warnings_summary import WarningsSummary
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
 from python.framework.reporting.io.artifact_specs import (
+    BOOKING_PERIODS_ARTIFACT,
     BROKER_ARTIFACT,
     COLD_START_ARTIFACT,
     SAFETY_ARTIFACT,
@@ -223,15 +224,18 @@ class AutotraderReportCoordinator:
                 self._config.symbol)
             write_artifact(safety_report, io_dir, SAFETY_ARTIFACT)
 
+        # The booking periods, derived once and used three times: the artifact, the table below,
+        # and — through the segments themselves — the ledger rows. The reconciliation against the
+        # run's own figure is computed here rather than in the renderer (§12), and it is why the
+        # report is PERSISTED rather than rebuilt from the ledger later: the independent figure it
+        # checks against exists only while the run does (#539).
+        booking_periods = build_booking_periods_report(
+            self._run_id, units, unified.run_summary)
+        write_artifact(booking_periods, io_dir, BOOKING_PERIODS_ARTIFACT)
+
         # Every artifact of this session is on disk now — the index records WHICH, so a consumer
         # knows what it can fetch instead of discovering it by 404 (#475).
         SharedReportCoordinator.record_run_artifacts(self._run_dir)
-
-        # The booking periods, derived once and used twice: the table below and — through the
-        # segments themselves — the ledger rows. The reconciliation against the run's own
-        # figure is computed here rather than in the renderer (§12).
-        booking_periods = build_booking_periods_report(
-            self._run_id, units, unified.run_summary)
 
         # Run-results ledger (#390) — append the session to the persistent cross-run store the
         # Parameter Optimization system ranks over. Same RunSummary model + provenance as the sim

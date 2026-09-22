@@ -54,6 +54,7 @@ from python.framework.reporting.event_stream_csv_writer import EventStreamWriter
 from python.framework.reporting.io.artifact_specs import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
     BLOCK_SPLITTING_ARTIFACT,
+    BOOKING_PERIODS_ARTIFACT,
     BROKER_ARTIFACT,
     PROFILING_ARTIFACT,
     ROBUSTNESS_ARTIFACT,
@@ -167,6 +168,10 @@ class BatchReportCoordinator:
             self._scenario_set.get_generator_profiles() or [])
         # Robustness validation — multi-window + IS/OOS (empty unless robustness enabled; sim-only, #367).
         robustness_report = build_robustness_report_from_batch(run_id, self._batch_execution_summary)
+        # The run's Hauptbuch (#537) — derived here, used three times: the artifact, the console
+        # table and (through the segments themselves) the ledger rows. Derived rather than read
+        # back, because the reconciliation needs the run's own independent figure (#539).
+        booking_periods_report = build_booking_periods_report(run_id, units, run_summary)
 
         # === PRESENT — build the section sub-presenters from the models and render them
         # through the shared ordered renderer (#403 Phase 2; the section order lives in one
@@ -197,8 +202,7 @@ class BatchReportCoordinator:
             robustness_summary=RobustnessSummary(robustness_report),
             # The run's Hauptbuch as an ordered section — inside the renderer, so the capture
             # below carries it into `scenario_summary.log` like every other section (#537).
-            booking_periods_summary=BookingPeriodsSummary(
-                build_booking_periods_report(run_id, units, run_summary)),
+            booking_periods_summary=BookingPeriodsSummary(booking_periods_report),
             closing_block=SimExecutiveSummary(
                 self._app_config, run_summary, run_meta_report, profiling_report,
                 scenario_details_report, warnings_errors_report, aggregated_portfolio_report,
@@ -255,6 +259,7 @@ class BatchReportCoordinator:
         write_artifact(broker_report, io_dir, BROKER_ARTIFACT)
         write_artifact(warnings_errors_report, io_dir, WARNINGS_ERRORS_ARTIFACT)
         write_artifact(aggregated_portfolio_report, io_dir, AGGREGATED_PORTFOLIO_ARTIFACT)
+        write_artifact(booking_periods_report, io_dir, BOOKING_PERIODS_ARTIFACT)
         # Block-splitting artifact only when there is something to report (Profile Runs).
         if block_splitting_report.symbols:
             write_artifact(block_splitting_report, io_dir, BLOCK_SPLITTING_ARTIFACT)

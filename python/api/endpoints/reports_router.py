@@ -15,6 +15,7 @@ from python.framework.exceptions.api_errors import ApiException
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
+    BOOKING_PERIODS_ARTIFACT,
     BROKER_ARTIFACT,
     EXECUTION_STATS_ARTIFACT,
     FEED_STABILITY_ARTIFACT,
@@ -30,6 +31,7 @@ from python.framework.reporting.io.artifact_specs import (
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
+    BookingPeriodsReport,
     BrokerReport,
     ExecutionStatsReport,
     FeedStabilityReport,
@@ -350,6 +352,32 @@ def get_feed_stability(run_id: str) -> FeedStabilityReport:
         raise ApiException(
             404, 'run_not_found',
             f"No feed-stability artifact for run '{run_id}'")
+    return report
+
+
+@router.get('/reports/runs/{run_id}/booking-periods', response_model=BookingPeriodsReport)
+def get_booking_periods(run_id: str) -> BookingPeriodsReport:
+    """
+    The run's Hauptbuch (#537): one summary per booking period, and whether they add up.
+
+    Served from the stored artifact rather than rebuilt from the ledger, and the reconciliation
+    is the reason. It compares the periods against the figure the run reports by its own
+    independent path, and that second figure exists only while the run does — recomputed from
+    the ledger the check would be `sum(rows) - sum(rows)`, i.e. a control total that holds by
+    construction and can never fail.
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The BookingPeriodsReport (404 if the run has no booking-periods artifact — every run
+        from before the artifact existed, which is the same semantics as any other section)
+    """
+    report = ReportStore().get(run_id, BOOKING_PERIODS_ARTIFACT)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No booking-periods artifact for run '{run_id}'")
     return report
 
 

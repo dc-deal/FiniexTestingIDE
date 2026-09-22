@@ -188,6 +188,11 @@ the ledger's only other reader filtered on `sweep_id` — which a live session d
 the row was written and unreachable (§44 calls that a store with no read path). These pin the
 grouping and, just as deliberately, what it refuses to do.
 
+The grouping lives in `builders/deployment_history_builder.py` since #539, because the API serves
+the same history and two derivations of one deployment are two chances to disagree about what its
+drawdown is. The console module kept its two renderers and nothing else; the CLI's output was
+compared byte for byte across the move.
+
 | Test | What it pins |
 |------|-------------|
 | `test_sessions_of_one_deployment_become_one_history` | the grouping itself |

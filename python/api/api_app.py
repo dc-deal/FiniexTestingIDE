@@ -1,17 +1,13 @@
 """
 FiniexTestingIDE — HTTP API Application
 
-Read-only FastAPI application exposing tick/bar data over HTTP.
-Entry point: python/cli/api_server_cli.py
+Read-only FastAPI application over the data and the records this project already writes: market
+data by venue, a run's persisted report sections, a sweep's ranked combinations, a live bot's
+history across its restarts. Entry point: python/cli/api_server_cli.py
 
-Foundation endpoints (#297):
-  GET /api/v1/health
-  GET /api/v1/brokers
-
-Data endpoints (#298):
-  GET /api/v1/brokers/{broker}/symbols
-  GET /api/v1/brokers/{broker}/symbols/{symbol}/coverage
-  GET /api/v1/brokers/{broker}/symbols/{symbol}/bars
+The routes are NOT listed here. They are one table in docs/architecture/api_server_architecture.md,
+which says for each what it serves and what it deliberately does not — a second list beside it
+would be the copy nobody updates. `ROUTER_SURFACES` below is the authoritative mount table.
 """
 
 from fastapi import Depends, FastAPI, Request, Security
@@ -19,7 +15,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from python.api.api_auth_setup import setup_api_auth
-from python.api.endpoints import bars_router, broker_router, reports_router, sweeps_router
+from python.api.endpoints import (
+    bars_router,
+    broker_router,
+    deployments_router,
+    reports_router,
+    sweeps_router,
+)
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.exceptions.api_errors import ApiException
@@ -30,6 +32,24 @@ from python.framework.types.api.api_types import (
     TimeframeListResponse,
 )
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
+
+
+# Every gated router and the surface its grants name. The surface is the ROUTER's name, and a
+# grant names the thing a route addresses — its first path parameter. So `bars:kraken_spot` is
+# one venue's bar data, while a run report is addressed by a generated id nobody would write
+# into a token and `reports:*` is the realistic grant there.
+#
+# Declared at module level rather than inside the factory because it is the half of a PAIR: the
+# other half is `ConsumerToken.GRANT_SURFACES`, the closed vocabulary a grant is parsed against.
+# A test holds the two to the same set, so a router mounted under a surface no token can name —
+# and a surface no router serves — fails there instead of becoming a denial nobody can explain.
+ROUTER_SURFACES = (
+    (broker_router.router, 'brokers'),
+    (bars_router.router, 'bars'),
+    (deployments_router.router, 'deployments'),
+    (reports_router.router, 'reports'),
+    (sweeps_router.router, 'sweeps'),
+)
 
 
 def create_app() -> FastAPI:
@@ -98,7 +118,7 @@ def create_app() -> FastAPI:
         return HealthResponse(status='ok', version=app_version)
 
     # Open beside /health, decided rather than inherited: a timeframe list is the app's own
-    # static configuration, not data about a venue or a run, and it is none of the four
+    # static configuration, not data about a venue or a run, and it is none of the
     # surfaces a grant can name. Gating it would make a market-data grant the precondition for
     # a list that reveals nothing about market data.
     @app.get('/api/v1/timeframes', response_model=TimeframeListResponse)
@@ -115,16 +135,7 @@ def create_app() -> FastAPI:
         index.load_index()
         return BrokerListResponse(brokers=index.list_broker_types())
 
-    # The surface is the ROUTER's name, and a grant names the thing a route addresses — its
-    # first path parameter. So `bars:kraken_spot` is one venue's bar data, while a run report
-    # is addressed by a generated id nobody would write into a token and `reports:*` is the
-    # realistic grant there.
-    for router, surface in (
-        (broker_router.router, 'brokers'),
-        (bars_router.router, 'bars'),
-        (reports_router.router, 'reports'),
-        (sweeps_router.router, 'sweeps'),
-    ):
+    for router, surface in ROUTER_SURFACES:
         app.include_router(
             router,
             prefix='/api/v1',

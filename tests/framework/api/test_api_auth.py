@@ -21,7 +21,7 @@ from finiex_auth.grant_auth import build_grant_dependency
 from finiex_auth.route_walk import assert_no_identity_route_is_ungated
 from finiex_auth.token_registry import TokenRegistry
 
-from python.api.api_app import create_app
+from python.api.api_app import ROUTER_SURFACES, create_app
 from python.api.api_auth_setup import ApiAuthBundle, _api_exception
 from python.configuration.api_token_manager import ApiTokenManager
 from python.framework.exceptions.api_errors import ApiConfigurationError
@@ -32,6 +32,7 @@ from python.framework.types.config_types.api_auth_config_types import ConsumerTo
 _REQUIRED_ROUTES = (
     ('/api/v1/brokers/{broker}/symbols', 'get'),
     ('/api/v1/brokers/{broker}/symbols/{symbol}/bars', 'get'),
+    ('/api/v1/deployments/{deployment_id}', 'get'),
     ('/api/v1/reports/runs/{run_id}/trade-history', 'get'),
     ('/api/v1/sweeps/{sweep_id}', 'get'),
 )
@@ -209,6 +210,17 @@ class TestACollectionRouteIsGatedToo:
                                        note='partner'))
         assert client.get('/api/v1/sweeps', headers=_headers('t-bars')).status_code == 403
 
+    def test_the_deployment_list_is_refused_without_a_deployments_grant(self):
+        client = _client(ConsumerToken(token='t-bars', grants=['bars:*', 'brokers:*'],
+                                       note='partner'))
+        assert client.get('/api/v1/deployments',
+                          headers=_headers('t-bars')).status_code == 403
+
+    def test_a_deployments_grant_reaches_the_deployment_list(self):
+        client = _client(ConsumerToken(token='t-dep', grants=['deployments:*'], note='ops'))
+        assert client.get('/api/v1/deployments',
+                          headers=_headers('t-dep')).status_code == 200
+
     def test_a_reports_grant_reaches_the_run_index(self):
         client = _client(ConsumerToken(token='t-rep', grants=['reports:*', 'sweeps:*'],
                                        note='analyst'))
@@ -232,7 +244,7 @@ class TestTheAppLevelRoutesAreADecision:
     by ACCIDENT. Both states are now chosen, and pinned here so neither drifts back:
 
     - `/timeframes` is OPEN beside `/health`. It is the app's own static configuration, not
-      data about a venue or a run, and it is none of the four surfaces a grant can name.
+      data about a venue or a run, and it is none of the surfaces a grant can name.
       Gating it would make a market-data grant the precondition for a list that reveals
       nothing about market data.
     - `/brokers` requires a token. It names which venues this installation carries, which is
@@ -395,8 +407,12 @@ class TestTheSurfaceVocabularyIsClosed:
         with pytest.raises(ValueError, match='known surface'):
             ConsumerToken(token='t', grants=['report:foo'], note='typo')
 
-    def test_the_four_surfaces_are_the_four_routers(self):
-        assert ConsumerToken.GRANT_SURFACES == ('bars', 'brokers', 'reports', 'sweeps')
+    def test_every_surface_is_a_mounted_router_and_every_router_has_one(self):
+        # The vocabulary and the mount table are the two halves of one declaration (§49), and
+        # holding them to the same set is what makes either safe to extend: a router mounted
+        # under a surface no token can name is authenticated but ungrantable, and a surface no
+        # router serves is a grant that silently means nothing.
+        assert set(ConsumerToken.GRANT_SURFACES) == {s for _, s in ROUTER_SURFACES}
 
 
 class TestTheRegistryNeverHoldsAToken:

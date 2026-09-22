@@ -16,12 +16,14 @@ figure against the inherited peak, so the reduction over a deployment is max(), 
 double-counts every session's share of the same decline.
 """
 
-from python.framework.reporting.console.deployment_history_summary import (
+from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
     deployment_comparability_advisory,
+    summarize_deployments,
+)
+from python.framework.reporting.console.deployment_history_summary import (
     render_deployment_history,
     render_deployment_list,
-    summarize_deployments,
 )
 from python.framework.types.api.report_types import RunResultRow
 
