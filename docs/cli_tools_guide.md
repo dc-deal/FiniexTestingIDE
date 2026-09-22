@@ -20,11 +20,40 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `tick_index_cli.py` | Tick Index Management | rebuild, status, file-coverage, files |
 | `bar_index_cli.py` | Bar Index Management | rebuild, status, render |
 | `run_index_cli.py` | Run Index Management | rebuild, status, prune |
+| `run_config_cli.py` | Run Config Store (#538) | list, history, show |
 | `discoveries_cli.py` | Volatility Profiling, Discoveries & Data Coverage | profile, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
 | `generator_cli.py` | Block & Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
 | `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, list |
 
 ---
+
+
+## Run configs — what a run was configured with
+
+Every configuration that can start a run is registered under an id derived from its CONTENT, so
+two runs naming the same id ran the same configuration and an edited file mints a new version
+beside the old one. Nothing has to be registered by hand: listing or running a scenario set does
+it, and a live session registers its profile at boot.
+
+```bash
+python python/cli/run_config_cli.py list
+python python/cli/run_config_cli.py history cautious_macd_sandbox.json
+python python/cli/run_config_cli.py show d7d7799
+```
+
+`history` is the one worth knowing. It says not only THAT a config changed but what the change
+touched, because every version carries three identities — the content id, `param_hash` (what the
+algo decides) and `scope_hash` (which data runs):
+
+```
+  📜 cautious_macd_sandbox.json — 2 version(s)
+    #  config_id      first seen         runs  what changed
+    1  d7d779962397   2026-09-22 10:27      1  first registered
+    2  7c60c44a56ef   2026-09-22 10:33      1  naming only — no decision, no scope
+```
+
+A version whose decisions and scope both held is a change of NAMING only: the bytes differ, what
+the run would do does not.
 
 ## A) Data Pipeline - Import
 

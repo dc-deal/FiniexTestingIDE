@@ -74,6 +74,29 @@ exactly that one test red and leaves the other thirteen green.
 
 `test_booking_periods_report.py` also pins the file/console split: `TestTheFileGetsEverythingAndOnlyTheConsoleIsTrimmed` shows the compact form keeping the heading and the reconciliation while every row goes — including the case that must never be compacted away, a report that does NOT reconcile. `TestTheSectionIsWiredIntoTheSharedRenderer` pins that it renders inside `render_all` rather than after a coordinator's capture, which is where it sat while the simulation's table reached the terminal and nothing else.
 
+## `test_booking_segment_recorder.py` — when a period ends, and what the check costs
+
+The recorder holds a period's state while it is open, and `check_boundary` runs on EVERY tick from
+BOTH event sources. The suite has two halves because that fact has two consequences.
+
+The BEHAVIOUR half pins that a day flip seals exactly once and at the market's own boundary: a
+forex day flips at 21:00 UTC (17:00 New York) and NOT at the midnight three hours later, a feed
+that goes quiet for two days still seals on the tick that returns, and a unit with no anchor books
+nothing at all.
+
+The COST half pins that an ordinary tick does not convert a timezone. It counts the calls to
+`trading_day_of` by replacing it in the recorder's namespace: twenty-four ticks across one day
+must produce exactly ONE conversion, and forty-eight hours of ticks exactly two — one to open a
+period and one to seal it.
+
+That half is not premature optimisation. Measured 2026-09-22, `trading_day_of` costs 1.52 µs at
+UTC and 1.87 µs at America/New_York, so asking it per tick spends 2.3-2.8 s of a 1.5-million-tick
+benchmark run against a 23.4 s baseline — about a tenth of the tick loop, to re-derive a date that
+changes once a day. The cached boundary brings the same check to 0.071 µs. **The behaviour is
+identical either way**, which is exactly why the behaviour tests cannot catch the regression:
+mutation-checked, the two cost tests go red against the uncached recorder (24 conversions instead
+of 1) while all five behaviour tests stay green.
+
 ## `test_booking_segment_builder.py` — one booking period, from the records inside it
 
 The Hauptbuch step. Every case that matters is a trade that CROSSES a boundary, so the file is

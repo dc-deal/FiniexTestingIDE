@@ -110,9 +110,21 @@ invisible from inside either store: each asks whether a document belongs to THIS
 collision it does, for both. The check therefore runs once across the profile tree at boot,
 before anything reads or writes.
 
-The sanitiser being lossy is pinned as a **property**, not as a bug: a filename cannot carry
-every character, so `dot live` and `dot-live` legitimately meet. That is the reason for a check
-rather than for a stricter sanitiser.
+**The separator is RESERVED since #538, and the suite pins what that closed and what it did
+not.** Both halves sanitise to `[a-z0-9-]`, so the `_` occurs exactly once and two DIFFERENT bots
+can no longer collide by accident of where the underscores fall — `btc` + `USD_SPOT` and
+`btc_usd` + `SPOT` used to be one file and are now `btc_usd-spot` and `btc-usd_spot`. That was
+the dangerous one: the bot that started second read a position book it never wrote.
+
+The sanitiser being lossy is still pinned as a **property**, not as a bug: a filename cannot
+carry every character, so `dot live` and `dot-live` legitimately meet. That is one bot written
+two ways rather than two bots merging, and it is the reason for a check rather than for a
+stricter sanitiser.
+
+**A declared `bot_id` takes precedence over the name**, and three tests pin why: it produces the
+key, it survives a rename of everything else, and leaving it empty composes from the name exactly
+as before — so no profile changes key by the field existing. Without it the identity moves when
+the display name does, which is the one rename that silently orphans a live bot's position book.
 
 **Nothing is exempt, and one test exists to pin the correction that produced that rule.** The
 first version of the check excluded mock profiles on the reasoning that they run no live
@@ -129,6 +141,42 @@ One test runs against the SHIPPED profiles rather than a fixture: a collision th
 two of the operator's own bots share a position book.
 
 ---
+
+## `test_run_config_store.py`
+
+Run configs as a store (#538). A configuration that starts a run used to be a file at a path, and
+a path is not an identity — so nothing could say two runs used the same configuration, an edited
+file left no trace, and a backtest could not name its own strategy identity at all.
+
+Two properties carry the design, and the suite is organised around them.
+
+**The identity is the CONTENT, normalised.** Registering the same bytes twice is one entry and one
+frozen copy; reformatting the file is still the same configuration; changing a value mints a
+second version beside the first, and that accumulation IS the history. `first_seen` on a known
+version never moves, because it is the date the history reads. And the frozen copy hashes back to
+its own file name — a record that cannot check itself is not a record.
+
+**Three hashes separate four kinds of change**, which is the reason one hash is not enough:
+
+| the change | `config_id` | `param_hash` | `scope_hash` |
+|---|---|---|---|
+| a scenario RENAMED | moves | holds | holds |
+| a comment added | moves | holds | holds |
+| a scenario ADDED | moves | holds | moves |
+| a worker's period 14 → 21 | moves | moves | holds |
+
+The first two rows are what the store exists to be able to SAY: different bytes, same meaning. A
+profile carries no `scope_hash` at all, because it holds one symbol and no scenario list, and a
+hash over nothing would be a claim rather than an absence.
+
+Two more groups. **Resolution is a lookup and never the only way to find anything** — a registered
+name resolves without a walk, a file that MOVED resolves to None rather than to a stale path, an
+unknown name resolves to None, `sync` registers only what changed (zero writes in the steady
+state), and one unparseable config does not make every other one unfindable. And **the index
+describes its store** — a missing frozen copy is reported, a `LOGIC_VERSION` bump invalidates, and
+the rebuild finds every frozen copy while leaving `source_name` empty, because `first_seen` and
+`source_path` were observations made at registration and exist nowhere else. The rebuild says so
+by leaving them blank rather than inventing them.
 
 ## Related coverage elsewhere
 

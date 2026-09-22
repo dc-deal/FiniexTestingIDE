@@ -4,8 +4,10 @@ FiniexTestingIDE - Carry-Over Identity Collision Check
 Two profiles must not resolve to one carry-over document.
 
 A bot's persistent state — the open position book, the position-counter high-water mark, the
-session keys its orders were sent under — is filed under `<profile name>_<symbol>`, and both
-halves are free text nothing validates. Two profiles declaring the same name for the same symbol
+session keys its orders were sent under — is filed under `<profile name>_<symbol>`. Since #538
+the separator is RESERVED, so two DIFFERENT bots can no longer collide by accident of where the
+underscores fall; what remains is that both halves are free text nothing validates, and two
+profiles declaring the same name for the same symbol
 therefore share one document, one counter and one book, and **neither store can see it**: each
 checks whether a document belongs to THIS bot (`cold_start_state_store.py:136-141`), which in a
 collision it does, for both of them.
@@ -39,6 +41,7 @@ def validate_carry_over_identity_unique(
     config_path: Optional[Path],
     profile_name: str,
     symbol: str,
+    bot_id: str = '',
 ) -> None:
     """
     Refuse to start when another profile claims this session's carry-over identity.
@@ -53,6 +56,8 @@ def validate_carry_over_identity_unique(
         profile_name: The profile's declared name, or its symbol when it declares none — exactly
             what the stores are handed
         symbol: The traded symbol
+        bot_id: The identity this profile DECLARES, which takes precedence over the name (#538).
+            Empty means it declares none and the key is composed, as before
 
     Returns:
         None — raises CarryOverIdentityCollisionError when the identity is not unique
@@ -61,7 +66,7 @@ def validate_carry_over_identity_unique(
     if root is None:
         return
 
-    key = carry_over_key(profile_name, symbol)
+    key = carry_over_key(profile_name, symbol, bot_id)
     claimants = [path for path, claimed in _live_identities(root).items() if claimed == key]
     if len(claimants) < 2:
         return
@@ -71,8 +76,8 @@ def validate_carry_over_identity_unique(
         f"Two profiles share one carry-over identity '{key}':\n{listed}\n"
         f'    They would share one position book, one position counter and one set of session '
         f'keys.\n'
-        f"    Give one of them a distinct `name` — the identity is `<name>_<symbol>`, and both "
-        f'halves are free text.'
+        f"    Give one of them a distinct `name` — the identity is `<name>_<symbol>`, and the "
+        f'name is free text nothing validates.'
     )
 
 
@@ -120,7 +125,8 @@ def _live_identities(root: Path) -> Dict[Path, str]:
         symbol = raw.get('symbol')
         if not symbol:
             continue
-        identities[path] = carry_over_key(raw.get('name') or symbol, symbol)
+        identities[path] = carry_over_key(
+            raw.get('name') or symbol, symbol, raw.get('bot_id') or '')
     return identities
 
 

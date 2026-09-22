@@ -59,12 +59,46 @@ def profiles(tmp_path) -> Path:
 class TestTheKeyHasOneHome:
 
     def test_both_halves_are_sanitised_and_lowercased(self):
-        assert carry_over_key('DOT-USD Live', 'DOTUSD') == 'dot_usd_live_dotusd'
+        assert carry_over_key('DOT-USD Live', 'DOTUSD') == 'dot-usd-live_dotusd'
 
-    def test_two_spellings_of_one_name_collapse_to_one_identity(self):
-        # This IS the collision mechanism, pinned as a property rather than as a bug: the
-        # sanitiser is lossy on purpose (a filename cannot carry every character), so distinct
-        # names legitimately meet. That is why the check exists instead of a stricter sanitiser.
+    def test_the_separator_occurs_exactly_once(self):
+        # What makes the composition injective (#538). A half cannot contain the join character,
+        # because every non-alphanumeric becomes a HYPHEN.
+        assert carry_over_key('DOT-USD Live', 'BTC_USD').count('_') == 1
+
+    def test_two_different_bots_no_longer_share_one_document(self):
+        """
+        The collision this key used to have, and the one that mattered: two UNRELATED bots
+        resolving to one file. Bot B opened bot A's document and read a position book it never
+        wrote. With the separator reserved the two are distinguishable by construction.
+        """
+        assert carry_over_key('btc', 'USD_SPOT') != carry_over_key('btc_usd', 'SPOT')
+        assert carry_over_key('btc', 'USD_SPOT') == 'btc_usd-spot'
+        assert carry_over_key('btc_usd', 'SPOT') == 'btc-usd_spot'
+
+    def test_a_declared_bot_id_takes_precedence_over_the_name(self):
+        """
+        The structural answer (#538). A display name is something an operator improves; without a
+        declared identity the improvement points the bot at a new, empty document while the venue
+        still holds its position.
+        """
+        assert carry_over_key('dotusd_live', 'DOTUSD', bot_id='dot-usd-live') == \
+            'dot-usd-live_dotusd'
+
+    def test_the_key_survives_a_rename_when_the_id_is_declared(self):
+        renamed = carry_over_key('a completely different name', 'DOTUSD', bot_id='dot-usd-live')
+
+        assert renamed == carry_over_key('dotusd_live', 'DOTUSD', bot_id='dot-usd-live')
+
+    def test_no_declared_id_composes_from_the_name_as_before(self):
+        """Optional by design — no profile changes key because this argument was added."""
+        assert carry_over_key('dotusd_live', 'DOTUSD') == carry_over_key(
+            'dotusd_live', 'DOTUSD', bot_id='')
+
+    def test_two_spellings_of_one_name_still_collapse(self):
+        # A DIFFERENT case, and it stays open on purpose: this is one bot written two ways, not
+        # two bots merging. The sanitiser is lossy because a filename cannot carry every
+        # character, so the boot check is the right answer to it rather than a stricter rule.
         assert carry_over_key('dot live', 'DOTUSD') == carry_over_key('dot-live', 'DOTUSD')
 
 
@@ -81,7 +115,7 @@ class TestTheBootCheck:
         # decision — a message naming only "the other" would send them looking.
         message = str(raised.value)
         assert 'production/dot.json' in message and 'observation/dot.json' in message
-        assert 'dot_live_dotusd' in message
+        assert 'dot-live_dotusd' in message
 
     def test_distinct_identities_pass(self, profiles):
         mine = _profile(profiles, 'production/dot.json', 'dot_live', 'DOTUSD')

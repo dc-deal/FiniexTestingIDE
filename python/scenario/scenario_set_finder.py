@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import List
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.store.run_config_store import RunConfigStore
+from python.framework.types.run_config_types import RunConfigKind
+from python.scenario.scenario_set_resolver import resolve_scenario_set_path
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.scenario_types.scenario_set_types import ScenarioSetMetadata
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
@@ -36,14 +39,16 @@ class ScenarioSetFinder:
         for algo_dir in self._user_algo_dirs:
             algo_dir.mkdir(parents=True, exist_ok=True)
         self._config_loader = ScenarioConfigLoader()
+        # The accelerator, not a dependency: every lookup falls back to the search that was
+        # always there, so a missing or empty store changes nothing but the speed (#538).
+        self._store = RunConfigStore(Path(app_config.get_run_configs_path()))
 
     def _resolve_path(self, filename: str) -> Path:
         """
         Resolve scenario set file path.
 
-        If filename is a valid existing path (absolute or project-root-relative),
-        it is used directly. Otherwise searches by filename:
-        user_configs → user_algo_dirs (recursive) → configs.
+        One line, because the rule lived here TWICE character for character and walked
+        `user_algos/` on every call — 11.6 s of a 19.5 s listing (§538).
 
         Args:
             filename: Full path or config filename (e.g., "eurusd_3_windows.json")
@@ -51,21 +56,8 @@ class ScenarioSetFinder:
         Returns:
             Resolved Path
         """
-        direct = Path(filename)
-        if direct.exists():
-            return direct
-
-        user_path = self._user_config_path / filename
-        if user_path.exists():
-            return user_path
-
-        for algo_dir in self._user_algo_dirs:
-            if not algo_dir.exists():
-                continue
-            for p in algo_dir.rglob(filename):
-                return p
-
-        return self._config_path / filename
+        return resolve_scenario_set_path(
+            filename, self._user_config_path, self._user_algo_dirs, self._config_path, self._store)
 
     def list_available_files(self) -> List[Path]:
         """
@@ -102,7 +94,13 @@ class ScenarioSetFinder:
             for p in self._user_config_path.glob('*.json'):
                 files[p.name] = p
 
-        return sorted(files.values(), key=lambda p: p.name)
+        resolved = sorted(files.values(), key=lambda p: p.name)
+        # This enumeration is the one place that KNOWS the precedence, and it has already paid
+        # the recursive walk to establish it. Handing it to the store is what lets every later
+        # lookup — in this process and in the next one — answer from the index instead of
+        # walking again (#538). Unchanged files cost one stat each and no write.
+        self._store.sync(resolved, RunConfigKind.SCENARIO_SET)
+        return resolved
 
     def get_scenario_set_details(self, filename: str) -> ScenarioSetMetadata:
         """

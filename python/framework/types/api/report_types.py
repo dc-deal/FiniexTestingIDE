@@ -544,6 +544,11 @@ class RunHeader(BaseModel):
             differently can only guess. None on a standalone run — and also on a run written
             before this field existed, which is why nothing refuses the pair
         config_snapshot: File name of the config this run was commissioned with
+        config_id: The registered identity of that configuration (#538) — SHA256 over its
+            normalised content, so two runs naming the same id ran the same configuration and a
+            changed file mints a new one. Empty on a run that started before the store existed,
+            and on one whose config could not be registered; the per-run snapshot beside it is
+            the evidence either way, and this is what makes it FINDABLE
         app_version: The app version that produced it
         git_commit: The commit it ran from, when the working tree exposes one
         reporting: Whether this run was COMMISSIONED to write report artifacts. Declared at
@@ -562,6 +567,7 @@ class RunHeader(BaseModel):
     parent_id: Optional[str] = None
     parent_kind: Optional[ParentKind] = None
     config_snapshot: str = ''
+    config_id: str = ''
     app_version: str = ''
     git_commit: Optional[str] = None
     reporting: RunReporting = RunReporting.EXPECTED
@@ -592,6 +598,9 @@ class RunInfo(BaseModel):
     # the discriminator existed, where the kind is genuinely unknown rather than absent.
     parent_id: Optional[str] = None
     parent_kind: Optional[ParentKind] = None
+    # The registered identity of the configuration this run used (#538). Two runs naming the
+    # same id ran the same configuration; empty on a run from before the store existed.
+    config_id: str = ''
     app_version: str = ''
     git_commit: Optional[str] = None
     config_snapshot: str = ''

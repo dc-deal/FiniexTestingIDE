@@ -103,8 +103,10 @@ class TestRoundTrip:
 
         raw = json.loads(store.get_state_path().read_text(encoding='utf-8'))
         assert raw['written_by_run_id'] == '20260901_120000_abcdef12'
-        # The FILE is named after the bot — a successor with a different run id finds it.
-        assert store.get_state_path().name == 'btcusd_test_btcusd.json'
+        # The FILE is named after the bot — a successor with a different run id finds it. The
+        # separator is RESERVED since #538, so the profile's own underscore became a hyphen and
+        # the one underscore left is the join: `<profile>_<symbol>`, unambiguously.
+        assert store.get_state_path().name == 'btcusd-test_btcusd.json'
         assert raw['store_id'] == 'cold_start_state'
 
 
@@ -396,7 +398,7 @@ class TestIndex:
 
         frame = index.read().set_index('file')
         assert frame.loc['broken_bot.json', 'status'] == 'unreadable'
-        assert frame.loc['btcusd_test_btcusd.json', 'status'] == 'ok'
+        assert frame.loc['btcusd-test_btcusd.json', 'status'] == 'ok'
 
     def test_a_removed_bot_makes_the_index_stale(self, store, logger, tmp_path):
         # Deletion leaves every surviving file's mtime untouched, so a purely time-based
@@ -409,7 +411,7 @@ class TestIndex:
         index.rebuild()
         assert index.is_valid() is True
 
-        (root / 'ethusd_test_ethusd.json').unlink()
+        (root / 'ethusd-test_ethusd.json').unlink()
 
         assert index.is_valid() is False
         assert 'indexed' in index.staleness_reason()

@@ -40,7 +40,8 @@
     "user_algo_dirs": [
       "user_algos/"
     ],
-    "run_ledger": "runs/ledger"
+    "run_ledger": "runs/ledger",
+    "run_configs": "run_configs"
   },
   "history": {
     "bar_max_history": 1000,

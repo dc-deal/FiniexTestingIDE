@@ -522,7 +522,8 @@ class AutotraderMain:
         validate_carry_over_identity_unique(
             self._config.config_path,
             self._config.name or self._config.symbol,
-            self._config.symbol)
+            self._config.symbol,
+            self._config.bot_id)
 
         # === SWAP-MODE VALIDATION (#407) ===
         # The swap engine models only POINTS (NONE = no swap). A symbol whose broker
@@ -611,6 +612,7 @@ class AutotraderMain:
                 weekend_aware=weekend_aware,
                 logger=self._session_logger,
                 run_id=self._run_id,
+                bot_id=self._config.bot_id,
             )
             loaded = self._state_store.load()
             if loaded is not None:
@@ -1141,6 +1143,7 @@ class AutotraderMain:
             symbol=self._config.symbol,
             logger=get_global_logger(),
             run_id=None,
+            bot_id=self._config.bot_id,
         )
         return store.load()
 

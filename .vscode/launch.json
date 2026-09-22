@@ -1060,6 +1060,37 @@
             }
         },
         {
+            "name": "📇 Run Configs: History (prompt)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/run_config_cli.py",
+            "args": [
+                "history",
+                "${input:runConfigName}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 2
+            }
+        },
+        {
+            "name": "📇 Run Configs: List",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/run_config_cli.py",
+            "args": [
+                "list"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 3
+            }
+        },
+        {
             "name": "📊 Tick Data Report: kraken_spot",
             "type": "debugpy",
             "request": "launch",
@@ -1072,7 +1103,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 2
+                "order": 4
             }
         },
         {
@@ -1088,7 +1119,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 3
+                "order": 5
             }
         },
         {
@@ -1103,7 +1134,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 4
+                "order": 6
             }
         },
         {
@@ -1122,7 +1153,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 5
+                "order": 7
             }
         },
         {
@@ -1139,7 +1170,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 6
+                "order": 8
             }
         },
         {
@@ -1156,7 +1187,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 7
+                "order": 9
             }
         },
         {
@@ -1174,7 +1205,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 8
+                "order": 10
             }
         },
         {
@@ -1192,7 +1223,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 9
+                "order": 11
             }
         },
         // ====================================================
@@ -3868,6 +3899,12 @@
         }
     ],
     "inputs": [
+        {
+            "id": "runConfigName",
+            "type": "promptString",
+            "description": "Config file name, e.g. cautious_macd_sandbox.json",
+            "default": "cautious_macd_sandbox.json"
+        },
         {
             "id": "apiConsumerName",
             "type": "promptString",

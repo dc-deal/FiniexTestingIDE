@@ -124,6 +124,7 @@ def setup_cold_start(
         symbol=config.symbol,
         logger=logger,
         run_id=run_id,
+        bot_id=config.bot_id,
     )
     adopter = ColdStartAdopter(
         executor=executor,

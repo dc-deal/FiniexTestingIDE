@@ -235,6 +235,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
 
     return AutoTraderConfig(
         name=raw.get('name', ''),
+        bot_id=raw.get('bot_id', ''),
         symbol=raw.get('symbol', ''),
         broker_type=raw.get('broker_type', ''),
         adapter_type=adapter_type_resolved,

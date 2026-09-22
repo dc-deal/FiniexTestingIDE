@@ -23,6 +23,11 @@ class SharedPaths(StrictConfigModel):
     # Parameter Optimization system reads it). A RECORD store — output of runs, so it
     # lives beside them under runs/ rather than in the data INPUT root (#486).
     run_ledger: str = 'runs/ledger'
+    # Every configuration that can START a run, with an id, an index and a history (#538).
+    # A RECORD store: it holds what a run was configured with, and it holds its OWN copy of
+    # those bytes — a source may live in `user_algos/`, a separate repository this project
+    # never writes into.
+    run_configs: str = 'run_configs'
 
 
 class HistoryConfig(StrictConfigModel):

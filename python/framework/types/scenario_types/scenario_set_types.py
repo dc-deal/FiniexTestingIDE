@@ -20,7 +20,9 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
+from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import ParentKind, RunHeader, RunReporting
+from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.config_types.robustness_config_types import (
     RobustnessConfig,
     RobustnessRole,
@@ -172,6 +174,31 @@ class SingleScenario:
         return all(v.is_valid for v in self.validation_result)
 
 
+def _register_run_config(source: Path) -> str:
+    """
+    Record which configuration this run is starting from, and return its identity.
+
+    Never fatal. A config the store cannot register is a config the run can still execute — the
+    per-run snapshot beside the header is the evidence either way, and refusing to start a
+    backtest because a parquet index could not be written would be the wrong trade entirely.
+
+    Args:
+        source: The scenario set file this run was commissioned with
+
+    Returns:
+        The registered content id, or an empty string when it could not be registered
+    """
+    try:
+        store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+        entry = store.register(Path(source), RunConfigKind.SCENARIO_SET)
+        # Registration says the content exists; this says a RUN used it. Two steps on
+        # purpose — a config listed by the finder is registered without being run.
+        store.note_run(entry.config_id)
+        return entry.config_id
+    except (OSError, ValueError, KeyError):
+        return ''
+
+
 @dataclass
 class LoadedScenarioConfig:
     """Result of config loading - raw data before ScenarioSet creation"""
@@ -241,6 +268,11 @@ class ScenarioSet:
         # Only the COMMIT is needed here — `get_git_commit()` costs 68 ms where the full
         # read costs ~2.0 s, and the header has no use for branch / dirty (§42).
         if not mount_only and self.logger.get_log_dir() is not None:
+            # Registered HERE, at the start, for the same reason the header is written here: the
+            # configuration a run used is the one it STARTED with, and a file edited while the
+            # run is in flight must not change what the run says it ran (#538). Registration is
+            # idempotent — unchanged content writes no second copy.
+            config_id = _register_run_config(self.config_path)
             header = RunHeader(
                 run_id=self._run_id,
                 start_time=self._run_timestamp,
@@ -251,6 +283,7 @@ class ScenarioSet:
                 # row nothing can group correctly (#386).
                 parent_kind=ParentKind.SWEEP if sweep_id else None,
                 config_snapshot='scenario_config.json',
+                config_id=config_id,
                 app_version=app_config.get_version(),
                 git_commit=get_git_commit(),
                 reporting=reporting,

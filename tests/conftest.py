@@ -24,6 +24,7 @@ specific failing test against a user config).
 """
 
 import os
+from copy import deepcopy
 
 os.environ.setdefault('FINIEX_CONFIG_ISOLATION', '1')
 
@@ -86,6 +87,59 @@ def _isolate_run_results_ledger(tmp_path_factory):
     ledger_dir = tmp_path_factory.mktemp('run_results_ledger')
     mp = pytest.MonkeyPatch()
     mp.setattr(AppConfigManager, 'get_run_ledger_path', lambda self: str(ledger_dir))
+    yield
+    mp.undo()
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _isolate_run_config_store(tmp_path_factory):
+    """
+    Redirect the run-config store to a throwaway dir for the whole test session.
+
+    The third sibling of the two fixtures above, and it was missing for exactly one suite run:
+    every test that lists scenario sets or builds a ScenarioSet registers its config, so the
+    OPERATOR's store filled with test fixtures — measured 2026-09-22, **28 of 50 registered
+    versions** came from `tests/fixtures/` and `configs/scenario_sets/backtesting/`, one of them
+    with a run count of 16. Tests must never write production data (§34).
+
+    Redirecting rather than switching registration off, for the same reason as the run tree: the
+    store still works under test, so its own suite exercises the real path and an integration
+    test can read back what it registered — just under tmp.
+    """
+    store_dir = tmp_path_factory.mktemp('run_configs')
+    mp = pytest.MonkeyPatch()
+    mp.setattr(AppConfigManager, 'get_run_configs_path', lambda self: str(store_dir))
+    yield
+    mp.undo()
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _isolate_carry_over_stores(tmp_path_factory):
+    """
+    Redirect BOTH carry-over stores to a throwaway dir for the whole test session.
+
+    The fourth sibling, and the one that was missing longest: every AutoTrader integration
+    session writes its cold-start document — the open position book, the position-counter
+    high-water mark, the session keys its orders were sent under — and until 2026-09-22 it wrote
+    them into the OPERATOR's `data/runtime/cold_start_state/`, beside the document of a live bot
+    holding a real position. Measured that day: 16 of 19 documents there came from test profiles.
+    Tests must never write production data (§34).
+
+    It surfaced only because the key SHAPE changed and the same bots suddenly appeared twice,
+    under both spellings. A polluted store is not something any test asserts against, which is
+    exactly why this class of defect needs a fixture rather than a check.
+
+    Both paths come out of one config section, so both are redirected in one patch — and
+    `state_persistence` is included although the algo store is opt-in: an opt-in that is taken
+    once writes production data once.
+    """
+    root = tmp_path_factory.mktemp('carry_over')
+    real = AppConfigManager().get_autotrader_defaults()
+    isolated = deepcopy(real)
+    isolated.setdefault('cold_start', {})['path'] = str(root / 'cold_start_state')
+    isolated.setdefault('state_persistence', {})['path'] = str(root / 'session_state')
+    mp = pytest.MonkeyPatch()
+    mp.setattr(AppConfigManager, 'get_autotrader_defaults', lambda self: deepcopy(isolated))
     yield
     mp.undo()
 

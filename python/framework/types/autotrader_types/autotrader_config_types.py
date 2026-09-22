@@ -129,6 +129,12 @@ class AutoTraderConfig:
 
     Args:
         name: Session name (used for log directory, e.g., 'btcusd_mock')
+        bot_id: The bot's DECLARED identity, and what its carry-over state is filed under
+            (#538). Optional, and empty means the identity is composed from `name` instead —
+            which is what every profile did before this field existed. Declaring one matters
+            when a profile is RENAMED: a display name is something an operator improves, and
+            without a declared id the improvement points the bot at a new, empty document while
+            the venue still holds its position. It survives every rename of everything else
         symbol: Trading symbol (e.g., 'BTCUSD')
         broker_type: Broker type identifier (e.g., 'kraken_spot')
         adapter_type: Adapter type ('mock' or 'live')
@@ -153,6 +159,7 @@ class AutoTraderConfig:
             deliberate change to market_config.json, not something a copied profile does.
     """
     name: str = ''
+    bot_id: str = ''
     symbol: str = ''
     broker_type: str = ''
     adapter_type: str = 'mock'
