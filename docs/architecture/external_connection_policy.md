@@ -363,7 +363,7 @@ gone wrong.
 ## Related
 
 `docs/architecture/pending_order_architecture.md` (the UNRESOLVED state) ·
-`docs/autotrader/autotrader_architecture.md` (boot + reconcile) ·
+`docs/autotrader/autotrader_venue_integration.md` (boot + reconcile) ·
 `docs/data_pipeline/signal_data_source.md` (the stream) ·
 `docs/architecture/warnings_errors_tiers.md` (where a give-up lands) ·
 `docs/user_guides/adapter/adapter_development_guide.md` (what an adapter contributes)

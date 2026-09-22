@@ -125,4 +125,4 @@ For System B: place the file in the matching subfolder. The discovery logic in t
 
 - [Config Cascade Guide](config_cascade_guide.md) — the scenario-set cascade (`app_config → global → scenario`) which is a separate, content-internal system on top of merged `app_config.json`.
 - [Broker Config Guide](broker_config_guide.md) — broker-specific config files referenced from `market_config.json`.
-- [AutoTrader Architecture](autotrader/autotrader_architecture.md) — AutoTrader profile cascade (`app_config.autotrader → profile`).
+- [AutoTrader Configuration](autotrader/autotrader_configuration.md) — AutoTrader profile cascade (`app_config.autotrader → profile`).

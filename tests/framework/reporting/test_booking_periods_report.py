@@ -12,10 +12,15 @@ from datetime import datetime, timedelta, timezone
 from python.framework.reporting.builders.booking_periods_report_builder import (
     build_booking_periods_report,
 )
-from python.framework.reporting.console.booking_periods_summary import render_booking_periods
+from python.framework.reporting.console.booking_periods_summary import (
+    BookingPeriodsSummary,
+    render_booking_periods,
+)
+from python.framework.reporting.console.run_console_renderer import RunConsoleRenderer
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import RunSummary, RunSummaryCurrency
 from python.framework.types.run_results_types import BookingSegment, SegmentCloseReason
+from python.framework.utils.console_renderer import ConsoleRenderer
 
 _MON = datetime(2026, 9, 21, tzinfo=timezone.utc)
 
@@ -191,3 +196,83 @@ class TestManyUnitsCollapse:
             'r', _units(_segment(1, 0, 60.0, 2)), _summary(net_pnl=60.0, total_trades=2))
         render_booking_periods(report, detail_threshold=9)
         assert '▸' not in capsys.readouterr().out
+
+
+class TestTheFileGetsEverythingAndOnlyTheConsoleIsTrimmed:
+    """
+    The project's rule for every end-of-run section: the summary FILE carries the whole thing,
+    and `summary.detail` trims the CONSOLE alone. A file may grow; a terminal may not.
+
+    Both coordinators render the file pass with detail ON, so the compact form below can only
+    ever reach a terminal. What it keeps is the reconciliation, because that is a CHECK rather
+    than a detail — a compact run is precisely the one nobody re-reads, so the statement that
+    its ledger rows are complete has to survive the trim.
+    """
+
+    @staticmethod
+    def _report(**overrides):
+        return build_booking_periods_report(
+            'r', _units(_segment(1, 0, 60.0, 2), _segment(2, 1, -20.0, 1)),
+            _summary(**{'net_pnl': 40.0, 'total_trades': 3, **overrides}))
+
+    def test_compact_keeps_the_heading_and_the_check(self, capsys):
+        render_booking_periods(self._report(), detail_threshold=9, compact=True)
+        out = capsys.readouterr().out
+        assert '📕 BOOKING PERIODS — 2 period(s)' in out
+        assert '✓ reconciles with the run total' in out
+
+    def test_compact_drops_every_period_row(self, capsys):
+        render_booking_periods(self._report(), detail_threshold=9, compact=True)
+        out = capsys.readouterr().out
+        # The column header is the cheapest proof that no table was drawn at all.
+        assert 'period DD' not in out
+        assert '60.00' not in out and '-20.00' not in out
+
+    def test_the_full_form_still_prints_the_rows(self, capsys):
+        """The same report, the same call, detail on — the file's view."""
+        render_booking_periods(self._report(), detail_threshold=9, compact=False)
+        out = capsys.readouterr().out
+        assert 'period DD' in out and '60.00' in out
+
+    def test_a_failed_reconciliation_survives_the_trim(self, capsys):
+        """
+        The one thing that must never be compacted away. A disagreement between the periods and
+        the run is the finding this table exists to surface, and hiding it on the console would
+        hide it exactly where a reader is not looking at the file.
+        """
+        render_booking_periods(self._report(net_pnl=99.0), detail_threshold=9, compact=True)
+        assert 'DOES NOT RECONCILE' in capsys.readouterr().out
+
+
+class TestTheSectionIsWiredIntoTheSharedRenderer:
+    """
+    It renders INSIDE `render_all`, not after each coordinator's capture — which is where it sat
+    when the simulation's table reached the terminal and nothing else.
+    """
+
+    @staticmethod
+    def _console(summary):
+        return RunConsoleRenderer(
+            unit_count=1, threshold=9, booking_periods_summary=summary)
+
+    def test_detail_on_renders_the_table(self, capsys):
+        report = build_booking_periods_report(
+            'r', _units(_segment(1, 0, 60.0, 2)), _summary(net_pnl=60.0, total_trades=2))
+        self._console(BookingPeriodsSummary(report)).render_all(
+            ConsoleRenderer(), summary_detail=True)
+        assert 'period DD' in capsys.readouterr().out
+
+    def test_detail_off_renders_the_check_alone(self, capsys):
+        report = build_booking_periods_report(
+            'r', _units(_segment(1, 0, 60.0, 2)), _summary(net_pnl=60.0, total_trades=2))
+        self._console(BookingPeriodsSummary(report)).render_all(
+            ConsoleRenderer(), summary_detail=False)
+        out = capsys.readouterr().out
+        assert '✓ reconciles' in out and 'period DD' not in out
+
+    def test_a_run_with_no_period_renders_no_section(self, capsys):
+        """A heading over an empty table would read as "this run traded nothing"."""
+        report = build_booking_periods_report('r', _units(), _summary())
+        self._console(BookingPeriodsSummary(report)).render_all(
+            ConsoleRenderer(), summary_detail=True)
+        assert 'BOOKING PERIODS' not in capsys.readouterr().out

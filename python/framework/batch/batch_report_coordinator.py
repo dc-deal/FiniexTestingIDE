@@ -68,7 +68,7 @@ from python.framework.reporting.store.run_provenance_builder import build_run_pr
 from python.framework.reporting.builders.booking_periods_report_builder import (
     build_booking_periods_report,
 )
-from python.framework.reporting.console.booking_periods_summary import render_booking_periods
+from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.run_results_types import SweepContext
@@ -195,6 +195,10 @@ class BatchReportCoordinator:
             warnings_summary=WarningsSummary(warnings_errors_report),
             block_splitting_disposition=BlockSplittingDisposition(block_splitting_report),
             robustness_summary=RobustnessSummary(robustness_report),
+            # The run's Hauptbuch as an ordered section — inside the renderer, so the capture
+            # below carries it into `scenario_summary.log` like every other section (#537).
+            booking_periods_summary=BookingPeriodsSummary(
+                build_booking_periods_report(run_id, units, run_summary)),
             closing_block=SimExecutiveSummary(
                 self._app_config, run_summary, run_meta_report, profiling_report,
                 scenario_details_report, warnings_errors_report, aggregated_portfolio_report,
@@ -276,10 +280,3 @@ class BatchReportCoordinator:
             segment for unit in units for segment in unit.booking_segments]
         append_run_to_ledger(run_summary, provenance, booking_segments)
 
-        # The run's Hauptbuch as a table, printed after the sections above and collapsed to one
-        # line per scenario when the run has more units than the console detail threshold — a
-        # robustness set books one period per trading day PER SCENARIO, and forty of those is a
-        # hundred and twenty lines nobody reads.
-        render_booking_periods(
-            build_booking_periods_report(run_id, units, run_summary),
-            detail_threshold=threshold)

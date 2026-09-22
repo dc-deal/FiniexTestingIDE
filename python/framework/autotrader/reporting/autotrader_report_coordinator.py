@@ -56,7 +56,7 @@ from python.framework.reporting.store.run_provenance_builder import (
 from python.framework.reporting.builders.booking_periods_report_builder import (
     build_booking_periods_report,
 )
-from python.framework.reporting.console.booking_periods_summary import render_booking_periods
+from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
@@ -271,6 +271,9 @@ class AutotraderReportCoordinator:
                 if unified.feed_stability.units else None),
             performance_summary=PerformanceSummary(unified.worker_decision),
             warnings_summary=WarningsSummary(warnings_errors_report),
+            # The session's Hauptbuch as an ordered section (#537) — live renders once, with
+            # detail ON, so it always gets the full table on the terminal AND in the file.
+            booking_periods_summary=BookingPeriodsSummary(booking_periods),
             closing_block=LiveSessionSummary(
                 result, unified.trade_history, self._run_dir, unified.run_summary,
                 warnings_errors_report, cold_start_report, safety_report),
@@ -281,10 +284,6 @@ class AutotraderReportCoordinator:
         old_stdout = sys.stdout
         sys.stdout = capture = io.StringIO()
         console.render_all(renderer, summary_detail=True)
-        # The session's Hauptbuch, after the shared sections and before the summary file is
-        # written — so it lands in the artifact too, not only on the terminal. Silent when the
-        # session booked no period, which is every run written before #537.
-        render_booking_periods(booking_periods, detail_threshold=threshold)
         sys.stdout = old_stdout
         full_output = capture.getvalue()
 

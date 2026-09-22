@@ -105,7 +105,10 @@ file_logging.run_logs.live          runs/live/<profile>/<run_id>/
 A sweep combination is a `simulation` with a `parent_id`; a live day fragment (#476) will be a
 `live` with a `parent_id`. Folding nesting into the type would make the most basic question —
 "is this a simulation?" — a two-value comparison, and would need a new value for every new kind
-of parent.
+of parent. Which KIND of parent an id names is its own field, `parent_kind` — the ids are all a
+prefix plus a timestamp, so nothing about the id itself tells them apart, and deriving the kind
+from the run type would be right exactly until #476 gives a `live` run a parent that is a
+session rather than a deployment.
 
 **The paths are configuration** (`app_config.json` → `file_logging.run_logs`), read by the
 writers (`ScenarioSet`, `autotrader_startup`) AND by the run index — one source, so a moved log

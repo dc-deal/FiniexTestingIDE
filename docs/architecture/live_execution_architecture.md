@@ -296,7 +296,7 @@ The boot step (`cold_start_setup.py` → `ColdStartAdopter`) runs once, before t
 > `session_end_validator.py` refuses that combination before the session starts, naming both
 > settings. An `on_cold_start` that accounts for the inherited orders (#493) lifts the
 > refusal, so a correctly built bot is not caught by it. See
-> [autotrader_architecture.md](../autotrader/autotrader_architecture.md) — *Session End*.
+> [autotrader_runtime_model.md](../autotrader/autotrader_runtime_model.md) — *Session End*.
 
 ```
 BOOT

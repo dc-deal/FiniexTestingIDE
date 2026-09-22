@@ -7,9 +7,16 @@ Formatting only — every figure was derived in `booking_periods_report_builder`
 line is what the table is for: the sum of the periods against the figure the run reports by its
 own independent path. Two derivations of one number meeting is evidence; one number printed
 twice is not.
+
+**The summary FILE always gets the whole table; only the CONSOLE is ever trimmed.** That is the
+project's rule for every end-of-run section, and it is what `summary.detail` is for: a file may
+grow, a terminal may not. The compact console form therefore drops the ROWS and keeps the
+reconciliation, because the reconciliation is a CHECK rather than a detail — it is the line that
+says the ledger rows this run just wrote are complete.
 """
 
 from python.framework.types.api.report_types import BookingPeriodsReport
+from python.framework.utils.console_renderer import ConsoleRenderer
 
 # The period's close reason, as one character in a column rather than a word in every row.
 _REASON_MARK = {
@@ -19,10 +26,35 @@ _REASON_MARK = {
 }
 
 
+class BookingPeriodsSummary:
+    """The run's Hauptbuch as an ordered console section, fed by `RunConsoleRenderer`."""
+
+    def __init__(self, report: BookingPeriodsReport):
+        """
+        Args:
+            report: The derived booking-periods report
+        """
+        self._report = report
+
+    def render(self, renderer: ConsoleRenderer, summary_detail: bool, threshold: int) -> None:
+        """
+        Print the section, in full or compacted to its check.
+
+        Args:
+            renderer: The console renderer, for signature parity with the other sections —
+                this table draws its own columns and needs no colour
+            summary_detail: False → the console compact form (heading + reconciliation)
+            threshold: Units at or below which every period is printed
+        """
+        render_booking_periods(self._report, detail_threshold=threshold,
+                               compact=not summary_detail)
+
+
 def render_booking_periods(
     report: BookingPeriodsReport,
     indent: str = '  ',
     detail_threshold: int = 1,
+    compact: bool = False,
 ) -> None:
     """
     Print the booking periods as a table.
@@ -41,17 +73,21 @@ def render_booking_periods(
         report: The derived report
         indent: Left padding, so the block nests under a caller's heading
         detail_threshold: Units at or below which every period is printed
+        compact: True → the heading and the reconciliation alone, no rows. The console form of
+            a run whose `summary.detail` is off; the summary FILE is never rendered this way
     """
     if not report.periods:
         return
 
     units = _by_unit(report)
+    if compact:
+        _render_compact(report, units, indent)
+        return
     if len(units) > detail_threshold:
         _render_collapsed(report, units, indent)
         return
 
-    print(f'\n{indent}📕 BOOKING PERIODS — {len(report.periods)} period(s) · '
-          f'{report.currency}')
+    print(f'\n{indent}{_heading(report, units)}')
     print(f'{indent}' + '─' * 104)
     print(f'{indent}{"#":>3}  {"opened":<17} {"closed":<17} {"trades":>6} {"net P&L":>11} '
           f'{"fees":>8} {"win":>6} {"equity":>12} {"period DD":>11}')
@@ -160,6 +196,40 @@ def _by_unit(report: BookingPeriodsReport) -> dict:
     return grouped
 
 
+def _heading(report: BookingPeriodsReport, units: dict) -> str:
+    """
+    The section's title line, naming the unit count only when there is more than one.
+
+    Args:
+        report: The derived report
+        units: Unit name -> its periods
+
+    Returns:
+        The heading text
+    """
+    over = f' over {len(units)} unit(s)' if len(units) > 1 else ''
+    return (f'📕 BOOKING PERIODS — {len(report.periods)} period(s){over} · '
+            f'{report.currency}')
+
+
+def _render_compact(report: BookingPeriodsReport, units: dict, indent: str) -> None:
+    """
+    The heading and the reconciliation, nothing else — the console form when detail is off.
+
+    The rows go, the CHECK stays. Dropping the reconciliation as well would leave a compact run
+    with no statement that its ledger rows are complete, and a compact run is precisely the one
+    nobody re-reads. Nothing is lost by it: the summary file is rendered with detail ON in both
+    pipelines, so the full table is always on disk.
+
+    Args:
+        report: The derived report
+        units: Unit name -> its periods
+        indent: Left padding
+    """
+    print(f'\n{indent}{_heading(report, units)}')
+    _render_reconciliation(report, indent)
+
+
 def _render_collapsed(report: BookingPeriodsReport, units: dict, indent: str) -> None:
     """
     One line per unit instead of one per period, for a run with many units.
@@ -173,8 +243,7 @@ def _render_collapsed(report: BookingPeriodsReport, units: dict, indent: str) ->
         units: Unit name → its periods
         indent: Left padding
     """
-    print(f'\n{indent}📕 BOOKING PERIODS — {len(report.periods)} period(s) over '
-          f'{len(units)} unit(s) · {report.currency}')
+    print(f'\n{indent}{_heading(report, units)}')
     print(f'{indent}' + '─' * 104)
     print(f'{indent}{"unit":<40} {"periods":>8} {"trades":>7} {"net P&L":>13} '
           f'{"deepest period DD":>19}')

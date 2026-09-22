@@ -8,7 +8,7 @@ Who actually enforces a `stop_loss` or `take_profit` — as opposed to who was a
 | Harness | `MockOrderExecution` and a `TradeSimulator` over the mock adapter — no network, no config files, no tick data |
 | Pytest mark | `autotrader` (auto-applied via path) |
 | Launch entry | `🧩 Pytest: Protective Levels (#500)` |
-| Architecture doc | [autotrader_architecture.md](../../autotrader/autotrader_architecture.md) — *Protective levels — who enforces a stop* |
+| Architecture doc | [autotrader_capital_and_safety.md](../../autotrader/autotrader_capital_and_safety.md) — *Protective levels — who enforces a stop* |
 | Session-level coverage | `TestStopLossConfiguration` / `TestTakeProfitConfiguration` in `tests/autotrader/integration/test_autotrader_trade_scenarios.py` — the same property through a whole AutoTrader session |
 
 ---

@@ -15,6 +15,7 @@ stays with each coordinator (sim's two-pass detail vs the live single pass).
 from typing import Optional, Protocol
 
 from python.framework.reporting.console.block_splitting_disposition import BlockSplittingDisposition
+from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
 from python.framework.reporting.console.broker_summary import BrokerSummary
 from python.framework.reporting.console.execution_header_summary import ExecutionHeaderSummary
 from python.framework.reporting.console.feed_stability_summary import FeedStabilitySummary
@@ -59,6 +60,7 @@ class RunConsoleRenderer:
         warnings_summary: Optional[WarningsSummary] = None,
         block_splitting_disposition: Optional[BlockSplittingDisposition] = None,
         robustness_summary: Optional[RobustnessSummary] = None,
+        booking_periods_summary: Optional[BookingPeriodsSummary] = None,
         closing_block: Optional[ClosingBlock] = None,
     ):
         """
@@ -83,6 +85,7 @@ class RunConsoleRenderer:
         self._warnings_summary = warnings_summary
         self._block_splitting_disposition = block_splitting_disposition
         self._robustness_summary = robustness_summary
+        self._booking_periods_summary = booking_periods_summary
         self._closing_block = closing_block
 
     def render_all(self, renderer: ConsoleRenderer, summary_detail: bool) -> None:
@@ -180,6 +183,16 @@ class RunConsoleRenderer:
         # Closing block (sim → Executive Summary, live → Session Summary)
         if self._closing_block:
             self._closing_block.render(renderer)
+
+        # The run's Hauptbuch (#537), after the closing block because it is the RECORD rather
+        # than the report — a reader scanning the console wants the summary, a reader checking
+        # the books wants this. It renders HERE rather than after each coordinator's capture,
+        # which is where it used to sit: a section printed outside the capture reaches the
+        # terminal and nothing else, and a summary file that silently omits a section is the one
+        # thing it may never be. Only the CONSOLE is ever trimmed, by `summary_detail`.
+        if self._booking_periods_summary:
+            self._booking_periods_summary.render(
+                renderer, summary_detail=summary_detail, threshold=self._threshold)
 
         # Footer
         renderer.print_separator(width=120)

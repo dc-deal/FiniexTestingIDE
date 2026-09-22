@@ -248,7 +248,7 @@ populated.
 
 ## Related
 
-- [autotrader_architecture.md](../autotrader/autotrader_architecture.md) — the session lifecycle this sits in
+- [autotrader_runtime_model.md](../autotrader/autotrader_runtime_model.md) — the session lifecycle this sits in
 - [architecture_execution_layer.md](architecture_execution_layer.md) — the cleanup mechanic itself
 - [live_execution_architecture.md](live_execution_architecture.md) — cold start, and why the two are a pair
 - [data_storage_layout.md](data_storage_layout.md) — why the carry-over is written before the cleanup

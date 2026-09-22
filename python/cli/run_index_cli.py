@@ -33,6 +33,7 @@ from python.framework.reporting.store.run_completion_audit import (
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.reporting.store.run_tree_pruner import RunTreePruner
+from python.framework.types.api.report_types import ParentKind
 from python.framework.types.run_prune_types import PruneCandidate, PruneSelectors
 
 
@@ -142,7 +143,10 @@ class RunIndexCli:
         for name in sorted(histories):
             # Resolved BEFORE rendering: the table's own heading counts the sessions it can
             # show, so it has to be told how many it cannot.
-            missing = unfinished_by_group(runs, rows, parent_id=name)
+            # DEPLOYMENT explicitly: this table is built from deployment ids, and a sweep
+            # id is the same shape, so the kind is what makes the filter exact (#386).
+            missing = unfinished_by_group(
+                runs, rows, parent_id=name, parent_kind=ParentKind.DEPLOYMENT)
             render_deployment_history(
                 name, histories[name], advisories[name],
                 unfinished=sum(len(group) for group in missing.values()))

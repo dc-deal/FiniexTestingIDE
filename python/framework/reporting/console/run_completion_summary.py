@@ -39,7 +39,11 @@ def render_unfinished_runs(grouped: Dict[str, List[RunInfo]], indent: str = '  '
     for group in sorted(grouped):
         print(f'{indent}   {_GROUP_LABEL.get(group, group)}')
         for run in grouped[group]:
-            parent = f'  parent={run.parent_id}' if run.parent_id else ''
+            # The kind is printed WITH the id: both kinds are a timestamp plus a hash, so the
+            # id alone leaves the reader guessing whether they are looking at a sweep or a
+            # live deployment (#386).
+            _kind = f'{run.parent_kind}=' if run.parent_kind else 'parent='
+            parent = f'  {_kind}{run.parent_id}' if run.parent_id else ''
             print(f'{indent}     {run.run_id}  {run.start_time}  {run.name}{parent}')
 
 

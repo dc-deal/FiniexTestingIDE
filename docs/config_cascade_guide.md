@@ -41,7 +41,7 @@
 
 > **Note:** This document describes the **backtesting scenario cascade** (app → global → scenario).
 >
-> The AutoTrader pipeline has its own 2-level cascade (`app_config.autotrader` → profile) — documented in [autotrader_architecture.md](autotrader/autotrader_architecture.md).
+> The AutoTrader pipeline has its own 2-level cascade (`app_config.autotrader` → profile) — documented in [autotrader_configuration.md](autotrader/autotrader_configuration.md).
 >
 > For **application-level configuration overrides** (app_config.json, market_config.json, etc.), see the dedicated [user_configs/ Override System](user_configs_override_system.md) doc.
 >

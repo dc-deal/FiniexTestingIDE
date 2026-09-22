@@ -22,7 +22,7 @@ from python.framework.reporting.io.run_header_io import (
     write_run_header,
 )
 from python.framework.reporting.store.run_index import RunIndex
-from python.framework.types.api.report_types import RunHeader
+from python.framework.types.api.report_types import ParentKind, RunHeader
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import IO_SUBDIR, RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
 from python.framework.utils.run_id_utils import mint_run_id
@@ -30,9 +30,11 @@ from python.framework.utils.run_id_utils import mint_run_id
 _START = datetime(2026, 8, 30, 13, 20, 34, tzinfo=timezone.utc)
 
 
-def _header(run_id: str, run_type: str = RUN_TYPE_SIMULATION, parent: str = None) -> RunHeader:
+def _header(run_id: str, run_type: str = RUN_TYPE_SIMULATION, parent: str = None,
+            parent_kind: ParentKind = None) -> RunHeader:
     return RunHeader(run_id=run_id, start_time=_START, run_type=run_type,
-                     run_name='my_set', parent_id=parent, config_snapshot='scenario_config.json',
+                     run_name='my_set', parent_id=parent, parent_kind=parent_kind,
+                     config_snapshot='scenario_config.json',
                      app_version='1.4.0', git_commit='abc1234')
 
 
@@ -118,7 +120,8 @@ class TestTheIndexIsDerivedAndRebuildable:
             (_header('20260830_132035_bbbbbbbb', RUN_TYPE_LIVE),
              roots.live / 'my_profile' / '20260830_132035_bbbbbbbb'),
             # A sweep combination is a SIMULATION with a parent — nesting is not a type.
-            (_header('20260830_132036_cccccccc', parent='sweep_20260830_132030'),
+            (_header('20260830_132036_cccccccc', parent='sweep_20260830_132030',
+                     parent_kind=ParentKind.SWEEP),
              roots.sweeps / 'sweep_20260830_132030' / 'my_set_c000' / '20260830_132036_cccccccc'),
         ]
         for header, run_dir in planted:
@@ -174,3 +177,58 @@ class TestTheIndexIsDerivedAndRebuildable:
         # that only learned "yes, some" would still be guessing which.
         assert index.list_runs()[0].artifacts == ['portfolio.json', 'trade_history.csv']
         assert index.list_runs()[0].has_reports is True
+
+
+class TestTheParentIdSaysWhatKindOfParentItIs:
+    """
+    `parent_id` holds two different things and they have the same shape (#386).
+
+    A sweep groups the COMBINATIONS of one search; a deployment groups the SESSIONS of one live
+    bot across restarts. Both are an identity that groups runs without being one, and both are a
+    prefix plus a timestamp — so a consumer holding only the id has nothing to tell them apart
+    by, and the pruner's `--keep-last` quota was spent by whichever prefix sorted higher.
+    """
+
+    def test_the_kind_survives_the_index(self, tmp_path):
+        index = RunIndex(tmp_path / 'index.parquet')
+        index.register_run(
+            _header('20260830_132036_cccccccc', parent='sweep_20260830_132030',
+                    parent_kind=ParentKind.SWEEP),
+            tmp_path / 'a')
+        index.register_run(
+            _header('20260918_091413_dddddddd', RUN_TYPE_LIVE, parent='deploy_20260918_091413',
+                    parent_kind=ParentKind.DEPLOYMENT),
+            tmp_path / 'b')
+
+        kinds = {r.run_id: r.parent_kind for r in index.list_runs()}
+
+        assert kinds['20260830_132036_cccccccc'] is ParentKind.SWEEP
+        assert kinds['20260918_091413_dddddddd'] is ParentKind.DEPLOYMENT
+
+    def test_a_standalone_run_names_no_kind(self, tmp_path):
+        """None here means "no parent", never "a parent of some kind we did not record"."""
+        index = RunIndex(tmp_path / 'index.parquet')
+        index.register_run(_header('20260830_132034_aaaaaaaa'), tmp_path / 'a')
+
+        row = index.list_runs()[0]
+
+        assert row.parent_id is None and row.parent_kind is None
+
+    def test_a_header_written_before_the_discriminator_still_reads(self, tmp_path):
+        """
+        The field is ADDITIVE, and it has to be: every header already on disk predates it.
+
+        Such a run keeps its parent and reports an unknown kind — which is the truth. Refusing
+        the pair instead would make the index unreadable for its own history.
+        """
+        run_dir = tmp_path / 'simulation' / 'my_set' / '20260830_132036_cccccccc'
+        run_dir.mkdir(parents=True)
+        (run_dir / RUN_HEADER_ARTIFACT).write_text(
+            '{"run_id": "20260830_132036_cccccccc", "start_time": "2026-08-30T13:20:34+00:00",'
+            ' "run_type": "simulation", "run_name": "my_set",'
+            ' "parent_id": "sweep_20260830_132030"}', encoding='utf-8')
+
+        header = read_run_header(run_dir / RUN_HEADER_ARTIFACT)
+
+        assert header.parent_id == 'sweep_20260830_132030'
+        assert header.parent_kind is None

@@ -210,7 +210,7 @@ filled locally, so a session ending with an open position reported a realised ex
 while the asset sat in the account. In simulation it invented a trade whose exit the strategy never
 chose, which then counted in the trade count, the win rate and the profit factor. A position now
 stays open and is reported as open and valued (see
-[autotrader_architecture.md](../autotrader/autotrader_architecture.md) — *Session End*).
+[autotrader_runtime_model.md](../autotrader/autotrader_runtime_model.md) — *Session End*).
 
 ### History Retention Limits
 

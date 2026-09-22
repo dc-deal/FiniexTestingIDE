@@ -31,7 +31,13 @@
 
 | Document | Description |
 |----------|-------------|
-| [AutoTrader Architecture](autotrader/autotrader_architecture.md) | Pipeline, threading model, config, tick sources, clipping monitor |
+| [AutoTrader Architecture](autotrader/autotrader_architecture.md) | Start here — what it is, how a tick travels, where every file lives, and the map to the six documents below |
+| [AutoTrader Runtime Model](autotrader/autotrader_runtime_model.md) | Threading, tick source vs broker adapter, session lifecycle, what survives a restart |
+| [AutoTrader Configuration](autotrader/autotrader_configuration.md) | The profile cascade, the deployment declaration, the two fingerprints |
+| [AutoTrader Data Intake](autotrader/autotrader_data_intake.md) | Tick sources, sentiment feed, the staleness contract, live warmup |
+| [AutoTrader Capital and Safety](autotrader/autotrader_capital_and_safety.md) | What the bot may spend, committed funds, whose account it is, protective levels, the circuit breaker |
+| [AutoTrader Venue Integration](autotrader/autotrader_venue_integration.md) | Broker config acquisition, the Kraken execution tier, polling, drift audit, the connection ladder |
+| [AutoTrader Observability](autotrader/autotrader_observability.md) | The live console, the clipping monitor, the three log channels |
 | [Live Outage Handling](user_guides/live_outage_handling_guide.md) | Connection/feed outages — mandatory staleness hooks, escalation ladder, OrderGuard floor, outage drills (#434/#436) |
 | [Live Deployment & Ledger](user_guides/live_deployment_ledger_guide.md) | Reading a bot across its restarts — the mandatory `deployment` declaration, the history command, gaps and parameter changes (#497) |
 | [Adapter Development Guide](user_guides/adapter/adapter_development_guide.md) | How to implement a new broker adapter (Tier 1/2/3, config files, credentials, test suite) |

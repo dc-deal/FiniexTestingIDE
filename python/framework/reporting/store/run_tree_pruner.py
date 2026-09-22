@@ -226,10 +226,11 @@ class RunTreePruner:
           keep 2 of 4 and leave a `ranked.csv` ranking runs that no longer exist — a half-pruned
           sweep is worse than an unpruned one
 
-        There are TWO kinds of parent since #497 and they are counted alike: a sweep, whose
-        children are its combinations, and a DEPLOYMENT, whose children are the sessions of one
-        live bot across its restarts. Both are an identity that groups runs without being one,
-        so `--keep-last N` spares the N newest of each — whole.
+        There are TWO kinds of parent since #497: a sweep, whose children are its combinations,
+        and a DEPLOYMENT, whose children are the sessions of one live bot across its restarts.
+        Both are an identity that groups runs without being one, so `--keep-last N` spares the N
+        newest of each — whole, and per KIND, because a quota shared between the two is a quota
+        the busier kind takes entirely (#386).
 
         Args:
             runs: The index rows
@@ -242,10 +243,18 @@ class RunTreePruner:
             return None
 
         standalone: Dict[str, List[RunInfo]] = defaultdict(list)
-        by_parent: Dict[str, List[RunInfo]] = defaultdict(list)
+        # Bucketed by KIND first, and that is not tidiness: `keep_last` counts WITHIN a
+        # population, and a sweep and a deployment are two populations. Pooled — as this did
+        # until #386 gave the id a discriminator — a week of five sweeps fills the whole quota
+        # and every session of every deployment is pruned, because sorting ids descending puts
+        # the sweeps on top. The standalone branch beside it already separated by group.
+        # A row indexed before the discriminator existed carries no kind and lands in one
+        # shared bucket: the old behaviour, confined to the rows that cannot answer.
+        by_parent: Dict[str, Dict[str, List[RunInfo]]] = defaultdict(
+            lambda: defaultdict(list))
         for run in runs:
             if run.parent_id:
-                by_parent[run.parent_id].append(run)
+                by_parent[str(run.parent_kind or 'unknown')][run.parent_id].append(run)
             else:
                 standalone[f'{run.group}/{run.name}'].append(run)
 
@@ -256,10 +265,11 @@ class RunTreePruner:
             survivors.update(
                 r.run_id for r in sorted(members, key=lambda r: r.run_id, reverse=True)[:keep_last])
 
-        # Both parent identities carry a timestamp prefix, so the same ordering applies one
+        # Every parent identity carries a timestamp prefix, so the same ordering applies one
         # level up. Every child of a surviving parent survives with it.
-        for parent_id in sorted(by_parent, reverse=True)[:keep_last]:
-            survivors.update(r.run_id for r in by_parent[parent_id])
+        for parents in by_parent.values():
+            for parent_id in sorted(parents, reverse=True)[:keep_last]:
+                survivors.update(r.run_id for r in parents[parent_id])
         return survivors
 
     def _collect_orphans(self, known_dirs: set, report: PruneReport) -> None:

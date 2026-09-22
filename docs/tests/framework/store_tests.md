@@ -85,6 +85,11 @@ one finding under ordinary history. Scoping to a `parent_id` is what lets a depl
 own missing sessions, since its session table is built from the ledger and a killed session is
 absent from it by construction.
 
+The scope takes a `parent_kind` beside the id, and the tests pin both directions of it: a
+deployment asking for `x` must not collect a sweep that is also called `x`, and a row indexed
+before the field existed is claimed by NEITHER kind. An unknown kind is not a claim — the same
+shape as a missing monotonic stamp yielding no number rather than a wall-clock substitute.
+
 A second, narrower question lives in the same file: a booking whose run directory is gone. It is
 not the mirror of the first, and the tests pin exactly where the line runs — the run index must
 still KNOW the run (otherwise it is ordinary history), and the row must carry no

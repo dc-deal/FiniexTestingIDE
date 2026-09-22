@@ -18,11 +18,11 @@ from python.framework.reporting.store.run_completion_audit import (
     unfinished_by_group,
     unfinished_runs,
 )
-from python.framework.types.api.report_types import RunInfo, RunResultRow
+from python.framework.types.api.report_types import ParentKind, RunInfo, RunResultRow
 
 
 def _run(run_id: str, group: str = 'live', start: str = '2026-09-18T10:00:00+00:00',
-         parent: str = None) -> RunInfo:
+         parent: str = None, parent_kind: ParentKind = None) -> RunInfo:
     """
     A run index entry.
 
@@ -31,12 +31,13 @@ def _run(run_id: str, group: str = 'live', start: str = '2026-09-18T10:00:00+00:
         group: 'live' or 'simulation'
         start: Start stamp, which is also the sort key
         parent: Deployment or sweep this run belongs to
+        parent_kind: Which of the two that is, or None where the row does not say
 
     Returns:
         The entry
     """
     return RunInfo(run_id=run_id, group=group, name='profile', start_time=start,
-                   parent_id=parent)
+                   parent_id=parent, parent_kind=parent_kind)
 
 
 def _row(run_id: str) -> RunResultRow:
@@ -103,6 +104,29 @@ class TestScopingToOneParent:
     def test_without_a_parent_every_unfinished_run_is_returned(self):
         runs = [_run('mine', parent='deploy_1'), _run('orphan')]
         assert len(unfinished_runs(runs, [])) == 2
+
+    def test_the_kind_narrows_what_the_id_alone_cannot(self):
+        """A deployment report asking for `x` must not collect a SWEEP that is also `x`."""
+        runs = [_run('session', parent='x', parent_kind=ParentKind.DEPLOYMENT),
+                _run('combination', group='simulation', parent='x',
+                     parent_kind=ParentKind.SWEEP)]
+
+        found = unfinished_runs(runs, [], parent_id='x',
+                                parent_kind=ParentKind.DEPLOYMENT)
+
+        assert [r.run_id for r in found] == ['session']
+
+    def test_a_row_with_no_kind_is_not_claimed_by_either(self):
+        """
+        An unknown kind is not a claim. A row indexed before the discriminator existed says
+        nothing about which parent it has, and answering a KIND question with it would be an
+        invention — the same reason a missing monotonic stamp yields no number (§9).
+        """
+        runs = [_run('older', parent='x')]
+
+        assert unfinished_runs(runs, [], parent_id='x') == runs
+        assert unfinished_runs(runs, [], parent_id='x',
+                               parent_kind=ParentKind.DEPLOYMENT) == []
 
 
 class TestGroupingSeparatesTheConsequence:

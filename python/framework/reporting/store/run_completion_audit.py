@@ -25,13 +25,14 @@ is the whole point.
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from python.framework.types.api.report_types import RunInfo, RunResultRow
+from python.framework.types.api.report_types import ParentKind, RunInfo, RunResultRow
 
 
 def unfinished_runs(
     runs: List[RunInfo],
     ledger_rows: List[RunResultRow],
     parent_id: Optional[str] = None,
+    parent_kind: Optional[ParentKind] = None,
 ) -> List[RunInfo]:
     """
     Runs the index registered at start that the ledger never received at close.
@@ -45,6 +46,11 @@ def unfinished_runs(
         ledger_rows: Every ledger row
         parent_id: Restrict to the runs belonging to this parent (a deployment or a sweep),
             or None for all of them
+        parent_kind: Restrict further to parents of this kind. Both kinds of id are a timestamp
+            plus a hash, so an id alone cannot say which it is — a caller asking a DEPLOYMENT
+            question says so here rather than trusting the id to be unambiguous (#386). A row
+            indexed before the discriminator existed carries no kind and is therefore NOT
+            matched: an unknown kind is not a claim that it is this one
 
     Returns:
         The unfinished runs, oldest first
@@ -53,6 +59,8 @@ def unfinished_runs(
     selected = [r for r in runs if r.run_id not in completed]
     if parent_id is not None:
         selected = [r for r in selected if r.parent_id == parent_id]
+    if parent_kind is not None:
+        selected = [r for r in selected if r.parent_kind == parent_kind]
     return sorted(selected, key=lambda r: r.start_time)
 
 
@@ -60,6 +68,7 @@ def unfinished_by_group(
     runs: List[RunInfo],
     ledger_rows: List[RunResultRow],
     parent_id: Optional[str] = None,
+    parent_kind: Optional[ParentKind] = None,
 ) -> Dict[str, List[RunInfo]]:
     """
     The same answer split by run group, because the two pipelines carry different consequence.
@@ -71,12 +80,14 @@ def unfinished_by_group(
         runs: Every run the index holds
         ledger_rows: Every ledger row
         parent_id: Restrict to one parent (a deployment or a sweep), or None for all
+        parent_kind: Restrict further to parents of this kind, or None for any
 
     Returns:
         Group name -> its unfinished runs, oldest first (groups with none are omitted)
     """
     grouped: Dict[str, List[RunInfo]] = {}
-    for run in unfinished_runs(runs, ledger_rows, parent_id=parent_id):
+    for run in unfinished_runs(runs, ledger_rows, parent_id=parent_id,
+                               parent_kind=parent_kind):
         grouped.setdefault(run.group, []).append(run)
     return grouped
 

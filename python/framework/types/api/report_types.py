@@ -498,6 +498,24 @@ class RunReporting(StrEnum):
     NONE = 'none'
 
 
+class ParentKind(StrEnum):
+    """
+    What KIND of thing a run's `parent_id` names.
+
+    The id alone is an untagged union: a sweep id and a deployment id are both an identity that
+    groups runs without being one, and they are stored in one column with the same shape. A
+    reader that must treat them differently — and the pruner does — has nothing to tell them
+    apart by.
+
+    Deriving it from `run_type` would be right today and silently wrong later: a simulation's
+    parent is a sweep and a live session's is a deployment ONLY until #476 gives a live day
+    fragment a parent that is itself a SESSION. A rule that expires without saying so is worse
+    than a column.
+    """
+    SWEEP = 'sweep'
+    DEPLOYMENT = 'deployment'
+
+
 class RunHeader(BaseModel):
     """
     What a run IS — written once, at the run's START, into its own directory.
@@ -515,11 +533,16 @@ class RunHeader(BaseModel):
         start_time: When the run began (UTC, tz-aware)
         run_type: Its category, the same value the API serves as `RunInfo.group`
         run_name: The owning scenario set (sim) or profile (live)
-        parent_id: What this run belongs to, or None when it stands alone. Today a sweep's id
-            for one of its combinations. Named `parent_id` and not `parent_run_id` on purpose:
-            a sweep is NOT itself a run (it has no header — it is defined by the runs naming
-            it), while the daily fragments of #476 will point at a parent that IS one. One
-            field, two kinds of parent, and the name has to stay true for both
+        parent_id: What this run belongs to, or None when it stands alone — a sweep's id for one
+            of its combinations, a deployment's id for one of its sessions. Named `parent_id`
+            and not `parent_run_id` on purpose: a sweep is NOT itself a run (it has no header —
+            it is defined by the runs naming it), while the daily fragments of #476 will point
+            at a parent that IS one. One field, several kinds of parent, and the name has to
+            stay true for all of them
+        parent_kind: WHICH kind of parent `parent_id` names. Written together with it and never
+            apart: the id alone is an untagged union, so a consumer that has to treat the kinds
+            differently can only guess. None on a standalone run — and also on a run written
+            before this field existed, which is why nothing refuses the pair
         config_snapshot: File name of the config this run was commissioned with
         app_version: The app version that produced it
         git_commit: The commit it ran from, when the working tree exposes one
@@ -537,6 +560,7 @@ class RunHeader(BaseModel):
     run_type: str
     run_name: str
     parent_id: Optional[str] = None
+    parent_kind: Optional[ParentKind] = None
     config_snapshot: str = ''
     app_version: str = ''
     git_commit: Optional[str] = None
@@ -561,9 +585,13 @@ class RunInfo(BaseModel):
     # Straight from the run's header (#475) — the list answers "what was this run" on its own,
     # instead of making a consumer open each run to find out.
     start_time: str = ''
-    # The run this one belongs to: a sweep for one of its combinations, and — once the daily
-    # cycle lands (#476) — the session a day fragment was cut from. None means it stands alone.
+    # The run this one belongs to: a sweep for one of its combinations, a deployment for one of
+    # its sessions, and — once the daily cycle lands (#476) — the session a day fragment was cut
+    # from. None means it stands alone. `parent_kind` says WHICH of those the id is; read the
+    # two together, because the ids are indistinguishable by shape. None on a row indexed before
+    # the discriminator existed, where the kind is genuinely unknown rather than absent.
     parent_id: Optional[str] = None
+    parent_kind: Optional[ParentKind] = None
     app_version: str = ''
     git_commit: Optional[str] = None
     config_snapshot: str = ''
