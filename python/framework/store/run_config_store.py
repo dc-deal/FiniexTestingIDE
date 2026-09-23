@@ -79,9 +79,17 @@ class RunConfigStore:
         Returns:
             The entry for the content this file now holds
         """
+        # The freshness stamp is taken BEFORE the content it describes, never after. `sync()`
+        # skips a file whose (mtime, size) still match the indexed row, so a file edited between
+        # the two reads would be registered under its OLD content id carrying its NEW stamp —
+        # and then never read again: the version would be lost from the history, `resolve()`
+        # would keep vouching for superseded content, and the config a run actually ran under
+        # could no longer be named. Taken first, the stamp errs old, which costs one needless
+        # re-read. Same precaution as `run_ledger_index`, which backdates its index to the
+        # instant its own source read began.
+        stat = source.stat()
         raw = json.loads(source.read_text(encoding='utf-8'))
         config_id = generate_config_fingerprint(raw)
-        stat = source.stat()
         now = datetime.now(timezone.utc)
 
         frozen = self._frozen_path(config_id, kind)

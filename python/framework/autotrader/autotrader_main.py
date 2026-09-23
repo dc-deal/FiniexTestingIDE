@@ -75,7 +75,10 @@ from python.framework.types.signal_data_types import (
     SignalObservedSeries,
 )
 from python.framework.types.validation_types import ValidationFinding, ValidationResult
-from python.framework.utils.scenario_set_utils import ScenarioSetUtils
+from python.framework.utils.scenario_set_utils import (
+    LIVE_CONFIG_SNAPSHOT,
+    ScenarioSetUtils,
+)
 from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
@@ -298,7 +301,7 @@ class AutotraderMain:
             ScenarioSetUtils(
                 config_snapshot_path=self._config.config_path,
                 scenario_log_path=self._run_dir,
-                file_name_prefix='autotrader',
+                file_name=LIVE_CONFIG_SNAPSHOT,
             ).copy_config_snapshot()
 
         try:
@@ -956,6 +959,10 @@ class AutotraderMain:
             # Seals the period that was still running, so the final and necessarily
             # incomplete one is filed like every other (#537).
             result.booking_segments = self._tick_loop.get_booking_segments()
+            # Directly after the seal, and inside this block for the reason the next comment
+            # gives: the floor can only be final once the last period is sealed, and a failed
+            # write has to reach the error pot that is taken a few lines below.
+            self._carry_over_final_figures()
         if self._worker_orchestrator:
             result.disturbance_episodes += self._worker_orchestrator.get_signal_episodes()
 
@@ -1338,6 +1345,60 @@ class AutotraderMain:
             self._session_logger.error(
                 f'Cold-start carry-over save failed: {e}{stake}')
             return False
+
+    def _carry_over_final_figures(self) -> None:
+        """
+        Carry over the two figures that were not final when the carry-over was written.
+
+        The write above happens BEFORE the position cleanup, because the venue claims it
+        carries describe the state at that instant (#355/#492). The period floor cannot ride
+        along: the session's last booking period is not sealed until the results are collected,
+        so at that moment the counter is still one short — and a session that books exactly ONE
+        period, the normal case for a session shorter than a trading day, never advanced it at
+        all. Which is why this is called from the collection block and not from `_shutdown`:
+        after the seal, and before the error pot is taken.
+
+        The account DRAWDOWN has the same shape and no floor to blunt it — the store overwrites
+        it outright. `sample_equity()` above is the run-end sample #492 added precisely because
+        the run end no longer closes anything, and it can raise the peak and deepen the decline;
+        a fill resolving on a HEARTBEAT is the reachable case, because that pass changes balances
+        and never samples. Without this the session REPORTS the deeper figure while its successor
+        inherits the shallower one and continues a thirty-day curve from it — the restart drift
+        #497 removed, reintroduced at the one write that bounds the session.
+        Measured 2026-09-23 on the demo deployment: five consecutive sessions each booked a
+        period numbered 6, which is precisely the "number already in the books" the store's own
+        floor comment warns against.
+
+        A partial write is what the store is built for, so this second write cannot contradict
+        the first: a FLOOR for the counters, and "leave alone" for everything the venue owns.
+        A failure is logged and swallowed for the same reason as the write above — a carry-over
+        problem must never end a live trading session.
+        """
+        if not (self._cold_start.persist
+                and self._cold_start.store
+                and isinstance(self._executor, LiveTradeExecutor)
+                and self._tick_loop):
+            return
+        try:
+            self._cold_start.store.save(
+                # Everything the venue owns stays untouched: '' appends no key, 0 is a floor
+                # that cannot lower the stored counter, and the omitted arguments default to
+                # None, which the store reads as "not supplied" for the book, the baseline,
+                # the drawdown curve and the deployment identity.
+                session_key='',
+                highest_position_counter=0,
+                highest_segment_no=self._tick_loop.get_highest_segment_no(),
+                # OUR OWN record, like the floor above — never a claim about the venue — so it
+                # rides this write without the dry-run split the first one needs.
+                account_drawdown=self._executor.portfolio.get_account_drawdown_carry_over(),
+            )
+        except Exception as e:
+            # The consequence, not only the fault: the successor would open its first period
+            # under a number this session already used, so two periods of one deployment
+            # would share an identity.
+            self._session_logger.error(
+                f'Final carry-over figures not written: {e} — the next session would reuse '
+                f'a period number already in the books and continue a shallower drawdown')
 
     def _record_field_study_broker_truth(
         self,

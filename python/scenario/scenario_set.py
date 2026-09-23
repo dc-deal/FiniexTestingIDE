@@ -38,7 +38,10 @@ from python.framework.types.scenario_types.scenario_set_types import (
 from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id
-from python.framework.utils.scenario_set_utils import ScenarioSetUtils
+from python.framework.utils.scenario_set_utils import (
+    SIM_CONFIG_SNAPSHOT,
+    ScenarioSetUtils,
+)
 
 
 def _register_run_config(source: Path) -> str:
@@ -137,7 +140,7 @@ class ScenarioSet:
                 # Written WITH the id, never after it: a parent id whose kind is unknown is a
                 # row nothing can group correctly (#386).
                 parent_kind=ParentKind.SWEEP if sweep_id else None,
-                config_snapshot='scenario_config.json',
+                config_snapshot=SIM_CONFIG_SNAPSHOT,
                 config_id=config_id,
                 app_version=app_config.get_version(),
                 git_commit=get_git_commit(),
@@ -180,6 +183,7 @@ class ScenarioSet:
         scenario_set_utils = ScenarioSetUtils(
             config_snapshot_path=self.config_path,
             scenario_log_path=self.logger.get_log_dir(),
+            file_name=SIM_CONFIG_SNAPSHOT,
         )
         scenario_set_utils.copy_config_snapshot()
 

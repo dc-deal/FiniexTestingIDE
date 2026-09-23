@@ -20,7 +20,11 @@ from fastapi.testclient import TestClient
 from python.api.api_app import create_app
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.types.api.report_types import RunInfo, RunResultRow
+from python.framework.types.api.report_types import (
+    RunConfigSnapshot,
+    RunInfo,
+    RunResultRow,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -910,3 +914,50 @@ class TestAtrIndicator:
         r = self._call(client, **{'from': '2030-01-01T00:00:00Z', 'to': '2030-01-02T00:00:00Z'})
 
         assert r.status_code == 404
+
+
+class TestRunConfigSnapshot:
+    """
+    A run serves the configuration it was commissioned with.
+
+    The run index carries two POINTERS — the snapshot's file name and its content id — and
+    before this route nothing served what they point at, so a reader who saw a change mark
+    between two sessions of a deployment could not ask WHAT changed.
+
+    The two 404s are the point of these cases: an unknown run and a run that declared a
+    snapshot it never filed are different faults, and the header is written at run start while
+    the file is copied later, so the second is ordinary rather than exceptional.
+    """
+
+    def test_it_serves_the_snapshot_parsed(self, client):
+        info = RunInfo(run_id='r1', group='live', name='p', config_snapshot='autotrader_config.json',
+                       config_id='abc123')
+        snapshot = RunConfigSnapshot(run_id='r1', config_snapshot='autotrader_config.json',
+                                     config_id='abc123', config={'name': 'p', 'symbol': 'BTCUSD'})
+        with patch('python.api.endpoints.reports_router.ReportStore') as store:
+            store.return_value.get_config_snapshot.return_value = snapshot
+            store.return_value.list_runs.return_value = [info]
+            response = client.get('/api/v1/reports/runs/r1/config')
+        assert response.status_code == 200
+        body = response.json()
+        assert body['config']['symbol'] == 'BTCUSD'
+        assert body['config_id'] == 'abc123'
+
+    def test_an_unknown_run_is_not_a_missing_snapshot(self, client):
+        with patch('python.api.endpoints.reports_router.ReportStore') as store:
+            store.return_value.get_config_snapshot.return_value = None
+            store.return_value.list_runs.return_value = []
+            response = client.get('/api/v1/reports/runs/nope/config')
+        assert response.status_code == 404
+        assert response.json()['error'] == 'run_not_found'
+
+    def test_a_declared_but_unfiled_snapshot_says_so(self, client):
+        # The run EXISTS — it died between the header write and the copy, or its file logging
+        # was off. Reading that as "unknown run" sends a consumer after the wrong fault.
+        info = RunInfo(run_id='r1', group='live', name='p', config_snapshot='autotrader_config.json')
+        with patch('python.api.endpoints.reports_router.ReportStore') as store:
+            store.return_value.get_config_snapshot.return_value = None
+            store.return_value.list_runs.return_value = [info]
+            response = client.get('/api/v1/reports/runs/r1/config')
+        assert response.status_code == 404
+        assert response.json()['error'] == 'config_snapshot_missing'

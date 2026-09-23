@@ -9,7 +9,7 @@ exception as api_types.py.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -597,6 +597,33 @@ class RunHeader(BaseModel):
     app_version: str = ''
     git_commit: Optional[str] = None
     reporting: RunReporting = RunReporting.EXPECTED
+
+
+class RunConfigSnapshot(BaseModel):
+    """
+    The configuration a run was commissioned with, served beside the run that used it.
+
+    A run's ledger row already says a configuration MOVED between two sessions — the deployment
+    history draws a change mark from `param_hash` / `profile_hash`. What no reader could ask is
+    WHAT moved, because both the file name and the content id are POINTERS and nothing served
+    what they point at.
+
+    `config` is the snapshot PARSED. The bytes are copied verbatim into the run directory, so a
+    raw form would also be defensible; parsed is served because every other route on this API
+    answers with a model, and because a consumer comparing two runs wants the difference in the
+    VALUES rather than in the whitespace.
+    """
+    run_id: str
+    # The file name the run's header DECLARED, which is not always a file that exists: the
+    # header is written at run start and the copy happens later, so a session that died in
+    # between — or one whose file logging was switched off — declares a snapshot it never
+    # filed. That case is a 404 naming the snapshot, never a 404 naming the run.
+    config_snapshot: str
+    # The content fingerprint the run-config store minted (#538). Served so a consumer can
+    # assert the bytes it received are the ones the index attributes to this run, rather than
+    # trusting the join. Empty for a run that predates the store.
+    config_id: str
+    config: Dict[str, Any]
 
 
 class RunInfo(BaseModel):

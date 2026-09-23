@@ -13,6 +13,7 @@ tokens, and `get(run_id, BROKER_ARTIFACT)` is still statically a `BrokerReport`.
 
 from datetime import datetime
 from pathlib import Path
+import json
 from typing import List, Optional, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -31,6 +32,7 @@ from python.framework.reporting.io.report_filters import (
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import (
     OrderHistoryReport,
+    RunConfigSnapshot,
     RunInfo,
     TradeHistoryReport,
 )
@@ -133,6 +135,47 @@ class ReportStore:
         if report is None:
             return None
         return filter_order_history_report(report, symbol, status)
+
+    def get_config_snapshot(self, run_id: str) -> Optional[RunConfigSnapshot]:
+        """
+        The configuration a run was commissioned with, read from beside the run.
+
+        The snapshot sits at the run directory's ROOT rather than under `io/`, which is why
+        `_resolve` cannot serve it: it is the run's INPUT, not something the run produced, and
+        for the same reason it has no ArtifactSpec.
+
+        Read from the RUN DIRECTORY and never from the run-config store. The store holds the
+        same content under its own id, but its index carries `source_path` — the operator's
+        own workspace path, which may name `user_algos/` or `user_configs/`. One route, one
+        store, and this one is the run's.
+
+        Args:
+            run_id: The run's identity
+
+        Returns:
+            The snapshot, or None when the run is unknown, declared no snapshot, or declared
+            one it never filed — the header is written at run start and the copy happens
+            later, so the last case is ordinary rather than exceptional
+        """
+        run_dir = self._index.run_dir(run_id)
+        if run_dir is None:
+            return None
+        info = next((r for r in self.list_runs() if r.run_id == run_id), None)
+        if info is None or not info.config_snapshot:
+            return None
+        # `.name` before joining: the value travels through a parquet index, and a name that
+        # ever carried a separator would otherwise reach outside the run directory. Nothing
+        # writes one today — both pipelines file a constant — which is exactly when a guard
+        # is cheap.
+        path = run_dir / Path(info.config_snapshot).name
+        if not path.exists():
+            return None
+        return RunConfigSnapshot(
+            run_id=run_id,
+            config_snapshot=info.config_snapshot,
+            config_id=info.config_id or '',
+            config=json.loads(path.read_text(encoding='utf-8')),
+        )
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:
         """

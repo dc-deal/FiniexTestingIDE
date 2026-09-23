@@ -39,6 +39,7 @@ from python.framework.types.api.report_types import (
     PendingOrdersReport,
     PortfolioReport,
     ProfilingReport,
+    RunConfigSnapshot,
     RunInfo,
     RunListResponse,
     RunSummary,
@@ -390,3 +391,35 @@ def _parse_iso(value: Optional[str], field: str) -> Optional[datetime]:
     except ValueError:
         raise ApiException(
             400, 'invalid_timestamp', f"'{field}' must be ISO-8601, got '{value}'")
+
+@router.get('/reports/runs/{run_id}/config', response_model=RunConfigSnapshot)
+def get_run_config(run_id: str) -> RunConfigSnapshot:
+    """
+    The configuration a run was commissioned with.
+
+    The run index already carries two POINTERS — the snapshot's file name and its content id —
+    and a reader who sees a change mark between two sessions of a deployment cannot ask what
+    changed, because nothing served what they point at. This is that route.
+
+    Two 404s, deliberately distinguished: `run_not_found` when the identity is unknown, and
+    `config_snapshot_missing` when the run declared one it never filed. The header is written at
+    run start and the file is copied later, so the second is an ordinary state — a session that
+    died in between, or one whose file logging was switched off — and reading it as "unknown
+    run" would send a consumer looking for the wrong fault.
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The snapshot, parsed, with the name and content id the index attributes to this run
+    """
+    snapshot = ReportStore().get_config_snapshot(run_id)
+    if snapshot is None:
+        known = any(r.run_id == run_id for r in ReportStore().list_runs())
+        if not known:
+            raise ApiException(
+                404, 'run_not_found', f"No run '{run_id}' in the run index")
+        raise ApiException(
+            404, 'config_snapshot_missing',
+            f"Run '{run_id}' declares a configuration snapshot that was never filed")
+    return snapshot

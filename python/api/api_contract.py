@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 2
+API_CONTRACT_VERSION = 3
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -31,6 +31,14 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
+    'reports: /reports/runs/{run_id}/config serves the configuration a run was commissioned '
+    'with, parsed, with the file name and the content id the index attributes to the run. Two '
+    'distinct 404s: `run_not_found` for an unknown identity, `config_snapshot_missing` for a '
+    'run that declared a snapshot it never filed',
+]
+
+# Version 2 — what a consumer captured before the route above.
+PREVIOUS_CHANGES: List[str] = [
     'deployments: three read-only routes — /deployments, /deployments/{id}, '
     '/deployments/{id}/booking-periods — on a new `deployments` grant surface',
     'reports: /reports/runs/{run_id}/booking-periods serves the run Hauptbuch as a stored '
@@ -39,7 +47,8 @@ CHANGES: List[str] = [
     'run reports no figure in this currency and the check did NOT run',
     'BookingPeriodsReport.run_net_pnl / run_total_trades are nullable for the same reason',
     'BookingPeriodsReport gained `currencies` — one table is ONE account currency, and this '
-    'names the others the run booked',
+    'names EVERY currency the run booked, the shown one included; the console is what filters '
+    'the shown one out when it prints',
     'RunResultRow.segment_trade_count was REMOVED; read `total_trades`, which is the same '
     'record count and always was',
     'segment_max_drawdown is now a MAGNITUDE, matching account_max_drawdown and the excursion '
