@@ -709,6 +709,53 @@ class PortfolioManager:
 
         return closed_net_pnl
 
+    def retire_dust_position(self, position_id: str) -> bool:
+        """
+        Take a position out of the book when what is left of it can no longer be traded (#507).
+
+        SPOT only, and the reason is the difference between a HOLDING and a POSITION. At spot
+        the inventory lives in `_balances`; a position is our record of a trade we are
+        managing on top of it. When the venue's own fill leaves a remainder below the
+        symbol's `volume_min`, that remainder is a real holding — the account has the coins —
+        but it is no longer a trade anyone can act on: no order can sell it, so it can never
+        be closed, trailed or reversed.
+
+        Left in the book it is worse than useless. Four of the five CORE logics refuse to
+        open anything while a position is open, so an unsellable 0.00002 blocks the bot for
+        the rest of its life, and `trend_channel_reference` spends one of its `max_positions`
+        slots on it.
+
+        **Balances are deliberately untouched, and that is what makes this not a write-off.**
+        The coins stay exactly where they are and remain visible in every balance figure; the
+        boot cross-check then reports the venue holding slightly more than the book, which is
+        the true statement and is the direction it does not treat as an error (#355). No trade
+        record is written either: nothing was traded, and a record for a close that never
+        happened would be the same lie one level down.
+
+        MARGIN is excluded by construction rather than by preference: there the position IS
+        the exposure, with no inventory beside it, so retiring the record would write off
+        something real. It cannot arise there anyway — every MT5 symbol carries
+        `volume_min == volume_step == 0.01`, so a remainder is a multiple of the minimum and
+        is either zero or large enough (§31b).
+
+        Args:
+            position_id: The position whose remainder can no longer be traded
+
+        Returns:
+            True when a position was retired, False when there was nothing to retire or the
+            account is not a spot account
+        """
+        if not self._spot_mode:
+            return False
+
+        position = self.open_positions.pop(position_id, None)
+        if position is None:
+            return False
+
+        position.status = PositionStatus.CLOSED
+        self._positions_dirty = True
+        return True
+
     def _initial_risk(self, position: Position, lots: float) -> Optional[float]:
         """
         Gross loss (account currency) had the stop loss been hit — the R-multiple

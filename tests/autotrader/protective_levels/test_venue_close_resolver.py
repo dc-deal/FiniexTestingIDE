@@ -252,20 +252,63 @@ class TestTheCounterRecordsWhatWasBookedNotWhatWasAsked:
     requested-close case, reached from the venue's side.
     """
 
-    def test_a_dust_remainder_is_booked_as_it_happened_rather_than_written_off(self):
+    def test_the_counter_records_the_dust_close_as_it_happened(self):
+        """MARGIN here — the harness default. The counter follows the booking, 0.09998."""
         mock, executor, position = _live_with_one_long(lots=0.10)
         protective = _protective_order(position.position_id)
-        # The venue closed 0.09998 of 0.10 and kept 0.00002, which is below its own
-        # volume_min of 5e-05 and therefore unsellable. That holding is REAL.
+        # The venue closed 0.09998 of 0.10 and kept 0.00002, below its own volume_min of
+        # 5e-05 and therefore unsellable. That holding is REAL.
+        executor._apply_venue_close(protective, filled_lots=0.09998, avg_price=49000.0)
+
+        assert protective.execution_state.venue_close_applied_lots == pytest.approx(0.09998), (
+            'the counter has to record what was booked, and 0.09998 is what happened')
+
+    def test_margin_keeps_the_dust_as_a_position_because_it_IS_the_exposure(self):
+        """
+        Sec 31b, the half that must NOT move.
+
+        A margin account has no inventory beside the position — the remainder sits in the
+        market and the position record is the only thing that says so. Retiring it would
+        write off a real exposure, which is why `retire_dust_position` refuses outside spot.
+        """
+        mock, executor, position = _live_with_one_long(lots=0.10)
+        protective = _protective_order(position.position_id)
+
         executor._apply_venue_close(protective, filled_lots=0.09998, avg_price=49000.0)
 
         open_positions = executor.get_open_positions()
-        assert len(open_positions) == 1, (
-            'the position was written off although the venue still holds the remainder — '
-            'that is the #507 divergence arriving from the venue side')
+        assert len(open_positions) == 1, 'a margin exposure was written off'
         assert open_positions[0].lots == pytest.approx(0.00002)
-        assert protective.execution_state.venue_close_applied_lots == pytest.approx(0.09998), (
-            'the counter has to record what was booked, and 0.09998 is what happened')
+
+    def test_spot_retires_the_record_and_leaves_the_holding_in_the_balance(self):
+        """
+        The other half, and the reason #507 needed a second decision (operator, 2026-09-23).
+
+        At spot the coins live in the balances; the position is our record of a trade on top
+        of them. An unsellable remainder is still a holding but is no longer a trade — and
+        left in the book it blocks four of the five CORE logics, which refuse to open
+        anything while a position is open. So the record goes and the coins stay.
+        """
+        mock = MockOrderExecution(
+            mode=MockExecutionMode.INSTANT_FILL, spot_mode=True,
+            initial_balances={'USD': 10_000.0, 'BTC': 0.0})
+        executor = mock.create_executor()
+        mock.feed_tick(executor, symbol=_SYMBOL, bid=50000.0, ask=50001.0)
+        executor.open_order(OpenOrderRequest(
+            symbol=_SYMBOL, order_type=OrderType.MARKET, direction=OrderDirection.LONG,
+            lots=0.10))
+        mock.feed_tick(executor, symbol=_SYMBOL, bid=50000.0, ask=50001.0)
+        position = executor.get_open_positions()[0]
+        protective = _protective_order(position.position_id)
+
+        executor._apply_venue_close(protective, filled_lots=0.09998, avg_price=49000.0)
+
+        assert not executor.get_open_positions(), (
+            'the unsellable remainder stayed in the book, where it blocks every CORE logic '
+            'that refuses to open while a position is open')
+        assert executor.portfolio.get_asset_balance('BTC') == pytest.approx(0.00002), (
+            'the coins were written off — the account really does still hold them, and this '
+            'is the difference between retiring a RECORD and losing a HOLDING')
 
     def test_a_remainder_that_is_only_float_drift_is_a_full_close(self):
         """

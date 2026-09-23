@@ -1304,14 +1304,10 @@ class AbstractTradeExecutor(ABC):
         # never requested. It is reported, never booked away: writing off lots the account
         # still holds would be the same defect in miniature. The unsellable holding is real,
         # and re-syncing it against broker truth belongs to #349.
+        leaves_dust = False
         if is_partial:
             remaining = position.lots - close_lots
-            if remaining < symbol_spec.volume_min - _CLOSE_LOT_EPSILON:
-                self.logger.warning(
-                    f'⚠️ Close of {close_lots:.8f} lots leaves {remaining:.8f} on '
-                    f'{position_id}, below volume_min {symbol_spec.volume_min:.8f} — the '
-                    f'remainder is held and cannot be sold on its own (#349)'
-                )
+            leaves_dust = remaining < symbol_spec.volume_min - _CLOSE_LOT_EPSILON
 
         # Capture executed_lots before portfolio call (position may be deleted on full close)
         executed_lots = close_lots if is_partial else position.lots
@@ -1381,6 +1377,14 @@ class AbstractTradeExecutor(ABC):
                 f'📊 Partial close: {position_id} '
                 f'{close_lots} lots at {close_price:.5f}, P&L: {realized_pnl:.2f}'
             )
+            if leaves_dust and self.portfolio.retire_dust_position(position_id):
+                self.logger.warning(
+                    f'⚠️ The venue left {remaining:.8f} lots on {position_id}, below '
+                    f'volume_min {symbol_spec.volume_min:.8f}. No order can sell that, so it '
+                    f'is no longer a position we manage: the holding stays in the balance and '
+                    f'the position leaves the book. Nothing was written off — the venue will '
+                    f'report slightly more than our book until the dust is spent (#507)'
+                )
         else:
             realized_pnl = self.portfolio.close_position_portfolio(
                 position_id=position_id,

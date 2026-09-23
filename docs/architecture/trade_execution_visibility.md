@@ -80,7 +80,9 @@ FULL close at fill time, one round trip after the venue had already sold the par
 record could report a size the venue never traded. The judgement moved to submission
 (`AbstractTradeExecutor.refuse_unresolvable_close()`): such a request is refused with
 `REMAINDER_BELOW_MINIMUM` and never becomes an order. A sub-minimum remainder arriving from the
-venue's OWN partial fill is warned about and booked as it happened, never written off.
+venue's OWN partial fill is booked as it happened, never written off — and at SPOT the position
+record is then retired while the balance keeps the coins, because an unsellable remainder is a
+holding rather than a trade. At margin the record stays: there it IS the exposure.
 
 ## Trade-Event Side vs Position Direction (BUY/SELL vs LONG/SHORT)
 

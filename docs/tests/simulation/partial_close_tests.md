@@ -83,9 +83,22 @@ SUBMISSION, in `AbstractTradeExecutor.refuse_unresolvable_close()`, where it can
 what the venue is asked for. The request is REFUSED with `REMAINDER_BELOW_MINIMUM` and nothing is
 sent.
 
-What remains at fill time is a WARNING, not a conversion: the venue's own partial fill can strand
-a sub-minimum remainder without us having asked for it. That holding is real and is reported
-rather than written off — re-syncing it against broker truth is #349's.
+What remains at fill time answers the case we did NOT cause: the venue's own partial fill can
+strand a sub-minimum remainder without us having asked for it. Whatever it filled is booked, and
+then the two account models part company (Sec 31b):
+
+- **SPOT** — the coins live in the balances and the position is our record of a trade on top of
+  them. An unsellable remainder is still a HOLDING but is no longer a TRADE: no order can sell
+  it, so it can never be closed, trailed or reversed, and left in the book it blocks four of the
+  five CORE logics, which refuse to open anything while a position is open. The record is
+  retired (`PortfolioManager.retire_dust_position()`); the balance keeps the coins. Nothing is
+  written off, and the boot cross-check then reports the venue holding slightly more than the
+  book — the true statement, and the direction it does not treat as an error (#355).
+- **MARGIN** — there is no inventory beside the position, so the record IS the exposure and
+  retiring it would write off something real. It cannot arise there anyway: every MT5 symbol
+  carries `volume_min == volume_step == 0.01`, so a remainder is a multiple of the minimum.
+
+Spending the dust itself is not solved here and is #349's.
 
 Cases: `tests/simulation/partial_close/test_partial_close_volume_min.py`, driven over the real
 Kraken spot config because its minimums are the crooked ones that produce the case (DOTUSD 3.9,
