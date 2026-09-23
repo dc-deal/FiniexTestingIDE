@@ -31,7 +31,7 @@
       "rsi_sell_threshold": 55,
       "bollinger_extremes": 0.45,
       "min_confidence": 0.1,
-      "min_free_margin": 100,
+      "min_entry_capital": 100,
       "lot_size": 0.01
     }
   },

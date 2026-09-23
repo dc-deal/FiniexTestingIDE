@@ -108,7 +108,7 @@ class TestWhatItDeliberatelyIgnores:
                                       'bollinger_lower_threshold': 0.3,
                                       'bollinger_upper_threshold': 0.7,
                                       'min_confidence': 0.5, 'lot_size': 0.001,
-                                      'min_free_margin': 1000}}))
+                                      'min_entry_capital': 1000}}))
         assert before == after
 
     def test_the_profile_name_is_not_operational(self, make_config):

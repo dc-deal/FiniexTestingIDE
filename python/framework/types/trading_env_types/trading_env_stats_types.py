@@ -4,6 +4,7 @@ Type definitions for trading environment statistics and account information
 
 Contains:
 - AccountInfo: Account state snapshot
+- FreeAssetFunds: What is actually available of one asset, and the parts that make it
 - PortfolioStats: Complete portfolio performance statistics
 - ExecutionStats: Order execution statistics
 - CostBreakdown: Detailed cost breakdown (spread/commission/swap)
@@ -45,6 +46,27 @@ class AccountInfo:
     currency: str
     leverage: int
     balances: Optional[Dict[str, float]] = None
+
+
+@dataclass
+class FreeAssetFunds:
+    """
+    How much of one asset is actually available, with the two figures that make it.
+
+    `available` is the only number a caller should decide on. `balance` and `committed` ride
+    along because the refusal message has to say WHICH of the two was short — a rejection
+    reading only "available 3.00" leaves an operator unable to tell an empty account from one
+    whose own resting orders claim everything.
+
+    Attributes:
+        available: balance minus committed — what a new order may actually spend
+        balance: what our books hold of the asset
+        committed: what this bot's own unfilled orders already claim of it (#489). Always 0.0
+            in margin mode, where free margin is the equivalent quantity
+    """
+    available: float
+    balance: float
+    committed: float
 
 
 @dataclass

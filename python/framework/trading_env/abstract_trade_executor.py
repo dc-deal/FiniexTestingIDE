@@ -98,6 +98,7 @@ from python.framework.types.trading_env_types.pending_order_stats_types import (
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     AccountInfo,
     ExecutionStats,
+    FreeAssetFunds,
 )
 from python.framework.utils.trading_math.price_trigger import mid_price
 
@@ -955,11 +956,11 @@ class AbstractTradeExecutor(ABC):
             fee_cost = entry_fee.cost if entry_fee else 0.0
             if pending_order.direction == OrderDirection.LONG:
                 required = pending_order.lots * entry_price + fee_cost
-                balance = self.portfolio.get_asset_balance(symbol_spec.quote_currency)
-                committed = self.get_committed_funds(
+                funds = self.get_free_asset_funds(
                     symbol_spec.quote_currency,
                     exclude_order_id=pending_order.pending_order_id)
-                available = balance - committed
+                balance, committed, available = (
+                    funds.balance, funds.committed, funds.available)
                 if required > available:
                     self._orders_rejected += 1
                     rejection = create_rejection_result(
@@ -983,11 +984,11 @@ class AbstractTradeExecutor(ABC):
                     )
                     return
             else:
-                balance = self.portfolio.get_asset_balance(symbol_spec.base_currency)
-                committed = self.get_committed_funds(
+                funds = self.get_free_asset_funds(
                     symbol_spec.base_currency,
                     exclude_order_id=pending_order.pending_order_id)
-                available = balance - committed
+                balance, committed, available = (
+                    funds.balance, funds.committed, funds.available)
                 if pending_order.lots > available:
                     self._orders_rejected += 1
                     rejection = create_rejection_result(
@@ -1537,6 +1538,80 @@ class AbstractTradeExecutor(ABC):
             if outflow_currency == currency:
                 total += amount
         return total
+
+    def get_free_asset_funds(
+        self,
+        currency: str,
+        exclude_order_id: Optional[str] = None
+    ) -> FreeAssetFunds:
+        """
+        What is actually available of one asset — the ONE definition of that subtraction.
+
+        The funds check and the entry gate below both read it, so a future third term (a venue
+        hold, a settlement delay) is added once rather than in whichever of the two the next
+        reader happens to open.
+
+        Args:
+            currency: The asset to total, e.g. 'USD' or 'BTC'
+            exclude_order_id: An order to leave out of the claim — the one being filled is
+                still in its collection while the fill runs
+
+        Returns:
+            The available amount with the balance and the claim that produced it
+        """
+        balance = self.portfolio.get_asset_balance(currency)
+        committed = self.get_committed_funds(currency, exclude_order_id=exclude_order_id)
+        return FreeAssetFunds(
+            available=balance - committed, balance=balance, committed=committed)
+
+    def get_free_entry_capital(
+        self,
+        symbol: str,
+        direction: OrderDirection,
+        exclude_order_id: Optional[str] = None
+    ) -> float:
+        """
+        How much capital a NEW entry may commit, in ACCOUNT CURRENCY, per account model (#502).
+
+        The question a decision actually has, which `free_margin` answers only in the margin
+        world. At spot that figure is the free quote balance PLUS the unrealized P&L of the
+        holdings, because the margin-style equity is what it is derived from — and an
+        unrealized gain on a coin is not cash. Measured 2026-09-23 on a 1000 USD account
+        holding 0.1 ETH bought at 3000: at ETH 6000 it offers 999.90 USD where 700.00 is
+        spendable, and at ETH 2000 it offers 599.90 where the same 700.00 is. The error points
+        both ways, so no choice of floor absorbs it.
+
+        ONE unit for both directions, deliberately: a gate compares against a single
+        configured floor, so returning quote for a BUY and base for a SELL would make that
+        floor mean two things. The SELL side is therefore the holding VALUED at the mark —
+        and it is the mark rather than the traded price, because this is the valuation plane
+        (§31c).
+
+        Margin returns `free_margin` EXACTLY. That is what keeps every checked-in mt5 scenario
+        on its existing entries.
+
+        Args:
+            symbol: The instrument the entry is for — it names the two currencies at spot
+            direction: LONG spends the quote, SHORT spends the base
+            exclude_order_id: An order to leave out of the claim, as above
+
+        Returns:
+            The available capital in account currency. 0.0 at spot when no price exists yet,
+            since an unvalued holding cannot be offered as capital
+        """
+        if not self._spot_mode:
+            return self.portfolio.get_free_margin(direction)
+
+        symbol_spec = self.broker.get_symbol_specification(symbol)
+        if direction == OrderDirection.LONG:
+            return self.get_free_asset_funds(
+                symbol_spec.quote_currency, exclude_order_id=exclude_order_id).available
+
+        held = self.get_free_asset_funds(
+            symbol_spec.base_currency, exclude_order_id=exclude_order_id).available
+        if self._current_tick is None:
+            return 0.0
+        return held * self._current_tick.mid
 
     def _outflow_for(
         self,
