@@ -79,7 +79,8 @@ class CautiousMacd(AbstractDecisionLogic):
     - min_histogram: Minimum histogram absolute value for valid crossover (default: 0.00005)
     - min_confidence: Minimum signal confidence to act (0.0 = disabled, default: 0.0)
     - lot_size: Fixed lot size (default: 0.1)
-    - min_free_margin: Minimum free margin for new entries (default: 1000)
+    - min_entry_capital: Minimum capital in account currency before a new entry — free
+      quote balance at spot, free margin at margin (default: 0 = disabled)
     """
 
     def __init__(
@@ -117,7 +118,7 @@ class CautiousMacd(AbstractDecisionLogic):
         self.min_histogram = self.params.get('min_histogram')
         self.min_confidence = self.params.get('min_confidence')
         self.lot_size = self.params.get('lot_size')
-        self.min_free_margin = self.params.get('min_free_margin')
+        self.min_entry_capital = self.params.get('min_entry_capital')
         self.use_stop_limit = self.params.get('use_stop_limit')
         self.stop_limit_offset_pips = self.params.get('stop_limit_offset_pips')
 
@@ -192,9 +193,11 @@ class CautiousMacd(AbstractDecisionLogic):
                 param_type=float, default=0.1, min_val=0.0, max_val=100.0,
                 description='Fixed lot size for STOP orders'
             ),
-            'min_free_margin': InputParamDef(
-                param_type=float, default=1000, min_val=0,
-                description='Minimum free margin before opening new position'
+            'min_entry_capital': InputParamDef(
+                param_type=float, default=0.0, min_val=0,
+                description='Minimum entry capital in account currency before opening a '
+                            'position — free quote balance at spot, free margin at '
+                            'margin (0 disables)'
             ),
             'use_stop_limit': InputParamDef(
                 param_type=bool, default=False,
@@ -493,7 +496,7 @@ class CautiousMacd(AbstractDecisionLogic):
         Execute state machine: FLAT / PENDING_ENTRY / IN_POSITION.
 
         FLAT:
-          - New BUY/SELL signal + margin ok → place STOP order, store ID
+          - New BUY/SELL signal + entry capital ok → place STOP order, store ID
 
         PENDING_ENTRY (stop in latency or active):
           - In pipeline (has_pipeline_orders=True): wait
@@ -624,12 +627,12 @@ class CautiousMacd(AbstractDecisionLogic):
             if base_balance < required:
                 return None
 
-        # Margin check
-        account = self.trading_api.get_account_info(new_direction)
-        if account.free_margin < self.min_free_margin:
+        # Entry capital — what this account can actually commit, per account model (#502)
+        capital = self.trading_api.get_free_entry_capital(tick.symbol, new_direction)
+        if capital < self.min_entry_capital:
             self.logger.info(
-                f'Insufficient free margin: {account.free_margin:.2f} '
-                f'< {self.min_free_margin} - skipping entry'
+                f'Insufficient entry capital: {capital:.2f} '
+                f'< {self.min_entry_capital} - skipping entry'
             )
             return None
 

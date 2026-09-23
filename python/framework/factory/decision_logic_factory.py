@@ -12,7 +12,7 @@ Example Config:
     "decision_logic_type": "user_algos/my_algo/my_strategy.py",
     "decision_logic_config": {
         "lot_size": 0.01,
-        "min_free_margin": 100.0
+        "min_entry_capital": 100.0
     }
 }
 """

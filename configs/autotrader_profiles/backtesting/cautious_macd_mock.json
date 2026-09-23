@@ -40,7 +40,7 @@
       "break_even_trigger_pips": 75,
       "min_histogram": 10,
       "lot_size": 0.01,
-      "min_free_margin": 1000
+      "min_entry_capital": 1000
     }
   },
   "tick_source": {

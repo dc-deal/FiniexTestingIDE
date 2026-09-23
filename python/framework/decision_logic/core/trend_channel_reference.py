@@ -81,7 +81,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     - partial_rr / partial_fraction: R-multiple rung and fraction of the original
       lots closed at that rung
     - max_positions: max concurrent positions stacked on the symbol
-    - lot_size / min_free_margin: fixed entry size and the margin floor
+    - lot_size / min_entry_capital: fixed entry size and the entry-capital floor
     """
 
     def __init__(
@@ -113,7 +113,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         self.partial_fraction = self.params.get('partial_fraction')
         self.max_positions = self.params.get('max_positions')
         self.lot_size = self.params.get('lot_size')
-        self.min_free_margin = self.params.get('min_free_margin')
+        self.min_entry_capital = self.params.get('min_entry_capital')
 
         # ============================================
         # Per-tick worker read (stashed for the execution pass)
@@ -197,9 +197,11 @@ class TrendChannelReference(AbstractDecisionLogic):
                 param_type=float, default=0.1, min_val=0.0, max_val=100.0,
                 description='Fixed lot size for entries',
             ),
-            'min_free_margin': InputParamDef(
-                param_type=float, default=1000, min_val=0,
-                description='Minimum free margin required before opening an entry',
+            'min_entry_capital': InputParamDef(
+                param_type=float, default=0.0, min_val=0,
+                description='Minimum entry capital in account currency before opening a '
+                            'position — free quote balance at spot, free margin at '
+                            'margin (0 disables)'
             ),
         }
 
@@ -554,7 +556,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         tick: TickData
     ) -> Optional[OrderResult]:
         """
-        Place a resting LIMIT/STOP entry if capacity and margin allow.
+        Place a resting LIMIT/STOP entry if capacity and entry capital allow.
 
         One pending entry at a time paces the stacking; `max_positions` caps the
         concurrent count on the symbol.
@@ -587,8 +589,8 @@ class TrendChannelReference(AbstractDecisionLogic):
             if self.trading_api.get_asset_balance(spec.base_currency) < required:
                 return None
 
-        account = self.trading_api.get_account_info(direction)
-        if account.free_margin < self.min_free_margin:
+        # Entry capital — what this account can actually commit, per account model (#502)
+        if self.trading_api.get_free_entry_capital(symbol, direction) < self.min_entry_capital:
             return None
 
         entry_price = decision.outputs['entry_price']

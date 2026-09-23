@@ -43,7 +43,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
     - min_sentiment_confidence: below this (or when stale) sentiment is ignored
     - sentiment_conflict_threshold: opposing sentiment magnitude that blocks a signal
     - sentiment_boost: confidence added when sentiment aligns with the signal
-    - lot_size / min_free_margin: execution sizing + margin floor
+    - lot_size / min_entry_capital: execution sizing + the entry-capital floor
     """
 
     def __init__(
@@ -70,7 +70,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
         self.sentiment_conflict_threshold = self.params.get('sentiment_conflict_threshold')
         self.sentiment_boost = self.params.get('sentiment_boost')
         self.lot_size = self.params.get('lot_size')
-        self.min_free_margin = self.params.get('min_free_margin')
+        self.min_entry_capital = self.params.get('min_entry_capital')
 
     # ============================================
     # Schema + metadata
@@ -107,9 +107,11 @@ class HybridSentimentReference(AbstractDecisionLogic):
                 param_type=float, default=0.1, min_val=0.0, max_val=100.0,
                 description='Fixed lot size for market orders',
             ),
-            'min_free_margin': InputParamDef(
-                param_type=float, default=1000, min_val=0,
-                description='Minimum free margin required before opening a position',
+            'min_entry_capital': InputParamDef(
+                param_type=float, default=0.0, min_val=0,
+                description='Minimum entry capital in account currency before opening a '
+                            'position — free quote balance at spot, free margin at '
+                            'margin (0 disables)'
             ),
         }
 
@@ -352,8 +354,9 @@ class HybridSentimentReference(AbstractDecisionLogic):
         if decision.action == DecisionLogicAction.BUY:
             if open_positions:
                 return None  # already long
-            account = self.trading_api.get_account_info(OrderDirection.LONG)
-            if account.free_margin < self.min_free_margin:
+            # Entry capital — per account model, not the margin figure (#502)
+            if self.trading_api.get_free_entry_capital(
+                    tick.symbol, OrderDirection.LONG) < self.min_entry_capital:
                 return None
             try:
                 order_result = self.trading_api.send_order(

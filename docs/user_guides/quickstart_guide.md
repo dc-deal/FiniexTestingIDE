@@ -285,6 +285,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         self.rsi_buy = self.params.get("rsi_buy_threshold")
         self.rsi_sell = self.params.get("rsi_sell_threshold")
         self.lot_size = self.params.get("lot_size")
+        self.min_entry_capital = self.params.get("min_entry_capital")
     
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
@@ -399,6 +400,14 @@ class AggressiveTrend(AbstractDecisionLogic):
             required = self.lot_size * spec.contract_size
             if self.trading_api.get_asset_balance(spec.base_currency) < required:
                 return None
+
+        # Capital gate: what THIS account can commit to a new entry. Ask for it by
+        # name — `get_account_info().free_margin` answers the question only on a
+        # margin account; at spot it carries the holdings' unrealized P&L, which is
+        # not cash you can spend on the next entry.
+        if self.trading_api.get_free_entry_capital(
+                tick.symbol, new_direction) < self.min_entry_capital:
+            return None
 
         # Open new position
         return self.trading_api.send_order(

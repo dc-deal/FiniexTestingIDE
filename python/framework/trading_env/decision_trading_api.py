@@ -362,6 +362,31 @@ class DecisionTradingApi:
         """
         return self._executor.portfolio.get_asset_balance(currency)
 
+    def get_free_entry_capital(self, symbol: str, direction: OrderDirection) -> float:
+        """
+        How much capital a new entry may commit, in account currency, per account model (#502).
+
+        The gate a decision logic should use instead of `get_account_info().free_margin`. That
+        figure answers the question only in the MARGIN world; at spot it is the free quote
+        balance plus the unrealized P&L of the holdings, and an unrealized gain on a coin is
+        not cash to spend. Here margin still returns exactly `free_margin`, so a margin
+        strategy behaves identically, while spot answers the free quote balance for a BUY and
+        the value of the held base asset for a SELL — one unit, so one configured floor means
+        one thing in both worlds.
+
+        What this does NOT replace is the size check a spot SELL still needs: this says how
+        much VALUE is available, `get_asset_balance()` says how many units are held, and an
+        order is sized in units.
+
+        Args:
+            symbol: The instrument the entry is for
+            direction: LONG spends the quote currency, SHORT spends the base
+
+        Returns:
+            Available entry capital in account currency
+        """
+        return self._executor.get_free_entry_capital(symbol, direction)
+
     def get_cost_breakdown(self) -> CostBreakdown:
         """
         What this session has spent in trading costs so far, by category.

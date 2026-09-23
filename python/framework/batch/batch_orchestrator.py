@@ -287,7 +287,6 @@ class BatchOrchestrator:
         # and did not — so the very runs that carry the release benchmark certificates were the
         # ones without a snapshot. build_mount() deliberately does NOT pass through here; a mount
         # build is not a run and has no run directory to snapshot into.
-        self._scenario_set.copy_config_snapshot()
 
         self._logger.info(
             f'🚀 Starting batch execution '

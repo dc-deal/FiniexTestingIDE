@@ -75,7 +75,7 @@ multi-symbol is a later milestone), so "multi-position" means several positions 
 | `partial_fraction` | `0.5` | Fraction of the original lots closed at the partial rung |
 | `max_positions` | `2` | Max concurrent positions stacked on the symbol |
 | `lot_size` | `0.1` | Fixed entry size |
-| `min_free_margin` | `1000` | Margin floor before opening an entry |
+| `min_entry_capital` | `0` | Capital floor before opening an entry, in account currency — the free quote balance at spot, free margin at margin. `0` disables it |
 
 The required workers (`CORE/ma_trend` H1, `CORE/bollinger` M15): keep `m15_channel` on the default
 `compute_basis: live` (it reads the live band position), and run `h1_trend` with

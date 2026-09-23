@@ -39,7 +39,7 @@
       "bollinger_upper_threshold": 0.7,
       "min_confidence": 0.5,
       "lot_size": 0.001,
-      "min_free_margin": 1000
+      "min_entry_capital": 1000
     }
   },
   "tick_source": {

@@ -33,7 +33,7 @@
       "bollinger_extremes": 0.25,
       "min_confidence": 0.4,
       "lot_size": 0.15,
-      "min_free_margin": 0.01
+      "min_entry_capital": 0.01
     }
   },
   "tick_source": {

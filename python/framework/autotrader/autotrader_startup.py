@@ -51,7 +51,6 @@ from python.framework.types.signal_data_types import (
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderType
-from python.framework.utils.scenario_set_utils import LIVE_CONFIG_SNAPSHOT
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
 from python.framework.validators.capital_validator import (
@@ -191,7 +190,10 @@ def create_autotrader_loggers(
             # else left behind says which sessions belonged together.
             parent_id=deployment_id or None,
             parent_kind=ParentKind.DEPLOYMENT if deployment_id else None,
-            config_snapshot=LIVE_CONFIG_SNAPSHOT,
+            # The SOURCE file this session started from — no longer a file inside the run
+            # directory: the copy was retired once the run-config store began freezing the
+            # same content under `config_id` below, which is what a reader resolves.
+            config_snapshot=Path(config.config_path).name,
             # Which profile content this session started from (#538). Registered at the start,
             # like the header itself, and never fatal: a profile the store cannot record is a
             # profile the session can still trade with.

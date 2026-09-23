@@ -25,7 +25,7 @@
                 "rsi_buy_threshold": 35,
                 "rsi_sell_threshold": 65,
                 "lot_size": 0.001,
-                "min_free_margin": 100
+                "min_entry_capital": 100
             }
         },
         "execution_config": {

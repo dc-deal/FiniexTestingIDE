@@ -30,6 +30,7 @@ from python.framework.reporting.io.report_filters import (
     filter_trade_history_report,
 )
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
     OrderHistoryReport,
     RunConfigSnapshot,
@@ -138,43 +139,38 @@ class ReportStore:
 
     def get_config_snapshot(self, run_id: str) -> Optional[RunConfigSnapshot]:
         """
-        The configuration a run was commissioned with, read from beside the run.
+        The configuration a run was commissioned with, resolved from the run-config store.
 
-        The snapshot sits at the run directory's ROOT rather than under `io/`, which is why
-        `_resolve` cannot serve it: it is the run's INPUT, not something the run produced, and
-        for the same reason it has no ArtifactSpec.
+        Read from the STORE and not from the run directory. The run used to keep its own verbatim
+        copy beside it, which was redundant the moment #538 began freezing the same content under
+        a content id — and worse than redundant: the copy was governed by a LOGGING switch while
+        the header declared it unconditionally, so a record could name a file that was not there.
+        The copy is gone; `config_id` is the pointer that survives.
 
-        Read from the RUN DIRECTORY and never from the run-config store. The store holds the
-        same content under its own id, but its index carries `source_path` — the operator's
-        own workspace path, which may name `user_algos/` or `user_configs/`. One route, one
-        store, and this one is the run's.
+        Serves the frozen CONTENT and never the store's index row — that row carries
+        `source_path`, an operator's own workspace path, which may name `user_configs/` or
+        `user_algos/`. The content itself is clean.
 
         Args:
             run_id: The run's identity
 
         Returns:
-            The snapshot, or None when the run is unknown, declared no snapshot, or declared
-            one it never filed — the header is written at run start and the copy happens
-            later, so the last case is ordinary rather than exceptional
+            The configuration, or None when the run is unknown or predates the store — a run
+            started before #538 carries an empty `config_id`, which is genuinely unknown rather
+            than absent
         """
-        run_dir = self._index.run_dir(run_id)
-        if run_dir is None:
-            return None
         info = next((r for r in self.list_runs() if r.run_id == run_id), None)
-        if info is None or not info.config_snapshot:
+        if info is None or not info.config_id:
             return None
-        # `.name` before joining: the value travels through a parquet index, and a name that
-        # ever carried a separator would otherwise reach outside the run directory. Nothing
-        # writes one today — both pipelines file a constant — which is exactly when a guard
-        # is cheap.
-        path = run_dir / Path(info.config_snapshot).name
-        if not path.exists():
+        frozen = RunConfigStore(
+            Path(AppConfigManager().get_run_configs_path())).frozen_path_of(info.config_id)
+        if frozen is None or not frozen.exists():
             return None
         return RunConfigSnapshot(
             run_id=run_id,
             config_snapshot=info.config_snapshot,
-            config_id=info.config_id or '',
-            config=json.loads(path.read_text(encoding='utf-8')),
+            config_id=info.config_id,
+            config=json.loads(frozen.read_text(encoding='utf-8')),
         )
 
     def _resolve(self, run_id: str, artifact: str) -> Optional[Path]:

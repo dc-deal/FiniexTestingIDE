@@ -75,7 +75,8 @@ class SimpleConsensus(AbstractDecisionLogic):
     - bollinger_lower_threshold: Price position threshold for buy (default: 0.3)
     - bollinger_upper_threshold: Price position threshold for sell (default: 0.7)
     - min_confidence: Minimum confidence to generate signal (default: 0.5)
-    - min_free_margin: Minimum free margin required for trades (default: 1000)
+    - min_entry_capital: Minimum capital in account currency before a new entry — free
+      quote balance at spot, free margin at margin (default: 0 = disabled)
     - lot_size: Fixed lot size for orders (default: 0.1)
 
     OBV Configuration:
@@ -111,7 +112,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         self.min_confidence = self.params.get('min_confidence')
 
         # Trading configuration
-        self.min_free_margin = self.params.get('min_free_margin')
+        self.min_entry_capital = self.params.get('min_entry_capital')
         self.lot_size = self.params.get('lot_size')
 
         # OBV configuration
@@ -125,7 +126,7 @@ class SimpleConsensus(AbstractDecisionLogic):
             f'RSI({self.rsi_oversold}/{self.rsi_overbought}), '
             f'Bollinger({self.bollinger_lower}/{self.bollinger_upper}), '
             f'OBV(enabled={self.obv_filter_enabled}, boost={self.obv_confidence_boost}), '
-            f'Lots={self.lot_size}, MinMargin={self.min_free_margin}'
+            f'Lots={self.lot_size}, MinCapital={self.min_entry_capital}'
         )
 
     # ============================================
@@ -161,9 +162,11 @@ class SimpleConsensus(AbstractDecisionLogic):
                 description='Minimum confidence to generate trading signal',
                 display=True, display_label='min_conf',
             ),
-            'min_free_margin': InputParamDef(
-                param_type=float, default=1000, min_val=0,
-                description='Minimum free margin required before opening trade'
+            'min_entry_capital': InputParamDef(
+                param_type=float, default=0.0, min_val=0,
+                description='Minimum entry capital in account currency before opening a '
+                            'position — free quote balance at spot, free margin at '
+                            'margin (0 disables)'
             ),
             'lot_size': InputParamDef(
                 param_type=float, default=0.1, min_val=0.0, max_val=100.0,
@@ -337,13 +340,13 @@ class SimpleConsensus(AbstractDecisionLogic):
             if base_balance < required:
                 return None
 
-        # Check account state (margin available)
-        account = self.trading_api.get_account_info(new_direction)
+        # Entry capital — what this account can actually commit, per account model (#502)
+        capital = self.trading_api.get_free_entry_capital(tick.symbol, new_direction)
 
-        if account.free_margin < self.min_free_margin:
+        if capital < self.min_entry_capital:
             self.logger.info(
-                f'Insufficient free margin: {account.free_margin:.2f} '
-                f'< {self.min_free_margin} - skipping trade'
+                f'Insufficient entry capital: {capital:.2f} '
+                f'< {self.min_entry_capital} - skipping trade'
             )
             return None
 

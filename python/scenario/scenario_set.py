@@ -38,10 +38,6 @@ from python.framework.types.scenario_types.scenario_set_types import (
 from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id
-from python.framework.utils.scenario_set_utils import (
-    SIM_CONFIG_SNAPSHOT,
-    ScenarioSetUtils,
-)
 
 
 def _register_run_config(source: Path) -> str:
@@ -140,7 +136,9 @@ class ScenarioSet:
                 # Written WITH the id, never after it: a parent id whose kind is unknown is a
                 # row nothing can group correctly (#386).
                 parent_kind=ParentKind.SWEEP if sweep_id else None,
-                config_snapshot=SIM_CONFIG_SNAPSHOT,
+                # The SOURCE file, not a copy in the run directory — that copy was retired
+                # once the store began freezing the same content under `config_id`.
+                config_snapshot=Path(self.config_path).name,
                 config_id=config_id,
                 app_version=app_config.get_version(),
                 git_commit=get_git_commit(),
@@ -173,23 +171,6 @@ class ScenarioSet:
     def log_root(self) -> Path:
         """The category root this run's logs land under (file_logging.run_logs)."""
         return self._log_root
-
-    def copy_config_snapshot(self) -> None:
-        """
-        Copy config snapshot to log directory.
-        Call explicitly before execution starts.
-        """
-        # copy file snapshot to log folder
-        scenario_set_utils = ScenarioSetUtils(
-            config_snapshot_path=self.config_path,
-            scenario_log_path=self.logger.get_log_dir(),
-            file_name=SIM_CONFIG_SNAPSHOT,
-        )
-        scenario_set_utils.copy_config_snapshot()
-
-        # Copy generator profile files for Profile Runs
-        if self._generator_profile_paths:
-            self._copy_generator_profiles()
 
     def _copy_generator_profiles(self) -> None:
         """Copy generator profile JSON files to scenario_run_configs/ in log directory."""

@@ -146,7 +146,9 @@ Error handling is **not a live-only feature**. It belongs in AbstractTradeExecut
 ```
 1. open_order() → PendingOrder in OrderLatencySimulator
 2. Latency delay elapses → _fill_open_order() called
-3. Margin check: required > free margin → INSUFFICIENT_MARGIN
+3. Funds check, per account model: margin compares against free margin (INSUFFICIENT_MARGIN);
+   spot compares against the asset the order spends, net of what this bot's own unfilled
+   orders already claim (INSUFFICIENT_FUNDS, #489)
 4. Rejection stored in _order_history, order never reaches portfolio
 ```
 
@@ -258,6 +260,13 @@ The foundation. Contains all concrete fill processing and shared infrastructure.
 - `get_order_history()` — All OrderResults (fills + rejections) for audit trail
 - `get_open_positions()` — Returns confirmed portfolio positions only
 - `get_account_info()` — Balance, equity, margin, free margin
+- `get_free_asset_funds(currency)` — What is available of one asset: balance minus the claim
+  this bot's own unfilled orders hold on it (#489). The one definition of that subtraction
+- `get_free_entry_capital(symbol, direction)` — Capital a NEW entry may commit, in account
+  currency, per account model (#502). Margin returns exactly `free_margin`; spot returns the
+  free quote balance for a BUY and the held base asset valued at the mark for a SELL. This is
+  what a decision logic gates on — `free_margin` describes a spot account's spendable cash
+  only by coincidence, because it carries the holdings' unrealized P&L
 - All broker queries, symbol specs, statistics collection
 
 **Concrete methods (lifted from subclasses — shared active order lifecycle):**
