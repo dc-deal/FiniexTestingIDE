@@ -75,10 +75,6 @@ from python.framework.types.signal_data_types import (
     SignalObservedSeries,
 )
 from python.framework.types.validation_types import ValidationFinding, ValidationResult
-from python.framework.utils.scenario_set_utils import (
-    LIVE_CONFIG_SNAPSHOT,
-    ScenarioSetUtils,
-)
 from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
@@ -295,14 +291,6 @@ class AutotraderMain:
             self._session_logger.info(
                 '🔗 One-off session — its ledger row names no deployment. '
                 'Declare `deployment.continuous` in the profile to group a bot\'s restarts.')
-
-        # Copy profile config snapshot to log directory (mirrors scenario_set.copy_config_snapshot)
-        if self._config.config_path and self._run_dir:
-            ScenarioSetUtils(
-                config_snapshot_path=self._config.config_path,
-                scenario_log_path=self._run_dir,
-                file_name=LIVE_CONFIG_SNAPSHOT,
-            ).copy_config_snapshot()
 
         try:
             self._setup_signal_handlers()

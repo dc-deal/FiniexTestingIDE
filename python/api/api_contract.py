@@ -32,9 +32,11 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # read this repository.
 CHANGES: List[str] = [
     'reports: /reports/runs/{run_id}/config serves the configuration a run was commissioned '
-    'with, parsed, with the file name and the content id the index attributes to the run. Two '
-    'distinct 404s: `run_not_found` for an unknown identity, `config_snapshot_missing` for a '
-    'run that declared a snapshot it never filed',
+    'with, parsed, resolved from the run-config store through the run\'s `config_id`. '
+    '`config_snapshot` on the response is the SOURCE file name — the per-run copy that used to '
+    'sit in the run directory is retired. Two distinct 404s: `run_not_found` for an unknown '
+    'identity, `config_snapshot_missing` for a run that predates the store and therefore '
+    'carries no id to resolve through',
 ]
 
 # Version 2 — what a consumer captured before the route above.

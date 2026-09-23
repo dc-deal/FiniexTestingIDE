@@ -101,7 +101,7 @@ class EventStreamWriter:
 
     Args:
         run_dir: Directory to write the CSV into. If None, flush is a no-op
-            (matches the file-logging-disabled convention of ScenarioSetUtils).
+            (matches the file-logging-disabled convention used across the run tree).
         events: Pre-built event list (typically from a from_* classmethod).
     """
 
