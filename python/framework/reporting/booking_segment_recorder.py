@@ -117,9 +117,15 @@ class BookingSegmentRecorder:
         self._peak_equity = max(self._peak_equity, value)
         self._max_equity = max(self._max_equity, value)
         self._min_equity = min(self._min_equity, value)
+        # A MAGNITUDE, like `account_max_drawdown`, `largest_mae` and `largest_mfe` beside it.
+        # It was the one signed figure among them until #539. The ledger combined it correctly
+        # either way (`Reduction.MAX` is `max(key=abs)`), so nothing was ever wrong in the
+        # arithmetic — what it cost was READING: a consumer renders this table beside the
+        # portfolio block, and one shared formatter turns one of the two into its own opposite
+        # without anything going red. The sign is a DISPLAY decision and lives in the renderers.
         decline = self._peak_equity - value
-        if decline > abs(self._max_drawdown):
-            self._max_drawdown = -decline
+        if decline > self._max_drawdown:
+            self._max_drawdown = decline
 
     def check_boundary(self, now: Optional[datetime], snapshot_for_seal) -> None:
         """
@@ -188,6 +194,18 @@ class BookingSegmentRecorder:
         """
         if self._opened_at is None or now is None:
             return
+        # A period is never filed inside out. Nothing downstream checks the order of the two
+        # instants — not the builder, not the ledger, not the renderer — so an inverted pair
+        # would travel as far as a chart and draw a bar running backwards. The canonical clock
+        # is clamped forward since #539, which is what makes this unreachable rather than
+        # merely unlikely; it stays as the assertion that the clamp holds, and it SAYS so
+        # rather than repairing the stamp silently.
+        if now < self._opened_at and self._log is not None:
+            self._log(
+                f'⚠️ Booking period {self._segment_no + 1} of {self._unit_name} would close '
+                f'BEFORE it opened ({now.isoformat()} < {self._opened_at.isoformat()}) — the '
+                f'canonical clock moved backwards. Sealed at its opening instant instead.')
+        closed_at = max(now, self._opened_at)
         trades, snapshot = snapshot_for_seal()
         snapshot.segment_max_equity = self._max_equity
         snapshot.segment_min_equity = self._min_equity
@@ -197,7 +215,7 @@ class BookingSegmentRecorder:
             unit_name=self._unit_name,
             segment_no=self._segment_no + 1,
             opened_at=self._opened_at,
-            closed_at=now,
+            closed_at=closed_at,
             reason=reason,
             trades=trades,
             snapshot=snapshot,
@@ -207,7 +225,7 @@ class BookingSegmentRecorder:
         if self._log is not None:
             self._log(describe_segment(segment))
 
-        self._opened_at = now
+        self._opened_at = closed_at
         self._peak_equity = None
         self._max_equity = 0.0
         self._min_equity = 0.0

@@ -17,6 +17,22 @@ System doc: [Process Execution & Subprocess Architecture](../../process_executio
 
 ## Test Files
 
+### `test_ghost_pass_booking_boundary.py`
+
+The trading-day boundary inside the simulation's ghost passes (#537 / #539 audit). A quiet
+stretch between two data ticks is crossed by ghost passes, and they are the only thing that
+advances the canonical clock there — so the boundary is checked at EACH ghost instant. Checked
+once before them it ran on the clock the previous tick had already checked, which is no check at
+all, and a fill resolved in a ghost pass after a rollover was booked into the day before it.
+
+These pin the CALL, not the seal: whether a day flip seals is the recorder's own question and is
+tested there. What only this level can show is WHEN the loop asks — one check per ghost pass,
+each carrying that ghost's own instant, and BEFORE the resolutions of that instant, because the
+period window is end-exclusive and the order of those two calls decides which day a fill lands
+in. Plus the two cases where nothing is asked: a gap too short for a ghost, and a gap past the
+#208 correctness threshold.
+
+
 | File | What it proves |
 |---|---|
 | `test_mountable_prepare.py` | **split equivalence** (`run()` == validate + `prepare_mount()` + `execute()`) · **reuse / determinism** (one `MountPackage`, `execute()` twice → identical results, #368) · **data identity** (`DataIdentityKey` ignores `strategy_config`, changes with the data window) · **identity guard** (`execute()` raises `MountIdentityMismatchError` when fed scenarios whose data identity does not match the mount) |

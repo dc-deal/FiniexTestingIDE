@@ -403,7 +403,7 @@ class TestReportRuns:
         with patch('python.api.endpoints.reports_router.ReportStore', return_value=store):
             r = client.get('/api/v1/reports/runs')
         assert r.status_code == 200
-        assert r.json() == {'runs': [], 'count': 0}
+        assert r.json() == {'key': ['run_id'], 'runs': [], 'count': 0}
 
 
 class TestSweeps:
@@ -443,7 +443,7 @@ class TestSweeps:
         with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
             r = client.get('/api/v1/sweeps')
         assert r.status_code == 200
-        assert r.json() == {'sweeps': [], 'count': 0}
+        assert r.json() == {'key': ['sweep_id'], 'sweeps': [], 'count': 0}
 
     def test_combinations_are_ranked_by_the_sweeps_own_objective(self, client):
         """Ranked, not alphabetical — the question a sweep answers is which combination won."""
@@ -470,6 +470,63 @@ class TestSweeps:
         with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
             r = client.get('/api/v1/sweeps/nope')
         assert r.status_code == 404
+
+
+class TestTheContractSaysWhatItIs:
+    """
+    The app version moves every release; the contract moves when a route or a response model
+    does. Three models changed shape inside one app version on 2026-09-22 and a consumer could
+    see none of it — `/health` reported the same number before and after.
+
+    The header is what makes a saved fixture self-describing: a consumer records our answer as
+    a mock, and the number it was captured under travels with it. Their assertion is then
+    local, with no connection to us — which is the whole reason this is not only a route.
+    """
+
+    def test_every_response_carries_the_contract(self, client):
+        for path in ('/api/v1/health', '/api/v1/timeframes', '/api/v1/contract'):
+            assert client.get(path).headers['X-Api-Contract']
+
+    def test_a_refusal_carries_it_too(self, client):
+        # A 404 is an answer, and a consumer capturing one as a fixture needs its stamp like
+        # any other.
+        assert client.get('/api/v1/reports/runs/nope/booking-periods').headers['X-Api-Contract']
+
+    def test_the_route_names_both_clocks(self, client):
+        body = client.get('/api/v1/contract').json()
+        assert isinstance(body['contract'], int)
+        assert body['app_version']
+        assert body['changes']
+
+    def test_the_header_and_the_route_agree(self, client):
+        response = client.get('/api/v1/contract')
+        assert response.headers['X-Api-Contract'] == str(response.json()['contract'])
+
+    def test_the_contract_is_open_like_health(self, client):
+        # A consumer must be able to ask which contract they face BEFORE they hold a token, or
+        # a version mismatch and a credential failure look alike from outside.
+        assert client.get('/api/v1/contract').status_code == 200
+
+
+class TestEveryListSaysWhatMakesARowUnique:
+    """
+    An unordered list of objects says nothing about its own identity, and the two cases here
+    are both ones where the obvious key is wrong: a deployment row is one per (deployment x
+    currency), and `segment_no` repeats across the sessions of one deployment (§49).
+    """
+
+    def test_the_deployment_list_names_the_currency_in_its_key(self, client):
+        ledger = MagicMock()
+        ledger.read_rows.return_value = []
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
+            assert client.get('/api/v1/deployments').json()['key'] == [
+                'deployment_id', 'currency']
+
+    def test_the_run_index_declares_one_too(self, client):
+        store = MagicMock()
+        store.list_runs.return_value = []
+        with patch('python.api.endpoints.reports_router.ReportStore', return_value=store):
+            assert client.get('/api/v1/reports/runs').json()['key'] == ['run_id']
 
 
 class TestDeployments:
@@ -539,7 +596,8 @@ class TestDeployments:
         with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
             r = client.get('/api/v1/deployments')
         assert r.status_code == 200
-        assert r.json() == {'deployments': [], 'count': 0}
+        assert r.json() == {'key': ['deployment_id', 'currency'],
+                            'deployments': [], 'count': 0}
 
     def test_sessions_read_forwards(self, client):
         """A life reads oldest first — the opposite order to the console, deliberately."""
@@ -606,9 +664,9 @@ class TestDeployments:
                 deployment_id='deploy_1', scenario_set_name='dotusd_live', status='ok',
                 unit_name='dotusd_live', segment_no=no, segment_opened_at=opened,
                 segment_closed_at=closed, segment_close_reason=reason,
-                segment_trade_count=trades, net_pnl=pnl,
+                total_trades=trades, net_pnl=pnl,
                 segment_min_equity=90.0, segment_max_equity=110.0,
-                segment_max_drawdown=-5.0, final_equity=100.0 + pnl)
+                segment_max_drawdown=5.0, final_equity=100.0 + pnl)
 
         return [
             row('s1', 1, '2026-09-01T00:00:00+00:00', '2026-09-02T00:00:00+00:00', 12.0, 3),
@@ -672,7 +730,7 @@ class TestDeployments:
         ledger.read_rows.return_value = self._period_rows()
         with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
             first = client.get('/api/v1/deployments/deploy_1/booking-periods').json()['periods'][0]
-        assert first['max_drawdown'] == -5.0    # segment_max_drawdown, not account_max_drawdown
+        assert first['max_drawdown'] == 5.0     # segment_max_drawdown, not account_max_drawdown
         assert (first['min_equity'], first['max_equity']) == (90.0, 110.0)
 
     def test_there_is_no_reconciliation_and_that_is_deliberate(self, client):

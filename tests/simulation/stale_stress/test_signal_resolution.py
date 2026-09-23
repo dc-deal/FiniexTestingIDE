@@ -23,7 +23,7 @@ from python.framework.reporting.builders.report_aggregators import aggregate_sig
 from python.framework.reporting.builders.run_unit import run_units_from_batch
 from python.framework.reporting.builders.signal_report_builder import build_signal_report
 from python.framework.types.api.report_types import RunReporting
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
+from python.scenario.scenario_set import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
 # Every report artifact names its run (#475); the value is opaque to these tests.

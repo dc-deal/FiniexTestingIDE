@@ -127,3 +127,32 @@ class TestTheOrdinaryTickCostsOneComparison:
         # Open, then seal — two conversions across two days of ticks.
         assert len(calls) == 2, f'{len(calls)} timezone conversions across two days'
         assert rec.get_highest_segment_no() == 1
+
+
+class TestAPeriodIsNeverFiledInsideOut:
+    """
+    Nothing downstream checks the order of a period's two instants — not the builder, not the
+    ledger, not the renderer — so an inverted pair would travel as far as a Gantt bar drawn
+    backwards. The canonical clock is clamped forward since #539, which is what makes this
+    unreachable; the guard stays as the assertion that the clamp holds, and it SAYS so instead
+    of repairing the stamp in silence.
+    """
+
+    def test_a_backwards_seal_is_clamped_and_announced(self):
+        said = []
+        rec = BookingSegmentRecorder('unit', _CRYPTO, log=said.append)
+        rec.check_boundary(_MON + timedelta(hours=1), _seal_source)
+
+        # A clock that went backwards: the close is asked for BEFORE the period opened.
+        segments = rec.close(_MON, _seal_source)
+
+        assert segments[0].closed_at == segments[0].opened_at
+        assert any('BEFORE it opened' in line for line in said)
+
+    def test_the_ordinary_seal_is_untouched(self):
+        rec = BookingSegmentRecorder('unit', _CRYPTO, log=lambda _: None)
+        rec.check_boundary(_MON + timedelta(hours=1), _seal_source)
+
+        closed = _MON + timedelta(hours=5)
+        segments = rec.close(closed, _seal_source)
+        assert segments[0].closed_at == closed

@@ -1,14 +1,37 @@
 """
-Booking-periods report builder (#537) — the Hauptbuch as a table, and its reconciliation.
+Booking-periods report builder (#537) — the Hauptbuch as a table, and what its check can prove.
 
 A run's booking periods are already derived; this maps them to renderable rows and answers the
-one question the table exists for: **do the periods add up to the run?**
+one question the table exists for: **did every closed trade reach exactly one period?**
 
-That check is not decoration. A period summary is trusted because it can be recomputed from its
-records, and a COLUMN of period summaries is trusted because it agrees with the figure the run
-reports by its own, independent path — the portfolio aggregate. Two derivations of one number
-meeting is evidence; one derivation printed twice is not. So the sum is computed here and stated,
-rather than left to a reader adding up a column by eye.
+That is a COMPLETENESS check over the partition, and it is deliberately stated that way rather
+than as a check of the arithmetic — because the two figures it compares are NOT two derivations
+of the money. They are one value carried two ways, and the divergence point is a single local
+variable inside the close (measured 2026-09-22):
+
+    portfolio_manager.py:504 / :516
+        realized_pnl = position.unrealized_pnl
+                   |
+         +---------+---------+
+         v                   v
+    _create_trade_record   _update_statistics(position, realized_pnl)
+      net_pnl=...(:777)       _total_profit += ...   (:1474)
+         |                   |
+         v                   v
+    bounded deque ->      RunSummary.net_pnl
+    exit-time window ->
+    period sum
+
+So the LEFT side has been through retention (the trade deque is capped), windowing (exit_time in
+`[opened, closed)`) and transport (the sim's process bridge); the RIGHT side is an unbounded
+counter that forgets nothing. A disagreement therefore means a record was LOST on the way — the
+deque evicted it, no period's window contains it, a segment list did not survive. It can never
+mean a wrong P&L, a wrong fee or a wrong close formula: both sides inherit the identical float,
+and an injected 30 % arithmetic defect moves them together with a delta of exactly zero.
+
+The genuinely independent second derivation exists one method away and nothing compares it yet:
+at SPOT the balance moves by `lots * price +/- fee` (portfolio_manager.py:484-497) while the P&L
+comes from mark-to-market. Two arithmetics over one event — that pair would be a real check.
 
 A mismatch is REPORTED, never raised (§12: reports calculate and render, they do not judge). It
 is the finding the table exists to surface.
@@ -44,44 +67,59 @@ def build_booking_periods_report(
     Args:
         run_id: The run this report belongs to
         units: The run's units, each carrying its sealed periods
-        run_summary: The run's own KPI summary — the INDEPENDENT figure the sum is checked
-            against, derived from the portfolio aggregate rather than from these periods
-        currency: Which account currency to report; empty takes the first one the periods carry,
-            which is every single-currency run
+        run_summary: The run's own KPI summary — the counter side of the completeness check
+            (see the module docstring for what that check can and cannot prove)
+        currency: Which account currency the TOTALS are about; empty takes the first one the
+            periods carry, which is every single-currency run
 
     Returns:
         The report; empty when the run booked no period, which is every run before this feature
         and every simulation until the sim books too
     """
-    periods = [
-        segment for unit in units for segment in unit.booking_segments
-        if not currency or segment.figures.currency == currency
-    ]
-    if not periods:
+    booked = [segment for unit in units for segment in unit.booking_segments]
+    if not booked:
         return BookingPeriodsReport(run_id=run_id, currency=currency)
 
-    reported = periods[0].figures.currency
+    # ONE table is ONE account currency — a P&L column in two units is not a column. The
+    # filter existed for that and did not fire: `if not currency or …` admitted EVERY segment
+    # when `currency` was empty, which is what both coordinators pass, so a two-currency run
+    # summed EUR and USD together and compared the result against the figure of ONE of them.
+    # Measured: 140.0 against 100.0, `reconciles` false for a run in which nothing was wrong
+    # (#539 audit). `currencies` then says the table is one of several — the periods of the
+    # others are not lost, they are ledger rows like these and the deployment route serves
+    # every one of them.
+    present = sorted({segment.figures.currency for segment in booked})
+    reported = currency or present[0]
     rows = [_row(segment) for segment in sorted(
-        periods, key=lambda s: (s.unit_name, s.segment_no))]
+        (s for s in booked if s.figures.currency == reported),
+        key=lambda s: (s.unit_name, s.segment_no))]
+    if not rows:
+        return BookingPeriodsReport(
+            run_id=run_id, currency=reported, currencies=present)
 
     total_net_pnl = sum(row.net_pnl for row in rows)
+    # No figure for this currency means there is nothing to check against — NOT that the
+    # check passed. A default of 0.0 here made a small period sum agree with a figure that
+    # was never reported (measured on a two-currency run, #539 audit).
     run_figures = _run_figures(run_summary, reported)
-    run_net_pnl = run_figures.net_pnl if run_figures else 0.0
+    run_net_pnl = run_figures.net_pnl if run_figures else None
 
     return BookingPeriodsReport(
         run_id=run_id,
         currency=reported,
+        currencies=present,
         periods=rows,
         total_net_pnl=total_net_pnl,
         total_fees=sum(row.total_fees for row in rows),
         total_trades=sum(row.trade_count for row in rows),
         run_net_pnl=run_net_pnl,
-        run_total_trades=run_figures.total_trades if run_figures else 0,
-        reconciles=abs(total_net_pnl - run_net_pnl) <= RECONCILE_TOLERANCE,
+        run_total_trades=run_figures.total_trades if run_figures else None,
+        reconciles=(None if run_net_pnl is None
+                    else abs(total_net_pnl - run_net_pnl) <= RECONCILE_TOLERANCE),
         # The deepest SINGLE-period decline, which is what this table's column holds. Not the
         # run's drawdown: a fall that runs across a period boundary is deeper than any one
         # period's own, and the run summary is where that figure lives.
-        deepest_period_drawdown=min((row.max_drawdown for row in rows), default=0.0),
+        deepest_period_drawdown=max((row.max_drawdown for row in rows), default=0.0),
         final_equity=rows[-1].final_equity,
     )
 
@@ -151,7 +189,7 @@ def booking_periods_from_ledger_rows(
             closed_at=row.segment_closed_at,
             reason=row.segment_close_reason,
             currency=row.currency,
-            trade_count=row.segment_trade_count or 0,
+            trade_count=row.total_trades,
             net_pnl=row.net_pnl,
             total_fees=row.total_fees,
             win_rate=row.win_rate,

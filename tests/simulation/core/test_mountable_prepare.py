@@ -19,7 +19,7 @@ from python.framework.exceptions.mount_errors import MountIdentityMismatchError
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.mount_package_types import DataIdentityKey
 from python.framework.types.api.report_types import RunReporting
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
+from python.scenario.scenario_set import ScenarioSet
 from python.framework.validators.scenario_validator import ScenarioValidator
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 

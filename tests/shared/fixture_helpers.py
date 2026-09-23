@@ -32,7 +32,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 )
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
+from python.scenario.scenario_set import ScenarioSet
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats

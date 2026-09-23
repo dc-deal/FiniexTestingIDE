@@ -35,7 +35,8 @@ from python.framework.types.log_layout_types import (
     RUN_TYPE_SIMULATION,
 )
 from python.framework.types.run_results_types import RunProvenance, SweepContext
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet, SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.scenario.scenario_set import ScenarioSet
 from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
 from python.framework.utils.git_info_utils import get_git_info
 

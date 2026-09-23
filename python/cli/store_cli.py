@@ -71,6 +71,13 @@ class StoreCli:
         print('  ' + '-' * (len(header) - 2))
         for row in rows:
             print(self._format_row(row, with_sizes))
+        # The KEY is what a reader needs to ADDRESS one entry, and it does not fit the table —
+        # several are a sentence rather than a column. Printed underneath rather than dropped:
+        # the docstring above promised it and the table did not deliver, which is a false map
+        # (§40) and exactly the kind of gap §49 exists to close.
+        print('\n  How ONE entry is addressed:')
+        for row in rows:
+            print(f'      {row.store_id.value:<18} {row.key}')
         stale = [r for r in rows if r.stale_reason and not r.self_healing]
         healing = [r for r in rows if r.stale_reason and r.self_healing]
         if stale:

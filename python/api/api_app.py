@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from python.api.api_auth_setup import setup_api_auth
+from python.api.api_contract import API_CONTRACT_VERSION, CHANGES, CONTRACT_HEADER
 from python.api.endpoints import (
     bars_router,
     broker_router,
@@ -26,6 +27,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.types.api.api_types import (
+    ApiContractResponse,
     BrokerListResponse,
     HealthResponse,
     TimeframeInfo,
@@ -102,8 +104,22 @@ def create_app() -> FastAPI:
         # a cross-origin client sees the STATUS of a 401 or 429 and neither the scheme to
         # retry with nor how long to wait. Measured by the package's author against their own
         # client; invisible from here, because our other consumer is server-side.
-        expose_headers=['WWW-Authenticate', 'Retry-After'],
+        expose_headers=['WWW-Authenticate', 'Retry-After', CONTRACT_HEADER],
     )
+
+    @app.middleware('http')
+    async def stamp_the_contract(request: Request, call_next):
+        """
+        Put the contract version on EVERY response, including the refusals.
+
+        On every response because that is what makes a saved fixture self-describing: a
+        consumer records our answer as a mock, and the number it was captured under travels
+        with it. Their test then asserts locally, with no connection — which is the whole
+        reason this is a header rather than only a route.
+        """
+        response = await call_next(request)
+        response.headers[CONTRACT_HEADER] = str(API_CONTRACT_VERSION)
+        return response
 
     @app.exception_handler(ApiException)
     async def api_exception_handler(request: Request, exc: ApiException) -> JSONResponse:
@@ -121,6 +137,14 @@ def create_app() -> FastAPI:
     # static configuration, not data about a venue or a run, and it is none of the
     # surfaces a grant can name. Gating it would make a market-data grant the precondition for
     # a list that reveals nothing about market data.
+    # Open beside /health for the same reason: a consumer has to be able to ask which contract
+    # they are talking to BEFORE they hold a token, or a version mismatch and a credential
+    # failure look alike from outside.
+    @app.get('/api/v1/contract', response_model=ApiContractResponse)
+    def api_contract() -> ApiContractResponse:
+        return ApiContractResponse(
+            contract=API_CONTRACT_VERSION, app_version=app_version, changes=CHANGES)
+
     @app.get('/api/v1/timeframes', response_model=TimeframeListResponse)
     def list_timeframes() -> TimeframeListResponse:
         return TimeframeListResponse(timeframes=[

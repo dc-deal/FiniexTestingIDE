@@ -65,6 +65,8 @@ def _run_sim_heartbeats(
     worker_coordinator: WorkerOrchestrator,
     decision_logic: AbstractDecisionLogic,
     decision_event_dispatcher: Optional[DecisionEventDispatcher],
+    booking: BookingSegmentRecorder,
+    seal_source,
 ) -> bool:
     """
     Drive decision ghost-passes in the simulated-time gap between two data ticks (#360).
@@ -87,6 +89,10 @@ def _run_sim_heartbeats(
         worker_coordinator: Orchestrator (process_heartbeat → cached worker results)
         decision_logic: Opt-in decision (executes the ghost action)
         decision_event_dispatcher: #348 channel (drained around the ghost compute)
+        booking: The unit's period recorder — the trading-day boundary is checked at EVERY
+            ghost instant, because these passes are the only thing that advances the canonical
+            clock across a quiet stretch and a fill can resolve at any of them (#537)
+        seal_source: Callable handing the recorder its records + snapshot when a seal happens
 
     Returns:
         True if the algo requested session end during a ghost-pass (caller stops)
@@ -101,6 +107,10 @@ def _run_sim_heartbeats(
         ghost_msc = prev_msc + k * interval_ms
         trade_simulator.set_current_time(
             datetime.fromtimestamp(ghost_msc / 1000.0, tz=timezone.utc))
+        # BEFORE the resolutions of this instant, so the boundary is the cut: what closed
+        # earlier is sealed into the day that is ending, and a fill resolving AT this instant
+        # falls into the day that is opening (the window is end-exclusive).
+        booking.check_boundary(trade_simulator.get_current_time(), seal_source)
         trade_simulator.heartbeat()
         if decision_event_dispatcher is not None:
             decision_event_dispatcher.drain()
@@ -255,14 +265,17 @@ def execute_tick_loop(
             if (decision_logic.wants_heartbeat()
                     and config.heartbeat_interval_ms > 0
                     and prev_interval_msc > 0 and current_msc > 0):
-                # #537: the boundary is checked on the heartbeat too, and this is the half
+                # #537: the boundary is checked on the heartbeat too, and that is the half
                 # that makes it reliable — the ghost passes are what advance the canonical
                 # clock across a gap, so a quiet stretch over a rollover would otherwise book
-                # one period spanning two trading days.
-                booking.check_boundary(trade_simulator.get_current_time(), seal_source)
+                # one period spanning two trading days. The check therefore lives INSIDE the
+                # ghost loop: called here it would run on the clock the PREVIOUS tick already
+                # checked, which is no check at all, and a fill resolved in a ghost pass after
+                # the boundary would be booked into the day before it (#539 audit).
                 if _run_sim_heartbeats(
                         prev_interval_msc, current_msc, config, trade_simulator,
-                        worker_coordinator, decision_logic, decision_event_dispatcher):
+                        worker_coordinator, decision_logic, decision_event_dispatcher,
+                        booking, seal_source):
                     scenario_logger.info(
                         f'🛑 Session end requested: {trade_simulator.get_session_end_reason()}')
                     break

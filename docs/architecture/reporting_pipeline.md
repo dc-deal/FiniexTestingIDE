@@ -313,12 +313,22 @@ summary log, written to no artifact, so nothing but a person reading that log co
 now writes `io/booking_periods.json` like every other section, and `/reports/runs/{run_id}/
 booking-periods` serves that file.
 
-Rebuilding it later from the ledger rows would look equivalent and is not. The reconciliation
-compares the periods against the run's own figure derived by the INDEPENDENT path — the
-portfolio aggregate — and that second figure exists only while the run does. Rebuilt from the
-ledger the same line would be `sum(rows) − sum(rows)`, a control total that holds by
-construction and can never fail (§48). A check that cannot fail is worse than no check, because
-it is read as a passed one.
+Rebuilding it later from the ledger rows would look equivalent and is not. The check compares
+the periods against a figure the run keeps beside them, and that figure exists only while the
+run does. Rebuilt from the ledger the same line would be `sum(rows) − sum(rows)`, a control
+total that holds by construction and can never fail (§48). A check that cannot fail is worse
+than no check, because it is read as a passed one.
+
+**What that check proves is COMPLETENESS, not arithmetic — corrected 2026-09-22.** The two
+figures are not two derivations of the money. `realized_pnl = position.unrealized_pnl` is
+computed once at the close and handed to BOTH the trade record and the statistics counter three
+lines apart, so they carry one value along two routes. What the left route has been through and
+the right has not is retention (the trade deque is capped), windowing (`exit_time` in
+`[opened, closed)`) and transport (the sim's process bridge) — and that is exactly the class of
+fault a disagreement names. An injected 30 % arithmetic defect moves both figures together and
+the check stays green. The genuinely independent second derivation exists one method away and
+nothing compares it yet: at SPOT the balance moves by `lots × price ± fee` while the P&L comes
+from mark-to-market.
 
 ## The summary FILE gets everything; only the CONSOLE is trimmed
 

@@ -142,6 +142,24 @@ def _render_reconciliation(report: BookingPeriodsReport, indent: str) -> None:
         report: The derived report
         indent: Left padding
     """
+    others = [c for c in report.currencies if c != report.currency]
+    if others:
+        print(f'{indent}    ⓘ This table is the {report.currency} book. The run also booked '
+              f'periods in {", ".join(others)} —')
+        print(f'{indent}      one table per account currency, because a P&L column in two '
+              f'units is not a column.')
+        print(f'{indent}      Every period of every currency is a ledger row: '
+              f'`run_index_cli.py deployments` and the API serve them all.')
+    if report.reconciles is None:
+        print(f'{indent}    ⚠️  NOT CHECKED — the run reports no figure in '
+              f'{report.currency}, so the {report.total_net_pnl:.2f} above stands against '
+              f'nothing.')
+        print(f'{indent}       This is not a passing check with a missing number; it is the '
+              f'absence of a check, and the')
+        print(f'{indent}       two should never look alike. A currency that booked periods '
+              f'but reports no run total is')
+        print(f'{indent}       itself the finding.')
+        return
     if report.reconciles:
         print(f'{indent}    ✓ reconciles with the run total '
               f'({report.run_net_pnl:.2f} {report.currency}, '
@@ -152,12 +170,13 @@ def _render_reconciliation(report: BookingPeriodsReport, indent: str) -> None:
     print(f'{indent}    ⚠️  DOES NOT RECONCILE — the periods sum to '
           f'{report.total_net_pnl:.2f} while the run reports {report.run_net_pnl:.2f} '
           f'({difference:+.2f} {report.currency})')
-    print(f'{indent}       The two figures come from different derivations over the same '
-          f'trades, so they')
-    print(f'{indent}       cannot both be right. A trade realised outside every period, or '
-          f'one counted twice,')
-    print(f'{indent}       is what this difference looks like — start at the period whose '
-          f'trade count surprises you.')
+    print(f'{indent}       Both figures carry the SAME per-trade value — one through the '
+          f'record deque and the')
+    print(f'{indent}       period windows, one through an unbounded counter — so a difference '
+          f'means a record was')
+    print(f'{indent}       LOST on the way, never that a P&L is wrong. A trade realised '
+          f'outside every period,')
+    print(f'{indent}       or one evicted by the history cap, is what it looks like.')
 
 
 def _stamp(iso: str) -> str:
@@ -249,7 +268,7 @@ def _render_collapsed(report: BookingPeriodsReport, units: dict, indent: str) ->
           f'{"deepest period DD":>19}')
     print(f'{indent}' + '─' * 104)
     for name, rows in units.items():
-        deepest = min((row.max_drawdown for row in rows), default=0.0)
+        deepest = max((row.max_drawdown for row in rows), default=0.0)
         print(f'{indent}{name[:40]:<40} {len(rows):>8} '
               f'{sum(row.trade_count for row in rows):>7} '
               f'{sum(row.net_pnl for row in rows):>13.2f} {-abs(deepest):>19.2f}')

@@ -20,6 +20,7 @@ from typing import Dict, List, Optional
 
 from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
 from python.framework.types.api.report_types import (
+    SESSION_KEY,
     DeploymentComparabilityAdvisory,
     DeploymentSessionRow,
     DeploymentSummary,
@@ -89,6 +90,7 @@ def _summarize_one(
         max_drawdown_pct=deepest.max_drawdown_pct,
         currency=sessions[0].currency,
         bot=sessions[0].bot,
+        bot_id=sessions[0].bot_id,
         longest_gap_hours=max(gaps) if gaps else None,
         changed=advisories.get(deployment) is not None,
     )
@@ -159,7 +161,7 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
         # `aggregate_ledger_rows` folds them by their DECLARED reductions, so the session row is
         # recomputed from its periods instead of being stored beside them. The currency stays in
         # the key: a P&L column over two currencies is not a number.
-        by_session = aggregate_ledger_rows(members, by=('run_id', 'currency'))
+        by_session = aggregate_ledger_rows(members, by=SESSION_KEY)
 
         sessions: List[DeploymentSessionRow] = []
         previous: Optional[RunResultRow] = None
@@ -184,6 +186,7 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
                 max_drawdown_pct=row.account_max_drawdown_pct,
                 currency=row.currency,
                 bot=row.scenario_set_name,
+                bot_id=row.bot_id,
                 ended=_parse(row.recorded_at_utc),
                 ran_hours=_ran_hours(started, _parse(row.recorded_at_utc)),
                 gap_hours=(

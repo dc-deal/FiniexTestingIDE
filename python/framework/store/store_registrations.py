@@ -120,7 +120,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             store_id=StoreId.RUN_LEDGER,
             kind=StoreKind.RECORD,
             root=ledger_root,
-            key='run_id (a column, never a folder)',
+            key='run_id (a column, never a folder) — a fragment per run; ONE ROW is (run_id, currency, unit_name, segment_no), see LEDGER_ROW_KEY',
             form=RetrievalForm.SET,
             backend=StoreBackend.DISK,
             entry_glob='*.parquet',

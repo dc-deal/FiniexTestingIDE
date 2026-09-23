@@ -34,10 +34,10 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
         summaries: The roll-ups, already ordered
     """
     print(f'\n{len(summaries)} deployment(s)')
-    print('─' * 118)
-    print(f'{"deployment":<30} {"bot":<22} {"sessions":>8} {"since":<17} {"net P&L":>11} '
-          f'{"max DD":>11} {"idle max":>9}')
-    print('─' * 118)
+    print('─' * 136)
+    print(f'{"deployment":<30} {"bot":<22} {"bot id":<20} {"sessions":>8} {"since":<17} '
+          f'{"net P&L":>11} {"max DD":>11} {"idle max":>9}')
+    print('─' * 136)
     # Grouped by BOT so a deliberate restart reads as what it is. `--new-deployment` mints a
     # fresh identity and stores no link back to the one it replaced, so two deployments of one
     # bot would otherwise sit among the others as strangers.
@@ -45,15 +45,19 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
         since = summary.first_started.strftime('%Y-%m-%d %H:%M') if summary.first_started else '?'
         gap = f'{summary.longest_gap_hours / 24:.1f} d' if summary.longest_gap_hours else '—'
         mark = ' ⚠' if summary.changed else ''
-        print(f'{summary.deployment_id:<30} {summary.bot:<22} {summary.sessions:>8} '
+        # `bot_id` is the only identity that does not move, and the footer's claim about two
+        # rows for one bot is only checkable against it — `bot` is the profile NAME, which an
+        # operator improves. A profile that declares none shows a dash rather than a blank.
+        print(f'{summary.deployment_id:<30} {summary.bot:<22} '
+              f'{(summary.bot_id or "—"):<20} {summary.sessions:>8} '
               f'{since:<17} {summary.net_pnl:>11.2f} {-abs(summary.max_drawdown):>11.2f} '
               f'{gap:>9}{mark}')
-    print('─' * 118)
+    print('─' * 136)
     if any(s.changed for s in summaries):
         print('⚠ = the sessions were not all produced by the same configuration; the detail '
               'view draws the break.')
-    print('Two rows for one bot = it was restarted with --new-deployment. The older history '
-          'stays readable.')
+    print('Two rows sharing a BOT ID = one bot restarted with --new-deployment. The older '
+          'history stays readable.')
     print('Open one with `run_index_cli.py deployments --id <deployment>`.')
 
 
@@ -82,7 +86,9 @@ def render_deployment_history(
     first = sessions[0].started.strftime('%Y-%m-%d %H:%M') if sessions and sessions[0].started else '?'
     recorded = (f'{len(sessions)} session(s) recorded + {unfinished} never completed'
                 if unfinished else f'{len(sessions)} session(s)')
-    print(f'\n{deployment} — {recorded} · since {first} UTC')
+    bot_id = next((s.bot_id for s in sessions if s.bot_id), '')
+    identity = f' · bot {bot_id}' if bot_id else ''
+    print(f'\n{deployment} — {recorded} · since {first} UTC{identity}')
     if advisory is not None:
         print('─' * 104)
         print('⚠️  THIS DEPLOYMENT SPANS MORE THAN ONE CONFIGURATION')

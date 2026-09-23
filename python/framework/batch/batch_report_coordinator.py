@@ -73,7 +73,7 @@ from python.framework.reporting.console.booking_periods_summary import BookingPe
 from python.framework.reporting.store.run_results_ledger import append_run_to_ledger
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.run_results_types import SweepContext
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
+from python.scenario.scenario_set import ScenarioSet
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 

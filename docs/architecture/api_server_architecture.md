@@ -97,6 +97,30 @@ realistic grant there — the model degrades to surface level by design.
 The vocabulary is closed: a grant naming anything else fails when the credentials file is parsed,
 at boot, rather than becoming a denial at request time that nobody can explain.
 
+## Every list declares what makes one of its rows unique
+
+An unordered list of objects says nothing about its own identity, and a consumer keying on the
+obvious field folds two rows into one — silently, and in the direction that loses data. So every
+list response carries a `key`:
+
+```json
+{ "key": ["run_id"],                            "runs":        [ ... ] }
+{ "key": ["sweep_id"],                          "sweeps":      [ ... ] }
+{ "key": ["deployment_id", "currency"],         "deployments": [ ... ] }
+{ "key": ["run_id", "currency"],                "sessions":    [ ... ] }
+{ "key": ["run_id", "unit_name", "segment_no"], "periods":     [ ... ] }
+```
+
+Both of the cases that prompted it are ones where the obvious key is wrong: a deployment row is
+one per (deployment × account currency), and a booking period's running number restarts per bot,
+so two rows of one deployment can both be number 1. It is machine-readable on purpose — a
+consumer can assert it rather than read it (CLAUDE.md §49).
+
+**It is NOT the store's key.** A store entry's identity (`StoreEntry.key`) answers how one
+ENTRY is addressed; this answers what makes one ROW of THIS response unique, and the two differ
+wherever a route aggregates: `/deployments` groups ledger rows by (deployment_id, currency),
+while the ledger's own row identity is (run_id, currency, segment_no).
+
 **A COLLECTION route has no path parameter, so a grant has nothing to be about — and that was a
 hole.** Measured 2026-09-13 against a token holding only `bars:*` and `brokers:*`:
 `/api/v1/reports/runs` answered 200 with the full run index, naming every live run, and
@@ -205,6 +229,7 @@ It is a state to pass through, not one to stay in.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/v1/health` | Server liveness — `{"status":"ok","version":"..."}` |
+| GET | `/api/v1/contract` | Which CONTRACT this server serves, beside the app version — they move on different clocks, and a model can change shape inside one app version. `changes` is one line per change that moved into the current contract. OPEN like `/health`: a consumer must be able to ask which contract they face before they hold a token, or a version mismatch and a credential failure look alike. Every response also carries `X-Api-Contract`, so a saved fixture is self-describing and a consumer's assertion stays local. Deliberately NOT a deprecation channel — no compatibility layers ship (§27), so a number to compare is the honest offer |
 | GET | `/api/v1/timeframes` | All configured timeframes in sorted order |
 | GET | `/api/v1/brokers` | Broker types available in bar index |
 | GET | `/api/v1/brokers/{broker}/symbols` | Symbols for a broker with `market_type` |
@@ -229,7 +254,7 @@ It is a state to pass through, not one to stay in.
 | GET | `/api/v1/reports/runs/{run_id}/warnings-errors` | Warnings/errors report (the run's tiered advisory + error pot). `errors[].logged_errors` carries `LogEntryRow` objects — level, `observed_at`, `event_time`, `scope`, `message` — not bare strings. An artifact written before that shape answers **409 `artifact_unreadable`**, never 500: run output is regenerated, not migrated (§27) |
 | GET | `/api/v1/reports/runs/{run_id}/broker` | Broker report (broker + symbol specifications the run executed against) |
 | GET | `/api/v1/reports/runs/{run_id}/feed-stability` | Feed-stability report (disturbance episodes as observed spans) |
-| GET | `/api/v1/reports/runs/{run_id}/booking-periods` | The run's Hauptbuch (#537): one summary per booking period — a trading day, or the stretch the run actually covered — plus the RECONCILIATION against the figure the run derived by its own independent path. Served from the stored artifact, never rebuilt from the ledger: recomputed there the check would be `sum(rows) − sum(rows)`, a control total that holds by construction and can never fail. A run from before the artifact existed answers 404, the same semantics as any other section |
+| GET | `/api/v1/reports/runs/{run_id}/booking-periods` | The run's Hauptbuch (#537): one summary per booking period — a trading day, or the stretch the run actually covered — plus its COMPLETENESS check. `reconciles` is three-state: true / false / **null when the run reports no figure in this currency**, which is an absent check and not a passed one. What it proves is that every closed trade reached exactly one period; it cannot prove a P&L is right, because both figures carry the same per-trade value along two routes. One table is ONE account currency — `currencies` names the others, whose periods are ledger rows like these. Served from the stored artifact, never rebuilt from the ledger: recomputed there the check would be `sum(rows) − sum(rows)` and could never fail. A run from before the artifact existed answers 404 |
 | GET | `/api/v1/deployments` | Every recorded deployment, newest first — one entry per (deployment × account currency), because a P&L column added over two currencies is not a number. `net_pnl` SUMS over the sessions; `max_drawdown` is their MAXIMUM and never a sum, since each live row carries the running decline against the inherited peak. `changed` marks a deployment whose sessions were not all produced by one configuration. Served from the run-results ledger (#497) |
 | GET | `/api/v1/deployments/{deployment_id}` | One deployment's sessions, OLDEST first — a life reads forwards, the opposite order to the console. Each session carries `ran_hours`, the `gap_hours` BEFORE it (with `gap_between_starts` where only a start-to-start measure was possible, which overstates it) and the two change marks. `advisory` says whether the rows may be read as one series at all; `unfinished` counts the runs that never reached their close, absent from the sessions by construction because the ledger row is written last (§44). **No reconciliation line, and there cannot be one** — over many runs there is no single run summary to sum against |
 | GET | `/api/v1/deployments/{deployment_id}/booking-periods` | Every booking period the deployment booked, across ALL of its sessions — the thirty-day picture in one call, where the run-scoped route would be an N+1 walk. Same row shape as `/reports/runs/{run_id}/booking-periods` plus `run_id`, which across a deployment is the only thing that tells two periods apart (`segment_no` is a per-BOT counter and restarts wherever a session wrote no carry-over floor) and is the hinge into that run's report routes. Rows that book no period are skipped and their sessions counted in `sessions_without_periods`, so an incomplete history is not read as a quiet one. **No reconciliation, by construction** — see the note under the route above |

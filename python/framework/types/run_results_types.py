@@ -214,12 +214,21 @@ class Reduction(Enum):
     reduces.
     """
     SUM = 'sum'             # a flow or a counter: rows partition it, adding them is correct
-    MAX = 'max'             # a cumulative extremum. NEVER sum — one decline counted once per row
+    MAX = 'max'             # a plain maximum: a peak, a high count. NEVER sum
+    # The largest by MAGNITUDE, sign kept — for a figure whose worst value may be stored either
+    # way round. A decline is the case: `account_max_drawdown` holds a magnitude,
+    # `segment_max_drawdown` held a negative until #539, and rows of both ages sit in one store.
+    # It was `MAX` doing this silently, and the name is why: a reader who sees MAX reads `max()`
+    # and is right about the columns that mean a peak and wrong about the ones that mean a fall.
+    # Measured 2026-09-22 — that misreading produced a defect report against correct code, and
+    # the same constant on `segment_max_equity` would have picked a NEGATIVE equity over a
+    # positive one, which nothing had noticed because no account has gone negative yet.
+    MAX_ABS = 'max_abs'
     DERIVE = 'derive'       # a rate, a mean, a quotient: NOT combinable, re-derive from records
     LAST = 'last'           # a stock read at an instant; the most recent row wins
     IDENTITY = 'identity'   # must agree across the rows, or they were never comparable
     UNION = 'union'         # a comma-joined set: combine by union, never by concatenation
-    MIN = 'min'             # a cumulative minimum — the trough, the mirror of MAX
+    MIN = 'min'             # a plain minimum — the trough, the mirror of MAX
     # An instant that is one END of a range. `SPAN` alone was not enough and the gap only showed
     # when something finally READ the map: over several rows the earliest and the latest both
     # mean something, while an aggregated row has ONE slot — so the declaration has to say which

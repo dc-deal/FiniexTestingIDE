@@ -431,6 +431,26 @@ count would be a number with nothing to doubt about it.
 A token needs the `deployments` grant — `deployments:*` for every bot, or one deployment's id
 for one of them.
 
+**What the gap field looks like when it matters.** `gap_hours` is derived from two wall-clock
+stamps — the end of the previous session and the start of this one — so on a bot that is
+restarted for an update it is minutes, and on one that was off over a weekend it is days:
+
+```
+run id                     started            ran     net P&L   max DD (cum)   notes
+20260916_060500_8e10       2026-09-16 06:05  11.8 h     19.60       -212.75    idle 4.5 d
+20260911_063000_c07d       2026-09-11 06:30  11.5 h     88.05       -134.10    idle 2.5 d
+20260908_071500_41ab       2026-09-08 07:15  10.4 h    -12.75       -134.10    idle 6.6 d
+20260901_060000_9f2c       2026-09-01 06:00  12.0 h     41.20        -58.40
+```
+
+The first session of a deployment has none — there is nothing before it. And a gap measured
+`gap_between_starts` contains the predecessor's whole runtime, so it is an UPPER bound and has
+to be labelled as one rather than shown as the same measure.
+
+This is also the one field that cannot be produced on demand: a demo deployment generated in
+one sitting has real gaps of seconds, because the stamps are real. A long idle stretch is a
+thing that has to be waited for, so it is described here rather than manufactured.
+
 ## Checking what a session decided
 
 Every session says its resolved answer in two places, and both say the *resolved* one — a

@@ -65,9 +65,11 @@ double-entry bookkeeping, and the project uses those names on purpose:
 | figures over many periods | **Abschluss** (closing) | a deployment's total, a drawdown over a month, Sharpe / Calmar |
 
 Each level is believed because it can be **recomputed** from the one below it, and each carries
-a **control total** so it can disprove itself — `segment_trade_count` says how many records a
+a **control total** so it can disprove itself — `total_trades` says how many records a
 period's figures came from, so a reader who re-derives them and gets a different count knows
-the row is wrong rather than merely surprising. That is the whole reason the construction has
+the row is wrong rather than merely surprising. It has to be a figure the row did NOT produce
+in the same breath: a second column holding the same `len(rows)` reads as an audit and is none,
+which is why the one that did exist was removed. That is the whole reason the construction has
 survived for centuries, and it is what CLAUDE.md §48 states in this project's own words.
 
 The practical consequence is that the third level costs nothing to add. A Sharpe ratio, a Calmar

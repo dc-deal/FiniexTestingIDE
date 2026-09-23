@@ -183,17 +183,18 @@ class TestTheStockHalfIsReadNeverDerived:
         segment = derive_booking_segment(
             'session', 3, _MON, _TUE, SegmentCloseReason.ANCHOR, _six_cases(),
             _snapshot(account_max_drawdown=-180.0, max_equity=11_000.0,
-                      account_max_dd_pct=1.64, segment_max_drawdown=-40.0,
+                      account_max_dd_pct=1.64, segment_max_drawdown=40.0,
                       segment_max_equity=10_120.0, segment_min_equity=10_080.0))
         assert segment.figures.account_max_drawdown == -180.0   # over the deployment
-        assert segment.segment_max_drawdown == -40.0            # inside this day
+        # A MAGNITUDE since #539 — the sign is a display decision (see the recorder).
+        assert segment.segment_max_drawdown == 40.0             # inside this day
 
     def test_the_low_is_not_the_peak_minus_the_drawdown(self):
         # The peak and the trough are different moments: 100 → 90 → 120 gives a peak of 120,
         # a drawdown of 10 against the peak that stood THEN, and a low of 90 — not 110.
         segment = derive_booking_segment(
             'session', 1, _MON, _TUE, SegmentCloseReason.ANCHOR, [],
-            _snapshot(segment_max_equity=120.0, segment_max_drawdown=-10.0,
+            _snapshot(segment_max_equity=120.0, segment_max_drawdown=10.0,
                       segment_min_equity=90.0))
         assert segment.segment_min_equity == 90.0
         assert segment.segment_max_equity - abs(segment.segment_max_drawdown) == 110.0
