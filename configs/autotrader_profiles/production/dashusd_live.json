@@ -1,5 +1,6 @@
 {
   "name": "dashusd_live",
+  "bot_id": "dashusd-live",
   "symbol": "DASHUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "live",

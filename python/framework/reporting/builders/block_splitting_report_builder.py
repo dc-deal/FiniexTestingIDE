@@ -83,7 +83,7 @@ def build_block_splitting_report_from_batch(
     for row in rows:
         row.total_trades = row.open_at_boundary_trades + row.natural_closed_trades
         row.total_pnl = row.open_at_boundary_pnl + row.natural_closed_pnl
-        row.open_at_boundary_ratio = (
+        row.open_at_boundary_pct = (
             row.open_at_boundary_trades / row.total_trades * 100) if row.total_trades else 0.0
         row.disposition_pct = (
             abs(row.open_at_boundary_pnl) / abs(row.total_pnl) * 100) if row.total_pnl else 0.0
@@ -98,6 +98,6 @@ def build_block_splitting_report_from_batch(
         symbols=rows,
         agg_open_at_boundary_trades=agg_open,
         agg_total_trades=agg_trades,
-        agg_open_at_boundary_ratio=(agg_open / agg_trades * 100) if agg_trades else 0.0,
+        agg_open_at_boundary_pct=(agg_open / agg_trades * 100) if agg_trades else 0.0,
         agg_disposition_pct=(abs(agg_open_pnl) / abs(agg_pnl) * 100) if agg_pnl else 0.0,
     )

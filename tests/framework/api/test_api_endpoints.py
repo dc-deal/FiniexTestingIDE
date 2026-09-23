@@ -20,7 +20,11 @@ from fastapi.testclient import TestClient
 from python.api.api_app import create_app
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
-from python.framework.types.api.report_types import RunInfo, RunResultRow
+from python.framework.types.api.report_types import (
+    RunConfigSnapshot,
+    RunInfo,
+    RunResultRow,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -403,7 +407,7 @@ class TestReportRuns:
         with patch('python.api.endpoints.reports_router.ReportStore', return_value=store):
             r = client.get('/api/v1/reports/runs')
         assert r.status_code == 200
-        assert r.json() == {'runs': [], 'count': 0}
+        assert r.json() == {'key': ['run_id'], 'runs': [], 'count': 0}
 
 
 class TestSweeps:
@@ -443,7 +447,7 @@ class TestSweeps:
         with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
             r = client.get('/api/v1/sweeps')
         assert r.status_code == 200
-        assert r.json() == {'sweeps': [], 'count': 0}
+        assert r.json() == {'key': ['sweep_id'], 'sweeps': [], 'count': 0}
 
     def test_combinations_are_ranked_by_the_sweeps_own_objective(self, client):
         """Ranked, not alphabetical — the question a sweep answers is which combination won."""
@@ -470,6 +474,301 @@ class TestSweeps:
         with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
             r = client.get('/api/v1/sweeps/nope')
         assert r.status_code == 404
+
+
+class TestTheContractSaysWhatItIs:
+    """
+    The app version moves every release; the contract moves when a route or a response model
+    does. Three models changed shape inside one app version on 2026-09-22 and a consumer could
+    see none of it — `/health` reported the same number before and after.
+
+    The header is what makes a saved fixture self-describing: a consumer records our answer as
+    a mock, and the number it was captured under travels with it. Their assertion is then
+    local, with no connection to us — which is the whole reason this is not only a route.
+    """
+
+    def test_every_response_carries_the_contract(self, client):
+        for path in ('/api/v1/health', '/api/v1/timeframes', '/api/v1/contract'):
+            assert client.get(path).headers['X-Api-Contract']
+
+    def test_a_refusal_carries_it_too(self, client):
+        # A 404 is an answer, and a consumer capturing one as a fixture needs its stamp like
+        # any other.
+        assert client.get('/api/v1/reports/runs/nope/booking-periods').headers['X-Api-Contract']
+
+    def test_the_route_names_both_clocks(self, client):
+        body = client.get('/api/v1/contract').json()
+        assert isinstance(body['contract'], int)
+        assert body['app_version']
+        assert body['changes']
+
+    def test_the_header_and_the_route_agree(self, client):
+        response = client.get('/api/v1/contract')
+        assert response.headers['X-Api-Contract'] == str(response.json()['contract'])
+
+    def test_the_contract_is_open_like_health(self, client):
+        # A consumer must be able to ask which contract they face BEFORE they hold a token, or
+        # a version mismatch and a credential failure look alike from outside.
+        assert client.get('/api/v1/contract').status_code == 200
+
+
+class TestEveryListSaysWhatMakesARowUnique:
+    """
+    An unordered list of objects says nothing about its own identity, and the two cases here
+    are both ones where the obvious key is wrong: a deployment row is one per (deployment x
+    currency), and `segment_no` repeats across the sessions of one deployment (§49).
+    """
+
+    def test_the_deployment_list_names_the_currency_in_its_key(self, client):
+        ledger = MagicMock()
+        ledger.read_rows.return_value = []
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
+            assert client.get('/api/v1/deployments').json()['key'] == [
+                'deployment_id', 'currency']
+
+    def test_the_run_index_declares_one_too(self, client):
+        store = MagicMock()
+        store.list_runs.return_value = []
+        with patch('python.api.endpoints.reports_router.ReportStore', return_value=store):
+            assert client.get('/api/v1/reports/runs').json()['key'] == ['run_id']
+
+
+class TestDeployments:
+    """
+    A deployment is the life of ONE bot across its restarts, and it is not a run: no header, no
+    directory, no artifacts. Its rows live in the ledger and nowhere else — which is why these
+    routes read the ledger and only the ledger (one route, one store).
+
+    Before #539 the ledger's only reader filtered on `sweep_id`, which a live session does not
+    have, so every one of these rows was written and unreachable (§44).
+    """
+
+    @staticmethod
+    def _rows():
+        # Two sessions of one deployment, and the second raised a safety threshold: same
+        # param_hash (it decides the same), different profile_hash (it does something else).
+        return [
+            RunResultRow(run_id='s1', param_hash='p1', profile_hash='o1',
+                         run_timestamp='2026-09-01T06:00:00+00:00',
+                         recorded_at_utc='2026-09-01T18:00:00+00:00',
+                         currency='USD', deployment_id='deploy_1', bot_id='bot-a',
+                         scenario_set_name='dotusd_live', net_pnl=10.0,
+                         account_max_drawdown=5.0, account_max_drawdown_pct=1.0, status='ok'),
+            RunResultRow(run_id='s2', param_hash='p1', profile_hash='o2',
+                         run_timestamp='2026-09-02T06:00:00+00:00',
+                         recorded_at_utc='2026-09-02T18:00:00+00:00',
+                         currency='USD', deployment_id='deploy_1', bot_id='bot-a',
+                         scenario_set_name='dotusd_live', net_pnl=-4.0,
+                         account_max_drawdown=9.0, account_max_drawdown_pct=1.8, status='ok'),
+        ]
+
+    @staticmethod
+    def _no_unfinished():
+        """An index that knows no run — so nothing of this deployment is missing from the ledger."""
+        index = MagicMock()
+        index.list_runs.return_value = []
+        return patch('python.api.endpoints.deployments_router.RunIndex', return_value=index)
+
+    def test_lists_recorded_deployments(self, client):
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
+            r = client.get('/api/v1/deployments')
+        assert r.status_code == 200
+        data = r.json()
+        assert data['count'] == 1
+        assert data['deployments'][0]['deployment_id'] == 'deploy_1'
+        assert data['deployments'][0]['sessions'] == 2
+        assert data['deployments'][0]['bot'] == 'dotusd_live'
+
+    def test_a_deployments_pnl_sums_and_its_drawdown_does_not(self, client):
+        """
+        The one arithmetic a deployment view must not get wrong (§48). Each live row carries
+        the RUNNING decline against the inherited peak, so the reduction is max() — a sum
+        would report 14.0 here, counting one decline once per session that was still inside it.
+        """
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
+            summary = client.get('/api/v1/deployments').json()['deployments'][0]
+        assert summary['net_pnl'] == 6.0            # 10.0 + (-4.0)
+        assert summary['max_drawdown'] == 9.0       # max(5.0, 9.0), never 14.0
+
+    def test_no_deployment_is_not_an_error(self, client):
+        ledger = MagicMock()
+        ledger.read_rows.return_value = []
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
+            r = client.get('/api/v1/deployments')
+        assert r.status_code == 200
+        assert r.json() == {'key': ['deployment_id', 'currency'],
+                            'deployments': [], 'count': 0}
+
+    def test_sessions_read_forwards(self, client):
+        """A life reads oldest first — the opposite order to the console, deliberately."""
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
+                self._no_unfinished():
+            data = client.get('/api/v1/deployments/deploy_1').json()
+        assert [s['run_id'] for s in data['sessions']] == ['s1', 's2']
+        assert data['count'] == 2
+
+    def test_a_configuration_change_is_reported_before_the_table(self, client):
+        """
+        The advisory answers whether the rows may be read as ONE series, and it has to reach
+        the reader before the numbers do — so it rides on the response, not inside a row.
+        """
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
+                self._no_unfinished():
+            data = client.get('/api/v1/deployments/deploy_1').json()
+        assert data['advisory']['operation_stands'] == 2
+        assert data['advisory']['strategy_stands'] == 1     # it kept deciding the same way
+        assert data['sessions'][1]['operation_changed'] is True
+        assert data['sessions'][1]['strategy_changed'] is False
+
+    def test_a_session_that_never_reached_its_close_is_counted(self, client):
+        """
+        The sessions come from the LEDGER, whose row is written last — so a killed run is
+        absent from them by construction, and a bare count would be a number the reader has
+        no reason to doubt (§44).
+        """
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows()
+        index = MagicMock()
+        index.list_runs.return_value = []
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
+                patch('python.api.endpoints.deployments_router.RunIndex', return_value=index), \
+                patch('python.api.endpoints.deployments_router.unfinished_by_group',
+                      return_value={'live': [MagicMock(), MagicMock()]}):
+            data = client.get('/api/v1/deployments/deploy_1').json()
+        assert data['count'] == 2 and data['unfinished'] == 2
+
+    def test_unknown_deployment_is_a_404_and_not_an_empty_history(self, client):
+        """An empty list would read as a deployment that ran and did nothing."""
+        ledger = MagicMock()
+        ledger.read_rows.return_value = []
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
+            r = client.get('/api/v1/deployments/nope')
+        assert r.status_code == 404
+        assert r.json()['error'] == 'deployment_not_found'
+
+    @staticmethod
+    def _period_rows():
+        """
+        Two sessions of one deployment, three booked periods, and one row that books none.
+
+        The last one is what every ledger row written before the booking journal looks like:
+        an aggregate per currency with no period at all.
+        """
+        def row(run_id, no, opened, closed, pnl, trades, reason='anchor'):
+            return RunResultRow(
+                run_id=run_id, param_hash='p1', run_timestamp=opened, currency='USD',
+                deployment_id='deploy_1', scenario_set_name='dotusd_live', status='ok',
+                unit_name='dotusd_live', segment_no=no, segment_opened_at=opened,
+                segment_closed_at=closed, segment_close_reason=reason,
+                total_trades=trades, net_pnl=pnl,
+                segment_min_equity=90.0, segment_max_equity=110.0,
+                segment_max_drawdown=5.0, final_equity=100.0 + pnl)
+
+        return [
+            row('s1', 1, '2026-09-01T00:00:00+00:00', '2026-09-02T00:00:00+00:00', 12.0, 3),
+            row('s1', 2, '2026-09-02T00:00:00+00:00', '2026-09-02T18:00:00+00:00', -4.0, 2,
+                reason='session_end'),
+            # A second session, and its counter starts at 1 AGAIN — which it does wherever a
+            # session wrote no carry-over floor. Without `run_id` these two would be one row.
+            row('s2', 1, '2026-09-03T00:00:00+00:00', '2026-09-03T18:00:00+00:00', 7.0, 1,
+                reason='session_end'),
+            RunResultRow(run_id='s0', param_hash='p1', currency='USD',
+                         run_timestamp='2026-08-01T00:00:00+00:00',
+                         deployment_id='deploy_1', scenario_set_name='dotusd_live',
+                         status='ok', net_pnl=99.0),
+        ]
+
+    def test_the_periods_of_every_session_come_back_in_one_call(self, client):
+        """The thirty-day picture without walking the sessions and asking each run in turn."""
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._period_rows()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
+            r = client.get('/api/v1/deployments/deploy_1/booking-periods')
+        assert r.status_code == 200
+        data = r.json()
+        assert data['count'] == 3
+        assert data['currencies'] == ['USD']
+        assert [p['net_pnl'] for p in data['periods']] == [12.0, -4.0, 7.0]
+
+    def test_every_period_names_the_session_that_booked_it(self, client):
+        """
+        `segment_no` is a per-BOT counter and restarts wherever a session wrote no carry-over
+        floor, so two periods of one deployment can both be #1. `run_id` is then the only
+        thing that tells them apart — and it is the hinge into that run's report routes.
+        """
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._period_rows()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
+            periods = client.get('/api/v1/deployments/deploy_1/booking-periods').json()['periods']
+        assert [p['run_id'] for p in periods] == ['s1', 's1', 's2']
+        assert [p['segment_no'] for p in periods] == [1, 2, 1]
+
+    def test_a_row_that_books_no_period_is_skipped_and_counted(self, client):
+        """
+        Every row written before the booking journal is one of those. Dropping it silently
+        would make an incomplete history indistinguishable from a quiet one, so the session
+        it belongs to is counted instead.
+        """
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._period_rows()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
+            data = client.get('/api/v1/deployments/deploy_1/booking-periods').json()
+        assert data['sessions'] == 2                    # s1 and s2 booked
+        assert data['sessions_without_periods'] == 1    # s0 did not
+        assert all(p['opened_at'] for p in data['periods'])
+
+    def test_the_periods_carry_their_own_band_not_the_cumulative_one(self, client):
+        """
+        On this table the question is what EACH period did — the running figure would repeat
+        the same number down the column.
+        """
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._period_rows()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
+            first = client.get('/api/v1/deployments/deploy_1/booking-periods').json()['periods'][0]
+        assert first['max_drawdown'] == 5.0     # segment_max_drawdown, not account_max_drawdown
+        assert (first['min_equity'], first['max_equity']) == (90.0, 110.0)
+
+    def test_there_is_no_reconciliation_and_that_is_deliberate(self, client):
+        """
+        Across many runs no single run summary exists to sum against, so a check here could
+        only compare the rows with themselves — a control total that holds by construction
+        and can never fail (§48). Pinned as an ABSENCE so it cannot be added by reflex.
+        """
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._period_rows()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
+            data = client.get('/api/v1/deployments/deploy_1/booking-periods').json()
+        assert 'reconciles' not in data
+        assert 'total_net_pnl' not in data and 'run_net_pnl' not in data
+
+    def test_periods_of_an_unknown_deployment_are_a_404(self, client):
+        ledger = MagicMock()
+        ledger.read_rows.return_value = []
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
+            r = client.get('/api/v1/deployments/nope/booking-periods')
+        assert r.status_code == 404
+        assert r.json()['error'] == 'deployment_not_found'
+
+    def test_the_detail_route_filters_in_the_store(self, client):
+        """
+        Not after reading: `deployment_id` is the live counterpart of the sweep filter, and
+        pulling the whole ledger to drop most of it is what the filter exists to avoid.
+        """
+        ledger = MagicMock()
+        ledger.read_rows.return_value = self._rows()
+        with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
+                self._no_unfinished():
+            client.get('/api/v1/deployments/deploy_1')
+        ledger.read_rows.assert_called_once_with(deployment_id='deploy_1')
 
 
 # ---------------------------------------------------------------------------
@@ -615,3 +914,50 @@ class TestAtrIndicator:
         r = self._call(client, **{'from': '2030-01-01T00:00:00Z', 'to': '2030-01-02T00:00:00Z'})
 
         assert r.status_code == 404
+
+
+class TestRunConfigSnapshot:
+    """
+    A run serves the configuration it was commissioned with.
+
+    The run index carries two POINTERS — the snapshot's file name and its content id — and
+    before this route nothing served what they point at, so a reader who saw a change mark
+    between two sessions of a deployment could not ask WHAT changed.
+
+    The two 404s are the point of these cases: an unknown run and a run that declared a
+    snapshot it never filed are different faults, and the header is written at run start while
+    the file is copied later, so the second is ordinary rather than exceptional.
+    """
+
+    def test_it_serves_the_snapshot_parsed(self, client):
+        info = RunInfo(run_id='r1', group='live', name='p', config_snapshot='autotrader_config.json',
+                       config_id='abc123')
+        snapshot = RunConfigSnapshot(run_id='r1', config_snapshot='autotrader_config.json',
+                                     config_id='abc123', config={'name': 'p', 'symbol': 'BTCUSD'})
+        with patch('python.api.endpoints.reports_router.ReportStore') as store:
+            store.return_value.get_config_snapshot.return_value = snapshot
+            store.return_value.list_runs.return_value = [info]
+            response = client.get('/api/v1/reports/runs/r1/config')
+        assert response.status_code == 200
+        body = response.json()
+        assert body['config']['symbol'] == 'BTCUSD'
+        assert body['config_id'] == 'abc123'
+
+    def test_an_unknown_run_is_not_a_missing_snapshot(self, client):
+        with patch('python.api.endpoints.reports_router.ReportStore') as store:
+            store.return_value.get_config_snapshot.return_value = None
+            store.return_value.list_runs.return_value = []
+            response = client.get('/api/v1/reports/runs/nope/config')
+        assert response.status_code == 404
+        assert response.json()['error'] == 'run_not_found'
+
+    def test_a_declared_but_unfiled_snapshot_says_so(self, client):
+        # The run EXISTS — it died between the header write and the copy, or its file logging
+        # was off. Reading that as "unknown run" sends a consumer after the wrong fault.
+        info = RunInfo(run_id='r1', group='live', name='p', config_snapshot='autotrader_config.json')
+        with patch('python.api.endpoints.reports_router.ReportStore') as store:
+            store.return_value.get_config_snapshot.return_value = None
+            store.return_value.list_runs.return_value = [info]
+            response = client.get('/api/v1/reports/runs/r1/config')
+        assert response.status_code == 404
+        assert response.json()['error'] == 'config_snapshot_missing'

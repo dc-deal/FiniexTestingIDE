@@ -32,6 +32,7 @@ from python.framework.reporting.certificates.certificate_index import (
     CertificateIndex,
 )
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.store.run_config_index import RUN_CONFIG_INDEX_FILE, RunConfigIndex
 from python.framework.reporting.store.run_ledger_index import (
     LEDGER_INDEX_FILE,
     RunLedgerIndex,
@@ -78,6 +79,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
     # the tree it describes), so it is derived rather than declared a fourth time.
     runs_root = Path(file_logging.run_index).parent
     ledger_root = Path(app_config.get_run_ledger_path())
+    run_configs_root = Path(app_config.get_run_configs_path())
     discovery_root = processed / DISCOVERY_CACHE_DIRNAME
 
     return {
@@ -92,11 +94,33 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             index_path=Path(file_logging.run_index),
             index_factory=lambda: RunIndex(file_logging.run_index, file_logging.run_logs),
         ),
+        StoreId.RUN_CONFIGS: StoreDescriptor(
+            store_id=StoreId.RUN_CONFIGS,
+            kind=StoreKind.RECORD,
+            root=run_configs_root,
+            key='config_id (SHA256 over the normalised content)',
+            form=RetrievalForm.DOCUMENT,
+            backend=StoreBackend.DISK,
+            entry_glob='*/*.json',
+            index_path=run_configs_root / RUN_CONFIG_INDEX_FILE,
+            index_factory=lambda: RunConfigIndex(run_configs_root),
+            note='Every configuration that can START a run — scenario sets and AutoTrader '
+                 'profiles alike (#538). A RECORD because it says what a run was configured '
+                 'with, and it holds its OWN copy of those bytes rather than pointing at where '
+                 'they were found: a source may live in user_algos/, a separate repository this '
+                 'project never writes into, and an index whose entries live outside its own '
+                 'root could not die with its store. SEVERAL rows per source file are the '
+                 'normal case here and not a defect — each one is a version, and that is the '
+                 'history. Three hashes per entry, because a change means three things: the '
+                 'content id says the bytes differ, param_hash what the algo DECIDES, '
+                 'scope_hash WHICH DATA runs. Renaming a scenario moves the first and neither '
+                 'of the others.',
+        ),
         StoreId.RUN_LEDGER: StoreDescriptor(
             store_id=StoreId.RUN_LEDGER,
             kind=StoreKind.RECORD,
             root=ledger_root,
-            key='run_id (a column, never a folder)',
+            key='run_id (a column, never a folder) — a fragment per run; ONE ROW is (run_id, currency, unit_name, segment_no), see LEDGER_ROW_KEY',
             form=RetrievalForm.SET,
             backend=StoreBackend.DISK,
             entry_glob='*.parquet',

@@ -11,6 +11,70 @@ and the two fingerprints that answer two different questions about what ran.
 override mechanism — `docs/user_configs_override_system.md`. Where credentials live —
 `docs/architecture/credentials_layout.md`.
 
+
+## `bot_id` — the identity a bot's state is filed under
+
+A live bot's persistent state — its open position book, the position-counter high-water mark, the
+session keys its orders were sent under — lives in a file named after the bot. Which bot that is
+was composed from what the profile is CALLED:
+
+```
+name: "dotusd_live"  +  symbol: "DOTUSD"   ->   dotusd-live_dotusd.json
+```
+
+**That makes the identity move when the name does**, and a display name is exactly the thing an
+operator improves. Renaming `dotusd_live` to `dotusd_live_v2` points the next session at
+`dotusd-live-v2_dotusd.json`, which does not exist — so the bot starts, finds no carry-over, and
+reads its own holding as flat. At spot that is not recoverable from the venue: a holding is a
+balance the venue cannot describe as a position, so our own record is the only one there is.
+
+Declaring the identity separates the two:
+
+```json
+{
+  "name": "dotusd_live_v2",
+  "bot_id": "dotusd-live",
+  "symbol": "DOTUSD"
+}
+```
+
+The file stays `dotusd-live_dotusd.json` through any rename of anything else. The field is
+OPTIONAL — a profile without one keeps the composed name, exactly as before — and it is written
+into the document's own envelope, so the file can say what it is filed under rather than leaving
+that to be recomputed.
+
+**Set it once and never change it.** Changing a `bot_id` is the same event as renaming without
+one: the next session looks somewhere else.
+
+**Which profiles earn one:** those whose state has to survive a restart — every profile declaring
+`deployment.continuous: true`, and every profile that trades for real. Everything else is
+self-contained per run: a mock test session starts from nothing by design, so there is no identity
+to protect. Measured 2026-09-22: of 28 profiles, the four in `production/`, the two declaring
+`continuous` and nothing else declare one.
+
+It is OPTIONAL for an ordinary profile and **MANDATORY for a continuous one**: a session whose
+profile declares `deployment.continuous: true` and no `bot_id` is REFUSED at boot, with the value
+to paste in:
+
+```
+The profile 'DOTUSD Live Bot' declares `deployment.continuous: true` but no `bot_id`.
+    A continuous deployment carries state across restarts — the open position book, the position
+    counter, the session keys. Without a declared identity that state is filed under the profile
+    NAME, so renaming the profile points the next session at an empty document while the venue
+    still holds the position.
+
+    Add it to the profile, beside `name`:
+
+        "bot_id": "dotusd-live-bot"
+
+    It may be anything — what it has to be is UNIQUE across every profile and never changed
+    again. The identity this session would file under is 'dotusd-live-bot_dotusd'.
+```
+
+A refusal rather than a warning, because a warning on a thirty-day unattended run is a warning
+nobody is there to read. `--one-off` is exempt: it inherits nothing and leaves nothing a successor
+has to find.
+
 ## Configuration
 
 Config file: `configs/autotrader_profiles/backtesting/mock_session_test.json` — own format, NOT scenario-set based.
@@ -146,6 +210,21 @@ that would put an otherwise comparable run beyond comparison; and a changed RSI 
 not pass as mere operation. Both are computed from the LOADED config, so a value the loader
 resolved is fingerprinted as resolved; `config_path`, `name` and `symbol` are excluded, because
 where a profile sits on disk is not a property of the run.
+
+**Three identity columns sit beside them on the ledger row, and they answer different
+questions.** `scenario_set_name` is what the profile is CALLED and an operator improves that;
+`deployment_id` is minted per deployment and `--new-deployment` starts a fresh one; only `bot_id`
+does not move. A reader asking *is this the same bot as the row above* has no other column to ask
+— and it is what the bot's carry-over state is filed under, which is what makes a ledger row and a
+position book joinable at all. Empty on a simulation row and on a profile that declares none.
+
+Two bots running ONE strategy are the case this makes readable, and it is worth seeing measured:
+
+```
+Bot A   config_id ae4f91bb5520   param_hash a17e364498f6   carry-over  dotusd-live_dotusd
+Bot B   731d21024b31             a17e364498f6              dotusd-live-b_dotusd
+        ↑ two configurations     ↑ provably one strategy   ↑ separate position books
+```
 
 Neither hash decides anything. A change is RECORDED and reported — `run_index_cli.py
 deployments` marks the session it happened on — and whether the halves may be compared is a

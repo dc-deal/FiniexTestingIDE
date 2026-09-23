@@ -101,13 +101,22 @@ def _config(interval_ms: int = 1000, threshold_s: float = 300.0) -> ProcessScena
 
 
 class TestSimHeartbeatDriver:
-    """_run_sim_heartbeats fires at the interval within a sub-threshold gap only."""
+    """
+    _run_sim_heartbeats fires at the interval within a sub-threshold gap only.
+
+    It also carries the booking recorder since #539: the ghost passes are the only thing that
+    advances the canonical clock across a quiet stretch, so the trading-day boundary is checked
+    at each ghost instant rather than once before them. What that call does is pinned in
+    `tests/simulation/core/test_ghost_pass_booking_boundary.py`; here it is a mock, because
+    these cases are about the cadence.
+    """
 
     def test_fires_interval_passes_within_gap(self):
         ts, wc, dl = _driver_mocks()
         # 10 s gap, 1 s interval → ghost-passes at 1..9 s (9 passes)
         ended = _run_sim_heartbeats(
-            _BASE_MSC, _BASE_MSC + 10_000, _config(), ts, wc, dl, None)
+            _BASE_MSC, _BASE_MSC + 10_000, _config(), ts, wc, dl, None,
+            MagicMock(), lambda: ([], MagicMock()))
         assert ended is False
         assert wc.process_heartbeat.call_count == 9
         # the decision was executed each pass with tick=None
@@ -119,7 +128,8 @@ class TestSimHeartbeatDriver:
         ts, wc, dl = _driver_mocks()
         # 400 s gap > 300 s threshold → correctness gate suppresses all passes (#208)
         ended = _run_sim_heartbeats(
-            _BASE_MSC, _BASE_MSC + 400_000, _config(), ts, wc, dl, None)
+            _BASE_MSC, _BASE_MSC + 400_000, _config(), ts, wc, dl, None,
+            MagicMock(), lambda: ([], MagicMock()))
         assert ended is False
         assert wc.process_heartbeat.call_count == 0
 
@@ -127,7 +137,8 @@ class TestSimHeartbeatDriver:
         ts, wc, dl = _driver_mocks()
         ts.is_session_end_requested.return_value = True
         ended = _run_sim_heartbeats(
-            _BASE_MSC, _BASE_MSC + 10_000, _config(), ts, wc, dl, None)
+            _BASE_MSC, _BASE_MSC + 10_000, _config(), ts, wc, dl, None,
+            MagicMock(), lambda: ([], MagicMock()))
         assert ended is True
         assert wc.process_heartbeat.call_count == 1  # stopped after the first pass
 

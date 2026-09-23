@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from python.framework.data_preparation.broker_scenario_info import BrokerScenarioInfo
+from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.types.batch_execution_types import WarmupPhaseEntry
 from python.framework.types.process_data_types import (
     BarRequirement,
@@ -26,8 +28,6 @@ from python.framework.types.process_data_types import (
     RequirementsMap,
 )
 from python.framework.types.scenario_types.scenario_set_types import (
-    BrokerScenarioInfo,
-    SignalScenarioInfo,
     SingleScenario,
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType

@@ -16,11 +16,15 @@ from pathlib import Path
 
 import pytest
 
-from python.framework.exceptions.persistence_errors import CarryOverIdentityCollisionError
+from python.framework.exceptions.persistence_errors import (
+    CarryOverIdentityCollisionError,
+    ContinuousDeploymentNeedsBotIdError,
+)
 from python.framework.persistence.carry_over_identity import carry_over_key
 from python.framework.validators.carry_over_identity_validator import (
     collisions,
     validate_carry_over_identity_unique,
+    validate_continuous_deployment_declares_bot_id,
 )
 
 _REAL_PROFILES = Path('configs/autotrader_profiles')
@@ -59,13 +63,88 @@ def profiles(tmp_path) -> Path:
 class TestTheKeyHasOneHome:
 
     def test_both_halves_are_sanitised_and_lowercased(self):
-        assert carry_over_key('DOT-USD Live', 'DOTUSD') == 'dot_usd_live_dotusd'
+        assert carry_over_key('DOT-USD Live', 'DOTUSD') == 'dot-usd-live_dotusd'
 
-    def test_two_spellings_of_one_name_collapse_to_one_identity(self):
-        # This IS the collision mechanism, pinned as a property rather than as a bug: the
-        # sanitiser is lossy on purpose (a filename cannot carry every character), so distinct
-        # names legitimately meet. That is why the check exists instead of a stricter sanitiser.
+    def test_the_separator_occurs_exactly_once(self):
+        # What makes the composition injective (#538). A half cannot contain the join character,
+        # because every non-alphanumeric becomes a HYPHEN.
+        assert carry_over_key('DOT-USD Live', 'BTC_USD').count('_') == 1
+
+    def test_two_different_bots_no_longer_share_one_document(self):
+        """
+        The collision this key used to have, and the one that mattered: two UNRELATED bots
+        resolving to one file. Bot B opened bot A's document and read a position book it never
+        wrote. With the separator reserved the two are distinguishable by construction.
+        """
+        assert carry_over_key('btc', 'USD_SPOT') != carry_over_key('btc_usd', 'SPOT')
+        assert carry_over_key('btc', 'USD_SPOT') == 'btc_usd-spot'
+        assert carry_over_key('btc_usd', 'SPOT') == 'btc-usd_spot'
+
+    def test_a_declared_bot_id_takes_precedence_over_the_name(self):
+        """
+        The structural answer (#538). A display name is something an operator improves; without a
+        declared identity the improvement points the bot at a new, empty document while the venue
+        still holds its position.
+        """
+        assert carry_over_key('dotusd_live', 'DOTUSD', bot_id='dot-usd-live') == \
+            'dot-usd-live_dotusd'
+
+    def test_the_key_survives_a_rename_when_the_id_is_declared(self):
+        renamed = carry_over_key('a completely different name', 'DOTUSD', bot_id='dot-usd-live')
+
+        assert renamed == carry_over_key('dotusd_live', 'DOTUSD', bot_id='dot-usd-live')
+
+    def test_no_declared_id_composes_from_the_name_as_before(self):
+        """Optional by design — no profile changes key because this argument was added."""
+        assert carry_over_key('dotusd_live', 'DOTUSD') == carry_over_key(
+            'dotusd_live', 'DOTUSD', bot_id='')
+
+    def test_two_spellings_of_one_name_still_collapse(self):
+        # A DIFFERENT case, and it stays open on purpose: this is one bot written two ways, not
+        # two bots merging. The sanitiser is lossy because a filename cannot carry every
+        # character, so the boot check is the right answer to it rather than a stricter rule.
         assert carry_over_key('dot live', 'DOTUSD') == carry_over_key('dot-live', 'DOTUSD')
+
+
+class TestAContinuousDeploymentMustDeclareItsIdentity:
+    """
+    The one case where composing the identity from the NAME is not good enough (#538).
+
+    A continuous deployment is by definition the case where state survives a restart. Without a
+    declared identity that state is filed under what the profile is CALLED — and renaming does
+    not fail, it silently points the next session at an empty document while the venue still
+    holds the position. So it is a REFUSAL at boot, not a warning: a warning on a thirty-day
+    unattended run is a warning nobody is there to read.
+    """
+
+    def test_a_continuous_profile_without_one_is_refused(self):
+        with pytest.raises(ContinuousDeploymentNeedsBotIdError):
+            validate_continuous_deployment_declares_bot_id(
+                'dotusd_live', 'DOTUSD', '', continuous=True)
+
+    def test_the_message_carries_a_usable_suggestion(self):
+        """
+        A complaint the operator cannot act on is a complaint they will work around. The value is
+        arbitrary — what matters is that it is unique and never changes — so the message proposes
+        one rather than leaving them to invent it.
+        """
+        with pytest.raises(ContinuousDeploymentNeedsBotIdError) as raised:
+            validate_continuous_deployment_declares_bot_id(
+                'DOTUSD Live Bot', 'DOTUSD', '', continuous=True)
+
+        message = str(raised.value)
+        assert '"bot_id": "dotusd-live-bot"' in message
+        assert 'dotusd-live-bot_dotusd' in message, 'the resulting identity is not shown'
+        assert 'UNIQUE' in message
+
+    def test_a_declared_one_passes(self):
+        validate_continuous_deployment_declares_bot_id(
+            'dotusd_live', 'DOTUSD', 'dotusd-live', continuous=True)
+
+    def test_a_one_off_session_is_exempt(self):
+        """It inherits nothing and leaves nothing a successor must find."""
+        validate_continuous_deployment_declares_bot_id(
+            'dotusd_live', 'DOTUSD', '', continuous=False)
 
 
 class TestTheBootCheck:
@@ -81,7 +160,7 @@ class TestTheBootCheck:
         # decision — a message naming only "the other" would send them looking.
         message = str(raised.value)
         assert 'production/dot.json' in message and 'observation/dot.json' in message
-        assert 'dot_live_dotusd' in message
+        assert 'dot-live_dotusd' in message
 
     def test_distinct_identities_pass(self, profiles):
         mine = _profile(profiles, 'production/dot.json', 'dot_live', 'DOTUSD')

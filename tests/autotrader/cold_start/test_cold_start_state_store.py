@@ -103,9 +103,29 @@ class TestRoundTrip:
 
         raw = json.loads(store.get_state_path().read_text(encoding='utf-8'))
         assert raw['written_by_run_id'] == '20260901_120000_abcdef12'
-        # The FILE is named after the bot — a successor with a different run id finds it.
-        assert store.get_state_path().name == 'btcusd_test_btcusd.json'
+        # The FILE is named after the bot — a successor with a different run id finds it. The
+        # separator is RESERVED since #538, so the profile's own underscore became a hyphen and
+        # the one underscore left is the join: `<profile>_<symbol>`, unambiguously.
+        assert store.get_state_path().name == 'btcusd-test_btcusd.json'
         assert raw['store_id'] == 'cold_start_state'
+
+    def test_the_envelope_records_the_identity_its_name_came_from(self, tmp_path, logger):
+        """
+        Without it the document cannot say what it is filed under, and anything recomputing that
+        name from `profile` + `symbol` alone computes a DIFFERENT one and orphans the file — the
+        migration script being the first such caller (#538).
+        """
+        store = ColdStartStateStore(
+            root=tmp_path, profile='dotusd_live', symbol='DOTUSD',
+            logger=logger, run_id='20260901_120000_abcdef12', bot_id='dot-usd-main')
+        store.save(session_key='1641', highest_position_counter=1)
+
+        raw = json.loads(store.get_state_path().read_text(encoding='utf-8'))
+
+        assert store.get_state_path().name == 'dot-usd-main_dotusd.json'
+        assert raw['bot_id'] == 'dot-usd-main'
+        # The composed name is NOT the file name here — which is the whole point.
+        assert raw['profile'] == 'dotusd_live' and raw['symbol'] == 'DOTUSD'
 
 
 class TestTheRiskBaselineSurvivesTheDisk:
@@ -396,7 +416,7 @@ class TestIndex:
 
         frame = index.read().set_index('file')
         assert frame.loc['broken_bot.json', 'status'] == 'unreadable'
-        assert frame.loc['btcusd_test_btcusd.json', 'status'] == 'ok'
+        assert frame.loc['btcusd-test_btcusd.json', 'status'] == 'ok'
 
     def test_a_removed_bot_makes_the_index_stale(self, store, logger, tmp_path):
         # Deletion leaves every surviving file's mtime untouched, so a purely time-based
@@ -409,7 +429,7 @@ class TestIndex:
         index.rebuild()
         assert index.is_valid() is True
 
-        (root / 'ethusd_test_ethusd.json').unlink()
+        (root / 'ethusd-test_ethusd.json').unlink()
 
         assert index.is_valid() is False
         assert 'indexed' in index.staleness_reason()

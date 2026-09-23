@@ -1,5 +1,6 @@
 {
   "name": "dotusd_live",
+  "bot_id": "dotusd-live",
   "symbol": "DOTUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "live",

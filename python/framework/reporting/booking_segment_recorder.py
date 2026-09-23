@@ -22,7 +22,7 @@ records it comes from are still in the bounded deque. Derived afterwards, a long
 periods would be periods whose records are gone.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Callable, List, Optional
 
 from python.framework.reporting.builders.booking_segment_builder import (
@@ -32,7 +32,7 @@ from python.framework.reporting.builders.booking_segment_builder import (
 )
 from python.framework.types.config_types.market_config_types import DayAnchorConfig
 from python.framework.types.run_results_types import BookingSegment, SegmentCloseReason
-from python.framework.utils.trading_day_anchor import trading_day_of
+from python.framework.utils.trading_day_anchor import boundary_opening, trading_day_of
 
 
 class BookingSegmentRecorder:
@@ -70,6 +70,10 @@ class BookingSegmentRecorder:
         self._segments: List[BookingSegment] = []
         self._opened_at: Optional[datetime] = None
         self._current_day: Optional[date] = None
+        # The instant the CURRENT trading day ends, cached so the per-tick check is a datetime
+        # comparison rather than a timezone conversion. Derived from `_current_day`, so the two
+        # are set together and never apart.
+        self._next_boundary: Optional[datetime] = None
         # The band INSIDE the current period. The peak is kept separately from the maximum
         # because a drawdown is measured against the peak that stood AT THE TIME, while the
         # maximum is the period's own high — the two diverge the moment the account recovers.
@@ -113,36 +117,67 @@ class BookingSegmentRecorder:
         self._peak_equity = max(self._peak_equity, value)
         self._max_equity = max(self._max_equity, value)
         self._min_equity = min(self._min_equity, value)
+        # A MAGNITUDE, like `account_max_drawdown`, `largest_mae` and `largest_mfe` beside it.
+        # It was the one signed figure among them until #539. The ledger combined it correctly
+        # either way (`Reduction.MAX` is `max(key=abs)`), so nothing was ever wrong in the
+        # arithmetic — what it cost was READING: a consumer renders this table beside the
+        # portfolio block, and one shared formatter turns one of the two into its own opposite
+        # without anything going red. The sign is a DISPLAY decision and lives in the renderers.
         decline = self._peak_equity - value
-        if decline > abs(self._max_drawdown):
-            self._max_drawdown = -decline
+        if decline > self._max_drawdown:
+            self._max_drawdown = decline
 
     def check_boundary(self, now: Optional[datetime], snapshot_for_seal) -> None:
         """
         Open the first period, or seal the running one when the trading day flips.
 
-        Called from BOTH event sources. Nothing happens before the canonical clock has been set
-        — a period needs an instant to open at, and a clock that was never set has none.
+        Called from BOTH event sources, on EVERY tick, which is what shapes the code below.
+        Nothing happens before the canonical clock has been set — a period needs an instant to
+        open at, and a clock that was never set has none. Nothing happens without an anchor
+        either: a unit with no declared market cannot say where its trading day flips, so it
+        never opens a period and therefore never seals one.
 
-        Nothing happens without an anchor either: a unit with no declared market cannot say
-        where its trading day flips, so it never opens a period and therefore never seals one.
+        **The cached boundary is the whole point of this method's shape.** Asking
+        `trading_day_of` per tick means a timezone conversion per tick: measured 1.52 µs at UTC
+        and 1.87 µs at America/New_York, which over a 1.5-million-tick benchmark run is 2.3-2.8 s
+        against a 23.4 s baseline — about a tenth of the tick loop, spent re-deriving a date that
+        changes once a day. The instant at which the current day ENDS is computed once per period
+        instead, and the hot path is one datetime comparison.
 
         Args:
             now: The canonical clock's current instant, or None before it was first set
             snapshot_for_seal: Callable returning the `SegmentSnapshot` and the records, invoked
-                only when a seal actually happens — so a boundary check on a quiet tick costs
-                nothing beyond a date comparison
+                only when a seal actually happens — so a boundary check inside the day costs
+                nothing beyond that one comparison
         """
         if now is None or self._anchor is None:
             return
+        # The ordinary tick: still inside the running trading day, nothing to do.
+        if self._next_boundary is not None and now < self._next_boundary:
+            return
+
         current_day = trading_day_of(now, self._anchor)
         if self._opened_at is None:
             self._opened_at = now
-            self._current_day = current_day
+            self._set_day(current_day)
             return
         if current_day != self._current_day:
             self.seal(SegmentCloseReason.ANCHOR, now, snapshot_for_seal)
-            self._current_day = current_day
+            self._set_day(current_day)
+
+    def _set_day(self, day: date) -> None:
+        """
+        Adopt a trading day and cache the instant it ends at.
+
+        The two are set together because the cache is only as correct as the day it was derived
+        from — and `boundary_opening` is DST-aware per date, so computing it once per day is
+        also what keeps a spring-forward boundary right.
+
+        Args:
+            day: The trading day now running
+        """
+        self._current_day = day
+        self._next_boundary = boundary_opening(day + timedelta(days=1), self._anchor)
 
     def seal(self, reason: SegmentCloseReason, now: Optional[datetime], snapshot_for_seal) -> None:
         """
@@ -159,6 +194,18 @@ class BookingSegmentRecorder:
         """
         if self._opened_at is None or now is None:
             return
+        # A period is never filed inside out. Nothing downstream checks the order of the two
+        # instants — not the builder, not the ledger, not the renderer — so an inverted pair
+        # would travel as far as a chart and draw a bar running backwards. The canonical clock
+        # is clamped forward since #539, which is what makes this unreachable rather than
+        # merely unlikely; it stays as the assertion that the clamp holds, and it SAYS so
+        # rather than repairing the stamp silently.
+        if now < self._opened_at and self._log is not None:
+            self._log(
+                f'⚠️ Booking period {self._segment_no + 1} of {self._unit_name} would close '
+                f'BEFORE it opened ({now.isoformat()} < {self._opened_at.isoformat()}) — the '
+                f'canonical clock moved backwards. Sealed at its opening instant instead.')
+        closed_at = max(now, self._opened_at)
         trades, snapshot = snapshot_for_seal()
         snapshot.segment_max_equity = self._max_equity
         snapshot.segment_min_equity = self._min_equity
@@ -168,7 +215,7 @@ class BookingSegmentRecorder:
             unit_name=self._unit_name,
             segment_no=self._segment_no + 1,
             opened_at=self._opened_at,
-            closed_at=now,
+            closed_at=closed_at,
             reason=reason,
             trades=trades,
             snapshot=snapshot,
@@ -178,7 +225,7 @@ class BookingSegmentRecorder:
         if self._log is not None:
             self._log(describe_segment(segment))
 
-        self._opened_at = now
+        self._opened_at = closed_at
         self._peak_equity = None
         self._max_equity = 0.0
         self._min_equity = 0.0

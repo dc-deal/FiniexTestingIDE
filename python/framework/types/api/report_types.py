@@ -9,7 +9,7 @@ exception as api_types.py.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -18,6 +18,32 @@ from pydantic import BaseModel, Field, computed_field
 # re-derived from — and the safety report's job is to surface exactly that record. A parallel
 # row type would be a hand-maintained copy of it, and a copy is what silently drops a field.
 from python.framework.types.persistence_types import RiskBaseline
+
+
+# WHAT MAKES ONE ROW of each deployment view unique. Declared once, read by the response model
+# below AND by the fold that produces the rows (`deployment_history_builder` passes SESSION_KEY
+# as its `by=`), so the declaration cannot drift from the grouping it describes. Retyped in two
+# places it would quietly start lying, and a consumer keying on it folds two rows into one (§49).
+#
+# `currency` is in both because a row is one per (thing × account currency) — a P&L column added
+# over two currencies is not a number. It is absent from BOOKING_PERIOD_KEY for the opposite
+# reason: a unit has exactly one account currency, so `unit_name` already implies it.
+DEPLOYMENT_KEY = ('deployment_id', 'currency')
+# WHAT IDENTIFIES ONE LEDGER ROW. The store's own `key` in `store_registrations.py` answers a
+# different question — how an ENTRY is addressed, and an entry there is a FRAGMENT, one per run.
+# Inside the fragments a row is finer, and nothing said so: nothing deduplicates and nothing
+# checks, so a fragment written twice would be summed rather than noticed.
+#
+# Four parts because the store holds TWO row shapes and one key has to separate both:
+#
+#     aggregate row   run_id=...  currency=USD  unit_name=''         segment_no=None
+#     period row      run_id=...  currency=USD  unit_name='btc_run'  segment_no=3
+#
+# `currency` is not redundant beside `unit_name`: a unit has exactly one account currency, but an
+# AGGREGATE row carries no unit at all and is one per (run x currency).
+LEDGER_ROW_KEY = ('run_id', 'currency', 'unit_name', 'segment_no')
+SESSION_KEY = ('run_id', 'currency')
+BOOKING_PERIOD_KEY = ('run_id', 'unit_name', 'segment_no')
 
 
 class ExecutionRow(BaseModel):
@@ -544,6 +570,11 @@ class RunHeader(BaseModel):
             differently can only guess. None on a standalone run — and also on a run written
             before this field existed, which is why nothing refuses the pair
         config_snapshot: File name of the config this run was commissioned with
+        config_id: The registered identity of that configuration (#538) — SHA256 over its
+            normalised content, so two runs naming the same id ran the same configuration and a
+            changed file mints a new one. Empty on a run that started before the store existed,
+            and on one whose config could not be registered; the per-run snapshot beside it is
+            the evidence either way, and this is what makes it FINDABLE
         app_version: The app version that produced it
         git_commit: The commit it ran from, when the working tree exposes one
         reporting: Whether this run was COMMISSIONED to write report artifacts. Declared at
@@ -562,9 +593,37 @@ class RunHeader(BaseModel):
     parent_id: Optional[str] = None
     parent_kind: Optional[ParentKind] = None
     config_snapshot: str = ''
+    config_id: str = ''
     app_version: str = ''
     git_commit: Optional[str] = None
     reporting: RunReporting = RunReporting.EXPECTED
+
+
+class RunConfigSnapshot(BaseModel):
+    """
+    The configuration a run was commissioned with, served beside the run that used it.
+
+    A run's ledger row already says a configuration MOVED between two sessions — the deployment
+    history draws a change mark from `param_hash` / `profile_hash`. What no reader could ask is
+    WHAT moved, because both the file name and the content id are POINTERS and nothing served
+    what they point at.
+
+    `config` is the snapshot PARSED. The bytes are copied verbatim into the run directory, so a
+    raw form would also be defensible; parsed is served because every other route on this API
+    answers with a model, and because a consumer comparing two runs wants the difference in the
+    VALUES rather than in the whitespace.
+    """
+    run_id: str
+    # The file name the run's header DECLARED, which is not always a file that exists: the
+    # header is written at run start and the copy happens later, so a session that died in
+    # between — or one whose file logging was switched off — declares a snapshot it never
+    # filed. That case is a 404 naming the snapshot, never a 404 naming the run.
+    config_snapshot: str
+    # The content fingerprint the run-config store minted (#538). Served so a consumer can
+    # assert the bytes it received are the ones the index attributes to this run, rather than
+    # trusting the join. Empty for a run that predates the store.
+    config_id: str
+    config: Dict[str, Any]
 
 
 class RunInfo(BaseModel):
@@ -592,6 +651,9 @@ class RunInfo(BaseModel):
     # the discriminator existed, where the kind is genuinely unknown rather than absent.
     parent_id: Optional[str] = None
     parent_kind: Optional[ParentKind] = None
+    # The registered identity of the configuration this run used (#538). Two runs naming the
+    # same id ran the same configuration; empty on a run from before the store existed.
+    config_id: str = ''
     app_version: str = ''
     git_commit: Optional[str] = None
     config_snapshot: str = ''
@@ -621,7 +683,14 @@ class RunInfo(BaseModel):
 
 
 class RunListResponse(BaseModel):
-    """The run index every other report route is addressed by (#391)."""
+    """
+    The run index every other report route is addressed by (#391).
+
+    `key` is what makes one row unique. Every list this API serves declares it: an unordered
+    list of objects says nothing about its own identity, and a consumer keying on the obvious
+    field folds rows together silently, in the direction that loses data (§49).
+    """
+    key: list[str] = ['run_id']
     runs: list[RunInfo]
     count: int
 
@@ -711,23 +780,36 @@ class BookingPeriodsReport(RunScopedReport):
     """
     A run's booking periods, and whether they add up to the run (#537).
 
-    The last line is the point of the table. A period summary is trusted because it can be
-    recomputed from its records, and a column of them is trusted because it RECONCILES against
-    the figure the run reports by its own path — so the reconciliation is computed here and
-    stated, rather than left to a reader adding up a column by eye.
+    The last line is the point of the table, and what it proves is COMPLETENESS: every closed
+    trade reached exactly one period. It is not a check of the arithmetic — the period sum and
+    `run_net_pnl` carry the same per-trade value along two different routes, so they agree on a
+    wrong figure just as readily as on a right one. What one route has been through and the
+    other has not is retention, windowing and transport, and that is exactly the class of fault
+    a disagreement names. The builder's docstring draws the two routes.
 
     `reconciles` false is not an error to raise; it is the finding the table exists to surface
     (§12: reports calculate and render, they do not judge).
     """
+    # Run-scoped, so `run_id` is the report's own and not a column: the pair below is what
+    # separates the rows WITHIN it.
+    key: list[str] = ['unit_name', 'segment_no']
     periods: list[BookingPeriodRow] = Field(default_factory=list)
+    # Which currency the TOTALS are about, and every currency the ROWS carry. They differ on a
+    # multi-currency run, where a sum across them would not be a number — so the rows keep
+    # everything and the totals name their one currency (#539 audit).
     currency: str = ''
-    # The sums over the periods, and what the run reports independently of them.
+    currencies: list[str] = Field(default_factory=list)
+    # The sums over the periods, and the counter the run keeps beside them.
     total_net_pnl: float = 0.0
     total_fees: float = 0.0
     total_trades: int = 0
-    run_net_pnl: float = 0.0
-    run_total_trades: int = 0
-    reconciles: bool = True
+    # None when the run reports NO figure for this currency — then the check did not run, and
+    # saying so is the point: `reconciles: True` against a `run_net_pnl` that defaulted to 0.0
+    # is a control total holding by accident, which is the failure this whole line exists to
+    # prevent (§48).
+    run_net_pnl: float | None = None
+    run_total_trades: int | None = None
+    reconciles: bool | None = None
     # The deepest single-period decline and the band across all of them — the column's own
     # extremes, which is what a reader scanning the table is comparing against.
     deepest_period_drawdown: float = 0.0
@@ -804,6 +886,10 @@ class RunResultRow(BaseModel):
     unstamped_input_files: int | None = None
     price_bases: str = ''
     deployment_id: str = ''
+    # The bot's DECLARED identity (#538) — live only, and the one identity on this row that does
+    # not move. `scenario_set_name` is what the profile is CALLED, `deployment_id` is minted per
+    # deployment; only this answers "is this the same bot as the row above" across both.
+    bot_id: str = ''
     profile_hash: str = ''
     # 'simulation' | 'live'; '' on a fragment written before the column existed, which means
     # UNKNOWN and never a guess.
@@ -829,8 +915,6 @@ class RunResultRow(BaseModel):
     segment_opened_at: str = ''
     segment_closed_at: str = ''
     segment_close_reason: str = ''
-    # The control total (§48): how many records the figures were derived from.
-    segment_trade_count: int | None = None
     # The period's own equity band and its own decline, beside the cumulative trio above.
     segment_max_equity: float | None = None
     segment_min_equity: float | None = None
@@ -932,6 +1016,7 @@ class SweepSummary(BaseModel):
 
 class SweepListResponse(BaseModel):
     """Every recorded sweep, newest first."""
+    key: list[str] = ['sweep_id']
     sweeps: list[SweepSummary]
     count: int
 
@@ -943,11 +1028,220 @@ class SweepDetailResponse(BaseModel):
     Ranked, not alphabetical: the question a sweep answers is which combination won, and each
     row carries its `run_id` so a consumer can open that run through the report routes.
     """
+    # Ledger rows, unaggregated — and since #537 a run writes one row per BOOKING PERIOD, so
+    # this is finer than one row per combination whenever a scenario window spans more than one
+    # trading day. See the ranking note in the sweeps router.
+    key: list[str] = list(LEDGER_ROW_KEY)
     sweep_id: str
     objective: str
     maximize: bool
     combinations: list[RunResultRow]
     count: int
+
+
+class DeploymentSessionRow(BaseModel):
+    """
+    One session of a deployment, as the history reads it (#497).
+
+    Args:
+        index: Position in the deployment, 1-based
+        run_id: The session's own run identity
+        started: Its start, parsed from the run timestamp
+        net_pnl: Realised P&L of that session
+        max_drawdown: The CUMULATIVE account drawdown as of that session — a live row carries
+            the running figure against the inherited peak, never that session's own
+        max_drawdown_pct: Its share of the peak standing at the time
+        bot: Which bot ran it — the AutoTrader profile's name, which the ledger stores in
+            `scenario_set_name` for a live row. Carried so the OVERVIEW can show that two
+            deployments belong to the same bot: `--new-deployment` mints a fresh identity and
+            records no link back, so without the name a deliberate restart reads as two
+            unrelated bots
+        bot_id: The DECLARED identity, and the only one that does not move. `bot` is what the
+            profile is CALLED and an operator improves that; `deployment_id` is minted per
+            deployment. A reader asking *is this the same bot as the row above* has no other
+            column to ask, and it is what the carry-over state is filed under. Empty on a
+            profile that declares none
+        currency: The row's account currency
+        ended: When its ledger row was written, i.e. when it stopped — None on a row written
+            before that stamp existed
+        ran_hours: How long it ran, None when its end is unknown. Derived from the two
+            stamps rather than stored: the row is written as the session closes, so this is
+            the session's length plus the seconds its reports took
+        gap_hours: Hours the bot was NOT running before this session, None for the first
+        gap_between_starts: True when the gap could only be measured from one START to the
+            next, because the predecessor's row predates `recorded_at_utc`. That figure
+            contains the predecessor's whole runtime and overstates the downtime, so it is
+            marked rather than quietly shown as the same measure
+        strategy_changed: True when `param_hash` differs from the previous session's
+        operation_changed: True when `profile_hash` differs from the previous session's
+    """
+    index: int
+    run_id: str
+    started: Optional[datetime]
+    net_pnl: float
+    max_drawdown: float
+    max_drawdown_pct: float
+    currency: str
+    bot: str = ''
+    bot_id: str = ''
+    ended: Optional[datetime] = None
+    ran_hours: Optional[float] = None
+    gap_hours: Optional[float] = None
+    gap_between_starts: bool = False
+    strategy_changed: bool = False
+    operation_changed: bool = False
+
+
+class DeploymentComparabilityAdvisory(BaseModel):
+    """
+    A deployment whose sessions were not all produced by the same configuration.
+
+    The per-session marks say WHERE something changed; this says WHETHER the history can be
+    read as one series at all, and it says it BEFORE the table rather than inside it. The
+    difference matters on a thirty-day run: eleven sessions with three parameter changes show
+    three marks somewhere in the middle, and the reader has already added up the P&L column by
+    the time they reach them.
+
+    The sibling of `mixed_logic_version_advisory` (#390), which answers the same question for a
+    sweep's ranking. Like it, this is an ANALYZER and renders no verdict — whether the halves
+    may be compared is a judgement a person makes with what it reports.
+
+    Args:
+        sessions: How many sessions the deployment holds
+        strategy_stands: Distinct `param_hash` values across them — what the bot DECIDED
+        operation_stands: Distinct `profile_hash` values — what a session DID without changing
+            what it decided (a safety threshold, a guard, a timeout, the capital declaration)
+        longest_gap_hours: The longest stretch the bot was not running, None when no gap could
+            be measured
+    """
+    sessions: int
+    strategy_stands: int
+    operation_stands: int
+    longest_gap_hours: Optional[float] = None
+
+
+class DeploymentSummary(BaseModel):
+    """
+    One deployment's at-a-glance line, for the list view.
+
+    The sibling of `SweepSummary` (#390) and deliberately the same shape of answer: a reader
+    scanning a dozen deployments wants to know which one to open, not what happened inside it.
+
+    Args:
+        deployment_id: The identity its sessions name
+        sessions: How many sessions it holds
+        first_started: When the deployment began
+        last_started: When its most recent session began
+        net_pnl: Realised P&L summed over its sessions — this one DOES add up
+        max_drawdown: The deepest decline, which is the LARGEST of the rows and never a sum:
+            a live row carries the running figure against the inherited peak
+        max_drawdown_pct: That decline as a share of the peak standing when it happened
+        bot: The AutoTrader profile that ran it
+        bot_id: Its DECLARED identity — see `DeploymentSessionRow.bot_id`. Two deployments
+            sharing one `bot_id` are one bot restarted with `--new-deployment`
+        currency: The account currency the figures are in
+        longest_gap_hours: The longest stretch the bot was not running
+        changed: True when the sessions were not all produced by the same configuration
+    """
+    deployment_id: str
+    sessions: int
+    first_started: Optional[datetime]
+    last_started: Optional[datetime]
+    net_pnl: float
+    max_drawdown: float
+    max_drawdown_pct: float
+    currency: str
+    bot: str = ''
+    bot_id: str = ''
+    longest_gap_hours: Optional[float] = None
+    changed: bool = False
+
+
+class DeploymentListResponse(BaseModel):
+    """
+    Every recorded deployment, newest first (#539).
+
+    One entry per (deployment x account currency), because a P&L column added up over two
+    currencies is not a number — the same split the summary rows carry. Which is exactly why
+    `key` names BOTH: a consumer keying on `deployment_id` alone folds two rows into one.
+    """
+    key: list[str] = list(DEPLOYMENT_KEY)
+    deployments: list[DeploymentSummary]
+    count: int
+
+
+class DeploymentDetailResponse(BaseModel):
+    """
+    One deployment's sessions, oldest first — a life reads forwards.
+
+    `unfinished` is the count of this deployment's runs that never reached their close. The
+    sessions are built from the LEDGER, whose row is written last (§44), so those runs are
+    absent from the list by construction — and a bare session count would then be a number the
+    reader has no reason to doubt.
+
+    There is deliberately NO reconciliation line here, and there cannot be one: over many runs
+    no single run summary exists to sum against, so the second, independent derivation that
+    makes a check a check is missing. Stated rather than left out — a missing check read as a
+    passed one is the more expensive mistake.
+    """
+    key: list[str] = list(SESSION_KEY)
+    deployment_id: str
+    sessions: list[DeploymentSessionRow]
+    count: int
+    unfinished: int = 0
+    advisory: Optional[DeploymentComparabilityAdvisory] = None
+
+
+class DeploymentBookingPeriodRow(BookingPeriodRow):
+    """
+    A booking period seen from a DEPLOYMENT, which needs one field more than a run does.
+
+    Inside a run report `run_id` would be redundant — the report is run-scoped and says it
+    once. Across a deployment it is the only thing that tells two periods apart: `segment_no`
+    is a per-BOT counter carried through the cold-start state, and a session that writes no
+    carry-over (a dry run, a mock) leaves the floor at zero, so its successor starts at 1
+    again. Three sessions of such a deployment then produce three rows numbered 1 — measured
+    2026-09-22 on the only deployment in this tree.
+
+    It is also the hinge: `run_id` is what the report routes and the run directory are
+    addressed by, so a bar on a chart can be clicked through to the session that booked it.
+
+    Additive by design — it IS a `BookingPeriodRow`, so a renderer written for the run report
+    serves this without a change.
+    """
+    run_id: str = ''
+
+
+class DeploymentBookingPeriodsResponse(BaseModel):
+    """
+    One deployment's booking periods, across every session it holds (#539).
+
+    The thirty-day picture: one entry per booking period — a trading day, or the stretch a
+    session actually covered — for a bot that restarted a dozen times. `/reports/runs/{run_id}/
+    booking-periods` answers the same shape for ONE run, so a consumer renders both with one
+    component and this route saves it the N+1 walk over the sessions.
+
+    Read from the LEDGER, which is the only store that holds a deployment's periods together.
+    The rows are `BookingPeriodRow`s plus the one field a deployment needs — see
+    `DeploymentBookingPeriodRow` — so a renderer written for the run report serves this too.
+
+    **There is deliberately NO reconciliation here, and there cannot be one.** A run's table
+    checks its periods against the figure the run derived by its own independent path; across
+    many runs no such second figure exists, so the check would be `sum(rows) - sum(rows)` — a
+    control total that holds by construction and can never fail (§48). Stated rather than left
+    out: a missing check read as a passed one is the more expensive mistake.
+
+    `sessions_without_periods` is what keeps a short list honest. A session whose ledger row
+    predates the booking journal books nothing, so it contributes no bar — and without the
+    count an incomplete history is indistinguishable from a quiet one.
+    """
+    key: list[str] = list(BOOKING_PERIOD_KEY)
+    deployment_id: str
+    periods: list[DeploymentBookingPeriodRow] = Field(default_factory=list)
+    count: int = 0
+    currencies: list[str] = Field(default_factory=list)
+    sessions: int = 0
+    sessions_without_periods: int = 0
 
 
 class RunMetaReport(RunScopedReport):
@@ -1000,7 +1294,7 @@ class BlockSplittingSymbolRow(BaseModel):
     # Derived (builder)
     total_trades: int = 0
     total_pnl: float = 0.0
-    open_at_boundary_ratio: float = 0.0   # % of trades left open by the edge
+    open_at_boundary_pct: float = 0.0   # % of trades left open by the edge
     disposition_pct: float = 0.0          # |unrealised at edge| / |total P&L| * 100
 
 
@@ -1013,7 +1307,7 @@ class BlockSplittingReport(RunScopedReport):
     symbols: list[BlockSplittingSymbolRow] = []
     agg_open_at_boundary_trades: int = 0
     agg_total_trades: int = 0
-    agg_open_at_boundary_ratio: float = 0.0
+    agg_open_at_boundary_pct: float = 0.0
     agg_disposition_pct: float = 0.0
 
 

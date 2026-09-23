@@ -33,7 +33,9 @@ from python.framework.signal_data.transport.signal_boot_resolver import prepare_
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import ParentKind, RunHeader
+from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
@@ -49,6 +51,7 @@ from python.framework.types.signal_data_types import (
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderType
+from python.framework.utils.scenario_set_utils import LIVE_CONFIG_SNAPSHOT
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
 from python.framework.validators.capital_validator import (
@@ -67,6 +70,33 @@ from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 # after a night still mounts something; the staleness contract judges whether it is
 # usable, which is not this number's job.
 _DEGRADED_REPLAY_WINDOW_HOURS: float = 24.0
+
+
+
+def _register_profile_config(source: Optional[Path]) -> str:
+    """
+    Record which profile content this session is starting from, and return its identity.
+
+    Never fatal, and never a reason not to trade: the per-session snapshot beside the header is
+    the evidence either way, so a store that cannot be written costs a join key and nothing else.
+
+    Args:
+        source: The profile file this session was commissioned with, or None
+
+    Returns:
+        The registered content id, or an empty string
+    """
+    if source is None:
+        return ''
+    try:
+        store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+        entry = store.register(Path(source), RunConfigKind.AUTOTRADER_PROFILE)
+        # Registration says the content exists; this says a RUN used it. Two steps on
+        # purpose — a config listed by the finder is registered without being run.
+        store.note_run(entry.config_id)
+        return entry.config_id
+    except (OSError, ValueError, KeyError):
+        return ''
 
 
 def create_autotrader_loggers(
@@ -161,7 +191,11 @@ def create_autotrader_loggers(
             # else left behind says which sessions belonged together.
             parent_id=deployment_id or None,
             parent_kind=ParentKind.DEPLOYMENT if deployment_id else None,
-            config_snapshot='autotrader_config.json',
+            config_snapshot=LIVE_CONFIG_SNAPSHOT,
+            # Which profile content this session started from (#538). Registered at the start,
+            # like the header itself, and never fatal: a profile the store cannot record is a
+            # profile the session can still trade with.
+            config_id=_register_profile_config(config.config_path),
             app_version=AppConfigManager().get_version(),
             git_commit=get_git_commit(),
         )

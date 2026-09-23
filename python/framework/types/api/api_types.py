@@ -9,6 +9,23 @@ and response serialization.
 from pydantic import BaseModel
 
 
+class ApiContractResponse(BaseModel):
+    """
+    Which CONTRACT this server serves, beside which app version happens to be running.
+
+    The two move on different clocks: the app version changes every release, the contract only
+    when a route or a response model does. A consumer records `contract` with its fixtures and
+    asserts it at start-up; `changes` says what moved into the current one, so they can decide
+    whether they care without reading a repository they do not have.
+
+    Deliberately NOT a deprecation channel — this project ships no compatibility layers (§27),
+    so the honest offer is a number to compare, not a promise that the old shape still works.
+    """
+    contract: int
+    app_version: str
+    changes: list[str] = []
+
+
 class HealthResponse(BaseModel):
     status: str
     version: str
@@ -24,6 +41,7 @@ class SymbolInfo(BaseModel):
 
 
 class SymbolListResponse(BaseModel):
+    key: list[str] = ['symbol']
     symbols: list[SymbolInfo]
 
 
@@ -49,6 +67,9 @@ class TimeframeInfo(BaseModel):
 
 
 class TimeframeListResponse(BaseModel):
+    # What makes one row unique (§49) — every served list says so, and a consumer can
+    # assert it rather than read it.
+    key: list[str] = ['name']
     timeframes: list[TimeframeInfo]
 
 
@@ -80,4 +101,8 @@ class CoverageGapsResponse(BaseModel):
     start: str                  # ISO-8601 UTC
     end: str                    # ISO-8601 UTC
     gap_counts: dict[str, int]  # per category
+    # A gap is identified by when it STARTED: two gaps of one symbol cannot open at the
+    # same instant, and the category is a classification of the same interruption rather
+    # than a second one.
+    key: list[str] = ['start']
     gaps: list[GapResponse]

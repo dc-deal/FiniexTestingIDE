@@ -12,15 +12,18 @@ Usage:
 import argparse
 import sys
 import time
+from pathlib import Path
 from typing import List
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.reporting.console.deployment_history_summary import (
+from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
     deployment_comparability_advisory,
+    summarize_deployments,
+)
+from python.framework.reporting.console.deployment_history_summary import (
     render_deployment_history,
     render_deployment_list,
-    summarize_deployments,
 )
 from python.framework.reporting.console.run_completion_summary import (
     render_missing_records,
@@ -85,7 +88,7 @@ class RunIndexCli:
         if len(runs) > 20:
             print(f'  … and {len(runs) - 20} more')
         print()
-        ledger = RunResultsLedger(AppConfigManager().get_run_ledger_path())
+        ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
         ledger_rows = ledger.read_rows()
         render_unfinished_runs(unfinished_by_group(runs, ledger_rows))
         # The opposite direction: a booking whose run directory is gone with no prune behind it.
@@ -111,7 +114,7 @@ class RunIndexCli:
             Process exit code — 0 even when nothing is grouped, because "no deployment has
             been declared yet" is a state, not a failure
         """
-        ledger = RunResultsLedger(AppConfigManager().get_run_ledger_path())
+        ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
         rows = ledger.read_rows()
         histories = build_deployment_histories(rows)
         if deployment:

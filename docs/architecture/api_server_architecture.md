@@ -29,7 +29,7 @@ remote-monitoring or tooling integrations.
 python/
   api/
     api_app.py          ← FastAPI app factory (create_app())
-    endpoints/          ← Router modules (broker_router, bars_router, reports_router)
+    endpoints/          ← Router modules, one per domain — the surface table below lists them
   cli/
     api_server_cli.py   ← Entry point (argparse, no logic)
   framework/
@@ -39,7 +39,7 @@ python/
         report_types.py ← Unified report models (#391) served by reports_router
 ```
 
-The `endpoints/` directory holds one `APIRouter` module per domain. The §26 threshold is reached (`broker_router`, `bars_router`, `reports_router`), each registered in `create_app()` via `app.include_router(..., prefix='/api/v1')`.
+The `endpoints/` directory holds one `APIRouter` module per domain, well past the §26 threshold. Each is registered in `create_app()` from `ROUTER_SURFACES` — the mount table that pairs a router with the surface its grants name — via `app.include_router(..., prefix='/api/v1')`.
 
 ## Request Lifecycle
 
@@ -90,11 +90,36 @@ realistic grant there — the model degrades to surface level by design.
 |---|---|---|
 | `brokers` | `broker_router` | `brokers:*` |
 | `bars` | `bars_router` | `bars:kraken_spot`, `bars:mt5` |
+| `deployments` | `deployments_router` | `deployments:*`, `deployments:deploy_20260918_091413` |
 | `reports` | `reports_router` | `reports:*` |
 | `sweeps` | `sweeps_router` | `sweeps:*` |
 
 The vocabulary is closed: a grant naming anything else fails when the credentials file is parsed,
 at boot, rather than becoming a denial at request time that nobody can explain.
+
+## Every list declares what makes one of its rows unique
+
+An unordered list of objects says nothing about its own identity, and a consumer keying on the
+obvious field folds two rows into one — silently, and in the direction that loses data. So every
+list response carries a `key`:
+
+```json
+{ "key": ["run_id"],                            "runs":        [ ... ] }
+{ "key": ["sweep_id"],                          "sweeps":      [ ... ] }
+{ "key": ["deployment_id", "currency"],         "deployments": [ ... ] }
+{ "key": ["run_id", "currency"],                "sessions":    [ ... ] }
+{ "key": ["run_id", "unit_name", "segment_no"], "periods":     [ ... ] }
+```
+
+Both of the cases that prompted it are ones where the obvious key is wrong: a deployment row is
+one per (deployment × account currency), and a booking period's running number restarts per bot,
+so two rows of one deployment can both be number 1. It is machine-readable on purpose — a
+consumer can assert it rather than read it (CLAUDE.md §49).
+
+**It is NOT the store's key.** A store entry's identity (`StoreEntry.key`) answers how one
+ENTRY is addressed; this answers what makes one ROW of THIS response unique, and the two differ
+wherever a route aggregates: `/deployments` groups ledger rows by (deployment_id, currency),
+while the ledger's own row identity is (run_id, currency, segment_no).
 
 **A COLLECTION route has no path parameter, so a grant has nothing to be about — and that was a
 hole.** Measured 2026-09-13 against a token holding only `bars:*` and `brokers:*`:
@@ -204,6 +229,7 @@ It is a state to pass through, not one to stay in.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/v1/health` | Server liveness — `{"status":"ok","version":"..."}` |
+| GET | `/api/v1/contract` | Which CONTRACT this server serves, beside the app version — they move on different clocks, and a model can change shape inside one app version. `changes` is one line per change that moved into the current contract. OPEN like `/health`: a consumer must be able to ask which contract they face before they hold a token, or a version mismatch and a credential failure look alike. Every response also carries `X-Api-Contract`, so a saved fixture is self-describing and a consumer's assertion stays local. Deliberately NOT a deprecation channel — no compatibility layers ship (§27), so a number to compare is the honest offer |
 | GET | `/api/v1/timeframes` | All configured timeframes in sorted order |
 | GET | `/api/v1/brokers` | Broker types available in bar index |
 | GET | `/api/v1/brokers/{broker}/symbols` | Symbols for a broker with `market_type` |
@@ -228,6 +254,11 @@ It is a state to pass through, not one to stay in.
 | GET | `/api/v1/reports/runs/{run_id}/warnings-errors` | Warnings/errors report (the run's tiered advisory + error pot). `errors[].logged_errors` carries `LogEntryRow` objects — level, `observed_at`, `event_time`, `scope`, `message` — not bare strings. An artifact written before that shape answers **409 `artifact_unreadable`**, never 500: run output is regenerated, not migrated (§27) |
 | GET | `/api/v1/reports/runs/{run_id}/broker` | Broker report (broker + symbol specifications the run executed against) |
 | GET | `/api/v1/reports/runs/{run_id}/feed-stability` | Feed-stability report (disturbance episodes as observed spans) |
+| GET | `/api/v1/reports/runs/{run_id}/config` | The configuration the run was commissioned with, PARSED, with the file name and the content id (#538) the index attributes to it. The index carried only those two pointers, so a reader who saw a change mark between two sessions of a deployment could not ask what changed. Read from the RUN DIRECTORY, never from the run-config store — that store's index carries `source_path`, an operator's private workspace path. Two distinct 404s: `run_not_found` for an unknown identity, `config_snapshot_missing` for a run that declared a snapshot it never filed, which is ordinary because the header is written at run start and the file is copied later |
+| GET | `/api/v1/reports/runs/{run_id}/booking-periods` | The run's Hauptbuch (#537): one summary per booking period — a trading day, or the stretch the run actually covered — plus its COMPLETENESS check. `reconciles` is three-state: true / false / **null when the run reports no figure in this currency**, which is an absent check and not a passed one. What it proves is that every closed trade reached exactly one period; it cannot prove a P&L is right, because both figures carry the same per-trade value along two routes. One table is ONE account currency — `currencies` names the others, whose periods are ledger rows like these. Served from the stored artifact, never rebuilt from the ledger: recomputed there the check would be `sum(rows) − sum(rows)` and could never fail. A run from before the artifact existed answers 404 |
+| GET | `/api/v1/deployments` | Every recorded deployment, newest first — one entry per (deployment × account currency), because a P&L column added over two currencies is not a number. `net_pnl` SUMS over the sessions; `max_drawdown` is their MAXIMUM and never a sum, since each live row carries the running decline against the inherited peak. `changed` marks a deployment whose sessions were not all produced by one configuration. Served from the run-results ledger (#497) |
+| GET | `/api/v1/deployments/{deployment_id}` | One deployment's sessions, OLDEST first — a life reads forwards, the opposite order to the console. Each session carries `ran_hours`, the `gap_hours` BEFORE it (with `gap_between_starts` where only a start-to-start measure was possible, which overstates it) and the two change marks. `advisory` says whether the rows may be read as one series at all; `unfinished` counts the runs that never reached their close, absent from the sessions by construction because the ledger row is written last (§44). **No reconciliation line, and there cannot be one** — over many runs there is no single run summary to sum against |
+| GET | `/api/v1/deployments/{deployment_id}/booking-periods` | Every booking period the deployment booked, across ALL of its sessions — the thirty-day picture in one call, where the run-scoped route would be an N+1 walk. Same row shape as `/reports/runs/{run_id}/booking-periods` plus `run_id`, which across a deployment is the only thing that tells two periods apart (`segment_no` is a per-BOT counter that continues across restarts; until 2026-09-23 the floor was persisted before the last period was sealed, so sessions REPEATED a number rather than continuing it — runs recorded before that date carry the repeats) and is the hinge into that run's report routes. Rows that book no period are skipped and their sessions counted in `sessions_without_periods`, so an incomplete history is not read as a quiet one. **No reconciliation, by construction** — see the note under the route above |
 
 ### Timeframes Endpoint Details
 

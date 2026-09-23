@@ -20,7 +20,7 @@ from python.framework.optimization.grid_expander import expand_grid
 from python.framework.optimization.parameter_override import apply_overrides
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.run_results_types import SweepContext
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
+from python.scenario.scenario_set import ScenarioSet
 from python.framework.validators.sweep_grid_validator import validate_sweep_grid
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.scenario.scenario_strategy_runner import initialize_batch_and_run

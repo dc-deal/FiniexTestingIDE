@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from python.api.api_app import create_app
 from python.framework.reporting.io.artifact_specs import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
+    BOOKING_PERIODS_ARTIFACT,
     BROKER_ARTIFACT,
     EXECUTION_STATS_ARTIFACT,
     FEED_STABILITY_ARTIFACT,
@@ -37,6 +38,8 @@ from python.framework.types.api.report_types import (
     AggregatedPortfolioCurrency,
     AggregatedPortfolioReport,
     AggregatedPortfolioRow,
+    BookingPeriodRow,
+    BookingPeriodsReport,
     BrokerInfoRow,
     BrokerReport,
     BrokerSymbolRow,
@@ -92,6 +95,7 @@ _SIGNAL_URL = f'/api/v1/reports/runs/{_RUN}/signal'
 _FEED_STABILITY_URL = f'/api/v1/reports/runs/{_RUN}/feed-stability'
 _WARNINGS_URL = f'/api/v1/reports/runs/{_RUN}/warnings-errors'
 _AGG_URL = f'/api/v1/reports/runs/{_RUN}/aggregated-portfolio'
+_BOOKING_URL = f'/api/v1/reports/runs/{_RUN}/booking-periods'
 
 
 def _report() -> TradeHistoryReport:
@@ -208,6 +212,28 @@ def _feed_stability_report() -> FeedStabilityReport:
         episode_count=1, stale_seconds=900.0, stress_injected_count=1, source_count=1)
 
 
+def _booking_periods_report() -> BookingPeriodsReport:
+    # Two trading days of one unit, and they DO add up to what the run reports by its own
+    # path — which is the line the table exists for.
+    rows = [
+        BookingPeriodRow(
+            unit_name='btc_run', segment_no=1, opened_at='2026-06-15T00:00:00+00:00',
+            closed_at='2026-06-16T00:00:00+00:00', reason='day_boundary', currency='USD',
+            trade_count=3, net_pnl=12.0, total_fees=0.6, win_rate=0.667, profit_factor=2.0,
+            final_equity=10012.0, min_equity=9995.0, max_equity=10015.0, max_drawdown=20.0),
+        BookingPeriodRow(
+            unit_name='btc_run', segment_no=2, opened_at='2026-06-16T00:00:00+00:00',
+            closed_at='2026-06-16T09:30:00+00:00', reason='run_end', currency='USD',
+            trade_count=2, net_pnl=-4.0, total_fees=0.4, win_rate=0.5, profit_factor=0.8,
+            final_equity=10008.0, min_equity=10004.0, max_equity=10013.0, max_drawdown=9.0),
+    ]
+    return BookingPeriodsReport(
+        run_id=_RUN_ID, periods=rows, currency='USD',
+        total_net_pnl=8.0, total_fees=1.0, total_trades=5,
+        run_net_pnl=8.0, run_total_trades=5, reconciles=True,
+        deepest_period_drawdown=20.0, final_equity=10008.0)
+
+
 def _warnings_errors_report() -> WarningsErrorsReport:
     return WarningsErrorsReport(run_id=_RUN_ID, 
         warnings=[WarningRow(tier='major', scope='run', message='DEBUG MODE')],
@@ -266,6 +292,7 @@ def client(tmp_path: Path):
     write_artifact(_feed_stability_report(), io_dir, FEED_STABILITY_ARTIFACT)
     write_artifact(_warnings_errors_report(), io_dir, WARNINGS_ERRORS_ARTIFACT)
     write_artifact(_aggregated_portfolio_report(), io_dir, AGGREGATED_PORTFOLIO_ARTIFACT)
+    write_artifact(_booking_periods_report(), io_dir, BOOKING_PERIODS_ARTIFACT)
     # The endpoint constructs ReportStore() inline → point it at the fixture logs root
     with patch('python.api.endpoints.reports_router.ReportStore', lambda: ReportStore(_index_path(tmp_path))):
         yield TestClient(create_app())
@@ -470,4 +497,31 @@ def test_aggregated_portfolio_returns(client):
 
 def test_aggregated_portfolio_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/aggregated-portfolio')
+    assert response.status_code == 404
+
+
+def test_booking_periods_returns_the_table(client):
+    response = client.get(_BOOKING_URL)
+    assert response.status_code == 200
+    body = response.json()
+    assert [row['segment_no'] for row in body['periods']] == [1, 2]
+    assert body['currency'] == 'USD'
+    assert body['total_trades'] == 5
+
+
+def test_booking_periods_carries_its_reconciliation(client):
+    """
+    The reason the report is STORED rather than rebuilt from the ledger. The check compares the
+    periods against the figure the run derived by its own independent path, and that second
+    figure exists only while the run does — recomputed from the ledger it would be
+    `sum(rows) - sum(rows)`, a control total that holds by construction and can never fail.
+    """
+    body = client.get(_BOOKING_URL).json()
+    assert body['reconciles'] is True
+    assert body['total_net_pnl'] == body['run_net_pnl'] == 8.0
+    assert body['total_net_pnl'] == sum(row['net_pnl'] for row in body['periods'])
+
+
+def test_booking_periods_run_not_found(client):
+    response = client.get('/api/v1/reports/runs/nope/booking-periods')
     assert response.status_code == 404

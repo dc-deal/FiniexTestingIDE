@@ -134,7 +134,8 @@ from python.framework.types.live_types.live_stats_config_types import (
     ScenarioStatus,
 )
 from python.framework.types.mount_package_types import DataIdentityKey, MountPackage
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet, SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.scenario.scenario_set import ScenarioSet
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.runtime_env_utils import is_debug_execution
 from python.framework.validators.post_run_validator import PostRunValidator

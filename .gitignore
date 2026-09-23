@@ -139,6 +139,11 @@ data/finished/*
 data/cache/
 # Parameter Optimization run-results ledger (generated runtime data)
 
+# Run-config store (#538) — the frozen copy of every configuration that started a run, plus
+# its index. Generated, rebuildable by re-registering, and it holds copies of configs from
+# user_algos/, which is private.
+run_configs/
+
 # UPDATED (C#003): Ignore all subdirectories in processed/
 # This covers hierarchical structure: data/processed/{collector}/{symbol}/*.parquet
 data/processed/*

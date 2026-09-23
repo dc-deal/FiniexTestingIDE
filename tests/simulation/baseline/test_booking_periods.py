@@ -58,5 +58,7 @@ class TestTheScenarioBooks:
         stats = tick_loop_results.portfolio_stats
         if stats.account_max_drawdown <= 0:
             return                                  # nothing declined, nothing to assert
-        deepest = min(s.segment_max_drawdown for s in tick_loop_results.booking_segments)
-        assert deepest < 0
+        # A MAGNITUDE since #539, like `account_max_drawdown` beside it — the sign is a display
+        # decision and lives in the renderers. `max()` is therefore the deepest fall here.
+        deepest = max(s.segment_max_drawdown for s in tick_loop_results.booking_segments)
+        assert deepest > 0

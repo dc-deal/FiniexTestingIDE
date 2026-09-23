@@ -76,6 +76,7 @@ class AlgoStateStore:
         weekend_aware: bool,
         logger: AbstractLogger,
         run_id: Optional[str] = None,
+        bot_id: str = '',
     ):
         self._config = config
         self._profile = profile
@@ -83,8 +84,9 @@ class AlgoStateStore:
         self._weekend_aware = weekend_aware
         self._logger = logger
         self._run_id = run_id
+        self._bot_id = bot_id
 
-        self._path = Path(config.path) / f'{carry_over_key(profile, symbol)}.json'
+        self._path = Path(config.path) / f'{carry_over_key(profile, symbol, bot_id)}.json'
 
         self._last_save_tick: int = 0
         self._last_save_time: float = time.monotonic()
@@ -145,6 +147,9 @@ class AlgoStateStore:
             written_by_run_id=self._run_id,
             profile=self._profile,
             symbol=self._symbol,
+            # What the FILE NAME was derived from — without it nothing can recompute this
+            # document's own name, and anything that tried would orphan it (#538).
+            bot_id=self._bot_id,
             snapshot=snapshot,
         )
 

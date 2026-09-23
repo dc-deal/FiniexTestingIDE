@@ -55,3 +55,44 @@ class TestClockInjection:
         assert executor.get_current_time() == later
         # The last real tick is unchanged (price source stays last-known).
         assert executor.get_current_price('BTCUSD') == (49999.0, 50001.0)
+
+
+class TestTheClockOnlyMovesForward:
+    """
+    Live mixes two time bases: the tick carries the venue's EVENT time, the heartbeat our own
+    WALL clock. Wall time runs ahead of the venue by the feed latency, so the tick after a
+    heartbeat used to set the clock BACK by that much — on every heartbeat, not rarely.
+
+    Measured 2026-09-22: at a trading-day boundary sealed by a heartbeat, the next tick's close
+    then fell before the new booking period opened and was booked into no period at all. The
+    clamp is the interim answer; #375's ordering contract (LIVE orders by `ts_init`) is the
+    real one.
+    """
+
+    def test_a_tick_behind_the_heartbeat_does_not_rewind_the_clock(self):
+        mock = MockOrderExecution(mode=MockExecutionMode.DELAYED_FILL)
+        executor = mock.create_executor()
+        heartbeat = datetime(2026, 6, 3, 18, 0, 0, tzinfo=timezone.utc)
+        executor.set_current_time(heartbeat)
+
+        # The venue stamped this tick 300 ms before we injected the wall clock.
+        mock.feed_tick(executor, bid=49999.0, ask=50001.0,
+                       timestamp=heartbeat - timedelta(milliseconds=300))
+        assert executor.get_current_time() == heartbeat
+
+    def test_a_tick_ahead_of_the_heartbeat_still_advances_it(self):
+        # The clamp holds the floor, it does not pin the clock.
+        mock = MockOrderExecution(mode=MockExecutionMode.DELAYED_FILL)
+        executor = mock.create_executor()
+        heartbeat = datetime(2026, 6, 3, 18, 0, 0, tzinfo=timezone.utc)
+        executor.set_current_time(heartbeat)
+        later = heartbeat + timedelta(seconds=2)
+        mock.feed_tick(executor, bid=49999.0, ask=50001.0, timestamp=later)
+        assert executor.get_current_time() == later
+
+    def test_an_earlier_injection_is_refused_too(self):
+        executor = MockOrderExecution(mode=MockExecutionMode.DELAYED_FILL).create_executor()
+        now = datetime(2026, 6, 3, 18, 0, 0, tzinfo=timezone.utc)
+        executor.set_current_time(now)
+        executor.set_current_time(now - timedelta(seconds=5))
+        assert executor.get_current_time() == now

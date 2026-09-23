@@ -2,13 +2,20 @@
 
 import shutil
 from pathlib import Path
-from typing import Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.config_types.file_logging_config_types import FileLoggingConfig
 
 vLog = get_global_logger()
+
+# The name a run's configuration snapshot is filed under, per pipeline. ONE source, because
+# the run header DECLARES this name before the file is copied and a reader joins the two —
+# they agreed only by coincidence while the header wrote a literal and the copier derived the
+# name from the LOGGING configuration, so changing `file_logging.scenario.file_name_prefix`
+# would have made every new header name a file that is not there.
+SIM_CONFIG_SNAPSHOT = 'scenario_config.json'
+LIVE_CONFIG_SNAPSHOT = 'autotrader_config.json'
 
 
 class ScenarioSetUtils:
@@ -17,7 +24,7 @@ class ScenarioSetUtils:
         self,
         config_snapshot_path: Path,
         scenario_log_path: Path,
-        file_name_prefix: Optional[str] = None,
+        file_name: str,
     ):
         app_config = AppConfigManager()
         file_logger_config: FileLoggingConfig = app_config.get_file_logging_config_object()
@@ -26,8 +33,7 @@ class ScenarioSetUtils:
         self.scenario_log_path = scenario_log_path
         self.config_snapshot_path = config_snapshot_path
         self.config_copied = False
-        prefix = file_name_prefix if file_name_prefix else file_logger_config.scenario_file_name_prefix
-        self._file_name = f'{prefix}_config.json'
+        self._file_name = file_name
 
     def copy_config_snapshot(self):
         """Copy scenario config file as snapshot (global only)."""

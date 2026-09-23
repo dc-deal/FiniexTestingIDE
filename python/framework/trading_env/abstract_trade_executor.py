@@ -386,7 +386,12 @@ class AbstractTradeExecutor(ABC):
         self._tick_counter += 1
         # Real-tick clock: the tick carries its own time. The loop injects the
         # between-tick (ghost/heartbeat) time separately via set_current_time (#360).
-        self._clock_time = tick.timestamp
+        # Forward only, and this is the side the backwards step comes from: live, the
+        # heartbeat injects our WALL clock while the tick carries the VENUE's event time,
+        # which is earlier by the feed latency (see set_current_time for what that cost the
+        # booking periods). In the simulation the stamps are monotonic anyway, so the clamp
+        # is invisible there.
+        self._clock_time = self._forward_only(tick.timestamp)
         self._current_prices[tick.symbol] = (tick.bid, tick.ask)
         self.portfolio.mark_dirty(tick)
         # Forward tick to broker adapter — mock/simulation adapters need
@@ -1786,10 +1791,33 @@ class AbstractTradeExecutor(ABC):
         - Live: wall-clock at the heartbeat.
         - Sim: the simulated resolution time of a between-tick fill (Stage 2).
 
+        The clock only ever moves FORWARD. Live mixes two time bases on purpose — the tick
+        carries the venue's event time, the heartbeat our own wall clock — and the wall clock
+        runs ahead of the venue by the feed latency, so the tick after a heartbeat would set it
+        BACK by that much. Measured 2026-09-22: at a trading-day boundary sealed by a heartbeat,
+        the next tick's close then falls before the new period opened and is booked into no
+        period at all. Clamping forward costs that tick a stamp too late by the feed latency and
+        removes the backwards step; the real answer is #375's ordering contract, where LIVE
+        orders by `ts_init` and the two bases stop being mixed (§9).
+
         Args:
             now: Timezone-aware UTC datetime for the current pass
         """
-        self._clock_time = now
+        self._clock_time = self._forward_only(now)
+
+    def _forward_only(self, now: datetime) -> datetime:
+        """
+        The later of the proposed instant and the one the clock already holds.
+
+        Args:
+            now: The instant a caller wants to set
+
+        Returns:
+            `now`, or the current clock value when `now` would move it backwards
+        """
+        if self._clock_time is not None and now < self._clock_time:
+            return self._clock_time
+        return now
 
     def get_market_clock(self) -> MarketClock:
         """Market clock for rollover / weekend awareness (#365)."""

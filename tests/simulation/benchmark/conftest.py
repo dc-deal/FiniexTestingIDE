@@ -36,7 +36,7 @@ from python.framework.reporting.certificates.certificate_config_utils import (
 from python.framework.reporting.certificates.certificate_identity_builder import (
     build_certificate_identity,
 )
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet
+from python.scenario.scenario_set import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from tests.simulation.benchmark.system_fingerprint import (
     SystemFingerprint,

@@ -15,6 +15,7 @@ from python.framework.exceptions.api_errors import ApiException
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
+    BOOKING_PERIODS_ARTIFACT,
     BROKER_ARTIFACT,
     EXECUTION_STATS_ARTIFACT,
     FEED_STABILITY_ARTIFACT,
@@ -30,6 +31,7 @@ from python.framework.reporting.io.artifact_specs import (
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
+    BookingPeriodsReport,
     BrokerReport,
     ExecutionStatsReport,
     FeedStabilityReport,
@@ -37,6 +39,7 @@ from python.framework.types.api.report_types import (
     PendingOrdersReport,
     PortfolioReport,
     ProfilingReport,
+    RunConfigSnapshot,
     RunInfo,
     RunListResponse,
     RunSummary,
@@ -353,6 +356,32 @@ def get_feed_stability(run_id: str) -> FeedStabilityReport:
     return report
 
 
+@router.get('/reports/runs/{run_id}/booking-periods', response_model=BookingPeriodsReport)
+def get_booking_periods(run_id: str) -> BookingPeriodsReport:
+    """
+    The run's Hauptbuch (#537): one summary per booking period, and whether they add up.
+
+    Served from the stored artifact rather than rebuilt from the ledger, and the reconciliation
+    is the reason. It compares the periods against the figure the run reports by its own
+    independent path, and that second figure exists only while the run does — recomputed from
+    the ledger the check would be `sum(rows) - sum(rows)`, i.e. a control total that holds by
+    construction and can never fail.
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The BookingPeriodsReport (404 if the run has no booking-periods artifact — every run
+        from before the artifact existed, which is the same semantics as any other section)
+    """
+    report = ReportStore().get(run_id, BOOKING_PERIODS_ARTIFACT)
+    if report is None:
+        raise ApiException(
+            404, 'run_not_found',
+            f"No booking-periods artifact for run '{run_id}'")
+    return report
+
+
 def _parse_iso(value: Optional[str], field: str) -> Optional[datetime]:
     """Parse an ISO-8601 query param, or raise a 400 ApiException."""
     if value is None:
@@ -362,3 +391,35 @@ def _parse_iso(value: Optional[str], field: str) -> Optional[datetime]:
     except ValueError:
         raise ApiException(
             400, 'invalid_timestamp', f"'{field}' must be ISO-8601, got '{value}'")
+
+@router.get('/reports/runs/{run_id}/config', response_model=RunConfigSnapshot)
+def get_run_config(run_id: str) -> RunConfigSnapshot:
+    """
+    The configuration a run was commissioned with.
+
+    The run index already carries two POINTERS — the snapshot's file name and its content id —
+    and a reader who sees a change mark between two sessions of a deployment cannot ask what
+    changed, because nothing served what they point at. This is that route.
+
+    Two 404s, deliberately distinguished: `run_not_found` when the identity is unknown, and
+    `config_snapshot_missing` when the run declared one it never filed. The header is written at
+    run start and the file is copied later, so the second is an ordinary state — a session that
+    died in between, or one whose file logging was switched off — and reading it as "unknown
+    run" would send a consumer looking for the wrong fault.
+
+    Args:
+        run_id: The run-timestamp directory name
+
+    Returns:
+        The snapshot, parsed, with the name and content id the index attributes to this run
+    """
+    snapshot = ReportStore().get_config_snapshot(run_id)
+    if snapshot is None:
+        known = any(r.run_id == run_id for r in ReportStore().list_runs())
+        if not known:
+            raise ApiException(
+                404, 'run_not_found', f"No run '{run_id}' in the run index")
+        raise ApiException(
+            404, 'config_snapshot_missing',
+            f"Run '{run_id}' declares a configuration snapshot that was never filed")
+    return snapshot

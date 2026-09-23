@@ -15,11 +15,9 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.mount_package_types import MountPackage
 from python.framework.types.run_results_types import SweepContext
-from python.framework.types.scenario_types.scenario_set_types import (
-    LoadedScenarioConfig,
-    ScenarioSet,
-)
+from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig
 from python.scenario.generator.profile_loader import ProfileLoader
+from python.scenario.scenario_set import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
 vLog = get_global_logger()

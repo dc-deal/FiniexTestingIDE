@@ -325,6 +325,15 @@ class AppConfigManager:
         """
         return self._app_config.paths.run_ledger
 
+    def get_run_configs_path(self) -> str:
+        """
+        Get the run-config store directory from config.
+
+        Returns:
+            Path string for the run-config store
+        """
+        return self._app_config.paths.run_configs
+
     def get_scenario_sets_path(self) -> str:
         """
         Get scenario sets config path from config.

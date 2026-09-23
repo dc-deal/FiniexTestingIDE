@@ -126,7 +126,7 @@ class RunIndex(AbstractStoreIndex):
     # Fixed column order, so the file stays readable back across versions.
     COLUMNS: List[str] = [
         'run_id', 'start_time', 'run_type', 'run_name', 'parent_id', 'parent_kind', 'run_dir',
-        'artifacts', 'app_version', 'git_commit', 'config_snapshot', 'reporting',
+        'artifacts', 'app_version', 'git_commit', 'config_snapshot', 'config_id', 'reporting',
         # How much disk this run occupies, stamped where it is CHEAP — once, over ONE run, at
         # the moment its reports land. Measured 2026-09-18: answering it at READ time cost the
         # pruner 42 s over 7409 files against a 0.62 s floor for everything else it does, and
@@ -138,7 +138,7 @@ class RunIndex(AbstractStoreIndex):
     # 1 → 2: `size_bytes` appended. A row written before it reads back as NaN, which means
     # UNKNOWN and is reported as such — never as 0 MB, which on the one screen an operator
     # uses to decide what to delete would read as "this run is empty".
-    LOGIC_VERSION: int = 3
+    LOGIC_VERSION: int = 4
 
     def __init__(self, path: Path, roots: Optional[RunLogPaths] = None):
         """
@@ -177,6 +177,7 @@ class RunIndex(AbstractStoreIndex):
             'app_version': header.app_version,
             'git_commit': header.git_commit,
             'config_snapshot': header.config_snapshot,
+            'config_id': header.config_id,
             'reporting': str(header.reporting),
             # The run has not produced anything yet; `record_artifacts` stamps the real
             # figure when it finishes.
@@ -232,6 +233,7 @@ class RunIndex(AbstractStoreIndex):
                         app_version=r.app_version or '',
                         git_commit=_or_none(r.git_commit),
                         config_snapshot=r.config_snapshot or '',
+                        config_id=_or_none(getattr(r, 'config_id', None)) or '',
                         reporting=r.reporting or RunReporting.EXPECTED,
                         size_bytes=_int_or_zero(getattr(r, 'size_bytes', 0)))
                 for r in frame.itertuples()]
@@ -305,6 +307,7 @@ class RunIndex(AbstractStoreIndex):
                     'app_version': header.app_version,
                     'git_commit': header.git_commit,
                     'config_snapshot': header.config_snapshot,
+                    'config_id': header.config_id,
                     'reporting': str(header.reporting),
                     # The repair path pays the walk it saves every reader — a rebuilt index
                     # that dropped the sizes would be a worse index than the one it replaced.

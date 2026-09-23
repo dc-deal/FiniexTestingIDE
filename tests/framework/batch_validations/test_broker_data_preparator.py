@@ -12,9 +12,9 @@ import pytest
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.data_preparation.broker_data_preparator import BrokerDataPreparator
+from python.framework.data_preparation.broker_scenario_info import BrokerScenarioInfo
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.types.scenario_types.scenario_set_types import (
-    BrokerScenarioInfo,
     SingleScenario,
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType

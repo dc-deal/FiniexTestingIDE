@@ -140,8 +140,10 @@ def _fold(
     if reduction is Reduction.SUM:
         return sum(present) if present else None
     if reduction is Reduction.MAX:
-        # By MAGNITUDE, and the sign is kept: a drawdown is recorded negative while an
-        # excursion or a peak is positive, so "the largest" has to mean the same thing for both.
+        return max(present) if present else None
+    if reduction is Reduction.MAX_ABS:
+        # By MAGNITUDE, and the sign is kept: a decline may be stored either way round, and
+        # rows of both ages sit in one store, so "the largest" has to mean the same for both.
         return max(present, key=abs) if present else None
     if reduction is Reduction.MIN:
         return min(present) if present else None

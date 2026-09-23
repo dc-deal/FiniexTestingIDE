@@ -306,6 +306,30 @@ Tick loop, at the seal      derive (memory) · collect BookingSegment · log the
 Coordinator, at the end     ONE write over all periods · one line about the write itself
 ```
 
+### The table is PERSISTED, and the reconciliation is why (#539)
+
+The section was the one that was derived and then thrown away: rendered to the console and the
+summary log, written to no artifact, so nothing but a person reading that log could see it. It
+now writes `io/booking_periods.json` like every other section, and `/reports/runs/{run_id}/
+booking-periods` serves that file.
+
+Rebuilding it later from the ledger rows would look equivalent and is not. The check compares
+the periods against a figure the run keeps beside them, and that figure exists only while the
+run does. Rebuilt from the ledger the same line would be `sum(rows) − sum(rows)`, a control
+total that holds by construction and can never fail (§48). A check that cannot fail is worse
+than no check, because it is read as a passed one.
+
+**What that check proves is COMPLETENESS, not arithmetic — corrected 2026-09-22.** The two
+figures are not two derivations of the money. `realized_pnl = position.unrealized_pnl` is
+computed once at the close and handed to BOTH the trade record and the statistics counter three
+lines apart, so they carry one value along two routes. What the left route has been through and
+the right has not is retention (the trade deque is capped), windowing (`exit_time` in
+`[opened, closed)`) and transport (the sim's process bridge) — and that is exactly the class of
+fault a disagreement names. An injected 30 % arithmetic defect moves both figures together and
+the check stays green. The genuinely independent second derivation exists one method away and
+nothing compares it yet: at SPOT the balance moves by `lots × price ± fee` while the P&L comes
+from mark-to-market.
+
 ## The summary FILE gets everything; only the CONSOLE is trimmed
 
 A section renders INSIDE `RunConsoleRenderer.render_all`, never after a coordinator's stdout
@@ -362,7 +386,7 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 | Executive — detailed portfolio-performance block | **sim-only** | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (margin / spot / mixed preserved, byte-identical) | — (#397); the profit factor is read from the model instead of recomputed with a divergent formula, and the order execution rate is carried as `execution_rate_pct` |
 | Cold start (inherited at boot) | **autotrader-only** | ✅ `ColdStartReport` | ✅ inside `LiveSessionSummary` | complete (#355 / #493): what was adopted, what was left alone with its reason, what the position book restored, the book shortfall, and the decision logic's verdict with its note. Filed whether the algo accounted for the situation or not — a yes must not make the case invisible — and it carries `applied`, so a boot that REFUSED is not read as one that inherited a book. Absent for sim, dry run and Field Study |
 | Safety (risk baseline + limits) | **autotrader-only** | ✅ `SafetyReport` | ✅ inside `LiveSessionSummary` | complete (#356 / #314): the baseline RECORD the session measured against — kind, stamp, origin, and on spot the price and holdings its value can be re-derived from — beside the extremes the account actually reached. The extremes are RUNNING MAXIMA captured by the tick loop, not the value at the end: a session that touched 18 % at hour three and recovered would otherwise be indistinguishable from one that never moved. The absolute and the percentage low are two separate instants, because a high-water mark moves. One row per UTC day, each naming its own day-start baseline — a maximum across thirty days would be a maximum across thirty denominators. Written whenever a baseline was taken, including for a session whose limits were OFF, because that record is what says what would have fired. No HTTP endpoint yet, same as cold start |
-| Booking periods | **unified** | ✅ `BookingPeriodsReport` | ✅ `BookingPeriodsSummary` | the run's Hauptbuch: one line per closed booking period, and a total line that RECONCILES against the run's own figure derived by the independent path. Silent when the run booked none. Derived in `booking_periods_report_builder`; the periods themselves come from the tick loop's seals (#537) |
+| Booking periods | **unified** | ✅ `BookingPeriodsReport` | ✅ `BookingPeriodsSummary` | the run's Hauptbuch: one line per closed booking period, and a total line that RECONCILES against the run's own figure derived by the independent path. Silent when the run booked none. Derived in `booking_periods_report_builder`; the periods themselves come from the tick loop's seals (#537). PERSISTED since #539 — `io/booking_periods.json`, served by `/reports/runs/{run_id}/booking-periods`; the stored artifact carries the reconciliation, which a rebuild from the ledger could not (see the section above) |
 | Shutdown / Emergency / Session | **autotrader-only** | ✅ | ✅ `LiveSessionSummary` | the live closing block of the unified `RunConsoleRenderer` (#403 Phase 2): session stats + warnings/errors (session buffers, §35) + output locations; #389 analytics line model-sourced |
 | **Final:** directory consolidation | — | — | — | ✅ **#396 DONE** — `batch_reporting/` folded into `framework/reporting/` by stage: `run_reports/` (DERIVE) · `io/` (PERSIST) · `console/` (PRESENT) |
 | Shared coordinator + folder split | — | — | — | ✅ **#403 DONE** — the units-derived DERIVE+PERSIST core extracted into `SharedReportCoordinator` (both pipelines delegate, returning `UnifiedReports`); the home re-split into `builders/` (DERIVE) · `io/` (PERSIST writers) · `store/` (read-master + cross-run ledger + provenance). Live ledger append wired (5.a) |

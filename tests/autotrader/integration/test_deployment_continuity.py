@@ -33,7 +33,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.exceptions.live_execution_errors import OneOffInsideDeploymentError
-from python.framework.reporting.console.deployment_history_summary import (
+from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
 )
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
@@ -219,3 +219,91 @@ class TestWhatADryRunMayNotHandOn:
             'a dry run recorded a key it never sent orders under')
         assert stored['open_positions'] == [], (
             'the successor would inherit a book the venue does not hold')
+
+
+def _period_numbers(run_id: str) -> list:
+    """
+    The booking-period numbers one session left in the ledger.
+
+    Args:
+        run_id: The session whose periods to read
+
+    Returns:
+        Its `segment_no` values, ascending
+    """
+    ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
+    return sorted(row.segment_no for row in ledger.read_rows(run_id=run_id))
+
+
+class TestThePeriodNumberingContinues:
+    """
+    A deployment's booking periods are numbered ACROSS its restarts, and no two of them may
+    share a number (#537).
+
+    #537 asked for exactly this test — "segment numbering across a restart" — and it was never
+    written. What shipped instead persisted the carry-over floor BEFORE the last period was
+    sealed, so every successor reopened at the number its predecessor had just closed, and a
+    session booking a single period never advanced the floor at all. Measured 2026-09-23 on the
+    demo deployment: five consecutive sessions each booked a period numbered 6.
+
+    The cases below are that defect seen from both ends — the floor that is written, and the
+    number the successor then hands out. Neither can be seen from a unit test of the recorder,
+    which counts correctly in isolation; only the shutdown ORDER is wrong.
+    """
+
+    def test_each_session_books_at_least_one_period(self, chain):
+        """Guards the cases below: over zero periods they would both pass vacuously."""
+        for name in ('first', 'second'):
+            assert _period_numbers(chain[name]._run_id), (
+                f'the {name} session booked no period, so numbering cannot be checked')
+
+    def test_the_successor_opens_above_its_predecessor(self, chain):
+        first = _period_numbers(chain['first']._run_id)
+        second = _period_numbers(chain['second']._run_id)
+        assert max(first) < min(second), (
+            f'the successor reopened at a number already in the books: '
+            f'{first} then {second}')
+
+    def test_no_two_periods_of_one_deployment_share_a_number(self, chain):
+        # The consequence a consumer meets: two periods with one identity. The row key
+        # carries `run_id` as well, so nothing is LOST — but the number stops being one.
+        numbers = _period_numbers(chain['first']._run_id) + _period_numbers(
+            chain['second']._run_id)
+        assert len(numbers) == len(set(numbers)), f'a number was handed out twice: {numbers}'
+
+    def test_the_carried_floor_is_the_number_actually_reached(self, chain):
+        """
+        The defect at its source. The floor on disk must be what the session REACHED, not what
+        it had reached at the moment the carry-over happened to be written.
+        """
+        documents = sorted(Path(chain['fresh']._config.cold_start.path).glob('*.json'))
+        stored = json.loads(documents[0].read_text())['snapshot']
+        assert stored['highest_segment_no'] == max(_period_numbers(chain['fresh']._run_id)), (
+            'the stored floor is not the last number this session sealed')
+
+
+    def test_the_carried_drawdown_is_the_one_the_session_reported(self, chain):
+        """
+        The same ordering, one field over, and without a floor to blunt it: the store
+        OVERWRITES the drawdown record. A successor inheriting a shallower curve than the
+        session reported continues a thirty-day drawdown from a peak that was never real —
+        the restart drift #497 removed.
+
+        **This is an INVARIANT, not a reproduction — measured 2026-09-23 it passes with the
+        closing write removed.** A mock session samples equity on every tick and ends when the
+        tick source runs out, so its last sample holds nothing new. The divergence needs a fill
+        resolving on a HEARTBEAT, the one pass that moves balances and never samples, with the
+        session ending on the very next line (`is_session_end_requested`). That path is real and
+        reachable live; it is not reachable from a replay. So this case guards the contract
+        rather than demonstrating the defect, and it says so instead of implying otherwise.
+        """
+        session = chain['fresh']
+        documents = sorted(Path(session._config.cold_start.path).glob('*.json'))
+        stored = json.loads(documents[0].read_text())['snapshot']['account_drawdown']
+        reported = session._executor.portfolio.get_account_drawdown_carry_over()
+        if reported is None:
+            pytest.skip('this session measured no drawdown, so there is nothing to compare')
+        assert stored is not None, 'the successor inherits no drawdown at all'
+        assert stored['max_drawdown'] == pytest.approx(reported.max_drawdown), (
+            'the stored curve is not the one the session reported')
+        assert stored['max_equity'] == pytest.approx(reported.max_equity)

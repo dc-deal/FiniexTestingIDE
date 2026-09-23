@@ -402,6 +402,55 @@ every ordinary prune is one nobody reads.
 
 ---
 
+## The same history over HTTP
+
+Everything above is also served read-only by the API server, for the viewer and for anything
+else that reads rather than prints:
+
+```
+GET /api/v1/deployments                                   every deployment, newest first
+GET /api/v1/deployments/{deployment_id}                   one deployment's sessions
+GET /api/v1/deployments/{deployment_id}/booking-periods   its periods, across all sessions
+```
+
+The third one is the whole history at the grain the ledger actually books in: one entry per
+trading day for a bot that restarted a dozen times, in one call. Each entry names the `run_id`
+that booked it — necessary, because `segment_no` is a per-BOT counter that restarts wherever a
+session wrote no carry-over floor, so two periods of one deployment can both be number 1.
+
+Two differences from the terminal, both deliberate. The sessions come back **oldest first** — a
+life reads forwards, where the table above puts the newest on top because that is the row you
+open it for. And the warning block is a field on the response (`advisory`) rather than a banner,
+so a client cannot render the table and drop the sentence that says whether the rows may be
+added up at all.
+
+The response also carries `unfinished`: the sessions come from the ledger, whose row is written
+last, so a session killed before its close is missing from the list by construction. A bare
+count would be a number with nothing to doubt about it.
+
+A token needs the `deployments` grant — `deployments:*` for every bot, or one deployment's id
+for one of them.
+
+**What the gap field looks like when it matters.** `gap_hours` is derived from two wall-clock
+stamps — the end of the previous session and the start of this one — so on a bot that is
+restarted for an update it is minutes, and on one that was off over a weekend it is days:
+
+```
+run id                     started            ran     net P&L   max DD (cum)   notes
+20260916_060500_8e10       2026-09-16 06:05  11.8 h     19.60       -212.75    idle 4.5 d
+20260911_063000_c07d       2026-09-11 06:30  11.5 h     88.05       -134.10    idle 2.5 d
+20260908_071500_41ab       2026-09-08 07:15  10.4 h    -12.75       -134.10    idle 6.6 d
+20260901_060000_9f2c       2026-09-01 06:00  12.0 h     41.20        -58.40
+```
+
+The first session of a deployment has none — there is nothing before it. And a gap measured
+`gap_between_starts` contains the predecessor's whole runtime, so it is an UPPER bound and has
+to be labelled as one rather than shown as the same measure.
+
+This is also the one field that cannot be produced on demand: a demo deployment generated in
+one sitting has real gaps of seconds, because the stamps are real. A long idle stretch is a
+thing that has to be waited for, so it is described here rather than manufactured.
+
 ## Checking what a session decided
 
 Every session says its resolved answer in two places, and both say the *resolved* one — a

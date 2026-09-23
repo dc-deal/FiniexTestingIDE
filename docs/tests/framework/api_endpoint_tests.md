@@ -43,15 +43,15 @@ is the one that gets forgotten.
 | `TestATokenIsRequired` | 401 without a header and for an unknown token; `WWW-Authenticate: Bearer` on the refusal, so a client can tell a dead credential from a transport fault; `/health` stays open |
 | `TestHoldingATokenIsNotHoldingAGrant` | The walk over every identity route with a token holding NOTHING (403 required on each); a market-data token reaches its broker and is refused on a report; a grant for one broker does not carry to another |
 | `TestTheTokenFileIsRefusedWhenItIsTheTrackedOne` | A live token answering from the committed file refuses the boot; an inactive entry there is fine, which is what lets the placeholder carry examples |
-| `TestTheSurfaceVocabularyIsClosed` | An unknown surface fails when the token is parsed, not at request time |
-| `TestACollectionRouteIsGatedToo` | The hole the walk cannot see: a route with no path parameter had nothing for a grant to be about, so `/reports/runs` and `/sweeps` answered any authenticated token. Refusal and admission are both named by hand |
+| `TestTheSurfaceVocabularyIsClosed` | An unknown surface fails when the token is parsed, not at request time; and the vocabulary is held to the same set as `api_app.ROUTER_SURFACES`, so a router mounted under a surface no token can name — or a surface no router serves — fails here rather than becoming a denial nobody can explain |
+| `TestACollectionRouteIsGatedToo` | The hole the walk cannot see: a route with no path parameter had nothing for a grant to be about, so `/reports/runs`, `/sweeps` and `/deployments` would answer any authenticated token. Refusal and admission are both named by hand — a new collection route needs its own pair or nothing looks at it |
 | `TestTheAppLevelRoutesAreADecision` | `/timeframes` open beside `/health`, `/brokers` requiring a token and taking no grant — pinned so neither drifts back to being accidental |
 | `TestTheSchemaSurfaceIsOffWhereItCannotBeGuarded` | `/openapi.json`, `/docs` and `/redoc` are FastAPI's own routes at the APP ROOT — outside `/api/v1`, uncoverable by a router dependency, and outside the walk by construction (it filters on a path parameter). They are tied to the auth posture instead: present while nobody is configured, gone once somebody is, and a token does not bring them back |
 | `TestTheCorsPreflightIsNeverGated` | An `OPTIONS` without `Authorization` is not refused, and `WWW-Authenticate` / `Retry-After` are exposed — invisible from every seat but a browser's |
 | `TestTheRegistryNeverHoldsAToken` | Only digests are stored, and the boot line names consumers and never tokens |
 
-The walk names four routes as `required`: a router dropping out of the app would otherwise leave it
-green while the surface it gated went unreachable.
+The walk names one identity route per router as `required`: a router dropping out of the app would
+otherwise leave it green while the surface it gated went unreachable.
 
 ## Mocking Strategy
 
@@ -71,6 +71,29 @@ and what the sweep view must:
 | `test_combinations_are_ranked_by_the_sweeps_own_objective` | `/sweeps/{id}` ranks by the objective the spec declared — ranking by anything else answers a question the sweep did not ask |
 | `test_each_combination_carries_its_run_id` | The hinge into the report routes; without it a sweep view is a dead end |
 | `test_unknown_sweep_is_a_404` | An id with no ledger rows |
+
+## Deployment routes (`TestDeployments`)
+
+A deployment is the life of ONE bot across its restarts, and it is not a run: no header, no
+directory, no artifacts. Its rows live in the ledger and nowhere else, which is why these routes
+read the ledger and only the ledger.
+
+| Test | Description |
+|------|-------------|
+| `test_lists_recorded_deployments` | `/deployments` groups the ledger rows into one row per deployment |
+| `test_a_deployments_pnl_sums_and_its_drawdown_does_not` | The one arithmetic this view must not get wrong: each live row carries the RUNNING decline against the inherited peak, so the reduction is `max()` and a sum counts one decline once per session that was still inside it |
+| `test_no_deployment_is_not_an_error` | Nothing declared yet is a state, not a failure |
+| `test_sessions_read_forwards` | Oldest first — the opposite order to the console, deliberately |
+| `test_a_configuration_change_is_reported_before_the_table` | The advisory rides on the response rather than inside a row, so a client cannot render the table and drop the sentence that says whether the rows may be added up |
+| `test_a_session_that_never_reached_its_close_is_counted` | The ledger row is written last, so a killed session is absent from the list by construction (§44) |
+| `test_unknown_deployment_is_a_404_and_not_an_empty_history` | An empty list would read as a deployment that ran and did nothing |
+| `test_the_detail_route_filters_in_the_store` | `read_rows(deployment_id=...)`, not a full read followed by a filter |
+| `test_the_periods_of_every_session_come_back_in_one_call` | `/deployments/{id}/booking-periods` — the thirty-day picture without walking the sessions |
+| `test_every_period_names_the_session_that_booked_it` | `segment_no` restarts wherever a session wrote no carry-over floor, so two periods of one deployment can both be #1; `run_id` is what tells them apart |
+| `test_a_row_that_books_no_period_is_skipped_and_counted` | Every row written before the booking journal is one of those — skipped, and its session counted, so an incomplete history is not read as a quiet one |
+| `test_the_periods_carry_their_own_band_not_the_cumulative_one` | `segment_max_drawdown`, not `account_max_drawdown` — the running figure would repeat the same number down the column |
+| `test_there_is_no_reconciliation_and_that_is_deliberate` | Pinned as an ABSENCE: across many runs no second, independently derived figure exists, so a check could only compare the rows with themselves (§48) |
+| `test_periods_of_an_unknown_deployment_are_a_404` | An id with no ledger rows |
 
 ## TestGaps — `/brokers/{broker}/symbols/{symbol}/gaps`
 

@@ -35,7 +35,8 @@ from python.framework.types.log_layout_types import (
     RUN_TYPE_SIMULATION,
 )
 from python.framework.types.run_results_types import RunProvenance, SweepContext
-from python.framework.types.scenario_types.scenario_set_types import ScenarioSet, SingleScenario
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.scenario.scenario_set import ScenarioSet
 from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
 from python.framework.utils.git_info_utils import get_git_info
 
@@ -75,12 +76,34 @@ def build_run_provenance(
         generate_config_fingerprint(s.strategy_config or {}) for s in scenarios)
     param_hash = (fingerprints[0] if len(set(fingerprints)) == 1
                   else generate_config_fingerprint({'per_scenario': fingerprints}))
+    # The SIMULATION's operational half, filling the SAME column the live side fills with
+    # `_profile_fingerprint` — one question, one field, both pipelines. `param_hash` above
+    # covers what the bot DECIDES; this covers what the RUN DOES: the merged execution and
+    # trade-simulator blocks, which carry the latency model, the slippage model, the RNG
+    # seeds, the heartbeat interval and the tick budget.
+    #
+    # It must be the MERGED value and not the scenario set's own section. Both blocks cascade
+    # THREE levels — app_config → global → scenario (scenario_config_loader.py:176-190) — and
+    # the base layer lives in `app_config.json`, whose `user_configs/` override is gitignored.
+    # So a change there moves neither `config_id` (which fingerprints the scenario set FILE)
+    # nor `git_commit`, and the cycle's parity proof would compare two backtests whose
+    # simulator differed with nothing recorded saying so. That is an unrecorded configuration
+    # identity, which the goal statement calls a launch blocker rather than a nicety.
+    operational = sorted(
+        generate_config_fingerprint({
+            'execution_config': s.execution_config or {},
+            'trade_simulator_config': s.trade_simulator_config or {},
+        }) for s in scenarios)
+    # Spans ALL scenarios, by the same rule and for the same reason as `param_hash`.
+    profile_hash = (operational[0] if len(set(operational)) == 1
+                    else generate_config_fingerprint({'per_scenario': operational}))
     decision_version, worker_versions = _resolve_versions(strategy_config)
     git = get_git_info()
     status, error = _run_status(warnings_errors_report)
 
     return RunProvenance(
         param_hash=param_hash,
+        profile_hash=profile_hash,
         status=status,
         error=error,
         run_id=run_id,
@@ -168,6 +191,7 @@ def build_run_provenance_from_session(
         # rather than measured (§31c).
         price_bases=MarketConfigManager().get_price_formation(config.broker_type).value,
         deployment_id=deployment_id,
+        bot_id=config.bot_id,
         profile_hash=_profile_fingerprint(config),
         run_type=RUN_TYPE_LIVE,
     )

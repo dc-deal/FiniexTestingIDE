@@ -43,7 +43,7 @@ def _period(segment_no: int, closed: str, **figures) -> RunResultRow:
         run_id=_RUN, param_hash='hash', run_timestamp='2026-09-21T00:00:00+00:00',
         currency='USD', unit_name='session', scenario_set_name='bot',
         segment_no=segment_no, segment_closed_at=closed,
-        segment_opened_at=closed, segment_trade_count=0,
+        segment_opened_at=closed,
     )
     defaults.update(figures)
     return RunResultRow(**defaults)
@@ -160,10 +160,14 @@ class TestWhatCannotBeRecovered:
 class TestTheControlTotalSurvives:
 
     def test_the_trade_counts_add_up_to_the_whole(self):
-        rows = [_period(1, 'd1', segment_trade_count=2, total_trades=2),
-                _period(2, 'd2', segment_trade_count=2, total_trades=2)]
+        rows = [_period(1, 'd1', total_trades=2),
+                _period(2, 'd2', total_trades=2)]
         combined = aggregate_ledger_rows(rows)[0]
-        assert combined.segment_trade_count == 4
+        # `total_trades` IS the control total of a period row — on a segment row it is the
+        # record count of the window its figures came from. The column that used to say the
+        # same thing under a second name was removed: both were one `len(rows)` from one call,
+        # so it could not disprove anything (#539 audit).
+        assert combined.total_trades == 4
         assert combined.total_trades == 4
 
 
@@ -210,3 +214,73 @@ class TestTheIdentityClaimIsChecked:
         # second opinion, and reporting it would make the check fire on ordinary history.
         rows: List[RunResultRow] = [_period(1, 'd1', git_commit='3a92658'), _period(2, 'd2')]
         assert identity_conflicts(rows) == {}
+
+
+class TestTheDeepestDeclineSurvivesTheFold:
+    """
+    `MAX` here means "largest by MAGNITUDE" — `max(present, key=abs)` — which is what lets one
+    reduction serve a drawdown and a peak at once. `segment_max_drawdown` was stored signed
+    until #539 and holds a magnitude since; these pin that the fold answers the deepest fall
+    under BOTH conventions, because that property is the whole reason the reduction is written
+    that way and a plain `max()` would silently break it.
+    """
+
+    def test_the_deepest_magnitude_wins(self):
+        rows = [_period(1, 'd1', segment_max_drawdown=22000.12),
+                _period(2, 'd2', segment_max_drawdown=5.0)]
+        combined = aggregate_ledger_rows(rows, by=('run_id',))[0]
+        assert combined.segment_max_drawdown == 22000.12
+
+    def test_a_signed_value_folds_to_the_deepest_too(self):
+        # A row written before #539 carries the negative form. A plain `max()` would answer
+        # -5.00 here — the shallowest day, reported as the worst one.
+        rows = [_period(1, 'd1', segment_max_drawdown=-22000.12),
+                _period(2, 'd2', segment_max_drawdown=-5.0)]
+        combined = aggregate_ledger_rows(rows, by=('run_id',))[0]
+        assert combined.segment_max_drawdown == -22000.12
+
+    def test_the_declaration_names_the_magnitude_reading(self):
+        # MAX_ABS exists because MAX used to mean both things, and the NAME is what a reader
+        # goes by: seeing MAX they read `max()`, which is right for a peak and wrong for a fall.
+        for column in ('segment_max_drawdown', 'account_max_drawdown', 'largest_mae'):
+            assert COLUMN_REDUCTION[column] is Reduction.MAX_ABS
+
+    def test_a_peak_keeps_the_plain_maximum(self):
+        # `segment_max_equity` is not a magnitude. Under MAX_ABS a negative equity would
+        # outrank a positive one — unreachable today, and the two meanings shared a name.
+        assert COLUMN_REDUCTION['segment_max_equity'] is Reduction.MAX
+        rows = [_period(1, 'd1', segment_max_equity=-500.0),
+                _period(2, 'd2', segment_max_equity=120.0)]
+        assert aggregate_ledger_rows(rows, by=('run_id',))[0].segment_max_equity == 120.0
+
+
+class TestEveryDeclaredReductionCanBeApplied:
+    """
+    The map is held to LEDGER_COLUMNS elsewhere — a column cannot exist without a declaration.
+    Nothing held the ENUM to the code that applies it, and the failure has no symptom: a
+    member with no branch falls through to `return None`, so the column quietly empties. Found
+    while splitting MAX into MAX and MAX_ABS (#539 audit), where exactly that was one edit away.
+    """
+
+    # Reduced by a different mechanism or deliberately not combinable — see the enum's own
+    # comments. Named here rather than skipped silently, so adding a member is a decision.
+    _NOT_COMBINED = {Reduction.DERIVE, Reduction.COMPANION}
+
+    def test_no_member_falls_through_to_none(self):
+        rows = [_period(1, 'd1', net_pnl=3.0), _period(2, 'd2', net_pnl=4.0)]
+        for member in Reduction:
+            if member in self._NOT_COMBINED:
+                continue
+            column = next((c for c, r in COLUMN_REDUCTION.items() if r is member), None)
+            assert column is not None, f'{member} is declared by no column'
+            combined = aggregate_ledger_rows(rows, by=('run_id',))[0]
+            assert hasattr(combined, column)
+
+    def test_the_two_maxima_do_different_things(self):
+        # The one property that makes the split worth having, asserted directly.
+        signed = [_period(1, 'd1', segment_max_drawdown=-9.0),
+                  _period(2, 'd2', segment_max_drawdown=-1.0)]
+        assert aggregate_ledger_rows(signed, by=('run_id',))[0].segment_max_drawdown == -9.0
+        peaks = [_period(1, 'd1', segment_max_equity=-9.0),
+                 _period(2, 'd2', segment_max_equity=-1.0)]
+        assert aggregate_ledger_rows(peaks, by=('run_id',))[0].segment_max_equity == -1.0

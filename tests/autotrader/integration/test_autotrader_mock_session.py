@@ -15,6 +15,7 @@ import pytest
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
 from python.framework.reporting.io.artifact_specs import (
+    BOOKING_PERIODS_ARTIFACT,
     BROKER_ARTIFACT,
     SAFETY_ARTIFACT,
 )
@@ -214,6 +215,26 @@ class TestTheSessionBooks:
         for segment in result.booking_segments:
             assert segment.opened_at < segment.closed_at
             assert segment.unit_name
+
+    def test_the_table_reaches_disk_with_its_reconciliation(self, mock_session):
+        # The Hauptbuch was the ONE report section that was derived and then thrown away —
+        # rendered to the console and the summary log, persisted nowhere — so nothing but a
+        # human reading that log could see it (#539). This is the half the console test cannot
+        # give: the artifact exists, and it carries the CHECK rather than only the rows.
+        result, run_dir = mock_session
+
+        artifact = run_dir / IO_SUBDIR / 'booking_periods.json'
+        assert artifact.exists(), 'booking_periods.json not written for a live session'
+
+        report = read_artifact(artifact, BOOKING_PERIODS_ARTIFACT)
+        assert len(report.periods) == len(result.booking_segments)
+        assert report.total_trades == sum(s.trade_count for s in result.booking_segments)
+        # The reconciliation is why the report is stored rather than rebuilt from the ledger
+        # later: it compares the periods against the run's own independently derived figure,
+        # and that second figure exists only while the run does.
+        assert report.reconciles, (
+            f'the session booked {report.total_net_pnl} across its periods while the run '
+            f'reports {report.run_net_pnl}')
 
 
 class TestProfileLoader:

@@ -205,7 +205,8 @@ def rank(
     Rank combinations by the objective.
 
     Args:
-        rows: Ledger rows (one per run × currency)
+        rows: Raw ledger rows — MANY per run since #537 books one per booking period.
+            `_scope` folds them to one per run × currency, which is the shape returned
         objective: The RunResultRow KPI field to rank by
         maximize: True → best first is highest; False → lowest (e.g. max_drawdown)
         objective_currency: Restrict to this currency (required when > 1 currency present)

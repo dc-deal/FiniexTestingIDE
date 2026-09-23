@@ -30,6 +30,16 @@ The two that carry the most weight are the operator/safety pair: both arrive as
 deliberate stop from a safety-triggered one. Reading it off a missing reason would let the safety
 layer fire and still report success.
 
+`TestTheSessionBooks` is the end-to-end proof the unit tests cannot give (#537). Every piece of
+the booking path is pinned elsewhere — the derivation, the ledger row, the table — and a chain of
+proven links is still not a proven chain: the loop collects, the result carries, the coordinator
+writes, and any one of those could be missing without a unit test noticing. This profile's replay
+crosses midnight UTC, so the session must produce MORE than its closing seal — the anchor one is
+the half that only fires if the boundary check is wired into the loop at all. It also pins the
+control total (the periods partition the session's trades), that the numbering continues across
+restarts without a hole, and — since #539 — that the table reaches DISK as `io/booking_periods.json`
+carrying its reconciliation, not only the console.
+
 ### test_deployment_continuity.py
 
 The only end-to-end run of the deployment mechanism (#497). Four sessions through ONE carry-over

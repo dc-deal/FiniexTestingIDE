@@ -10,8 +10,8 @@ sim batch does (#433) — no second build path, no re-read of the parquet at ses
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
 
+from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.types.process_data_types import ProcessDataPackage
-from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 
 
 @dataclass

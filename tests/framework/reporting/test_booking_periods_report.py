@@ -45,7 +45,7 @@ def _segment(segment_no: int, day: int, net_pnl: float, trades: int,
         reason=reason, trade_count=trades,
         figures=_figures(currency=currency, net_pnl=net_pnl, total_trades=trades,
                          final_equity=10_000.0 + net_pnl),
-        segment_max_equity=10_050.0, segment_min_equity=9_960.0, segment_max_drawdown=-40.0)
+        segment_max_equity=10_050.0, segment_min_equity=9_960.0, segment_max_drawdown=40.0)
 
 
 def _units(*segments) -> list:
@@ -95,11 +95,12 @@ class TestWhatTheTableShows:
 
     def test_the_drawdown_column_is_the_deepest_SINGLE_period(self):
         # Not the run's drawdown: a fall that crosses a period boundary is deeper than any one
-        # period's own, and the run summary is where that figure lives.
+        # period's own, and the run summary is where that figure lives. A MAGNITUDE since #539,
+        # so the deepest is the LARGEST — the sign is a display decision.
         report = build_booking_periods_report(
             'r', _units(_segment(1, 0, 60.0, 2), _segment(2, 1, -10.0, 1)),
             _summary(net_pnl=50.0, total_trades=3))
-        assert report.deepest_period_drawdown == -40.0
+        assert report.deepest_period_drawdown == 40.0
 
     def test_the_final_equity_is_the_last_period_s(self):
         report = build_booking_periods_report(
@@ -130,6 +131,35 @@ class TestWhenThereIsNothingToShow:
         assert {row.currency for row in report.periods} == {'USD'}
         assert report.total_net_pnl == 60.0
 
+    def test_the_default_filters_too_rather_than_summing_across_currencies(self):
+        # The filter read `if not currency or …`, so an empty currency — which is what BOTH
+        # coordinators pass — admitted every segment. The sum then ran over USD AND BTC while
+        # `run_net_pnl` was one currency's figure, and `reconciles` was false for a run in
+        # which nothing was wrong (#539 audit).
+        report = build_booking_periods_report(
+            'r', _units(_segment(1, 0, 60.0, 2), _segment(1, 0, 0.002, 1, currency='BTC')),
+            _summary(net_pnl=60.0, total_trades=2))
+        assert {row.currency for row in report.periods} == {'BTC'}   # first, alphabetically
+        assert report.total_net_pnl == 0.002
+
+    def test_a_currency_the_run_does_not_report_is_NOT_CHECKED_rather_than_passed(self):
+        # `run_net_pnl` used to default to 0.0, so a small period sum agreed with a figure
+        # that was never reported. An absent check and a passed one must never look alike.
+        report = build_booking_periods_report(
+            'r', _units(_segment(1, 0, 0.002, 1, currency='BTC')),
+            _summary(net_pnl=60.0, total_trades=2))
+        assert report.reconciles is None
+        assert report.run_net_pnl is None
+
+    def test_the_other_currencies_are_named_rather_than_dropped_in_silence(self):
+        # One table is one currency, and the reader is told the run has more. Nothing is lost:
+        # every period of every currency is a ledger row.
+        report = build_booking_periods_report(
+            'r', _units(_segment(1, 0, 60.0, 2), _segment(1, 0, 0.002, 1, currency='BTC')),
+            _summary(net_pnl=60.0, total_trades=2), currency='USD')
+        assert report.currencies == ['BTC', 'USD']
+        assert report.currency == 'USD'
+
 
 class TestManyUnitsCollapse:
     """
@@ -153,7 +183,7 @@ class TestManyUnitsCollapse:
                     reason=SegmentCloseReason.ANCHOR, trade_count=1,
                     figures=_figures(net_pnl=1.0, total_trades=1, final_equity=10_001.0),
                     segment_max_equity=10_010.0, segment_min_equity=9_990.0,
-                    segment_max_drawdown=-20.0)
+                    segment_max_drawdown=20.0)
                 for p in range(periods_each)])
             for u in range(units)
         ]

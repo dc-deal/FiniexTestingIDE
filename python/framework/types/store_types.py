@@ -65,6 +65,7 @@ class StoreId(StrEnum):
     type error instead of a silent gap.
     """
     RUNS = 'runs'
+    RUN_CONFIGS = 'run_configs'
     RUN_LEDGER = 'run_ledger'
     CERTIFICATES = 'certificates'
     SESSION_STATE = 'session_state'

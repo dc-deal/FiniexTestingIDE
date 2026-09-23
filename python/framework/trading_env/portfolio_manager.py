@@ -132,7 +132,6 @@ class PortfolioManager:
         self._swap_rollover: Optional[SwapRolloverConfig] = swap_rollover
 
         # Account state
-        self.realized_pnl = 0.0
 
         # Positions
         self._positions_dirty = False  # Performance: Lazy evaluation state
@@ -516,7 +515,6 @@ class PortfolioManager:
             realized_pnl = position.unrealized_pnl
             self.balance += realized_pnl
 
-        self.realized_pnl += realized_pnl
 
         # Mark position as closed
         position.status = PositionStatus.CLOSED
@@ -633,7 +631,6 @@ class PortfolioManager:
             # Margin mode — existing logic
             self.balance += closed_net_pnl
 
-        self.realized_pnl += closed_net_pnl
 
         # --- Create TradeRecord for closed portion (BEFORE mutating position) ---
         trade_record = TradeRecord(
@@ -1547,7 +1544,6 @@ class PortfolioManager:
     def reset(self) -> None:
         """Reset portfolio to initial state"""
         self._balances = dict(self._initial_balances)
-        self.realized_pnl = 0.0
         self.open_positions.clear()
         self._trade_history.clear()
         self._position_counter = 0

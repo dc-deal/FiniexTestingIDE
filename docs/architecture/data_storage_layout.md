@@ -30,10 +30,11 @@ worse. What they *can* share is how they describe themselves.
 | # | Store | Kind | Key | Index | Retrieval |
 |---|---|---|---|---|---|
 | 1 | `runs/` | RECORD | `run_id` | `runs_index.parquet`, from `header.json` | A · document |
+| 1b | `run_configs/` | RECORD | `config_id` — SHA256 over the normalised content | `run_configs_index.parquet` | A · document |
 | 2 | `runs/ledger/` | RECORD | `(run_id, unit, segment_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
-| 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<profile>_<symbol>` | none — opened by key | A · document |
-| 4b | `data/runtime/cold_start_state/` | **CARRY-OVER** | `<profile>_<symbol>` | `cold_start_state_index.parquet` | A · document |
+| 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<profile>_<symbol>`, separator reserved | none — opened by key | A · document |
+| 4b | `data/runtime/cold_start_state/` | **CARRY-OVER** | `<profile>_<symbol>`, separator reserved | `cold_start_state_index.parquet` | A · document |
 | 5 | `data/processed/{broker}/ticks` | ARCHIVE | broker / symbol / file | `ticks_index.parquet` | C · bulk |
 | 6 | `data/processed/{broker}/bars` | **DERIVED** ← ticks | broker / symbol / timeframe | `bars_index.parquet` | C · bulk |
 | 7 | `data/processed/signals/` | ARCHIVE | type / symbol / day | `signals_index.parquet` | C · bulk |
@@ -85,6 +86,102 @@ The three levels this produces are ordinary double-entry bookkeeping, and
 [accounting_periods.md](accounting_periods.md) names them: the trade records are the
 **Grundbuch**, the ledger rows are the **Hauptbuch**, and everything over many periods — a
 deployment's total, a Sharpe ratio — is the **Abschluss**.
+
+
+## The carry-over separator is reserved (#538)
+
+A bot's persistent state is filed under `<profile>_<symbol>`, and until 2026-09-22 both halves
+were sanitised to `[a-z0-9_]` — so the underscore occurred inside the halves as well as between
+them, and two DIFFERENT bots could resolve to one document:
+
+```
+'btc'      + 'USD_SPOT'  ->  btc_usd_spot
+'btc_usd'  + 'SPOT'      ->  btc_usd_spot     one file, two unrelated bots
+```
+
+The bot that started second opened the other's document and read a position book it never wrote —
+and at spot that book is the only record there is, because a holding is a balance the venue cannot
+describe as a position. The halves now sanitise to `[a-z0-9-]`, the `_` occurs exactly once, and
+the two are `btc_usd-spot` and `btc-usd_spot`.
+
+**The key is deliberately NOT the config id.** A content id changes when the config changes, which
+is its job — and a restarted bot would then point at a new, empty document the moment somebody
+raised a stop level, with its inherited position book gone from its own view while the venue still
+held it. The key answers *which bot am I*, never *what does it currently look like*.
+
+**The structural answer is `bot_id`, which a profile DECLARES**, and it is optional so that no
+existing profile changes key by the field existing. Composing an identity from what a profile is
+CALLED means the identity moves when the name does — and a display name is exactly the thing an
+operator improves: renaming `dot_live` to `dotusd_live_v2` would point a restarted bot at a new,
+empty document while the venue still held its position. A declared id survives every rename of
+everything else.
+
+```json
+{ "name": "dotusd_live_v2", "bot_id": "dot-usd-live", "symbol": "DOTUSD" }
+                                  ↑ the key stays dot-usd-live_dotusd through any rename
+```
+
+**What remains, for a profile that declares none**: two SPELLINGS of one name (`dot live` and
+`dot-live`) still meet, as do two profiles using the same name for the same symbol. Those are one
+bot written two ways rather than two bots merging, and the startup validator is the answer — it
+compares the DECLARED identity where there is one.
+
+The declared id also reaches the LEDGER (`bot_id`, IDENTITY reduction), so a report can say
+which BOT a row belongs to rather than only what the profile was called at the time. And the
+carry-over ENVELOPE records it, because a document that cannot say what it is filed under is a
+document nothing can safely rename — the migration below is the first caller that would have got
+that wrong.
+
+Changing the rule ORPHANS every document on disk, so it shipped with the migration that renamed
+them (`python/experiments/migrate_carry_over_keys/`). Any further change needs the same.
+
+## Run configs are a store, and several rows per file are the point (#538)
+
+A scenario set and an AutoTrader profile used to be files at a path, and a path is not an
+identity. Three things followed. Nothing could say two runs used the SAME configuration —
+measured on this tree: 53 per-run config snapshots holding **23 distinct contents**, one of them
+eight times. A config edited yesterday left no trace that it changed. And the backtest half of a
+parity measurement could not name its own strategy identity at all, where the live half has
+carried `param_hash` and `profile_hash` since #497.
+
+**The store owns its own bytes.** Registering FREEZES the normalised content under its id rather
+than pointing at where the file was found:
+
+```
+run_configs/
+  run_configs_index.parquet
+  scenario_sets/<config_id>.json
+  autotrader_profiles/<config_id>.json
+```
+
+That is not tidiness. A source may live in `user_algos/`, a separate repository this project
+never writes into, and an index whose entries lived outside its own root could not die with its
+store. The per-run snapshot in each run directory stays: it is the evidence, and an id that
+cannot be resolved back to bytes is not one.
+
+**Several rows per source file are NORMAL here, unlike every other store.** Each row is one
+version, and the accumulation IS the history — which is why validity is not a row count against a
+file count. What `staleness_reason` checks is that every indexed version still has a frozen copy.
+
+**Three hashes, because a change means three different things:**
+
+| a change to | moves | example |
+|---|---|---|
+| the bytes | `config_id` | anything at all |
+| what the algo DECIDES | `param_hash` | a worker's period 14 → 21 |
+| WHICH DATA runs | `scope_hash` | a scenario added, a window moved |
+
+A renamed scenario and an added comment move the first and neither of the others — so the history
+can say *naming only, no decision, no scope*, which is the distinction a reader actually needs and
+no single hash can make. `param_hash` is the same value the run ledger carries, so a config row
+and a run row compare directly.
+
+**The store is an accelerator for resolution, never the only way to find anything.** A name it
+knows is answered from the index plus one `stat`; a name it does not know falls through to the
+search that was always there, and a successful search registers what it found. Measured: 111 ms
+of stats for 67 configs against 613 ms for a single recursive glob, and the scenario listing fell
+from 19.5 s to 6.7 s — of which 5.7 s is Python startup, so the work itself went from 13.8 s to
+0.95 s.
 
 ## Five kinds — a store is exactly one
 

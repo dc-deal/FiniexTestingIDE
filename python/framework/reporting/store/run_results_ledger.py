@@ -80,7 +80,7 @@ LEDGER_COLUMNS: List[str] = [
     # WHICH deployment this row belongs to and what the OPERATIONAL half of the
     # profile looked like (#497). The pair is what lets a reader attribute a change:
     # the rows of one deployment, and the hash that says where the parameters moved.
-    'deployment_id', 'profile_hash',
+    'deployment_id', 'bot_id', 'profile_hash',
     # WHICH PIPELINE produced this row — 'simulation' or 'live', from the same two constants
     # the run tree and the run index are named after (`log_layout_types`). Declared rather
     # than inferred: before it, telling a backtest from a live session meant reading
@@ -120,9 +120,10 @@ LEDGER_COLUMNS: List[str] = [
     # more than once a day in several places (perp funding every 8 h, an intraday margin call,
     # an operator's period close). Absent on a row that books no period.
     'segment_no', 'segment_opened_at', 'segment_closed_at', 'segment_close_reason',
-    # The CONTROL TOTAL (§48): how many records this period's figures were derived from. It is
-    # what lets a reader re-derive the row from the records and find out that it does not match.
-    'segment_trade_count',
+    # The CONTROL TOTAL (§48) of a period row is `total_trades` above — on a segment row it is
+    # `len(rows)` over the window the figures came from. There used to be a second column
+    # saying the same thing under another name; both were that same `len(rows)` from one call,
+    # so it could not disprove anything, which is the one thing a control total is for.
     # The period's own equity band. `segment_min_equity` is tracked rather than derived — the
     # peak and the trough are different moments, so `peak - drawdown` answers a value that never
     # occurred. And the period's OWN drawdown sits beside the cumulative one above, because
@@ -137,7 +138,7 @@ LEDGER_COLUMNS: List[str] = [
 
 # HOW each column combines when several rows are read as one — declared, not remembered.
 #
-# `deployment_history_summary` already carries the reasoning for ONE of these in a comment
+# `deployment_history_builder` already carries the reasoning for ONE of these in a comment
 # ("max(), never sum(): each live row carries the RUNNING decline against the inherited peak"),
 # and nothing said it for the other fifty-six. A reader combining rows has to know per column,
 # and the dangerous pairs look identical: `net_pnl` and `win_rate` are both aggregates, one
@@ -170,6 +171,7 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     'currency': Reduction.IDENTITY,
     'input_plane': Reduction.IDENTITY,
     'deployment_id': Reduction.IDENTITY,
+    'bot_id': Reduction.IDENTITY,
     'profile_hash': Reduction.IDENTITY,
     'run_type': Reduction.IDENTITY,
     # Every row of one sweep was selected from the same search, so the rows agree by
@@ -215,7 +217,7 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     # The trio reduces TOGETHER: `account_max_drawdown` leads, and the other two are taken from
     # the row that won it. Reducing them separately pairs one row's trough with another's peak,
     # which is the defect #497 removed one layer down (report_aggregators.py:160-163).
-    'account_max_drawdown': Reduction.MAX,
+    'account_max_drawdown': Reduction.MAX_ABS,
     'max_equity': Reduction.COMPANION,              # follows account_max_drawdown
     'account_max_drawdown_pct': Reduction.COMPANION,  # follows account_max_drawdown
 
@@ -243,16 +245,24 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     # The LAST period's reason is the one that says whether the books are complete: only a
     # `session_end` means nothing was left open. An earlier row's `anchor` says nothing about it.
     'segment_close_reason': Reduction.LAST,
-    'segment_trade_count': Reduction.SUM,
     # The band of the widest period, and the deepest single-period decline. NOT the band or the
     # decline of the UNION — a fall that runs across a boundary is deeper than either period's
     # own, and `account_max_drawdown` above is the column that carries that.
+    # A PEAK, so a plain maximum — this one is not a magnitude, and under MAX_ABS a negative
+    # equity would outrank a positive one. Nothing had noticed because no account here has gone
+    # negative; the two meanings simply shared a name.
     'segment_max_equity': Reduction.MAX,
     'segment_min_equity': Reduction.MIN,
-    'segment_max_drawdown': Reduction.MAX,
+    # A MAGNITUDE since #539, like `account_max_drawdown` and the excursion columns beside it.
+    # It used to be the one SIGNED figure among them, and rows of both ages sit in this store —
+    # which is exactly what MAX_ABS is for. What the sign cost was never arithmetic but
+    # READING: a consumer renders this table beside the portfolio block, and one shared
+    # formatter turns one of the two into its own opposite without anything going red. The
+    # sign is a DISPLAY decision and lives in the renderers.
+    'segment_max_drawdown': Reduction.MAX_ABS,
     # The worst single excursion combines by magnitude; its MEANS do not.
-    'largest_mae': Reduction.MAX,
-    'largest_mfe': Reduction.MAX,
+    'largest_mae': Reduction.MAX_ABS,
+    'largest_mfe': Reduction.MAX_ABS,
     'avg_mae_winners': Reduction.DERIVE,
     'avg_mae_losers': Reduction.DERIVE,
     'avg_mfe_losers': Reduction.DERIVE,
@@ -271,7 +281,7 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
 # a valid value.
 BOOKING_COLUMNS: List[str] = [
     'unit_name', 'segment_no', 'segment_opened_at', 'segment_closed_at',
-    'segment_close_reason', 'segment_trade_count',
+    'segment_close_reason',
     'segment_max_equity', 'segment_min_equity', 'segment_max_drawdown',
 ]
 
@@ -427,6 +437,8 @@ class RunResultsLedger:
         self,
         sweep_id: Optional[str] = None,
         scenario_set_name: Optional[str] = None,
+        deployment_id: Optional[str] = None,
+        run_id: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Read the whole ledger as one table, optionally filtered.
@@ -434,6 +446,10 @@ class RunResultsLedger:
         Args:
             sweep_id: Keep only rows of this sweep
             scenario_set_name: Keep only rows of this scenario set
+            deployment_id: Keep only rows of this deployment — the live counterpart of
+                `sweep_id`, and its absence is why a live row was written and unreachable (#539)
+            run_id: Keep only the rows of this one run. Since #537 a run writes one row per
+                booking period, so this is a SET and not a single row
 
         Returns:
             DataFrame of ledger rows (empty if the ledger does not exist yet)
@@ -447,12 +463,18 @@ class RunResultsLedger:
             df = df[df['sweep_id'] == sweep_id]
         if scenario_set_name is not None:
             df = df[df['scenario_set_name'] == scenario_set_name]
+        if deployment_id is not None:
+            df = df[df['deployment_id'] == deployment_id]
+        if run_id is not None:
+            df = df[df['run_id'] == run_id]
         return df.reset_index(drop=True)
 
     def read_rows(
         self,
         sweep_id: Optional[str] = None,
         scenario_set_name: Optional[str] = None,
+        deployment_id: Optional[str] = None,
+        run_id: Optional[str] = None,
     ) -> List[RunResultRow]:
         """
         Read the ledger as typed rows (the JSON columns parsed back to structured types).
@@ -460,12 +482,15 @@ class RunResultsLedger:
         Args:
             sweep_id: Keep only rows of this sweep
             scenario_set_name: Keep only rows of this scenario set
+            deployment_id: Keep only rows of this deployment
+            run_id: Keep only the rows of this one run
 
         Returns:
             Typed ledger rows — what the optimization analysis + the API consume
         """
         return [self._to_row(record)
-                for record in self.read(sweep_id, scenario_set_name).to_dict('records')]
+                for record in self.read(
+                    sweep_id, scenario_set_name, deployment_id, run_id).to_dict('records')]
 
     def _to_row(self, record: Dict[str, Any]) -> RunResultRow:
         """Build a typed RunResultRow from a raw parquet record (parse the JSON columns)."""
@@ -516,6 +541,7 @@ class RunResultsLedger:
             'unstamped_input_files': p.unstamped_input_files,
             'price_bases': p.price_bases,
             'deployment_id': p.deployment_id,
+            'bot_id': p.bot_id,
             'profile_hash': p.profile_hash,
             'run_type': p.run_type,
             'trial_count': p.trial_count,
@@ -648,7 +674,6 @@ class RunResultsLedger:
             'segment_opened_at': segment.opened_at.isoformat(),
             'segment_closed_at': segment.closed_at.isoformat(),
             'segment_close_reason': segment.reason.value,
-            'segment_trade_count': segment.trade_count,
             'segment_max_equity': segment.segment_max_equity,
             'segment_min_equity': segment.segment_min_equity,
             'segment_max_drawdown': segment.segment_max_drawdown,

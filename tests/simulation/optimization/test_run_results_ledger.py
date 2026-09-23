@@ -369,7 +369,7 @@ def test_the_cumulative_extrema_are_not_summable():
     of them counts one decline twice. This pins the three columns where that is true, because
     the mistake is arithmetically invisible: the sum of two drawdowns is a plausible drawdown.
     """
-    assert COLUMN_REDUCTION['account_max_drawdown'] is Reduction.MAX
+    assert COLUMN_REDUCTION['account_max_drawdown'] is Reduction.MAX_ABS
     # And the other two are COMPANIONS, not independent maxima. Taking each by its own max
     # pairs one row's trough with another's peak — the defect #497 removed one layer down,
     # and a map that said MAX three times would have walked back into it.

@@ -90,7 +90,7 @@ class TestBuild:
         assert row.total_trades == 6 and row.total_pnl == 12.0   # (-3) + 15
         assert row.discarded_pending_orders == 1
         # ratios: open-at-edge ratio 2/6; disposition |−3| / |12| * 100
-        assert round(row.open_at_boundary_ratio, 2) == round(2 / 6 * 100, 2)
+        assert round(row.open_at_boundary_pct, 2) == round(2 / 6 * 100, 2)
         assert round(row.disposition_pct, 2) == 25.0
 
     def test_skips_failed_and_non_profile_runs(self):
@@ -137,7 +137,7 @@ class TestTheDispositionStillDistinguishes:
         row = rep.symbols[0]
 
         assert row.open_at_boundary_trades == 0
-        assert row.open_at_boundary_ratio == 0.0
+        assert row.open_at_boundary_pct == 0.0
         assert row.disposition_pct == 0.0
 
     def test_a_block_that_ends_holding_shows_impact(self):
@@ -148,7 +148,7 @@ class TestTheDispositionStillDistinguishes:
         row = rep.symbols[0]
 
         assert row.open_at_boundary_trades == 1
-        assert row.open_at_boundary_ratio > 0.0
+        assert row.open_at_boundary_pct > 0.0
         # |−6| / |12| — the unrealised P&L riding on the position the edge left open
         assert round(row.disposition_pct, 2) == 50.0
 
