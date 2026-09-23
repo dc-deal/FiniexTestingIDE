@@ -56,6 +56,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderResult,
     OrderSide,
+    OrderStatus,
     OrderType,
 )
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
@@ -674,14 +675,32 @@ class TrendChannelReference(AbstractDecisionLogic):
         pid = pos.position_id
         if pid in self._partial_done:
             return
+        # The same guard `_maybe_trail` uses, and #507 is why it is needed here too: a
+        # refused close no longer marks the rung as taken, so without it a rejection that
+        # is NOT a property of the position — a cancel that could not be confirmed, say —
+        # would be re-sent on every single tick for as long as the rung is due.
+        if self.trading_api.has_in_flight_operation(pid):
+            return
         if self._current_r(pos, tick) < self.partial_rr:
             return
 
+        # The floor is the SYMBOL's, never a constant. `0.01` stood here and is an MT5
+        # assumption: Kraken's minimums are crooked and much larger (DOTUSD 3.9, ADAUSD
+        # 20.0), so the guard waved through requests the framework could not honour (#507).
+        minimum = self.trading_api.get_symbol_spec(pos.symbol).volume_min
         close_lots = round(pos.original_lots * self.partial_fraction, 2)
-        if close_lots < 0.01 or (pos.lots - close_lots) < 0.01:
+        if close_lots < minimum or (pos.lots - close_lots) < minimum:
             return
 
-        self.trading_api.close_position(pid, lots=close_lots)
+        # Read the answer. A refused partial must not mark the rung as taken — the position
+        # keeps running and the rung is still ahead of it, so silently recording it as done
+        # is how a strategy loses a step it never performed.
+        result = self.trading_api.close_position(pid, lots=close_lots)
+        if result.status == OrderStatus.REJECTED:
+            self.logger.info(
+                f'Partial close at {self.partial_rr:.1f}R refused for {pid}: '
+                f'{result.rejection_message}')
+            return
         self._partial_done.add(pid)
         self.emit_event(
             f'Partial close {close_lots} lots @ {self.partial_rr:.1f}R {pid}',

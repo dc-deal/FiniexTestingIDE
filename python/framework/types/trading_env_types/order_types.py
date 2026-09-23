@@ -196,6 +196,11 @@ class RejectionReason(Enum):
     # sent, neither open nor closed. It may be resting there. New ENTRIES stop while that
     # is true; closing and protecting what is already held do not.
     UNRESOLVED_WRITE = 'unresolved_write'
+    # #507 — the requested size is fine, the LEFTOVER is not: closing it would strand a
+    # remainder below the symbol's volume_min, which can never be sold afterwards. Its own
+    # reason rather than INVALID_LOT_SIZE, because the lots asked for are valid and a caller
+    # reading that name would look in the wrong place.
+    REMAINDER_BELOW_MINIMUM = 'remainder_below_minimum'
 
 
 

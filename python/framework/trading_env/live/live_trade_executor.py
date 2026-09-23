@@ -2457,11 +2457,13 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         exit_trades = self._unbooked_close_trades(protective, consumed)
         protective.close_lots = bookable
-        # Record what was BOOKED, never what was requested. `_fill_close_order` converts a
-        # partial into a full close when the remainder would fall under volume_min, so it
-        # can book MORE than asked — and a counter that under-records would make the
-        # venue's next report of the same volume look like an unattributable excess and
-        # raise a false alarm about a healthy close.
+        # Record what was BOOKED, never what was requested. Since #507 the two are the same
+        # number — `_fill_close_order` no longer converts a partial into a full close when
+        # the remainder falls under volume_min, because that judgement moved to submission.
+        # The distinction is kept because the counter still has to follow the BOOKING: a
+        # venue that reports a close in two steps is normal, and a counter that under-records
+        # would make its next report of the same volume look like an unattributable excess
+        # and raise a false alarm about a healthy close.
         booked = self._fill_close_order(
             protective,
             fill_price=avg_price,
@@ -2825,6 +2827,16 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 message=f'Position {position_id} not found',
             )
 
+        # #507 — BEFORE the deferral below, not after: a deferred close carries its `lots`
+        # through the cancel and comes back here as an order, so a check placed later would
+        # be bypassed by exactly the path that needs it most.
+        refusal = self.refuse_unresolvable_close(position, lots)
+        if refusal is not None:
+            self._orders_rejected += 1
+            self._check_order_history_limit()
+            self._order_history.append(refusal)
+            return refusal
+
         # #503 — cancel BEFORE closing, never beside it. At spot there is no reduce_only,
         # and a market close goes through — measured — while a protective stop still rests
         # over the same holding: both can fill, and the second sells coins that are gone.
@@ -2993,8 +3005,19 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self.logger.info(
             f'🛡️ The venue confirmed the protective order for {position_id} is gone — '
             f'sending the close now')
-        self.close_position(
+        result = self.close_position(
             position_id, lots=deferred.lots, close_reason=deferred.close_reason)
+        # The answer is READ, because by now the protective order is already gone. Before
+        # #507 the re-entry could only be refused for 'position not found', which is
+        # harmless — there is nothing left to protect. A SIZE refusal is not: the position
+        # survives, its protection was cancelled to let this close through, nothing
+        # re-places it, and the caller was told PENDING at the original request. That state
+        # has to reach the operator (§35) rather than being dropped on the floor.
+        if result.status == OrderStatus.REJECTED:
+            self.logger.error(
+                f'❌ The close of {position_id} was refused after its protective order had '
+                f'already been cancelled: {result.rejection_message} The position is STILL '
+                f'OPEN and is now UNPROTECTED.')
 
     def _abandon_deferred_close(self, position_id: str, why: str) -> None:
         """

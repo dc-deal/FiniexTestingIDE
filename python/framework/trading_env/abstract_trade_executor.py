@@ -102,6 +102,10 @@ from python.framework.types.trading_env_types.trading_env_stats_types import (
 )
 from python.framework.utils.trading_math.price_trigger import mid_price
 
+# Lot comparisons are float comparisons, and Kraken's step is 1e-08 — so the tolerance has to
+# sit well below one step while still absorbing IEEE 754 drift from a subtraction.
+_CLOSE_LOT_EPSILON = 1e-9
+
 
 class ExecutorMode(Enum):
     """Execution mode for trade executors."""
@@ -615,6 +619,93 @@ class AbstractTradeExecutor(ABC):
         """
         pass
 
+    def refuse_unresolvable_close(
+        self,
+        position: Position,
+        lots: Optional[float]
+    ) -> Optional[OrderResult]:
+        """
+        Refuse a partial close that the symbol's size rules cannot honour (#507).
+
+        Called by BOTH executors at the top of `close_position`, before anything is sent —
+        which is the whole point. The same judgement used to be made at FILL time, one round
+        trip AFTER the venue had already executed exactly the partial size it was asked for,
+        and it then converted the booking to a FULL close: the venue kept the remainder while
+        our books recorded the position as gone, and nothing re-syncs that. Made here it can
+        still change what the venue is asked for; made there it could only change what we
+        believe happened.
+
+        A valid partial needs BOTH sides to clear the minimum — the size sold and the size
+        left behind. Below `2 * volume_min` of position size no valid partial exists at all,
+        which is why the refusal states both bounds even when they contradict each other:
+        that contradiction IS the answer, and without it the message reads as a rounding
+        problem.
+
+        Refusing rather than resizing follows the rule `_normalize_order_request` already
+        states for opens — a lot change is a position-size change, so it is never made
+        silently on the caller's behalf (operator decision, 2026-09-23).
+
+        Args:
+            position: The position the close would reduce
+            lots: The requested size, or None for a full close
+
+        Returns:
+            A REJECTED OrderResult naming the rule that was broken, or None when the request
+            may proceed
+        """
+        # A full close leaves nothing behind, so it has no remainder to judge. `lots` above
+        # the position size stays the fill path's business (it converts to a full close) —
+        # that is a different question from this one and is not re-answered here.
+        if lots is None or lots >= position.lots - _CLOSE_LOT_EPSILON:
+            return None
+
+        symbol_spec = self.broker.get_symbol_specification(position.symbol)
+        minimum = symbol_spec.volume_min
+        remaining = position.lots - lots
+        # Every figure here is in LOTS, never in the base asset. The two are equal only where
+        # contract_size is 1.0 — true on Kraken spot, false on MT5, where 0.02 lots is 2,000
+        # units of the base (§31b: the message crosses both account models).
+        refused = f'Partial close of {lots:.8f} lots refused'
+
+        # The STRUCTURAL case comes first, and it is not a property of the request: under
+        # twice the minimum, the sold size and the size left behind cannot both clear it, so
+        # no valid partial exists whatever was asked for. Reporting the requested size as
+        # merely too small would send the caller looking for a size that is not there. The
+        # requested remainder is deliberately NOT quoted — it may be perfectly valid, and
+        # naming it would point the reader at the one number that is fine.
+        if position.lots < 2 * minimum - _CLOSE_LOT_EPSILON:
+            return create_rejection_result(
+                order_id=f'close_{position.position_id}',
+                reason=RejectionReason.REMAINDER_BELOW_MINIMUM,
+                message=(
+                    f'{refused}: the position holds {position.lots:.8f} lots and volume_min '
+                    f'is {minimum:.8f}, so no partial is possible at all — the size sold and '
+                    f'the size left behind would each have to clear it. Close in full, or '
+                    f'wait until the position reaches {2 * minimum:.8f} lots.'),
+            )
+
+        if lots < minimum - _CLOSE_LOT_EPSILON:
+            return create_rejection_result(
+                order_id=f'close_{position.position_id}',
+                reason=RejectionReason.INVALID_LOT_SIZE,
+                message=(
+                    f'{refused}: below the symbol minimum {minimum:.8f} lots. The venue would '
+                    f'refuse it too. Valid here: {minimum:.8f} to '
+                    f'{position.lots - minimum:.8f} lots.'),
+            )
+
+        if remaining < minimum - _CLOSE_LOT_EPSILON:
+            return create_rejection_result(
+                order_id=f'close_{position.position_id}',
+                reason=RejectionReason.REMAINDER_BELOW_MINIMUM,
+                message=(
+                    f'{refused}: the position holds {position.lots:.8f} lots and volume_min '
+                    f'is {minimum:.8f}, so it would leave {remaining:.8f} lots unsellable. '
+                    f'Valid here: {minimum:.8f} to {position.lots - minimum:.8f} lots.'),
+            )
+
+        return None
+
     @abstractmethod
     def close_position(
         self,
@@ -1123,10 +1214,12 @@ class AbstractTradeExecutor(ABC):
                 executions a second time (#503)
 
         Returns:
-            The lots actually booked — 0.0 where nothing was. It is NOT always what the
-            caller asked for: this method converts a partial into a full close when the
-            remainder would fall under volume_min, and the venue-close resolver has to
-            record what happened rather than what it requested (#503)
+            The lots actually booked — 0.0 where nothing was. Since #507 this is the size
+            handed in for every partial: the volume_min conversion that used to make it
+            differ is gone, and the judgement happens at submission instead. It can still
+            exceed the request in one case, `close_lots > position.lots`, which is booked as
+            a full close — so the venue-close resolver keeps recording what HAPPENED rather
+            than what it requested (#503)
         """
         # A live close is asynchronous, so the reason is known at the TRIGGER and the fill
         # happens a round trip later. It travels on the PendingOrder; an explicit argument
@@ -1191,16 +1284,34 @@ class AbstractTradeExecutor(ABC):
             )
             close_lots = None  # Full close
 
-        is_partial = (close_lots is not None and close_lots < position.lots)
+        # The SAME boundary the submission gate draws (`refuse_unresolvable_close`), and it
+        # has to be the same one: a request a few ULPs below the position size is a full
+        # close there and would be a partial here. That gap leaves a position at exactly 0.0
+        # lots — `partial_close_position` subtracts and never deletes, nothing sweeps a
+        # zero-lot position, and the row is carried into the next session (#355). The drift
+        # is ordinary rather than exotic: summing a venue's per-trade volumes, or the CORE
+        # rung's own `round(lots, 2)`, lands one ULP short routinely.
+        is_partial = (close_lots is not None
+                      and close_lots < position.lots - _CLOSE_LOT_EPSILON)
 
+        # #507 — what the venue filled is what gets booked. This used to convert a partial
+        # into a FULL close when the remainder fell below volume_min, one round trip after
+        # the venue had already sold exactly the partial size: the venue kept the rest and
+        # our books said the position was gone. That judgement now happens at SUBMISSION
+        # (`refuse_unresolvable_close`), where it can still change what is asked for.
+        #
+        # A dust remainder can still arrive — from the VENUE's own partial fill, which we
+        # never requested. It is reported, never booked away: writing off lots the account
+        # still holds would be the same defect in miniature. The unsellable holding is real,
+        # and re-syncing it against broker truth belongs to #349.
         if is_partial:
             remaining = position.lots - close_lots
-            if remaining < symbol_spec.volume_min - 1e-9:
-                self.logger.info(
-                    f'Partial close would leave {remaining:.5f} lots < volume_min '
-                    f'{symbol_spec.volume_min} — converting to full close'
+            if remaining < symbol_spec.volume_min - _CLOSE_LOT_EPSILON:
+                self.logger.warning(
+                    f'⚠️ Close of {close_lots:.8f} lots leaves {remaining:.8f} on '
+                    f'{position_id}, below volume_min {symbol_spec.volume_min:.8f} — the '
+                    f'remainder is held and cannot be sold on its own (#349)'
                 )
-                is_partial = False
 
         # Capture executed_lots before portfolio call (position may be deleted on full close)
         executed_lots = close_lots if is_partial else position.lots

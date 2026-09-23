@@ -563,6 +563,15 @@ class TradeSimulator(AbstractTradeExecutor):
                 message=f'Position {position_id} not found'
             )
 
+        # #507 — the size rules are answered HERE, not at the fill. A partial whose remainder
+        # would fall below volume_min never becomes an order.
+        refusal = self.refuse_unresolvable_close(position, lots)
+        if refusal is not None:
+            self._orders_rejected += 1
+            self._check_order_history_limit()
+            self._order_history.append(refusal)
+            return refusal
+
         # Submit close order to latency simulator
         order_id = self.latency_simulator.submit_close_order(
             position_id=position_id,

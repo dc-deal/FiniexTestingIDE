@@ -73,8 +73,33 @@ Validation + routing in `python/framework/trading_env/abstract_trade_executor.py
 
 1. `close_lots <= 0` → skip fill (log warning)
 2. `close_lots > position.lots` → auto-convert to full close
-3. `remaining < volume_min` → auto-convert to full close (with floating-point tolerance)
-4. Otherwise → `partial_close_position()`
+3. Otherwise → `partial_close_position()`
+
+**A sub-minimum remainder is no longer converted here (#507).** It used to be: a partial whose
+remainder fell below `volume_min` was booked as a FULL close at fill time — one round trip after
+the venue had already sold exactly the partial size it was asked for, so the venue kept the
+remainder while our books recorded the position as gone. That judgement now happens at
+SUBMISSION, in `AbstractTradeExecutor.refuse_unresolvable_close()`, where it can still change
+what the venue is asked for. The request is REFUSED with `REMAINDER_BELOW_MINIMUM` and nothing is
+sent.
+
+What remains at fill time is a WARNING, not a conversion: the venue's own partial fill can strand
+a sub-minimum remainder without us having asked for it. That holding is real and is reported
+rather than written off — re-syncing it against broker truth is #349's.
+
+Cases: `tests/simulation/partial_close/test_partial_close_volume_min.py`, driven over the real
+Kraken spot config because its minimums are the crooked ones that produce the case (DOTUSD 3.9,
+ADAUSD 20.0) where MT5's round 0.01 barely can.
+
+| Class | What it holds |
+|---|---|
+| `TestTheRequestIsRefusedBeforeItReachesTheVenue` | the refusal fires, names its reason, carries the arithmetic, leaves the position untouched and sends nothing |
+| `TestAValidPartialStillGoesThrough` | the guard against overcorrecting — a valid partial, a full close and a close of exactly the position size all still work |
+
+**The arithmetic worth knowing before reading them:** a valid partial needs BOTH the size sold and
+the size left behind to clear `volume_min`, so below `2 * volume_min` of position size no valid
+partial exists at all. That structural case is answered first and says so, because reporting the
+requested size as merely too small would send a caller looking for a size that is not there.
 
 ### Floating-Point Safety
 
