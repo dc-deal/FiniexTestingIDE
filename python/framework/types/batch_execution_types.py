@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+from python.framework.data_preparation.broker_scenario_info import BrokerScenarioInfo
+from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.process_data_types import (
     LOGGED_ERRORS_TYPE,
@@ -9,8 +11,6 @@ from python.framework.types.process_data_types import (
 )
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.scenario_types.scenario_set_types import (
-    BrokerScenarioInfo,
-    SignalScenarioInfo,
     SingleScenario,
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType

@@ -11,8 +11,8 @@ Covers:
 
 from unittest.mock import MagicMock
 
+from python.framework.data_preparation.broker_scenario_info import BrokerScenarioInfo
 from python.framework.types.scenario_types.scenario_set_types import (
-    BrokerScenarioInfo,
     SingleScenario,
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType, SwapMode

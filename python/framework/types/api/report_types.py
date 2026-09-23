@@ -1267,7 +1267,7 @@ class BlockSplittingSymbolRow(BaseModel):
     # Derived (builder)
     total_trades: int = 0
     total_pnl: float = 0.0
-    open_at_boundary_ratio: float = 0.0   # % of trades left open by the edge
+    open_at_boundary_pct: float = 0.0   # % of trades left open by the edge
     disposition_pct: float = 0.0          # |unrealised at edge| / |total P&L| * 100
 
 
@@ -1280,7 +1280,7 @@ class BlockSplittingReport(RunScopedReport):
     symbols: list[BlockSplittingSymbolRow] = []
     agg_open_at_boundary_trades: int = 0
     agg_total_trades: int = 0
-    agg_open_at_boundary_ratio: float = 0.0
+    agg_open_at_boundary_pct: float = 0.0
     agg_disposition_pct: float = 0.0
 
 

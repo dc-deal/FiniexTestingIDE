@@ -16,6 +16,7 @@ from typing import Dict, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.builders.broker_report_builder import (
     build_broker_report_from_session,
@@ -63,7 +64,6 @@ from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.log_level import LogLevel
-from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.framework.types.signal_data_types import SignalObservedSeries
 from python.framework.utils.console_renderer import ConsoleRenderer
 

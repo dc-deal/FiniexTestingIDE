@@ -15,6 +15,7 @@ import re
 from contextlib import redirect_stdout
 
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.data_preparation.broker_scenario_info import BrokerScenarioInfo
 from python.framework.reporting.builders.broker_report_builder import (
     build_broker_report_from_batch,
     build_broker_report_from_session,
@@ -22,7 +23,6 @@ from python.framework.reporting.builders.broker_report_builder import (
 from python.framework.reporting.console.broker_summary import BrokerSummary
 from python.framework.types.api.report_types import BrokerInfoRow, BrokerReport, BrokerSymbolRow
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.scenario_types.scenario_set_types import BrokerScenarioInfo
 from python.framework.types.trading_env_types.broker_types import (
     BrokerSpecification,
     BrokerType,

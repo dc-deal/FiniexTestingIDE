@@ -69,7 +69,7 @@ class BlockSplittingDisposition(AbstractBatchSummarySection):
             ))
 
             # What the block edge left open, and the unrealised P&L riding on it
-            open_ratio_str = f'{disp.open_at_boundary_ratio:.1f}%'
+            open_ratio_str = f'{disp.open_at_boundary_pct:.1f}%'
             print(
                 f'    Open at edge: {disp.open_at_boundary_trades}/{disp.total_trades} '
                 f'({open_ratio_str})  |  '
@@ -103,7 +103,7 @@ class BlockSplittingDisposition(AbstractBatchSummarySection):
         renderer.print_separator(width=60, char='─')
         print(renderer.bold(
             f'  Aggregate: {self._report.agg_open_at_boundary_trades}/{self._report.agg_total_trades} '
-            f'open at edge ({self._report.agg_open_at_boundary_ratio:.1f}%)  |  '
+            f'open at edge ({self._report.agg_open_at_boundary_pct:.1f}%)  |  '
             f'Disposition: {agg_pct:.1f}% {label}'
         ))
 

@@ -16,6 +16,7 @@ Usage:
 from typing import Any, Dict, List, Tuple
 
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.data_preparation.broker_scenario_info import BrokerScenarioInfo
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -24,7 +25,6 @@ from python.framework.trading_env.broker_config import BrokerType
 from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.scenario_types.scenario_set_types import (
-    BrokerScenarioInfo,
     SingleScenario,
 )
 from python.framework.types.validation_types import (

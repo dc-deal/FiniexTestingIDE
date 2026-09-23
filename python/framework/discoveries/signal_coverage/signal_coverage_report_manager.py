@@ -19,9 +19,9 @@ from typing import Dict, List, Tuple
 
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
+from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.scenario_types.scenario_set_types import (
-    SignalScenarioInfo,
     SignalScenarioUsage,
     SingleScenario,
 )

@@ -17,13 +17,13 @@ from python.configuration.autotrader.kraken_config_fetcher import (
     load_runtime_cache,
 )
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.data_preparation.broker_scenario_info import BrokerScenarioInfo
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.console.broker_info_renderer import BrokerInfoRenderer
 from python.framework.trading_env.broker_config import BrokerConfig, BrokerType
 from python.framework.types.config_types.market_config_types import ConfigMode
 from python.framework.types.scenario_types.scenario_set_types import (
-    BrokerScenarioInfo,
     SingleScenario,
 )
 from python.framework.types.validation_types import (

@@ -32,6 +32,7 @@ from python.framework.autotrader.tick_sources.tick_source_setup import setup_tic
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
+from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.exceptions.live_execution_errors import (
     DryRunConflictError,
     OneOffInsideDeploymentError,
@@ -70,7 +71,6 @@ from python.framework.types.persistence_types import (
     RiskBaseline,
 )
 from python.framework.types.process_data_types import ProcessDataPackage
-from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.framework.types.signal_data_types import (
     SignalObservedSeries,
 )

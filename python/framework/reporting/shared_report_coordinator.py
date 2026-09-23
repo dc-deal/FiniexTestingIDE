@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.reporting.builders.execution_stats_report_builder import (
     build_execution_stats_report,
 )
@@ -57,7 +58,6 @@ from python.framework.reporting.io.run_header_io import (
     read_run_header,
 )
 from python.framework.reporting.store.run_index import RunIndex
-from python.framework.types.scenario_types.scenario_set_types import SignalScenarioInfo
 from python.framework.types.signal_data_types import SignalObservedSeries
 
 
