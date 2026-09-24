@@ -29,6 +29,7 @@ from python.framework.autotrader.reporting.autotrader_report_coordinator import 
 from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.autotrader.tick_sources.tick_source_setup import setup_tick_source
+from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
@@ -188,6 +189,8 @@ class AutotraderMain:
         self._decision_logic: Optional[AbstractDecisionLogic] = None
         self._clipping_monitor: Optional[LiveClippingMonitor] = None
         self._display_label_cache: Optional[DisplayLabelCache] = None
+        # #444 — planned tick-plane stale windows (mock profiles only; None for live)
+        self._stale_stress_driver: Optional[StaleDataStressDriver] = None
 
         # #327 — Drift audit (live-only, gated by config.drift_audit.enabled)
         self._drift_auditor: Optional[DriftAuditor] = None
@@ -320,6 +323,7 @@ class AutotraderMain:
             self._clipping_monitor = pipeline.clipping_monitor
             self._trading_model = pipeline.trading_model
             self._display_label_cache = pipeline.display_label_cache
+            self._stale_stress_driver = pipeline.stale_stress_driver
             self._print_startup_phase('Pipeline created successfully')
 
             self._validate_startup()
@@ -677,6 +681,9 @@ class AutotraderMain:
             deployment_id=self._deployment_id,
             signal_inbox=self._signal_inbox,
             signal_transport=self._signal_transport,
+            # #444: the planned tick-plane stale windows a mock profile declared. None on
+            # every live session, so the loop runs exactly as it did before.
+            stale_stress_driver=self._stale_stress_driver,
             display_label_cache=self._display_label_cache,
             drift_auditor=self._drift_auditor,
             decision_event_dispatcher=self._decision_event_dispatcher,
@@ -927,6 +934,11 @@ class AutotraderMain:
         if self._worker_orchestrator:
             try:
                 result.worker_statistics = self._worker_orchestrator.get_worker_statistics()
+                # The orchestrator has been counting ticks all along — the live side simply
+                # never asked. Without it the report says 0 ticks beside 3,000 decisions, and
+                # the per-worker compute ratio derived from it reads 0.0 % rather than absent.
+                result.coordination_statistics = (
+                    self._worker_orchestrator.get_coordination_statistics())
                 result.signal_statistics = self._worker_orchestrator.get_signal_statistics()
             except Exception as e:
                 self._session_logger.error(f'Error collecting worker stats: {e}')

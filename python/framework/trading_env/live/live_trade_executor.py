@@ -868,7 +868,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
             self.logger.error(
                 f'📡 {order_label} order {order_id} UNRESOLVED — the broker did not answer '
-                f'({response.rejection_reason}). Kept in flight for resolution by query.'
+                f'({response.rejection_reason}). Kept in flight for resolution by query (#487).'
             )
             return
 

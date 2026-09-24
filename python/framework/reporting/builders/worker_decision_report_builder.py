@@ -3,9 +3,13 @@ Worker/decision report builder (#398) — the per-unit worker + decision perform
 
 Maps each `RunUnit`'s `worker_statistics` + `decision_statistics` + `coordination_statistics` to a
 `WorkerDecisionUnitRow`; the per-worker timing totals (summed across units) come from the shared
-aggregator. Unified — both pipelines (sim scenario / live session); coordination is sim-only and
-stays at its defaults on live. The coordination-overhead % breakdown is profiling-derived and stays
-with the Profiling section, not here.
+aggregator. Unified — both pipelines (sim scenario / live session), coordination included: the
+orchestrator counts the ticks that reach the algo path in BOTH, and until 2026-09-24 the live side
+simply never collected the result. It read as a design decision here for as long as it stood, which
+is why the note is replaced rather than deleted — every live session reported 0 ticks beside its
+real decision count, and the per-worker compute ratio and idle distance derived from it reported
+0.0 % and 0 rather than reporting nothing. The coordination-overhead % breakdown is
+profiling-derived and stays with the Profiling section, not here.
 """
 
 from typing import List

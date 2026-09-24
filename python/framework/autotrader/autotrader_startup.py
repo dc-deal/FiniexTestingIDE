@@ -30,6 +30,11 @@ from python.framework.reporting.store.run_index import RunIndex
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
 from python.framework.signal_data.transport.signal_boot_resolver import prepare_live_signal_boot
+from python.framework.stress_test.stale_data_stress_driver import (
+    StaleDataStressDriver,
+    build_stale_stress_driver,
+)
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
@@ -51,6 +56,7 @@ from python.framework.types.signal_data_types import (
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderType
+from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
 from python.framework.validators.capital_validator import (
@@ -355,6 +361,10 @@ def setup_pipeline(
         f'report_interval={config.clipping_monitor.report_interval_s}s'
     )
 
+    # === Phase 11: Planned tick-plane stale windows (#444) ===
+    stale_stress_driver = _build_stale_stress_driver(
+        config, logger, package, executor, decision_logic)
+
     return AutotraderPipelineBundle(
         executor=executor,
         bar_controller=bar_controller,
@@ -363,7 +373,47 @@ def setup_pipeline(
         clipping_monitor=clipping_monitor,
         trading_model=account.trading_model,
         display_label_cache=display_label_cache,
+        stale_stress_driver=stale_stress_driver,
     )
+
+
+def _build_stale_stress_driver(
+    config: AutoTraderConfig,
+    logger: ScenarioLogger,
+    package: Optional[ProcessDataPackage],
+    executor: AbstractTradeExecutor,
+    decision_logic: AbstractDecisionLogic,
+) -> Optional[StaleDataStressDriver]:
+    """
+    Phase 11 — the planned TICK-plane stale windows, through the shared builder (#444).
+
+    Structurally mock-only: the windows live in `scenario_settings`, which a LIVE profile
+    does not carry at all (it streams from the broker and has no scenario to replay). So a
+    deliberate outage cannot be injected against a real feed by configuration — the block
+    is simply absent there. The SIGNAL plane needs nothing here: its windows are already
+    carved out of the series by the shared MountPreparer.
+
+    Args:
+        config: AutoTrader configuration
+        logger: ScenarioLogger instance (warnings → §35 pot)
+        package: The prepared mock package, or None for live
+        executor: The session's executor (where the market-data status lives)
+        decision_logic: The decision notified on the window edges
+
+    Returns:
+        The driver, or None when the profile declares no window on its tick source
+    """
+    settings = config.scenario_settings
+    if settings is None or package is None:
+        return None
+    # The data source the events name is the one the ticks came FROM, which is what
+    # build_scenario_from_config resolved — not the execution broker, which can differ.
+    data_source = settings.data_broker_type or config.broker_type
+    return build_stale_stress_driver(
+        StressTestConfig.from_dict(settings.stress_test_config),
+        data_source,
+        package.tick_ranges.get(config.symbol),
+        executor, decision_logic, logger)
 
 
 def _resolve_broker_and_balances(

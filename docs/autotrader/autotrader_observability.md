@@ -164,7 +164,10 @@ Three `ScenarioLogger` instances per session, each with a distinct purpose:
 
 - Directory: `runs/live/<name>/<run_id>/` (from `file_logging.run_logs.live`)
 - Separate from simulation runs (`runs/simulation/`); `logs/` holds only `global.log`
-- Session log **rotates daily** at midnight UTC — prevents unbounded file growth on 24/7 sessions
+- Session log **rotates daily** at this market's trading-day boundary (`trading_day_anchor`
+  — the swap rollover for forex, midnight UTC for crypto), and rotated days older than
+  `file_logging.session_logs.retention_days` are pruned with it (#357). The rule and its
+  guarantees live in [autotrader_architecture.md](autotrader_architecture.md) §Session logs
 
 ```
 runs/live/btcusd_mock/20260328_105127_a1b2c3d4/

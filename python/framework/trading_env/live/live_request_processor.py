@@ -1294,7 +1294,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             self.logger.error(
                 f'📡 Order {item.order_id} UNRESOLVED — the broker did not answer '
                 f'({response.rejection_reason}). Keeping it in flight; the venue may hold '
-                f'it. Resolution comes from the next query, not from re-sending.'
+                f'it. Resolution comes from the next query, not from re-sending (#487).'
             )
             return
 

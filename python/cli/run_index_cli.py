@@ -5,15 +5,16 @@ Command-line tools for the derived run index
 Usage:
     python python/cli/run_index_cli.py rebuild
     python python/cli/run_index_cli.py status
-    python python/cli/run_index_cli.py prune [--orphans] [--keep-last N] [--apply]
+    python python/cli/run_index_cli.py prune [--orphans] [--keep-last N] [--older-than 30d] [--apply]
     python python/cli/run_index_cli.py deployments [--id <deployment>]
 """
 
 import argparse
 import sys
 import time
+from datetime import timedelta
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.reporting.builders.deployment_history_builder import (
@@ -38,6 +39,7 @@ from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.reporting.store.run_tree_pruner import RunTreePruner
 from python.framework.types.api.report_types import ParentKind
 from python.framework.types.run_prune_types import PruneCandidate, PruneSelectors
+from python.framework.utils.time_utils import parse_age_duration
 
 
 class RunIndexCli:
@@ -158,20 +160,24 @@ class RunIndexCli:
                 print()
         return 0
 
-    def cmd_prune(self, orphans: bool, keep_last: int, apply: bool) -> int:
+    def cmd_prune(self, orphans: bool, keep_last: int,
+                  older_than: Optional[timedelta], apply: bool) -> int:
         """
         Remove what the run tree no longer needs — showing it first, deleting only on request.
 
         Args:
             orphans: Also remove directories that are not runs
             keep_last: Keep only the N newest complete runs per family (0 = selector off)
+            older_than: Keep runs that started within this window (None = selector off).
+                Composes with keep_last as a second KEEP rule — see PruneSelectors
             apply: Actually delete; without it nothing is touched
 
         Returns:
             Process exit code
         """
         selectors = PruneSelectors(
-            keep_last=keep_last if keep_last > 0 else None, orphans=orphans)
+            keep_last=keep_last if keep_last > 0 else None,
+            older_than=older_than, orphans=orphans)
         pruner = RunTreePruner()
 
         # PREVIEW, not 'dry run': in this project `dry_run` names exactly one thing — a
@@ -196,7 +202,7 @@ class RunIndexCli:
         self._print_group('DELETE', report.to_delete_orphans,
                           'not runs (no header, not indexed)')
         self._print_group('DELETE', report.to_delete_redundant,
-                          f'older than the {keep_last} newest of their family')
+                          self._redundancy_reason(keep_last, older_than))
         self._print_group('DELETE', report.to_delete_uncommissioned,
                           'reporting=none, produced nothing')
         self._print_group('DELETE', report.emptied_sweep_dirs,
@@ -206,6 +212,10 @@ class RunIndexCli:
                           names=False)
         self._print_group('KEEP', report.kept_field_study,
                           'hold field_study.jsonl (evidence behind a release gate)', names=False)
+        self._print_group('KEEP', report.kept_recent,
+                          'started inside the window --older-than named', names=False)
+        self._print_group('KEEP', report.kept_undated,
+                          'no start time recorded — their age cannot be measured', names=False)
         self._print_group('KEEP', report.kept_complete, 'complete', names=False)
         self._print_group('SKIP', report.skipped_sweep_dirs,
                           'sweep directories — not runs, deliberately header-less', names=False)
@@ -268,6 +278,31 @@ class RunIndexCli:
         print('\r' + ' ' * 60 + '\r', end='', flush=True)
 
     @staticmethod
+    def _redundancy_reason(keep_last: int, older_than: Optional[timedelta]) -> str:
+        """
+        Say which selectors put a run in the delete group.
+
+        Named rather than inlined because the sentence changes with the selectors, and a
+        delete screen that says 'older than the 0 newest of their family' when only an age
+        was given would describe a rule nobody asked for.
+
+        Args:
+            keep_last: The count selector, 0 when it was not given
+            older_than: The age selector, None when it was not given
+
+        Returns:
+            The reason line for the group heading
+        """
+        parts = []
+        if keep_last > 0:
+            parts.append(f'outside the {keep_last} newest of their family')
+        if older_than is not None:
+            hours = older_than.days * 24 + older_than.seconds // 3600
+            window = f'{older_than.days}d' if older_than.days else f'{hours}h'
+            parts.append(f'started more than {window} ago')
+        return ' AND '.join(parts) if parts else 'selected for removal'
+
+    @staticmethod
     def _print_group(verb: str, candidates: List[PruneCandidate], reason: str,
                      names: bool = True) -> None:
         """
@@ -316,6 +351,10 @@ def main() -> int:
         '--keep-last', type=int, default=0, metavar='N',
         help='Keep only the N newest complete runs per scenario set / profile / sweep')
     prune_parser.add_argument(
+        '--older-than', type=parse_age_duration, default=None, metavar='AGE',
+        help="Keep runs that started within this window, e.g. '30d' or '12h'. Composes with "
+             '--keep-last: a run goes only when BOTH release it')
+    prune_parser.add_argument(
         '--apply', action='store_true', default=False,
         help='Actually delete. Without it nothing is touched — a run directory is the only '
              'copy of its logs')
@@ -334,7 +373,7 @@ def main() -> int:
 
     cli = RunIndexCli()
     if args.command == 'prune':
-        return cli.cmd_prune(args.orphans, args.keep_last, args.apply)
+        return cli.cmd_prune(args.orphans, args.keep_last, args.older_than, args.apply)
     if args.command == 'deployments':
         return cli.cmd_deployments(args.id)
     return {'rebuild': cli.cmd_rebuild, 'status': cli.cmd_status}[args.command]()

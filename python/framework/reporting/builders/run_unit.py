@@ -192,6 +192,7 @@ def run_units_from_session(
         portfolio_stats=session.portfolio_stats,
         execution_stats=session.execution_stats,
         worker_statistics=session.worker_statistics or [],
+        coordination_statistics=session.coordination_statistics,
         decision_statistics=session.decision_statistics,
         signal_statistics=session.signal_statistics or [],
         disturbance_episodes=_stamp_unit(

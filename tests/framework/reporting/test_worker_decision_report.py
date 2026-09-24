@@ -3,8 +3,15 @@ Worker/Decision Report Builder Tests (#398).
 
 `build_worker_decision_report` maps RunUnits → `WorkerDecisionReport`: per-unit worker timing +
 decision stats + coordination, plus the per-worker timing totals summed across units. Tested with
-hand-built RunUnit fixtures (real `WorkerPerformanceStats` / `DecisionLogicStats`), including a
-live-style unit without coordination and the empty case.
+hand-built RunUnit fixtures (real `WorkerPerformanceStats` / `DecisionLogicStats`), including the
+no-coordination fallback and the empty case.
+
+**A unit without coordination used to be described here as "live-style", and that was the defect
+wearing the words of a design decision.** A live session's orchestrator counts its ticks exactly
+as the simulation's does; what was missing until 2026-09-24 was the collection, so every session
+reported 0 ticks beside its real decision count and the compute ratio derived from it read 0.0 %
+rather than reading as absent. The fallback below is still real — a unit built from something
+other than a run carries no coordination — it is simply not what live looks like.
 """
 
 import io
@@ -13,11 +20,12 @@ from contextlib import redirect_stdout
 
 import pytest
 
-from python.framework.reporting.builders.run_unit import RunUnit
+from python.framework.reporting.builders.run_unit import RunUnit, run_units_from_session
 from python.framework.reporting.builders.worker_decision_report_builder import (
     build_worker_decision_report,
 )
 from python.framework.reporting.console.performance_summary import PerformanceSummary
+from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.api.report_types import (
     WorkerDecisionReport,
     WorkerDecisionUnitRow,
@@ -82,13 +90,44 @@ class TestBuild:
         totals = build_worker_decision_report(_RUN_ID, [u]).worker_totals
         assert [w.worker_name for w in totals] == ['bollinger', 'rsi']   # by total_time_ms desc
 
-    def test_live_unit_without_coordination(self):
-        # live-style: no coordination_statistics → coordination fields stay at defaults
-        u = _unit('LIVE', symbol='BTCUSD', workers=[_ws('bollinger', 10.0)],
+    def test_a_unit_without_coordination_falls_back_to_defaults(self):
+        """
+        The fallback, not the live shape — see the module docstring.
+
+        It still has to hold: a RunUnit can be built from something that is not a run at all
+        (the booking-segment builder makes one out of a trade list), and the row must render
+        rather than divide by a tick count it does not have.
+        """
+        u = _unit('no-run', symbol='BTCUSD', workers=[_ws('bollinger', 10.0)],
                   decision=DecisionLogicStats(decision_total_time_ms=2.0))
         row = build_worker_decision_report(_RUN_ID, [u]).units[0]
         assert row.ticks_processed == 0 and row.parallel_workers is False
         assert row.decision_total_time_ms == 2.0
+        assert row.workers[0].compute_ratio_pct == 0.0
+        assert row.workers[0].ticks_idle == 0
+
+    def test_a_live_session_unit_carries_its_tick_count(self):
+        """
+        The regression guard for the gap this file used to describe as intended.
+
+        Built through `run_units_from_session`, the real live path, rather than through the
+        hand-made `_unit` above — the defect was not in the mapping but in what the session
+        handed it, so a fixture that sets the field by hand could not have caught it.
+        """
+        session = AutoTraderResult(
+            worker_statistics=[_ws('bollinger', 10.0, calls=750)],
+            decision_statistics=DecisionLogicStats(decision_total_time_ms=2.0),
+            coordination_statistics=WorkerCoordinatorPerformanceStats(
+                parallel_workers=False, ticks_processed=3000, parallel_time_saved_ms=0.0))
+
+        units = run_units_from_session(session, name='btcusd_live', symbol='BTCUSD')
+        row = build_worker_decision_report(_RUN_ID, units).units[0]
+
+        assert row.ticks_processed == 3000
+        # The two figures the tick count exists for (#420): how often the worker actually
+        # computed against the ticks that arrived, and how far it has been idle since.
+        assert row.workers[0].compute_ratio_pct == pytest.approx(25.0)
+        assert row.workers[0].ticks_idle >= 0
 
     def test_unit_without_decision_stats(self):
         # decision_statistics None → decision fields at defaults

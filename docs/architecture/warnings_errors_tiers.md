@@ -102,7 +102,7 @@ other way round — live-only, because the sim answers the same question from a 
 |---|---|---|
 | `stress_test` | ✅ | an active stress config is a Tier-1 warning in *both* pipelines — a stressed live session must not look clean |
 | `clipping` | ✅ live-only | the ratio is measured against real tick arrival, so it says how often the algo failed to keep up. Threshold: `autotrader.clipping_monitor.warn_above_ratio`. The sim has no counterpart — it judges against a CONFIGURED tick budget instead |
-| overhead · bottleneck · parallel-penalty | — | need `profiling_data` / `coordination_statistics`, which a session does not collect |
+| overhead · bottleneck · parallel-penalty | — | need `profiling_data`, which a session does not collect. **`coordination_statistics` is no longer the missing half** — since 2026-09-24 a session collects it (it was being counted all along and simply never read), so a check needing only the tick count could be answered live |
 | the three tick-budget checks | — | they judge a CONFIGURED `tick_processing_budget_ms`; live has none, which is why it gets the observed-ratio check above instead |
 | multi-currency · time-divergence | — | one session, one currency, one span |
 | data-version · robustness · debug-mode | — | tick index, walk-forward and the batch serial mode are sim-only |

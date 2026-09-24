@@ -33,6 +33,10 @@
       "enabled": true,
       "log_level": null,
       "file_name_prefix": "scenario"
+    },
+    "session_logs": {
+      "_comment": "Rotated daily session logs of a LIVE run (#357). 0 keeps all; the active day is never touched.",
+      "retention_days": 30
     }
   },
   "paths": {

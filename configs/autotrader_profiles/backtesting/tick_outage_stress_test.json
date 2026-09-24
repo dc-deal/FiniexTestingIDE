@@ -1,0 +1,59 @@
+{
+  "name": "tick_outage_stress_test",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "mock",
+  "deployment": {
+    "_comment": "Do this profile's sessions form ONE deployment whose ledger rows join into one history? MANDATORY — there is no safe default. Declare true only on a profile you are actually deploying; the CLI can narrow it (--one-off) but never widen it.",
+    "continuous": false
+  },
+  "strategy_config": {
+    "decision_logic_type": "CORE/backtesting/backtesting_outage_probe",
+    "worker_instances": {
+      "sentiment": "CORE/llm_sentiment"
+    },
+    "workers": {
+      "sentiment": {
+        "_comment": "Wide on purpose — the SIGNAL plane must stay quiet so the only episode this profile produces is the injected TICK one.",
+        "max_staleness_minutes": 10080
+      }
+    },
+    "decision_logic_config": {
+      "lot_size": 0.001
+    }
+  },
+  "execution": {
+    "_comment": "High on purpose — the wall-clock staleness contract must not fire. This profile drills the PLANNED window, and a real outage beside it would make the two indistinguishable in the counts.",
+    "market_data_stale_after_s": 3600.0
+  },
+  "scenario_settings": {
+    "data_sentiment_type": "crypto_sentiment_mock",
+    "start_date": "2026-04-27T06:00:00+00:00",
+    "max_ticks": 3000,
+    "data_mode": "realistic",
+    "balances": {
+      "USD": 10000.0,
+      "BTC": 0.0
+    },
+    "stress_test_config": {
+      "stale_data_stress": {
+        "enabled": true,
+        "events": [
+          {
+            "_comment": "data_source is the TICK source, so this is a STATUS-plane window: the ticks keep flowing and only the feed status is flagged (#444). A dead feed does not freeze the market.",
+            "label": "tick feed status stale 10min",
+            "data_source": "kraken_spot",
+            "stale_start_date": "2026-04-27T06:10:00+00:00",
+            "stale_end_date": "2026-04-27T06:20:00+00:00"
+          }
+        ]
+      }
+    }
+  },
+  "tick_source": {
+    "type": "mock"
+  },
+  "display": {
+    "enabled": false
+  }
+}
