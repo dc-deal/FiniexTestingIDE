@@ -310,4 +310,75 @@ class TestTheShippedProfiles:
     def test_no_shipped_profile_pair_shares_an_identity(self):
         # The state this check was built to protect, asserted on the real tree: a collision here
         # would mean two of the operator's own bots share a position book.
-        assert collisions(_REAL_PROFILES) == {}
+        assert collisions([_REAL_PROFILES]) == {}
+
+
+class TestTheCheckCrossesTheConfigBoundary:
+    """
+    A COPY is the route into a collision, and a copy of a shipped profile lands in the workspace
+    tree — across the boundary the single-root walk never crossed (2026-09-24).
+
+    They are separate BOTS and not a cascade: an AutoTrader profile does not merge with a
+    same-named file the way `app_config.json` does, so two files claiming one identity are always
+    two bots sharing one position book, whichever directory each sits in.
+    """
+
+    @staticmethod
+    def _pair(tmp_path):
+        """A tracked and a workspace profile tree side by side. Returns: (tracked, workspace)."""
+        tracked = tmp_path / 'configs' / 'autotrader_profiles'
+        workspace = tmp_path / 'user_configs' / 'autotrader_profiles'
+        (tracked / 'production').mkdir(parents=True)
+        workspace.mkdir(parents=True)
+        return tracked, workspace
+
+    @staticmethod
+    def _write(path: Path, name: str, symbol: str, bot_id: str) -> Path:
+        path.write_text(json.dumps(
+            {'name': name, 'symbol': symbol, 'bot_id': bot_id}), encoding='utf-8')
+        return path
+
+    def test_a_forgotten_id_on_a_copy_into_the_workspace_is_caught(self, tmp_path):
+        """
+        The case the operator named: copy the profile, forget the id. Both halves match, so the
+        carry-over envelope's own profile/symbol guard would NOT catch it either — the second bot
+        would adopt the first one's position book.
+        """
+        tracked, workspace = self._pair(tmp_path)
+        self._write(tracked / 'production' / 'sol.json', 'solusd_live', 'SOLUSD', 'sollive01')
+        mine = self._write(workspace / 'sol_copy.json', 'solusd_live', 'SOLUSD', 'sollive01')
+
+        with pytest.raises(CarryOverIdentityCollisionError) as raised:
+            validate_carry_over_identity_unique(mine, 'solusd_live', 'SOLUSD', 'sollive01')
+
+        message = str(raised.value)
+        assert 'sol.json' in message and 'sol_copy.json' in message, (
+            f'the message does not name both claimants: {message}')
+        assert 'bot_id' in message, 'the message still asks for a distinct name, not a distinct id'
+
+    def test_it_fires_from_either_side(self, tmp_path):
+        """Whichever of the two is started, the other is found — the pair is symmetric."""
+        tracked, workspace = self._pair(tmp_path)
+        mine = self._write(
+            tracked / 'production' / 'sol.json', 'solusd_live', 'SOLUSD', 'sollive01')
+        self._write(workspace / 'sol_copy.json', 'solusd_copy', 'SOLUSD', 'sollive01')
+
+        with pytest.raises(CarryOverIdentityCollisionError):
+            validate_carry_over_identity_unique(mine, 'solusd_live', 'SOLUSD', 'sollive01')
+
+    def test_distinct_ids_across_the_boundary_pass(self, tmp_path):
+        """The guard against overcorrecting: two trees are not themselves a collision."""
+        tracked, workspace = self._pair(tmp_path)
+        mine = self._write(
+            tracked / 'production' / 'sol.json', 'solusd_live', 'SOLUSD', 'sollive01')
+        self._write(workspace / 'sol_copy.json', 'solusd_live', 'SOLUSD', 'sollive02')
+
+        validate_carry_over_identity_unique(mine, 'solusd_live', 'SOLUSD', 'sollive01')
+
+    def test_a_missing_sibling_tree_is_not_an_error(self, tmp_path):
+        """Most installations have no workspace profiles at all."""
+        tracked = tmp_path / 'configs' / 'autotrader_profiles' / 'production'
+        tracked.mkdir(parents=True)
+        mine = self._write(tracked / 'sol.json', 'solusd_live', 'SOLUSD', 'sollive01')
+
+        validate_carry_over_identity_unique(mine, 'solusd_live', 'SOLUSD', 'sollive01')

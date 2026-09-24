@@ -47,6 +47,11 @@ from python.framework.persistence.carry_over_identity import (
 # started with and a second declaration of the same root could disagree with it.
 PROFILES_ROOT_NAME = 'autotrader_profiles'
 
+# The project's config cascade, most specific first — the same pair §29 names for credentials.
+# A profile tree exists under each, and a copy travels between them.
+_WORKSPACE_CONFIG_DIR = 'user_configs'
+_TRACKED_CONFIG_DIR = 'configs'
+
 # What a declared identity may look like. The ceiling is the operator's (2026-09-24) — an id is
 # typed, read in a table and compared by eye. The character set is NOT a style choice: the id
 # becomes half of a filename, and `sanitize_identity_part` rewrites anything else silently, so
@@ -159,12 +164,12 @@ def validate_carry_over_identity_unique(
     Returns:
         None — raises CarryOverIdentityCollisionError when the identity is not unique
     """
-    root = _profiles_root(config_path)
-    if root is None:
+    roots = _profiles_roots(config_path)
+    if not roots:
         return
 
     key = carry_over_key(profile_name, symbol, bot_id)
-    claimants = [path for path, claimed in _live_identities(root).items() if claimed == key]
+    claimants = [path for path, claimed in _live_identities(roots).items() if claimed == key]
     if len(claimants) < 2:
         return
 
@@ -173,34 +178,66 @@ def validate_carry_over_identity_unique(
         f"Two profiles share one carry-over identity '{key}':\n{listed}\n"
         f'    They would share one position book, one position counter and one set of session '
         f'keys.\n'
-        f"    Give one of them a distinct `name` — the identity is `<name>_<symbol>`, and the "
-        f'name is free text nothing validates.'
+        f'    Give one of them a distinct `bot_id` — the identity is `<bot_id>_<symbol>`, up to '
+        f'{BOT_ID_MAX_LENGTH}\n'
+        f'    characters of a-z, 0-9 and hyphen. The usual cause is a COPIED profile whose id was '
+        f'not changed\n'
+        f'    with it; the two need not sit in the same directory, and since 2026-09-24 this check '
+        f'crosses\n    that boundary.'
     )
 
 
-def _profiles_root(config_path: Optional[Path]) -> Optional[Path]:
+def _profiles_roots(config_path: Optional[Path]) -> List[Path]:
     """
-    The profile tree this session's config sits in.
+    Every profile tree this session must be compared against.
+
+    The tree the config sits in, PLUS its sibling in the other config directory. Both, since
+    2026-09-24, and the reason is the route an operator actually takes: copying a profile and
+    forgetting to change its `bot_id`. A private copy of a shipped profile lands in
+    `user_configs/`, which is across the boundary the old single-root walk never crossed — so the
+    one check that could catch the copy was blind to exactly the copy that matters.
+
+    They are separate BOTS, not a cascade. An AutoTrader profile does not merge with a same-named
+    file the way `app_config.json` does (`deep_merge` puts app defaults UNDER one profile and
+    nothing else), so two files claiming one identity are always two bots sharing one position
+    book — whichever directories they sit in.
 
     Args:
         config_path: The loaded profile's path, or None
 
     Returns:
-        The `autotrader_profiles` directory above it, or None when the config did not come from
-        one — a fixture in a test tree legitimately does not, and a check that guessed a root
+        The roots to scan, nearest first; empty when the config did not come from a profile tree
+        at all — a fixture in a test tree legitimately does not, and a check that guessed a root
         there would compare this session against profiles it has nothing to do with
     """
     if config_path is None:
-        return None
+        return []
+    own: Optional[Path] = None
     for parent in Path(config_path).resolve().parents:
         if parent.name == PROFILES_ROOT_NAME:
-            return parent
-    return None
+            own = parent
+            break
+    if own is None:
+        return []
+
+    roots = [own]
+    # The pair is the project's config cascade, named here the way §29 names the credential
+    # one: most specific first. The sibling is found by swapping the directory the root sits
+    # in, never by guessing a path from the working directory — a session started from a
+    # temporary tree must not suddenly be compared against the repository's profiles.
+    container = own.parent
+    for a, b in ((_WORKSPACE_CONFIG_DIR, _TRACKED_CONFIG_DIR),
+                 (_TRACKED_CONFIG_DIR, _WORKSPACE_CONFIG_DIR)):
+        if container.name == a:
+            sibling = container.parent / b / PROFILES_ROOT_NAME
+            if sibling.is_dir():
+                roots.append(sibling)
+    return roots
 
 
-def _live_identities(root: Path) -> Dict[Path, str]:
+def _live_identities(roots: List[Path]) -> Dict[Path, str]:
     """
-    The carry-over identity every profile under this root claims.
+    The carry-over identity every profile under these roots claims.
 
     Read from the RAW json rather than through the config loader: this runs at boot, a full load
     validates and resolves far more than a name and a symbol, and one unrelated profile with a
@@ -209,21 +246,22 @@ def _live_identities(root: Path) -> Dict[Path, str]:
     a second config validator.
 
     Args:
-        root: The `autotrader_profiles` directory
+        roots: The `autotrader_profiles` directories to scan
 
     Returns:
         Profile path → the identity it would file its carry-over under
     """
     identities: Dict[Path, str] = {}
-    for path in sorted(root.rglob('*.json')):
-        raw = _read_profile(path)
-        if raw is None:
-            continue
-        symbol = raw.get('symbol')
-        if not symbol:
-            continue
-        identities[path] = carry_over_key(
-            raw.get('name') or symbol, symbol, raw.get('bot_id') or '')
+    for root in roots:
+        for path in sorted(root.rglob('*.json')):
+            raw = _read_profile(path)
+            if raw is None:
+                continue
+            symbol = raw.get('symbol')
+            if not symbol:
+                continue
+            identities[path] = carry_over_key(
+                raw.get('name') or symbol, symbol, raw.get('bot_id') or '')
     return identities
 
 
@@ -245,7 +283,7 @@ def _read_profile(path: Path) -> Optional[dict]:
     return raw if isinstance(raw, dict) else None
 
 
-def collisions(root: Path) -> Dict[str, List[Path]]:
+def collisions(roots: List[Path]) -> Dict[str, List[Path]]:
     """
     Every shared carry-over identity under a profile root, for a sweep rather than a boot.
 
@@ -253,12 +291,12 @@ def collisions(root: Path) -> Dict[str, List[Path]]:
     whole question at once, which is what a maintenance command or a test wants.
 
     Args:
-        root: The `autotrader_profiles` directory
+        roots: The `autotrader_profiles` directories to scan
 
     Returns:
         Identity → the profiles claiming it, for identities claimed more than once
     """
     claimed: Dict[str, List[Path]] = {}
-    for path, key in _live_identities(root).items():
+    for path, key in _live_identities(roots).items():
         claimed.setdefault(key, []).append(path)
     return {key: paths for key, paths in claimed.items() if len(paths) > 1}

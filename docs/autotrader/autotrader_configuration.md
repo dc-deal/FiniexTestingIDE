@@ -83,12 +83,29 @@ The profile 'DOTUSD Live Bot' declares no `bot_id`.
 A refusal rather than a warning, because a warning on a thirty-day unattended run is a warning
 nobody is there to read.
 
-**Uniqueness is checked across the whole profile tree at boot**, not only within a folder: two
-profiles resolving to one identity would share a position book, a position counter and a set of
-session keys, and neither store could see it — each asks whether a document belongs to THIS bot,
-which in a collision it does, for both. A test holds the shipped profiles to the same three rules,
-so a new profile cannot arrive without an identity, with a malformed one, or with one already
-taken.
+**Uniqueness is checked at boot across BOTH profile trees** — the tracked one under `configs/`
+and the workspace one under `user_configs/` — not only within a folder and not only within the
+tree the session was started from. The reason is the route an operator actually takes: copying a
+profile and forgetting to change its `bot_id`. A private copy of a shipped profile lands in
+`user_configs/`, which is across the boundary a single-tree check never crossed, so the one check
+that could catch a copy was blind to exactly the copy that matters.
+
+They are separate BOTS, not a cascade. An AutoTrader profile does not merge with a same-named file
+the way `app_config.json` does — `deep_merge` puts the app defaults UNDER one profile and nothing
+else — so two files claiming one identity are always two bots sharing one position book, one
+position counter and one set of session keys.
+
+**A copy defeats the other guard too, which is why this one has to hold.** The carry-over document
+carries its own `profile` and `symbol` and the store refuses a document belonging to a different
+bot. A copy matches on both, so that refusal never fires: the second bot reads the first one's
+position book and adopts it as its own.
+
+The session is REFUSED, never repaired. Minting a fresh id on a collision would be the same
+disaster arriving as a helpful fix — the id IS the key to the position book, so a silently changed
+one points the bot at an empty document while the venue still holds the position.
+
+A test holds the shipped profiles to the same three rules, so a new profile cannot arrive without
+an identity, with a malformed one, or with one already taken.
 
 ## Configuration
 
