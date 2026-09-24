@@ -70,7 +70,8 @@ period's figures came from, so a reader who re-derives them and gets a different
 the row is wrong rather than merely surprising. It has to be a figure the row did NOT produce
 in the same breath: a second column holding the same `len(rows)` reads as an audit and is none,
 which is why the one that did exist was removed. That is the whole reason the construction has
-survived for centuries, and it is what CLAUDE.md §48 states in this project's own words.
+survived for centuries, and it is the rule this project states in its own words: every money
+figure stays re-derivable from the records it came from.
 
 The practical consequence is that the third level costs nothing to add. A Sharpe ratio, a Calmar
 ratio, a monthly drawdown are not another layer of bookkeeping — they fall out of the period

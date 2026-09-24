@@ -17,14 +17,16 @@ from pathlib import Path
 import pytest
 
 from python.framework.exceptions.persistence_errors import (
+    BotIdMalformedError,
+    BotIdRequiredError,
     CarryOverIdentityCollisionError,
-    ContinuousDeploymentNeedsBotIdError,
 )
 from python.framework.persistence.carry_over_identity import carry_over_key
 from python.framework.validators.carry_over_identity_validator import (
+    BOT_ID_MAX_LENGTH,
     collisions,
+    validate_bot_id,
     validate_carry_over_identity_unique,
-    validate_continuous_deployment_declares_bot_id,
 )
 
 _REAL_PROFILES = Path('configs/autotrader_profiles')
@@ -106,21 +108,35 @@ class TestTheKeyHasOneHome:
         assert carry_over_key('dot live', 'DOTUSD') == carry_over_key('dot-live', 'DOTUSD')
 
 
-class TestAContinuousDeploymentMustDeclareItsIdentity:
+class TestEveryProfileMustDeclareItsIdentity:
     """
-    The one case where composing the identity from the NAME is not good enough (#538).
+    Composing the identity from the NAME is not good enough for ANY profile (#538, widened
+    2026-09-24 on the operator's decision).
 
-    A continuous deployment is by definition the case where state survives a restart. Without a
-    declared identity that state is filed under what the profile is CALLED — and renaming does
-    not fail, it silently points the next session at an empty document while the venue still
-    holds the position. So it is a REFUSAL at boot, not a warning: a warning on a thirty-day
-    unattended run is a warning nobody is there to read.
+    The older rule asked only of a continuous deployment, and that protected the case least in
+    need of it: a continuous profile is one somebody thought about. The route into a collision
+    is copying a profile into another purpose folder and keeping its name — and that copy was
+    exactly what the narrow rule exempted.
+
+    Refused at boot rather than warned about: a warning on a thirty-day unattended run is a
+    warning nobody is there to read, and the cost of being wrong is a position nobody knows
+    about.
     """
 
-    def test_a_continuous_profile_without_one_is_refused(self):
-        with pytest.raises(ContinuousDeploymentNeedsBotIdError):
-            validate_continuous_deployment_declares_bot_id(
-                'dotusd_live', 'DOTUSD', '', continuous=True)
+    def test_a_profile_without_one_is_refused(self):
+        with pytest.raises(BotIdRequiredError):
+            validate_bot_id('dotusd_live', 'DOTUSD', '')
+
+    def test_a_one_off_session_is_no_longer_exempt(self):
+        """
+        The widening, stated as its own case because it REVERSES what this suite used to pin.
+
+        A one-off inherits nothing, which is why it was exempt — but it still WRITES a
+        carry-over document, and a document written under a name is one the next rename
+        orphans.
+        """
+        with pytest.raises(BotIdRequiredError):
+            validate_bot_id('some_probe', 'BTCUSD', '')
 
     def test_the_message_carries_a_usable_suggestion(self):
         """
@@ -128,23 +144,92 @@ class TestAContinuousDeploymentMustDeclareItsIdentity:
         arbitrary — what matters is that it is unique and never changes — so the message proposes
         one rather than leaving them to invent it.
         """
-        with pytest.raises(ContinuousDeploymentNeedsBotIdError) as raised:
-            validate_continuous_deployment_declares_bot_id(
-                'DOTUSD Live Bot', 'DOTUSD', '', continuous=True)
+        with pytest.raises(BotIdRequiredError) as raised:
+            validate_bot_id('DOTUSD Live Bot', 'DOTUSD', '')
 
         message = str(raised.value)
-        assert '"bot_id": "dotusd-live-bot"' in message
-        assert 'dotusd-live-bot_dotusd' in message, 'the resulting identity is not shown'
+        assert '"bot_id": "dotusd-liv"' in message, (
+            f'the suggestion is not offered within the ceiling: {message}')
         assert 'UNIQUE' in message
 
-    def test_a_declared_one_passes(self):
-        validate_continuous_deployment_declares_bot_id(
-            'dotusd_live', 'DOTUSD', 'dotusd-live', continuous=True)
+    def test_the_suggestion_is_itself_acceptable(self):
+        """
+        A proposal the validator would refuse is worse than none — the operator pastes it and
+        gets a second error. The suggestion is therefore cut to the ceiling and re-checked here.
+        """
+        with pytest.raises(BotIdRequiredError) as raised:
+            validate_bot_id('An Extremely Long Profile Name', 'BTCUSD', '')
+        suggestion = str(raised.value).split('"bot_id": "')[1].split('"')[0]
 
-    def test_a_one_off_session_is_exempt(self):
-        """It inherits nothing and leaves nothing a successor must find."""
-        validate_continuous_deployment_declares_bot_id(
-            'dotusd_live', 'DOTUSD', '', continuous=False)
+        validate_bot_id('An Extremely Long Profile Name', 'BTCUSD', suggestion)
+
+    def test_a_declared_one_passes(self):
+        validate_bot_id('dotusd_live', 'DOTUSD', 'dotlive01')
+
+
+class TestTheShapeOfADeclaredIdentity:
+    """
+    The id BECOMES half of a filename, so a shape the key cannot carry unchanged is refused
+    rather than fixed up.
+
+    `sanitize_identity_part` would rewrite anything outside `[a-z0-9-]` silently — the profile
+    would then declare one identity and the store would hold another, which is the confusion
+    the id exists to prevent, one level down.
+    """
+
+    def test_too_long_is_refused_and_says_by_how_much(self):
+        with pytest.raises(BotIdMalformedError) as raised:
+            validate_bot_id('p', 'BTCUSD', 'a' * (BOT_ID_MAX_LENGTH + 1))
+        assert str(BOT_ID_MAX_LENGTH + 1) in str(raised.value)
+
+    def test_exactly_the_ceiling_passes(self):
+        validate_bot_id('p', 'BTCUSD', 'a' * BOT_ID_MAX_LENGTH)
+
+    def test_one_character_passes(self):
+        """The floor the operator set: one character, not a minimum length nobody asked for."""
+        validate_bot_id('p', 'BTCUSD', 'a')
+
+    @pytest.mark.parametrize('bad', ['Bot01', 'bot_01', 'bot 01', 'bot.01', 'bot/01', 'bot:01'])
+    def test_anything_the_filename_could_not_carry_is_refused(self, bad):
+        with pytest.raises(BotIdMalformedError):
+            validate_bot_id('p', 'BTCUSD', bad)
+
+    def test_the_underscore_is_named_as_the_reserved_separator(self):
+        """It is the one rejected character an operator would otherwise think is a typo."""
+        with pytest.raises(BotIdMalformedError) as raised:
+            validate_bot_id('p', 'BTCUSD', 'bot_01')
+        assert 'reserved' in str(raised.value)
+
+
+class TestEveryShippedProfileIsWellFormedAndUnique:
+    """
+    The declaration and the thing it describes, held to each other.
+
+    The boot check answers for ONE profile at a time; this answers for the set, which is where
+    a collision actually lives. Without it the rule is a promise about profiles nobody has run.
+    """
+
+    @staticmethod
+    def _shipped():
+        """Every AutoTrader profile in the repository. Returns: {relative path: raw config}."""
+        root = Path('configs/autotrader_profiles')
+        return {p.relative_to(root).as_posix(): json.loads(p.read_text(encoding='utf-8'))
+                for p in sorted(root.rglob('*.json'))}
+
+    def test_every_profile_declares_one(self):
+        missing = [rel for rel, cfg in self._shipped().items() if not cfg.get('bot_id')]
+        assert not missing, f'profiles without a bot_id: {missing}'
+
+    def test_every_declared_id_is_well_formed(self):
+        for rel, cfg in self._shipped().items():
+            validate_bot_id(cfg.get('name', rel), cfg.get('symbol', ''), cfg['bot_id'])
+
+    def test_no_two_profiles_claim_the_same_id(self):
+        seen = {}
+        for rel, cfg in self._shipped().items():
+            seen.setdefault(cfg['bot_id'], []).append(rel)
+        shared = {k: v for k, v in seen.items() if len(v) > 1}
+        assert not shared, f'one identity claimed by several profiles: {shared}'
 
 
 class TestTheBootCheck:

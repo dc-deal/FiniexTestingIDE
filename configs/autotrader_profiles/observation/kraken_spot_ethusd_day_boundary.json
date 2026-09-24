@@ -1,7 +1,7 @@
 {
   "_comment": "#476 — the trading-day boundary, proven end to end against a REAL feed. Start it a few minutes before the anchor you set in user_configs/market_config.json::market_rules.crypto.trading_day_anchor and watch the session log rotate. It reads live Kraken ticks and takes live decisions, but dry_run is pinned true HERE so no order reaches the venue: a profile may only TIGHTEN the broker's posture, never loosen it, and on this machine the kraken_spot default is live.",
   "name": "kraken_spot_ethusd_day_boundary",
-  "bot_id": "ethusd-day-01",
+  "bot_id": "ethday01",
   "symbol": "ETHUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "live",

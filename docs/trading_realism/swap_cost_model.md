@@ -120,7 +120,7 @@ MarketClock (executor-owned)  ── canonical clock + MarketCalendar + rollover
   runs and is bit-reproducible (the #368 determinism promise). For a quote-currency account
   this is exact; per-rollover-rate conversion is an MT5-calibration refinement (#209).
 - **Canonical clock:** all event times come from `executor.get_current_time()` (advanced by
-  both the tick and the heartbeat) — never wall-clock (see CLAUDE.md §9 / #375).
+  both the tick and the heartbeat) — never wall-clock (the canonical-clock rule; see #375).
 
 ### Config
 

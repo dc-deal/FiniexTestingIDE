@@ -1,5 +1,6 @@
 {
   "name": "field_study_mock",
+  "bot_id": "fldmock01",
   "symbol": "ETHUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",

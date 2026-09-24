@@ -114,7 +114,8 @@ list response carries a `key`:
 Both of the cases that prompted it are ones where the obvious key is wrong: a deployment row is
 one per (deployment × account currency), and a booking period's running number restarts per bot,
 so two rows of one deployment can both be number 1. It is machine-readable on purpose — a
-consumer can assert it rather than read it (CLAUDE.md §49).
+consumer can assert it rather than read it: where correct USE depends on knowledge, the
+knowledge is declared beside the thing rather than left in prose.
 
 **It is NOT the store's key.** A store entry's identity (`StoreEntry.key`) answers how one
 ENTRY is addressed; this answers what makes one ROW of THIS response unique, and the two differ

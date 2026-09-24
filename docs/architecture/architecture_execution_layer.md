@@ -259,14 +259,19 @@ The foundation. Contains all concrete fill processing and shared infrastructure.
 - `_fill_close_order(pending_order, fill_price=None)` — Portfolio close, P&L realization, statistics. Same price override pattern.
 - `get_order_history()` — All OrderResults (fills + rejections) for audit trail
 - `get_open_positions()` — Returns confirmed portfolio positions only
-- `get_account_info()` — Balance, equity, margin, free margin
+- `get_account_info()` — Balance, equity, position counts, and the multi-currency `balances`
+  at spot. **`margin_used`, `free_margin` and `margin_level` are None at SPOT** (2026-09-24):
+  a spot account posts no margin, and the figures it used to receive were the branch of the
+  margin formula that multiplies no price — a lot count wearing a currency label. Not
+  computed there rather than blanked at the end, which also removes one broker call per open
+  position from a method the decision path reaches
 - `get_free_asset_funds(currency)` — What is available of one asset: balance minus the claim
   this bot's own unfilled orders hold on it (#489). The one definition of that subtraction
 - `get_free_entry_capital(symbol, direction)` — Capital a NEW entry may commit, in account
   currency, per account model (#502). Margin returns exactly `free_margin`; spot returns the
   free quote balance for a BUY and the held base asset valued at the mark for a SELL. This is
-  what a decision logic gates on — `free_margin` describes a spot account's spendable cash
-  only by coincidence, because it carries the holdings' unrealized P&L
+  what a decision logic gates on. `free_margin` is no longer offered at spot at all, and
+  asking `get_free_margin()` there is refused by name
 - All broker queries, symbol specs, statistics collection
 
 **Concrete methods (lifted from subclasses — shared active order lifecycle):**

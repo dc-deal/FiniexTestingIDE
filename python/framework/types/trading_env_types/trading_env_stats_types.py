@@ -27,9 +27,15 @@ class AccountInfo:
     Attributes:
         balance: Account balance (realized P&L)
         equity: Current equity (spot: total portfolio value; margin: balance + unrealized P&L)
-        margin_used: Total margin used by open positions
-        free_margin: Available margin for new positions
-        margin_level: Margin level percentage
+        margin_used: Total margin used by open positions. **None at SPOT** — a spot account
+            posts no margin, and the figure it used to carry was the branch of the margin
+            formula that multiplies no price, i.e. a LOT COUNT wearing a currency label
+        free_margin: Available margin for new positions. **None at SPOT** — it was derived
+            from the above, so it moved with the holdings' unrealized P&L and pointed BOTH
+            ways: it offered capital the account did not have when a coin rose, and withheld
+            capital it did have when a coin fell. The spot question is answered by
+            `AbstractTradeExecutor.get_free_entry_capital()` instead (#502)
+        margin_level: Margin level percentage. **None at SPOT** — equity over a lot count
         open_positions: Number of open positions
         total_lots: Total lot size across all positions
         currency: Account currency
@@ -38,9 +44,13 @@ class AccountInfo:
     """
     balance: float
     equity: float
-    margin_used: float
-    free_margin: float
-    margin_level: float
+    # Optional since 2026-09-24: three figures that only a MARGIN account has. A spot account
+    # used to receive invented numbers for them — a false map is worse than a blank one, and
+    # skipping them also removes a per-position broker call from a method the decision path
+    # reaches every time it asks for the account.
+    margin_used: Optional[float]
+    free_margin: Optional[float]
+    margin_level: Optional[float]
     open_positions: int
     total_lots: float
     currency: str

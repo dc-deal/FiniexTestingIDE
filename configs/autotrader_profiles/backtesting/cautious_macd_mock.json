@@ -1,5 +1,6 @@
 {
   "name": "cautious_macd_mock",
+  "bot_id": "cmacd01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",

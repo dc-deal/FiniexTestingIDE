@@ -233,6 +233,14 @@ class AutotraderTickLoop:
         # #451: the observer that turns the status flips above into episode records.
         # It sees both event sources (tick + heartbeat) and measures on the wall axis
         # (§9 duration rule — the canonical clock is bimodal in a mock replay session).
+        #
+        # #549: the wall axis is right for LIVE, where the physical silence is the truth, and
+        # wrong for a mock REPLAY, where the drill's real extent is its DATA span. The rendered
+        # line puts the two side by side: measured 2026-09-24, a ten-minute injected window over
+        # 281 stale ticks printed `06:10 → 06:20 (0s)`, and the freeze drill printed a five-month
+        # span with a one-second duration. Not a one-line fix — in the same mock session the
+        # freeze wants the wall axis and the planned window wants the data axis, so it is a
+        # question per EPISODE rather than per session.
         self._market_data_tracker = MarketDataEpisodeTracker(
             source=config.broker_type,
             logger=logger,
@@ -314,10 +322,6 @@ class AutotraderTickLoop:
 
         # Daily rotation state
         self._current_log_date: Optional[str] = None
-        # Track placeholder file for cleanup on first tick
-        self._initial_placeholder_path: Optional[Path] = None
-        if self._logger.file_logger:
-            self._initial_placeholder_path = self._logger.file_logger.log_file_path
 
         # #400 — Display stats builder (extracted from this loop). Holds the
         # stable collaborators; the volatile per-frame state (safety, rejections,
@@ -1607,8 +1611,10 @@ class AutotraderTickLoop:
             )
             self._logger.swap_file_logger(new_file_logger)
             self._current_log_date = day_label
-            # Keep placeholder file — it contains pre-tick logs (warmup bars, pipeline setup)
-            self._initial_placeholder_path = None
+            # The file startup created from the WALL clock stays: it holds the pre-tick log
+            # (warmup bars, pipeline setup), and in a replay its name is a different day from
+            # the one this session trades — which is also why the retention below cannot reach
+            # it, a future-dated file being outside the window by construction.
             self._prune_rotated_session_logs(day_label)
             return
 

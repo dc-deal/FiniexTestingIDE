@@ -1,7 +1,7 @@
 {
   "_comment": "REAL MONEY. This is the only live profile that declares use_stop_limit, so it is the one whose behaviour changed when the live path learned STOP and STOP_LIMIT (#500): it used to be refused at STARTUP and now starts and places STOP_LIMIT entries at the venue. One value still needs an owner's eye: lot_size 2.0 SOL is the size of every entry. The entry gate was the other one and is settled - min_entry_capital is 0.0, i.e. OFF (#502). It used to read 1000 against free_margin, which at spot carries the holdings' unrealized P&L, so the floor moved with the market instead of with the cash and was loosest exactly when the account was most exposed. Holding back on a loss is a drawdown brake, and that belongs to the safety layer, not to an entry gate.",
   "name": "solusd_live",
-  "bot_id": "solusd-live",
+  "bot_id": "sollive01",
   "symbol": "SOLUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "live",

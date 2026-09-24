@@ -547,7 +547,17 @@ def execute_tick_loop(
     except Exception as e:
         # an error here is not possible to handle correctly.
         scenario_logger.error(f'Error in Tick Loop - Statistics & Return: {e}')
-        raise e
+        # The two errors stand at the same level, and that is not politeness. The block above
+        # ABSORBS a tick-loop failure into `tick_loop_error` and lets collection continue — so
+        # whatever failed there usually causes something here to fail too, and without the
+        # chain the CONSEQUENCE is what propagates while the CAUSE lives only in the scenario
+        # log. Measured 2026-09-24: a construction error before the loop surfaced as
+        # `ClockNotInjectedError` from the booking close, pointing forty lines past the line
+        # that broke. `from` says what is true — no tick ran, so there was no clock to seal
+        # against — and prints both tracebacks, the cause first.
+        if tick_loop_error is not None:
+            raise e from tick_loop_error
+        raise
 
 
 def _print_tick_loop_finishing_log(

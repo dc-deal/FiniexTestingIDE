@@ -1,5 +1,6 @@
 {
   "name": "trade_lifecycle_test",
+  "bot_id": "tradelif01",
     "_comment": "Thresholds are deliberately looser than the textbook 30/70. This fixture exists to exercise the trade LIFECYCLE — order, fill, position at session end — not to validate RSI levels, and at 30/70 it sat on a knife edge: over its 163 bars only 4 ever passed RSI + Bollinger + the OBV filter together. When the RSI moved to Wilder's smoothing (#517) those 4 became 0 and the session stopped trading at all. At 40/60 the same window offers 9, measured 2026-09-14.",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",

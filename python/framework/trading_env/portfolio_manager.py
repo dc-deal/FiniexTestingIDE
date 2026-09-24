@@ -1219,23 +1219,38 @@ class PortfolioManager:
         # Equity = Balance + Unrealized P&L
         equity = self.balance + unrealized_pnl
 
-        # Calculate margin used (delegated to broker adapter)
-        margin_used = 0.0
-        if self._current_tick is not None:
-            for pos in self.open_positions.values():
-                position_margin = self.broker_config.calculate_margin(
-                    pos.symbol, pos.lots, self._current_tick, order_direction
-                )
-                margin_used += position_margin
+        # Three figures only a MARGIN account has. At spot they are not computed at all — not
+        # merely blanked (2026-09-24, taking the question #497 was carrying).
+        #
+        # They were invented rather than wrong by a little: `margin_currency == quote_currency`
+        # at Kraken spot and leverage is 1, so `calculate_margin` takes the branch that
+        # multiplies no price and 0.1 ETH worth 300 USD was charged as 0.1. `free_margin`
+        # inherited that and moved with the holdings' unrealized P&L, pointing BOTH ways — it
+        # offered capital the account did not have on a rise and withheld capital it did have
+        # on a fall. Nothing in the framework read them (measured: no consumer outside this
+        # construction, and both callers of `get_free_margin` sit behind `not spot_mode`), but
+        # a bot author saw two plausibly named fields carrying numbers.
+        #
+        # Skipping the loop is the second half: it is one broker-adapter call per OPEN POSITION
+        # per call, on a method the decision path reaches through `get_free_entry_capital`.
+        margin_used: Optional[float] = None
+        free_margin: Optional[float] = None
+        margin_level: Optional[float] = None
 
-        # Free margin (calculated AFTER loop!)
-        free_margin = equity - margin_used
+        if not self._spot_mode:
+            margin_used = 0.0
+            if self._current_tick is not None:
+                for pos in self.open_positions.values():
+                    position_margin = self.broker_config.calculate_margin(
+                        pos.symbol, pos.lots, self._current_tick, order_direction
+                    )
+                    margin_used += position_margin
 
-        # Margin level
-        if margin_used > 0:
-            margin_level = (equity / margin_used) * 100
-        else:
-            margin_level = 0.0
+            # Free margin (calculated AFTER loop!)
+            free_margin = equity - margin_used
+
+            # Margin level
+            margin_level = (equity / margin_used) * 100 if margin_used > 0 else 0.0
 
         # Position stats
         total_lots = sum(pos.lots for pos in self.open_positions.values())
@@ -1477,7 +1492,26 @@ class PortfolioManager:
         return self.balance + unrealized_pnl
 
     def get_free_margin(self, order_direction: OrderDirection) -> float:
-        """Get free margin"""
+        """
+        Get free margin — MARGIN accounts only.
+
+        A spot account has none, and since 2026-09-24 it no longer receives an invented figure.
+        Refused loudly rather than returning None, because every caller here treats the answer
+        as a number to compare against: both of them already sit behind `not spot_mode`, so
+        reaching this at spot is a programming error and not an operator one.
+
+        Args:
+            order_direction: The direction the margin would be posted for
+
+        Returns:
+            The free margin
+
+        """
+        if self._spot_mode:
+            raise ValueError(
+                'get_free_margin() has no answer at spot — a spot account posts no margin. '
+                'The question a decision actually has is answered by '
+                'AbstractTradeExecutor.get_free_entry_capital(symbol, direction) (#502).')
         account = self.get_account_info(order_direction)
         return account.free_margin
 

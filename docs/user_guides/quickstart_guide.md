@@ -403,8 +403,8 @@ class AggressiveTrend(AbstractDecisionLogic):
 
         # Capital gate: what THIS account can commit to a new entry. Ask for it by
         # name — `get_account_info().free_margin` answers the question only on a
-        # margin account; at spot it carries the holdings' unrealized P&L, which is
-        # not cash you can spend on the next entry.
+        # margin account, and at spot it is None: a spot account posts no margin,
+        # so there is no such figure to read.
         if self.trading_api.get_free_entry_capital(
                 tick.symbol, new_direction) < self.min_entry_capital:
             return None

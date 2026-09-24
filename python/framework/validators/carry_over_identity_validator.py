@@ -32,8 +32,9 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from python.framework.exceptions.persistence_errors import (
+    BotIdMalformedError,
+    BotIdRequiredError,
     CarryOverIdentityCollisionError,
-    ContinuousDeploymentNeedsBotIdError,
 )
 from python.framework.persistence.carry_over_identity import (
     carry_over_key,
@@ -46,60 +47,91 @@ from python.framework.persistence.carry_over_identity import (
 # started with and a second declaration of the same root could disagree with it.
 PROFILES_ROOT_NAME = 'autotrader_profiles'
 
+# What a declared identity may look like. The ceiling is the operator's (2026-09-24) — an id is
+# typed, read in a table and compared by eye. The character set is NOT a style choice: the id
+# becomes half of a filename, and `sanitize_identity_part` rewrites anything else silently, so
+# a wider set would let the declared identity and the stored one drift apart. The underscore is
+# excluded because it is the reserved join character.
+BOT_ID_MAX_LENGTH = 10
+_BOT_ID_ALLOWED = set('abcdefghijklmnopqrstuvwxyz0123456789-')
 
-def validate_continuous_deployment_declares_bot_id(
-    profile_name: str,
-    symbol: str,
-    bot_id: str,
-    continuous: bool,
-) -> None:
+
+def validate_bot_id(profile_name: str, symbol: str, bot_id: str) -> None:
     """
-    Refuse to start a CONTINUOUS deployment whose identity is only its display name.
+    Refuse to start any profile whose carry-over identity is missing or malformed.
 
-    A continuous deployment is precisely the case where state must survive a restart, and without
-    a declared identity that state is filed under what the profile is CALLED. Renaming the profile
-    then does not fail — the next session simply looks somewhere else, finds nothing, and reads
-    its own holding as flat while the venue still holds it.
+    Required of EVERY profile since 2026-09-24 (operator). The older rule asked only of a
+    CONTINUOUS deployment, which protected the case that needs it least — a continuous profile
+    is one somebody thought about, while the route into a collision is copying a profile into
+    another purpose folder and keeping its name, and that copy was exempt. Everything else here
+    was already true of the narrow rule; only the population changed.
 
-    A one-off session is exempt by construction: it inherits nothing and leaves nothing that a
-    successor has to find, so there is no identity to protect.
-
-    The message carries a SUGGESTION rather than only a complaint, because the value is arbitrary
-    and the operator has no reason to invent one — what matters is that it is unique and never
-    changes again.
+    The message carries a SUGGESTION rather than only a complaint, because the value is
+    arbitrary and the operator has no reason to invent one — what matters is that it is unique
+    and never changes again.
 
     Args:
         profile_name: The profile's declared name, or its symbol when it declares none
         symbol: The traded symbol
         bot_id: The identity the profile declares, or empty
-        continuous: Whether this session belongs to a continuous deployment
 
     Returns:
-        None — raises ContinuousDeploymentNeedsBotIdError when a continuous profile declares none
+        None — raises BotIdRequiredError when none is declared, BotIdMalformedError when the
+        declared one is not a shape the carry-over key can carry unchanged
     """
-    if not continuous or bot_id:
-        return
+    if not bot_id:
+        suggestion = sanitize_identity_part(profile_name)[:BOT_ID_MAX_LENGTH].strip('-')
+        raise BotIdRequiredError(
+            f"The profile '{profile_name}' declares no `bot_id`.\n"
+            f'    A bot\'s state is filed under this identity — the open position book, the '
+            f'position\n'
+            f'    counter, the session keys. Without one it is filed under the profile NAME, so '
+            f'renaming\n'
+            f'    the profile points the next session at an empty document while the venue still '
+            f'holds\n'
+            f'    the position.\n'
+            f'\n'
+            f'    Add it to the profile, beside `name`:\n'
+            f'\n'
+            f'        "bot_id": "{suggestion}"\n'
+            f'\n'
+            f'    Up to {BOT_ID_MAX_LENGTH} characters of a-z, 0-9 and hyphen. What it has to be '
+            f'is UNIQUE\n'
+            f'    across every profile and never changed again. The identity this session would '
+            f"file\n    under is '{carry_over_key(profile_name, symbol, suggestion)}'."
+        )
 
-    suggestion = sanitize_identity_part(profile_name)
-    raise ContinuousDeploymentNeedsBotIdError(
-        f"The profile '{profile_name}' declares `deployment.continuous: true` but no `bot_id`.\n"
-        f'    A continuous deployment carries state across restarts — the open position book, '
-        f'the position\n'
-        f'    counter, the session keys. Without a declared identity that state is filed under '
-        f'the profile\n'
-        f'    NAME, so renaming the profile points the next session at an empty document while '
-        f'the venue\n'
-        f'    still holds the position.\n'
+    reason = _malformed_reason(bot_id)
+    if reason is None:
+        return
+    raise BotIdMalformedError(
+        f"The profile '{profile_name}' declares `bot_id: '{bot_id}'`, which {reason}.\n"
+        f'    The id becomes half of a filename ("<bot_id>_<symbol>.json"), and anything outside\n'
+        f'    a-z, 0-9 and hyphen would be rewritten on the way to disk — the profile would then\n'
+        f'    declare one identity and the store would hold another. The underscore is the '
+        f'reserved\n'
+        f'    join character and is excluded for the same reason.\n'
         f'\n'
-        f'    Add it to the profile, beside `name`:\n'
-        f'\n'
-        f'        "bot_id": "{suggestion}"\n'
-        f'\n'
-        f'    It may be anything — what it has to be is UNIQUE across every profile and never '
-        f'changed\n'
-        f'    again. The identity this session would file under is '
-        f"'{carry_over_key(profile_name, symbol, suggestion)}'."
+        f'    Allowed: 1 to {BOT_ID_MAX_LENGTH} characters of a-z, 0-9 and hyphen.'
     )
+
+
+def _malformed_reason(bot_id: str) -> Optional[str]:
+    """
+    Why a declared identity cannot be used as it stands, or None when it can.
+
+    Args:
+        bot_id: The declared identity, never empty
+
+    Returns:
+        A phrase completing "which …", or None when the id is well formed
+    """
+    if len(bot_id) > BOT_ID_MAX_LENGTH:
+        return f'is {len(bot_id)} characters long — the ceiling is {BOT_ID_MAX_LENGTH}'
+    bad = sorted({c for c in bot_id if c not in _BOT_ID_ALLOWED})
+    if bad:
+        return 'contains ' + ', '.join(f"'{c}'" for c in bad)
+    return None
 
 
 def validate_carry_over_identity_unique(

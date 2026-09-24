@@ -38,42 +38,57 @@ Declaring the identity separates the two:
 }
 ```
 
-The file stays `dotusd-live_dotusd.json` through any rename of anything else. The field is
-OPTIONAL — a profile without one keeps the composed name, exactly as before — and it is written
-into the document's own envelope, so the file can say what it is filed under rather than leaving
-that to be recomputed.
+The file stays `dotlive01_dotusd.json` through any rename of anything else. It is written into
+the document's own envelope, so the file can say what it is filed under rather than leaving that
+to be recomputed.
 
 **Set it once and never change it.** Changing a `bot_id` is the same event as renaming without
 one: the next session looks somewhere else.
 
-**Which profiles earn one:** those whose state has to survive a restart — every profile declaring
-`deployment.continuous: true`, and every profile that trades for real. Everything else is
-self-contained per run: a mock test session starts from nothing by design, so there is no identity
-to protect. Measured 2026-09-22: of 28 profiles, the four in `production/`, the two declaring
-`continuous` and nothing else declare one.
+**MANDATORY on every profile since 2026-09-24**, and the widening is the point. The older rule
+asked only of a profile declaring `deployment.continuous: true`, which protected the case least in
+need of it: a continuous profile is one somebody thought about. The route into a collision is
+copying a profile into another purpose folder and keeping its name — and that copy was exactly
+what the narrow rule exempted. A one-off is no longer exempt either: it inherits nothing, which
+was the old argument, but it still WRITES a carry-over document, and a document written under a
+name is one the next rename orphans.
 
-It is OPTIONAL for an ordinary profile and **MANDATORY for a continuous one**: a session whose
-profile declares `deployment.continuous: true` and no `bot_id` is REFUSED at boot, with the value
-to paste in:
+**The shape:** 1 to 10 characters of `a-z`, `0-9` and hyphen.
+
+The ceiling is so that an identity stays typeable, readable in a table and comparable by eye. The
+character set is not a style choice: the id BECOMES half of a filename, and anything outside that
+set would be rewritten on the way to disk — the profile would declare `Bot_01` and the store would
+hold `bot-01`, which is the same class of confusion the id exists to prevent, one level down. The
+underscore is excluded because it is the reserved join character between the two halves.
+
+A profile with no `bot_id`, or one whose shape cannot survive the trip to disk, is REFUSED at
+boot, with the value to paste in:
 
 ```
-The profile 'DOTUSD Live Bot' declares `deployment.continuous: true` but no `bot_id`.
-    A continuous deployment carries state across restarts — the open position book, the position
-    counter, the session keys. Without a declared identity that state is filed under the profile
-    NAME, so renaming the profile points the next session at an empty document while the venue
-    still holds the position.
+The profile 'DOTUSD Live Bot' declares no `bot_id`.
+    A bot's state is filed under this identity — the open position book, the position
+    counter, the session keys. Without one it is filed under the profile NAME, so renaming
+    the profile points the next session at an empty document while the venue still holds
+    the position.
 
     Add it to the profile, beside `name`:
 
-        "bot_id": "dotusd-live-bot"
+        "bot_id": "dotusd-liv"
 
-    It may be anything — what it has to be is UNIQUE across every profile and never changed
-    again. The identity this session would file under is 'dotusd-live-bot_dotusd'.
+    Up to 10 characters of a-z, 0-9 and hyphen. What it has to be is UNIQUE
+    across every profile and never changed again. The identity this session would file
+    under is 'dotusd-liv_dotusd'.
 ```
 
 A refusal rather than a warning, because a warning on a thirty-day unattended run is a warning
-nobody is there to read. `--one-off` is exempt: it inherits nothing and leaves nothing a successor
-has to find.
+nobody is there to read.
+
+**Uniqueness is checked across the whole profile tree at boot**, not only within a folder: two
+profiles resolving to one identity would share a position book, a position counter and a set of
+session keys, and neither store could see it — each asks whether a document belongs to THIS bot,
+which in a collision it does, for both. A test holds the shipped profiles to the same three rules,
+so a new profile cannot arrive without an identity, with a malformed one, or with one already
+taken.
 
 ## Configuration
 

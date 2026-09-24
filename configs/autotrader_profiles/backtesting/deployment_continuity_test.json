@@ -1,6 +1,6 @@
 {
   "name": "deployment_continuity_test",
-  "bot_id": "depl-test-01",
+  "bot_id": "deploy01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",

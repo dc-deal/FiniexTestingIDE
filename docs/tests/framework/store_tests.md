@@ -25,8 +25,8 @@ state and the correct state look identical from the outside:
 
 ## `test_store_catalog.py`
 
-**Catalog completeness.** Every `StoreId` has a registration — this is the assertion behind
-CLAUDE.md §44's rule that a new store is entered in the same change. Every descriptor carries a
+**Catalog completeness.** Every `StoreId` has a registration — this is the assertion behind the
+rule that a new store is entered in the catalog in the same change that creates it. Every descriptor carries a
 kind, a form, a backend and a root. A `SPECIAL` store must state *why* it is special, so the kind
 is a declaration rather than a loophole. A managed store must carry an index or a note explaining
 why it has none. Asking the catalog for an unregistered store is named as an error, never answered
