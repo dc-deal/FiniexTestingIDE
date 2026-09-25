@@ -45,12 +45,18 @@ def test_timing_and_identity():
 
 
 def test_disabled_and_profile_run():
+    """
+    The disabled count comes from the LOADER, which drops a disabled scenario before any batch
+    exists. This test used to plant one with `enabled = False` inside the batch — a state the
+    loader never produces — so the count it asserted was one production never reached: the
+    console's "(N disabled)" read 0 on every real run.
+    """
     s1, s2 = _scenario('s1', 0, 'GBPUSD'), _scenario('s2', 1, 'GBPUSD')
     s1.is_profile_run = True
-    s2.enabled = False
-    meta = build_run_meta_report_from_batch(_RUN_ID, _batch([s1, s2]))
+    meta = build_run_meta_report_from_batch(_RUN_ID, _batch([s1, s2]), disabled_count=1)
     assert meta.is_profile_run is True
     assert meta.disabled_count == 1
+    assert meta.scenario_count == 2, 'a disabled scenario was never part of the batch'
 
 
 def test_in_time_hours():

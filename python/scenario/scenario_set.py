@@ -100,6 +100,7 @@ class ScenarioSet:
         self._generator_profiles = scenario_config.generator_profiles
         self._generator_profile_paths = scenario_config.generator_profile_paths
         self._robustness = scenario_config.robustness or RobustnessConfig()
+        self._disabled_count = scenario_config.disabled_count
         # Where this run's logs land, from config (file_logging.run_logs) — the same paths the
         # API reads. A sweep's combinations nest under their sweep id, a standalone run does
         # not: a directory level, while the run TYPE stays `simulation` for both.
@@ -253,6 +254,15 @@ class ScenarioSet:
             List of WindowSet objects, or None for normal runs
         """
         return self._generator_profiles
+
+    def get_disabled_count(self) -> int:
+        """
+        How many scenarios the set switched off — the ones the loader never handed over.
+
+        Returns:
+            The count of `enabled: false` scenarios
+        """
+        return self._disabled_count
 
     def get_robustness_config(self) -> RobustnessConfig:
         """

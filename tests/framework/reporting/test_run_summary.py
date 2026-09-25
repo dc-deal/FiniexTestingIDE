@@ -14,6 +14,7 @@ from python.framework.reporting.builders.report_aggregators import (
 )
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
 from python.framework.types.api.report_types import (
+    AbsentUnitRow,
     ExecutionStatsReport,
     ExecutionStatsTotals,
     PortfolioAggregateRow,
@@ -21,6 +22,7 @@ from python.framework.types.api.report_types import (
     PortfolioUnitRow,
     TradeAnalytics,
     TradeHistoryReport,
+    UnitRoster,
 )
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
@@ -87,6 +89,41 @@ class TestBuild:
         assert by['USD'].net_pnl == 60.0 and by['JPY'].net_pnl == 100.0
         assert by['JPY'].expectancy == 1.0
         assert rs.unit_count == 2
+
+
+class TestTheRosterSaysWhatIsMissing:
+    """
+    The figures above are summed over the units that produced something. The roster says how
+    many were DECLARED and what became of the rest, so a run of ten with two rejected no longer
+    reads as a run of eight (contract 6).
+    """
+
+    @staticmethod
+    def _reports():
+        portfolio = PortfolioReport(run_id=_RUN_ID, units=[_unit()], aggregates=[_agg()])
+        trade = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[],
+                                   analytics=[_analytics()])
+        return portfolio, trade
+
+    def test_the_roster_reaches_the_summary(self):
+        portfolio, trade = self._reports()
+        roster = UnitRoster(declared=4, disabled=2, absent=[
+            AbsentUnitRow(name='w_01', reason='Warmup for M30 has 1/20 bars')])
+
+        rs = build_run_summary(_RUN_ID, portfolio, trade, _exec(), roster=roster)
+
+        assert (rs.units_declared, rs.units_disabled, rs.unit_count) == (4, 2, 1)
+        assert [(row.name, row.reason) for row in rs.units_absent] == [
+            ('w_01', 'Warmup for M30 has 1/20 bars')]
+        assert rs.units_declared == rs.units_disabled + len(rs.units_absent) + rs.unit_count
+
+    def test_without_a_roster_every_summed_unit_is_declared(self):
+        """A summary over units a caller already chose — one robustness window — is complete."""
+        portfolio, trade = self._reports()
+
+        rs = build_run_summary(_RUN_ID, portfolio, trade, _exec())
+
+        assert (rs.units_declared, rs.units_disabled, rs.units_absent) == (1, 0, [])
 
 
 class TestUndefinedProfitFactor:

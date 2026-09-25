@@ -281,6 +281,7 @@ class ScenarioConfigLoader:
             scenarios=scenarios,
             config_path=config_path,
             robustness=robustness,
+            disabled_count=disabled_count,
         )
 
     def load_from_profiles(

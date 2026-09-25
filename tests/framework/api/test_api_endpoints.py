@@ -186,7 +186,7 @@ class TestSymbols:
         with patch('python.api.endpoints.broker_router.BarsIndexManager', return_value=_mock_index()):
             r = client.get('/api/v1/brokers/nonexistent/symbols')
         assert r.status_code == 404
-        assert r.json()['error'] == 'not_found'
+        assert r.json()['error'] == 'broker_not_found'
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +210,7 @@ class TestCoverage:
         with patch('python.api.endpoints.bars_router.BarsIndexManager', return_value=index):
             r = client.get('/api/v1/brokers/kraken_spot/symbols/UNKNOWN/coverage')
         assert r.status_code == 404
-        assert r.json()['error'] == 'not_found'
+        assert r.json()['error'] == 'symbol_not_found'
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +377,7 @@ class TestBars:
                 },
             )
         assert r.status_code == 404
-        assert r.json()['error'] == 'not_found'
+        assert r.json()['error'] == 'broker_not_found'
 
 
 # ---------------------------------------------------------------------------

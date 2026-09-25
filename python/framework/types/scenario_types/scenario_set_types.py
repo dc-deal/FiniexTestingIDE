@@ -170,6 +170,10 @@ class LoadedScenarioConfig:
     generator_profile_paths: Optional[List[Path]] = None
     # Set-wide robustness mode (#367); None → disabled (treated as RobustnessConfig()).
     robustness: Optional[RobustnessConfig] = None
+    # Scenarios the set switched off (`enabled: false`). The loader drops them before anything
+    # else sees them, so this count is the only trace they leave — without it a run's summary
+    # cannot say how many it DECLARED, and the console's "(N disabled)" never fired.
+    disabled_count: int = 0
 
 
 @dataclass

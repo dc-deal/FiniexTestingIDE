@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 
 from python.api.api_auth_setup import setup_api_auth
 from python.api.api_contract import API_CONTRACT_VERSION, CHANGES, CONTRACT_HEADER
+from python.api.api_error_catalog import IDENTITY_UNBOUND, api_error
 from python.api.endpoints import (
     bars_router,
     broker_router,
@@ -82,9 +83,7 @@ def _describe_caller(request: Request, enforced: bool,
     if identity is None:
         # The boot refuses a live token without an account, so a verified consumer with no
         # identity is a defect on this side. Answering it as an anonymous caller would hide it.
-        raise ApiException(
-            status_code=500, error='identity_unbound',
-            detail=f'Consumer {consumer!r} was authenticated but is bound to no account.')
+        raise api_error(IDENTITY_UNBOUND, consumer=consumer)
     return CallerResponse(
         enforced=enforced,
         client=identity.consumer,

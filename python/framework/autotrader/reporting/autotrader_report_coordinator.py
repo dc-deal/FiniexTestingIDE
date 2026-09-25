@@ -24,7 +24,10 @@ from python.framework.reporting.builders.broker_report_builder import (
 from python.framework.reporting.builders.cold_start_report_builder import (
     build_cold_start_report_from_session,
 )
-from python.framework.reporting.builders.run_unit import run_units_from_session
+from python.framework.reporting.builders.run_unit import (
+    run_units_from_session,
+    unit_roster_from_session,
+)
 from python.framework.reporting.builders.safety_report_builder import (
     build_safety_report_from_session,
 )
@@ -175,7 +178,8 @@ class AutotraderReportCoordinator:
         # portfolio (single session = its own currency aggregate) / pending (empty for live) /
         # execution-stats / run-summary / worker-decision. The models feed the unified console.
         unified = SharedReportCoordinator.derive_and_persist(
-            self._run_id, units, io_dir, self._signal_scenario_map, self._observed_feed)
+            self._run_id, units, io_dir, self._signal_scenario_map, self._observed_feed,
+            roster=unit_roster_from_session(result, name))
 
         # Warnings & errors — tiered model (#395). Persisted for API parity with the sim runs;
         # the closing block keeps reading the session buffers directly (same structured source,

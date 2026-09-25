@@ -11,6 +11,16 @@ from typing import Optional
 
 from fastapi import APIRouter, Query
 
+from python.api.api_error_catalog import (
+    ARTIFACT_NOT_PRODUCED,
+    ARTIFACT_UNREADABLE,
+    CONFIG_SNAPSHOT_MISSING,
+    INVALID_TIMESTAMP,
+    REPORTS_NOT_COMMISSIONED,
+    RUN_NOT_COMPLETED,
+    RUN_NOT_FOUND,
+    api_error,
+)
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import (
@@ -74,21 +84,13 @@ def _missing_artifact(run_id: str, section: str) -> ApiException:
     """
     run = next((info for info in ReportStore().list_runs() if info.run_id == run_id), None)
     if run is None:
-        return ApiException(404, 'run_not_found', f"No run '{run_id}' in the run index")
+        return api_error(RUN_NOT_FOUND, run_id=run_id)
     if run.reporting == RunReporting.NONE:
-        return ApiException(
-            404, 'reports_not_commissioned',
-            f"Run '{run_id}' was started without report artifacts (reporting: none)")
+        return api_error(REPORTS_NOT_COMMISSIONED, run_id=run_id)
     if not run.artifacts:
-        return ApiException(
-            404, 'run_not_completed',
-            f"Run '{run_id}' has no report artifacts yet — it is still running, or it ended "
-            f"before its report phase; from here the two look the same")
-    return ApiException(
-        404, 'artifact_not_produced',
-        f"Run '{run_id}' persisted {len(run.artifacts)} report artifact(s) but no {section} — "
-        f"its pipeline does not write this section, or its outcome left nothing to write. "
-        f"The run list's `artifacts` names what it has")
+        return api_error(RUN_NOT_COMPLETED, run_id=run_id)
+    return api_error(ARTIFACT_NOT_PRODUCED, run_id=run_id,
+                     artifact_count=len(run.artifacts), section=section)
 
 
 @router.get('/reports/runs', response_model=RunListResponse)
@@ -307,7 +309,7 @@ def get_warnings_errors(run_id: str) -> WarningsErrorsReport:
     try:
         report = ReportStore().get(run_id, WARNINGS_ERRORS_ARTIFACT)
     except ReportArtifactUnreadableError as e:
-        raise ApiException(409, 'artifact_unreadable', str(e)) from e
+        raise api_error(ARTIFACT_UNREADABLE, reason=str(e)) from e
     if report is None:
         raise _missing_artifact(run_id, 'warnings-errors')
     return report
@@ -397,8 +399,7 @@ def _parse_iso(value: Optional[str], field: str) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(value)
     except ValueError:
-        raise ApiException(
-            400, 'invalid_timestamp', f"'{field}' must be ISO-8601, got '{value}'")
+        raise api_error(INVALID_TIMESTAMP, field=field, value=value)
 
 @router.get('/reports/runs/{run_id}/config', response_model=RunConfigSnapshot)
 def get_run_config(run_id: str) -> RunConfigSnapshot:
@@ -425,9 +426,6 @@ def get_run_config(run_id: str) -> RunConfigSnapshot:
     if snapshot is None:
         known = any(r.run_id == run_id for r in ReportStore().list_runs())
         if not known:
-            raise ApiException(
-                404, 'run_not_found', f"No run '{run_id}' in the run index")
-        raise ApiException(
-            404, 'config_snapshot_missing',
-            f"Run '{run_id}' declares a configuration snapshot that was never filed")
+            raise api_error(RUN_NOT_FOUND, run_id=run_id)
+        raise api_error(CONFIG_SNAPSHOT_MISSING, run_id=run_id)
     return snapshot

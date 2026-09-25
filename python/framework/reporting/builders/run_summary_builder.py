@@ -21,6 +21,7 @@ from python.framework.types.api.report_types import (
     SignalReport,
     TradeAnalytics,
     TradeHistoryReport,
+    UnitRoster,
 )
 
 
@@ -31,6 +32,7 @@ def build_run_summary(
     execution_report: ExecutionStatsReport,
     signal_report: Optional[SignalReport] = None,
     feed_stability_report: Optional[FeedStabilityReport] = None,
+    roster: Optional[UnitRoster] = None,
 ) -> RunSummary:
     """
     Compose the run-wide KPI summary from the section reports.
@@ -44,6 +46,9 @@ def build_run_summary(
             None / no SIGNAL worker leaves the ratio unset
         feed_stability_report: The feed-stability report (#451) — supplies the run's
             disturbance totals for the executive line
+        roster: Which units the run declared and which produced nothing, built by the pipeline
+            from its own source; None counts every summed unit as declared — the case of a
+            summary over units a caller already selected, such as one robustness window
 
     Returns:
         RunSummary with one KPI row per currency + the global order counts
@@ -55,6 +60,8 @@ def build_run_summary(
         for agg in portfolio_report.aggregates
     ]
     totals = execution_report.totals
+    unit_count = len(portfolio_report.units)
+    roster = roster or UnitRoster(declared=unit_count)
     return RunSummary(
         run_id=run_id,
         currencies=currencies,
@@ -62,7 +69,10 @@ def build_run_summary(
         orders_executed=totals.orders_executed,
         orders_rejected=totals.orders_rejected,
         sl_tp_triggered=totals.sl_tp_triggered,
-        unit_count=len(portfolio_report.units),
+        unit_count=unit_count,
+        units_declared=roster.declared,
+        units_disabled=roster.disabled,
+        units_absent=list(roster.absent),
         signal_fresh_ratio=(
             aggregate_signal_fresh_ratio(signal_report) if signal_report else None),
         disturbance_episode_count=(

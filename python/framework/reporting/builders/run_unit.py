@@ -12,6 +12,7 @@ never re-iterates the run.
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from python.framework.types.api.report_types import AbsentUnitRow, UnitRoster
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
@@ -76,6 +77,10 @@ class RunUnit:
     booking_segments: List[BookingSegment] = field(default_factory=list)
 
 
+# The reason a unit carries when it produced nothing and left no message saying why.
+_NO_RESULTS = 'produced no results'
+
+
 def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
     """
     Extract the run units from a sim batch.
@@ -116,6 +121,52 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
             booking_segments=tick_loop.booking_segments or [],
         ))
     return units
+
+
+def unit_roster_from_batch(batch: BatchExecutionSummary, disabled_count: int) -> UnitRoster:
+    """
+    Which scenarios a sim batch declared, and which of the attempted ones produced nothing.
+
+    `declared` is read from the configuration side — the scenarios the set enabled plus the ones
+    it switched off — and `absent` from the results side, so the roster's invariant compares two
+    sources rather than restating one. A result counts when it carries portfolio statistics — the
+    test the portfolio section applies, whose rows are what the summary's `unit_count` counts.
+
+    Args:
+        batch: The completed batch summary
+        disabled_count: Scenarios the set switched off (`enabled: false`), counted by the loader
+
+    Returns:
+        The roster; an absent scenario's reason is its error message
+    """
+    absent = []
+    for result in batch.process_result_list:
+        tick_loop = getattr(result, 'tick_loop_results', None)
+        if tick_loop is not None and tick_loop.portfolio_stats is not None:
+            continue
+        absent.append(AbsentUnitRow(
+            name=result.scenario_name,
+            reason=result.error_message or result.error_type or _NO_RESULTS))
+    return UnitRoster(declared=len(batch.single_scenario_list) + disabled_count,
+                      disabled=disabled_count, absent=absent)
+
+
+def unit_roster_from_session(session: AutoTraderResult, name: str) -> UnitRoster:
+    """
+    A live session's roster: one declared unit, the session itself — the simulation's shape.
+
+    Args:
+        session: The collected session result
+        name: The session's unit label, as its report rows name it
+
+    Returns:
+        One declared unit; absent, with the emergency cause, when the session produced no
+        portfolio statistics (a startup abort)
+    """
+    if session.portfolio_stats is not None:
+        return UnitRoster(declared=1)
+    return UnitRoster(declared=1, absent=[AbsentUnitRow(
+        name=name, reason=session.emergency_reason or _NO_RESULTS)])
 
 
 def _stamp_unit(

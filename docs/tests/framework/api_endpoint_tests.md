@@ -82,6 +82,22 @@ header and is open like `/health`. And the contract log's newest `## Version N` 
 `API_CONTRACT_VERSION`, newest first: the server serves only the current version's lines, so a bump
 that skipped the log would leave a gap no consumer could see.
 
+## Error vocabulary (`test_api_error_catalog.py`)
+
+Every error the API answers with is declared once in `python/api/api_error_catalog.py` (§49: a
+declaration earns its place only with a test that it is complete). `TestTheCatalogIsOneVocabulary`
+holds the constants to `API_ERRORS`, keeps every code unique, refuses a bare `not_found` — a code
+that states the status and no cause — and fills every sentence from its own placeholders.
+`TestTheRoutesRaiseOnlyFromIt` walks the AST of every API module: no route builds an `ApiException`
+with a literal code (the auth error factory is the one exception, its codes are `finiex_auth`'s),
+and every entry is raised somewhere. `TestTheDocumentedTableIsTheVocabulary` holds the error table
+in `api_server_architecture.md` to the catalog plus `finiex_auth`'s `AuthErrorCode`, both ways.
+
+A missing report section names its cause from the run's index row —
+`TestAMissingSectionSaysWhy` in `test_reports_endpoint.py`: `reports_not_commissioned` for a run
+started with `reporting: none`, `run_not_completed` for one with no artifact yet,
+`artifact_not_produced` for a section the run did not write.
+
 ## Mocking Strategy
 
 `BarsIndexManager`, `MarketConfigManager` and `ReportStore` are patched at their import location in

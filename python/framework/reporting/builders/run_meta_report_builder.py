@@ -10,20 +10,21 @@ from python.framework.types.api.report_types import RunMetaReport
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 
 
-def build_run_meta_report_from_batch(run_id: str, batch: BatchExecutionSummary) -> RunMetaReport:
+def build_run_meta_report_from_batch(run_id: str, batch: BatchExecutionSummary,
+                                     disabled_count: int = 0) -> RunMetaReport:
     """
     Build the run-level meta report from the batch execution summary.
 
     Args:
         run_id: The run this report belongs to
         batch: The finished batch execution summary (the orchestrator's measurements)
+        disabled_count: Scenarios the set switched off, as the loader counted them — the batch
+            cannot say, because the loader drops them before any batch exists
 
     Returns:
         RunMetaReport with scenario identity + the wall-clock timing split
     """
     scenarios = batch.single_scenario_list
-    disabled = sum(
-        1 for s in scenarios if hasattr(s, 'enabled') and not s.enabled)
     is_profile_run = bool(scenarios) and getattr(
         scenarios[0], 'is_profile_run', False)
 
@@ -48,7 +49,7 @@ def build_run_meta_report_from_batch(run_id: str, batch: BatchExecutionSummary) 
     return RunMetaReport(
         run_id=run_id,
         scenario_count=count,
-        disabled_count=disabled,
+        disabled_count=disabled_count,
         symbols=sorted(set(s.symbol for s in scenarios)),
         is_profile_run=is_profile_run,
         debug_execution=batch.debug_execution,

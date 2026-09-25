@@ -829,6 +829,32 @@ class BookingPeriodsReport(RunScopedReport):
     final_equity: float = 0.0
 
 
+class AbsentUnitRow(BaseModel):
+    """One unit a run ATTEMPTED that produced nothing — and the reason, so the absence speaks."""
+    name: str
+    reason: str = ''
+
+
+class UnitRoster(BaseModel):
+    """
+    Which units a run declared, and what became of each one that is not counted.
+
+    Built by each pipeline from its own source — the simulation from its batch and its loaded
+    configuration, the live session from itself — and folded into `RunSummary`. `declared` comes
+    from the configuration and `absent` from the results, so the invariant
+    `declared == disabled + len(absent) + unit_count` compares two sources rather than restating
+    one (CLAUDE.md §48).
+
+    Args:
+        declared: Every unit the configuration names — `enabled: false` ones included
+        disabled: The ones switched off, never attempted
+        absent: The attempted ones that produced nothing, with the reason
+    """
+    declared: int
+    disabled: int = 0
+    absent: list[AbsentUnitRow] = []
+
+
 class RunSummary(RunScopedReport):
     """
     Cross-section run KPI model (#390 prework): per-currency KPIs (P&L-denominated) + global
@@ -841,6 +867,12 @@ class RunSummary(RunScopedReport):
     orders_rejected: int = 0
     sl_tp_triggered: int = 0
     unit_count: int = 0     # sim: N scenarios | live: 1
+    # Which units are MISSING from the figures above, and why (contract 6). Before these, a run
+    # of ten scenarios with two rejected read as a run of eight, with nothing on the response
+    # saying so. `units_declared == units_disabled + len(units_absent) + unit_count`.
+    units_declared: int = 0
+    units_disabled: int = 0
+    units_absent: list[AbsentUnitRow] = []
     # Weakest SIGNAL channel of the run (#433): min fresh ratio over all usages. None = no
     # SIGNAL worker was involved — deliberately NOT 1.0, which would claim a perfect feed.
     # Rides into the run-results ledger so a sweep/robustness ranking carries the data

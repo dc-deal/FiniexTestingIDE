@@ -413,6 +413,21 @@ questions are written down, so here they are:
 | **produced** | every scenario that ran and wrote results | `/portfolio` → `units`, `/broker` → `units[].scenarios`, and the other per-unit sections |
 | **counted** | what the run's KPIs are summed over | `/run-summary` → `unit_count` |
 
+**`run-summary` states the difference itself (contract 6)**, in both pipelines, so a consumer
+reading the figures never has to compare routes to learn what they leave out:
+
+```json
+"units_declared": 10, "units_disabled": 0, "unit_count": 8,
+"units_absent": [ { "name": "ETHUSD_blocks_01",
+                    "reason": "Scenario 'ETHUSD_blocks_01' failed validation: … Warmup for M30 has 1/20 bars" },
+                  { "name": "ETHUSD_blocks_02", "reason": "…" } ]
+```
+
+`units_declared == units_disabled + len(units_absent) + unit_count`, and the two sides come from
+two sources — declared from the configuration, absent and counted from the results. A live
+session is declared 1: counted when it ran, absent with its emergency cause when it aborted at
+startup.
+
 **`scenario-details` is the authority for "which scenarios does this run have"**: it is the one
 section built from the batch itself rather than from the results, so a scenario that never
 produced anything is still a row. The gap between declared and attempted is the disabled
@@ -423,15 +438,42 @@ sessions is `/deployments/{deployment_id}`.
 
 All errors return structured JSON — no raw FastAPI tracebacks:
 ```json
-{"error": "not_found", "detail": "Symbol 'XYZ' not found for broker 'mt5'."}
+{"error": "symbol_not_found", "detail": "No symbol 'XYZ' for broker 'mt5' in the bar index"}
 ```
 
-| HTTP | `error` key | Condition |
+**`error` names the CAUSE, never only the status.** One absence usually has several causes, and a
+consumer renders each differently — so there is no bare `not_found` (contract 6). Every code is
+declared once, with its status and its sentence, in `python/api/api_error_catalog.py`; a route
+raises `api_error(KIND, …)` and never an `ApiException` with a literal. The authentication codes
+are the shared `finiex_auth` package's own closed vocabulary (`AuthErrorCode`). A test holds this
+table to both, in both directions.
+
+| HTTP | `error` | Cause |
 |---|---|---|
-| 400 | `invalid_timeframe` | Timeframe not in `TimeframeConfig` registry |
-| 400 | `invalid_range` | `from >= to` |
-| 404 | `not_found` | Unknown broker or symbol |
-| 500 | `config_error` | Broker in bar index but missing from `market_config.json` |
+| 400 | `invalid_timestamp` | a report filter is not ISO-8601 |
+| 400 | `invalid_timeframe` | the timeframe is not in `TimeframeConfig` |
+| 400 | `invalid_limit` | `limit` outside 1 … `MAX_BARS` — refused, never clamped |
+| 400 | `invalid_period` | an indicator period outside 1 … `MAX_INDICATOR_PERIOD` |
+| 400 | `invalid_range` | `from` is not earlier than `to` |
+| 401 | `unauthenticated` | no token, or one the registry does not know (`finiex_auth`) — carries `WWW-Authenticate: Bearer` |
+| 403 | `forbidden` | the token holds no grant for this surface or name (`finiex_auth`) |
+| 404 | `run_not_found` | no such run in the run index |
+| 404 | `reports_not_commissioned` | the run was started with `reporting: none` |
+| 404 | `run_not_completed` | the run has no report artifact yet — running, or it ended before its report phase |
+| 404 | `artifact_not_produced` | the run persisted other sections but not this one |
+| 404 | `config_snapshot_missing` | the run declares a configuration snapshot that was never filed |
+| 404 | `broker_not_found` | the broker is not in the bar index |
+| 404 | `symbol_not_found` | the broker has no such symbol in the bar index |
+| 404 | `no_bars_indexed` | the symbol is indexed but holds no bars |
+| 404 | `timeframe_not_rendered` | no bars exist for that timeframe |
+| 404 | `coverage_report_unavailable` | the coverage cache holds no report for the symbol yet |
+| 404 | `no_bars_in_range` | bars exist, but none in the requested window |
+| 404 | `deployment_not_found` | no such deployment in the run-results ledger |
+| 404 | `sweep_not_found` | no such sweep in the run-results ledger |
+| 409 | `artifact_unreadable` | an artifact exists but no longer matches its model — usually its age |
+| 429 | `rate_limited` | too many attempts (`finiex_auth`) — carries `Retry-After` |
+| 500 | `market_type_not_configured` | a broker in the bar index has no `market_type` in `market_config.json` |
+| 500 | `identity_unbound` | a verified token is bound to no account — a defect on this side |
 
 ## Extension Guide — Adding a New Endpoint
 

@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 5
+API_CONTRACT_VERSION = 6
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -31,13 +31,13 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'reports: a 404 on /reports/runs/{run_id}/<section> now names its CAUSE in `error`, where it '
-    'used to read `run_not_found` for all of them: `run_not_found` (no such run), '
-    '`reports_not_commissioned` (the run was started with reporting: none), `run_not_completed` '
-    '(the run has no report artifact yet — still running, or it ended before its report phase; '
-    'the two look the same), `artifact_not_produced` (the run persisted other sections but not '
-    'this one). /config keeps its own two',
-    'scenario-details: every `units[]` row carries `market_type` (e.g. `crypto`, `forex`), '
-    'resolved once from the same owner as `data_sources[].market_type`, so the two always agree. '
-    '`data_source` on the row IS the broker type',
+    'errors: every error code now names its CAUSE, declared once with its status and sentence. '
+    'The eight bare `not_found` answers on the bars and broker routes became `broker_not_found`, '
+    '`symbol_not_found`, `no_bars_indexed`, `timeframe_not_rendered`, '
+    '`coverage_report_unavailable` and `no_bars_in_range`; the 500 `config_error` became '
+    '`market_type_not_configured`. Every other code is unchanged',
+    'run-summary: `units_declared`, `units_disabled` and `units_absent` ([{name, reason}]) say '
+    'which units the figures are NOT summed over, in both pipelines. '
+    '`units_declared == units_disabled + len(units_absent) + unit_count`. A live session is '
+    'declared 1; one that aborted at startup is absent with its emergency cause',
 ]

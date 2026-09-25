@@ -26,6 +26,26 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 6 — 2026-09-25 (viewer#21)
+
+- Every error code names its CAUSE, declared once with its status and its sentence
+  (`python/api/api_error_catalog.py`). The eight bare `not_found` answers on the bars and broker
+  routes became:
+  - `broker_not_found` — the broker is not in the bar index;
+  - `symbol_not_found` — the broker has no such symbol;
+  - `no_bars_indexed` — the symbol is indexed but holds no bars;
+  - `timeframe_not_rendered` — no bars exist for that timeframe;
+  - `coverage_report_unavailable` — the coverage cache holds no report for it yet;
+  - `no_bars_in_range` — bars exist, but none in the requested window.
+
+  The 500 `config_error` became `market_type_not_configured`. Every other code is unchanged; the
+  full table is in [`api_server_architecture.md`](api_server_architecture.md#error-responses).
+- `run-summary` says which units its figures are NOT summed over, in both pipelines:
+  `units_declared` (every unit the configuration names, `enabled: false` ones included),
+  `units_disabled` and `units_absent` — `[{name, reason}]`, the attempted units that produced
+  nothing. `units_declared == units_disabled + len(units_absent) + unit_count`, from two sources.
+  A live session is declared 1; one that aborted at startup is absent, with its emergency cause.
+
 ## Version 5 — 2026-09-25 (viewer#21)
 
 - A 404 on `/reports/runs/{run_id}/<section>` now names its CAUSE in `error`. It used to read

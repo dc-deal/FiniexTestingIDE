@@ -2,7 +2,7 @@
   "version": "1.0",
   "scenario_set_name": "warmup_rejected_after_mount",
   "created": "2026-09-25T00:00:00+00:00",
-  "description": "Two ETHUSD windows. The first starts at the head of the archive, so its M30 warmup is short and the data quality phase rejects it AFTER its package was built; the second is ordinary.",
+  "description": "Three ETHUSD windows. The first starts at the head of the archive, so its M30 warmup is short and the data quality phase rejects it AFTER its package was built; the second is ordinary; the third is switched off, so the set DECLARES three, attempts two and produces one.",
   "global": {
     "data_mode": "realistic",
     "strategy_config": {
@@ -58,6 +58,16 @@
       "max_ticks": null,
       "data_mode": "realistic",
       "enabled": true
+    },
+    {
+      "name": "switched_off",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-01-25T08:20:00+00:00",
+      "end_date": "2026-01-25T14:20:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": false
     }
   ]
 }

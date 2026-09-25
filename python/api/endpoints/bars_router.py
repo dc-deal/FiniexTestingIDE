@@ -16,7 +16,19 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
     DataCoverageReportCache,
 )
-from python.framework.exceptions.api_errors import ApiException
+from python.api.api_error_catalog import (
+    BROKER_NOT_FOUND,
+    COVERAGE_REPORT_UNAVAILABLE,
+    INVALID_LIMIT,
+    INVALID_PERIOD,
+    INVALID_RANGE,
+    INVALID_TIMEFRAME,
+    NO_BARS_INDEXED,
+    NO_BARS_IN_RANGE,
+    SYMBOL_NOT_FOUND,
+    TIMEFRAME_NOT_RENDERED,
+    api_error,
+)
 from python.framework.types.api.api_types import (
     BarResponse,
     CoverageGapsResponse,
@@ -76,9 +88,9 @@ def _load_index() -> BarsIndexManager:
 
 def _require_broker_symbol(index: BarsIndexManager, broker: str, symbol: str) -> None:
     if broker not in index.list_broker_types():
-        raise ApiException(404, 'not_found', f"Broker '{broker}' not found.")
+        raise api_error(BROKER_NOT_FOUND, broker=broker)
     if symbol not in index.list_symbols(broker_type=broker):
-        raise ApiException(404, 'not_found', f"Symbol '{symbol}' not found for broker '{broker}'.")
+        raise api_error(SYMBOL_NOT_FOUND, symbol=symbol, broker=broker)
 
 
 
@@ -96,7 +108,7 @@ def get_coverage(broker: str, symbol: str) -> CoverageResponse:
 
     stats = index.get_symbol_stats(broker, symbol)
     if not stats:
-        raise ApiException(404, 'not_found', f"No bar data for '{broker}/{symbol}'.")
+        raise api_error(NO_BARS_INDEXED, broker=broker, symbol=symbol)
 
     start_times = [pd.Timestamp(v['start_time']) for v in stats.values()]
     end_times = [pd.Timestamp(v['end_time']) for v in stats.values()]
@@ -138,32 +150,23 @@ def get_bars(
         Bars within the range, oldest first, at most `limit` of them
     """
     if not TimeframeConfig.exists(timeframe):
-        raise ApiException(
-            400, 'invalid_timeframe',
-            f"Timeframe '{timeframe}' is not valid. Valid: {TimeframeConfig.sorted()}",
-        )
+        raise api_error(INVALID_TIMEFRAME, timeframe=timeframe, valid=TimeframeConfig.sorted())
 
     if limit < 1 or limit > MAX_BARS:
-        raise ApiException(
-            400, 'invalid_limit',
-            f"'limit' must be between 1 and {MAX_BARS}, got {limit}.",
-        )
+        raise api_error(INVALID_LIMIT, maximum=MAX_BARS, limit=limit)
 
     from_utc = _utc(from_time)
     to_utc = _utc(to_time)
 
     if from_utc >= to_utc:
-        raise ApiException(400, 'invalid_range', "'from' must be earlier than 'to'.")
+        raise api_error(INVALID_RANGE)
 
     index = _load_index()
     _require_broker_symbol(index, broker, symbol)
 
     bar_file = index.get_bar_file(broker, symbol, timeframe)
     if bar_file is None:
-        raise ApiException(
-            404, 'not_found',
-            f"No bars for '{broker}/{symbol}' at timeframe '{timeframe}'.",
-        )
+        raise api_error(TIMEFRAME_NOT_RENDERED, broker=broker, symbol=symbol, timeframe=timeframe)
 
     df = pd.read_parquet(bar_file)
     mask = (df['timestamp'] >= from_utc) & (df['timestamp'] <= to_utc)
@@ -220,8 +223,7 @@ def get_gaps(broker: str, symbol: str) -> CoverageGapsResponse:
 
     report = DataCoverageReportCache().get_report(broker, symbol)
     if report is None or report.start_time is None:
-        raise ApiException(
-            404, 'not_found', f"No coverage report available for '{broker}/{symbol}'.")
+        raise api_error(COVERAGE_REPORT_UNAVAILABLE, broker=broker, symbol=symbol)
 
     return CoverageGapsResponse(
         symbol=symbol,
@@ -283,38 +285,26 @@ def get_atr(
         One value per bar in the range, oldest first
     """
     if not TimeframeConfig.exists(timeframe):
-        raise ApiException(
-            400, 'invalid_timeframe',
-            f"Timeframe '{timeframe}' is not valid. Valid: {TimeframeConfig.sorted()}",
-        )
+        raise api_error(INVALID_TIMEFRAME, timeframe=timeframe, valid=TimeframeConfig.sorted())
 
     if period < 1 or period > MAX_INDICATOR_PERIOD:
-        raise ApiException(
-            400, 'invalid_period',
-            f"'period' must be between 1 and {MAX_INDICATOR_PERIOD}, got {period}.",
-        )
+        raise api_error(INVALID_PERIOD, maximum=MAX_INDICATOR_PERIOD, period=period)
 
     if limit < 1 or limit > MAX_BARS:
-        raise ApiException(
-            400, 'invalid_limit',
-            f"'limit' must be between 1 and {MAX_BARS}, got {limit}.",
-        )
+        raise api_error(INVALID_LIMIT, maximum=MAX_BARS, limit=limit)
 
     from_utc = _utc(from_time)
     to_utc = _utc(to_time)
 
     if from_utc >= to_utc:
-        raise ApiException(400, 'invalid_range', "'from' must be earlier than 'to'.")
+        raise api_error(INVALID_RANGE)
 
     index = _load_index()
     _require_broker_symbol(index, broker, symbol)
 
     bar_file = index.get_bar_file(broker, symbol, timeframe)
     if bar_file is None:
-        raise ApiException(
-            404, 'not_found',
-            f"No bars for '{broker}/{symbol}' at timeframe '{timeframe}'.",
-        )
+        raise api_error(TIMEFRAME_NOT_RENDERED, broker=broker, symbol=symbol, timeframe=timeframe)
 
     df = pd.read_parquet(bar_file)
 
@@ -326,8 +316,7 @@ def get_atr(
     window = pd.concat([lead_in, requested])
 
     if requested.empty:
-        raise ApiException(
-            404, 'not_found', 'No bars in the requested range.')
+        raise api_error(NO_BARS_IN_RANGE, broker=broker, symbol=symbol)
 
     values = atr_series(
         window['high'], window['low'], window['close'], period, smoothing=smoothing,

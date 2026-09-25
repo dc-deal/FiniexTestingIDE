@@ -13,13 +13,16 @@ from datetime import datetime, timezone
 from python.framework.reporting.builders.run_unit import (
     run_units_from_batch,
     run_units_from_session,
+    unit_roster_from_session,
 )
 from python.framework.reporting.builders.unified_reports import UnifiedReports
 from python.framework.reporting.shared_report_coordinator import SharedReportCoordinator
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
@@ -95,9 +98,32 @@ class TestDeriveAndPersist:
         io_dir = tmp_path / 'io'
         result = AutoTraderResult(execution_stats=_stats(7, 6, 1, 4))
         unified = SharedReportCoordinator.derive_and_persist(_RUN_ID, 
-            run_units_from_session(result, 'my_profile', 'BTCUSD'), io_dir)
+            run_units_from_session(result, 'my_profile', 'BTCUSD'), io_dir,
+            roster=unit_roster_from_session(result, 'my_profile'))
         for name in _EXPECTED_FILES:
             assert (io_dir / name).exists(), f'missing artifact: {name}'
         assert len(unified.execution_stats.units) == 1
         assert unified.execution_stats.units[0].symbol == 'BTCUSD'
         assert unified.execution_stats.totals.orders_executed == 6
+        # A session's roster has the simulation's shape. This one carries no portfolio
+        # statistics — a startup abort — so it is declared and ABSENT, not silently uncounted.
+        summary = unified.run_summary
+        assert (summary.units_declared, summary.units_disabled, summary.unit_count) == (1, 0, 0)
+        assert [row.name for row in summary.units_absent] == ['my_profile']
+        assert summary.units_declared == (
+            summary.units_disabled + len(summary.units_absent) + summary.unit_count)
+
+    def test_a_session_that_ran_is_counted_not_absent(self):
+        """The ordinary live case: one declared, one counted, nothing missing."""
+        result = AutoTraderResult(execution_stats=_stats(7, 6, 1, 4), portfolio_stats=PortfolioStats(
+            broker_type=BrokerType.KRAKEN_SPOT, total_trades=0, total_long_trades=0,
+            total_short_trades=0, winning_trades=0, losing_trades=0, total_profit=0.0,
+            total_loss=0.0, account_max_drawdown=0.0, max_equity=1000.0,
+            account_max_drawdown_pct=0.0, win_rate=0.0, profit_factor=None,
+            total_spread_cost=0.0, total_commission=0.0, total_swap=0.0, maker_fee=0.0,
+            taker_fee=0.0, total_fees=0.0, currency='USD', broker_name='Kraken',
+            current_conversion_rate=1.0, current_balance=1000.0, initial_balance=1000.0))
+
+        roster = unit_roster_from_session(result, 'my_profile')
+
+        assert (roster.declared, roster.disabled, roster.absent) == (1, 0, [])

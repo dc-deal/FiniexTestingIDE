@@ -15,7 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.exceptions.api_errors import ApiException
+from python.api.api_error_catalog import SWEEP_NOT_FOUND, api_error
 from python.framework.optimization.optimization_analysis import rank, summarize_sweeps
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import SweepDetailResponse, SweepListResponse
@@ -55,9 +55,7 @@ def get_sweep(sweep_id: str) -> SweepDetailResponse:
     """
     rows = _ledger().read_rows(sweep_id=sweep_id)
     if not rows:
-        raise ApiException(
-            status_code=404, error='sweep_not_found',
-            detail=f"No sweep '{sweep_id}' in the run-results ledger")
+        raise api_error(SWEEP_NOT_FOUND, sweep_id=sweep_id)
 
     # The spec's own objective and direction were recorded with the runs — ranking by anything
     # else here would answer a question the sweep did not ask.

@@ -17,6 +17,10 @@ import pytest
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
+from python.framework.reporting.builders.run_unit import (
+    run_units_from_batch,
+    unit_roster_from_batch,
+)
 from python.framework.exceptions.mount_errors import MountIdentityMismatchError
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.mount_package_types import DataIdentityKey
@@ -137,3 +141,12 @@ def test_a_scenario_rejected_after_its_package_was_built_is_reported_not_a_crash
     assert ordinary.is_valid()
     results = {result.scenario_name: result for result in summary.process_result_list}
     assert results['ordinary_window'].success
+
+    # The same run, as the run summary will state it: declared three, one switched off, one
+    # rejected with its reason, one counted — the two sides of the invariant from two sources.
+    roster = unit_roster_from_batch(summary, scenario_set.get_disabled_count())
+    assert (roster.declared, roster.disabled) == (3, 1)
+    assert [row.name for row in roster.absent] == ['archive_head_short_warmup']
+    assert 'insufficient for indicator stabilization' in roster.absent[0].reason
+    assert roster.declared == roster.disabled + len(roster.absent) + len(
+        run_units_from_batch(summary))
