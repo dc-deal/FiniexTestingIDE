@@ -215,3 +215,32 @@ a three-level cascade whose dict the application itself writes to at runtime
 (`autotrader_data_preparer` injects `account_currency`), so making it strict would refuse a key we
 add ourselves. Whether that key should become a declared field is a design question, and the
 exemption names it rather than hiding it.
+
+
+## `test_host_identity_manager.py` — the installation's minted identity
+
+Every run header states the `host` it ran on (#551). A hostname cannot be that identity, because
+the container's hostname changes on every rebuild. So `HostIdentityManager` mints one on the
+first start that asks — `h_` plus six random characters of `[a-z0-9]` — writes it to
+`user_configs/host_identity.json` and reads it back unchanged ever after.
+
+The refusal is what this file exists for. A manager that quietly minted a new identity over a
+broken file would pass every other test here, and from that moment every run from the same
+machine would claim to come from a different one, with nothing anywhere saying so.
+
+| Group | What it pins |
+|------|-------------|
+| `TestAMissingIdentityIsMintedOnce` | the mint writes the minted shape with a UTC `minted_at`, announces itself once naming the file, leaves no temporary file, and a second start reads the same id instead of minting again; an existing identity is read as it is, without a warning, and a `_comment` key beside it is allowed |
+| `TestTheAnswerIsCachedPerProcess` | the file is read once per process, and the cache is keyed on the file, so a test's temporary file never answers for the real one |
+| `TestABrokenIdentityRefusesAndIsNeverReMinted` | an empty, truncated, non-object, unreadable or non-text file, a missing or malformed field, the test id on disk and an unknown key all raise `HostIdentityError` naming the file — and the file is left byte for byte as it was; a refusal is not cached, so the start after the file is restored reads it |
+| `TestIsolationStatesTheTestIdentity` | under config isolation the declared `test` id is returned and nothing is read or written, and `test` can never pass for a minted id |
+| `TestTheMintIsFirstWriterWins` | when another process publishes first, its identity is kept rather than replaced; a filesystem without hard links still mints, through a plain rename |
+| `TestTheMintedShapeIsOneDefinition` | the pattern a refusal shows and the alphabet the mint draws from accept the same characters |
+
+Every test runs against a file under pytest's `tmp_path`, with isolation switched off by the
+test itself. The operator's own `user_configs/host_identity.json` is never read.
+
+**Why first-writer-wins rather than a plain rename:** the id is written into a run header the
+moment it is read. Two processes minting on the same first start would, with a rename, leave the
+earlier one's runs naming an identity the file no longer holds. The mint therefore writes a
+temporary file and hard-links it to its final name, which fails when the file already exists.

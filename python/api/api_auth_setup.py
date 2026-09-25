@@ -6,7 +6,7 @@ one bundle. Construction lives here so `create_app` stays a list of what is moun
 than how it was assembled.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Dict, Optional
 
 from finiex_auth.bearer_auth import build_bearer_dependency
@@ -14,9 +14,10 @@ from finiex_auth.grant_auth import build_grant_dependency
 from finiex_auth.rate_limiter import RateLimiter
 from finiex_auth.token_registry import TokenRegistry
 
-from python.configuration.api_token_manager import ApiTokenManager
+from python.configuration.api_auth.api_token_manager import ApiTokenManager
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.exceptions.api_errors import ApiException
+from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 
 # Failed attempts per client per minute. It bounds credential guessing, not traffic: a valid
 # call is never counted. Deliberately generous — a human retrying a stale token must not be
@@ -30,12 +31,17 @@ class ApiAuthBundle:
     The wired authentication layer, handed to `create_app`.
 
     A bundle of live collaborators rather than data, so it lives beside its builder (§6).
+
+    `identities` answers what the registry cannot: which ACCOUNT a live consumer acts for, and
+    its grants as a list rather than the registry's joined display string (#551). Empty while no
+    consumer is live.
     """
 
     registry: TokenRegistry
     bearer: Optional[Callable]
     grant: Callable
     boot_line: str
+    identities: Dict[str, ApiConsumerIdentity] = field(default_factory=dict)
 
 
 def _api_exception(status_code: int, error: str, detail: str,
@@ -72,8 +78,13 @@ def setup_api_auth() -> ApiAuthBundle:
     has to hold its token before it can start sending the header. It is a state to pass
     through, not to stay in.
 
+    The token file and the accounts file are both read here, and a live token whose account is
+    missing, unknown or switched off refuses the boot with `ApiConfigurationError` — before a
+    single route is mounted.
+
     Returns:
-        The registry, the dependencies, and one line saying which state we are in
+        The registry, the dependencies, the bound identities, and one line saying which state
+        we are in
     """
     manager = ApiTokenManager()
     registry = manager.build_registry()
@@ -97,4 +108,5 @@ def setup_api_auth() -> ApiAuthBundle:
         bearer=bearer,
         grant=build_grant_dependency(registry, _api_exception),
         boot_line=boot_line,
+        identities=manager.get_identities(),
     )

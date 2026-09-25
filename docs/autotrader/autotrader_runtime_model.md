@@ -129,6 +129,13 @@ into the shared framework.
 3. `setup_tick_source()` starts tick source thread
 4. Enter tick loop
 
+Between steps 2 and 3, `_validate_startup()` refuses what must not start at all — one session,
+nothing to exclude, so it aborts. Among its refusals: a session that would send REAL
+orders from uncommitted code, and one whose code changed between the capture of its code identity
+and the pipeline loading it. `--allow-dirty` lets a deliberate test through the first, recorded in
+the run header and reported as a Tier-1 warning, and never through the second — see
+[Run Origin and Code Identity](../architecture/run_origin_and_code_identity.md#real-orders-from-uncommitted-code).
+
 ### Tick Loop
 
 Each tick follows the same 5-step path as backtesting:

@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, computed_field
 # re-derived from — and the safety report's job is to surface exactly that record. A parallel
 # row type would be a hand-maintained copy of it, and a copy is what silently drops a field.
 from python.framework.types.persistence_types import RiskBaseline
+from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
 
 
 # WHAT MAKES ONE ROW of each deployment view unique. Declared once, read by the response model
@@ -585,6 +586,12 @@ class RunHeader(BaseModel):
             crashed run is then indistinguishable from an intentionally silent one. It also
             makes cleanup decidable: `none` is the machine-checkable statement "there is
             nothing here anyone wants to look at"
+        origin: Who or what started the run, for whom, and on which installation (#551). None
+            on a run written before the field existed — read as unknown, never as a guess
+        code_identity: Which code ran — this repository, every other repository a component
+            came from, and one entry per component (#551). Captured only for a run that is
+            COMMISSIONED to report: the capture costs a `git status` (~1.8 s on this tree,
+            §42), which the ledger used to pay at the end anyway and now reads from here
     """
     run_id: str
     start_time: datetime
@@ -597,6 +604,8 @@ class RunHeader(BaseModel):
     app_version: str = ''
     git_commit: Optional[str] = None
     reporting: RunReporting = RunReporting.EXPECTED
+    origin: Optional[RunOrigin] = None
+    code_identity: Optional[CodeIdentity] = None
 
 
 class RunConfigSnapshot(BaseModel):

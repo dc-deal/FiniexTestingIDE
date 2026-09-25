@@ -12,9 +12,11 @@ import traceback
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.exceptions.host_identity_errors import HostIdentityError
 from python.framework.exceptions.live_execution_errors import (
     OneOffInsideDeploymentError,
 )
+from python.framework.types.run_origin_types import RunChannel
 
 
 def main():
@@ -60,6 +62,20 @@ def main():
              '(#497). For a bot redeployed after a pause or with different parameters, where '
              'continuing the old history would claim a continuity that does not exist. Safe '
              'to forget: without it the existing deployment simply continues.')
+    run_parser.add_argument(
+        '--allow-dirty', action='store_true',
+        help='Permit REAL orders from code no commit describes (#551). Without it, a session '
+             'whose effective dry_run is false refuses to start unless its code is exactly one '
+             'commit: uncommitted changes in this repository or an algo repository refuse, and '
+             'so do a strategy under no version control (or in a directory its repository '
+             'ignores) and a repository git cannot read — such a run cannot be traced back to '
+             'the code that ran. The override is not silent: the run header records it '
+             '(origin.allow_dirty), the diff hash of a dirty repository is recorded and its '
+             'patch stored where it can be (not for an unversioned or unreadable repository, '
+             'one containing a nested repository, or when the store cannot write — the refusal '
+             'names each such case), and the '
+             'post-run validation reports it as a warning. It never permits code that changes '
+             'while the session starts. A mock or dry-run session is never affected.')
 
     # ─────────────────────────────────────────────────────────────────────────
     # Parse and execute
@@ -85,7 +101,8 @@ def main():
                 config.tick_source.tick_delay_ms = args.delay
             trader = AutotraderMain(
                 config, attended=args.attended,
-                one_off=args.one_off, new_deployment=args.new_deployment)
+                one_off=args.one_off, new_deployment=args.new_deployment,
+                channel=RunChannel.CLI, allow_dirty=args.allow_dirty)
             result = trader.run()
 
             # The result carries the graded outcome; the CLI only maps it (#372)
@@ -99,6 +116,12 @@ def main():
         # trace under it would suggest something broke. Same exit code as a framework
         # emergency (#372) — the session did not start.
         print(f'\n🔗 {refusal}\n')
+        sys.exit(2)
+    except HostIdentityError as refusal:
+        # The same kind of refusal (#551): the installation's identity file exists but cannot be
+        # trusted, and the message names the file and both ways forward. It is raised before
+        # the run header is written, because a header must not state an identity nobody trusts.
+        print(f'\n🪪 {refusal}\n')
         sys.exit(2)
     except Exception as e:
         print(f'\n❌ Error: {e}')

@@ -66,6 +66,7 @@ class StoreId(StrEnum):
     """
     RUNS = 'runs'
     RUN_CONFIGS = 'run_configs'
+    RUN_PATCHES = 'run_patches'
     RUN_LEDGER = 'run_ledger'
     CERTIFICATES = 'certificates'
     SESSION_STATE = 'session_state'
@@ -79,6 +80,7 @@ class StoreId(StrEnum):
     RAW_INBOX = 'raw_inbox'
     FINISHED_ARCHIVE = 'finished_archive'
     GLOBAL_LOG = 'global_log'
+    HOST_IDENTITY = 'host_identity'
 
 
 @dataclass

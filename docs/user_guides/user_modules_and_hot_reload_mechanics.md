@@ -26,7 +26,7 @@ python/framework/
     └── decision_logic_factory.py       ← path-based loader for decision logics
 ```
 
-`user_algos/` is tracked as an empty stub via `.gitkeep`. Contents are gitignored so each user can independently manage their own algo files (or create a nested git repo for their strategies).
+`user_algos/` is tracked as an empty stub via `.gitkeep`. Contents are gitignored so each user can independently manage their own algo files — **in a git repository of their own**, created once with `git init` inside `user_algos/` (with a `.gitignore` for `__pycache__/` and `*.pyc`). A run records the commit of that repository; code under no version control makes every backtest report warn that the run cannot be reproduced, and refuses a real-money start (see the quickstart's Step 4).
 
 ---
 

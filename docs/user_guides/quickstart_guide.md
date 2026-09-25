@@ -599,6 +599,20 @@ The JSON config connects everything together.
 
 Create a directory under `user_algos/` for your strategy and place your files there.
 
+**Put `user_algos/` under version control first — once.** This repository ignores `user_algos/`, so
+your strategy is versioned only if `user_algos/` is a git repository of its own:
+
+```bash
+cd user_algos && git init
+printf '__pycache__/\n*.pyc\n' > .gitignore   # bytecode is not code — without this, every import dirties the tree
+git add -A && git commit -m "my first strategy"
+```
+
+Every run header then records the commit your strategy ran from, and a run from uncommitted work
+also stores a patch that restores it. Without a repository a backtest still runs, but its report
+carries a warning that it can never be reproduced — and a session that would place **real orders**
+refuses to start. Details: [Run Origin and Code Identity](../architecture/run_origin_and_code_identity.md).
+
 ### Create a Worker
 
 1. Create `user_algos/my_strategy/my_indicator.py`

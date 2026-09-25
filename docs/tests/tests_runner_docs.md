@@ -143,14 +143,17 @@ silently with wrong assertions rather than clear errors.
 
 ## Output Isolation — tests never write production data (§34)
 
-Three autouse fixtures in `tests/conftest.py` redirect everything a run persists, for the whole
-test session. All three are session-scoped and need no opt-in:
+Autouse fixtures in `tests/conftest.py` redirect everything a run persists, for the whole test
+session. All of them are session-scoped and need no opt-in:
 
 | What | Fixture | Redirected to |
 |---|---|---|
 | user config overrides | `FINIEX_CONFIG_ISOLATION=1` at module import | skipped entirely |
 | the run tree + its index | `_isolate_run_tree` | `tmp_path_factory` |
 | the cross-run results ledger | `_isolate_run_results_ledger` | `tmp_path_factory` |
+| the run-config store | `_isolate_run_config_store` | `tmp_path_factory` |
+| the run-patch store | `_isolate_run_patch_store` | `tmp_path_factory` |
+| both carry-over stores | `_isolate_carry_over_stores` | `tmp_path_factory` |
 
 **Why redirect rather than switch logging off.** Turning `file_logging.scenario.enabled` off
 would also produce a clean tree — no directory, no header, and therefore no index row. But it
@@ -169,10 +172,13 @@ location and cleans it up:
 ```
 /tmp/pytest-of-<user>/pytest-<N>/
 ├── run_tree0/                  ← _isolate_run_tree  (the trailing 0 is mktemp's counter)
-│   ├── index.parquet
+│   ├── runs_index.parquet
 │   ├── simulation/<set>/<run_id>/
 │   └── live/<profile>/<run_id>/
-└── run_results_ledger0/        ← _isolate_run_results_ledger
+├── run_results_ledger0/        ← _isolate_run_results_ledger
+├── run_configs0/               ← _isolate_run_config_store
+├── run_patches0/               ← _isolate_run_patch_store
+└── carry_over0/                ← _isolate_carry_over_stores
 ```
 
 - **Retention is pytest's**, not ours: it keeps the last **3** numbered sessions and removes older

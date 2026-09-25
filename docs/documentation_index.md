@@ -57,6 +57,7 @@
 | [Data Storage Layout](architecture/data_storage_layout.md) | The store catalog — every data store by kind (record · carry-over · archive · derived · special) and retrieval form, the index obligation, why the bulk form stays outside the abstraction (#486) |
 | [Accounting Periods](architecture/accounting_periods.md) | Which clock resets what — the swap rollover at 17:00 New York against the risk day at midnight UTC, the tick-level equity sample, the two carry-over cadences, and what deliberately does not reset |
 | [Data Provenance](architecture/data_provenance.md) | Who wrote an imported file and what that is allowed to mean — the identity a producer states, the registry that maps it here, the three evidence grades, and the gate that keeps development data out of a measurement |
+| [Run Origin and Code Identity](architecture/run_origin_and_code_identity.md) | What every run header states about where a run came from — the declared channel, client, person and minted host — and which code it ran across every repository a component came from; who reads it (ledger, run index), what the capture costs, and why a real-money session from uncommitted code refuses to start unless `--allow-dirty` is typed (#551) |
 | [Credentials Layout](architecture/credentials_layout.md) | Which secret points which way — the inbound consumer registry against the outbound peer and venue credentials, why an address never travels apart from its credential, and when the folder splits |
 | [External Connection Policy](architecture/external_connection_policy.md) | One retry ladder, one give-up rule, one classification for all seven outbound connections — TRANSIENT / TERMINAL / INADMISSIBLE, why a write is resolved by asking rather than retried, the `cl_ord_id` wire key, who owns the wait (#473) |
 | [Drift Audit](architecture/drift_audit.md) | Read-only local-vs-broker drift telemetry (#327) — FEE / VOLUME / PRICE counters, async trades-query consumer, live-display footer |
@@ -81,6 +82,7 @@
 | [Component Metadata](architecture/component_metadata.md) | Author-declared version, doc link, recommended markets/instruments; soft market-fit warning |
 | [Generator & Block Splitting](generator/generator_block_splitting_architecture.md) | Block splitting analysis, Generator Profile system, Correctness Metric |
 | [API Server Architecture](architecture/api_server_architecture.md) | FastAPI foundation, CORS, endpoint guide, cache integration note |
+| [API Contract Log](architecture/api_contract_log.md) | Every contract version newest first — what moved in each, for a consumer whose fixtures are several versions behind |
 
 ## Data Pipeline
 
@@ -117,7 +119,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Benchmark Baseline History](tests/simulation/benchmark_baseline_history.md) | Why the throughput baseline is what it is — what a re-registration has to carry, and the evidence behind each change |
 | [Bar Parity Tests](tests/parity/bar_parity_tests.md) | Cross-pipeline parity: simulation vs. AutoTrader bar identity |
 | [Heartbeat Ghost-Pass Parity](tests/parity/heartbeat_ghost_tests.md) | Sim ghost-pass between ticks + weekend-gap gate (#360 Stage 2) |
-| [AutoTrader Config](tests/autotrader/config_tests.md) | What the live pipeline resolves before a session starts: `dry_run`, profile loadability, the account fee tier |
+| [AutoTrader Config](tests/autotrader/config_tests.md) | What the live pipeline resolves before a session starts: `dry_run`, profile loadability, the account fee tier, the run origin, the uncommitted-code guard |
 | [AutoTrader Integration](tests/autotrader/integration_tests.md) | End-to-end mock session validation |
 | [Kraken Adapter Live Integration](tests/live_adapters/kraken_adapter_integration_tests.md) | Full order lifecycle against the real Kraken API — validate-only, real limit orders and a real fill round trip; funded account required, release-gate |
 | [Live Field Study](tests/live_field_study/field_study_guide.md) | End-to-end live acceptance test + PASS/FAIL certificate — operator-driven, release-gate (#332) |
@@ -165,7 +167,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Tick Processing Budget](tests/data/tick_processing_budget_tests.md) | Virtual clock filtering, ClippingStats |
 | [Scenario Generator](generator/tests_scenario_generator_docs.md) | Block generation tests |
 | [Batch Validations](tests/framework/batch_validations_tests.md) | Phase 0 validation: ScenarioValidator, BrokerDataPreparator map filtering |
-| [Config Tests (Cascade + Merge Utility + Loader Field Coverage)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests, every AutoTrader config-block field reachable from JSON, app_config strictness, and what a producing instance's identity means here |
+| [Config Tests (Cascade + Merge Utility + Loader Field Coverage)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests, every AutoTrader config-block field reachable from JSON, app_config strictness, what a producing instance's identity means here, and the installation's minted host identity |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
 | [Live Telemetry Tests](tests/framework/live_telemetry_tests.md) | Frame serialization + the signal-transport block in the operator's CONNECTION panel |
 | [Reporting Pipeline Tests](tests/framework/reporting_tests.md) | Unified reporting (#391–#403): builders, IO/store, console renderers — including the two signal planes and what a live run may not claim |
@@ -183,7 +185,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Diagnostics CSV Sink Tests](tests/framework/diagnostics_csv_sink_tests.md) | Strategy-owned diagnostics CSV channel + flush helper |
 | [Bar Rendering Consistency](tests/framework/bar_rendering_tests.md) | BarRenderer vs VectorizedBarRenderer equivalence |
 | [Tick Parquet Reader](tests/framework/tick_parquet_reader_tests.md) | Column normalization, volume chain integration |
-| [API Endpoint Tests](tests/framework/api_endpoint_tests.md) | Health, brokers, symbols, coverage, bars — mocked, no parquet required |
+| [API Endpoint Tests](tests/framework/api_endpoint_tests.md) | Health, brokers, symbols, coverage, bars, caller, token accounts — mocked, no parquet required |
 | [Path-Based Loading](tests/framework/user_namespace_tests.md) | Worker/logic path loading, introspection, CORE integrity |
 | [Market Compatibility](tests/framework/market_compatibility_tests.md) | Worker activity metric declaration, pre-flight scenario rejection |
 | [Algo Clock Convention](tests/framework/algo_clock_tests.md) | §9 wall-clock ban lint (decision logic/workers, CI plane) |

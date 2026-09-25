@@ -23,6 +23,30 @@ TRACKED_CREDENTIALS_PARENT = 'configs'
 CREDENTIALS_DIR_NAME = 'credentials'
 
 
+def is_tracked_credential(credential_path: Path) -> bool:
+    """
+    Whether a credentials file lies in the tracked default rather than the workspace override.
+
+    The one answer to that question: the API token loader asks it too, and a second copy of it
+    is how that loader kept testing the immediate parent after this one learned any depth.
+
+    Args:
+        credential_path: File the credential was actually read from
+
+    Returns:
+        True when the file lies anywhere below configs/credentials
+    """
+    # Matched at ANY depth below configs/credentials, not only as the immediate parent:
+    # the folder is subdivided (inbound / peers / venues), and a parent-only test stops
+    # guarding the moment a file moves one level down — silently, on a money path.
+    parts = Path(credential_path).parts
+    return any(
+        parts[i] == TRACKED_CREDENTIALS_PARENT
+        and parts[i + 1] == CREDENTIALS_DIR_NAME
+        for i in range(len(parts) - 1)
+    )
+
+
 def assert_real_credential(credential_path: Path, purpose: str) -> None:
     """
     Refuse a credential that was read from the tracked default.
@@ -33,16 +57,7 @@ def assert_real_credential(credential_path: Path, purpose: str) -> None:
             have to work out which call tripped
     """
     path = Path(credential_path)
-    # Matched at ANY depth below configs/credentials, not only as the immediate parent:
-    # the folder is subdivided (inbound / peers / venues), and a parent-only test stops
-    # guarding the moment a file moves one level down — silently, on a money path.
-    parts = path.parts
-    tracked = any(
-        parts[i] == TRACKED_CREDENTIALS_PARENT
-        and parts[i + 1] == CREDENTIALS_DIR_NAME
-        for i in range(len(parts) - 1)
-    )
-    if not tracked:
+    if not is_tracked_credential(path):
         return
 
     raise ValueError(

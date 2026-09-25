@@ -144,6 +144,11 @@ data/cache/
 # user_algos/, which is private.
 run_configs/
 
+# Run-patch store (#551) — the patch of every dirty tree a run ran from. Generated, and it holds
+# uncommitted code from user_algos/, which is private. Ignoring it is also what keeps the store
+# out of its own next patch: an untracked file is part of the diff.
+run_patches/
+
 # UPDATED (C#003): Ignore all subdirectories in processed/
 # This covers hierarchical structure: data/processed/{collector}/{symbol}/*.parquet
 data/processed/*

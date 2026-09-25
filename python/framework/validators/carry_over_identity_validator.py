@@ -40,6 +40,10 @@ from python.framework.persistence.carry_over_identity import (
     carry_over_key,
     sanitize_identity_part,
 )
+from python.framework.utils.declared_id_utils import (
+    DECLARED_ID_MAX_LENGTH,
+    declared_id_malformed_reason,
+)
 
 # The directory every AutoTrader profile lives under, whatever purpose folder it sits in
 # (#31: production / observation / field_study / backtesting). Found by walking UP from the
@@ -52,13 +56,10 @@ PROFILES_ROOT_NAME = 'autotrader_profiles'
 _WORKSPACE_CONFIG_DIR = 'user_configs'
 _TRACKED_CONFIG_DIR = 'configs'
 
-# What a declared identity may look like. The ceiling is the operator's (2026-09-24) — an id is
-# typed, read in a table and compared by eye. The character set is NOT a style choice: the id
-# becomes half of a filename, and `sanitize_identity_part` rewrites anything else silently, so
-# a wider set would let the declared identity and the stored one drift apart. The underscore is
-# excluded because it is the reserved join character.
-BOT_ID_MAX_LENGTH = 10
-_BOT_ID_ALLOWED = set('abcdefghijklmnopqrstuvwxyz0123456789-')
+# What a declared identity may look like — the shape a bot id shares with an API account id,
+# held in ONE place (`declared_id_utils`) so the two cannot drift apart. The name stays here
+# because the messages below are about a bot, and a bot's ceiling IS the shared one.
+BOT_ID_MAX_LENGTH = DECLARED_ID_MAX_LENGTH
 
 
 def validate_bot_id(profile_name: str, symbol: str, bot_id: str) -> None:
@@ -106,7 +107,7 @@ def validate_bot_id(profile_name: str, symbol: str, bot_id: str) -> None:
             f"file\n    under is '{carry_over_key(profile_name, symbol, suggestion)}'."
         )
 
-    reason = _malformed_reason(bot_id)
+    reason = declared_id_malformed_reason(bot_id)
     if reason is None:
         return
     raise BotIdMalformedError(
@@ -119,24 +120,6 @@ def validate_bot_id(profile_name: str, symbol: str, bot_id: str) -> None:
         f'\n'
         f'    Allowed: 1 to {BOT_ID_MAX_LENGTH} characters of a-z, 0-9 and hyphen.'
     )
-
-
-def _malformed_reason(bot_id: str) -> Optional[str]:
-    """
-    Why a declared identity cannot be used as it stands, or None when it can.
-
-    Args:
-        bot_id: The declared identity, never empty
-
-    Returns:
-        A phrase completing "which …", or None when the id is well formed
-    """
-    if len(bot_id) > BOT_ID_MAX_LENGTH:
-        return f'is {len(bot_id)} characters long — the ceiling is {BOT_ID_MAX_LENGTH}'
-    bad = sorted({c for c in bot_id if c not in _BOT_ID_ALLOWED})
-    if bad:
-        return 'contains ' + ', '.join(f"'{c}'" for c in bad)
-    return None
 
 
 def validate_carry_over_identity_unique(

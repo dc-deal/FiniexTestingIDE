@@ -49,6 +49,7 @@ from python.framework.types.log_layout_types import RUN_TYPE_LIVE
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
+from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
 from python.framework.types.signal_data_types import (
     SignalLiveBoot,
     SignalSourceMode,
@@ -107,6 +108,8 @@ def _register_profile_config(source: Optional[Path]) -> str:
 def create_autotrader_loggers(
     config: AutoTraderConfig,
     run_timestamp: datetime,
+    origin: RunOrigin,
+    code_identity: Optional[CodeIdentity],
     deployment_id: str = '',
 ) -> AutotraderLoggerBundle:
     """
@@ -128,6 +131,11 @@ def create_autotrader_loggers(
     Args:
         config: AutoTrader configuration
         run_timestamp: Session start timestamp (UTC)
+        origin: Who or what started the session, for whom, on which installation (#551)
+        code_identity: Which code the session runs, captured before this call (#551) — by the
+            caller, because the startup guard needs it too and must not depend on a header
+            being written; None when the capture failed, which the header then records as
+            unknown before the session refuses to start
 
     Returns:
         (global_logger, session_logger, summary_logger, run_dir, run_id)
@@ -181,7 +189,8 @@ def create_autotrader_loggers(
     # The run header goes down FIRST, before the session can fail — a crashed session is
     # exactly the one somebody needs to identify afterwards.
     # Only the COMMIT is needed here — `get_git_commit()` costs 68 ms where the full read
-    # costs ~2.0 s, and the header has no use for branch / dirty (§42).
+    # costs ~2.0 s, and the header has no use for branch / dirty (§42). The dirty state
+    # arrives with the code identity, which the caller has already paid for (#551).
     if run_dir:
         header = RunHeader(
             run_id=run_id,
@@ -206,6 +215,10 @@ def create_autotrader_loggers(
             config_id=_register_profile_config(config.config_path),
             app_version=AppConfigManager().get_version(),
             git_commit=get_git_commit(),
+            # Always both (#551): a live session always reports, so its code identity is always
+            # captured, and a session killed before its close still says which code it ran.
+            origin=origin,
+            code_identity=code_identity,
         )
         RunIndex(AppConfigManager().get_file_logging_config_object().run_index).register_run(
             header, run_dir)

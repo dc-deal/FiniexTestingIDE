@@ -11,9 +11,11 @@ from typing import List, Optional
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.batch.batch_orchestrator import BatchOrchestrator
 from python.framework.batch.batch_report_coordinator import BatchReportCoordinator
+from python.framework.exceptions.host_identity_errors import HostIdentityError
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.mount_package_types import MountPackage
+from python.framework.types.run_origin_types import RunChannel
 from python.framework.types.run_results_types import SweepContext
 from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig
 from python.scenario.generator.profile_loader import ProfileLoader
@@ -23,12 +25,16 @@ from python.scenario.scenario_config_loader import ScenarioConfigLoader
 vLog = get_global_logger()
 
 
-def run_scenario_batch(scenario_set_json: str) -> Optional[BatchExecutionSummary]:
+def run_scenario_batch(
+    scenario_set_json: str,
+    channel: RunChannel = RunChannel.DIRECT,
+) -> Optional[BatchExecutionSummary]:
     """
     Run a scenario batch from a scenario set config.
 
     Args:
         scenario_set_json: Config filename (e.g., "eurusd_3_windows.json")
+        channel: How the run was started, as the caller declares it (#551)
 
     Returns:
         The batch summary, or None when the run failed before producing one (#372)
@@ -67,7 +73,7 @@ def run_scenario_batch(scenario_set_json: str) -> Optional[BatchExecutionSummary
             f'📂 Loaded scenario set: {scenario_set_json} ({len(scenario_config_data.scenarios)} scenarios)'
         )
 
-        return initialize_batch_and_run(scenario_config_data, app_config_loader)
+        return initialize_batch_and_run(scenario_config_data, app_config_loader, channel=channel)
 
     except Exception as e:
         vLog.hard_error(
@@ -81,6 +87,7 @@ def run_scenario_batch(scenario_set_json: str) -> Optional[BatchExecutionSummary
 def run_profile_batch(
     scenario_set_json: str,
     profile_paths: List[str],
+    channel: RunChannel = RunChannel.DIRECT,
 ) -> Optional[BatchExecutionSummary]:
     """
     Run a Profile Run — loads profile blocks as scenarios.
@@ -91,6 +98,7 @@ def run_profile_batch(
     Args:
         scenario_set_json: Scenario set config (for global strategy/execution config)
         profile_paths: List of paths to profile artifact JSON files
+        channel: How the run was started, as the caller declares it (#551)
 
     Returns:
         The batch summary, or None when the run failed before producing one (#372)
@@ -135,7 +143,7 @@ def run_profile_batch(
             f"{total_blocks} blocks, symbols: {', '.join(symbols)}"
         )
 
-        return initialize_batch_and_run(scenario_config_data, app_config_loader)
+        return initialize_batch_and_run(scenario_config_data, app_config_loader, channel=channel)
 
     except Exception as e:
         vLog.hard_error(
@@ -152,6 +160,7 @@ def initialize_batch_and_run(
     sweep_context: SweepContext = None,
     mount: Optional[MountPackage] = None,
     sweep_id: Optional[str] = None,
+    channel: RunChannel = RunChannel.DIRECT,
 ) -> Optional[BatchExecutionSummary]:
     """
     Build the scenario set, run the batch (cold, or warm against a shared mount), and report.
@@ -163,6 +172,8 @@ def initialize_batch_and_run(
         mount: Optional shared data mount (#419) — when given, the run reuses the loaded data
             instead of reloading; a data-identity mismatch falls back to a cold reload
         sweep_id: The owning sweep's id when this run is one of its combinations (#419)
+        channel: How the run was started, as the entry point declares it (#551) — recorded in
+            the run header's origin, never inferred from who happens to be calling
 
     Returns:
         The BatchExecutionSummary, or None if the run failed at startup
@@ -170,7 +181,7 @@ def initialize_batch_and_run(
     try:
         # ScenarioSet creates its own loggers internally
         scenario_set = ScenarioSet(
-            scenario_config_data, app_config_loader, sweep_id=sweep_id)
+            scenario_config_data, app_config_loader, sweep_id=sweep_id, channel=channel)
 
         vLog.info('📊 Writing system & version information...')
         scenario_set.write_scenario_system_info_log()
@@ -204,6 +215,13 @@ def initialize_batch_and_run(
             f'Config file not found: {e}',
             file_path=str(e)
         )
+
+    except HostIdentityError as refusal:
+        # A refusal, not a crash (§33, #551): the installation's identity file exists but cannot
+        # be trusted, and the message already names the file and both ways forward. A stack
+        # trace under it would suggest a defect. Raised before the run header is written, so no
+        # run records an identity nobody trusts; the process ends with the startup-abort code.
+        vLog.config_error(str(refusal))
 
     except Exception as e:
         vLog.hard_error(

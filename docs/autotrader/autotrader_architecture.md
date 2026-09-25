@@ -178,6 +178,12 @@ python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/bac
 # 🤖 AutoTrader: BTCUSD Mock
 ```
 
+A session that sends real orders refuses to start while its code is not committed, in this
+repository or in the one its strategy comes from — and while that code is edited during the
+start. `--allow-dirty` is the recorded way through the first for a deliberate test from a working
+tree, never through the second — see
+[Run Origin and Code Identity](../architecture/run_origin_and_code_identity.md#real-orders-from-uncommitted-code).
+
 ## Roadmap
 
 | Step | Issue | Description | Status |

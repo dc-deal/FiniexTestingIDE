@@ -334,6 +334,15 @@ class AppConfigManager:
         """
         return self._app_config.paths.run_configs
 
+    def get_run_patches_path(self) -> str:
+        """
+        Get the run-patch store directory from config.
+
+        Returns:
+            Path string for the run-patch store
+        """
+        return self._app_config.paths.run_patches
+
     def get_scenario_sets_path(self) -> str:
         """
         Get scenario sets config path from config.

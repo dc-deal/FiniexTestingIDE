@@ -28,6 +28,9 @@ class SharedPaths(StrictConfigModel):
     # those bytes — a source may live in `user_algos/`, a separate repository this project
     # never writes into.
     run_configs: str = 'run_configs'
+    # The patch of every dirty tree a run ran from, keyed by its SHA256 (#551). A RECORD
+    # store: it is what lets a run from uncommitted code be restored to the code that ran.
+    run_patches: str = 'run_patches'
 
 
 class HistoryConfig(StrictConfigModel):

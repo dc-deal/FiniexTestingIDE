@@ -262,6 +262,7 @@ the structured finding rather than on printed text.
 | Test | Description |
 |------|-------------|
 | `test_debug_mode` / `test_no_debug_mode_when_not_debug` | A serial/debug batch says its timings are not representative |
+| `test_a_strategy_under_no_version_control_is_warned_about` · `test_a_state_git_could_not_read_is_warned_about_as_unknown` · `test_committed_or_merely_dirty_code_is_not_warned_about` · `test_a_run_without_a_captured_identity_is_not_warned_about` | `unversioned_code` (#551): code in no repository — a `user_algos/` package before `git init` — or a state git could not read is a Tier-1 warning with the remedy; committed or merely dirty code is not, and a run that captured no identity claims nothing |
 | `test_no_advisory_for_any_declared_version` | A declared data format version is never flagged |
 | `test_unknown_version_advisory` / `test_unknown_counted_against_all_files` | A missing version IS flagged, and the count is against all files — the advisory claims only the field's absence, never anything about the data |
 | `test_stress_test` | An active stress config is surfaced, so a stressed run cannot read as clean (shared with the live session validator) |

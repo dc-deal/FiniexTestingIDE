@@ -121,6 +121,18 @@ For System B: place the file in the matching subfolder. The discovery logic in t
 
 ---
 
+## Not an override — a file the app writes itself
+
+`user_configs/host_identity.json` belongs to neither system. It has no base in `configs/` and is
+not written by hand: the first start that needs it mints the installation's identity into it
+(#551). It lives here because this folder is gitignored and survives a container rebuild — a
+tracked copy would give every clone the same identity. Keep it: a deleted file gives the next start
+a new identity, and a damaged one refuses the start rather than being replaced. Under test
+isolation it is neither read nor written. See
+[Run Origin and Code Identity](architecture/run_origin_and_code_identity.md#the-origin--who-started-the-run-for-whom-and-where).
+
+---
+
 ## Related docs
 
 - [Config Cascade Guide](config_cascade_guide.md) — the scenario-set cascade (`app_config → global → scenario`) which is a separate, content-internal system on top of merged `app_config.json`.

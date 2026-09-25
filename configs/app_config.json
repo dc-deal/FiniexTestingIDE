@@ -45,7 +45,8 @@
       "user_algos/"
     ],
     "run_ledger": "runs/ledger",
-    "run_configs": "run_configs"
+    "run_configs": "run_configs",
+    "run_patches": "run_patches"
   },
   "history": {
     "bar_max_history": 1000,

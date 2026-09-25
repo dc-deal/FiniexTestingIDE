@@ -31,6 +31,7 @@ from python.framework.types.api.report_types import ParentKind, RunHeader, RunRe
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.log_layout_types import MOUNT_BUILD_LOG, RUN_TYPE_SIMULATION
 from python.framework.types.run_config_types import RunConfigKind
+from python.framework.types.run_origin_types import CodeIdentity, RunChannel
 from python.framework.types.scenario_types.scenario_set_types import (
     LoadedScenarioConfig,
     SingleScenario,
@@ -38,6 +39,7 @@ from python.framework.types.scenario_types.scenario_set_types import (
 from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id
+from python.framework.utils.run_origin_builder import build_run_origin, capture_code_identity
 
 
 def _register_run_config(source: Path) -> str:
@@ -70,7 +72,8 @@ class ScenarioSet:
 
     def __init__(self, scenario_config: LoadedScenarioConfig, app_config: AppConfigManager,
                  sweep_id: Optional[str] = None, mount_only: bool = False,
-                 reporting: RunReporting = RunReporting.EXPECTED):
+                 reporting: RunReporting = RunReporting.EXPECTED,
+                 channel: RunChannel = RunChannel.DIRECT):
         """
         Args:
             scenario_config: The loaded scenario set
@@ -85,6 +88,9 @@ class ScenarioSet:
                 because only the CALLER knows — a test that stops after `orchestrator.run()`
                 passes NONE, so its empty artifact list reads as intended rather than as a
                 run that died before reporting (#475)
+            channel: How this run was started, DECLARED by the entry point that builds it (#551)
+                — `cli` from the strategy runner, `sweep` from the optimization runner. Code
+                that constructs a set without saying keeps `direct`; nothing is inferred
         """
 
         self.scenario_set_name = scenario_config.scenario_set_name
@@ -107,6 +113,11 @@ class ScenarioSet:
         # Minted ONCE here and handed to every logger of this run — they must share a directory.
         # The owner dir is passed so a taken id is re-minted rather than silently joined.
         self._run_id = mint_run_id(self._run_timestamp, self._log_root / self.scenario_set_name)
+        # Who starts it, for whom, on which installation (#551) — built BEFORE the logger creates
+        # the run directory, so a broken host identity refuses the start without leaving behind a
+        # directory shaped like a run that has no header. A mount build is not a run.
+        origin = None if mount_only else build_run_origin(channel)
+        self._code_identity: Optional[CodeIdentity] = None
 
         self.logger = ScenarioLogger(
             scenario_set_name=self.scenario_set_name,
@@ -120,13 +131,22 @@ class ScenarioSet:
         # The run header goes down FIRST, before anything else can fail. A mount build gets
         # none: it has no run directory, because it is not a run.
         # Only the COMMIT is needed here — `get_git_commit()` costs 68 ms where the full
-        # read costs ~2.0 s, and the header has no use for branch / dirty (§42).
+        # read costs ~2.0 s, and the header has no use for branch / dirty (§42). The dirty
+        # state arrives with the code identity below, and only for a run that reports (#551).
         if not mount_only and self.logger.get_log_dir() is not None:
             # Registered HERE, at the start, for the same reason the header is written here: the
             # configuration a run used is the one it STARTED with, and a file edited while the
             # run is in flight must not change what the run says it ran (#538). Registration is
             # idempotent — unchanged content writes no second copy.
             config_id = _register_run_config(self.config_path)
+            # Which code it runs, over EVERY scenario's strategy — a set may mix logics. Only
+            # for a run that will report: the capture costs a `git status` (§42), which a
+            # test that stops after the batch has no reader for. The ledger reads its
+            # versions and dirty flag from here at the end instead of deriving them again, and
+            # the post-run validation warns from it when the code is under no version control.
+            self._code_identity = (capture_code_identity(
+                [scenario.strategy_config for scenario in self._scenarios])
+                if reporting == RunReporting.EXPECTED else None)
             header = RunHeader(
                 run_id=self._run_id,
                 start_time=self._run_timestamp,
@@ -143,6 +163,8 @@ class ScenarioSet:
                 app_version=app_config.get_version(),
                 git_commit=get_git_commit(),
                 reporting=reporting,
+                origin=origin,
+                code_identity=self._code_identity,
             )
             RunIndex(app_config.get_file_logging_config_object().run_index).register_run(
                 header, self.logger.get_log_dir())
@@ -156,6 +178,15 @@ class ScenarioSet:
             run_id=self._run_id,
             log_root_override=self._log_root
         )
+
+    def get_code_identity(self) -> Optional[CodeIdentity]:
+        """
+        The code this run executes, as its header recorded it (#551).
+
+        Returns:
+            The captured identity, or None for a run commissioned not to report or a mount build
+        """
+        return self._code_identity
 
     @property
     def run_id(self) -> str:

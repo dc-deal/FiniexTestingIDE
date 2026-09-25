@@ -23,6 +23,7 @@ from python.framework.types.process_data_types import (
     ProcessResult,
     ProcessTickLoopResult,
 )
+from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.validators.post_run_validator import PostRunValidator
 
@@ -257,3 +258,47 @@ class TestThePerformanceVerdictsLiveHere:
     def test_sequential_execution_is_never_flagged(self):
         assert 'parallel_penalty' not in _warnings(_batch_results([
             _perf_result('s1', 0, parallel=False, saved_ms=-99.0)]))
+
+
+# ── Code under no version control (#551) ──────────────────────────────────────────────────────
+
+def _identity(algos_membership):
+    """A code identity whose framework is committed and whose algo directory has a given state."""
+    return CodeIdentity(
+        framework=RepositoryState(root='/app', commit='abc1234'),
+        repositories=[RepositoryState(root='/app/user_algos/my_bot',
+                                      in_repository=algos_membership)])
+
+
+def _identity_warnings(identity) -> dict:
+    """Run the validator over a plain batch with a recorded code identity."""
+    batch = _batch([_scenario()])
+    PostRunValidator(batch, _RUN_ID, code_identity=identity).validate()
+    return {finding.check: finding.message
+            for vr in batch.batch_validation_result for finding in vr.findings}
+
+
+def test_a_strategy_under_no_version_control_is_warned_about():
+    """A `user_algos/` package before `git init`: the run can never be reproduced."""
+    out = _identity_warnings(_identity(algos_membership=False))
+    assert 'unversioned_code' in out
+    assert '/app/user_algos/my_bot · not under version control' in out['unversioned_code']
+    assert 'git init' in out['unversioned_code']
+
+
+def test_a_state_git_could_not_read_is_warned_about_as_unknown():
+    out = _identity_warnings(_identity(algos_membership=None))
+    assert 'state unknown' in out['unversioned_code']
+    assert 'safe.directory' in out['unversioned_code']
+
+
+def test_committed_or_merely_dirty_code_is_not_warned_about():
+    """Uncommitted work in a repository is ordinary development: commit + patch restore it."""
+    dirty = CodeIdentity(framework=RepositoryState(root='/app', commit='abc1234', dirty=True))
+    assert 'unversioned_code' not in _identity_warnings(_identity(algos_membership=True))
+    assert 'unversioned_code' not in _identity_warnings(dirty)
+
+
+def test_a_run_without_a_captured_identity_is_not_warned_about():
+    """A run commissioned not to report captured none — nothing is claimed, nothing is warned."""
+    assert 'unversioned_code' not in _identity_warnings(None)

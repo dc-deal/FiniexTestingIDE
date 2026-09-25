@@ -69,10 +69,11 @@ For production use, restrict `allow_origins` to the actual deployment domain. No
 
 ## Authentication
 
-Every route but `/api/v1/health` requires a bearer token, and holding a token is not the same as
-being entitled to what it asks for. The model is not this project's own: it is the shared
-`finiex_auth` package, installed from a pinned public tag, so the security vocabulary exists once
-rather than once per service.
+Every route but the deliberately open ones — `/api/v1/health`, `/api/v1/contract` and
+`/api/v1/timeframes`, each a decision the endpoint table explains — requires a bearer token, and
+holding a token is not the same as being entitled to what it asks for. The model is not this
+project's own: it is the shared `finiex_auth` package, installed from a pinned public tag, so the
+security vocabulary exists once rather than once per service.
 
 **Two checks, and they fail differently.** The bearer check is mounted on the ROUTER, so a route
 added later inherits it by construction — the failure it prevents cannot be reached by forgetting.
@@ -133,12 +134,13 @@ surface, and a caller entitled to part of a list still reaches the handler, whic
 gives it nothing to call. Those refusals are named by hand in the suite, and a new collection route
 needs its own test or nothing looks at it.
 
-**Two routes are declared on the app rather than on a router**, so a dependency given at
-`include_router` never reaches them. Both states are chosen rather than inherited:
+**Some routes are declared on the app rather than on a router**, so a dependency given at
+`include_router` never reaches them. Each state is chosen rather than inherited:
 `/api/v1/timeframes` is **open** beside `/health` — the app's own static configuration, none of the
-four surfaces, and gating it would make a market-data grant the precondition for a list that reveals
-nothing about market data. `/api/v1/brokers` **requires a token** but takes no grant: which venues
-this installation carries is a fact about the installation.
+surfaces a grant can name, and gating it would make a market-data grant the precondition for a list
+that reveals nothing about market data. `/api/v1/brokers` **requires a token** but takes no grant:
+which venues this installation carries is a fact about the installation. `/api/v1/caller` is
+token-only too: it is about the caller, and a grant needed to ask what one holds would be circular.
 
 **For a browser client**, `CORSMiddleware` answers the `OPTIONS` preflight before routing, so the
 preflight — which carries no `Authorization`, by specification — is never gated. `expose_headers`
@@ -191,14 +193,40 @@ is purely ADDITIVE — a forwarding IDE keeps working — so no consumer's addre
 for, and the change is announced to the consumers over the bus. That is a review obligation on this
 line, and the comment beside it says so.
 
-**Where tokens live.** `user_configs/credentials/consumer_tokens.json`, with a tracked placeholder at
-`configs/credentials/consumer_tokens.json` whose entries are all switched off — an example in a template
-file then cannot gate or grant anything by accident. The registry holds only SHA-256 digests, so a
-configuration file that leaks is not a leaked credential; a lost token is re-minted, never
-recovered. A live token answering from the TRACKED file refuses the boot: that is a real key in the
-repository, which is the expensive half of the credential rule.
+**Where tokens live.** `user_configs/credentials/inbound/consumer_tokens.json`, with a tracked
+placeholder at `configs/credentials/inbound/consumer_tokens.json` whose entries are all switched
+off — an example in a template file then cannot gate or grant anything by accident. The in-memory
+registry holds only SHA-256 digests, but the **file holds the plaintext token** — a leaked token
+file is a leaked credential (see [`credentials_layout.md`](credentials_layout.md)). A live token
+answering from the TRACKED file refuses the boot: that is a real key in the repository, which is
+the expensive half of the credential rule. It is checked FIRST, on the raw entries, so it is the
+refusal the operator sees even when the same entry also lacks an account or would not parse —
+every later refusal says to edit the file that answered, and for this file the only right edit is
+to move the key out. An entry counts as live unless its `active` is declared false. Under config
+isolation only the tracked copy is read.
 
-Mint one with `python python/cli/api_token_cli.py mint --consumer <name> --grants 'bars:*'`.
+**Every token acts for an ACCOUNT.** The token says which client is calling; the account, in
+`inbound/accounts.json` beside it, says on whose behalf — a `person`, or a `service` for a machine
+consumer such as a sibling project. Until a login exists, presenting a token IS acting as its
+account. The two rules differ in reach:
+
+- **Every entry names an account**, a switched-off one too — switching it on is one flag, and that
+  flip must not produce a token acting for nobody. The boot refuses an entry that names none and
+  lists every such consumer at once, with the command that fixes it.
+- **Only a LIVE token's account must exist and be active.** A switched-off example in the tracked
+  placeholder may therefore name an account the accounts file does not hold.
+
+`operator` is reserved for the console and can never be an account. After the boot,
+`ApiAuthBundle.identities` maps each live consumer to its account and its grants as a list.
+
+Both commands print a block to paste and write nothing:
+
+```
+python python/cli/api_token_cli.py account --id <id> --kind person|service --display-name '<name>'
+python python/cli/api_token_cli.py mint --consumer <name> --account <id> --grants 'bars:*'
+```
+
+`mint` refuses an account the accounts file does not hold, so the account comes first.
 
 **Two switches, not one, and they are separate on purpose.** The bearer dependency is built only
 when `api.require_auth` is on AND a consumer is configured. Otherwise nothing places a consumer on
@@ -220,8 +248,11 @@ The boot line names both conditions, because from a request the two states are i
 
 ```
     API authentication: NOT enforced (api.require_auth is off — tokens exist, nothing is gated)
-      · 2 consumer(s) [ragengine, viewer] from user_configs/credentials/consumer_tokens.json
+      · 2 consumer(s) [ragengine (ragengine), viewer (analyst)]
+      from user_configs/credentials/inbound/consumer_tokens.json
 ```
+
+Each consumer is named beside the account it acts for.
 
 It is a state to pass through, not one to stay in.
 
@@ -230,9 +261,10 @@ It is a state to pass through, not one to stay in.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/v1/health` | Server liveness — `{"status":"ok","version":"..."}` |
-| GET | `/api/v1/contract` | Which CONTRACT this server serves, beside the app version — they move on different clocks, and a model can change shape inside one app version. `changes` is one line per change that moved into the current contract. OPEN like `/health`: a consumer must be able to ask which contract they face before they hold a token, or a version mismatch and a credential failure look alike. Every response also carries `X-Api-Contract`, so a saved fixture is self-describing and a consumer's assertion stays local. Deliberately NOT a deprecation channel — no compatibility layers ship (§27), so a number to compare is the honest offer |
+| GET | `/api/v1/contract` | Which CONTRACT this server serves, beside the app version — they move on different clocks, and a model can change shape inside one app version. `changes` is one line per change that moved into the current contract; every earlier version is in [`api_contract_log.md`](api_contract_log.md). OPEN like `/health`: a consumer must be able to ask which contract they face before they hold a token, or a version mismatch and a credential failure look alike. Every response also carries `X-Api-Contract`, so a saved fixture is self-describing and a consumer's assertion stays local. Deliberately NOT a deprecation channel — no compatibility layers ship (§27), so a number to compare is the honest offer |
 | GET | `/api/v1/timeframes` | All configured timeframes in sorted order |
 | GET | `/api/v1/brokers` | Broker types available in bar index |
+| GET | `/api/v1/caller` | Who the server takes the caller to be (#551): `client` (the consumer the token authenticates as), `account` with `account_kind` (`person` \| `service`) and `display_name` (on whose behalf it calls), `grants` as a list, and the token's `note`. Requires a token while gating is on and takes NO grant — like `/brokers`, it is about the caller, and a grant needed to ask what one holds would be circular. `enforced` is the SERVER's gating state: while it is false nothing verifies a presented token, so every identity field is null even for a caller that sent a valid one, and a 200 is not the token being accepted. A verified consumer bound to no account answers **500 `identity_unbound`** — the boot refuses that state, so reaching it is a defect here, never an anonymous caller |
 | GET | `/api/v1/brokers/{broker}/symbols` | Symbols for a broker with `market_type` |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/coverage` | Available date range and timeframes |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/bars` | OHLCV bars (query: `timeframe`, `from`, `to`, `limit`) |
@@ -240,7 +272,7 @@ It is a state to pass through, not one to stay in.
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/indicators/atr` | Average True Range per bar (query: `timeframe`, `from`, `to`, `period`, `smoothing`, `limit`) |
 | GET | `/api/v1/reports/runs` | Index of EVERY run, newest first — `run_id`, `group` ∈ `simulation` \| `live`, the set / profile name, `artifacts` (every report file the run persisted, by name), and — from the run's header (#475) — `start_time`, `parent_id` (the sweep, deployment or session this run belongs to; null when it stands alone), `parent_kind` (`sweep` \| `deployment` — WHICH of those the id names, since every parent id is a prefix plus a timestamp and they are otherwise indistinguishable; null when the run stands alone, and also on a run indexed before this field existed, where the kind is unknown rather than absent), `app_version`, `git_commit` and `config_snapshot`. **`group` is the PIPELINE, never the nesting:** a sweep combination is a `simulation` whose `parent_id` names its sweep, and a live day fragment (#476) will be a `live` whose `parent_id` names its session. `has_reports` is still served, now derived as `artifacts` being non-empty, so the two can never disagree. **`reporting`** (`expected` \| `none`) says whether the run was COMMISSIONED to report — read it together with `artifacts`: empty + `expected` means still running or died before reporting, empty + `none` means it was never meant to. Without the pair a crashed run is indistinguishable from a deliberately silent one. **`artifacts` is what a consumer should read:** the two pipelines produce DIFFERENT sets (a live session has no `scenario_details` / `profiling` / `run_meta` / `aggregated_portfolio`), so a client that guessed would get a 404 for the difference. Served from the derived run index, built from each run's `header.json`; a lookup is an exact match against that index. A run with no artifacts exists as logs only (a test session writes none). The entry point the routes below are addressed by |
 | GET | `/api/v1/sweeps` | Every recorded parameter sweep, newest first — id, start, duration, combination + ok/error counts, algo, objective. Served from the run-results ledger (#390) |
-| GET | `/api/v1/sweeps/{sweep_id}` | One sweep's combinations, RANKED by the objective the sweep declared. Each row carries its `run_id`, the hinge into the report routes |
+| GET | `/api/v1/sweeps/{sweep_id}` | One sweep's combinations, RANKED by the objective the sweep declared. Each row carries its `run_id`, the hinge into the report routes. A row's `git_dirty` covers every repository a component of the run came from, not only this one, and reads true when the code state could not be determined — nothing says it was clean (#551, contract 4) |
 | GET | `/api/v1/reports/runs/{run_id}/trade-history` | Trade-history report (query: `symbol`, `close_reason`, `start`, `end`) |
 | GET | `/api/v1/reports/runs/{run_id}/order-history` | Order-history report (query: `symbol`, `status`) |
 | GET | `/api/v1/reports/runs/{run_id}/portfolio` | Portfolio report (per-unit full projection + per-currency aggregates) |
@@ -375,7 +407,12 @@ Routers are split per domain under `python/api/endpoints/`:
 
 1. Create `python/api/endpoints/<domain>_router.py`
 2. Define an `APIRouter` instance and add the routes there
-3. Register via `app.include_router(router, prefix='/api/v1')` in `create_app()`
+3. Add it to `ROUTER_SURFACES` in `api_app.py` with the surface its grants name, and add the
+   same surface to `ConsumerToken.GRANT_SURFACES` — a test holds the two to one set.
+   `create_app()` mounts every entry under `/api/v1` with the bearer check and the grant check;
+   a router included by hand carries neither
+4. Raise the contract and record the change — the steps are in
+   [`api_contract_log.md`](api_contract_log.md#how-a-change-is-recorded)
 
 Response models go in `python/framework/types/api/api_types.py` (or `report_types.py` for
 report sections).
@@ -388,9 +425,7 @@ it. This exception is scoped to `python/framework/types/api/` only.
 
 ## Open Decisions
 
-- **Authentication**: Deferred. JWT or OAuth2 would wrap the existing route layer without changing handlers. No auth in v1.
 - **Production deployment**: Options are static hosting of the Vue build embedded in the FastAPI app vs. separate containers. Deferred until FiniexViewer v0.1 is stable (issue #5 there).
-- **Version source**: `APP_VERSION` is a constant in `api_app.py`. Centralize once the project adopts a unified version file.
 
 ## Memory Cache Integration (V1.4 — #21)
 

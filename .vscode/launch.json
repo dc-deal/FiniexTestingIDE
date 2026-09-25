@@ -820,6 +820,27 @@
             }
         },
         {
+            "name": "🚀 API Token: account entry to paste",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/api_token_cli.py",
+            "args": [
+                "account",
+                "--id",
+                "${input:apiAccountId}",
+                "--kind",
+                "${input:apiAccountKind}",
+                "--display-name",
+                "${input:apiAccountDisplayName}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "05_api_server",
+                "order": 2
+            }
+        },
+        {
             "name": "🚀 API Token: list consumers",
             "type": "debugpy",
             "request": "launch",
@@ -831,7 +852,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "05_api_server",
-                "order": 2
+                "order": 3
             }
         },
         {
@@ -843,6 +864,8 @@
                 "mint",
                 "--consumer",
                 "${input:apiConsumerName}",
+                "--account",
+                "${input:apiAccountId}",
                 "--grants",
                 "${input:apiConsumerGrants}"
             ],
@@ -850,7 +873,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "05_api_server",
-                "order": 3
+                "order": 4
             }
         },
         // ====================================================
@@ -3956,6 +3979,26 @@
             "type": "promptString",
             "description": "One grant, e.g. bars:* (repeat the command for more)",
             "default": "bars:*"
+        },
+        {
+            "id": "apiAccountId",
+            "type": "promptString",
+            "description": "Account id the token acts for: up to 10 of a-z, 0-9, hyphen; never operator"
+        },
+        {
+            "id": "apiAccountKind",
+            "type": "pickString",
+            "description": "person, or service for a machine consumer",
+            "options": [
+                "person",
+                "service"
+            ],
+            "default": "person"
+        },
+        {
+            "id": "apiAccountDisplayName",
+            "type": "promptString",
+            "description": "How a human reads the account in a report"
         },
         {
             "id": "userScenarioSet",

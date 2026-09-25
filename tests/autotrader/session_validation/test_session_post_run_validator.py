@@ -29,6 +29,7 @@ from python.framework.types.config_types.scenario_settings_config_types import (
 )
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
+from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.validation_types import ValidationDomain, ValidationResult
 from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.validators.session_post_run_validator import SessionPostRunValidator
@@ -215,3 +216,29 @@ class TestTheSharedChecksProduceOneFormula:
         sim = check_stress_test([('live_probe', _STRESS)], 'Scenarios')
         assert live.message.replace('Session (1)', 'X') == sim.message.replace(
             'Scenarios (1)', 'X')
+
+
+class TestCodeUnderNoVersionControl:
+    """
+    The simulation's `unversioned_code` warning, on the live side (#551). A real-money session
+    from such code is refused unless `--allow-dirty` let it through, and then that finding names it;
+    so this one is the dry-run and mock case — a rehearsal nobody can repeat on the code it ran.
+    """
+
+    _UNVERSIONED = CodeIdentity(
+        framework=RepositoryState(root='/app', commit='abc1234'),
+        repositories=[RepositoryState(root='/app/user_algos/my_bot', in_repository=False)])
+
+    def _findings(self, allowed: bool) -> list:
+        result = AutoTraderResult()
+        SessionPostRunValidator(result, _config(), uncommitted_code_allowed=allowed,
+                                code_identity=self._UNVERSIONED).validate()
+        return [f.check for vr in result.session_validation_result for f in vr.findings]
+
+    def test_a_dry_run_from_unversioned_code_is_warned_about(self):
+        assert 'unversioned_code' in self._findings(allowed=False)
+
+    def test_an_allowed_real_money_run_carries_one_finding_not_two(self):
+        checks = self._findings(allowed=True)
+        assert 'unversioned_code' not in checks
+        assert 'uncommitted_code' in checks

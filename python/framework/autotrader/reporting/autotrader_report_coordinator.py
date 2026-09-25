@@ -241,9 +241,12 @@ class AutotraderReportCoordinator:
         # Parameter Optimization system ranks over. Same RunSummary model + provenance as the sim
         # pipeline; the profile's strategy_config makes the param_hash comparable to the backtest
         # (sim/live parity). A live session is never swept; an emergency → status='error' row.
+        # The header is read from THIS run directory, never looked up in the derived run index
+        # (#551), and an unreadable one is reported in the session's own summary log.
         provenance = build_run_provenance_from_session(
             self._config, self._run_id, self._run_timestamp, warnings_errors_report,
-            deployment_id=self._deployment_id)
+            deployment_id=self._deployment_id, run_dir=self._run_dir,
+            logger=self._summary_logger)
         # The session's Hauptbuch (#537): its booking periods ARE its ledger rows, and no
         # aggregate row is written beside them — the deployment history sums over rows, and a
         # summary standing next to its own evidence would count the month twice.

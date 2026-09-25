@@ -172,6 +172,11 @@ Ensure:
 - Your account has sufficient balance for the configured `lot_size`
 - You understand the minimum order sizes for your trading pair (e.g., BTCUSD minimum ~0.0001 BTC)
 - You have tested the full pipeline in dry-run mode first
+- The code is committed — this repository and the one your strategy lives in — and nothing edits
+  it while the session starts. A real-money session refuses to start from uncommitted code, or
+  from code that changed during its start; see
+  [Run Origin and Code Identity](../../architecture/run_origin_and_code_identity.md#real-orders-from-uncommitted-code)
+  for the message and for `--allow-dirty`
 - You know **whose account this is** — see below
 
 ### Account topology — one account per bot

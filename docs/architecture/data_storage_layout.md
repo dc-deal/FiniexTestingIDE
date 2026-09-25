@@ -31,6 +31,7 @@ worse. What they *can* share is how they describe themselves.
 |---|---|---|---|---|---|
 | 1 | `runs/` | RECORD | `run_id` | `runs_index.parquet`, from `header.json` | A · document |
 | 1b | `run_configs/` | RECORD | `config_id` — SHA256 over the normalised content | `run_configs_index.parquet` | A · document |
+| 1c | `run_patches/` | RECORD | patch hash — SHA256 over the patch bytes | none — opened by id | A · document |
 | 2 | `runs/ledger/` | RECORD | `(run_id, unit, segment_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
 | 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<profile>_<symbol>`, separator reserved | none — opened by key | A · document |
@@ -44,6 +45,7 @@ worse. What they *can* share is how they describe themselves.
 | 11 | `data/finished/` | ARCHIVE | file name | none — opened by name | A · document |
 | 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
+| 14 | `user_configs/host_identity.json` | **SPECIAL** | none | none — one file, read at boot by its manager | — |
 
 **Ticks and bars are two stores, and bars are DERIVED.** Ticks are IMPORTED from the collector's
 JSON; bars are GENERATED from those ticks, today only by a full re-render (`clean_mode` →
@@ -183,6 +185,79 @@ of stats for 67 configs against 613 ms for a single recursive glob, and the scen
 from 19.5 s to 6.7 s — of which 5.7 s is Python startup, so the work itself went from 13.8 s to
 0.95 s.
 
+## Run patches keep the code a dirty tree ran (#551)
+
+A run header names each repository's commit. On a dirty tree that commit is not what ran: the
+working tree differs from it, so the header points at code that never executed — and the parity
+backtest afterwards would be compared against code that no longer exists. This store keeps the
+patch that separates the tree from its commit, and the header's `code_identity` names it:
+
+```
+run_patches/
+  <patch_hash>.patch    one diff against the commit: tracked changes, deletions and every
+                        untracked file as a creation — credential homes left out
+```
+
+**Two digests, and only one of them is a key here.** The header's `diff_hash` is taken over the
+CONTENT of the changed paths — path, executable bit and bytes — so the same delta has the same
+identity on any machine, under any git configuration and any git version. The patch is one
+RENDERING of that delta, and the store files it under the SHA256 of exactly its bytes. The header
+names the entry in `patch_ref` (`run_patches/<patch_hash>.patch` under the default
+`app_config.json::paths.run_patches`); the file name IS the key, so a moved root still resolves
+through the store by that name. `diff_hash` is never a file name.
+
+Restoring the code that ran is the recorded commit, a check, and one `git apply`. The check is
+the one the store's own read makes: the file must hash to its name — a damaged entry would
+otherwise be applied without complaint. A worktree leaves the working tree you are in untouched,
+and the patch path is absolute because `git -C` resolves a relative one against the repository,
+not against the project root:
+
+```bash
+patch="$PWD/run_patches/<patch_hash>.patch"                   # run from the project root
+git -C <repository> worktree add /tmp/restored <commit>
+echo "<patch_hash>  $patch" | sha256sum --check && git -C /tmp/restored apply "$patch"
+```
+
+`sha256sum` answers `<path>: OK` and only then is the patch applied; a mismatch prints `FAILED`
+and exits non-zero.
+
+`RunPatchStore.get(<patch_hash>)` is the same verified read in code: it refuses a damaged entry
+rather than serving it.
+
+- **Content-addressed, so it is immutable by construction.** Equal patches are one file however
+  many runs ran them, and a second put of the same patch writes nothing. A put refuses a patch
+  that does not hash to its key (`RunPatchHashMismatchError`); a read refuses an entry that no
+  longer does (`RunPatchCorruptError`) rather than serving it, and rather than answering None,
+  which would claim nothing was ever stored. A damaged entry is rewritten by the next put of its
+  patch — the name fixes the content, so the verified bytes are the only right answer.
+- **No index and no header, and neither is an exemption.** A patch is opened by the name a run
+  header's `patch_ref` already carries — a lookup by identity, never a search, so the index
+  obligation does not arise. The entry is the raw patch so that `git apply` reads it as it is;
+  everything a header would say (which run, which repository, which commit) is in the run header
+  that names it.
+- **It never holds a credential.** A changed path under any directory named `credentials` is
+  left out of the patch, and the header lists it in `patch_excluded`; the `diff_hash` records only
+  THAT it changed. A real key pasted into a tracked placeholder would otherwise be copied here on
+  every run start — before the credential guard ever sees it — and survive the operator's revert,
+  because nothing in this store deletes anything.
+- **Restorable is stated, not assumed.** A repository state says `restorable: true` only for a
+  clean commit, or for a dirty tree whose complete patch was kept. A tree dirty through a nested
+  repository is recorded but never claimed restorable — the patch cannot carry that repository's
+  content. A tree whose only exclusions are credential homes still counts as restorable: what the
+  patch leaves out is configuration a restore must not reproduce — a secret belongs in
+  `user_configs/`, never in a record.
+- **Gitignored, for two reasons.** It holds uncommitted code from `user_algos/`, which is
+  private. And an untracked file is part of the diff: a store git could see would file itself
+  into its own next patch.
+- **What it weighs.** Measured 2026-09-24 on this tree: the `/app` patch 449,474 bytes over 77
+  uncommitted changes deep into a multi-file build, the `user_algos/` patch 3,151 bytes — it grows
+  with the uncommitted work, not with the tree. Producing a patch is the expensive half, and it is
+  ONE pathspec-limited `git diff` over a temporary copy of the index: ~1.1 s for `/app` on top of
+  the ~2.2 s `git status` the capture pays anyway, ~0.2 s for `user_algos/` — paid only for a
+  dirty repository. Storing it is one file, a few milliseconds to write and to read back.
+- **Its lifetime is an open question, owned by #535.** How long a patch has to outlive the runs
+  that name it is not decided here; until it is, nothing in this store deletes anything.
+
 ## Five kinds — a store is exactly one
 
 | Kind | Key | Lifetime | Obligation |
@@ -210,13 +285,20 @@ save time, the bot's identity, and `written_by_run_id`. That last field is **pro
 identity** — it records which session wrote the file so a restored state can be traced back, and it
 is deliberately not part of the key.
 
-### Why the two SPECIAL stores stay special
+### Why the SPECIAL stores stay special
 
 - **`data/raw/` → `data/finished/`** is a **conveyor, not a store**: a file lies there in order to
   disappear. The importer reads it and MOVES it; it never rewrites the content. Giving it a header
   and an index would make it something it is not, and would blur that contract.
 - **`logs/global.log`** is an append stream without identity. It gets bounding and rotation, never
   an index.
+- **`user_configs/host_identity.json`** is the installation's minted identity (#551): one file,
+  written once on the first start outside the tests and never rewritten. A broken file refuses the
+  start instead of being minted again, because a silent re-mint is an identity change nobody
+  notices. It is none of the five kinds — not a record of an event, not carried over by a bot, not
+  an input — and deleting it is not harmless: the next start mints a different identity, and every
+  run header after it names another host. It lives in the workspace and is never tracked, because
+  a tracked id would give every clone the same one.
 
 ---
 

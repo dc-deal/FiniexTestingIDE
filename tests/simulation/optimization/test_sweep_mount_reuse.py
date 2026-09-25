@@ -90,7 +90,7 @@ def test_oom_villain_aborts_sweep(monkeypatch):
     calls = {'count': 0}
 
     def _fake_run(scenario_config_data, app_config_loader, sweep_context=None,
-                  mount=None, sweep_id=None):
+                  mount=None, sweep_id=None, channel=None):
         calls['count'] += 1
         return _OomSummary()
 

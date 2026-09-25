@@ -8,6 +8,8 @@ and response serialization.
 
 from pydantic import BaseModel
 
+from python.framework.types.config_types.api_auth_config_types import AccountKind
+
 
 class ApiContractResponse(BaseModel):
     """
@@ -29,6 +31,39 @@ class ApiContractResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
+
+
+class CallerResponse(BaseModel):
+    """
+    Who the server takes the caller to be — which no other route tells them (#551).
+
+    A token says which CLIENT is calling; the account says on whose BEHALF — a person, or a
+    service such as a sibling project. Until a login exists, presenting a token IS acting as
+    its account, so this answer is also what a run started through the API would record.
+
+    `enforced` keeps two states apart that look the same from a request. While gating is off
+    nothing verifies a presented token, so every identity field is null even for a caller that
+    sent a valid one — a 200 here is not the token being accepted. While gating is on, a caller
+    without a valid token never gets this answer: it is refused with 401.
+
+    Args:
+        enforced: Whether the bearer check is mounted — the server's gating state, never the
+            caller's
+        client: The consumer the token authenticates as; null while gating is off
+        account: The account id the client acts for — a run started through the API would
+            record it as its `person`
+        account_kind: `person` or `service`
+        display_name: The account's human-readable name
+        grants: What the token may reach, as `<surface>:<name>` entries; empty while gating is off
+        note: The token's own note — who holds it
+    """
+    enforced: bool
+    client: str | None = None
+    account: str | None = None
+    account_kind: AccountKind | None = None
+    display_name: str | None = None
+    grants: list[str] = []
+    note: str | None = None
 
 
 class BrokerListResponse(BaseModel):

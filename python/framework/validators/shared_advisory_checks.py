@@ -14,6 +14,7 @@ division the reporting pipeline already uses — shared derivation, pipeline-spe
 
 from typing import List, Optional, Tuple
 
+from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.validation_types import (
     Severity,
@@ -97,3 +98,42 @@ def check_stress_test(
 # report — a fixed 1.0ms fired on a worker using 6% of a 50ms window, and stayed silent when
 # eight sub-threshold workers together overran a 2ms one. A relative measure (share of tick
 # time) would be the honest replacement; an absolute one cannot be.
+
+
+def check_unversioned_code(code_identity: Optional[CodeIdentity]) -> Optional[ValidationFinding]:
+    """
+    Warn when the code a run executed lies under no version control, or git could not say (#551).
+
+    A dirty repository is ordinary development and is not warned about: its commit plus the stored
+    patch restore the code that ran. Code in NO repository has neither — typically a strategy placed
+    in `user_algos/` before anyone ran `git init` there, which this repository ignores — so the run
+    can never be reproduced, and the report says so every time until the directory is a repository.
+
+    Args:
+        code_identity: The run's recorded code identity, or None when none was captured
+
+    Returns:
+        The finding, or None when every repository the code came from is under version control
+    """
+    if code_identity is None:
+        return None
+    states: List[RepositoryState] = (
+        ([code_identity.framework] if code_identity.framework else [])
+        + list(code_identity.repositories))
+    unversioned = [state.root for state in states if state.in_repository is False]
+    unknown = [state.root for state in states if state.in_repository is None]
+    if not unversioned and not unknown:
+        return None
+    lines = ['CODE WITHOUT VERSION CONTROL — this run cannot be reproduced from a commit']
+    lines += [f'   {root} · not under version control' for root in unversioned]
+    lines += [f'   {root} · state unknown (git unavailable or refused the checkout)'
+              for root in unknown]
+    if unversioned:
+        lines.append('   Make each directory a repository once — `git init`, a `.gitignore` with '
+                     '`__pycache__/` and `*.pyc`, then commit — and every later run records its '
+                     'commit (and, for uncommitted work, a patch that restores it).')
+    if unknown:
+        lines.append('   Make git runnable for those directories (for a checkout another user '
+                     'owns: `git config --global --add safe.directory <dir>`).')
+    return _finding('unversioned_code', ValidationDomain.SETUP, '\n'.join(lines))
+

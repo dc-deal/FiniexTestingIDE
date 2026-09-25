@@ -114,6 +114,23 @@ def _isolate_run_config_store(tmp_path_factory):
 
 
 @pytest.fixture(scope='session', autouse=True)
+def _isolate_run_patch_store(tmp_path_factory):
+    """
+    Redirect the run-patch store to a throwaway dir for the whole test session.
+
+    Added with the store rather than after its first leak. The suite runs from a working tree
+    that is dirty whenever somebody is working on it, so every test that captures a code identity
+    with a patch sink would file the tree's diff in the OPERATOR's `run_patches/` — patches of
+    code that was under test, not code that ran (§34).
+    """
+    store_dir = tmp_path_factory.mktemp('run_patches')
+    mp = pytest.MonkeyPatch()
+    mp.setattr(AppConfigManager, 'get_run_patches_path', lambda self: str(store_dir))
+    yield
+    mp.undo()
+
+
+@pytest.fixture(scope='session', autouse=True)
 def _isolate_carry_over_stores(tmp_path_factory):
     """
     Redirect BOTH carry-over stores to a throwaway dir for the whole test session.
