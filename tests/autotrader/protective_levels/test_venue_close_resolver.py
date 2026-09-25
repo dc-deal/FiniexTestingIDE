@@ -18,6 +18,8 @@ driving one through the poll loop would prove the mock rather than the resolver.
 
 from datetime import datetime, timezone
 
+import pytest
+
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
@@ -237,22 +239,95 @@ class TestWhatItCannotAttributeIsNeverSilent:
 
 class TestTheCounterRecordsWhatWasBookedNotWhatWasAsked:
     """
-    `_fill_close_order` does not always book what it was handed: it converts a partial into
-    a FULL close when the remainder would fall under the symbol's volume_min. A counter
-    that recorded the REQUEST would then under-record, and the venue's next report of the
-    same volume would look like an unattributable excess — a false alarm about a healthy
-    close, written into the session channel where the real ones live.
+    The counter follows the BOOKING, never the request. A counter that under-recorded would
+    make the venue's next report of the same volume look like an unattributable excess — a
+    false alarm about a healthy close, written into the session channel where the real ones
+    live.
+
+    **What the booking IS changed with #507.** `_fill_close_order` used to convert a partial
+    into a FULL close when the remainder fell below the symbol's volume_min, so it could book
+    more than it was handed. It no longer does: whatever the venue executed is what gets
+    booked, and a remainder the venue itself left behind is a holding we really still have.
+    Writing it off was the divergence #507 exists to remove — it is the same defect as the
+    requested-close case, reached from the venue's side.
     """
 
-    def test_a_remainder_below_volume_min_advances_the_counter_to_the_whole_position(self):
+    def test_the_counter_records_the_dust_close_as_it_happened(self):
+        """MARGIN here — the harness default. The counter follows the booking, 0.09998."""
         mock, executor, position = _live_with_one_long(lots=0.10)
         protective = _protective_order(position.position_id)
-        # Leaves 0.00002 lots, below the mock's volume_min of 5e-05 → full close.
+        # The venue closed 0.09998 of 0.10 and kept 0.00002, below its own volume_min of
+        # 5e-05 and therefore unsellable. That holding is REAL.
         executor._apply_venue_close(protective, filled_lots=0.09998, avg_price=49000.0)
 
-        assert not executor.get_open_positions(), 'It was converted to a full close'
-        assert protective.execution_state.venue_close_applied_lots == 0.10, (
-            'The counter has to record the 0.10 that was booked, not the 0.09998 asked for')
+        assert protective.execution_state.venue_close_applied_lots == pytest.approx(0.09998), (
+            'the counter has to record what was booked, and 0.09998 is what happened')
+
+    def test_margin_keeps_the_dust_as_a_position_because_it_IS_the_exposure(self):
+        """
+        Sec 31b, the half that must NOT move.
+
+        A margin account has no inventory beside the position — the remainder sits in the
+        market and the position record is the only thing that says so. Retiring it would
+        write off a real exposure, which is why `retire_dust_position` refuses outside spot.
+        """
+        mock, executor, position = _live_with_one_long(lots=0.10)
+        protective = _protective_order(position.position_id)
+
+        executor._apply_venue_close(protective, filled_lots=0.09998, avg_price=49000.0)
+
+        open_positions = executor.get_open_positions()
+        assert len(open_positions) == 1, 'a margin exposure was written off'
+        assert open_positions[0].lots == pytest.approx(0.00002)
+
+    def test_spot_retires_the_record_and_leaves_the_holding_in_the_balance(self):
+        """
+        The other half, and the reason #507 needed a second decision (operator, 2026-09-23).
+
+        At spot the coins live in the balances; the position is our record of a trade on top
+        of them. An unsellable remainder is still a holding but is no longer a trade — and
+        left in the book it blocks four of the five CORE logics, which refuse to open
+        anything while a position is open. So the record goes and the coins stay.
+        """
+        mock = MockOrderExecution(
+            mode=MockExecutionMode.INSTANT_FILL, spot_mode=True,
+            initial_balances={'USD': 10_000.0, 'BTC': 0.0})
+        executor = mock.create_executor()
+        mock.feed_tick(executor, symbol=_SYMBOL, bid=50000.0, ask=50001.0)
+        executor.open_order(OpenOrderRequest(
+            symbol=_SYMBOL, order_type=OrderType.MARKET, direction=OrderDirection.LONG,
+            lots=0.10))
+        mock.feed_tick(executor, symbol=_SYMBOL, bid=50000.0, ask=50001.0)
+        position = executor.get_open_positions()[0]
+        protective = _protective_order(position.position_id)
+
+        executor._apply_venue_close(protective, filled_lots=0.09998, avg_price=49000.0)
+
+        assert not executor.get_open_positions(), (
+            'the unsellable remainder stayed in the book, where it blocks every CORE logic '
+            'that refuses to open while a position is open')
+        assert executor.portfolio.get_asset_balance('BTC') == pytest.approx(0.00002), (
+            'the coins were written off — the account really does still hold them, and this '
+            'is the difference between retiring a RECORD and losing a HOLDING')
+
+    def test_a_remainder_that_is_only_float_drift_is_a_full_close(self):
+        """
+        The boundary that has to hold beside the case above, or the fix trades one defect
+        for another.
+
+        Summing a venue's per-trade volumes does not reproduce the position size bit for
+        bit. A remainder of a few ULPs is not a holding — it is the same close arriving
+        with rounding on it, and booking it as a partial would leave a position at exactly
+        0.0 lots that nothing ever sweeps and that the carry-over hands to the next session.
+        """
+        mock, executor, position = _live_with_one_long(lots=0.10)
+        protective = _protective_order(position.position_id)
+
+        executor._apply_venue_close(
+            protective, filled_lots=0.09999999999999999, avg_price=49000.0)
+
+        assert not executor.get_open_positions(), (
+            'a sub-ULP remainder left a zero-lot ghost position in the book')
 
     def test_and_the_venues_next_report_is_then_a_clean_no_op(self, capsys):
         mock, executor, position = _live_with_one_long(lots=0.10)

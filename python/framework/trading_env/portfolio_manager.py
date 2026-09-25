@@ -709,6 +709,53 @@ class PortfolioManager:
 
         return closed_net_pnl
 
+    def retire_dust_position(self, position_id: str) -> bool:
+        """
+        Take a position out of the book when what is left of it can no longer be traded (#507).
+
+        SPOT only, and the reason is the difference between a HOLDING and a POSITION. At spot
+        the inventory lives in `_balances`; a position is our record of a trade we are
+        managing on top of it. When the venue's own fill leaves a remainder below the
+        symbol's `volume_min`, that remainder is a real holding — the account has the coins —
+        but it is no longer a trade anyone can act on: no order can sell it, so it can never
+        be closed, trailed or reversed.
+
+        Left in the book it is worse than useless. Four of the five CORE logics refuse to
+        open anything while a position is open, so an unsellable 0.00002 blocks the bot for
+        the rest of its life, and `trend_channel_reference` spends one of its `max_positions`
+        slots on it.
+
+        **Balances are deliberately untouched, and that is what makes this not a write-off.**
+        The coins stay exactly where they are and remain visible in every balance figure; the
+        boot cross-check then reports the venue holding slightly more than the book, which is
+        the true statement and is the direction it does not treat as an error (#355). No trade
+        record is written either: nothing was traded, and a record for a close that never
+        happened would be the same lie one level down.
+
+        MARGIN is excluded by construction rather than by preference: there the position IS
+        the exposure, with no inventory beside it, so retiring the record would write off
+        something real. It cannot arise there anyway — every MT5 symbol carries
+        `volume_min == volume_step == 0.01`, so a remainder is a multiple of the minimum and
+        is either zero or large enough (§31b).
+
+        Args:
+            position_id: The position whose remainder can no longer be traded
+
+        Returns:
+            True when a position was retired, False when there was nothing to retire or the
+            account is not a spot account
+        """
+        if not self._spot_mode:
+            return False
+
+        position = self.open_positions.pop(position_id, None)
+        if position is None:
+            return False
+
+        position.status = PositionStatus.CLOSED
+        self._positions_dirty = True
+        return True
+
     def _initial_risk(self, position: Position, lots: float) -> Optional[float]:
         """
         Gross loss (account currency) had the stop loss been hit — the R-multiple
@@ -1172,23 +1219,38 @@ class PortfolioManager:
         # Equity = Balance + Unrealized P&L
         equity = self.balance + unrealized_pnl
 
-        # Calculate margin used (delegated to broker adapter)
-        margin_used = 0.0
-        if self._current_tick is not None:
-            for pos in self.open_positions.values():
-                position_margin = self.broker_config.calculate_margin(
-                    pos.symbol, pos.lots, self._current_tick, order_direction
-                )
-                margin_used += position_margin
+        # Three figures only a MARGIN account has. At spot they are not computed at all — not
+        # merely blanked (2026-09-24, taking the question #497 was carrying).
+        #
+        # They were invented rather than wrong by a little: `margin_currency == quote_currency`
+        # at Kraken spot and leverage is 1, so `calculate_margin` takes the branch that
+        # multiplies no price and 0.1 ETH worth 300 USD was charged as 0.1. `free_margin`
+        # inherited that and moved with the holdings' unrealized P&L, pointing BOTH ways — it
+        # offered capital the account did not have on a rise and withheld capital it did have
+        # on a fall. Nothing in the framework read them (measured: no consumer outside this
+        # construction, and both callers of `get_free_margin` sit behind `not spot_mode`), but
+        # a bot author saw two plausibly named fields carrying numbers.
+        #
+        # Skipping the loop is the second half: it is one broker-adapter call per OPEN POSITION
+        # per call, on a method the decision path reaches through `get_free_entry_capital`.
+        margin_used: Optional[float] = None
+        free_margin: Optional[float] = None
+        margin_level: Optional[float] = None
 
-        # Free margin (calculated AFTER loop!)
-        free_margin = equity - margin_used
+        if not self._spot_mode:
+            margin_used = 0.0
+            if self._current_tick is not None:
+                for pos in self.open_positions.values():
+                    position_margin = self.broker_config.calculate_margin(
+                        pos.symbol, pos.lots, self._current_tick, order_direction
+                    )
+                    margin_used += position_margin
 
-        # Margin level
-        if margin_used > 0:
-            margin_level = (equity / margin_used) * 100
-        else:
-            margin_level = 0.0
+            # Free margin (calculated AFTER loop!)
+            free_margin = equity - margin_used
+
+            # Margin level
+            margin_level = (equity / margin_used) * 100 if margin_used > 0 else 0.0
 
         # Position stats
         total_lots = sum(pos.lots for pos in self.open_positions.values())
@@ -1430,7 +1492,26 @@ class PortfolioManager:
         return self.balance + unrealized_pnl
 
     def get_free_margin(self, order_direction: OrderDirection) -> float:
-        """Get free margin"""
+        """
+        Get free margin — MARGIN accounts only.
+
+        A spot account has none, and since 2026-09-24 it no longer receives an invented figure.
+        Refused loudly rather than returning None, because every caller here treats the answer
+        as a number to compare against: both of them already sit behind `not spot_mode`, so
+        reaching this at spot is a programming error and not an operator one.
+
+        Args:
+            order_direction: The direction the margin would be posted for
+
+        Returns:
+            The free margin
+
+        """
+        if self._spot_mode:
+            raise ValueError(
+                'get_free_margin() has no answer at spot — a spot account posts no margin. '
+                'The question a decision actually has is answered by '
+                'AbstractTradeExecutor.get_free_entry_capital(symbol, direction) (#502).')
         account = self.get_account_info(order_direction)
         return account.free_margin
 

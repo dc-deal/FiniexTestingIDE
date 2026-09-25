@@ -1,5 +1,6 @@
 {
   "name": "kraken_spot_btcusd_signal_observation",
+  "bot_id": "btcobs01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "live",

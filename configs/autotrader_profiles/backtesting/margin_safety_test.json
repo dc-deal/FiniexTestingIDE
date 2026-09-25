@@ -1,5 +1,6 @@
 {
   "name": "margin_safety_test",
+  "bot_id": "marginsf01",
   "symbol": "EURUSD",
   "broker_type": "mt5",
   "adapter_type": "mock",

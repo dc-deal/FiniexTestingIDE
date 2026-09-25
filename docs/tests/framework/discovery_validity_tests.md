@@ -21,7 +21,7 @@ The concrete case: `data_coverage.thresholds.short` decides every gap's `GapCate
 category decides which scenarios `ScenarioDataValidator` excludes. Change the threshold, and
 yesterday's categories keep being served to every backtest.
 
-This is the same trap CLAUDE.md already records for these caches — *a corrected classification had
+This is the same trap already recorded for these caches — *a corrected classification had
 no visible effect until the caches were rebuilt by hand* — one layer deeper: not the code that
 produced the content, but the configuration it was produced under.
 

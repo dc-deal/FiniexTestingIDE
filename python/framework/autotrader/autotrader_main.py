@@ -10,6 +10,7 @@ import queue
 import signal
 import sys
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -29,10 +30,12 @@ from python.framework.autotrader.reporting.autotrader_report_coordinator import 
 from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
 from python.framework.autotrader.tick_sources.tick_source_setup import setup_tick_source
+from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
+from python.framework.exceptions.code_identity_errors import CodeIdentityCaptureError
 from python.framework.exceptions.live_execution_errors import (
     DryRunConflictError,
     OneOffInsideDeploymentError,
@@ -71,20 +74,28 @@ from python.framework.types.persistence_types import (
     RiskBaseline,
 )
 from python.framework.types.process_data_types import ProcessDataPackage
+from python.framework.types.run_origin_types import CodeIdentity, RunChannel
 from python.framework.types.signal_data_types import (
     SignalObservedSeries,
 )
 from python.framework.types.validation_types import ValidationFinding, ValidationResult
+from python.framework.utils.code_identity_builder import verify_component_digests
+from python.framework.utils.run_origin_builder import build_run_origin, capture_code_identity
 from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.validators.algo_clock_validator import validate_algo_clock
 from python.framework.validators.algo_state_preflight import validate_state_snapshot_serializable
 from python.framework.validators.carry_over_identity_validator import (
     validate_carry_over_identity_unique,
-    validate_continuous_deployment_declares_bot_id,
+    validate_bot_id,
 )
 from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.validators.session_end_validator import resolve_session_end_policy
 from python.framework.validators.session_post_run_validator import SessionPostRunValidator
+from python.framework.validators.uncommitted_code_validator import (
+    describe_uncommitted_code,
+    validate_code_unchanged_since_capture,
+    validate_committed_code,
+)
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 from python.system.ui.autotrader_live_display import AutoTraderLiveDisplay
 
@@ -139,6 +150,8 @@ class AutotraderMain:
         attended: bool = False,
         one_off: bool = False,
         new_deployment: bool = False,
+        channel: RunChannel = RunChannel.DIRECT,
+        allow_dirty: bool = False,
     ):
         self._config = config
         # #355: a human DECLARED that they are watching this start (CLI --attended). Cold-start
@@ -151,6 +164,18 @@ class AutotraderMain:
         # instead of inheriting. A profile that declares nothing is unaffected by either.
         self._one_off = one_off
         self._new_deployment = new_deployment
+        # #551: how this session was started, DECLARED by the entry point (the CLI says `cli`;
+        # code constructing a session without saying keeps `direct`), and whether the operator
+        # allowed real orders from uncommitted code (`--allow-dirty`). Both land in the header's
+        # origin, so an override is visible afterwards.
+        self._channel = channel
+        self._allow_dirty = allow_dirty
+        # Which code this session runs — captured at the start of run(), before the header, and
+        # kept because the startup guard reads it (#551).
+        self._code_identity: Optional[CodeIdentity] = None
+        # The startup guard's verdict: True once `--allow-dirty` has let real orders through from
+        # uncommitted code. Read by the post-run validation, which reports it as a Tier-1 warning.
+        self._uncommitted_code_allowed = False
         self._running = False
         self._shutdown_mode = 'normal'
         self._tick_loop_started = False
@@ -188,6 +213,8 @@ class AutotraderMain:
         self._decision_logic: Optional[AbstractDecisionLogic] = None
         self._clipping_monitor: Optional[LiveClippingMonitor] = None
         self._display_label_cache: Optional[DisplayLabelCache] = None
+        # #444 — planned tick-plane stale windows (mock profiles only; None for live)
+        self._stale_stress_driver: Optional[StaleDataStressDriver] = None
 
         # #327 — Drift audit (live-only, gated by config.drift_audit.enabled)
         self._drift_auditor: Optional[DriftAuditor] = None
@@ -260,9 +287,23 @@ class AutotraderMain:
         self._carried = self._read_carry_over(run_timestamp)
         deployment_id = self._resolve_deployment(run_timestamp)
 
+        # === ORIGIN + CODE IDENTITY (#551) ===
+        # The origin FIRST: a host identity file nobody can trust refuses here — before any git
+        # work, before a patch is stored, and before the header, which must not state that
+        # identity. The HostIdentityError travels to the CLI, which reports it as a refusal.
+        origin = build_run_origin(self._channel, allow_dirty=self._allow_dirty)
+        # Then the code identity: before the loggers, because the header written in there records
+        # it, and held here, because the startup guard asks it — which must not depend on a header
+        # having been written. A capture that FAILS is held too, and refused inside the startup
+        # handling below, once the header exists to record the session.
+        capture_failure = self._capture_code_identity()
+
         # === LOGGERS ===
         loggers = create_autotrader_loggers(
-            self._config, run_timestamp, deployment_id=deployment_id)
+            self._config, run_timestamp,
+            origin=origin,
+            code_identity=self._code_identity,
+            deployment_id=deployment_id)
         self._deployment_id = deployment_id
         self._global_logger = loggers.global_logger
         self._session_logger = loggers.session_logger
@@ -293,6 +334,22 @@ class AutotraderMain:
                 'Declare `deployment.continuous` in the profile to group a bot\'s restarts.')
 
         try:
+            # === CODE IDENTITY NOT CAPTURED (#551) ===
+            # Refused for EVERY session, not only a real-money one: the header now records a run
+            # whose code nobody can name, and the cause is an environment or storage fault the
+            # operator has to see. Raised here so it ends as STARTUP FAILED with a ledger row,
+            # never as a stack trace before the session has a record.
+            if capture_failure is not None:
+                self._global_logger.error(
+                    '❌ Code identity capture failed:\n'
+                    + ''.join(traceback.format_exception(capture_failure)))
+                raise CodeIdentityCaptureError(
+                    f'The code identity of this session could not be captured '
+                    f'({type(capture_failure).__name__}: {capture_failure}) — the run header '
+                    f'records no code identity, and no session starts without one. The stack '
+                    f'trace is in autotrader_global.log; fix the cause, then start again.'
+                ) from capture_failure
+
             self._setup_signal_handlers()
 
             # === DATA PACKAGE (mock replay, #438) ===
@@ -320,6 +377,7 @@ class AutotraderMain:
             self._clipping_monitor = pipeline.clipping_monitor
             self._trading_model = pipeline.trading_model
             self._display_label_cache = pipeline.display_label_cache
+            self._stale_stress_driver = pipeline.stale_stress_driver
             self._print_startup_phase('Pipeline created successfully')
 
             self._validate_startup()
@@ -511,21 +569,30 @@ class AutotraderMain:
         # each asks whether a document belongs to THIS bot, which in a collision it does, for
         # both. Checked HERE because it must land before anything reads or writes either store
         # — `_restore_algo_state` is the next call, and cold start follows it.
-        # An identity a continuous deployment does not DECLARE is one that moves when the
-        # profile is renamed — and the rename does not fail, it silently points the next session
-        # at an empty document (#538). `--one-off` is exempt: it inherits nothing and leaves
-        # nothing a successor must find.
-        validate_continuous_deployment_declares_bot_id(
+        # An identity a profile does not DECLARE is one that moves when the profile is renamed
+        # — and the rename does not fail, it silently points the next session at an empty
+        # document (#538). Required of EVERY profile since 2026-09-24, one-off included: the
+        # route into a collision is copying a profile and keeping its name, and the copy is
+        # exactly what the older continuous-only rule exempted.
+        validate_bot_id(
             self._config.name or self._config.symbol,
             self._config.symbol,
-            self._config.bot_id,
-            continuous=self._config.deployment.continuous and not self._one_off)
+            self._config.bot_id)
 
         validate_carry_over_identity_unique(
             self._config.config_path,
             self._config.name or self._config.symbol,
             self._config.symbol,
             self._config.bot_id)
+
+        # === UNCOMMITTED CODE (#551) ===
+        # Real orders must run code a commit describes: the parity backtest afterwards compares
+        # against that code, and a dirty tree can be tied to it only through its stored patch.
+        # Refused here, before any order can go out; `--allow-dirty` lets a deliberate test
+        # through, recorded in the header and reported as a Tier-1 warning. Here and not earlier
+        # also because setup_pipeline has LOADED the code by now, so the captured identity can be
+        # held against what was loaded.
+        self._guard_uncommitted_code()
 
         # === SWAP-MODE VALIDATION (#407) ===
         # The swap engine models only POINTS (NONE = no swap). A symbol whose broker
@@ -553,6 +620,63 @@ class AutotraderMain:
             # A WARNING would also enter the log pot, and the same advisory would appear
             # twice in the report — once adjudicated, once as an unadjudicated pot line.
             self._session_logger.info(f'⚠️  {finding.message}')
+
+    def _guard_uncommitted_code(self) -> None:
+        """
+        Refuse real orders from uncommitted code, and say so loudly when `--allow-dirty` lets
+        them through (#551) — then refuse them from code that changed since it was captured.
+
+        The EFFECTIVE dry_run decides — the merged value `_is_dry_run()` resolves, never the
+        profile field — so a mock or dry-run session is never refused. The verdict is kept for
+        the post-run validation, which reports an override as a Tier-1 warning.
+        """
+        real_orders = not self._is_dry_run()
+        self._uncommitted_code_allowed = validate_committed_code(
+            self._code_identity,
+            real_orders=real_orders,
+            allow_dirty=self._allow_dirty,
+            profile_path=self._config.config_path)
+        if self._uncommitted_code_allowed:
+            notice = (f'REAL ORDERS FROM UNCOMMITTED CODE (--allow-dirty): '
+                      f'{describe_uncommitted_code(self._code_identity)}')
+            # INFO, deliberately not WARNING, for the market-fit advisory's reason: the VERDICT
+            # travels as a Tier-1 finding, and a WARNING would put it in the report twice. The
+            # SESSION channel (§35) and the console, because the person at the terminal has to
+            # see it before the first order, not in the report after the last one.
+            self._session_logger.info(f'⚠️  {notice}')
+            print(f'  ⚠️  {notice}')
+
+        # === CODE CHANGED SINCE THE CAPTURE ===
+        # The identity was captured before setup_pipeline; the pipeline then loaded the
+        # components' files from disk again. Only now can the two be compared — a fresh read of
+        # every path component's package. Real orders refuse, `--allow-dirty` included (its patch
+        # would describe the wrong code); any other session keeps running with a WARNING, which
+        # enters the error pot (§35) so the run's own report says its header is wrong.
+        moved = (verify_component_digests(self._code_identity)
+                 if self._code_identity is not None else [])
+        warning = validate_code_unchanged_since_capture(moved, real_orders=real_orders)
+        if warning is not None:
+            self._session_logger.warning(f'⚠️  {warning}')
+            print(f'  ⚠️  {warning}')
+
+    def _capture_code_identity(self) -> Optional[Exception]:
+        """
+        Capture which code this session runs, and hold a failure instead of raising it (#551).
+
+        The capture runs before the loggers, so a failure raised here would escape `run()` as a
+        stack trace with no header, no STARTUP FAILED and no ledger row. The component resolution
+        degrades by itself; what can still fail is the storage and filesystem around it.
+
+        Returns:
+            None when the identity was captured; otherwise the exception, which `run()` refuses
+            once the header exists (it keeps its traceback for the global log)
+        """
+        try:
+            self._code_identity = capture_code_identity([self._config.strategy_config])
+        except Exception as error:
+            self._code_identity = None
+            return error
+        return None
 
     def _wire_observability(self) -> None:
         """
@@ -677,6 +801,9 @@ class AutotraderMain:
             deployment_id=self._deployment_id,
             signal_inbox=self._signal_inbox,
             signal_transport=self._signal_transport,
+            # #444: the planned tick-plane stale windows a mock profile declared. None on
+            # every live session, so the loop runs exactly as it did before.
+            stale_stress_driver=self._stale_stress_driver,
             display_label_cache=self._display_label_cache,
             drift_auditor=self._drift_auditor,
             decision_event_dispatcher=self._decision_event_dispatcher,
@@ -839,7 +966,10 @@ class AutotraderMain:
         # Collect → grade → report, the same order the sim batch runs (batch_orchestrator:
         # PostRunValidator, then BatchReportCoordinator over a finished result).
         result = self._collect_results(ticks_processed, ticks_clipped)
-        SessionPostRunValidator(result, self._config).validate()
+        SessionPostRunValidator(
+            result, self._config,
+            uncommitted_code_allowed=self._uncommitted_code_allowed,
+            code_identity=self._code_identity).validate()
         self._generate_reports(result)
         return result
 
@@ -927,6 +1057,11 @@ class AutotraderMain:
         if self._worker_orchestrator:
             try:
                 result.worker_statistics = self._worker_orchestrator.get_worker_statistics()
+                # The orchestrator has been counting ticks all along — the live side simply
+                # never asked. Without it the report says 0 ticks beside 3,000 decisions, and
+                # the per-worker compute ratio derived from it reads 0.0 % rather than absent.
+                result.coordination_statistics = (
+                    self._worker_orchestrator.get_coordination_statistics())
                 result.signal_statistics = self._worker_orchestrator.get_signal_statistics()
             except Exception as e:
                 self._session_logger.error(f'Error collecting worker stats: {e}')

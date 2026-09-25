@@ -62,6 +62,7 @@
   },
   "scenarios": [
     {
+      "_comment": "A DELIBERATE negative case: it starts two years before the archive begins, so preparation refuses it by name and the batch continues without it. Kept because that refusal is worth being able to see by hand, and switched OFF because while it ran, this set reported 'Partial 2/3' forever — which reads as a broken sandbox rather than as a probe doing its job. Switch it on to watch a config/data error being excluded rather than crashing the batch.",
       "name": "BTCUSD_expect_no_data_error",
       "symbol": "BTCUSD",
       "data_broker_type": "kraken_spot",
@@ -69,7 +70,7 @@
       "end_date": "2026-01-29T03:55:00+00:00",
       "max_ticks": 5000,
       "data_mode": "realistic",
-      "enabled": true,
+      "enabled": false,
       "strategy_config": {},
       "execution_config": {},
       "trade_simulator_config": {}

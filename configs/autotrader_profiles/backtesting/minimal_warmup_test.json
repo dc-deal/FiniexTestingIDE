@@ -1,5 +1,6 @@
 {
   "name": "minimal_warmup_test",
+  "bot_id": "minwarm01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",

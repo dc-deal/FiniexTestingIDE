@@ -51,7 +51,7 @@ Errors split into two channels at run time (this mirrors the error model in the 
 | Tier | What | Producer (source of truth) | Importance |
 |---|---|---|---|
 | **Errors** | every error matters | `ValidationResult.errors` (validation/preparation failures, `is_valid=False`) **+** the `ProcessResult` villain (`error_type`/`message`/`traceback`) **+** the log ERROR pot (`scenario_logger_buffer`) | always surfaced |
-| **Tier 1 — major warnings** | advisory but important: debug-mode, stress-test, data-version, market-fit, tick-budget (P5 / granularity / too-high), the account-currency / margin advisories, post-run profiling verdicts (overhead, bottleneck) | **validators** → `ValidationResult.warnings` (per-scenario), the **batch-level** validation channel (run-scoped, e.g. debug-mode), and the **session** channel on the live side | surfaced in the report |
+| **Tier 1 — major warnings** | advisory but important: debug-mode, stress-test, data-version, market-fit, tick-budget (P5 / granularity / too-high), the account-currency / margin advisories, post-run profiling verdicts (overhead, bottleneck), real orders from uncommitted code under `--allow-dirty` (live), code under no version control (both pipelines) | **validators** → `ValidationResult.warnings` (per-scenario), the **batch-level** validation channel (run-scoped, e.g. debug-mode), and the **session** channel on the live side | surfaced in the report |
 | **Tier 2 — minor warnings** | anything at WARNING level floating in the log | the log WARNING pot (`scenario_logger_buffer`) | summarized ("N in log — see scenario logs"), ignorable |
 
 `ValidationResult` (`framework/types/validation_types.py`) is the **single structured producer** for
@@ -95,14 +95,16 @@ Both pipelines now answer with the same `RunOutcome`, and the process exit code 
 
 Exactly one of the sim's post-run checks can be answered by a single session, and it is
 **shared, not copied**: `validators/shared_advisory_checks.py` holds the formula, each validator
-supplies its own inputs and routes the finding into its own channel. One further check runs the
-other way round — live-only, because the sim answers the same question from a configured budget:
+supplies its own inputs and routes the finding into its own channel. The live-only checks run the
+other way round — the sim answers the same question differently, or never has to ask it:
 
 | Check | Live | Why |
 |---|---|---|
 | `stress_test` | ✅ | an active stress config is a Tier-1 warning in *both* pipelines — a stressed live session must not look clean |
 | `clipping` | ✅ live-only | the ratio is measured against real tick arrival, so it says how often the algo failed to keep up. Threshold: `autotrader.clipping_monitor.warn_above_ratio`. The sim has no counterpart — it judges against a CONFIGURED tick budget instead |
-| overhead · bottleneck · parallel-penalty | — | need `profiling_data` / `coordination_statistics`, which a session does not collect |
+| `uncommitted_code` | ✅ live-only | `--allow-dirty` let real orders run from uncommitted code (#551). Decided ONCE, by the startup guard, and handed to the validator as a verdict rather than derived again. The sim sends no orders, so it has nothing to guard — see [Run Origin and Code Identity](run_origin_and_code_identity.md#real-orders-from-uncommitted-code) |
+| `unversioned_code` | ✅ | the code a run executed lies in no repository — typically a strategy in `user_algos/` before `git init` — or git could not say (#551). Both pipelines, one shared check (`check_unversioned_code`); on the live side only where the `--allow-dirty` finding above did not already name it, so it is the dry-run and mock case |
+| overhead · bottleneck · parallel-penalty | — | need `profiling_data`, which a session does not collect. **`coordination_statistics` is no longer the missing half** — since 2026-09-24 a session collects it (it was being counted all along and simply never read), so a check needing only the tick count could be answered live |
 | the three tick-budget checks | — | they judge a CONFIGURED `tick_processing_budget_ms`; live has none, which is why it gets the observed-ratio check above instead |
 | multi-currency · time-divergence | — | one session, one currency, one span |
 | data-version · robustness · debug-mode | — | tick index, walk-forward and the batch serial mode are sim-only |

@@ -820,6 +820,27 @@
             }
         },
         {
+            "name": "🚀 API Token: account entry to paste",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/api_token_cli.py",
+            "args": [
+                "account",
+                "--id",
+                "${input:apiAccountId}",
+                "--kind",
+                "${input:apiAccountKind}",
+                "--display-name",
+                "${input:apiAccountDisplayName}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "05_api_server",
+                "order": 2
+            }
+        },
+        {
             "name": "🚀 API Token: list consumers",
             "type": "debugpy",
             "request": "launch",
@@ -831,7 +852,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "05_api_server",
-                "order": 2
+                "order": 3
             }
         },
         {
@@ -843,6 +864,8 @@
                 "mint",
                 "--consumer",
                 "${input:apiConsumerName}",
+                "--account",
+                "${input:apiAccountId}",
                 "--grants",
                 "${input:apiConsumerGrants}"
             ],
@@ -850,7 +873,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "05_api_server",
-                "order": 3
+                "order": 4
             }
         },
         // ====================================================
@@ -3278,6 +3301,26 @@
             }
         },
         {
+            "name": "🧪 AutoTrader: Planned Tick Outage (BTCUSD)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/backtesting/tick_outage_stress_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13b_manual_inspection",
+                "order": 10
+            }
+        },
+        {
             "name": "🧪 AutoTrader: SL Triggered",
             "type": "debugpy",
             "request": "launch",
@@ -3294,7 +3337,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 10
+                "order": 11
             }
         },
         {
@@ -3314,7 +3357,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 11
+                "order": 12
             }
         },
         {
@@ -3334,7 +3377,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 12
+                "order": 13
             }
         },
         {
@@ -3354,7 +3397,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 13
+                "order": 14
             }
         },
         {
@@ -3374,7 +3417,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 14
+                "order": 15
             }
         },
         {
@@ -3394,7 +3437,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 15
+                "order": 16
             }
         },
         {
@@ -3410,7 +3453,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 16
+                "order": 17
             }
         },
         {
@@ -3426,7 +3469,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 17
+                "order": 18
             }
         },
         {
@@ -3442,7 +3485,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 18
+                "order": 19
             }
         },
         {
@@ -3458,7 +3501,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 19
+                "order": 20
             }
         },
         {
@@ -3474,7 +3517,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 20
+                "order": 21
             }
         },
         {
@@ -3490,7 +3533,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 21
+                "order": 22
             }
         },
         {
@@ -3506,7 +3549,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 22
+                "order": 23
             }
         },
         {
@@ -3522,7 +3565,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 23
+                "order": 24
             }
         },
         {
@@ -3538,7 +3581,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 24
+                "order": 25
             }
         },
         {
@@ -3554,7 +3597,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 25
+                "order": 26
             }
         },
         {
@@ -3570,7 +3613,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 26
+                "order": 27
             }
         },
         {
@@ -3586,7 +3629,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 27
+                "order": 28
             }
         },
         {
@@ -3602,7 +3645,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 28
+                "order": 29
             }
         },
         {
@@ -3618,7 +3661,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 29
+                "order": 30
             }
         },
         {
@@ -3634,7 +3677,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 30
+                "order": 31
             }
         },
         {
@@ -3650,7 +3693,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 31
+                "order": 32
             }
         },
         {
@@ -3666,7 +3709,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 32
+                "order": 33
             }
         },
         {
@@ -3682,7 +3725,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 33
+                "order": 34
             }
         },
         {
@@ -3698,7 +3741,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 34
+                "order": 35
             }
         },
         // ====================================================
@@ -3936,6 +3979,26 @@
             "type": "promptString",
             "description": "One grant, e.g. bars:* (repeat the command for more)",
             "default": "bars:*"
+        },
+        {
+            "id": "apiAccountId",
+            "type": "promptString",
+            "description": "Account id the token acts for: up to 10 of a-z, 0-9, hyphen; never operator"
+        },
+        {
+            "id": "apiAccountKind",
+            "type": "pickString",
+            "description": "person, or service for a machine consumer",
+            "options": [
+                "person",
+                "service"
+            ],
+            "default": "person"
+        },
+        {
+            "id": "apiAccountDisplayName",
+            "type": "promptString",
+            "description": "How a human reads the account in a report"
         },
         {
             "id": "userScenarioSet",

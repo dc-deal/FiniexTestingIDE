@@ -42,22 +42,53 @@ is the one that gets forgotten.
 | `TestTheScaffoldStateChangesNothing` | With no consumer configured every route still answers — the rollout's first step has to be byte-identical, or it is not reversible |
 | `TestATokenIsRequired` | 401 without a header and for an unknown token; `WWW-Authenticate: Bearer` on the refusal, so a client can tell a dead credential from a transport fault; `/health` stays open |
 | `TestHoldingATokenIsNotHoldingAGrant` | The walk over every identity route with a token holding NOTHING (403 required on each); a market-data token reaches its broker and is refused on a report; a grant for one broker does not carry to another |
-| `TestTheTokenFileIsRefusedWhenItIsTheTrackedOne` | A live token answering from the committed file refuses the boot; an inactive entry there is fine, which is what lets the placeholder carry examples |
+| `TestTheTokenFileIsRefusedWhenItIsTheTrackedOne` | Against real files at their real paths in a throwaway tree: a live token answering from the committed `inbound/` file refuses the boot, and that refusal comes BEFORE the missing-account one, the parse and the account binding — each of those would tell the operator to edit a file whose only right edit is moving the key out; the consumer is named and its token never is. An entry not declared off counts as live, a value the token model cannot read included; one declared off in any spelling the model reads passes. The workspace file is not mistaken for the tracked one, an inactive entry there is fine, which is what lets the placeholder carry examples, and the path the loader REALLY answers from under isolation is recognised. The earlier version passed a path string of the flat layout, so it stayed green while the check never fired on the real path |
 | `TestTheSurfaceVocabularyIsClosed` | An unknown surface fails when the token is parsed, not at request time; and the vocabulary is held to the same set as `api_app.ROUTER_SURFACES`, so a router mounted under a surface no token can name — or a surface no router serves — fails here rather than becoming a denial nobody can explain |
 | `TestACollectionRouteIsGatedToo` | The hole the walk cannot see: a route with no path parameter had nothing for a grant to be about, so `/reports/runs`, `/sweeps` and `/deployments` would answer any authenticated token. Refusal and admission are both named by hand — a new collection route needs its own pair or nothing looks at it |
 | `TestTheAppLevelRoutesAreADecision` | `/timeframes` open beside `/health`, `/brokers` requiring a token and taking no grant — pinned so neither drifts back to being accidental |
+| `TestTheCallerRouteSaysWhoIsCalling` | `/caller` (#551): a valid token is answered with its client, account, account kind, display name, grants as a list and note; a wrong token is a 401 with `WWW-Authenticate: Bearer`, and so is no header; a token holding NOTHING still reaches it, because it is token-only like `/brokers`; with gating off it names nobody even for a valid token (`enforced: false`), and the real scaffold boot answers the same; the real boot from files on disk reaches the route; a verified consumer with no account is a 500 `identity_unbound`, not an anonymous caller; the route is on no grant surface; and it answers under contract 4 or later, which catches a forgotten bump |
 | `TestTheSchemaSurfaceIsOffWhereItCannotBeGuarded` | `/openapi.json`, `/docs` and `/redoc` are FastAPI's own routes at the APP ROOT — outside `/api/v1`, uncoverable by a router dependency, and outside the walk by construction (it filters on a path parameter). They are tied to the auth posture instead: present while nobody is configured, gone once somebody is, and a token does not bring them back |
 | `TestTheCorsPreflightIsNeverGated` | An `OPTIONS` without `Authorization` is not refused, and `WWW-Authenticate` / `Retry-After` are exposed — invisible from every seat but a browser's |
-| `TestTheRegistryNeverHoldsAToken` | Only digests are stored, and the boot line names consumers and never tokens |
+| `TestTheRegistryNeverHoldsAToken` | The in-memory registry stores only digests — the credentials FILE holds the plaintext — and the boot line names consumers and never tokens |
 
 The walk names one identity route per router as `required`: a router dropping out of the app would
 otherwise leave it green while the surface it gated went unreachable.
+
+## Accounts (`test_api_accounts.py`)
+
+A token says which client is calling and never said on whose behalf — which the first write
+surface needs, because a run started through the API has to record a person. So every token entry
+names an account, switched off or not, and the boot refuses a live token whose account does not
+exist or is switched off.
+The file-based tests run in a throwaway tree as the working directory, with config isolation
+switched off where the case is about the workspace copy.
+
+| Test class | What it pins |
+|---|---|
+| `TestTheAccountIdIsTheBotIdShape` | For every id in the list, a bot id and an account id agree on whether it is usable — one shared predicate, held behaviourally so a drifted copy would split them |
+| `TestTheOperatorIsNotAnAccount` | `operator` is refused as an account, as a token's account, and in an accounts file at parse |
+| `TestTheAccountModel` | `person` and `service` are the kinds; an unknown kind and a misspelled field are refused rather than dropped |
+| `TestTheAccountsFile` | No file is no account and not an error; the key is the id; an id named twice is refused (JSON keeps the last); the workspace copy takes precedence; the tracked placeholder holds none |
+| `TestEveryTokenNamesAnAccount` | Entries without an account are refused ALL AT ONCE with the command and the restart, and a switched-off entry is refused too — off is one flag from on; an unknown and a switched-off account are refused; a switched-off token may name an account that does not exist; a bound consumer carries its account and its grants as a list; the boot line names the account; `setup_api_auth` hands the identities to the bundle |
+| `TestTheTokenLoaderHonoursConfigIsolation` | Under isolation only the tracked copy answers, without it the workspace does |
+| `TestTheCommandsWriteNothing` | `account` prints the whole file when none exists and a fragment when one does, refuses an existing id and `operator`; `mint` carries its account, refuses an unknown or malformed one, says what the boot needs when no accounts file exists, and is a usage error without `--account`; neither changes a file |
+
+## Contract (`TestTheContractSaysWhatItIs`)
+
+The app version moves every release; the contract moves when a route or a response model does —
+or when a field starts to mean something else. Every response carries `X-Api-Contract`, a refusal
+included, so a saved fixture is self-describing; `/contract` names both clocks, agrees with the
+header and is open like `/health`. And the contract log's newest `## Version N` heading is held to
+`API_CONTRACT_VERSION`, newest first: the server serves only the current version's lines, so a bump
+that skipped the log would leave a gap no consumer could see.
 
 ## Mocking Strategy
 
 `BarsIndexManager`, `MarketConfigManager` and `ReportStore` are patched at their import location in
 each router module. `pd.read_parquet` is patched for the bars test to return a minimal in-memory
-DataFrame. No filesystem access occurs during the test run.
+DataFrame. No filesystem access occurs during the test run — except in the authentication and
+account tests that read credential files, which write them into pytest's `tmp_path` and never touch
+the repository's own copies.
 
 ## Sweep routes (`TestSweeps`)
 

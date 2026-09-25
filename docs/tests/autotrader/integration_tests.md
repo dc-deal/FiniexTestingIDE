@@ -114,6 +114,31 @@ recovered", both staleness contracts in ONE fast session driven by the
 
 **Runtime:** ~10 seconds (one shared session; includes the 2 s deliberate freeze).
 
+### test_tick_outage_stress.py
+
+The #444 drill (`tick_outage_stress_test.json`): a PLANNED stale window on the tick source,
+driven on the live loop by the same `StaleDataStressDriver` the simulation uses. Until #444
+such a window was expressible on an AutoTrader profile and driven by nobody — the only
+market-data drill the live loop could rehearse was the transport-real freeze.
+
+The difference from the session above is the whole point: there the feed goes SILENT, here it
+keeps DELIVERING and only its status is flagged. Its own profile rather than a second window
+on `market_data_outage_test`, because that session already produces a wall-clock episode and a
+second one in the same counts cannot be told from it — here `market_data_stale_after_s` is set
+so high that the wall clock cannot speak at all.
+
+| Test | What it validates |
+|------|-------------------|
+| `test_session_completes_normally` | Normal shutdown, 3000 ticks, empty error pot |
+| `test_the_window_flipped_the_status_and_recovered` | Both edges once each — a window, not a permanent state |
+| `test_the_mandatory_hook_fired` | `on_market_data_stale` is rehearsable deterministically on the LIVE loop |
+| `test_the_guard_blocked_an_entry_inside_the_window` | The `STALE_MARKET_DATA` floor holds on the live path |
+| `test_the_ticks_kept_flowing_while_the_status_was_stale` | The contract, in one number: ticks are COUNTED as stale, not absent (a carve would show zero) |
+| `test_the_episode_is_recorded_as_injected` | Origin `STRESS_INJECTED` + the window label — a drill must never read as a venue fault |
+| `test_the_stress_config_reaches_the_session_validation_channel` | The Tier-1 advisory names the planned window (§35) |
+
+**Runtime:** ~20 seconds (one shared session).
+
 ### test_autotrader_trade_lifecycle.py
 
 Trade lifecycle validation through the AutoTrader mock pipeline. Uses `mock_session_test.json` (simple_consensus, parquet replay) which produces real fill prices — unlike dry-run live sessions where entry price is 0.

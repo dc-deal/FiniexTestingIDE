@@ -23,7 +23,7 @@ import subprocess
 import pytest
 
 from python.framework.utils import git_info_utils
-from python.framework.utils.git_info_utils import get_git_commit, get_git_info
+from python.framework.utils.git_info_utils import clear_git_caches, get_git_info
 
 REPORTS_DIR = 'tests/live_signal_feed/reports'
 
@@ -42,27 +42,57 @@ class FakeCompleted:
         self.returncode = 0
 
 
-def scripted_git(status_output: str):
+def _nul_separated(lines: str) -> str:
+    """
+    Render line-per-entry output the way git prints it under `-z`.
+
+    Args:
+        lines: One entry per line
+
+    Returns:
+        The entries, each terminated by a NUL byte
+    """
+    return ''.join(f'{line}\0' for line in lines.split('\n') if line)
+
+
+def scripted_git(status_output: str, flagged_output: str = ''):
     """
     Build a `subprocess.run` stand-in answering the calls get_git_info makes.
 
+    The reader pins its configuration on every call (`-c key=value` pairs and
+    `--literal-pathspecs`, #551) and addresses the repository with `-C <root>`; all of it is
+    dropped before the lookup, because the answer does
+    not depend on them here. Anything else unexpected fails loudly — a new git call the stand-in
+    does not know is exactly what this suite must notice.
+
     Args:
-        status_output: What `git status --porcelain` returns
+        status_output: What `git status --porcelain` reports, one entry per line
+        flagged_output: What `git ls-files -v` reports, one entry per line — a lowercase tag
+            marks assume-unchanged, `S` skip-worktree
 
     Returns:
         A callable with subprocess.run's signature
     """
     answers = {
         ('git', '--version'): 'git version 2.43.0',
+        ('git', 'rev-parse', '--show-toplevel'): '/repo',
         ('git', 'rev-parse', '--short', 'HEAD'): 'abc1234',
         ('git', 'rev-parse', '--abbrev-ref', 'HEAD'): 'dev-v-1-4',
         ('git', 'log', '-1', '--format=%cI'): '2026-08-28T22:40:00+00:00',
         ('git', 'log', '-1', '--format=%s'): 'rework signal polling',
-        ('git', 'status', '--porcelain'): status_output,
+        ('git', 'status', '--porcelain=v1', '-z', '--untracked-files=all',
+         '--ignore-submodules=none', '--no-renames'): _nul_separated(status_output),
+        ('git', 'ls-files', '-v', '-z'): _nul_separated(flagged_output),
     }
 
     def run(command, **_kwargs):
-        return FakeCompleted(answers[tuple(command)])
+        rest = list(command[1:])
+        while rest and rest[0] in ('-C', '-c', '--literal-pathspecs'):
+            rest = rest[1:] if rest[0] == '--literal-pathspecs' else rest[2:]
+        key = ('git', *rest)
+        if key not in answers:
+            raise AssertionError(f'unscripted git call: {command}')
+        return FakeCompleted(answers[key])
 
     return run
 
@@ -73,22 +103,22 @@ def scripted(monkeypatch):
     Install a scripted git for one test.
 
     Returns:
-        A callable taking the porcelain output the test wants git to report
+        A callable taking the porcelain output the test wants git to report, and optionally
+        the `ls-files -v` output naming entries git was told not to look at
     """
-    def install(status_output: str):
+    def install(status_output: str, flagged_output: str = ''):
         # The reader caches per process (§41), so each scripted case must start from an
         # empty cache — otherwise the second test reads the first test's answer and the
         # suite goes green while asserting nothing.
-        get_git_info.cache_clear()
-        get_git_commit.cache_clear()
-        monkeypatch.setattr(subprocess, 'run', scripted_git(status_output))
-        monkeypatch.setattr(git_info_utils.subprocess, 'run', scripted_git(status_output))
+        clear_git_caches()
+        monkeypatch.setattr(subprocess, 'run', scripted_git(status_output, flagged_output))
+        monkeypatch.setattr(git_info_utils.subprocess, 'run',
+                            scripted_git(status_output, flagged_output))
     yield install
     # And clear it again on the way out: monkeypatch removes the scripted subprocess, but
     # the SCRIPTED ANSWER would stay in the cache and reach every later test in this
     # process — a fake commit hash nobody would think to look for.
-    get_git_info.cache_clear()
-    get_git_commit.cache_clear()
+    clear_git_caches()
 
 
 class TestOwnArtifactDoesNotDirtyTheTree:
@@ -157,3 +187,16 @@ class TestTheExemptionStaysNarrow:
 
         assert info.dirty is True
         assert info.uncommitted_count == 2
+
+    def test_a_hidden_edit_in_the_reports_dir_still_counts(self, scripted):
+        """
+        An entry flagged assume-unchanged is a change git cannot see, not an artifact — the
+        exemption drops untracked files only, and the reader reports the flagged entry itself.
+        """
+        scripted('', flagged_output=f'h {REPORTS_DIR}/signal_feed_report_1.4.0.json\n'
+                                    'H python/framework/signal_data/signal_reader.py')
+
+        info = get_git_info(ignore_untracked_under=REPORTS_DIR)
+
+        assert info.dirty is True
+        assert info.uncommitted_count == 1

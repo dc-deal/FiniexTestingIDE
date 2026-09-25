@@ -15,9 +15,11 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable, Deque, Dict, List, Optional, Tuple
 
+from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.autotrader.autotrader_display_exporter import AutotraderDisplayExporter
 from python.framework.autotrader.autotrader_startup import create_session_file_logger
+from python.framework.autotrader.session_log_retention import prune_rotated_session_logs
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
@@ -37,6 +39,7 @@ from python.framework.signal_data.transport.abstract_signal_transport import (
     AbstractSignalTransport,
 )
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
+from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
@@ -133,6 +136,7 @@ class AutotraderTickLoop:
         signal_inbox: Optional[SignalInbox] = None,
         signal_transport: Optional[AbstractSignalTransport] = None,
         carried_segment_no: int = 0,
+        stale_stress_driver: Optional[StaleDataStressDriver] = None,
     ):
         self._config = config
         self._tick_queue = tick_queue
@@ -151,6 +155,10 @@ class AutotraderTickLoop:
         self._signal_transport = signal_transport
         self._decision_logic = decision_logic
         self._clipping_monitor = clipping_monitor
+        # #444: planned tick-plane stale windows, present only on a mock profile that
+        # declares them. None on every live session — the block lives in
+        # scenario_settings, which a live profile does not carry at all.
+        self._stale_stress_driver = stale_stress_driver
         self._logger = logger
         self._trading_model = trading_model
         self._run_dir = run_dir
@@ -225,6 +233,14 @@ class AutotraderTickLoop:
         # #451: the observer that turns the status flips above into episode records.
         # It sees both event sources (tick + heartbeat) and measures on the wall axis
         # (§9 duration rule — the canonical clock is bimodal in a mock replay session).
+        #
+        # #549: the wall axis is right for LIVE, where the physical silence is the truth, and
+        # wrong for a mock REPLAY, where the drill's real extent is its DATA span. The rendered
+        # line puts the two side by side: measured 2026-09-24, a ten-minute injected window over
+        # 281 stale ticks printed `06:10 → 06:20 (0s)`, and the freeze drill printed a five-month
+        # span with a one-second duration. Not a one-line fix — in the same mock session the
+        # freeze wants the wall axis and the planned window wants the data axis, so it is a
+        # question per EPISODE rather than per session.
         self._market_data_tracker = MarketDataEpisodeTracker(
             source=config.broker_type,
             logger=logger,
@@ -306,10 +322,6 @@ class AutotraderTickLoop:
 
         # Daily rotation state
         self._current_log_date: Optional[str] = None
-        # Track placeholder file for cleanup on first tick
-        self._initial_placeholder_path: Optional[Path] = None
-        if self._logger.file_logger:
-            self._initial_placeholder_path = self._logger.file_logger.log_file_path
 
         # #400 — Display stats builder (extracted from this loop). Holds the
         # stable collaborators; the volatile per-frame state (safety, rejections,
@@ -462,6 +474,13 @@ class AutotraderTickLoop:
             # #436: a real tick ends a stale episode (recovery, edge reset).
             if self._market_stale:
                 self._end_market_stale_episode()
+
+            # #444: advance the planned stale-window state machine AFTER that recovery and
+            # BEFORE the tracker observes — the wall-clock episode resolves itself first,
+            # then an injected window re-states its claim, and the tracker sees the status
+            # both of them left behind. Ticks keep flowing inside a window by design.
+            if self._stale_stress_driver is not None:
+                self._stale_stress_driver.on_tick(self._executor.get_current_time())
 
             # #451: observe the resulting status — counts this tick and closes the
             # episode record from what the session actually experienced.
@@ -641,6 +660,11 @@ class AutotraderTickLoop:
         self._logger.info(
             f'[GHOST] ghost_passes={self._ghost_pass_count} '
             f'ghost_actions={self._ghost_action_count} ticks={ticks_processed}')
+
+        # #444: close a window still active at session end, so the episode span reaches the
+        # report even without a recovery tick. Same step the sim takes at scenario end.
+        if self._stale_stress_driver is not None:
+            self._stale_stress_driver.finish()
 
         self._running = False
         return ticks_processed, ticks_clipped
@@ -913,6 +937,14 @@ class AutotraderTickLoop:
 
         if self._market_data_stale_after_s <= 0:
             return
+        # #444: an injected window owns the status while it runs. Both sources write the
+        # SAME field, so without this the wall clock could overwrite a deterministic window
+        # — and it would say nothing new: the status is already stale and the edge hook has
+        # already fired. When the window ends with the feed still quiet, the next heartbeat
+        # evaluates normally and the real outage is reported then.
+        if (self._stale_stress_driver is not None
+                and self._stale_stress_driver.get_active_label()):
+            return
         if self._last_real_tick_wall_time <= 0:
             return  # no tick yet — startup wait, not an outage
         seconds_since = time.time() - self._last_real_tick_wall_time
@@ -958,11 +990,18 @@ class AutotraderTickLoop:
 
     def _injected_outage_label(self) -> str:
         """
-        Outage label the tick source declares for a deliberately injected silence.
+        Outage label of a deliberately injected silence — planned window or tick source.
 
         Returns:
-            The source's injection label, '' when the silence is real
+            The label of whichever injection is running, '' when the silence is real
         """
+        # The planned window first: it is the deterministic one, and the two cannot both
+        # be running for the same reason. Without it an injected outage would be recorded
+        # as a REAL one — the very confusion the label exists to prevent (#451).
+        if self._stale_stress_driver is not None:
+            planned = self._stale_stress_driver.get_active_label()
+            if planned:
+                return planned
         if self._tick_source is None:
             return ''
         return self._tick_source.get_injected_outage_label()
@@ -1572,8 +1611,11 @@ class AutotraderTickLoop:
             )
             self._logger.swap_file_logger(new_file_logger)
             self._current_log_date = day_label
-            # Keep placeholder file — it contains pre-tick logs (warmup bars, pipeline setup)
-            self._initial_placeholder_path = None
+            # The file startup created from the WALL clock stays: it holds the pre-tick log
+            # (warmup bars, pipeline setup), and in a replay its name is a different day from
+            # the one this session trades — which is also why the retention below cannot reach
+            # it, a future-dated file being outside the window by construction.
+            self._prune_rotated_session_logs(day_label)
             return
 
         if day_label != self._current_log_date:
@@ -1588,3 +1630,24 @@ class AutotraderTickLoop:
             self._logger.info(
                 f'📅 Session log rotated to autotrader_session_{day_label}.log'
             )
+            self._prune_rotated_session_logs(day_label)
+
+    def _prune_rotated_session_logs(self, day_label: str) -> None:
+        """
+        Apply the configured retention to the rotated session logs (#357).
+
+        Called on EVERY rotation, which includes the first pass — so a session that runs
+        long enough to rotate is also the one that prunes, and a session that never rotates
+        never deletes anything. The window is read per call rather than cached: it costs one
+        dictionary lookup a day, and it is what lets an operator widen the window on a
+        running deployment by editing the config before the next restart.
+
+        Args:
+            day_label: The trading day just rotated to (YYYYMMDD) — never deleted
+        """
+        if not self._run_dir:
+            return
+        retention_days = (AppConfigManager().get_file_logging_config_object()
+                          .session_logs.retention_days)
+        prune_rotated_session_logs(
+            self._run_dir, day_label, retention_days, self._logger)

@@ -1,5 +1,6 @@
 {
   "name": "tp_triggered_test",
+  "bot_id": "tptrig01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",

@@ -44,6 +44,26 @@ class ScenarioFileLoggingConfig(StrictConfigModel):
     file_name_prefix: str
 
 
+class SessionLogsConfig(StrictConfigModel):
+    """
+    Retention for the live session's daily-rotated logs (#357).
+
+    A live session rotates `session_logs/autotrader_session_YYYYMMDD.log` at the trading-day
+    boundary and, until this existed, never removed one — so a month-long run accumulated one
+    file per day with nothing to stop it. The live counterpart of `scenario` above, which is
+    why it lives here rather than under `autotrader`: both describe how a run's log FILES are
+    written, and splitting the pair would put one answer in two sections.
+
+    Deliberately NOT the same question as the run TREE, which is pruned by a CLI the operator
+    triggers. These files belong to a session that is still running, and nobody is there to
+    trigger anything.
+
+    Args:
+        retention_days: How many rotated days to keep beside the active file; 0 keeps all
+    """
+    retention_days: int = 30
+
+
 class FileLoggingConfig(StrictConfigModel):
     """
     File logging configuration with global/scenario separation.
@@ -61,6 +81,7 @@ class FileLoggingConfig(StrictConfigModel):
     # key because the three category roots are independent paths and share no declared parent.
     run_index: Path
     scenario: ScenarioFileLoggingConfig
+    session_logs: SessionLogsConfig
 
     # ============================================
     # Public Properties - Global File Logging

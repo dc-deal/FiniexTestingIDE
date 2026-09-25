@@ -208,7 +208,7 @@ hidden.
 | | |
 |---|---|
 | **VS Code** | `📈 Run Index: Prune (dry run)` |
-| **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--apply]` |
+| **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--older-than AGE] [--apply]` |
 | **Purpose** | Remove what the run tree no longer needs — after showing exactly what that is |
 
 **The dry run is the default and it IS the product.** Without `--apply` nothing is touched. A run
@@ -237,19 +237,37 @@ deletes without ceremony because a cache is rebuildable — this is not that.
   going. A crashed run is the only record of that failure and the most valuable directory there is
 - a run holding `field_study.jsonl` — the raw evidence behind a real-money release certificate
 
-**The selectors** (`--keep-last` and `--orphans` are opt-in; the third is always on):
+**The selectors** (`--keep-last`, `--older-than` and `--orphans` are opt-in; the last one is
+always on):
 
 | Flag | Removes |
 |---|---|
 | `--keep-last N` | per scenario set / profile, all but the N newest complete runs. **A sweep is the unit, not the combination** — the N newest sweeps survive WHOLE, the rest go WHOLE, because a half-pruned sweep leaves a `ranked.csv` ranking runs that no longer exist |
+| `--older-than AGE` | runs that started longer ago than `AGE`, written as whole days or hours (`30d`, `12h`). The age comes from the run header's own start time; a run that records none is KEPT and reported separately, because an age nobody can measure is not a reason to delete |
 | `--orphans` | directories that are not runs: no header, not in the index. Never sweep directories (correctly header-less) and never a run's own `io/`, `scenario_logs/`, … |
 | *(always on)* | `reporting=none` with no artifacts — commissioned to produce nothing, and it did not |
+
+**`--keep-last` and `--older-than` compose as KEEP rules, not as delete rules.** "Keep the
+newest five" and "keep the last month" are different questions — a bot running once a day
+answers them very differently from one running forty backtests an hour — so a run goes only
+when EVERY selector given releases it. Measured on a real tree:
+
+```
+prune --keep-last 2                    DELETE 15
+prune --older-than 1h                  DELETE 27
+prune --keep-last 2 --older-than 1h    DELETE 15    ← the intersection, never the union
+```
+
+The other reading would throw away a run that is among the newest two of its set merely for
+being old, which is the opposite of what asking for both means.
 
 `--apply` deletes, then **rebuilds the index**: it is derived, so it follows the tree rather than
 being edited alongside it. One unremovable directory is reported and does not abort the rest.
 
-Age (`--older-than`) is deliberately absent — that policy is defined once, together with the
-AutoTrader session-log retention, so the project has one retention vocabulary rather than two.
+**No config default, deliberately.** This command is the trigger, and it stays that way: a
+retention rule that fires by itself is a deletion nobody asked for. The live session's rotated
+logs are the one exception and for a stated reason — they belong to a session that is still
+running, where nobody is present to trigger anything (see below).
 
 ### 📈 Run Index: Rebuild
 

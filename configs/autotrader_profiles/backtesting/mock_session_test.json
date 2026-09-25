@@ -1,5 +1,6 @@
 {
   "name": "mock_session_test",
+  "bot_id": "mocksess01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",

@@ -1,6 +1,6 @@
 {
   "name": "ethusd_live",
-  "bot_id": "ethusd-live",
+  "bot_id": "ethlive01",
   "symbol": "ETHUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "live",

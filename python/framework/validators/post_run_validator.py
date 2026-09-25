@@ -19,6 +19,7 @@ from python.framework.reporting.builders.robustness_report_builder import (
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.data_origin_types import is_admissible_for_measurement
 from python.framework.types.process_data_types import ProcessResult
+from python.framework.types.run_origin_types import CodeIdentity
 from python.framework.types.scenario_types.scenario_set_performance_types import (
     EXPECTED_OPERATIONS,
     ProfilingData,
@@ -30,7 +31,10 @@ from python.framework.types.validation_types import (
     ValidationResult,
 )
 from python.framework.utils.version_utils import parse_version
-from python.framework.validators.shared_advisory_checks import check_stress_test
+from python.framework.validators.shared_advisory_checks import (
+    check_stress_test,
+    check_unversioned_code,
+)
 
 # Scope of a batch-global finding — it concerns the run, not one scenario.
 _RUN_SCOPE = 'run'
@@ -54,7 +58,8 @@ _QUOTE_CHANNEL_FROM = (1, 6, 0)
 class PostRunValidator:
     """Emits the post-run batch-global advisory warnings into the batch-level validation channel."""
 
-    def __init__(self, batch: BatchExecutionSummary, run_id: str):
+    def __init__(self, batch: BatchExecutionSummary, run_id: str,
+                 code_identity: Optional[CodeIdentity] = None):
         """
         Initialize the post-run validator.
 
@@ -62,14 +67,18 @@ class PostRunValidator:
             batch: The completed batch summary (scenarios, process results, clipping, profiling)
             run_id: The run being validated — the robustness verdict builds its report from the
                 same builder the artifact uses, and every report names its run (#475)
+            code_identity: The code the run executed, as its header recorded it (#551); None for
+                a run commissioned not to report, which captured none
         """
         self._batch = batch
         self._run_id = run_id
+        self._code_identity = code_identity
 
     def validate(self) -> None:
         """Run all post-run advisory checks; append a run-scoped ValidationResult per active warning."""
         self._check_debug_mode()
         self._check_stress_test()
+        self._check_unversioned_code()
         self._check_data_version()
         self._check_data_origin()
         self._check_spreadless_ticks()
@@ -120,6 +129,12 @@ class PostRunValidator:
         finding = check_stress_test(
             [(s.name, s.stress_test_config) for s in self._batch.single_scenario_list],
             _SCENARIO_UNIT_LABEL)
+        if finding is not None:
+            self._add_finding(finding)
+
+    def _check_unversioned_code(self) -> None:
+        """Warn when the run's code lies under no version control (shared with the live session)."""
+        finding = check_unversioned_code(self._code_identity)
         if finding is not None:
             self._add_finding(finding)
 

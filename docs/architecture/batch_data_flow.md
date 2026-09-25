@@ -84,7 +84,9 @@ three ids and therefore three directories.
 
 Each run writes a `header.json` at its START — id, start time, category, owner, and the parent it
 belongs to (a sweep, today; a session for #476's daily fragments). At the start rather than the
-end, because a run that crashes is exactly the run somebody needs to identify.
+end, because a run that crashes is exactly the run somebody needs to identify. The same header
+states where the run came from and, for a run that reports, which code it ran — see
+[Run Origin and Code Identity](run_origin_and_code_identity.md).
 
 `runs/runs_index.parquet` is ONE compacted file DERIVED from those headers, and it is what the API
 reads. Derived is the point: it may be deleted or go stale without anything being lost —

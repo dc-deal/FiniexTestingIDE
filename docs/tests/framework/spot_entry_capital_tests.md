@@ -36,18 +36,22 @@ no scenario. The quantity is the subject, the same shape as `account_value_tests
 
 ## What Is Tested
 
-### `TestTheQuantityTheBotsGateOnIsNotSpendableCash`
+### `TestASpotAccountIsOfferedNoMarginFiguresAtAll`
 
-The defect, stated as the difference between two numbers rather than as a judgement. These cases
-stay true after the fix — the `free_margin` formula is deliberately out of scope, and #497 owns
-whether it should answer `None` at spot. They are the evidence that switching the gate was not a
-no-op.
+**Rewritten 2026-09-24, and the history is kept above because the numbers are the argument.**
+This class used to pin the defect itself — the figure growing when a coin doubled, shrinking when
+it fell, and the lot count it subtracted. Those cases were the evidence that switching the gate
+was not a no-op, and they held while the formula stayed. The formula is gone: a spot account no
+longer receives `margin_used`, `free_margin` or `margin_level` at all, which was the open half
+#497 was carrying. A test whose content IS a defect has to move when the defect does, or it pins
+the wrong thing in the other direction.
 
 | Test | Description |
 |------|-------------|
-| `test_an_unrealized_gain_is_offered_as_capital_that_cannot_be_spent` | the coin doubles, the figure grows, and no cash entered the account |
-| `test_and_a_decline_withholds_capital_the_account_really_has` | the same defect pointing the other way, which is what makes it uncorrectable by a different floor |
-| `test_the_margin_used_it_subtracts_is_the_lot_size_not_a_value` | pins the second cause at its source: 0.1 ETH worth 300 USD is charged as 0.1 |
+| `test_the_three_margin_figures_are_absent` | all three are `None` at spot — not merely unused, not produced |
+| `test_the_figures_a_spot_account_really_has_are_untouched` | the guard against overcorrecting: `balances`, `equity` and the position count still answer |
+| `test_asking_for_free_margin_at_spot_is_refused_by_name` | loudly rather than as `None`, and the message names `get_free_entry_capital` |
+| `test_no_margin_is_computed_per_position_at_spot` | the performance half: the broker is asked zero times, where it used to be once per open position per call |
 
 ### `TestFreeEntryCapitalAnswersPerWorld`
 

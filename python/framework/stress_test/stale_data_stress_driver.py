@@ -1,16 +1,19 @@
 """
 FiniexTestingIDE - Stale-Data Stress Driver
-Drives planned market-data stale windows on the sim time axis (#436).
+Drives planned market-data stale windows on a run's own time axis (#436, #444).
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.trading_env_types.stress_test_types import StaleDataEvent
+from python.framework.types.trading_env_types.stress_test_types import (
+    StaleDataEvent,
+    StressTestConfig,
+)
 
 
 def warn_events_outside_range(
@@ -40,7 +43,7 @@ def warn_events_outside_range(
 
 class StaleDataStressDriver:
     """
-    Status-plane injection of planned TICK-source stale windows (sim only).
+    Status-plane injection of planned TICK-source stale windows (both pipelines).
 
     The third dispatch driver of the #436 contract surface (live heartbeat ·
     THIS · later #375 TimeEvent): entering a window sets the executor's
@@ -159,3 +162,48 @@ class StaleDataStressDriver:
             event: The window being left
         """
         self._executor.set_market_data_status(MarketDataStatus())
+
+
+def build_stale_stress_driver(
+    stress_config: Optional[StressTestConfig],
+    data_source: str,
+    data_range: Optional[Tuple[datetime, datetime]],
+    executor: AbstractTradeExecutor,
+    decision_logic: AbstractDecisionLogic,
+    logger: ScenarioLogger,
+) -> Optional[StaleDataStressDriver]:
+    """
+    Build the tick-source stale-window driver a run's stress config asks for (#444).
+
+    Both pipelines construct it HERE rather than each in its own loop: the selection
+    (which events hit this tick source), the overlap guard and the decision not to build
+    at all are one rule, and a rule written twice is the one that drifts (§19). The
+    SIGNAL plane needs no counterpart — its windows are carved out of the series at
+    preparation time, on a path both pipelines already share.
+
+    Args:
+        stress_config: The run's parsed stress configuration, or None
+        data_source: The TICK data source to select events for (the broker type)
+        data_range: First and last tick timestamp of the run, for the overlap guard.
+            None means the run has no ticks — there is nothing to inject into, so no
+            driver is built
+        executor: The run's executor (where the market-data status lives)
+        decision_logic: The decision notified on the window edges
+        logger: The run logger (warnings → §35 pot)
+
+    Returns:
+        The driver, or None when no planned window hits this tick source
+    """
+    stale_config = stress_config.stale_data_stress if stress_config else None
+    if stale_config is None or not stale_config.enabled or data_range is None:
+        return None
+
+    # Guarded against ALL events, not only this source's: a signal window that can never
+    # fire is just as worth reporting, and this is the one place holding the data range.
+    warn_events_outside_range(
+        stale_config.events, data_range[0], data_range[1], logger)
+
+    events = stale_config.get_events_for_source(data_source)
+    if not events:
+        return None
+    return StaleDataStressDriver(events, executor, decision_logic, logger)

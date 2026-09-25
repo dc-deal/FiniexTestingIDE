@@ -1,6 +1,7 @@
 {
   "_comment": "NOT ON THE RELEASE PATH. The release certificate is taken from the ETHUSD profile, which #332 names primary and which the checklist runs by name; this one has no launch entry and is invoked by hand. It exists because venue behaviour is per PAIR rather than per adapter - lot minimum, tick size, decimals, liquidity - so a certificate over ETHUSD certifies ETHUSD. Only three values differ from the primary: symbol, lot_size (0.0001 BTC meets Kraken's ~$5 order minimum at this unit price, where ETH needs 0.002), and max_rearm_attempts (6 here, 0 = unbounded there). CAUTION: `field_study_certificate_cli.py generate --latest` picks the newest run by TIMESTAMP, not by profile - so a BTCUSD run started after an ETHUSD one becomes the certified run. The certificate records `profile` and `symbol` and prints both at generation, but nothing asserts which one was expected. REAL MONEY: adapter_type live, dry_run false.",
   "name": "kraken_spot_btcusd_field_study",
+  "bot_id": "fsbtc01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "live",

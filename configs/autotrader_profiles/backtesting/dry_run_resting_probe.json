@@ -2,6 +2,7 @@
   "_comment": "#505 probe — does a dry-run RESTING order behave, and what does a refusal do? It places NOTHING: dry_run routes AddOrder through validate=true, so Kraken validates the order and the DryRunOrderSimulator plays the lifecycle locally. DRY RUN IS FORCED HERE, not inherited: the broker default for kraken_spot may be live, and a profile may only TIGHTEN the posture (#332) — true wins over a live broker, while false against a dry-run broker is refused at startup. That one line is what makes this probe unable to place an order, and it is stated in the file rather than assumed from the environment. RUN IT TWICE: the second start is the interesting one, because the simulator mints its references from a counter that restarts with the process, so a re-adopted DRYRUN- reference is one it never issued — and that is the refusal path #503 will meet.",
   "dry_run": true,
   "name": "dry_run_resting_probe",
+  "bot_id": "dryrest01",
   "symbol": "ETHUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "live",

@@ -10,6 +10,7 @@ the reverse — would break the one invariant #475 rests on.
 import os
 import shutil
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -31,6 +32,7 @@ from python.framework.types.run_prune_types import (
     PruneResult,
     PruneSelectors,
 )
+from python.framework.utils.time_utils import ensure_utc_aware, parse_datetime
 
 # The raw record behind a real-money release certificate. `FieldStudyCertificate` finds it by
 # rglob under the live root, so a run holding one is evidence, not archive — no selector reaches
@@ -165,6 +167,11 @@ class RunTreePruner:
             The directories this plan would delete — the input to the sweep-emptying check
         """
         keepers = self._keep_last_survivors(runs, selectors.keep_last)
+        # Read ONCE for the whole classification rather than per run: every run must be
+        # judged against the same instant, or a long walk would apply a moving window and two
+        # runs of identical age could land in different groups. Wall clock is right here —
+        # this is an operator action asking "how old is this today", not an event stamp (§9).
+        now = datetime.now(timezone.utc)
         deletable: List[Path] = []
 
         for done, run in enumerate(runs, 1):
@@ -204,13 +211,58 @@ class RunTreePruner:
                 report.to_delete_uncommissioned.append(candidate)
                 deletable.append(run_dir)
                 continue
-            if keepers is not None and run.run_id not in keepers:
+            # Every ACTIVE selector must release the run; a selector that was not asked for
+            # says nothing either way. That is what makes the two compose as KEEP rules —
+            # see PruneSelectors.older_than for why the other reading is the wrong one.
+            verdicts = []
+            if keepers is not None:
+                verdicts.append(run.run_id not in keepers)
+            if selectors.older_than is not None:
+                released = self._is_older_than(run, now, selectors.older_than)
+                if released is None:
+                    report.kept_undated.append(candidate)
+                    continue
+                if not released:
+                    report.kept_recent.append(candidate)
+                    continue
+                verdicts.append(True)
+
+            if verdicts and all(verdicts):
                 report.to_delete_redundant.append(candidate)
                 deletable.append(run_dir)
                 continue
             report.kept_complete.append(candidate)
 
         return deletable
+
+    @staticmethod
+    def _is_older_than(run: RunInfo, now: datetime,
+                       older_than: timedelta) -> Optional[bool]:
+        """
+        Whether a run started longer ago than the window — or whether that is unknowable.
+
+        The age comes from the header's own `start_time`, never from the run id. The id is
+        timestamp-SHAPED and sorting by it is fine for "which is newer"; reading a date out
+        of it would be inferring a fact from a naming convention, on the one command that
+        deletes.
+
+        Args:
+            run: The index row
+            now: The instant the whole classification is judged against
+            older_than: The window an operator asked to keep
+
+        Returns:
+            True when it is older, False when it is not, None when it carries no start time
+        """
+        if not run.start_time:
+            return None
+        try:
+            started = ensure_utc_aware(parse_datetime(run.start_time))
+        except (ValueError, TypeError, OverflowError):
+            # An unparseable stamp is the same answer as a missing one: not measurable. It
+            # must never read as "old", which is the direction that deletes.
+            return None
+        return now - started > older_than
 
     @staticmethod
     def _keep_last_survivors(runs: List[RunInfo], keep_last: Optional[int]) -> Optional[set]:

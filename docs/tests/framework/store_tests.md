@@ -25,8 +25,8 @@ state and the correct state look identical from the outside:
 
 ## `test_store_catalog.py`
 
-**Catalog completeness.** Every `StoreId` has a registration — this is the assertion behind
-CLAUDE.md §44's rule that a new store is entered in the same change. Every descriptor carries a
+**Catalog completeness.** Every `StoreId` has a registration — this is the assertion behind the
+rule that a new store is entered in the catalog in the same change that creates it. Every descriptor carries a
 kind, a form, a backend and a root. A `SPECIAL` store must state *why* it is special, so the kind
 is a declaration rather than a loophole. A managed store must carry an index or a note explaining
 why it has none. Asking the catalog for an unregistered store is named as an error, never answered
@@ -182,6 +182,39 @@ describes its store** — a missing frozen copy is reported, a `LOGIC_VERSION` b
 the rebuild finds every frozen copy while leaving `source_name` empty, because `first_seen` and
 `source_path` were observations made at registration and exist nowhere else. The rebuild says so
 by leaving them blank rather than inventing them.
+
+## `test_run_patch_store.py`
+
+The patch of every dirty tree a run ran from, keyed by the SHA256 of its bytes — not by the run
+header's `diff_hash`, which digests the changed content (#551). The store makes one
+promise — a run from uncommitted code can still be restored to the code that ran — and every
+property it rests on fails silently when broken, which is why each is asserted.
+
+**The key is the content.** A patch round-trips byte for byte; a patch filed under a hash it
+does not have is refused and leaves nothing behind; equal diffs are one entry however many runs
+ran them, and different diffs are two. An empty patch is an ordinary entry, not a special case.
+The reference a header carries is the configured root plus the file name, so under the default
+configuration it reads `run_patches/<hash>.patch` — and that file name is the key: its bytes hash
+to it, which is the check the documented restore makes before `git apply`.
+
+**Written once.** A second put of the same patch does not rewrite the file — asserted on the
+inode, because an atomic write REPLACES the file and a rewrite with equal bytes is otherwise
+invisible. No temporary file survives a write. A damaged entry is refused on read rather than
+served (it would restore code that never ran) or answered with None (which would claim it was
+never stored), and the next put of its patch repairs it.
+
+**Reading.** An unknown hash and a store that was never written are both None. A key that is
+not a SHA256 digest is refused, because the key becomes a file name.
+
+**Restoration end to end**, against a throwaway git repository: a tracked change and an
+untracked file are captured as a patch, stored, the tree reset, and the stored patch applied —
+and both files come back as they were.
+
+**Registration.** The store is a RECORD opened by id, has no index, and its note names #535 as
+the owner of its lifetime question. The catalog counts only `.patch` files under the configured
+root, never a temporary file. And the suite never writes into the operator's `run_patches/`: the
+session fixture in `tests/conftest.py` redirects it, and one test asserts that it does — the
+suite runs from a tree that is dirty whenever somebody is working on it.
 
 ## Related coverage elsewhere
 

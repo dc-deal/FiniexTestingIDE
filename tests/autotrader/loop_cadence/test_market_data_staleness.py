@@ -20,6 +20,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.stress_test.stale_data_stress_driver import (
     StaleDataStressDriver,
+    build_stale_stress_driver,
     warn_events_outside_range,
 )
 from python.framework.trading_env.order_guard import OrderGuard
@@ -33,6 +34,7 @@ from python.framework.types.trading_env_types.order_types import (
 )
 from python.framework.types.trading_env_types.stress_test_types import (
     StaleDataEvent,
+    StressTestConfig,
     StressTestStaleDataConfig,
 )
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
@@ -82,8 +84,8 @@ class _StubTickSource:
 
 
 def _make_loop(stale_after_s: float, last_tick_wall: float,
-               now: datetime, tick_source=None):
-    """Bare loop carrying only the #436/#451 state (ctor bypassed)."""
+               now: datetime, tick_source=None, stress_driver=None):
+    """Bare loop carrying only the #436/#451/#444 state (ctor bypassed)."""
     loop = object.__new__(AutotraderTickLoop)
     loop._market_data_stale_after_s = stale_after_s
     loop._market_stale = False
@@ -94,6 +96,7 @@ def _make_loop(stale_after_s: float, last_tick_wall: float,
     loop._executor = _StubExecutor(now)
     loop._decision_logic = _HookRecorder()
     loop._logger = MagicMock()
+    loop._stale_stress_driver = stress_driver
     loop._market_data_tracker = MarketDataEpisodeTracker(
         source='kraken_spot', logger=loop._logger, measure_wall_duration=True)
     return loop
@@ -104,6 +107,8 @@ def _observe_tick(loop, now: datetime) -> None:
     loop._executor._now = now
     if loop._market_stale:
         loop._end_market_stale_episode()
+    if loop._stale_stress_driver is not None:
+        loop._stale_stress_driver.on_tick(now)
     loop._market_data_tracker.on_tick(
         now, loop._executor.get_market_data_status(), loop._injected_outage_label())
 
@@ -474,3 +479,225 @@ class TestStaleDataStressDriver:
         warnings = [c.args[0] for c in logger.warning.call_args_list]
         assert len(warnings) == 1
         assert 'early' in warnings[0] and 'data deviation' in warnings[0]
+
+
+class TestInjectedWindowOnTheLiveLoop:
+    """
+    The tick-plane window on the AUTOTRADER loop (#444).
+
+    The live loop has a second stale source the simulation does not have — the wall-clock
+    evaluation on the idle heartbeat — and both write the same status field. These cases
+    pin how the two behave together, because a planned drill that a real measurement can
+    overwrite drills nothing reproducible.
+    """
+
+    def _loop_with_window(self, start, end, now, label='planned outage'):
+        """A bare loop whose driver carries one window. Returns: the loop."""
+        loop = _make_loop(300.0, last_tick_wall=1000.0, now=now)
+        loop._stale_stress_driver = StaleDataStressDriver(
+            [_event(label, start, end)], loop._executor, loop._decision_logic,
+            loop._logger)
+        return loop
+
+    def test_a_window_flips_the_status_with_no_wall_clock_trigger(self):
+        """
+        The point of the drill: nothing has to go quiet for the status to go stale.
+
+        `_last_real_tick_wall_time` stays fresh throughout — a wall-clock evaluation would
+        find nothing, and the status flips anyway because the window says so.
+        """
+        loop = self._loop_with_window(
+            _utc(2026, 4, 27, 6, 10), _utc(2026, 4, 27, 6, 20),
+            now=_utc(2026, 4, 27, 6, 0))
+
+        _observe_tick(loop, _utc(2026, 4, 27, 6, 5))
+        assert loop._executor.get_market_data_status().is_stale is False
+
+        _observe_tick(loop, _utc(2026, 4, 27, 6, 12))
+        assert loop._executor.get_market_data_status().is_stale is True
+        assert len(loop._decision_logic.calls) == 1
+        assert loop._market_stale is False, (
+            'the wall-clock flag must stay untouched — it describes a different outage')
+
+    def test_ticks_keep_flowing_and_do_not_end_the_window(self):
+        """
+        A dead FEED does not freeze the MARKET. Three ticks arrive inside the window and
+        the status stays stale — the recovery belongs to the window's end, not to a tick.
+        """
+        loop = self._loop_with_window(
+            _utc(2026, 4, 27, 6, 10), _utc(2026, 4, 27, 6, 20),
+            now=_utc(2026, 4, 27, 6, 0))
+
+        for minute in (11, 14, 18):
+            _observe_tick(loop, _utc(2026, 4, 27, 6, minute))
+            assert loop._executor.get_market_data_status().is_stale is True, (
+                f'the tick at 06:{minute} ended a window that had not ended')
+        assert len(loop._decision_logic.calls) == 1, 'the edge hook re-fired inside one window'
+
+        _observe_tick(loop, _utc(2026, 4, 27, 6, 21))
+        assert loop._executor.get_market_data_status().is_stale is False
+
+    def test_the_wall_clock_is_silent_while_a_window_runs(self, monkeypatch):
+        """
+        Without this the heartbeat would overwrite a deterministic window with a measurement
+        — and say nothing new, because the status is already stale and the hook has fired.
+        """
+        loop = self._loop_with_window(
+            _utc(2026, 4, 27, 6, 10), _utc(2026, 4, 27, 6, 20),
+            now=_utc(2026, 4, 27, 6, 0))
+        _observe_tick(loop, _utc(2026, 4, 27, 6, 12))
+        loop._logger.reset_mock()
+
+        # Far past the threshold: a heartbeat here would flip on its own.
+        monkeypatch.setattr(time_module, 'time', lambda: 99999.0)
+        loop._evaluate_market_data_staleness()
+
+        assert loop._market_stale is False
+        assert len(loop._decision_logic.calls) == 1, 'the wall clock fired a second episode'
+        loop._logger.warning.assert_not_called()
+
+    def test_the_wall_clock_works_again_once_the_window_is_over(self, monkeypatch):
+        """The guard silences the measurement, it does not disable it."""
+        loop = self._loop_with_window(
+            _utc(2026, 4, 27, 6, 10), _utc(2026, 4, 27, 6, 20),
+            now=_utc(2026, 4, 27, 6, 0))
+        _observe_tick(loop, _utc(2026, 4, 27, 6, 12))
+        _observe_tick(loop, _utc(2026, 4, 27, 6, 21))
+
+        monkeypatch.setattr(time_module, 'time', lambda: 99999.0)
+        loop._evaluate_market_data_staleness()
+
+        assert loop._market_stale is True
+        assert len(loop._decision_logic.calls) == 2
+
+    def test_the_episode_is_recorded_as_injected_not_real(self):
+        """
+        The label is what tells an injected outage from one the venue produced (#451).
+        Without it the drill would land in the report as evidence of a feed problem.
+        """
+        loop = self._loop_with_window(
+            _utc(2026, 4, 27, 6, 10), _utc(2026, 4, 27, 6, 20),
+            now=_utc(2026, 4, 27, 6, 0), label='tick feed status stale 10min')
+
+        _observe_tick(loop, _utc(2026, 4, 27, 6, 12))
+        assert loop._injected_outage_label() == 'tick feed status stale 10min'
+        _observe_tick(loop, _utc(2026, 4, 27, 6, 21))
+
+        episodes = loop._market_data_tracker.get_episodes(_utc(2026, 4, 27, 6, 30))
+        assert len(episodes) == 1
+        assert episodes[0].origin == DisturbanceOrigin.STRESS_INJECTED
+        assert episodes[0].label == 'tick feed status stale 10min'
+
+    def test_the_tick_source_label_still_wins_when_no_window_runs(self):
+        """The freeze drill is the other injection, and it keeps its own voice."""
+        loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 4, 27, 6, 0),
+                          tick_source=_StubTickSource(injected_label='freeze drill'))
+        loop._stale_stress_driver = StaleDataStressDriver(
+            [_event('planned', _utc(2026, 4, 27, 6, 10), _utc(2026, 4, 27, 6, 20))],
+            loop._executor, loop._decision_logic, loop._logger)
+
+        _observe_tick(loop, _utc(2026, 4, 27, 6, 5))
+        assert loop._injected_outage_label() == 'freeze drill'
+
+
+class TestTheSharedBuilder:
+    """
+    One builder for both pipelines (#444) — the selection rule lives in one place.
+
+    What it decides is not obvious from a call site: which events belong to THIS tick
+    source, whether a driver is worth building at all, and when the overlap guard can run.
+    Three answers, and each of them used to be re-derived per loop.
+    """
+
+    def _args(self):
+        executor = _StubExecutor(_utc(2026, 4, 27, 6, 0))
+        return executor, _HookRecorder(), MagicMock()
+
+    def _config(self, *events, enabled=True) -> StressTestConfig:
+        return StressTestConfig(
+            stale_data_stress=StressTestStaleDataConfig(
+                enabled=enabled, events=list(events)))
+
+    def test_only_this_tick_source_s_events_reach_the_driver(self):
+        """A signal-plane window is carved out of the series and must not drive status."""
+        executor, decision, logger = self._args()
+        signal_event = StaleDataEvent(
+            label='signal outage', data_source='crypto_sentiment',
+            stale_start_date=_utc(2026, 4, 27, 6, 10),
+            stale_end_date=_utc(2026, 4, 27, 6, 20))
+
+        driver = build_stale_stress_driver(
+            self._config(signal_event,
+                         _event('tick outage', _utc(2026, 4, 27, 6, 30),
+                                _utc(2026, 4, 27, 6, 40))),
+            'kraken_spot',
+            (_utc(2026, 4, 27, 6, 0), _utc(2026, 4, 27, 7, 0)),
+            executor, decision, logger)
+
+        assert driver is not None
+        driver.on_tick(_utc(2026, 4, 27, 6, 15))
+        assert executor.get_market_data_status().is_stale is False, (
+            'a SIGNAL window drove the tick status plane')
+        driver.on_tick(_utc(2026, 4, 27, 6, 35))
+        assert executor.get_market_data_status().is_stale is True
+
+    def test_no_driver_when_nothing_hits_this_source(self):
+        executor, decision, logger = self._args()
+        signal_only = StaleDataEvent(
+            label='signal outage', data_source='crypto_sentiment',
+            stale_start_date=_utc(2026, 4, 27, 6, 10),
+            stale_end_date=_utc(2026, 4, 27, 6, 20))
+
+        assert build_stale_stress_driver(
+            self._config(signal_only), 'kraken_spot',
+            (_utc(2026, 4, 27, 6, 0), _utc(2026, 4, 27, 7, 0)),
+            executor, decision, logger) is None
+
+    def test_a_disabled_or_absent_config_builds_nothing(self):
+        executor, decision, logger = self._args()
+        window = _event('w', _utc(2026, 4, 27, 6, 10), _utc(2026, 4, 27, 6, 20))
+        data_range = (_utc(2026, 4, 27, 6, 0), _utc(2026, 4, 27, 7, 0))
+
+        assert build_stale_stress_driver(
+            None, 'kraken_spot', data_range, executor, decision, logger) is None
+        assert build_stale_stress_driver(
+            StressTestConfig.disabled(), 'kraken_spot', data_range,
+            executor, decision, logger) is None
+        assert build_stale_stress_driver(
+            self._config(window, enabled=False), 'kraken_spot', data_range,
+            executor, decision, logger) is None
+
+    def test_no_data_range_means_no_driver(self):
+        """
+        A run with no ticks has nothing to inject into — and the overlap guard would have
+        no range to judge against. This is what keeps the simulation's old `and ticks`
+        condition true after the move.
+        """
+        executor, decision, logger = self._args()
+        assert build_stale_stress_driver(
+            self._config(_event('w', _utc(2026, 4, 27, 6, 10), _utc(2026, 4, 27, 6, 20))),
+            'kraken_spot', None, executor, decision, logger) is None
+
+    def test_the_overlap_guard_judges_every_plane_not_only_this_one(self):
+        """
+        The builder holds the data range, so it is the only place that can say a SIGNAL
+        window will never fire either. Warning about one plane only would be worse than
+        not warning: it reads as 'the others were checked'.
+        """
+        executor, decision, logger = self._args()
+        unreachable_signal = StaleDataEvent(
+            label='signal outage', data_source='crypto_sentiment',
+            stale_start_date=_utc(2026, 5, 1, 6, 0),
+            stale_end_date=_utc(2026, 5, 1, 7, 0))
+
+        build_stale_stress_driver(
+            self._config(unreachable_signal,
+                         _event('tick outage', _utc(2026, 4, 27, 6, 30),
+                                _utc(2026, 4, 27, 6, 40))),
+            'kraken_spot',
+            (_utc(2026, 4, 27, 6, 0), _utc(2026, 4, 27, 7, 0)),
+            executor, decision, logger)
+
+        warned = ' '.join(str(c) for c in logger.warning.call_args_list)
+        assert 'signal outage' in warned
+        assert 'tick outage' not in warned, 'a reachable window was reported as unreachable'

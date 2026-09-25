@@ -1,8 +1,8 @@
 # Reporting Pipeline Tests
 
-`tests/framework/reporting/` — 25 files, **200 tests**. Unit coverage for the unified reporting
-pipeline (#391–#403): the builders that DERIVE the canonical model, the IO/store layer that PERSISTS
-it, and the console renderers that PRESENT it.
+`tests/framework/reporting/` — unit coverage for the unified reporting pipeline (#391–#403): the
+builders that DERIVE the canonical model, the IO/store layer that PERSISTS it, and the console
+renderers that PRESENT it.
 
 ## What this suite is for
 
@@ -32,6 +32,7 @@ Two rules the suite exists to defend:
 | **Diagnostics** | `test_profiling_report` · `test_worker_decision_report` · `test_block_splitting_report` · `test_scenario_details_report` · `test_broker_report` | per-worker timing, decision breakdown, window splitting, broker facts; the #420 cadence figures derived once in the builder |
 | **Deployment** | `test_deployment_history` · `test_profile_fingerprint` | see below |
 | **Store & warnings** | `test_report_store` (31) · `test_warnings_errors_report` | the cross-run ledger; that a `run_group` does not hide a run from the index or from any report route; the tiered warning model (#395); that an operator Ctrl+C is told apart from a crash, both of which arrive as `shutdown_mode='emergency'`; that a finding's origin (`check` / `domain`) reaches `WarningRow`, that an advisory sharing a result with a rejection is kept, and that a Tier-2 log-pot row claims no origin |
+| **Run origin & code identity** | `test_git_repo_identity` · `test_code_identity` · `test_run_origin` · `test_certificate_tree_state` | see below |
 | **Persistence contract** | `test_report_io_encoding` | artifacts are UTF-8 on disk and read back as bytes, so neither writer nor reader lets its locale pick the codec — plus a drift guard that no IO unit reintroduces the platform default |
 
 ## `test_run_identity.py` — the id, the header, the derived index (#475)
@@ -49,6 +50,78 @@ received instead of trusting the route it asked on.
 | `TestTheHeaderSurvivesTheRunItDescribes` | the header round-trips, and it stands alone — written at the run's START, so a run that crashes before producing anything is still identifiable |
 | `TestTheParentIdSaysWhatKindOfParentItIs` | `parent_id` holds two different things of one shape — a sweep id and a deployment id — so the header carries `parent_kind` beside it. Pins the kind through a register and a rebuild, that a standalone run names neither, and that a header written before the field still reads: it keeps its parent and reports an unknown kind, because refusing the pair would make the index unreadable for its own history |
 | `TestTheIndexIsDerivedAndRebuildable` | delete the index, rebuild from the headers, get the identical result. That is the property the design rests on — an index that could not be rebuilt would be a second source of truth. Also: a run is addressable without walking the tree (the sweep combination sits one level deeper and the lookup no longer has to know — it is a `simulation` with a `parent_id`, not a type of its own), an unknown or crafted id resolves to nothing (index membership replaced a shape check — it is the stronger guard, since it accepts only ids that exist), and the run's **artifact list** is told, never inferred — the list rather than a boolean, because the two pipelines produce different sets (18 files for a sim run, 14 for a live session, measured), so a consumer that only learned "yes, some" would still be guessing which |
+
+## `test_git_repo_identity.py` — the git reads behind a code identity (#551)
+
+`git_info_utils` answers three questions per repository — which commit, is the working tree different
+from it, and what patch puts the difference back — and none of the answers may depend on how the
+developer configured git. Measured in review before these tests existed: `status.showUntrackedFiles=no`
+hid an untracked strategy, an assume-unchanged file was invisible to `git status`, and
+`diff.noprefix=true` made a stored patch unappliable. Each case builds the repository that produced
+one of those answers in `tmp_path`, never this working tree; only the two framework-root cases read
+`/app`, and only with `rev-parse`. The repositories come from `tests/shared/git_test_repos.py`, whose
+OWN git calls ignore the global and system configuration — the code under test is left exposed to it,
+because that it answers the same anyway is the subject.
+
+| Class | What it pins |
+|---|---|
+| `TestARepositoryIsReadByItsOwnRoot` | a repository is addressed by its root, not the cwd: a clean one names its commit and no changes, a modified tracked file and an untracked file each make it dirty, a new directory is listed file by file, an ignored file does not count, and a path in no repository has no top level |
+| `TestTheFrameworkRootIsTheCodesOwn` | with the cwd in another repository, the framework root and the commit are still the checkout the CODE is imported from |
+| `TestNoGitIsUnknownNeverAnError` | without a git binary every read answers None and none raises |
+| `TestAUserConfigurationCannotHideAChange` | `status.showUntrackedFiles=no` hides nothing; a file flagged assume-unchanged or skip-worktree counts as changed (`!h <path>`) and its edit is in the patch — forced deterministic with `utime` and `core.trustctime=false`, because `update-index` clears only the first of the two flags and a stale stat entry otherwise hides a same-size edit; a submodule edited under `diff.ignoreSubmodules=all` still counts |
+| `TestThePatchRendersTheSameUnderAnyConfiguration` | under `diff.noprefix`, `diff.mnemonicPrefix`, `diff.context=0`, colour and an external diff driver, **the patch applied with `git apply --binary` onto a fresh clone reproduces the tree byte for byte**, and its bytes equal the ones rendered without those settings |
+| `TestTheRepositorysOwnIndexIsNeverTouched` | the patch is rendered over a temporary index copy: the real index is byte-identical afterwards, flags and `??` entries included |
+| `TestTheTemporaryIndexKeepsGitsRacyCheck` | the copy keeps the index's mtime, so an entry git can only judge by content (same size, same second) still reaches the patch — built deterministically with a held `index.lock` |
+| `TestAPatchWithoutAnOrdinaryHead` | an unborn HEAD with staged and untracked files yields a patch against the empty tree; a SHA-256 repository restores from its patch, and an unborn one diffs against ITS OWN empty tree (skipped where git cannot create one) |
+| `TestIgnoredFilesAreListed` | every file of an ignored directory is listed; a directory nothing ignores lists nothing |
+| `TestTheReadsAreRunAtMostOncePerProcess` | a second read answers the first state; `clear_git_caches()` reaches every cache — each read goes back to git after one clear |
+
+## `test_code_identity.py` — which code ran, read from real temporary repositories (#551)
+
+A run header used to name this repository's commit and nothing else, while a user strategy lives in
+a repository of its own. These tests pin the builder that closes that gap, against repositories
+created in `tmp_path` — never against this working tree, whose state would decide the result. An
+autouse fixture stands a temporary repository in for the builder's FRAMEWORK root
+(`get_framework_root`) for the same reason, and because `git status` on this tree costs ~1.8 s.
+Every read is cached per process — git's and the package digests — so each test clears
+`clear_git_caches()` AND `clear_package_digest_cache()` before and after; clearing one leaves the
+other holding the previous case.
+
+| Class | What it pins |
+|---|---|
+| `TestTheFrameworkRepositoryIsAlwaysStated` | a dirty framework records its changes, a content diff hash and the patch reference its sink returned — the patch stored under the SHA256 of its own bytes, restorable onto a fresh clone; a clean one is restorable from its commit alone and keeps no patch; without git the state is UNKNOWN, still names the checkout and never counts as clean; a checkout git refuses to read is unknown, never "unversioned" |
+| `TestTheDiffIdentifiesAndRestoresTheTree` | the diff hash is stable across captures and moves with the content; the stored patch, read back from the real store by the recorded reference, restores the tree; a clean repository records no diff; **the diff hash is the same with and without hostile diff settings, and for the same delta in a SHA-1 and a SHA-256 repository** — whose patch bytes differ |
+| `TestAComponentNoCommitCanContainIsUnversioned` | a strategy in a directory the framework repository ignores, and a strategy file its own repository ignores, are both unversioned: no repository, a digest that is not the digest of nothing and moves with an edit, and a dirty identity although `git status` sees a clean tree |
+| `TestCredentialHomesNeverReachThePatch` | a modified placeholder and an untracked key under a `credentials/` directory are listed in `patch_excluded`, absent from the patch bytes, and restored as committed / absent while the rest of the tree comes back; the diff hash records THAT they changed and does not move with their content |
+| `TestWhatAPatchCannotCarry` | an untracked nested repository and a submodule with edits inside are recorded but never restorable — the patch cannot hold their content |
+| `TestTheComponentIsIdentifiedByItsPackage` | a strategy loaded from a path names its file, its repository and its declared version; the package digest is **equal for the same code committed or not**, moves when a SIBLING module changes while the version string does not, and ignores a bytecode cache; a file at a repository's root is its own package — a sibling file does not move it; a component in no repository is identified by digest but never clean; one named by several scenarios is recorded once |
+| `TestEveryComponentOfARunIsRecorded` | a CORE decision, a CORE worker and a path worker each carry their declared version, their file and their repository; the framework is not listed a second time among the other repositories |
+| `TestAComponentThatCannotLoadIsRecordedWithoutASource` | a decision or worker module raising `NameError` at import, and a `get_metadata()` that raises, degrade to an entry without a source plus a warning naming it — the components beside it are still recorded; a missing file likewise |
+| `TestTheCaptureDescribesTheTreeItStartedFrom` | a second capture in one process repeats the first after an edit (cached); `verify_component_digests` is quiet while nothing moved and names the component whose package was edited, gained a file, or lies in no repository; a new process sees the edit |
+
+## `test_certificate_tree_state.py` — a certificate is not dirtied by its own artifact (#466)
+
+Runs `get_git_info` against a scripted `git`. The stand-in drops the `-C <root>` and pinned
+`-c key=value` arguments before its lookup and FAILS on any call it does not know, so a new git call in
+the reader shows up here first. Pins that an untracked artifact under the reports directory is exempt,
+and that the exemption stays narrow: a modified tracked file there, an untracked file elsewhere, a
+sibling directory sharing the prefix and an entry flagged assume-unchanged all still count.
+
+## `test_run_origin.py` — where the two blocks are written and read (#551)
+
+The capture is mostly replaced here: what is under test is the wiring from the entry points to the
+header, and from the header to the index and the ledger. One class runs a REAL capture, because the
+ledger's versions depend on the component resolution alone and nothing else would go red.
+
+| Class | What it pins |
+|---|---|
+| `TestTheOriginIsAlwaysStated` | the console states `console` / `operator` / the host, which under isolation is the declared test id; an allowed dirty start is recorded; a broken host identity file refuses before anything is stated and is left byte-identical — and refuses a SIMULATION as a configuration error: the startup-abort exit code 1, the message naming the file, no stack trace |
+| `TestTheHeaderCarriesBothBlocks` | both blocks round-trip; a header written before them reads as unknown; an unreadable framework state counts as dirty |
+| `TestTheScenarioSetStatesBoth` | a set constructed without a channel says `direct`, a declared one says what it was told; a reporting run captures over EVERY scenario's strategy, a run commissioned not to report captures nothing and still states its origin |
+| `TestTheEntryPointsDeclareTheirChannel` | the strategy runner CLI declares `cli`; the optimization runner declares `sweep` for every combination |
+| `TestTheIndexProjectsBothBlocks` | the five flat columns say what the header says, None where it says nothing; a rebuild reproduces the append exactly; an unreadable framework is unknown in `framework_dirty` and dirty in `code_dirty`; the served run list does not grow |
+| `TestTheLedgerReadsItsProvenanceFromTheHeader` | a live row takes its versions and `git_dirty` from the header — dirty when only the ALGO repository is, an unresolved worker left out; the header is read from the run directory the caller holds, **never through the derived run index** — a session no index row names still finds it; a clean run is clean everywhere; no recorded identity, an unreadable header and a missing run directory read as unknown and dirty, never clean, and each says so in the run's OWN log; the row's `git_commit` is the header's framework commit, and a branch read for another commit is left out; a simulation row reads the header in its own run directory, reports the versions of the snapshot's strategy, not the union, and reports an unknown identity in its summary log |
+| `TestARealCaptureReachesTheLedger` | a real capture of a CORE decision, a CORE worker and a worker loaded from a path in a committed algo repository, written into a real live header and read back through the ledger: every component has a source, the decision and worker versions are the ones the classes declare (the path worker's distinct on purpose), `git_dirty` is False — and the header's `git_commit`, its code identity and the ledger's commit and branch all name the framework repository although the first git reads ran with the cwd in ANOTHER checkout (the worktree trap) |
 
 ## `test_run_tree_pruning.py` — what may never be deleted, and what each selector selects (#482)
 

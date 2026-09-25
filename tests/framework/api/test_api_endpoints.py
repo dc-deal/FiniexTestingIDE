@@ -9,6 +9,7 @@ so no actual parquet data or index files are required.
 Happy path + one error case per endpoint as specified in #298.
 """
 
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -18,6 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
+from python.api.api_contract import API_CONTRACT_VERSION
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.api.report_types import (
@@ -510,6 +512,19 @@ class TestTheContractSaysWhatItIs:
         # A consumer must be able to ask which contract they face BEFORE they hold a token, or
         # a version mismatch and a credential failure look alike from outside.
         assert client.get('/api/v1/contract').status_code == 200
+
+    def test_the_log_opens_with_the_version_the_server_serves(self):
+        # The server serves only the current version's lines; the log is the ONLY place the
+        # older ones survive. A bump that skipped the log would leave a consumer several versions
+        # behind with a gap nobody can see — so its newest heading is held to the constant, and
+        # the headings must read newest first.
+        log = (Path(__file__).resolve().parents[3]
+               / 'docs' / 'architecture' / 'api_contract_log.md').read_text()
+        versions = [int(n) for n in re.findall(r'^## Version (\d+)\b', log, re.MULTILINE)]
+
+        assert versions, 'no "## Version N" heading in the contract log'
+        assert versions[0] == API_CONTRACT_VERSION
+        assert versions == sorted(versions, reverse=True)
 
 
 class TestEveryListSaysWhatMakesARowUnique:

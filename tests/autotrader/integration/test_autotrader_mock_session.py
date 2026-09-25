@@ -107,6 +107,23 @@ class TestAutotraderMockSession:
         # === Clipping monitor reported ===
         assert result.clipping_summary.total_ticks == 29782
 
+    def test_the_report_knows_how_many_ticks_reached_the_algo(self, mock_session):
+        """
+        What the loop counted and what the REPORT says must be the same number.
+
+        They were not: the orchestrator counted every tick in both pipelines, and only the
+        simulation ever collected the result — so a live session reported 0 ticks beside its
+        real decision count, and the #420 per-worker compute ratio derived from that count
+        read 0.0 % instead of reading as absent. Measured across six sessions before the fix.
+        """
+        result, _ = mock_session
+
+        assert result.coordination_statistics is not None, (
+            'the session collected no coordination statistics — the report will say 0 ticks')
+        assert result.coordination_statistics.ticks_processed == result.ticks_processed, (
+            f'the report says {result.coordination_statistics.ticks_processed} ticks, '
+            f'the loop counted {result.ticks_processed}')
+
     def test_log_files_created(self, mock_session):
         """Verify that all expected log files are created."""
         _, run_dir = mock_session

@@ -19,6 +19,7 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.optimization.grid_expander import expand_grid
 from python.framework.optimization.parameter_override import apply_overrides
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.run_origin_types import RunChannel
 from python.framework.types.run_results_types import SweepContext
 from python.scenario.scenario_set import ScenarioSet
 from python.framework.validators.sweep_grid_validator import validate_sweep_grid
@@ -72,7 +73,7 @@ class OptimizationRunner:
             # mount_only: this set builds the shared data, it does not run. Its record
             # goes flat into the sweep directory instead of leaving a run-shaped one.
             base_set = ScenarioSet(base, self._app_config, sweep_id=sweep_id,
-                                   mount_only=True)
+                                   mount_only=True, channel=RunChannel.SWEEP)
             mount = BatchOrchestrator(base_set, self._app_config).build_mount()
             if not mount.scenario_packages:
                 # Data-level failure (invalid window / missing data) — invariant across every
@@ -97,9 +98,11 @@ class OptimizationRunner:
                 # part-way — the rows that made it can then be counted against it.
                 trial_count=len(combos))
             vLog.info(f'  [{index + 1}/{len(combos)}] {combo}')
+            # Every combination states the channel that started it (#551): a sweep, whoever
+            # started the sweep.
             summary = initialize_batch_and_run(
                 cfg, self._app_config, sweep_context=sweep_context, mount=mount,
-                sweep_id=sweep_id)
+                sweep_id=sweep_id, channel=RunChannel.SWEEP)
             runs += 1
 
             # Fail-fast OOM-villain abort: if the FIRST executed combination crashed data-level

@@ -30,6 +30,11 @@ from python.framework.reporting.store.run_index import RunIndex
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
 from python.framework.signal_data.transport.signal_boot_resolver import prepare_live_signal_boot
+from python.framework.stress_test.stale_data_stress_driver import (
+    StaleDataStressDriver,
+    build_stale_stress_driver,
+)
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
@@ -44,6 +49,7 @@ from python.framework.types.log_layout_types import RUN_TYPE_LIVE
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.process_data_types import ProcessDataPackage
+from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
 from python.framework.types.signal_data_types import (
     SignalLiveBoot,
     SignalSourceMode,
@@ -51,6 +57,7 @@ from python.framework.types.signal_data_types import (
 )
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_types import OrderType
+from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.utils.git_info_utils import get_git_commit
 from python.framework.utils.run_id_utils import mint_run_id, session_key_from_run_id
 from python.framework.validators.capital_validator import (
@@ -101,6 +108,8 @@ def _register_profile_config(source: Optional[Path]) -> str:
 def create_autotrader_loggers(
     config: AutoTraderConfig,
     run_timestamp: datetime,
+    origin: RunOrigin,
+    code_identity: Optional[CodeIdentity],
     deployment_id: str = '',
 ) -> AutotraderLoggerBundle:
     """
@@ -122,6 +131,11 @@ def create_autotrader_loggers(
     Args:
         config: AutoTrader configuration
         run_timestamp: Session start timestamp (UTC)
+        origin: Who or what started the session, for whom, on which installation (#551)
+        code_identity: Which code the session runs, captured before this call (#551) — by the
+            caller, because the startup guard needs it too and must not depend on a header
+            being written; None when the capture failed, which the header then records as
+            unknown before the session refuses to start
 
     Returns:
         (global_logger, session_logger, summary_logger, run_dir, run_id)
@@ -175,7 +189,8 @@ def create_autotrader_loggers(
     # The run header goes down FIRST, before the session can fail — a crashed session is
     # exactly the one somebody needs to identify afterwards.
     # Only the COMMIT is needed here — `get_git_commit()` costs 68 ms where the full read
-    # costs ~2.0 s, and the header has no use for branch / dirty (§42).
+    # costs ~2.0 s, and the header has no use for branch / dirty (§42). The dirty state
+    # arrives with the code identity, which the caller has already paid for (#551).
     if run_dir:
         header = RunHeader(
             run_id=run_id,
@@ -200,6 +215,10 @@ def create_autotrader_loggers(
             config_id=_register_profile_config(config.config_path),
             app_version=AppConfigManager().get_version(),
             git_commit=get_git_commit(),
+            # Always both (#551): a live session always reports, so its code identity is always
+            # captured, and a session killed before its close still says which code it ran.
+            origin=origin,
+            code_identity=code_identity,
         )
         RunIndex(AppConfigManager().get_file_logging_config_object().run_index).register_run(
             header, run_dir)
@@ -355,6 +374,10 @@ def setup_pipeline(
         f'report_interval={config.clipping_monitor.report_interval_s}s'
     )
 
+    # === Phase 11: Planned tick-plane stale windows (#444) ===
+    stale_stress_driver = _build_stale_stress_driver(
+        config, logger, package, executor, decision_logic)
+
     return AutotraderPipelineBundle(
         executor=executor,
         bar_controller=bar_controller,
@@ -363,7 +386,47 @@ def setup_pipeline(
         clipping_monitor=clipping_monitor,
         trading_model=account.trading_model,
         display_label_cache=display_label_cache,
+        stale_stress_driver=stale_stress_driver,
     )
+
+
+def _build_stale_stress_driver(
+    config: AutoTraderConfig,
+    logger: ScenarioLogger,
+    package: Optional[ProcessDataPackage],
+    executor: AbstractTradeExecutor,
+    decision_logic: AbstractDecisionLogic,
+) -> Optional[StaleDataStressDriver]:
+    """
+    Phase 11 — the planned TICK-plane stale windows, through the shared builder (#444).
+
+    Structurally mock-only: the windows live in `scenario_settings`, which a LIVE profile
+    does not carry at all (it streams from the broker and has no scenario to replay). So a
+    deliberate outage cannot be injected against a real feed by configuration — the block
+    is simply absent there. The SIGNAL plane needs nothing here: its windows are already
+    carved out of the series by the shared MountPreparer.
+
+    Args:
+        config: AutoTrader configuration
+        logger: ScenarioLogger instance (warnings → §35 pot)
+        package: The prepared mock package, or None for live
+        executor: The session's executor (where the market-data status lives)
+        decision_logic: The decision notified on the window edges
+
+    Returns:
+        The driver, or None when the profile declares no window on its tick source
+    """
+    settings = config.scenario_settings
+    if settings is None or package is None:
+        return None
+    # The data source the events name is the one the ticks came FROM, which is what
+    # build_scenario_from_config resolved — not the execution broker, which can differ.
+    data_source = settings.data_broker_type or config.broker_type
+    return build_stale_stress_driver(
+        StressTestConfig.from_dict(settings.stress_test_config),
+        data_source,
+        package.tick_ranges.get(config.symbol),
+        executor, decision_logic, logger)
 
 
 def _resolve_broker_and_balances(

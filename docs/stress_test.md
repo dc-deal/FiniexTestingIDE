@@ -148,9 +148,22 @@ moment, that it is injecting:                worker only sees "nothing newer" �
                             of the same data_source → stress-injected
 ```
 
-The AutoTrader mock side works the same way: its tick source declares an injected silence via
-`get_injected_outage_label()` (the `freeze_after_ticks` drill), and its
-`scenario_settings.stress_test_config` supplies the planned windows for the join.
+The AutoTrader mock side works the same way, and since #444 it drives BOTH planes rather
+than only the signal one. A mock profile's `scenario_settings.stress_test_config` reaches the
+same two injection points: the signal window is carved by the shared `MountPreparer`, and the
+tick window is driven by the same `StaleDataStressDriver` the simulation uses — built for both
+pipelines by `build_stale_stress_driver`, so which events belong to a tick source is decided
+in one place. Its tick source additionally declares a transport-real silence via
+`get_injected_outage_label()` (the `freeze_after_ticks` drill), which is a different event:
+freeze means no tick ARRIVES, the planned window means the status is flagged while ticks keep
+coming. Both feed the same label join.
+
+**One rule the live loop needs and the simulation does not:** the AutoTrader has a second
+stale source — the wall-clock evaluation on its idle heartbeat (`market_data_stale_after_s`)
+— and both write the same status field. While a planned window is active that evaluation is
+SILENT, so a measurement cannot overwrite a deterministic drill. It says nothing new there
+anyway: the status is already stale and the edge hook has already fired. If the window ends
+while the feed is genuinely quiet, the next heartbeat reports the real outage normally.
 
 **Why overlap and not containment:** a signal episode always starts LATER than its window —
 `max_staleness_minutes` has to elapse inside the carve first — so it never sits neatly within the
@@ -164,9 +177,10 @@ overlap with the scenario's data range → warning `data deviation` (the event
 can never fire).
 
 **Injection points:** `StaleDataSlicer` (series carve at data preparation,
-`SharedDataPreparator`) · `StaleDataStressDriver` (per-tick state machine,
-`process_tick_loop`). Demo scenario: `EURGBP_stale_market_13` in the EURGBP
-stress set; probe logic: `CORE/backtesting/backtesting_outage_probe`.
+`SharedDataPreparator`) · `StaleDataStressDriver` (per-tick state machine, driven by
+`process_tick_loop` in the simulation and by `autotrader_tick_loop` in the AutoTrader).
+Demo scenario: `EURGBP_stale_market_13` in the EURGBP stress set; AutoTrader profile:
+`tick_outage_stress_test.json`; probe logic: `CORE/backtesting/backtesting_outage_probe`.
 
 **This is also how signal-quality test cases are produced.** The per-tick
 fresh / stale / blind counters (#433) are validated by carving the anomalies into
@@ -194,7 +208,8 @@ Scenario JSON
 | `StressTestConfig` | `framework/types/trading_env_types/stress_test_types.py` | Config dataclasses |
 | `StressTestRejection` | `framework/stress_test/stress_test_rejection.py` | Rejection logic |
 | `StaleDataSlicer` | `framework/stress_test/stale_data_slicer.py` | Signal-source window carve (data plane, at preparation) |
-| `StaleDataStressDriver` | `framework/stress_test/stale_data_stress_driver.py` | Tick-source window state machine (status plane) |
+| `StaleDataStressDriver` | `framework/stress_test/stale_data_stress_driver.py` | Tick-source window state machine (status plane), both pipelines |
+| `build_stale_stress_driver` | `framework/stress_test/stale_data_stress_driver.py` | Builds that driver for either loop — event selection + overlap guard in one place (#444) |
 | `MarketDataEpisodeTracker` | `framework/process/market_data_episode_tracker.py` | Observes the status → episode spans + fresh/stale tick counters (#451) |
 | `SeededProbabilityFilter` | `framework/utils/seeded_generators/seeded_probability_filter.py` | Reusable probability filter |
 | `SeededDelayGenerator` | `framework/utils/seeded_generators/seeded_delay_generator.py` | Reusable delay generator |

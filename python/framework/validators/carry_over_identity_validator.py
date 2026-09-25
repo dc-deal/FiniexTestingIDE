@@ -32,12 +32,17 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from python.framework.exceptions.persistence_errors import (
+    BotIdMalformedError,
+    BotIdRequiredError,
     CarryOverIdentityCollisionError,
-    ContinuousDeploymentNeedsBotIdError,
 )
 from python.framework.persistence.carry_over_identity import (
     carry_over_key,
     sanitize_identity_part,
+)
+from python.framework.utils.declared_id_utils import (
+    DECLARED_ID_MAX_LENGTH,
+    declared_id_malformed_reason,
 )
 
 # The directory every AutoTrader profile lives under, whatever purpose folder it sits in
@@ -46,59 +51,74 @@ from python.framework.persistence.carry_over_identity import (
 # started with and a second declaration of the same root could disagree with it.
 PROFILES_ROOT_NAME = 'autotrader_profiles'
 
+# The project's config cascade, most specific first — the same pair §29 names for credentials.
+# A profile tree exists under each, and a copy travels between them.
+_WORKSPACE_CONFIG_DIR = 'user_configs'
+_TRACKED_CONFIG_DIR = 'configs'
 
-def validate_continuous_deployment_declares_bot_id(
-    profile_name: str,
-    symbol: str,
-    bot_id: str,
-    continuous: bool,
-) -> None:
+# What a declared identity may look like — the shape a bot id shares with an API account id,
+# held in ONE place (`declared_id_utils`) so the two cannot drift apart. The name stays here
+# because the messages below are about a bot, and a bot's ceiling IS the shared one.
+BOT_ID_MAX_LENGTH = DECLARED_ID_MAX_LENGTH
+
+
+def validate_bot_id(profile_name: str, symbol: str, bot_id: str) -> None:
     """
-    Refuse to start a CONTINUOUS deployment whose identity is only its display name.
+    Refuse to start any profile whose carry-over identity is missing or malformed.
 
-    A continuous deployment is precisely the case where state must survive a restart, and without
-    a declared identity that state is filed under what the profile is CALLED. Renaming the profile
-    then does not fail — the next session simply looks somewhere else, finds nothing, and reads
-    its own holding as flat while the venue still holds it.
+    Required of EVERY profile since 2026-09-24 (operator). The older rule asked only of a
+    CONTINUOUS deployment, which protected the case that needs it least — a continuous profile
+    is one somebody thought about, while the route into a collision is copying a profile into
+    another purpose folder and keeping its name, and that copy was exempt. Everything else here
+    was already true of the narrow rule; only the population changed.
 
-    A one-off session is exempt by construction: it inherits nothing and leaves nothing that a
-    successor has to find, so there is no identity to protect.
-
-    The message carries a SUGGESTION rather than only a complaint, because the value is arbitrary
-    and the operator has no reason to invent one — what matters is that it is unique and never
-    changes again.
+    The message carries a SUGGESTION rather than only a complaint, because the value is
+    arbitrary and the operator has no reason to invent one — what matters is that it is unique
+    and never changes again.
 
     Args:
         profile_name: The profile's declared name, or its symbol when it declares none
         symbol: The traded symbol
         bot_id: The identity the profile declares, or empty
-        continuous: Whether this session belongs to a continuous deployment
 
     Returns:
-        None — raises ContinuousDeploymentNeedsBotIdError when a continuous profile declares none
+        None — raises BotIdRequiredError when none is declared, BotIdMalformedError when the
+        declared one is not a shape the carry-over key can carry unchanged
     """
-    if not continuous or bot_id:
-        return
+    if not bot_id:
+        suggestion = sanitize_identity_part(profile_name)[:BOT_ID_MAX_LENGTH].strip('-')
+        raise BotIdRequiredError(
+            f"The profile '{profile_name}' declares no `bot_id`.\n"
+            f'    A bot\'s state is filed under this identity — the open position book, the '
+            f'position\n'
+            f'    counter, the session keys. Without one it is filed under the profile NAME, so '
+            f'renaming\n'
+            f'    the profile points the next session at an empty document while the venue still '
+            f'holds\n'
+            f'    the position.\n'
+            f'\n'
+            f'    Add it to the profile, beside `name`:\n'
+            f'\n'
+            f'        "bot_id": "{suggestion}"\n'
+            f'\n'
+            f'    Up to {BOT_ID_MAX_LENGTH} characters of a-z, 0-9 and hyphen. What it has to be '
+            f'is UNIQUE\n'
+            f'    across every profile and never changed again. The identity this session would '
+            f"file\n    under is '{carry_over_key(profile_name, symbol, suggestion)}'."
+        )
 
-    suggestion = sanitize_identity_part(profile_name)
-    raise ContinuousDeploymentNeedsBotIdError(
-        f"The profile '{profile_name}' declares `deployment.continuous: true` but no `bot_id`.\n"
-        f'    A continuous deployment carries state across restarts — the open position book, '
-        f'the position\n'
-        f'    counter, the session keys. Without a declared identity that state is filed under '
-        f'the profile\n'
-        f'    NAME, so renaming the profile points the next session at an empty document while '
-        f'the venue\n'
-        f'    still holds the position.\n'
+    reason = declared_id_malformed_reason(bot_id)
+    if reason is None:
+        return
+    raise BotIdMalformedError(
+        f"The profile '{profile_name}' declares `bot_id: '{bot_id}'`, which {reason}.\n"
+        f'    The id becomes half of a filename ("<bot_id>_<symbol>.json"), and anything outside\n'
+        f'    a-z, 0-9 and hyphen would be rewritten on the way to disk — the profile would then\n'
+        f'    declare one identity and the store would hold another. The underscore is the '
+        f'reserved\n'
+        f'    join character and is excluded for the same reason.\n'
         f'\n'
-        f'    Add it to the profile, beside `name`:\n'
-        f'\n'
-        f'        "bot_id": "{suggestion}"\n'
-        f'\n'
-        f'    It may be anything — what it has to be is UNIQUE across every profile and never '
-        f'changed\n'
-        f'    again. The identity this session would file under is '
-        f"'{carry_over_key(profile_name, symbol, suggestion)}'."
+        f'    Allowed: 1 to {BOT_ID_MAX_LENGTH} characters of a-z, 0-9 and hyphen.'
     )
 
 
@@ -127,12 +147,12 @@ def validate_carry_over_identity_unique(
     Returns:
         None — raises CarryOverIdentityCollisionError when the identity is not unique
     """
-    root = _profiles_root(config_path)
-    if root is None:
+    roots = _profiles_roots(config_path)
+    if not roots:
         return
 
     key = carry_over_key(profile_name, symbol, bot_id)
-    claimants = [path for path, claimed in _live_identities(root).items() if claimed == key]
+    claimants = [path for path, claimed in _live_identities(roots).items() if claimed == key]
     if len(claimants) < 2:
         return
 
@@ -141,34 +161,66 @@ def validate_carry_over_identity_unique(
         f"Two profiles share one carry-over identity '{key}':\n{listed}\n"
         f'    They would share one position book, one position counter and one set of session '
         f'keys.\n'
-        f"    Give one of them a distinct `name` — the identity is `<name>_<symbol>`, and the "
-        f'name is free text nothing validates.'
+        f'    Give one of them a distinct `bot_id` — the identity is `<bot_id>_<symbol>`, up to '
+        f'{BOT_ID_MAX_LENGTH}\n'
+        f'    characters of a-z, 0-9 and hyphen. The usual cause is a COPIED profile whose id was '
+        f'not changed\n'
+        f'    with it; the two need not sit in the same directory, and since 2026-09-24 this check '
+        f'crosses\n    that boundary.'
     )
 
 
-def _profiles_root(config_path: Optional[Path]) -> Optional[Path]:
+def _profiles_roots(config_path: Optional[Path]) -> List[Path]:
     """
-    The profile tree this session's config sits in.
+    Every profile tree this session must be compared against.
+
+    The tree the config sits in, PLUS its sibling in the other config directory. Both, since
+    2026-09-24, and the reason is the route an operator actually takes: copying a profile and
+    forgetting to change its `bot_id`. A private copy of a shipped profile lands in
+    `user_configs/`, which is across the boundary the old single-root walk never crossed — so the
+    one check that could catch the copy was blind to exactly the copy that matters.
+
+    They are separate BOTS, not a cascade. An AutoTrader profile does not merge with a same-named
+    file the way `app_config.json` does (`deep_merge` puts app defaults UNDER one profile and
+    nothing else), so two files claiming one identity are always two bots sharing one position
+    book — whichever directories they sit in.
 
     Args:
         config_path: The loaded profile's path, or None
 
     Returns:
-        The `autotrader_profiles` directory above it, or None when the config did not come from
-        one — a fixture in a test tree legitimately does not, and a check that guessed a root
+        The roots to scan, nearest first; empty when the config did not come from a profile tree
+        at all — a fixture in a test tree legitimately does not, and a check that guessed a root
         there would compare this session against profiles it has nothing to do with
     """
     if config_path is None:
-        return None
+        return []
+    own: Optional[Path] = None
     for parent in Path(config_path).resolve().parents:
         if parent.name == PROFILES_ROOT_NAME:
-            return parent
-    return None
+            own = parent
+            break
+    if own is None:
+        return []
+
+    roots = [own]
+    # The pair is the project's config cascade, named here the way §29 names the credential
+    # one: most specific first. The sibling is found by swapping the directory the root sits
+    # in, never by guessing a path from the working directory — a session started from a
+    # temporary tree must not suddenly be compared against the repository's profiles.
+    container = own.parent
+    for a, b in ((_WORKSPACE_CONFIG_DIR, _TRACKED_CONFIG_DIR),
+                 (_TRACKED_CONFIG_DIR, _WORKSPACE_CONFIG_DIR)):
+        if container.name == a:
+            sibling = container.parent / b / PROFILES_ROOT_NAME
+            if sibling.is_dir():
+                roots.append(sibling)
+    return roots
 
 
-def _live_identities(root: Path) -> Dict[Path, str]:
+def _live_identities(roots: List[Path]) -> Dict[Path, str]:
     """
-    The carry-over identity every profile under this root claims.
+    The carry-over identity every profile under these roots claims.
 
     Read from the RAW json rather than through the config loader: this runs at boot, a full load
     validates and resolves far more than a name and a symbol, and one unrelated profile with a
@@ -177,21 +229,22 @@ def _live_identities(root: Path) -> Dict[Path, str]:
     a second config validator.
 
     Args:
-        root: The `autotrader_profiles` directory
+        roots: The `autotrader_profiles` directories to scan
 
     Returns:
         Profile path → the identity it would file its carry-over under
     """
     identities: Dict[Path, str] = {}
-    for path in sorted(root.rglob('*.json')):
-        raw = _read_profile(path)
-        if raw is None:
-            continue
-        symbol = raw.get('symbol')
-        if not symbol:
-            continue
-        identities[path] = carry_over_key(
-            raw.get('name') or symbol, symbol, raw.get('bot_id') or '')
+    for root in roots:
+        for path in sorted(root.rglob('*.json')):
+            raw = _read_profile(path)
+            if raw is None:
+                continue
+            symbol = raw.get('symbol')
+            if not symbol:
+                continue
+            identities[path] = carry_over_key(
+                raw.get('name') or symbol, symbol, raw.get('bot_id') or '')
     return identities
 
 
@@ -213,7 +266,7 @@ def _read_profile(path: Path) -> Optional[dict]:
     return raw if isinstance(raw, dict) else None
 
 
-def collisions(root: Path) -> Dict[str, List[Path]]:
+def collisions(roots: List[Path]) -> Dict[str, List[Path]]:
     """
     Every shared carry-over identity under a profile root, for a sweep rather than a boot.
 
@@ -221,12 +274,12 @@ def collisions(root: Path) -> Dict[str, List[Path]]:
     whole question at once, which is what a maintenance command or a test wants.
 
     Args:
-        root: The `autotrader_profiles` directory
+        roots: The `autotrader_profiles` directories to scan
 
     Returns:
         Identity → the profiles claiming it, for identities claimed more than once
     """
     claimed: Dict[str, List[Path]] = {}
-    for path, key in _live_identities(root).items():
+    for path, key in _live_identities(roots).items():
         claimed.setdefault(key, []).append(path)
     return {key: paths for key, paths in claimed.items() if len(paths) > 1}

@@ -73,8 +73,46 @@ Validation + routing in `python/framework/trading_env/abstract_trade_executor.py
 
 1. `close_lots <= 0` → skip fill (log warning)
 2. `close_lots > position.lots` → auto-convert to full close
-3. `remaining < volume_min` → auto-convert to full close (with floating-point tolerance)
-4. Otherwise → `partial_close_position()`
+3. Otherwise → `partial_close_position()`
+
+**A sub-minimum remainder is no longer converted here (#507).** It used to be: a partial whose
+remainder fell below `volume_min` was booked as a FULL close at fill time — one round trip after
+the venue had already sold exactly the partial size it was asked for, so the venue kept the
+remainder while our books recorded the position as gone. That judgement now happens at
+SUBMISSION, in `AbstractTradeExecutor.refuse_unresolvable_close()`, where it can still change
+what the venue is asked for. The request is REFUSED with `REMAINDER_BELOW_MINIMUM` and nothing is
+sent.
+
+What remains at fill time answers the case we did NOT cause: the venue's own partial fill can
+strand a sub-minimum remainder without us having asked for it. Whatever it filled is booked, and
+then the two account models part company (Sec 31b):
+
+- **SPOT** — the coins live in the balances and the position is our record of a trade on top of
+  them. An unsellable remainder is still a HOLDING but is no longer a TRADE: no order can sell
+  it, so it can never be closed, trailed or reversed, and left in the book it blocks four of the
+  five CORE logics, which refuse to open anything while a position is open. The record is
+  retired (`PortfolioManager.retire_dust_position()`); the balance keeps the coins. Nothing is
+  written off, and the boot cross-check then reports the venue holding slightly more than the
+  book — the true statement, and the direction it does not treat as an error (#355).
+- **MARGIN** — there is no inventory beside the position, so the record IS the exposure and
+  retiring it would write off something real. It cannot arise there anyway: every MT5 symbol
+  carries `volume_min == volume_step == 0.01`, so a remainder is a multiple of the minimum.
+
+Spending the dust itself is not solved here and is #349's.
+
+Cases: `tests/simulation/partial_close/test_partial_close_volume_min.py`, driven over the real
+Kraken spot config because its minimums are the crooked ones that produce the case (DOTUSD 3.9,
+ADAUSD 20.0) where MT5's round 0.01 barely can.
+
+| Class | What it holds |
+|---|---|
+| `TestTheRequestIsRefusedBeforeItReachesTheVenue` | the refusal fires, names its reason, carries the arithmetic, leaves the position untouched and sends nothing |
+| `TestAValidPartialStillGoesThrough` | the guard against overcorrecting — a valid partial, a full close and a close of exactly the position size all still work |
+
+**The arithmetic worth knowing before reading them:** a valid partial needs BOTH the size sold and
+the size left behind to clear `volume_min`, so below `2 * volume_min` of position size no valid
+partial exists at all. That structural case is answered first and says so, because reporting the
+requested size as merely too small would send a caller looking for a size that is not there.
 
 ### Floating-Point Safety
 

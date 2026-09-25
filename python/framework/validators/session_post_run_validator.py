@@ -14,17 +14,29 @@ budget while a session has only what it observed.
 
 Observed feed outages are deliberately NOT a check: they are facts and belong to the
 feed-stability section, which states experience where this states intent.
+
+Real orders from uncommitted code (#551) are decided at STARTUP, by the guard that lets them
+through under `--allow-dirty`. This validator receives that verdict rather than deriving it a
+second time — the same shape as the stress-test check, which also reports a start-time fact so a
+run carrying it can never be read as a clean one.
 """
+
+from typing import Optional
 
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.run_origin_types import CodeIdentity
 from python.framework.types.validation_types import (
     Severity,
     ValidationDomain,
     ValidationFinding,
     ValidationResult,
 )
-from python.framework.validators.shared_advisory_checks import check_stress_test
+from python.framework.validators.shared_advisory_checks import (
+    check_stress_test,
+    check_unversioned_code,
+)
+from python.framework.validators.uncommitted_code_validator import build_uncommitted_code_finding
 
 # Scope of a session-global finding — it concerns the run, not one unit.
 _RUN_SCOPE = 'run'
@@ -37,21 +49,34 @@ _CLIPPING_CHECK = 'clipping'
 class SessionPostRunValidator:
     """Emits the post-run advisory warnings of a live session into its validation channel."""
 
-    def __init__(self, result: AutoTraderResult, config: AutoTraderConfig):
+    def __init__(
+        self,
+        result: AutoTraderResult,
+        config: AutoTraderConfig,
+        uncommitted_code_allowed: bool = False,
+        code_identity: Optional[CodeIdentity] = None,
+    ):
         """
         Initialize the session post-run validator.
 
         Args:
             result: The collected session result (worker / decision statistics)
             config: The profile config the session ran with (stress config, unit name)
+            uncommitted_code_allowed: The startup guard's verdict — True when `--allow-dirty` let
+                real orders run from uncommitted code (#551)
+            code_identity: The code the session ran, named in that warning
         """
         self._result = result
         self._config = config
+        self._uncommitted_code_allowed = uncommitted_code_allowed
+        self._code_identity = code_identity
 
     def validate(self) -> None:
         """Run all post-run advisory checks; append a run-scoped ValidationResult per finding."""
         self._check_stress_test()
         self._check_clipping()
+        self._check_uncommitted_code()
+        self._check_unversioned_code()
 
     def _add_finding(self, finding: ValidationFinding) -> None:
         """
@@ -100,3 +125,28 @@ class SessionPostRunValidator:
                 f'to {clipping.max_stale_ms:.1f}ms old (avg processing '
                 f'{clipping.avg_processing_ms:.2f}ms). The algo is not keeping up with this '
                 f'tick rate.')))
+
+    def _check_uncommitted_code(self) -> None:
+        """
+        Warn when `--allow-dirty` let this session send real orders from uncommitted code (#551).
+
+        A flag typed on a clean tree or on a dry run overrode nothing and is not reported — the
+        header's `origin.allow_dirty` still records that it was typed.
+        """
+        if not self._uncommitted_code_allowed:
+            return
+        self._add_finding(build_uncommitted_code_finding(self._code_identity, _RUN_SCOPE))
+
+    def _check_unversioned_code(self) -> None:
+        """
+        Warn when the session's code lies under no version control (shared with the simulation).
+
+        Only where the `--allow-dirty` finding above did not already name it: a real-money session
+        from unversioned code is refused unless that flag let it through, so this is the dry-run
+        and mock case — a rehearsal that can never be repeated on the code it ran.
+        """
+        if self._uncommitted_code_allowed:
+            return
+        finding = check_unversioned_code(self._code_identity)
+        if finding is not None:
+            self._add_finding(finding)

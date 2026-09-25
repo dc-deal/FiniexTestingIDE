@@ -1,5 +1,6 @@
 {
   "name": "partial_close_lifecycle",
+  "bot_id": "partcls01",
   "symbol": "USDJPY",
   "broker_type": "mt5",
   "adapter_type": "mock",

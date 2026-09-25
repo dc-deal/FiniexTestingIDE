@@ -26,6 +26,7 @@ from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import (
     ParentKind,
     RunHeader,
+    RunInfo,
     RunReporting,
     RunSummary,
     RunSummaryCurrency,
@@ -55,7 +56,8 @@ def _pruner(root: Path) -> RunTreePruner:
 def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMULATION,
            artifacts: bool = True, reporting: RunReporting = RunReporting.EXPECTED,
            parent: str = None, parent_kind: ParentKind = None,
-           field_study: bool = False, minutes: int = 0) -> Path:
+           field_study: bool = False, minutes: int = 0,
+           started: datetime = None) -> Path:
     """
     Write one run the way a real one writes itself: header first, index row with it.
 
@@ -71,6 +73,7 @@ def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMUL
             SIMULATION always is
         field_study: Whether it holds the raw record behind a release certificate
         minutes: Offset from the base start time
+        started: An explicit start time, for the cases that care about AGE rather than order
 
     Returns:
         The run's directory
@@ -93,7 +96,8 @@ def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMUL
         (run_dir / FIELD_STUDY_ARTIFACT).write_text('{}\n', encoding='utf-8')
 
     header = RunHeader(
-        run_id=run_id, start_time=_START + timedelta(minutes=minutes), run_type=run_type,
+        run_id=run_id, start_time=started or _START + timedelta(minutes=minutes),
+        run_type=run_type,
         run_name=name, parent_id=parent, parent_kind=parent_kind, reporting=reporting)
     index = RunIndex(root / 'index.parquet')
     index.register_run(header, run_dir)
@@ -446,3 +450,120 @@ class TestKeepLastCountsPerParentKind:
         # kind spend the other's quota.
         assert all(path in deleted for path in older_sweep + older_dep)
         assert not any(path in deleted for path in newer_sweep + newer_dep)
+
+
+def _aged(days: float) -> datetime:
+    """A start time `days` in the past. Returns: the instant."""
+    return datetime.now(timezone.utc) - timedelta(days=days)
+
+
+class TestTheAgeSelector:
+    """
+    `--older-than` (#357) — the second question the tree is asked.
+
+    "Keep the newest five" and "keep the last month" are different questions, and a bot that
+    runs once a day answers them very differently from one running forty backtests an hour.
+    """
+
+    def test_older_than_removes_the_old_and_keeps_the_young(self, tmp_path):
+        old_run = _plant(tmp_path, '20260601_120000_aaaaaaaa', 'my_set', started=_aged(100))
+        young = _plant(tmp_path, '20260923_120000_bbbbbbbb', 'my_set', started=_aged(2))
+
+        report = _pruner(tmp_path).plan(PruneSelectors(older_than=timedelta(days=30)))
+
+        assert _deleted_paths(report) == {old_run}
+        assert [c.path for c in report.kept_recent] == [young]
+
+    def test_it_reaches_across_families_where_keep_last_cannot(self, tmp_path):
+        """
+        The gap this closes: `--keep-last` is per family, so a set run ONCE a year ago is its
+        own newest and survives every count. Age is the only selector that can see it.
+        """
+        stale_only_child = _plant(tmp_path, '20250901_120000_cccccccc', 'abandoned_set',
+                                  started=_aged(365))
+        _plant(tmp_path, '20260923_120000_dddddddd', 'busy_set', started=_aged(1))
+
+        by_count = _pruner(tmp_path).plan(PruneSelectors(keep_last=1))
+        by_age = _pruner(tmp_path).plan(PruneSelectors(older_than=timedelta(days=30)))
+
+        assert stale_only_child not in _deleted_paths(by_count)
+        assert stale_only_child in _deleted_paths(by_age)
+
+    def test_the_two_selectors_compose_as_KEEP_rules(self, tmp_path):
+        """
+        The composition, and it is the decision worth pinning: a run goes only when BOTH
+        release it. Here the middle run is old enough to go but sits among the newest two of
+        its family — one selector says delete, the other says keep, and KEEP wins.
+        """
+        newest = _plant(tmp_path, '20260923_120000_11111111', 'my_set', started=_aged(1))
+        old_but_recent_enough_in_rank = _plant(
+            tmp_path, '20260101_120000_22222222', 'my_set', started=_aged(90))
+        oldest = _plant(tmp_path, '20250101_120000_33333333', 'my_set', started=_aged(400))
+
+        report = _pruner(tmp_path).plan(
+            PruneSelectors(keep_last=2, older_than=timedelta(days=30)))
+
+        assert _deleted_paths(report) == {oldest}
+        kept = {c.path for c in report.kept_complete} | {c.path for c in report.kept_recent}
+        assert newest in kept
+        assert old_but_recent_enough_in_rank in kept, (
+            'a run among the newest of its family was deleted for being old — the two '
+            'selectors were composed as delete rules, not as keep rules')
+
+    def test_neither_selector_deletes_nothing(self, tmp_path):
+        """A prune with no selector is a report, not an action. Unchanged by #357."""
+        _plant(tmp_path, '20250101_120000_44444444', 'my_set', started=_aged(400))
+
+        report = _pruner(tmp_path).plan(PruneSelectors())
+
+        assert _deleted_paths(report) == set()
+
+    def test_a_run_with_no_start_time_is_kept_and_reported(self, tmp_path):
+        """
+        An age nobody can measure is not a reason to delete. The row is reported in its own
+        group rather than silently joining the kept — 'not measurable' and 'recent' are two
+        different statements about a directory somebody may want back.
+        """
+        assert RunTreePruner._is_older_than(
+            RunInfo(run_id='x', group='simulation', name='my_set', start_time=''),
+            datetime.now(timezone.utc), timedelta(days=30)) is None
+
+    def test_an_unparseable_start_time_is_treated_the_same(self, tmp_path):
+        """Never 'old' — that is the direction that deletes."""
+        assert RunTreePruner._is_older_than(
+            RunInfo(run_id='x', group='simulation', name='my_set', start_time='not a date'),
+            datetime.now(timezone.utc), timedelta(days=30)) is None
+
+    def test_the_guard_still_holds_against_an_ancient_run(self, tmp_path):
+        """
+        Age is a selector like any other, so it must not reach past the guard: a run that
+        crashed before reporting is the only record of that failure, however old it is.
+        """
+        crashed = _plant(tmp_path, '20250101_120000_55555555', 'my_set',
+                         artifacts=False, started=_aged(400))
+        evidence = _plant(tmp_path, '20250101_130000_66666666', 'live_profile',
+                          run_type=RUN_TYPE_LIVE, field_study=True, started=_aged(400))
+
+        report = _pruner(tmp_path).plan(PruneSelectors(older_than=timedelta(days=30)))
+
+        assert _deleted_paths(report) == set()
+        assert [c.path for c in report.kept_incomplete] == [crashed]
+        assert [c.path for c in report.kept_field_study] == [evidence]
+
+    def test_an_age_pruned_run_keeps_its_ledger_row_and_gets_it_stamped(self, tmp_path):
+        """
+        The ledger and the tree keep opposite retention on purpose (#390), and an age
+        selector is exactly the shape that looks like it should apply to both. The row stays,
+        keeps its figures, and says its evidence is gone.
+        """
+        _plant(tmp_path, 'r1', 'my_set', started=_aged(400))
+        ledger = RunResultsLedger(tmp_path / 'ledger')
+        ledger.append(_summary(), _provenance('r1'))
+
+        pruner = _pruner(tmp_path)
+        result = pruner.apply(pruner.plan(PruneSelectors(older_than=timedelta(days=30))))
+
+        assert result.ledger_rows_marked == 1
+        row = ledger.read_rows()[0]
+        assert row.records_pruned_at != ''
+        assert row.net_pnl == 412.0

@@ -14,10 +14,12 @@ Its simulation counterpart is `process/process_pipeline_bundle.py`.
 """
 
 from dataclasses import dataclass
+from typing import Optional
 
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.autotrader_types.display_label_cache import DisplayLabelCache
 from python.framework.types.config_types.market_config_types import TradingModel
@@ -37,6 +39,8 @@ class AutotraderPipelineBundle:
         clipping_monitor: Tick-clipping observation for the session
         trading_model: SPOT or MARGIN, resolved from the broker config
         display_label_cache: Pre-resolved labels, so the display renders without lookups
+        stale_stress_driver: The planned tick-plane stale windows a mock profile declared
+            (#444), None when none is declared — which is every live session
     """
     executor: AbstractTradeExecutor
     bar_controller: BarRenderingController
@@ -45,3 +49,4 @@ class AutotraderPipelineBundle:
     clipping_monitor: LiveClippingMonitor
     trading_model: TradingModel
     display_label_cache: DisplayLabelCache
+    stale_stress_driver: Optional[StaleDataStressDriver] = None

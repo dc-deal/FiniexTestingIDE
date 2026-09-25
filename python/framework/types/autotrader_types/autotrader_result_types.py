@@ -18,6 +18,7 @@ from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats,
+    WorkerCoordinatorPerformanceStats,
     WorkerPerformanceStats,
 )
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
@@ -51,6 +52,9 @@ class AutoTraderResult:
         clipping_summary: Clipping monitor session summary
         decision_statistics: Decision logic execution stats
         worker_statistics: Per-worker performance stats
+        coordination_statistics: How many ticks reached the algo path, and what parallel
+            execution saved. The simulation has carried this since the beginning; live never
+            collected it, so every session reported zero ticks in its performance section
         signal_statistics: Per-SIGNAL-worker resolution counters (#433)
         disturbance_episodes: Observed outage spans of both staleness domains (#451)
         market_data_tick_stats: Market-data resolution counters (#451 Part 4)
@@ -87,6 +91,7 @@ class AutoTraderResult:
     clipping_summary: ClippingSessionSummary = field(default_factory=ClippingSessionSummary)
     decision_statistics: Optional[DecisionLogicStats] = None
     worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)
+    coordination_statistics: Optional[WorkerCoordinatorPerformanceStats] = None
     signal_statistics: List[SignalResolutionStats] = field(default_factory=list)
     disturbance_episodes: List[DisturbanceEpisode] = field(default_factory=list)
     market_data_tick_stats: Optional[MarketDataTickStats] = None

@@ -98,6 +98,7 @@ python/framework/autotrader/
   autotrader_warmup_preparator.py  Warmup bar loading (mock: parquet, live: API)
   kraken_ohlc_bar_fetcher.py     Kraken OHLC bar fetch (public API, no auth)
   live_clipping_monitor.py       Per-tick timing, clipping detection (#197)
+  session_log_retention.py       Prunes rotated daily session logs (#357)
   reporting/
     autotrader_post_session_report.py   Console + file log summary
     autotrader_csv_file_report.py       Trade/order CSV export
@@ -142,6 +143,31 @@ configs/credentials/
   kraken_credentials.json        Mock/default credentials (tracked)
 ```
 
+## Session logs — daily rotation and what is kept
+
+The tick loop rotates its session log at the market's own trading-day boundary
+(`framework/utils/trading_day_anchor.py`), so a
+long-running session writes `session_logs/autotrader_session_YYYYMMDD.log` once per day rather
+than one file that grows for a month. The rotation is driven by BOTH event sources — a feed
+that goes quiet across the boundary still rotates, because the heartbeat advances the canonical
+clock and calls the same check.
+
+**What the rotation used to leave behind is now pruned on every rotation** (#357). The window
+is `file_logging.session_logs.retention_days` in `app_config.json`, 30 by default, and `0`
+keeps everything. Three things it will never do: touch the active day's file, touch a file
+whose name is not `autotrader_session_YYYYMMDD.log`, or delete without saying so — a removal
+reaches the session channel naming the files, where the post-session summary picks it up.
+
+The age comes from the file NAME, not its mtime. The name is the trading day the file holds;
+the mtime is only the last time something was written into it, and asking the filesystem costs
+a `stat` per file — about 2.1 ms on this bridged mount — to answer a question the name already
+answers.
+
+**This is the one retention rule that fires by itself, and it is the exception.** The run TREE
+is pruned by `run_index_cli.py prune`, which the operator triggers and which deletes nothing
+without `--apply`. The difference is who is present: these files belong to a session that is
+still running, unattended, where there is nobody to ask.
+
 ## Running a session
 
 ```bash
@@ -151,6 +177,12 @@ python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/bac
 # VS Code launch.json
 # 🤖 AutoTrader: BTCUSD Mock
 ```
+
+A session that sends real orders refuses to start while its code is not committed, in this
+repository or in the one its strategy comes from — and while that code is edited during the
+start. `--allow-dirty` is the recorded way through the first for a deliberate test from a working
+tree, never through the second — see
+[Run Origin and Code Identity](../architecture/run_origin_and_code_identity.md#real-orders-from-uncommitted-code).
 
 ## Roadmap
 

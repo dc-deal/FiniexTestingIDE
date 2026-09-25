@@ -38,7 +38,9 @@ from python.framework.reporting.store.run_ledger_index import (
     RunLedgerIndex,
 )
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
+from python.framework.store.run_patch_store import PATCH_SUFFIX
 from python.framework.store.store_descriptor import StoreDescriptor
+from python.framework.types.config_types.host_identity_config_types import HOST_IDENTITY_FILE
 from python.framework.types.log_layout_types import GLOBAL_LOG_FILE
 from python.framework.types.store_types import (
     DISCOVERY_CACHE_DIRNAME,
@@ -80,6 +82,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
     runs_root = Path(file_logging.run_index).parent
     ledger_root = Path(app_config.get_run_ledger_path())
     run_configs_root = Path(app_config.get_run_configs_path())
+    run_patches_root = Path(app_config.get_run_patches_path())
     discovery_root = processed / DISCOVERY_CACHE_DIRNAME
 
     return {
@@ -115,6 +118,25 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
                  'content id says the bytes differ, param_hash what the algo DECIDES, '
                  'scope_hash WHICH DATA runs. Renaming a scenario moves the first and neither '
                  'of the others.',
+        ),
+        StoreId.RUN_PATCHES: StoreDescriptor(
+            store_id=StoreId.RUN_PATCHES,
+            kind=StoreKind.RECORD,
+            root=run_patches_root,
+            key="patch_hash (SHA256 over the patch bytes) — not the header's diff_hash, "
+                'which digests the changed content',
+            form=RetrievalForm.DOCUMENT,
+            backend=StoreBackend.DISK,
+            entry_glob=f'*{PATCH_SUFFIX}',
+            note='The patch of every dirty tree a run ran from (#551): tracked changes plus '
+                 'untracked files, so applying it on top of the commit the run header names '
+                 'restores the code that ran. Credential homes are left out and named in the '
+                 "header's patch_excluded, so no secret is ever copied here. Content-addressed "
+                 '— equal patches are one file, and both a write and a read verify the bytes '
+                 'against their name. No index: a patch is opened by the file name the run '
+                 "header's patch_ref already records, which is not a search. How long a patch "
+                 'must outlive the runs naming it is #535; until then nothing here deletes '
+                 'anything.',
         ),
         StoreId.RUN_LEDGER: StoreDescriptor(
             store_id=StoreId.RUN_LEDGER,
@@ -289,5 +311,19 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             backend=StoreBackend.DISK,
             note=('Append stream without identity. It gets bounding and rotation (#476), '
                   'never an index.'),
+        ),
+        StoreId.HOST_IDENTITY: StoreDescriptor(
+            store_id=StoreId.HOST_IDENTITY,
+            kind=StoreKind.SPECIAL,
+            root=Path(HOST_IDENTITY_FILE),
+            key='—',
+            form=RetrievalForm.NONE,
+            backend=StoreBackend.DISK,
+            note=('The installation\'s minted identity (#551): one file, written once on the first '
+                  'start and never rewritten — a broken file refuses the start instead of being '
+                  'minted again, and read by its own manager only. SPECIAL, because it is none of the five kinds: not a record of '
+                  'an event, not carried over by a bot, not an input, and deleting it is not '
+                  'harmless — the next start mints a DIFFERENT identity, and every run header '
+                  'after it names another host. Workspace, never tracked.'),
         ),
     }

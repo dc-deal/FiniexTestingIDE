@@ -40,7 +40,7 @@ from python.framework.process.tick_pipeline_core import (
 )
 from python.framework.stress_test.stale_data_stress_driver import (
     StaleDataStressDriver,
-    warn_events_outside_range,
+    build_stale_stress_driver,
 )
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -219,21 +219,13 @@ def execute_tick_loop(
         # status-plane driver on the sim time axis (events hitting the signal
         # source are already carved out of the series at preparation time).
         # The overlap guard warns about windows the data range can never reach.
-        stale_stress_driver: Optional[StaleDataStressDriver] = None
-        stale_cfg = (
-            config.stress_test_config.stale_data_stress
-            if config.stress_test_config else None
-        )
-        if stale_cfg is not None and stale_cfg.enabled and ticks:
-            warn_events_outside_range(
-                stale_cfg.events, ticks[0].timestamp, ticks[-1].timestamp,
-                scenario_logger)
-            tick_source_events = stale_cfg.get_events_for_source(
-                config.broker_type.value)
-            if tick_source_events:
-                stale_stress_driver = StaleDataStressDriver(
-                    tick_source_events, trade_simulator, decision_logic,
-                    scenario_logger)
+        # The broker type is read the same way the booking anchor above reads it: a scenario
+        # without one has no tick source to name, so no event can match it.
+        stale_stress_driver: Optional[StaleDataStressDriver] = build_stale_stress_driver(
+            config.stress_test_config,
+            config.broker_type.value if config.broker_type else '',
+            (ticks[0].timestamp, ticks[-1].timestamp) if ticks else None,
+            trade_simulator, decision_logic, scenario_logger)
 
         if has_clipping:
             scenario_logger.info(
@@ -555,7 +547,17 @@ def execute_tick_loop(
     except Exception as e:
         # an error here is not possible to handle correctly.
         scenario_logger.error(f'Error in Tick Loop - Statistics & Return: {e}')
-        raise e
+        # The two errors stand at the same level, and that is not politeness. The block above
+        # ABSORBS a tick-loop failure into `tick_loop_error` and lets collection continue — so
+        # whatever failed there usually causes something here to fail too, and without the
+        # chain the CONSEQUENCE is what propagates while the CAUSE lives only in the scenario
+        # log. Measured 2026-09-24: a construction error before the loop surfaced as
+        # `ClockNotInjectedError` from the booking close, pointing forty lines past the line
+        # that broke. `from` says what is true — no tick ran, so there was no clock to seal
+        # against — and prints both tracebacks, the cause first.
+        if tick_loop_error is not None:
+            raise e from tick_loop_error
+        raise
 
 
 def _print_tick_loop_finishing_log(

@@ -16,6 +16,7 @@ from typing import List, Optional
 
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.run_origin_types import RunChannel
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.utils.time_utils import format_duration
 from python.scenario.scenario_set_finder import ScenarioSetFinder
@@ -62,7 +63,7 @@ class StrategyRunnerCli:
                 print(f'  • {Path(p).name}')
             print('='*80 + '\n')
 
-            return run_profile_batch(scenario_set_json, profile_paths)
+            return run_profile_batch(scenario_set_json, profile_paths, channel=RunChannel.CLI)
         else:
             print('\n' + '='*80)
             print('🔬 Strategy Runner')
@@ -70,7 +71,7 @@ class StrategyRunnerCli:
             print(f'Scenario Set: {scenario_set_json}')
             print('='*80 + '\n')
 
-            return run_scenario_batch(scenario_set_json)
+            return run_scenario_batch(scenario_set_json, channel=RunChannel.CLI)
 
     def _resolve_profile_paths(self, inputs: List[str]) -> List[str]:
         """

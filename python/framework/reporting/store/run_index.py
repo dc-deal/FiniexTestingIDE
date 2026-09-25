@@ -5,7 +5,7 @@ The derived, compacted table the API reads instead of walking the run tree.
 
 import os
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import pandas as pd
 
@@ -24,6 +24,42 @@ from python.framework.types.log_layout_types import IO_SUBDIR
 def _or_none(value) -> Optional[str]:
     """Parquet reads a missing cell as NaN; the model wants None."""
     return value if isinstance(value, str) and value else None
+
+
+def _origin_columns(header: RunHeader) -> Dict[str, Any]:
+    """
+    The flat projection of a header's origin and code identity (#551), for both writers.
+
+    One function for `register_run` and `rebuild`, so the repair path cannot project these
+    differently from the append path — a rebuild that disagreed with the appends would make the
+    index a second source of truth.
+
+    None means UNKNOWN, never "no": a run written before the fields existed carries no origin and
+    no code identity, and a run that was not commissioned to report captured no code identity.
+    The two dirty flags answer different questions, and so treat an unreadable repository
+    differently. `framework_dirty` asks whether THIS repository's tree differed from its commit —
+    unknown whenever its state carries no commit: git could not run, could not read it, or found
+    no repository around the checkout. `code_dirty` asks whether the code that ran can be
+    reproduced from commits alone — any dirty, unversioned or unreadable repository says it
+    cannot, which is `CodeIdentity.is_dirty()`.
+
+    Args:
+        header: The run's header
+
+    Returns:
+        The origin and dirty columns of one index row
+    """
+    origin = header.origin
+    identity = header.code_identity
+    framework = identity.framework if identity is not None else None
+    framework_known = framework is not None and framework.commit is not None
+    return {
+        'origin_channel': str(origin.channel) if origin is not None else None,
+        'origin_person': origin.person if origin is not None else None,
+        'host_id': origin.host if origin is not None else None,
+        'framework_dirty': framework.dirty if framework_known else None,
+        'code_dirty': identity.is_dirty() if identity is not None else None,
+    }
 
 
 def _artifact_names(run_dir: Path) -> List[str]:
@@ -133,12 +169,21 @@ class RunIndex(AbstractStoreIndex):
         # most of the runs it measured were ones it then KEPT. Exactly the argument `artifacts`
         # above already carries: listing at read time is the cost this index exists to remove.
         'size_bytes',
+        # Where a run came from and whether its code can be reproduced from commits (#551),
+        # flattened from the header so a selection by channel, person, host or dirty state is a
+        # column filter rather than a header read per run. Not served on `RunInfo`: the API
+        # contract changes of #551 are the `caller` route and the meaning of the ledger's
+        # `git_dirty`, neither of which touches this list.
+        'origin_channel', 'origin_person', 'host_id', 'framework_dirty', 'code_dirty',
     ]
 
     # 1 → 2: `size_bytes` appended. A row written before it reads back as NaN, which means
     # UNKNOWN and is reported as such — never as 0 MB, which on the one screen an operator
     # uses to decide what to delete would read as "this run is empty".
-    LOGIC_VERSION: int = 4
+    # 4 → 5: the origin and dirty columns appended (#551). A file written before them reports
+    # itself out of date, and a rebuild fills them from the headers; left alone, its existing
+    # rows read as unknown — which is also the truth for every run older than the fields.
+    LOGIC_VERSION: int = 5
 
     def __init__(self, path: Path, roots: Optional[RunLogPaths] = None):
         """
@@ -182,6 +227,7 @@ class RunIndex(AbstractStoreIndex):
             # The run has not produced anything yet; `record_artifacts` stamps the real
             # figure when it finishes.
             'size_bytes': 0,
+            **_origin_columns(header),
         }])
         self.write_incremental(pd.concat([frame, row], ignore_index=True))
 
@@ -312,6 +358,7 @@ class RunIndex(AbstractStoreIndex):
                     # The repair path pays the walk it saves every reader — a rebuilt index
                     # that dropped the sizes would be a worse index than the one it replaced.
                     'size_bytes': dir_size(run_dir),
+                    **_origin_columns(header),
                 })
         self.write(pd.DataFrame(rows, columns=self.COLUMNS))
         return len(rows)

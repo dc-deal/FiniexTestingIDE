@@ -108,62 +108,83 @@ def _buy(portfolio: PortfolioManager, lots: float = _LOTS) -> None:
     _mark(portfolio, _SYMBOL, _PRICE)
 
 
-class TestTheQuantityTheBotsGateOnIsNotSpendableCash:
+class TestASpotAccountIsOfferedNoMarginFiguresAtAll:
     """
-    The defect, stated as the difference between two numbers rather than as a judgement.
+    What replaced the defect, and the history is kept because the numbers are the argument.
 
-    These cases stay true after the fix — the `free_margin` formula is deliberately out of
-    scope (#497 owns whether it should be None at spot). They are the evidence that switching
-    the gate was not a no-op.
+    Until 2026-09-24 a spot account received `margin_used`, `free_margin` and `margin_level`
+    on its `AccountInfo`, and all three were invented. `margin_currency == quote_currency` at
+    Kraken spot and leverage is 1, so the margin formula took the branch that multiplies no
+    price: a 0.1 ETH position worth 300 USD was charged as **0.1**. `free_margin` inherited
+    that and moved with the holdings' unrealized P&L, so it pointed BOTH ways — measured on a
+    1000 USD account holding 0.1 ETH bought at 3000, against 700.00 USD actually spendable:
+
+        ETH 6000  →  free_margin 999.90   offers 43 % more than exists
+        ETH 2000  →  free_margin 599.90   withholds capital the account has
+
+    No choice of floor absorbs a bias that changes sign. #502 moved the CORE logics onto
+    `get_free_entry_capital`; this suite now pins the second half — the misleading figures are
+    not merely unused, they are no longer produced. A false map is worse than a blank one.
     """
 
-    def test_an_unrealized_gain_is_offered_as_capital_that_cannot_be_spent(self):
-        """The dominant error: a coin that doubled did not put any cash in the account."""
+    def test_the_three_margin_figures_are_absent(self):
         portfolio = _spot_portfolio()
         _buy(portfolio)
-        _mark(portfolio, _SYMBOL, _PRICE * 2)
 
-        free_quote = portfolio.get_asset_balance(_QUOTE)
-        reported = portfolio.get_free_margin(OrderDirection.LONG)
+        account = portfolio.get_account_info(OrderDirection.LONG)
 
-        assert free_quote == pytest.approx(_START_QUOTE - _SPENT)
-        assert reported > free_quote * 1.4, (
-            f'free_margin offers {reported:.2f} USD while {free_quote:.2f} USD is actually '
-            f'spendable — the difference is the holding\'s unrealized gain, which is not cash')
+        assert account.margin_used is None
+        assert account.free_margin is None
+        assert account.margin_level is None
 
-    def test_and_a_decline_withholds_capital_the_account_really_has(self):
+    def test_the_figures_a_spot_account_really_has_are_untouched(self):
         """
-        The same defect pointing the other way, which is what makes it uncorrectable.
+        The guard against overcorrecting: only the margin trio went.
 
-        A constant bias could be absorbed by choosing the floor differently. This one cannot:
-        the gate is loosest exactly when the account is most exposed, and tightest when it is
-        least — and both happen without any money moving.
-        """
-        portfolio = _spot_portfolio()
-        _buy(portfolio)
-        _mark(portfolio, _SYMBOL, _PRICE / 1.5)
-
-        free_quote = portfolio.get_asset_balance(_QUOTE)
-        reported = portfolio.get_free_margin(OrderDirection.LONG)
-
-        assert reported < free_quote, (
-            f'free_margin reports {reported:.2f} USD where {free_quote:.2f} USD is free — a '
-            f'gate on this refuses entries the account can afford, in a drawdown')
-
-    def test_the_margin_used_it_subtracts_is_the_lot_size_not_a_value(self):
-        """
-        Why the number is detached, pinned at the source.
-
-        `margin_currency == quote_currency` at Kraken spot, so the margin formula takes the
-        branch that multiplies no price: 0.1 ETH worth 300 USD is charged as 0.1.
+        `balances` is the spot account's own answer and `equity` is its mark-to-market — both
+        must still be there, or the blanking took something a bot legitimately reads.
         """
         portfolio = _spot_portfolio()
         _buy(portfolio)
 
         account = portfolio.get_account_info(OrderDirection.LONG)
 
-        assert account.margin_used == pytest.approx(_LOTS), (
-            f'margin_used is {account.margin_used}, and the position is worth {_SPENT} USD')
+        assert account.balances is not None
+        assert account.balances[_QUOTE] == pytest.approx(_START_QUOTE - _SPENT)
+        assert account.equity > 0
+        assert account.open_positions == 1
+
+    def test_asking_for_free_margin_at_spot_is_refused_by_name(self):
+        """
+        Loudly rather than as None: every caller treats the answer as a number to compare
+        against, and both of them already sit behind `not spot_mode`. Reaching it here is a
+        programming error, and the message names the method that does answer the question.
+        """
+        portfolio = _spot_portfolio()
+        _buy(portfolio)
+
+        with pytest.raises(ValueError) as raised:
+            portfolio.get_free_margin(OrderDirection.LONG)
+
+        assert 'get_free_entry_capital' in str(raised.value)
+
+    def test_no_margin_is_computed_per_position_at_spot(self):
+        """
+        The second reason, and it is why the figures are not merely blanked at the end.
+
+        The loop asked the broker adapter once per OPEN POSITION, every time the account was
+        asked for — on a method the decision path reaches through `get_free_entry_capital`.
+        """
+        portfolio = _spot_portfolio()
+        _buy(portfolio)
+        calls = []
+        original = portfolio.broker_config.calculate_margin
+        portfolio.broker_config.calculate_margin = (
+            lambda *a, **k: calls.append(a) or original(*a, **k))
+
+        portfolio.get_account_info(OrderDirection.LONG)
+
+        assert calls == [], f'the broker was asked for margin {len(calls)} time(s) at spot'
 
 
 class TestFreeEntryCapitalAnswersPerWorld:

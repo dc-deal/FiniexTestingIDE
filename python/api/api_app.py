@@ -10,6 +10,8 @@ which says for each what it serves and what it deliberately does not — a secon
 would be the copy nobody updates. `ROUTER_SURFACES` below is the authoritative mount table.
 """
 
+from typing import Dict
+
 from fastapi import Depends, FastAPI, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -26,12 +28,14 @@ from python.api.endpoints import (
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.exceptions.api_errors import ApiException
+from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 from python.framework.types.api.api_types import (
     ApiContractResponse,
     BrokerListResponse,
     HealthResponse,
     TimeframeInfo,
     TimeframeListResponse,
+    CallerResponse,
 )
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
@@ -52,6 +56,44 @@ ROUTER_SURFACES = (
     (reports_router.router, 'reports'),
     (sweeps_router.router, 'sweeps'),
 )
+
+
+def _describe_caller(request: Request, enforced: bool,
+                     identities: Dict[str, ApiConsumerIdentity]) -> CallerResponse:
+    """
+    Say who the server takes this request's caller to be.
+
+    The bearer check puts the verified consumer's name on `request.state.consumer`. While gating
+    is off that check is not mounted, so nothing is there, and the answer names nobody, even
+    when the caller sent a valid token.
+
+    Args:
+        request: The request being answered
+        enforced: Whether the bearer check is mounted
+        identities: Consumer name → identity, as the boot bound them
+
+    Returns:
+        The caller's client, account and grants, or just the gating state while it is off
+    """
+    consumer = getattr(request.state, 'consumer', None)
+    if consumer is None:
+        return CallerResponse(enforced=enforced)
+    identity = identities.get(consumer)
+    if identity is None:
+        # The boot refuses a live token without an account, so a verified consumer with no
+        # identity is a defect on this side. Answering it as an anonymous caller would hide it.
+        raise ApiException(
+            status_code=500, error='identity_unbound',
+            detail=f'Consumer {consumer!r} was authenticated but is bound to no account.')
+    return CallerResponse(
+        enforced=enforced,
+        client=identity.consumer,
+        account=identity.account.account_id,
+        account_kind=identity.account.kind,
+        display_name=identity.account.display_name,
+        grants=list(identity.grants),
+        note=identity.note,
+    )
 
 
 def create_app() -> FastAPI:
@@ -158,6 +200,14 @@ def create_app() -> FastAPI:
         index = BarsIndexManager()
         index.load_index()
         return BrokerListResponse(brokers=index.list_broker_types())
+
+    # Token-only like /brokers, and for the same reason it takes no grant: it is about the
+    # CALLER, and there is no path parameter for a grant to name. Deliberately not in
+    # ROUTER_SURFACES — a surface here would be a grant a token needs in order to ask what it
+    # holds.
+    @app.get('/api/v1/caller', response_model=CallerResponse, dependencies=guarded)
+    def caller(request: Request) -> CallerResponse:
+        return _describe_caller(request, auth.bearer is not None, auth.identities)
 
     for router, surface in ROUTER_SURFACES:
         app.include_router(

@@ -1,5 +1,6 @@
 {
   "name": "aggressive_trend_mock",
+  "bot_id": "aggtrend01",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",

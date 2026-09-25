@@ -1,6 +1,7 @@
 {
   "_comment": "THE RELEASE-CERTIFICATE PROFILE. #332 names ETHUSD primary, the release checklist runs this one by name, and it is the only field-study profile with a launch entry. REAL MONEY: adapter_type live, dry_run false. Its sibling kraken_spot_btcusd_field_study.json runs the identical phase sequence on a second pair and is NOT on the release path.",
   "name": "kraken_spot_ethusd_field_study",
+  "bot_id": "fseth01",
   "symbol": "ETHUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "live",

@@ -3,7 +3,7 @@ Time utility functions for readable duration formatting
 """
 
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -215,6 +215,32 @@ def parse_datetime(dt_str: str) -> datetime:
     dt = parser.parse(dt_str)
     dt = ensure_utc_aware(dt)
     return dt
+
+
+def parse_age_duration(text: str) -> timedelta:
+    """
+    Parse an operator-written age such as '30d' or '12h' into a duration.
+
+    Deliberately narrow: whole days or whole hours, nothing else. An age selector decides
+    what gets DELETED, so the one thing it must never do is accept an input it understood
+    differently than the person typing it — '30' alone could mean days, hours or seconds,
+    and guessing is how the wrong month goes.
+
+    Args:
+        text: The duration, a positive whole number followed by 'd' (days) or 'h' (hours)
+
+    Returns:
+        The duration
+    """
+    cleaned = text.strip().lower()
+    units = {'d': 'days', 'h': 'hours'}
+    if len(cleaned) < 2 or cleaned[-1] not in units or not cleaned[:-1].isdigit():
+        raise ValueError(
+            f"invalid age '{text}' — write a whole number of days or hours, e.g. '30d' or '12h'")
+    amount = int(cleaned[:-1])
+    if amount <= 0:
+        raise ValueError(f"invalid age '{text}' — must be greater than zero")
+    return timedelta(**{units[cleaned[-1]]: amount})
 
 
 def ensure_utc_aware(dt: datetime) -> datetime:
