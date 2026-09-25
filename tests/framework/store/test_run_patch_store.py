@@ -32,6 +32,7 @@ from python.framework.utils.git_info_utils import (
     get_repo_patch,
     get_repo_status,
 )
+from tests.shared.release_gate_session import RELEASE_GATE_MARKS, is_release_gate_session
 
 _PATCH = b'diff --git a/my_strategy.py b/my_strategy.py\n-THRESHOLD = 0.6\n+THRESHOLD = 0.5\n'
 
@@ -306,6 +307,26 @@ class TestRegistration:
         assert descriptor.form is RetrievalForm.DOCUMENT
         assert descriptor.index_path is None
         assert '#535' in descriptor.note, 'the lifetime question has an owner and says which'
+
+    def test_only_a_session_of_release_gates_alone_keeps_the_operators_store(self):
+        """
+        A release gate's certificate is a committed operator record, so the patch it names must
+        resolve in the operator's store — but one daily test in the same session is enough to
+        keep the redirect, because that test would write there too.
+        """
+        class _Item:
+            """A collected test carrying the given marks."""
+
+            def __init__(self, *marks: str):
+                self._marks = set(marks)
+
+            def get_closest_marker(self, name: str):
+                return name if name in self._marks else None
+
+        gates = [_Item(mark) for mark in RELEASE_GATE_MARKS]
+        assert is_release_gate_session(gates)
+        assert not is_release_gate_session(gates + [_Item('framework')])
+        assert not is_release_gate_session([]), 'an empty session is not a release gate'
 
     def test_the_suite_never_files_a_patch_in_the_operators_tree(self):
         """The suite runs from a dirty tree, so without the session fixture every run would."""

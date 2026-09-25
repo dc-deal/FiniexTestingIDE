@@ -107,6 +107,13 @@ the reader shows up here first. Pins that an untracked artifact under the report
 and that the exemption stays narrow: a modified tracked file there, an untracked file elsewhere, a
 sibling directory sharing the prefix and an entry flagged assume-unchanged all still count.
 
+`TestTheCertificateReadsTheRunsCodeIdentity` runs the certificate identity itself against throwaway
+repositories, because it now reads the run's code identity (#551): its own artifact is neither a
+change nor in the patch; a dirty tree is digested — with the same `diff_hash` it has without the
+artifact — and its patch kept without the artifact in it; a modified committed file in the reports
+directory still counts; and an unreadable tree is `git_dirty`, refused for a declared release as
+`TREE STATE UNKNOWN` while a `dev` rehearsal stays exempt — the fail-open the old read had.
+
 ## `test_run_origin.py` — where the two blocks are written and read (#551)
 
 The capture is mostly replaced here: what is under test is the wiring from the entry points to the

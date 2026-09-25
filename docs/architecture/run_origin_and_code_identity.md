@@ -246,6 +246,12 @@ coordinator, and a live session always captures — or refuses to start when it 
 one therefore means an unreadable header, or a session refused because its capture failed —
 logged as a warning, recorded as unknown, never a failed report phase.
 
+**Every release-gate certificate carries the same block**, captured through the same
+`capture_code_identity` with no components — it certifies this repository's code. Its `git_dirty`
+is `is_dirty()` too, so a declared release from a tree git could not read is refused rather than
+certified, and a `dev` rehearsal on a dirty tree keeps its patch. Details in
+[Release Certificates](release_certificates.md#the-shared-identity).
+
 **The run index flattens both blocks** into flat columns, identically on append and on rebuild:
 `origin_channel` · `origin_person` · `host_id` · `framework_dirty` · `code_dirty`. None means
 unknown. `framework_dirty` is this repository alone and unknown where git could not read it;

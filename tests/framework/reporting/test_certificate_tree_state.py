@@ -15,15 +15,24 @@ which was never the problem.
 
 Runs against a scripted `git`, not against this repository: the assertion is about the
 rule, and a test that reads the real working tree would pass or fail by whatever the
-developer happened to have open.
+developer happened to have open. The last class runs the certificate identity itself against
+THROWAWAY repositories, because since #551 it reads the run's code identity — digest, patch and
+the unknown-is-dirty rule — and a scripted git cannot render a patch.
 """
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
-from python.framework.utils import git_info_utils
+from python.framework.reporting.certificates.certificate_identity_builder import (
+    build_certificate_identity,
+)
+from python.framework.store.run_patch_store import RunPatchStore
+from python.framework.utils import code_identity_builder, git_info_utils, run_origin_builder
+from python.framework.utils.code_identity_builder import clear_package_digest_cache
 from python.framework.utils.git_info_utils import clear_git_caches, get_git_info
+from tests.shared.git_test_repos import make_repo, write_files
 
 REPORTS_DIR = 'tests/live_signal_feed/reports'
 
@@ -200,3 +209,97 @@ class TestTheExemptionStaysNarrow:
 
         assert info.dirty is True
         assert info.uncommitted_count == 1
+
+
+class TestTheCertificateReadsTheRunsCodeIdentity:
+    """
+    A certificate answers "is this code exactly one commit" through the run's code identity
+    (#551) — the answer the live real-money guard gives — and keeps a patch where it is not.
+
+    Before, it read the git state on its own, and an unreadable tree counted as CLEAN: a declared
+    release certified from a checkout git could not read passed the dirty check, with
+    `git_commit: 'unknown'` in the committed record.
+    """
+
+    _REPORTS = 'reports'
+    _ARTIFACT = 'reports/benchmark_report_dev_2026-09-25_101500.json'
+
+    @pytest.fixture(autouse=True)
+    def framework_repo(self, tmp_path, monkeypatch) -> Path:
+        """
+        A throwaway repository standing in for this one, holding a committed reports directory.
+
+        Redirected at BOTH readers of the framework root — the capture and the patch sink — so
+        the patch is filed as this repository's, where a certificate's patch belongs.
+
+        Returns:
+            The repository
+        """
+        clear_git_caches()
+        clear_package_digest_cache()
+        repo = make_repo(tmp_path / 'framework', {'app.py': 'VALUE = 1\n',
+                                                  'reports/.gitkeep': ''})
+        monkeypatch.setattr(code_identity_builder, 'get_framework_root', lambda: str(repo))
+        monkeypatch.setattr(run_origin_builder, 'get_framework_root', lambda: str(repo))
+        yield repo
+        clear_git_caches()
+        clear_package_digest_cache()
+
+    def _identity(self, release_version: str = '1.4.0'):
+        """
+        Build the identity a certificate would carry.
+
+        Args:
+            release_version: The declared version
+
+        Returns:
+            The certificate identity
+        """
+        return build_certificate_identity(release_version=release_version,
+                                          reports_dir=self._REPORTS)
+
+    def test_its_own_artifact_is_neither_a_change_nor_in_the_patch(self, framework_repo):
+        write_files(framework_repo, {self._ARTIFACT: '{"status": "PASSED"}\n'})
+
+        identity = self._identity()
+
+        assert identity.git_dirty is False and identity.uncommitted_count == 0
+        assert identity.code_identity.framework.diff_hash is None
+        assert identity.dirty_tree_warning() is None
+
+    def test_a_dirty_tree_is_digested_and_its_patch_kept_without_the_artifact(
+            self, framework_repo):
+        write_files(framework_repo, {'app.py': 'VALUE = 2\n'})
+        without_artifact = self._identity('dev').code_identity.framework.diff_hash
+        clear_git_caches()
+        write_files(framework_repo, {self._ARTIFACT: '{"status": "PASSED"}\n'})
+
+        identity = self._identity('dev')
+
+        framework = identity.code_identity.framework
+        assert identity.git_dirty is True and identity.uncommitted_count == 1
+        assert framework.diff_hash == without_artifact, 'the artifact is not part of the delta'
+        patch_key = Path(framework.patch_ref).name.removesuffix('.patch')
+        patch = RunPatchStore(Path(framework.patch_ref).parent).get(patch_key)
+        assert b'+VALUE = 2' in patch and b'benchmark_report' not in patch
+        assert framework.restorable is True
+        assert identity.to_dict()['code_identity']['framework']['patch_ref'] == framework.patch_ref
+
+    def test_a_modified_committed_file_in_the_reports_dir_still_counts(self, framework_repo):
+        write_files(framework_repo, {'reports/.gitkeep': 'edited\n'})
+
+        identity = self._identity()
+
+        assert identity.git_dirty is True and identity.uncommitted_count == 1
+        assert identity.dirty_tree_warning().startswith('DIRTY TREE')
+
+    def test_an_unreadable_tree_is_refused_for_a_declared_release(self, tmp_path, monkeypatch):
+        """The fail-open this closes: `git_dirty` used to be False wherever git gave no answer."""
+        monkeypatch.setattr(code_identity_builder, 'get_framework_root', lambda: None)
+        monkeypatch.setenv('PATH', str(tmp_path / 'no_binaries_here'))
+
+        identity = self._identity()
+
+        assert identity.git_commit == 'unknown' and identity.git_dirty is True
+        assert identity.dirty_tree_warning().startswith('TREE STATE UNKNOWN')
+        assert self._identity('dev').dirty_tree_warning() is None, 'a rehearsal stays exempt'

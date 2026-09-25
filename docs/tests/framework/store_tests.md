@@ -219,6 +219,11 @@ next put, even one that writes no patch; an existing one is left as it is; this 
 writes none. And the suite never writes into a real strategy repository: the session fixture
 redirects every foreign home, and one test asserts it for the operator's `user_algos/`.
 
+**A release gate keeps its patch.** Only a session made of release-gate suites alone leaves the
+operator's `run_patches/` in place, because its committed certificate names the patch. One daily
+test in the same session is enough to keep the redirect, and an empty session is not a release
+gate.
+
 **Registration.** The store is a RECORD opened by id, has no index, and its note names #535 as
 the owner of its lifetime question. The catalog counts only `.patch` files under the configured
 root, never a temporary file. And the suite never writes into the operator's `run_patches/`: the

@@ -41,9 +41,35 @@ carries what every certificate needs:
   "git_dirty": false, "uncommitted_count": 0,
   "comment": null,
   "isolation_active": true,
-  "workspace_overrides": {"files_present": ["app_config.json"], "unnamed_files": 0, "applied": false}
+  "workspace_overrides": {"files_present": ["app_config.json"], "unnamed_files": 0, "applied": false},
+  "code_identity": {                   // the run header's block (#551), same capture
+    "framework": {"root": "/app", "in_repository": true, "commit": "37469ab",
+                  "dirty": false, "diff_hash": null, "patch_ref": null, "restorable": true, …},
+    "repositories": [], "components": []
+  }
 }
 ```
+
+**The version-control half is the run's code identity, not a read of its own.** It comes from
+`capture_code_identity` — the call a run header makes — so a certificate and a run answer "which
+code" through one path, and the flat `git_*` fields are derived from it. Three consequences:
+
+- **One dirty rule, shared with the live real-money guard** (`CodeIdentity.is_dirty()`): a tree git
+  could not read counts as dirty. Before, the certificate read git on its own and an unreadable
+  tree counted as CLEAN — a declared release passed with `git_commit: "unknown"`. It is now
+  refused as `TREE STATE UNKNOWN`.
+- **A rehearsal on uncommitted code can be put back.** A `dev` certificate taken on a dirty tree
+  carries the `diff_hash` of the delta and a `patch_ref` into `run_patches/`: the recorded commit
+  plus that patch is the code that was measured. Two rehearsals with the same commit and the same
+  `diff_hash` ran the same code — a throughput difference between them is the machine, not the
+  code.
+- **Its own artifacts still do not count.** Untracked files in the certificate's reports directory
+  are neither a change nor in the digest nor in the patch; a modified COMMITTED file there is.
+
+A session made of release-gate suites alone keeps its patch in the operator's `run_patches/` — the
+test harness redirects the store only for the daily suite
+([Test Runner](../tests/tests_runner_docs.md)), because a committed certificate must point at a
+patch that still exists.
 
 Two guards come with it, and both exempt `dev` because a rehearsal declares nothing:
 

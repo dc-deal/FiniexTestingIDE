@@ -1,0 +1,63 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "warmup_rejected_after_mount",
+  "created": "2026-09-25T00:00:00+00:00",
+  "description": "Two ETHUSD windows. The first starts at the head of the archive, so its M30 warmup is short and the data quality phase rejects it AFTER its package was built; the second is ordinary.",
+  "global": {
+    "data_mode": "realistic",
+    "strategy_config": {
+      "decision_logic_type": "CORE/aggressive_trend",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "bollinger_main": "CORE/bollinger"
+      },
+      "workers": {
+        "rsi_fast": {
+          "periods": {
+            "M5": 14
+          }
+        },
+        "bollinger_main": {
+          "periods": {
+            "M30": 20
+          },
+          "deviation": 2.0
+        }
+      },
+      "decision_logic_config": {
+        "rsi_buy_threshold": 35,
+        "rsi_sell_threshold": 65,
+        "min_confidence": 0.6
+      }
+    },
+    "execution_config": {},
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 10000.0
+      }
+    },
+    "stress_test_config": {}
+  },
+  "scenarios": [
+    {
+      "name": "archive_head_short_warmup",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-01-24T14:20:00+00:00",
+      "end_date": "2026-01-24T20:20:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true
+    },
+    {
+      "name": "ordinary_window",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-01-25T02:20:00+00:00",
+      "end_date": "2026-01-25T08:20:00+00:00",
+      "max_ticks": null,
+      "data_mode": "realistic",
+      "enabled": true
+    }
+  ]
+}

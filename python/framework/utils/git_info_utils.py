@@ -98,7 +98,7 @@ def get_git_commit() -> Optional[str]:
     return None
 
 
-def _drop_untracked_under(status_lines: List[str], directory: str) -> List[str]:
+def drop_untracked_under(status_lines: List[str], directory: str) -> List[str]:
     """
     Remove untracked entries that live under one directory.
 
@@ -115,7 +115,7 @@ def _drop_untracked_under(status_lines: List[str], directory: str) -> List[str]:
     Returns:
         The lines that remain
     """
-    prefix = Path(directory).as_posix().rstrip('/') + '/'
+    prefix = _directory_prefix(directory)
     kept = []
     for line in status_lines:
         path = line[3:].strip().strip('"')
@@ -123,6 +123,39 @@ def _drop_untracked_under(status_lines: List[str], directory: str) -> List[str]:
             continue
         kept.append(line)
     return kept
+
+
+def untracked_under(status: RepoStatus, directory: str) -> List[str]:
+    """
+    The untracked paths of one repository status that live under one directory.
+
+    The path-level half of `drop_untracked_under`, for a reader that digests and patches the
+    changed paths rather than counting porcelain lines — the code identity of a certificate,
+    whose own artifacts are not code either.
+
+    Args:
+        status: The repository's status
+        directory: Repository-relative directory whose untracked entries do not count
+
+    Returns:
+        The untracked paths under it; a modified TRACKED file there is never among them
+    """
+    prefix = _directory_prefix(directory)
+    return [path for path in status.untracked_paths if path.startswith(prefix)]
+
+
+def _directory_prefix(directory: str) -> str:
+    """
+    A directory as the prefix its repository-relative paths start with.
+
+    Args:
+        directory: The directory
+
+    Returns:
+        Its forward-slash form with exactly one trailing slash — so `reports/` never matches
+        `reports_archive/`
+    """
+    return Path(directory).as_posix().rstrip('/') + '/'
 
 
 @lru_cache(maxsize=None)
@@ -172,7 +205,7 @@ def get_git_info(ignore_untracked_under: Optional[str] = None) -> Optional[GitIn
             return None
         status_lines = list(repo_status.status_lines)
         if ignore_untracked_under:
-            status_lines = _drop_untracked_under(status_lines, ignore_untracked_under)
+            status_lines = drop_untracked_under(status_lines, ignore_untracked_under)
 
         return GitInfo(
             branch=branch,

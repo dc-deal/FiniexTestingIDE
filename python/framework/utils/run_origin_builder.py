@@ -61,22 +61,28 @@ def build_run_origin(channel: RunChannel, allow_dirty: bool = False) -> RunOrigi
     )
 
 
-def capture_code_identity(strategy_configs: List[Dict]) -> CodeIdentity:
+def capture_code_identity(strategy_configs: List[Dict],
+                          ignore_untracked_under: Optional[str] = None) -> CodeIdentity:
     """
     Capture which code a run is about to run, keeping every dirty tree's patch.
 
-    Called at the START, before the header is written. The git reads behind it are cached per
-    process and per repository (§42), so the ledger's own git read at the end of the run reuses
-    them instead of paying for them a second time.
+    Called at the START, before the header is written — and by every release-gate certificate,
+    so a certificate and a run answer "which code" through one path. The git reads behind it are
+    cached per process and per repository (§42), so the ledger's own git read at the end of the
+    run reuses them instead of paying for them a second time.
 
     Args:
-        strategy_configs: Every strategy_config the run will execute
+        strategy_configs: Every strategy_config the run will execute; empty for a certificate,
+            which certifies this repository's code
+        ignore_untracked_under: A certificate's reports directory, whose untracked artifacts are
+            not code; None for a run
 
     Returns:
         The run's code identity
     """
     store = RunPatchStore(Path(AppConfigManager().get_run_patches_path()))
-    return build_code_identity(strategy_configs, patch_sink=_patch_sink(store))
+    return build_code_identity(strategy_configs, patch_sink=_patch_sink(store),
+                               ignore_untracked_under=ignore_untracked_under)
 
 
 def _patch_sink(framework_store: RunPatchStore) -> PatchSink:

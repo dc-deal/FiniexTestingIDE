@@ -36,6 +36,7 @@ from python.framework.store.abstract_store_index import store_index_filename
 from python.framework.store.run_patch_store import RunPatchStore
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.store_types import StoreId
+from tests.shared.release_gate_session import is_release_gate_session
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -116,7 +117,7 @@ def _isolate_run_config_store(tmp_path_factory):
 
 
 @pytest.fixture(scope='session', autouse=True)
-def _isolate_run_patch_store(tmp_path_factory):
+def _isolate_run_patch_store(tmp_path_factory, request):
     """
     Redirect the run-patch store to a throwaway dir for the whole test session.
 
@@ -124,7 +125,14 @@ def _isolate_run_patch_store(tmp_path_factory):
     that is dirty whenever somebody is working on it, so every test that captures a code identity
     with a patch sink would file the tree's diff in the OPERATOR's `run_patches/` — patches of
     code that was under test, not code that ran (§34).
+
+    The ONE exception is a session made of release gates alone (benchmark, live adapters, field
+    study, signal feed): their certificate is a committed operator record, and the patch it names
+    must resolve in the operator's store rather than in a directory pytest deletes (#551).
     """
+    if is_release_gate_session(request.session.items):
+        yield
+        return
     store_dir = tmp_path_factory.mktemp('run_patches')
     mp = pytest.MonkeyPatch()
     mp.setattr(AppConfigManager, 'get_run_patches_path', lambda self: str(store_dir))
