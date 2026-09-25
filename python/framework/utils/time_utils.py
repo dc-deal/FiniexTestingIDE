@@ -247,17 +247,20 @@ def ensure_utc_aware(dt: datetime) -> datetime:
     """
     Ensure datetime is UTC-aware.
 
-    Project policy: All datetimes must be UTC-aware.
+    Project policy: All datetimes must be UTC-aware. A naive value is taken AS UTC; an aware one
+    is CONVERTED to UTC — never passed through. `dateutil` hands back `tzlocal()` for a string
+    whose offset matches the machine's zone and a fixed offset for any other, and both keep the
+    instant right while `.hour`, `.date()` and `.weekday()` answer in that zone, not in UTC.
 
     Args:
         dt: Datetime object (naive or aware)
 
     Returns:
-        UTC-aware datetime
+        UTC-aware datetime, `tzinfo` exactly `timezone.utc`
     """
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
-    return dt
+    return dt.astimezone(timezone.utc)
 
 
 def mt5_weekday_to_python(mt5_weekday: int) -> int:

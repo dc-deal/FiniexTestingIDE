@@ -106,6 +106,7 @@ tests/
 │   ├── data_coverage/     unit — data format version spans (which collector schema produced which archive window, #453)
 │   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)
 │   ├── test_price_trigger.py  unit — the shared order-vs-quote predicate: limit/stop reached, book side (§45, #505)
+│   ├── test_time_utils_utc.py  unit — every parsed or normalised datetime is UTC, also on a machine in another zone (§9)
 │   ├── market_compatibility/ unit — market activity metric, validator
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
 │   ├── user_namespace/    unit — USER worker/decision discovery
