@@ -278,7 +278,7 @@ It is a state to pass through, not one to stay in.
 | GET | `/api/v1/reports/runs/{run_id}/portfolio` | Portfolio report (per-unit full projection + per-currency aggregates) |
 | GET | `/api/v1/reports/runs/{run_id}/execution-stats` | Execution-stats report (per-unit order counts + summed totals) |
 | GET | `/api/v1/reports/runs/{run_id}/pending-orders` | Pending-orders report (per-unit lifecycle + latency + active orders) |
-| GET | `/api/v1/reports/runs/{run_id}/scenario-details` | Scenario-details report (per-scenario execution + signal metadata, sim-only) |
+| GET | `/api/v1/reports/runs/{run_id}/scenario-details` | Scenario-details report (per-scenario execution + signal metadata, sim-only) — the authority for which scenarios a run has, failed ones included; each row carries its `market_type` |
 | GET | `/api/v1/reports/runs/{run_id}/run-summary` | Run-summary (cross-section KPIs: per-currency + global order counts) |
 | GET | `/api/v1/reports/runs/{run_id}/signal` | Signal-configuration report (per-source provenance + the run's decision basis: fresh / stale / blind ticks) |
 | GET | `/api/v1/reports/runs/{run_id}/worker-decision` | Worker/decision report (per-unit component stats) |
@@ -373,19 +373,51 @@ caller's back is worse than a refusal.
 
 The reports endpoints serve the **persisted** run-report artifacts of the unified reporting
 pipeline (#391) — the same canonical models the console and CSV render. They do **not** run or
-re-derive anything: `ReportStore` resolves a run by `run_id` under the logs tree
-(`logs/{scenario_sets,autotrader}/<owner>/<run_id>/io/`, the `io/` subfolder holding the
-report artifacts), reads the `trade_history.json` / `order_history.json` / `portfolio.json`
-artifact, and applies the section's filters
-server-side so the frontend renders rather than derives. A run without the requested artifact
-returns `404 run_not_found`.
+re-derive anything: `ReportStore` resolves a run by `run_id` through the run index under the run
+tree (`runs/{simulation,live}/<owner>/<run_id>/io/`, the `io/` subfolder holding the report
+artifacts), reads the section's artifact, and applies the section's filters server-side so the
+frontend renders rather than derives.
+
+**A missing section says WHY (contract 5).** One absence has four causes, and a consumer renders
+each differently, so the 404's `error` names which — read from the run's index row, which already
+records `reporting` and the artifacts the run persisted:
+
+| `error` | Meaning |
+|---|---|
+| `run_not_found` | no such run in the run index |
+| `reports_not_commissioned` | the run was started with `reporting: none` |
+| `run_not_completed` | no report artifact YET — the run is still running, or it ended before its report phase; from the server's side the two look the same (a running session and a dead one both have a header and nothing else) |
+| `artifact_not_produced` | the run persisted other sections but not this one — its pipeline does not write it (a live run has no `scenario-details`, `profiling` or `aggregated-portfolio`), or its outcome left nothing to write |
+
+`/config` keeps its own pair (`run_not_found`, `config_snapshot_missing`), because a configuration
+is registered at run START and a report section at its end.
 
 `GET /api/v1/reports/runs` is the index the `{run_id}` routes are addressed by: a consumer
-discovers runs there rather than guessing timestamp directory names. Each row carries the log
-group (`scenario_sets` = simulation, `autotrader` = live) and the owning set / profile name, so
-a run picker needs no follow-up request per run. A run appears once it has a trade-history
-artifact; an empty index is a normal `200`, never a 404. The model definitions live in `framework/types/api/report_types.py`;
-the pipeline is documented in [reporting_pipeline.md](reporting_pipeline.md).
+discovers runs there rather than guessing timestamp directory names. Each row carries the run's
+type as `group` (`simulation` | `live`) and the owning set / profile name, so a run picker needs no
+follow-up request per run. Every indexed run appears, whether or not it produced a report —
+`artifacts` names what it has and `has_reports` says whether it has any; an empty index is a normal
+`200`, never a 404. The model definitions live in `framework/types/api/report_types.py`; the
+pipeline is documented in [reporting_pipeline.md](reporting_pipeline.md).
+
+### Which list is complete — declared, attempted, produced, counted
+
+A simulation run's scenarios appear in four places, and the four counts differ on purpose: each
+route answers a different question. Four correct answers still read as a contradiction unless the
+questions are written down, so here they are:
+
+| Stage | What it is | Where |
+|---|---|---|
+| **declared** | every scenario the configuration names, `enabled: false` ones included | `/config` → `config.scenarios` |
+| **attempted** | every ENABLED scenario the engine tried, with an outcome — a scenario rejected by validation or by the data-quality phase is here with `status: failed` and its reason | `/scenario-details` → `units[].status` |
+| **produced** | every scenario that ran and wrote results | `/portfolio` → `units`, `/broker` → `units[].scenarios`, and the other per-unit sections |
+| **counted** | what the run's KPIs are summed over | `/run-summary` → `unit_count` |
+
+**`scenario-details` is the authority for "which scenarios does this run have"**: it is the one
+section built from the batch itself rather than from the results, so a scenario that never
+produced anything is still a row. The gap between declared and attempted is the disabled
+scenarios. A live run has no scenario grid at all — a session IS one unit, and the list of a bot's
+sessions is `/deployments/{deployment_id}`.
 
 ### Error Responses
 

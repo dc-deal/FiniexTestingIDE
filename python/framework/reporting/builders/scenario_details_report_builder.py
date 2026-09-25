@@ -8,6 +8,8 @@ batch directly — NOT via `RunUnit`, because failed scenarios carry no `tick_lo
 must still appear (the section is the full scenario status view).
 """
 
+from typing import Dict
+
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.api.report_types import (
     DataSourceRow,
@@ -33,15 +35,30 @@ def build_scenario_details_report_from_batch(
     Returns:
         ScenarioDetailsReport with one row per scenario
     """
-    rows = [
-        _to_row(result, batch.get_scenario_by_process_result(result))
-        for result in batch.process_result_list
-    ]
+    pairs = [(result, batch.get_scenario_by_process_result(result))
+             for result in batch.process_result_list]
+    market_types = _market_types({scenario.data_broker_type for _, scenario in pairs})
+    rows = [_to_row(result, scenario, market_types) for result, scenario in pairs]
     return ScenarioDetailsReport(
-        run_id=run_id, units=rows, data_sources=_data_sources(rows))
+        run_id=run_id, units=rows, data_sources=_data_sources(rows, market_types))
 
 
-def _data_sources(rows: list) -> list:
+def _market_types(broker_types: set) -> Dict[str, str]:
+    """
+    What each broker a run read from IS, resolved once for the rows and the roll-up alike.
+
+    Args:
+        broker_types: The data broker types the run's scenarios name
+
+    Returns:
+        broker type → market type
+    """
+    market_config = MarketConfigManager()
+    return {broker_type: market_config.get_market_type(broker_type).value
+            for broker_type in broker_types}
+
+
+def _data_sources(rows: list, market_types: Dict[str, str]) -> list:
     """
     Roll the scenario rows up per data source, resolving what each source IS exactly once.
 
@@ -54,11 +71,11 @@ def _data_sources(rows: list) -> list:
 
     Args:
         rows: The run's scenario rows, failed ones included
+        market_types: broker type → market type, resolved once for the whole report
 
     Returns:
         One row per data source, sorted by broker type
     """
-    market_config = MarketConfigManager()
     grouped: dict = {}
     for row in rows:
         entry = grouped.setdefault(
@@ -71,7 +88,7 @@ def _data_sources(rows: list) -> list:
     return [
         DataSourceRow(
             broker_type=broker_type,
-            market_type=market_config.get_market_type(broker_type).value,
+            market_type=market_types[broker_type],
             scenario_count=entry['count'],
             symbols=sorted(entry['symbols']),
             price_bases=joined_distinct(entry['bases']),
@@ -80,13 +97,15 @@ def _data_sources(rows: list) -> list:
     ]
 
 
-def _to_row(result: ProcessResult, scenario: SingleScenario) -> ScenarioDetailsRow:
+def _to_row(result: ProcessResult, scenario: SingleScenario,
+            market_types: Dict[str, str]) -> ScenarioDetailsRow:
     """Map one ProcessResult (+ scenario) to a row — success / failed / hybrid."""
     has_error = bool(result.error_type or result.error_message)
     common = dict(
         name=result.scenario_name,
         symbol=scenario.symbol,
         data_source=scenario.data_broker_type,
+        market_type=market_types[scenario.data_broker_type],
         # In `common`, so a FAILED row carries it too: a scenario that failed over development
         # data and one that failed over production data are different failures, and this row is
         # the only per-scenario place that distinction survives the run.

@@ -48,7 +48,7 @@ Define the strategy once in `global`, then one window per scenario with a `role`
   "scenario_set_name": "eurusd_robustness",
   "robustness": { "enabled": true, "metric": "expectancy", "oos_split": 0.3 },
   "global": {
-    "strategy_config": { "decision_logic_type": "USER/my_strategy", "...": "the ONE strategy" }
+    "strategy_config": { "decision_logic_type": "user_algos/my_algo/my_strategy.py", "...": "the ONE strategy" }
   },
   "scenarios": [
     { "name": "w_jan", "symbol": "EURUSD", "data_broker_type": "mt5",

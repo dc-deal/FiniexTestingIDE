@@ -42,6 +42,7 @@ from python.framework.types.api.report_types import (
     RunConfigSnapshot,
     RunInfo,
     RunListResponse,
+    RunReporting,
     RunSummary,
     ScenarioDetailsReport,
     SignalReport,
@@ -51,6 +52,43 @@ from python.framework.types.api.report_types import (
 )
 
 router = APIRouter()
+
+
+def _missing_artifact(run_id: str, section: str) -> ApiException:
+    """
+    The 404 for a report section a run does not have — naming WHY, never only "not found".
+
+    One absence has four causes, and a consumer renders each differently: the run is unknown; it
+    was started without reports; it has produced none YET — still running, or it ended before
+    its report phase, which look the same from here (§44); or it produced others but not this
+    one, because its pipeline does not write the section or its outcome left nothing to write.
+    All four are read from the run's index row, which already records `reporting` and the
+    artifacts the run persisted — no directory is walked to answer.
+
+    Args:
+        run_id: The run asked for
+        section: The report section's route name
+
+    Returns:
+        The 404 to raise, with one error code per cause
+    """
+    run = next((info for info in ReportStore().list_runs() if info.run_id == run_id), None)
+    if run is None:
+        return ApiException(404, 'run_not_found', f"No run '{run_id}' in the run index")
+    if run.reporting == RunReporting.NONE:
+        return ApiException(
+            404, 'reports_not_commissioned',
+            f"Run '{run_id}' was started without report artifacts (reporting: none)")
+    if not run.artifacts:
+        return ApiException(
+            404, 'run_not_completed',
+            f"Run '{run_id}' has no report artifacts yet — it is still running, or it ended "
+            f"before its report phase; from here the two look the same")
+    return ApiException(
+        404, 'artifact_not_produced',
+        f"Run '{run_id}' persisted {len(run.artifacts)} report artifact(s) but no {section} — "
+        f"its pipeline does not write this section, or its outcome left nothing to write. "
+        f"The run list's `artifacts` names what it has")
 
 
 @router.get('/reports/runs', response_model=RunListResponse)
@@ -92,9 +130,7 @@ def get_trade_history(
         end=_parse_iso(end, 'end'),
     )
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No trade-history artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'trade-history')
     return report
 
 
@@ -117,9 +153,7 @@ def get_order_history(
     """
     report = ReportStore().get_order_history(run_id, symbol=symbol, status=status)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No order-history artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'order-history')
     return report
 
 
@@ -136,9 +170,7 @@ def get_portfolio(run_id: str) -> PortfolioReport:
     """
     report = ReportStore().get(run_id, PORTFOLIO_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No portfolio artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'portfolio')
     return report
 
 
@@ -155,9 +187,7 @@ def get_execution_stats(run_id: str) -> ExecutionStatsReport:
     """
     report = ReportStore().get(run_id, EXECUTION_STATS_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No execution-stats artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'execution-stats')
     return report
 
 
@@ -174,9 +204,7 @@ def get_pending_orders(run_id: str) -> PendingOrdersReport:
     """
     report = ReportStore().get(run_id, PENDING_ORDERS_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No pending-orders artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'pending-orders')
     return report
 
 
@@ -193,9 +221,7 @@ def get_scenario_details(run_id: str) -> ScenarioDetailsReport:
     """
     report = ReportStore().get(run_id, SCENARIO_DETAILS_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No scenario-details artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'scenario-details')
     return report
 
 
@@ -212,9 +238,7 @@ def get_run_summary(run_id: str) -> RunSummary:
     """
     report = ReportStore().get(run_id, RUN_SUMMARY_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No run-summary artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'run-summary')
     return report
 
 
@@ -231,9 +255,7 @@ def get_worker_decision(run_id: str) -> WorkerDecisionReport:
     """
     report = ReportStore().get(run_id, WORKER_DECISION_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No worker-decision artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'worker-decision')
     return report
 
 
@@ -250,9 +272,7 @@ def get_profiling(run_id: str) -> ProfilingReport:
     """
     report = ReportStore().get(run_id, PROFILING_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No profiling artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'profiling')
     return report
 
 
@@ -269,9 +289,7 @@ def get_aggregated_portfolio(run_id: str) -> AggregatedPortfolioReport:
     """
     report = ReportStore().get(run_id, AGGREGATED_PORTFOLIO_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No aggregated-portfolio artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'aggregated-portfolio')
     return report
 
 
@@ -291,9 +309,7 @@ def get_warnings_errors(run_id: str) -> WarningsErrorsReport:
     except ReportArtifactUnreadableError as e:
         raise ApiException(409, 'artifact_unreadable', str(e)) from e
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No warnings-errors artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'warnings-errors')
     return report
 
 
@@ -310,9 +326,7 @@ def get_broker(run_id: str) -> BrokerReport:
     """
     report = ReportStore().get(run_id, BROKER_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No broker artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'broker')
     return report
 
 
@@ -330,9 +344,7 @@ def get_signal(run_id: str) -> SignalReport:
     """
     report = ReportStore().get(run_id, SIGNAL_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No signal artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'signal')
     return report
 
 
@@ -350,9 +362,7 @@ def get_feed_stability(run_id: str) -> FeedStabilityReport:
     """
     report = ReportStore().get(run_id, FEED_STABILITY_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No feed-stability artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'feed-stability')
     return report
 
 
@@ -376,9 +386,7 @@ def get_booking_periods(run_id: str) -> BookingPeriodsReport:
     """
     report = ReportStore().get(run_id, BOOKING_PERIODS_ARTIFACT)
     if report is None:
-        raise ApiException(
-            404, 'run_not_found',
-            f"No booking-periods artifact for run '{run_id}'")
+        raise _missing_artifact(run_id, 'booking-periods')
     return report
 
 

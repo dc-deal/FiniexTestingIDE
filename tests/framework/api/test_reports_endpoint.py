@@ -57,6 +57,7 @@ from python.framework.types.api.report_types import (
     PortfolioReport,
     PortfolioUnitRow,
     RunHeader,
+    RunReporting,
     RunSummary,
     RunSummaryCurrency,
     ScenarioDetailsReport,
@@ -316,6 +317,68 @@ def test_filter_by_symbol(client):
 def test_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/trade-history')
     assert response.status_code == 404
+    assert response.json()['error'] == 'run_not_found'
+
+
+class TestAMissingSectionSaysWhy:
+    """
+    A 404 on a report route used to read `run_not_found` for every cause, although the run was
+    usually right there. A consumer rendering an absent section cannot tell "this run never got
+    that far" from "this run does not make that section" unless the answer says which — so it
+    names one of four causes, read from the run's index row.
+    """
+
+    @staticmethod
+    def _register(root: Path, run_id: str, reporting: RunReporting) -> Path:
+        """
+        Register one more run in the fixture's tree.
+
+        Args:
+            root: The fixture's tmp tree
+            run_id: The run's identity
+            reporting: Whether it was commissioned to report
+
+        Returns:
+            The run's directory
+        """
+        run_dir = _run_logs(root).simulation / 'my_set' / run_id
+        (run_dir / IO_SUBDIR).mkdir(parents=True)
+        RunIndex(_index_path(root)).register_run(
+            RunHeader(run_id=run_id, start_time=datetime(2026, 6, 15, 13, 0, tzinfo=timezone.utc),
+                      run_type=RUN_TYPE_SIMULATION, run_name='my_set', reporting=reporting),
+            run_dir)
+        return run_dir
+
+    def test_a_run_started_without_reports_says_so(self, client, tmp_path):
+        self._register(tmp_path, '20260615_130000_bbbbbbbb', RunReporting.NONE)
+
+        response = client.get('/api/v1/reports/runs/20260615_130000_bbbbbbbb/portfolio')
+
+        assert response.status_code == 404
+        assert response.json()['error'] == 'reports_not_commissioned'
+
+    def test_a_run_with_no_artifact_yet_is_not_completed_rather_than_unknown(
+            self, client, tmp_path):
+        """Still running, or it died before its report phase — the two look the same here."""
+        self._register(tmp_path, '20260615_130000_cccccccc', RunReporting.EXPECTED)
+
+        response = client.get('/api/v1/reports/runs/20260615_130000_cccccccc/run-summary')
+
+        assert response.status_code == 404
+        assert response.json()['error'] == 'run_not_completed'
+
+    def test_a_section_the_run_did_not_produce_is_named_as_such(self, client, tmp_path):
+        run_id = '20260615_130000_dddddddd'
+        run_dir = self._register(tmp_path, run_id, RunReporting.EXPECTED)
+        write_artifact(_portfolio_report(), run_dir / IO_SUBDIR, PORTFOLIO_ARTIFACT)
+        RunIndex(_index_path(tmp_path)).record_artifacts(run_id, run_dir)
+
+        response = client.get(f'/api/v1/reports/runs/{run_id}/scenario-details')
+
+        assert response.status_code == 404
+        body = response.json()
+        assert body['error'] == 'artifact_not_produced'
+        assert 'scenario-details' in body['detail']
 
 
 def test_invalid_timestamp(client):

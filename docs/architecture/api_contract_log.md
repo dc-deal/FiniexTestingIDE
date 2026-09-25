@@ -26,6 +26,22 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 5 — 2026-09-25 (viewer#21)
+
+- A 404 on `/reports/runs/{run_id}/<section>` now names its CAUSE in `error`. It used to read
+  `run_not_found` for every cause, although the run was usually right there:
+  - `run_not_found` — no such run in the run index;
+  - `reports_not_commissioned` — the run was started with `reporting: none`;
+  - `run_not_completed` — the run has no report artifact yet: it is still running, or it ended
+    before its report phase, and from the server's side the two look the same;
+  - `artifact_not_produced` — the run persisted other sections but not this one, because its
+    pipeline does not write it or its outcome left nothing to write.
+
+  `/config` keeps its own two (`run_not_found`, `config_snapshot_missing`).
+- `scenario-details`: every `units[]` row carries `market_type`, resolved once from the same owner
+  as `data_sources[].market_type`, so a filter reads a field instead of joining the two. The row's
+  `data_source` IS the broker type — there is deliberately no second field for it.
+
 ## Version 4 — 2026-09-24 (#551)
 
 - `GET /api/v1/caller` says who the server takes the caller to be: `client` (the consumer the

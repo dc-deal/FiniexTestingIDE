@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 4
+API_CONTRACT_VERSION = 5
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -31,15 +31,13 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'caller: GET /api/v1/caller says who the server takes the caller to be — `client` (the '
-    'consumer the token authenticates as), `account` with `account_kind` (`person` | `service`) '
-    "and `display_name` (on whose behalf it calls), `grants` as a list, and the token's "
-    '`note`. A token is required while gating is on, and no grant. `enforced` names the '
-    "server's gating state: while it is false nothing verifies a presented token, so every "
-    'identity field is null even for a caller that sent a valid one',
-    'sweeps: `RunResultRow.git_dirty` on /api/v1/sweeps/{sweep_id} changed MEANING, not shape. '
-    'It used to cover this repository only; it now covers every repository a component of the '
-    'run came from, so a strategy from an uncommitted algo repository reads true. A code state '
-    'that could not be determined also reads true, where it used to read false — nothing says '
-    'it was clean',
+    'reports: a 404 on /reports/runs/{run_id}/<section> now names its CAUSE in `error`, where it '
+    'used to read `run_not_found` for all of them: `run_not_found` (no such run), '
+    '`reports_not_commissioned` (the run was started with reporting: none), `run_not_completed` '
+    '(the run has no report artifact yet — still running, or it ended before its report phase; '
+    'the two look the same), `artifact_not_produced` (the run persisted other sections but not '
+    'this one). /config keeps its own two',
+    'scenario-details: every `units[]` row carries `market_type` (e.g. `crypto`, `forex`), '
+    'resolved once from the same owner as `data_sources[].market_type`, so the two always agree. '
+    '`data_source` on the row IS the broker type',
 ]

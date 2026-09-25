@@ -453,6 +453,10 @@ class ScenarioDetailsRow(BaseModel):
     name: str
     symbol: str
     data_source: str = ''           # data broker type ("Symbol: <data_source>/<symbol>")
+    # What that broker IS, on the row a consumer filters — resolved once in DERIVE from its
+    # authoritative owner, the same answer the `data_sources` roll-up carries, so no reader has
+    # to join the two to learn whether a scenario traded crypto or forex.
+    market_type: str = ''
     # WHICH DATA this one scenario read (#518), beside the broker key it read it from. The
     # ledger records the same answer per RUN; this is the grain that says WHICH scenario, and
     # a set mixing brokers or eras is exactly where the run-level roll-up stops being enough.
