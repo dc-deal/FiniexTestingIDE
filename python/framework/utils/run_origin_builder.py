@@ -8,7 +8,8 @@ One unit for both header sites, the scenario set and the live session, so the tw
 cannot answer the same question two ways. The types these fill live in `run_origin_types.py`;
 the git reads and the component resolution behind the code identity live in
 `code_identity_builder.py`. What is decided HERE is only the wiring: which host, which client,
-and where a dirty tree's patch is kept.
+and where a dirty tree's patch is kept — this repository's in `run_patches/`, every other
+repository's inside that repository.
 """
 
 from pathlib import Path
@@ -26,6 +27,7 @@ from python.framework.types.run_origin_types import (
     RunOrigin,
 )
 from python.framework.utils.code_identity_builder import PatchSink, build_code_identity
+from python.framework.utils.git_info_utils import get_framework_root
 
 
 def build_run_origin(channel: RunChannel, allow_dirty: bool = False) -> RunOrigin:
@@ -61,7 +63,7 @@ def build_run_origin(channel: RunChannel, allow_dirty: bool = False) -> RunOrigi
 
 def capture_code_identity(strategy_configs: List[Dict]) -> CodeIdentity:
     """
-    Capture which code a run is about to run, keeping a dirty tree's patch in `run_patches/`.
+    Capture which code a run is about to run, keeping every dirty tree's patch.
 
     Called at the START, before the header is written. The git reads behind it are cached per
     process and per repository (§42), so the ledger's own git read at the end of the run reuses
@@ -77,9 +79,15 @@ def capture_code_identity(strategy_configs: List[Dict]) -> CodeIdentity:
     return build_code_identity(strategy_configs, patch_sink=_patch_sink(store))
 
 
-def _patch_sink(store: RunPatchStore) -> PatchSink:
+def _patch_sink(framework_store: RunPatchStore) -> PatchSink:
     """
-    A sink that keeps a patch in the store and never stops the run for it.
+    A sink that keeps each patch beside the code it describes, and never stops the run for it.
+
+    This repository's patches go to the run-patch store. A FOREIGN repository's — `user_algos/` is
+    one — stay INSIDE that repository, in `.finiex_run_patches/`: a private strategy lives in a
+    repository of its own so that its code never enters this project's tree, and a patch is a
+    full copy of the uncommitted part of it. Its reference is then relative to that repository's
+    root, so it stays true when the repository is moved.
 
     Never fatal, for the same reason registering a run's configuration is not: a patch that could
     not be kept costs its restorability and nothing else. The diff hash is still recorded, so the
@@ -87,16 +95,19 @@ def _patch_sink(store: RunPatchStore) -> PatchSink:
     was not kept.
 
     Args:
-        store: The run-patch store
+        framework_store: The run-patch store, for this repository's patches
 
     Returns:
         The sink the code identity builder calls for each dirty repository
     """
-    def keep(patch_hash: str, patch: bytes) -> Optional[str]:
+    framework_root = get_framework_root()
+
+    def keep(root: str, patch_hash: str, patch: bytes) -> Optional[str]:
         """
         Keep one patch.
 
         Args:
+            root: The top-level directory of the repository the patch belongs to
             patch_hash: The SHA256 of the patch bytes — the store's key, which is not the
                 header's `diff_hash` (a digest of the changed content, not of this rendering)
             patch: The patch bytes
@@ -104,12 +115,33 @@ def _patch_sink(store: RunPatchStore) -> PatchSink:
         Returns:
             Where the patch was kept, or None when it could not be
         """
+        foreign = root != framework_root
+        store = RunPatchStore.inside_repository(root) if foreign else framework_store
         try:
-            return store.put(patch_hash, patch)
+            stored = store.put(patch_hash, patch)
         except OSError as error:
             get_global_logger().warning(
-                f'⚠️ Run patch {patch_hash[:12]} could not be kept ({error}) — the run records '
-                f'its diff hash, but its uncommitted code cannot be restored from the store')
+                f'⚠️ Run patch {patch_hash[:12]} of {root} could not be kept ({error}) — the run '
+                f'records its diff hash, but its uncommitted code cannot be restored from it')
             return None
+        return _relative_to(stored, root) if foreign else stored
 
     return keep
+
+
+def _relative_to(reference: str, root: str) -> str:
+    """
+    A foreign patch's reference, relative to the repository that keeps it.
+
+    Args:
+        reference: Where the store put the patch
+        root: The repository's top-level directory
+
+    Returns:
+        The reference relative to the root, or as given when it lies elsewhere — an absolute
+        reference stands for itself
+    """
+    try:
+        return Path(reference).relative_to(root).as_posix()
+    except ValueError:
+        return reference

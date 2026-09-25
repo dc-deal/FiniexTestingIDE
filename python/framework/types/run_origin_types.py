@@ -79,8 +79,11 @@ class RepositoryState(BaseModel):
             or a deletion marker — in path order. Taken over content and never over git's
             rendering of a diff, whose bytes move with configuration, git version and object
             count; equal delta, equal digest. None on a clean tree
-        patch_ref: Where the patch restoring that delta was stored (`run_patches/`), None when
-            nothing was stored
+        patch_ref: Where the patch restoring that delta was kept, None when nothing was: under
+            `run_patches/` for this repository, INSIDE the repository itself for any other
+            (`.finiex_run_patches/<sha256>.patch`), so private strategy code never leaves its own
+            repository. A relative reference resolves against `root`; an absolute one stands for
+            itself
         patch_excluded: Changed paths deliberately left out of the patch — credential homes. Their
             content is not copied into the patch store, and the diff hash records only that they
             changed

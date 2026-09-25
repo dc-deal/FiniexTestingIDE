@@ -75,7 +75,10 @@ BROKER = 'kraken_spot'
 PROFILE_PATH = Path('configs/autotrader_profiles/production/my_bot_live.json')
 _RUN_ID = '20260924_120000_a1b2c3d4'
 
-_ALGO_PATCH = f'run_patches/{"4e01" * 16}.patch'
+# A foreign repository keeps its patch inside itself, under a reference relative to its root —
+# and every message shows it joined to that root.
+_ALGO_PATCH = f'.finiex_run_patches/{"4e01" * 16}.patch'
+_ALGO_PATCH_SHOWN = f'user_algos/{_ALGO_PATCH}'
 
 CLEAN = CodeIdentity(
     framework=RepositoryState(root='/app', commit='151c9889'),
@@ -367,7 +370,7 @@ class TestTheOverrideIsLoud:
 
         notices = [message for level, message in session._session_logger.lines
                    if 'REAL ORDERS FROM UNCOMMITTED CODE' in message]
-        assert len(notices) == 1 and _ALGO_PATCH in notices[0]
+        assert len(notices) == 1 and _ALGO_PATCH_SHOWN in notices[0]
         assert 'REAL ORDERS FROM UNCOMMITTED CODE' in capsys.readouterr().out
 
     def test_the_notice_is_not_a_second_warning(self):
@@ -406,7 +409,7 @@ class TestTheTier1Warning:
         [finding] = _post_run_findings(session)
         assert finding.severity is Severity.WARNING
         assert finding.domain is ValidationDomain.SETUP and finding.scope == 'run'
-        assert '--allow-dirty' in finding.message and _ALGO_PATCH in finding.message
+        assert '--allow-dirty' in finding.message and _ALGO_PATCH_SHOWN in finding.message
 
     def test_it_reaches_the_report_as_a_tier_1_row(self):
         session = _session(DIRTY, None, allow_dirty=True)
@@ -583,7 +586,7 @@ class TestTheGuardOverARealCapture:
 
         identity = build_code_identity(
             [{'decision_logic_type': 'CORE/simple_consensus', 'worker_instances': {}}],
-            patch_sink=store.put)
+            patch_sink=lambda root, key, patch: store.put(key, patch))
 
         with pytest.raises(UncommittedCodeError) as caught:
             validate_committed_code(identity, real_orders=True, allow_dirty=False,

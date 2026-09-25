@@ -42,7 +42,8 @@ The shape, with illustrative values — a session whose decision logic is loaded
                  "restorable": true },
   "repositories": [
     { "root": "/app/user_algos", "in_repository": true, "commit": "2f054f5", "dirty": true,
-      "changes": ["?? my_bot/"], "diff_hash": "4e01…", "patch_ref": "run_patches/7d19….patch",
+      "changes": ["?? my_bot/"], "diff_hash": "4e01…",
+      "patch_ref": ".finiex_run_patches/7d19….patch",
       "patch_excluded": [], "restorable": true }
   ],
   "components": [
@@ -162,13 +163,22 @@ could not be read records its code as unknown.
   rendering of a diff plays no part, so the same delta has the same digest on any machine, under
   any configuration and any git version. It identifies the delta; two runs with equal hashes ran
   the same uncommitted code.
-- **`patch_ref`** — where the patch restoring that delta was kept: `run_patches/` under the
-  SHA256 of the patch BYTES, which is a different number from the `diff_hash`. The patch is one
+- **`patch_ref`** — where the patch restoring that delta was kept, under the SHA256 of the patch
+  BYTES, which is a different number from the `diff_hash`. The patch is one
   pathspec-limited `git diff` against HEAD over a temporary copy of the index, so tracked changes,
   deletions and new files come out in one call and the repository's own index is never touched.
   Its rendering is pinned (`_PATCH_FORMAT`) against every setting known to break it or move it,
   so it applies under any configuration; the bytes remain one rendering, which is why the identity
   is the `diff_hash` and never the patch.
+- **Where a patch is kept depends on whose code it is.** This repository's patch goes to
+  `run_patches/`. Any OTHER repository — `user_algos/` is one — keeps its patch INSIDE ITSELF, in
+  `.finiex_run_patches/`: a private strategy has a repository of its own so that its code never
+  enters this project's tree, and a patch is a full copy of the uncommitted part of it. The
+  directory writes its own `.gitignore` holding `*`, so nothing has to be added to the
+  repository's ignore rules, `git add -A` never picks a patch up, and keeping one never makes the
+  tree dirty — which would otherwise refuse the next real-money start. A relative `patch_ref`
+  resolves against its repository's `root`: `run_patches/…` against this one,
+  `.finiex_run_patches/…` against the strategy's.
 - **`patch_excluded`** — changed paths under any directory named `credentials` are left out of
   the patch, and the diff hash records only that they changed. A real key pasted into a tracked
   placeholder would otherwise be copied into `run_patches/` at every run start, before the
@@ -386,13 +396,14 @@ Typed on a real-money start from uncommitted code, the flag lets the session thr
 trace in every place a reader looks:
 
 - the header records it: `origin.allow_dirty: true`;
-- the patch of every dirty repository git could diff is already in `run_patches/`, stored by the
-  capture, and the header's `patch_ref` points at it — with credential homes left out, as above;
+- the patch of every dirty repository git could diff is already kept — this repository's in
+  `run_patches/`, a strategy repository's inside that repository — stored by the capture, and the
+  header's `patch_ref` points at it, with credential homes left out, as above;
 - before the first order, one line in the session log and on the console names what is
   uncommitted and where its patch is, or why there is none:
 
   ```
-  ⚠️  REAL ORDERS FROM UNCOMMITTED CODE (--allow-dirty): algo user_algos/ 2 changes · untracked: my_bot/ (patch run_patches/7d19….patch)
+  ⚠️  REAL ORDERS FROM UNCOMMITTED CODE (--allow-dirty): algo user_algos/ 2 changes · untracked: my_bot/ (patch user_algos/.finiex_run_patches/7d19….patch)
   ```
 
 - after the run, the post-run validation reports a Tier-1 warning, check `uncommitted_code`,

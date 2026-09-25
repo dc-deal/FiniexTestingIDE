@@ -210,6 +210,15 @@ not a SHA256 digest is refused, because the key becomes a file name.
 untracked file are captured as a patch, stored, the tree reset, and the stored patch applied —
 and both files come back as they were.
 
+**A strategy repository keeps its own patches.** `RunPatchStore.inside_repository(<root>)` is
+the store under `<root>/.finiex_run_patches/`. Asserted against a real repository: a dirty tree's
+patch is kept there, the change is committed with `git add -A`, and the tree reads CLEAN with no
+patch in the commit — the directory's own `.gitignore` (`*`) is what makes that hold, and a patch
+git could see would refuse the next real-money start. A removed `.gitignore` comes back with the
+next put, even one that writes no patch; an existing one is left as it is; this repository's store
+writes none. And the suite never writes into a real strategy repository: the session fixture
+redirects every foreign home, and one test asserts it for the operator's `user_algos/`.
+
 **Registration.** The store is a RECORD opened by id, has no index, and its note names #535 as
 the owner of its lifetime question. The catalog counts only `.patch` files under the configured
 root, never a temporary file. And the suite never writes into the operator's `run_patches/`: the

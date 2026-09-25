@@ -31,7 +31,7 @@ worse. What they *can* share is how they describe themselves.
 |---|---|---|---|---|---|
 | 1 | `runs/` | RECORD | `run_id` | `runs_index.parquet`, from `header.json` | A · document |
 | 1b | `run_configs/` | RECORD | `config_id` — SHA256 over the normalised content | `run_configs_index.parquet` | A · document |
-| 1c | `run_patches/` | RECORD | patch hash — SHA256 over the patch bytes | none — opened by id | A · document |
+| 1c | `run_patches/` — this repository's; a strategy repository keeps its own inside itself | RECORD | patch hash — SHA256 over the patch bytes | none — opened by id | A · document |
 | 2 | `runs/ledger/` | RECORD | `(run_id, unit, segment_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
 | 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<profile>_<symbol>`, separator reserved | none — opened by key | A · document |
@@ -156,9 +156,8 @@ run_configs/
   autotrader_profiles/<config_id>.json
 ```
 
-That is not tidiness. A source may live in `user_algos/`, a separate repository this project
-never writes into, and an index whose entries lived outside its own root could not die with its
-store. The per-run snapshot in each run directory stays: it is the evidence, and an id that
+That is not tidiness. A source may live in `user_algos/`, a separate repository, and an index
+whose entries lived outside its own root could not die with its store. The per-run snapshot in each run directory stays: it is the evidence, and an id that
 cannot be resolved back to bytes is not one.
 
 **Several rows per source file are NORMAL here, unlike every other store.** Each row is one
@@ -193,18 +192,34 @@ backtest afterwards would be compared against code that no longer exists. This s
 patch that separates the tree from its commit, and the header's `code_identity` names it:
 
 ```
-run_patches/
+run_patches/                        this repository's patches
   <patch_hash>.patch    one diff against the commit: tracked changes, deletions and every
                         untracked file as a creation — credential homes left out
+
+<strategy repository>/              any OTHER repository a strategy came from, e.g. user_algos/
+  .finiex_run_patches/
+    .gitignore          `*` — hides the directory, itself included
+    <patch_hash>.patch  the same entry, kept beside the code it describes
 ```
+
+**A strategy repository keeps its patches inside itself.** A private strategy has a repository of
+its own so that its code never enters this project's tree — and a patch is a full copy of the
+uncommitted part of it, so filing it in `run_patches/` would undo exactly that separation. The
+directory writes its own `.gitignore` (the `.pytest_cache` pattern): nobody edits the repository's
+ignore rules, `git add -A` never picks a patch up, and keeping a patch never turns the tree dirty —
+which would refuse the next real-money start from a freshly committed repository. An existing
+`.gitignore` there is left as it is. These homes are not a catalog entry of their own: a strategy
+can be loaded from any path, so the set of them is no configuration — the run headers that name
+them are the list.
 
 **Two digests, and only one of them is a key here.** The header's `diff_hash` is taken over the
 CONTENT of the changed paths — path, executable bit and bytes — so the same delta has the same
 identity on any machine, under any git configuration and any git version. The patch is one
 RENDERING of that delta, and the store files it under the SHA256 of exactly its bytes. The header
-names the entry in `patch_ref` (`run_patches/<patch_hash>.patch` under the default
-`app_config.json::paths.run_patches`); the file name IS the key, so a moved root still resolves
-through the store by that name. `diff_hash` is never a file name.
+names the entry in `patch_ref`, relative to the repository's `root` —
+`run_patches/<patch_hash>.patch` under the default `app_config.json::paths.run_patches` for this
+repository, `.finiex_run_patches/<patch_hash>.patch` for a strategy's; the file name IS the key, so
+a moved root still resolves through the store by that name. `diff_hash` is never a file name.
 
 Restoring the code that ran is the recorded commit, a check, and one `git apply`. The check is
 the one the store's own read makes: the file must hash to its name — a damaged entry would
@@ -214,6 +229,7 @@ not against the project root:
 
 ```bash
 patch="$PWD/run_patches/<patch_hash>.patch"                   # run from the project root
+# a strategy repository's: patch="<repository>/.finiex_run_patches/<patch_hash>.patch"
 git -C <repository> worktree add /tmp/restored <commit>
 echo "<patch_hash>  $patch" | sha256sum --check && git -C /tmp/restored apply "$patch"
 ```

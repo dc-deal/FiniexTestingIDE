@@ -20,10 +20,18 @@ from python.framework.exceptions.run_patch_errors import (
     RunPatchCorruptError,
     RunPatchHashMismatchError,
 )
-from python.framework.store.run_patch_store import PATCH_SUFFIX, RunPatchStore
+from python.framework.store.run_patch_store import (
+    FOREIGN_PATCH_DIR,
+    PATCH_SUFFIX,
+    RunPatchStore,
+)
 from python.framework.store.store_catalog import StoreCatalog
 from python.framework.types.store_types import RetrievalForm, StoreId, StoreKind
-from python.framework.utils.git_info_utils import clear_git_caches, get_repo_patch
+from python.framework.utils.git_info_utils import (
+    clear_git_caches,
+    get_repo_patch,
+    get_repo_status,
+)
 
 _PATCH = b'diff --git a/my_strategy.py b/my_strategy.py\n-THRESHOLD = 0.6\n+THRESHOLD = 0.5\n'
 
@@ -200,6 +208,93 @@ class TestRestoration:
         _git(repo, 'apply', str(restored))
         assert (repo / 'my_strategy.py').read_text(encoding='utf-8') == 'THRESHOLD = 0.5\n'
         assert (repo / 'my_helper.py').read_text(encoding='utf-8') == 'LOOKBACK = 21\n'
+
+
+class TestAForeignRepositoryKeepsItsOwnPatches:
+    """
+    A repository other than this one keeps its patches INSIDE ITSELF (#551), so private strategy
+    code never enters this project's tree. What makes that safe fails silently when broken: a patch
+    directory git can see turns the tree dirty, and the next real-money start from a freshly
+    committed repository refuses over a file the operator never wrote.
+    """
+
+    @staticmethod
+    def _committed_repo(path: Path) -> Path:
+        """
+        A repository holding one committed strategy file.
+
+        Args:
+            path: Where to create it
+
+        Returns:
+            The repository directory
+        """
+        path.mkdir()
+        _git(path, 'init', '--quiet')
+        (path / 'my_strategy.py').write_text('THRESHOLD = 0.6\n', encoding='utf-8')
+        _git(path, 'add', 'my_strategy.py')
+        _git(path, 'commit', '--quiet', '-m', 'first')
+        return path
+
+    def test_the_home_is_inside_the_repository(self, tmp_path, real_foreign_patch_homes):
+        ref = RunPatchStore.inside_repository(str(tmp_path)).put(_hash(_PATCH), _PATCH)
+        assert Path(ref) == tmp_path / FOREIGN_PATCH_DIR / f'{_hash(_PATCH)}{PATCH_SUFFIX}'
+        assert Path(ref).read_bytes() == _PATCH
+
+    def test_keeping_a_patch_never_dirties_the_repository(self, tmp_path,
+                                                          real_foreign_patch_homes):
+        """
+        The operator's ordinary path: a dirty tree runs, its patch is kept, the change is
+        committed with `add -A` — and the tree reads CLEAN, with no patch in the commit.
+        """
+        repo = self._committed_repo(tmp_path / 'my_algos')
+        (repo / 'my_strategy.py').write_text('THRESHOLD = 0.5\n', encoding='utf-8')
+        RunPatchStore.inside_repository(str(repo)).put(_hash(_PATCH), _PATCH)
+
+        _git(repo, 'add', '-A')
+        _git(repo, 'commit', '--quiet', '-m', 'second')
+        clear_git_caches()
+        try:
+            status = get_repo_status(str(repo))
+        finally:
+            clear_git_caches()
+
+        assert status is not None and status.dirty is False, status.status_lines
+        assert (repo / FOREIGN_PATCH_DIR / '.gitignore').read_text(encoding='utf-8') == '*\n'
+        committed = subprocess.run(['git', '-C', str(repo), 'ls-files'], check=True,
+                                   capture_output=True, text=True).stdout.split()
+        assert committed == ['my_strategy.py'], 'no patch reached the commit'
+
+    def test_a_removed_ignore_file_comes_back_with_the_next_patch(self, tmp_path,
+                                                                  real_foreign_patch_homes):
+        """Checked on every put — also one that finds its patch already kept and writes nothing."""
+        store = RunPatchStore.inside_repository(str(tmp_path))
+        store.put(_hash(_PATCH), _PATCH)
+        marker = tmp_path / FOREIGN_PATCH_DIR / '.gitignore'
+        marker.unlink()
+
+        store.put(_hash(_PATCH), _PATCH)
+        assert marker.read_text(encoding='utf-8') == '*\n'
+
+    def test_an_existing_ignore_file_is_left_as_it_is(self, tmp_path, real_foreign_patch_homes):
+        marker = tmp_path / FOREIGN_PATCH_DIR / '.gitignore'
+        marker.parent.mkdir()
+        marker.write_text('# kept on purpose\n*\n', encoding='utf-8')
+
+        RunPatchStore.inside_repository(str(tmp_path)).put(_hash(_PATCH), _PATCH)
+        assert marker.read_text(encoding='utf-8') == '# kept on purpose\n*\n'
+
+    def test_this_repositorys_store_writes_no_ignore_file(self, tmp_path):
+        """`run_patches/` is covered by this repository's own ignore rules."""
+        RunPatchStore(tmp_path).put(_hash(_PATCH), _PATCH)
+        assert [entry.name for entry in tmp_path.iterdir()] == [
+            f'{_hash(_PATCH)}{PATCH_SUFFIX}']
+
+    def test_the_suite_never_files_a_patch_in_a_real_foreign_repository(self):
+        """The operator's own `user_algos/` is such a repository; the session fixture redirects it."""
+        operator_repository = Path('user_algos').resolve()
+        ref = RunPatchStore.inside_repository(str(operator_repository)).put(_hash(_PATCH), _PATCH)
+        assert not Path(ref).resolve().is_relative_to(operator_repository)
 
 
 class TestRegistration:

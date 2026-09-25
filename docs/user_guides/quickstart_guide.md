@@ -609,7 +609,9 @@ git add -A && git commit -m "my first strategy"
 ```
 
 Every run header then records the commit your strategy ran from, and a run from uncommitted work
-also stores a patch that restores it. Without a repository a backtest still runs, but its report
+also stores a patch that restores it — inside your repository, in `.finiex_run_patches/`, so your
+strategy code never leaves it. That directory ignores itself: it never shows up in `git status`
+and never needs a line in your `.gitignore`. Without a repository a backtest still runs, but its report
 carries a warning that it can never be reproduced — and a session that would place **real orders**
 refuses to start. Details: [Run Origin and Code Identity](../architecture/run_origin_and_code_identity.md).
 

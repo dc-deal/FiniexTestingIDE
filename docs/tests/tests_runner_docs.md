@@ -153,6 +153,7 @@ session. All of them are session-scoped and need no opt-in:
 | the cross-run results ledger | `_isolate_run_results_ledger` | `tmp_path_factory` |
 | the run-config store | `_isolate_run_config_store` | `tmp_path_factory` |
 | the run-patch store | `_isolate_run_patch_store` | `tmp_path_factory` |
+| every strategy repository's own patch home (`.finiex_run_patches/`) | `_isolate_foreign_run_patches` — a test in throwaway repositories puts the real one back with `real_foreign_patch_homes` | `tmp_path_factory` |
 | both carry-over stores | `_isolate_carry_over_stores` | `tmp_path_factory` |
 
 **Why redirect rather than switch logging off.** Turning `file_logging.scenario.enabled` off
@@ -178,6 +179,7 @@ location and cleans it up:
 ├── run_results_ledger0/        ← _isolate_run_results_ledger
 ├── run_configs0/               ← _isolate_run_config_store
 ├── run_patches0/               ← _isolate_run_patch_store
+├── foreign_run_patches0/       ← _isolate_foreign_run_patches
 └── carry_over0/                ← _isolate_carry_over_stores
 ```
 

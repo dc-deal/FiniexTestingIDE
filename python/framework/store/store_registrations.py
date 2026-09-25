@@ -110,8 +110,8 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             note='Every configuration that can START a run — scenario sets and AutoTrader '
                  'profiles alike (#538). A RECORD because it says what a run was configured '
                  'with, and it holds its OWN copy of those bytes rather than pointing at where '
-                 'they were found: a source may live in user_algos/, a separate repository this '
-                 'project never writes into, and an index whose entries live outside its own '
+                 'they were found: a source may live in user_algos/, a separate repository '
+                 'that is not this store, and an index whose entries live outside its own '
                  'root could not die with its store. SEVERAL rows per source file are the '
                  'normal case here and not a defect — each one is a version, and that is the '
                  'history. Three hashes per entry, because a change means three things: the '
@@ -128,9 +128,14 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             form=RetrievalForm.DOCUMENT,
             backend=StoreBackend.DISK,
             entry_glob=f'*{PATCH_SUFFIX}',
-            note='The patch of every dirty tree a run ran from (#551): tracked changes plus '
-                 'untracked files, so applying it on top of the commit the run header names '
-                 'restores the code that ran. Credential homes are left out and named in the '
+            note='The patch of every dirty tree of THIS repository a run ran from (#551): '
+                 'tracked changes plus untracked files, so applying it on top of the commit the '
+                 'run header names restores the code that ran. Any OTHER repository a strategy '
+                 'came from keeps its patches inside itself (.finiex_run_patches/, self-ignoring), '
+                 'so private strategy code never enters this tree; those homes are not listed '
+                 'here, because a strategy can be loaded from any path and the set of them is '
+                 "no configuration. The header's patch_ref resolves against its repository's "
+                 'root. Credential homes are left out and named in the '
                  "header's patch_excluded, so no secret is ever copied here. Content-addressed "
                  '— equal patches are one file, and both a write and a read verify the bytes '
                  'against their name. No index: a patch is opened by the file name the run '

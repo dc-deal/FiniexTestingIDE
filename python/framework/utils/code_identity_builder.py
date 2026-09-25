@@ -68,9 +68,10 @@ _LAST_DIGESTS: Dict[str, Optional[str]] = {}
 # location (python/framework/utils/ → the root), so a refusal can still name a path.
 _MODULE_CHECKOUT = Path(__file__).resolve().parents[3]
 
-# Receives (patch hash, patch bytes) and answers where the patch was stored — or None when it
-# could not be, which leaves the diff hash recorded and the patch reference empty.
-PatchSink = Callable[[str, bytes], Optional[str]]
+# Receives (repository root, patch hash, patch bytes) and answers where the patch was stored — or
+# None when it could not be, which leaves the diff hash recorded and the patch reference empty. The
+# root is what lets the sink keep a patch beside the code it describes.
+PatchSink = Callable[[str, str, bytes], Optional[str]]
 
 
 def build_code_identity(
@@ -249,7 +250,7 @@ def _repository_state(root: str, patch_sink: Optional[PatchSink]) -> RepositoryS
     patch = get_repo_patch(root, tuple(excluded))
     if patch is None or patch_sink is None:
         return state
-    state.patch_ref = patch_sink(hashlib.sha256(patch).hexdigest(), patch)
+    state.patch_ref = patch_sink(root, hashlib.sha256(patch).hexdigest(), patch)
     # A nested repository shows as one directory entry — untracked with a trailing slash, or a
     # submodule's gitlink without one (its patch hunk is a `Subproject commit …-dirty` line); its
     # content cannot be in the patch, so a tree dirty through one is recorded, never claimed

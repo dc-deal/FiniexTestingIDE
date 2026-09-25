@@ -12,8 +12,8 @@ the live half has carried `param_hash` and `profile_hash` since #497.
 
 **The store owns its own bytes.** Registering a config FREEZES it here under its content id
 rather than pointing at where it was found. That is not tidiness: a source may live in
-`user_algos/`, which is a separate repository this project never writes into, and an index whose
-entries live outside its own root could not die with its store (§44).
+`user_algos/`, which is a separate repository, and an index whose entries live outside its own
+root could not die with its store (§44).
 
 **Resolution by name is the second job and the one that is measured.** `_resolve_path` used to
 locate a config with a recursive glob, twice per set, over a tree of 107 directories — 11.6 s of
