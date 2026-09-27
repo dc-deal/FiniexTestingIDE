@@ -8,6 +8,7 @@ API serves.
 
 from typing import List, Optional
 
+from python.framework.config_directory.config_directory_discovery import location_label
 from python.framework.types.api.directory_types import (
     DirectoryDetailResponse,
     DirectoryListResponse,
@@ -148,4 +149,4 @@ def _where(row: DirectoryRow) -> str:
     Returns:
         `configs/backtesting`, `user_algos`, …
     """
-    return f'{row.origin.value}/{row.folder}' if row.folder else row.origin.value
+    return location_label(row.origin, row.folder)

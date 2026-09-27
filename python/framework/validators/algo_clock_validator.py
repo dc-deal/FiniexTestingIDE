@@ -96,5 +96,6 @@ def validate_algo_clock(classes: Iterable[type]) -> None:
     if violations:
         raise AlgoClockViolationError(
             'Wall-clock read in decision logic / worker code — use '
-            'self.trading_api.get_current_time() (§9):\n  ' + '\n  '.join(violations)
+            'self.trading_api.get_current_time(), the run\'s own clock, so a backtest can be '
+            'reproduced:\n  ' + '\n  '.join(violations)
         )

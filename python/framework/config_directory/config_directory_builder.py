@@ -96,6 +96,29 @@ def read_config_file(candidate: DiscoveredConfigFile, market_type_of: MarketType
         return DirectoryRow(status=ConfigReadStatus.UNREADABLE, reason=str(error), **base)
 
 
+def config_kind_of(path: Path) -> Optional[ConfigKind]:
+    """
+    Which kind of configuration a file is, by the same markers the directory reads.
+
+    Args:
+        path: The file
+
+    Returns:
+        Its kind, or None for a file that does not parse or carries neither marker
+    """
+    try:
+        data = _load(path)
+    except ConfigFileUnreadable:
+        return None
+    if not isinstance(data, dict):
+        return None
+    if SCENARIO_SET_MARKER in data:
+        return ConfigKind.SCENARIO_SET
+    if PROFILE_MARKERS <= data.keys():
+        return ConfigKind.AUTOTRADER_PROFILE
+    return None
+
+
 def read_scenarios(path: Path, market_type_of: MarketTypeOf) -> List[DirectoryScenario]:
     """
     A scenario set's scenarios, read fresh from its file, each after the strategy cascade.

@@ -67,7 +67,7 @@ def render_missing_records(rows: List[RunResultRow], indent: str = '  ') -> None
           f'checked:')
     print(f'{indent}   their run directory is gone and no prune recorded removing it. The '
           f'figures stand,')
-    print(f'{indent}   the records behind them do not — so nothing can re-derive them (§48).')
+    print(f'{indent}   the records behind them do not — so nothing can re-derive them.')
     for run_id in sorted(runs):
         row = next(r for r in rows if r.run_id == run_id)
         print(f'{indent}     {run_id}  {row.run_timestamp}  {row.scenario_set_name}')

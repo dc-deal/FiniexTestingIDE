@@ -14,6 +14,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import (
     DeploymentConfig,
     SafetyConfig,
 )
+from python.framework.types.config_directory_types import ConfigKind
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     ApiMonitorConfig,
     AutotraderExecutionDefaults,
@@ -39,6 +40,7 @@ from python.framework.utils.config_merge_utils import (
     deep_merge,
     without_meta_keys,
 )
+from python.framework.validators.config_name_validator import refuse_config_name_conflict
 
 # ============================================
 # Known config keys per profile section
@@ -111,6 +113,9 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     path = Path(config_path)
     if not path.exists():
         raise FileNotFoundError(f'AutoTrader config not found: {config_path}')
+    # A run records its configuration by file name alone — a scenario set of the same name would
+    # make every record of this session ambiguous.
+    refuse_config_name_conflict(path.name, ConfigKind.AUTOTRADER_PROFILE)
 
     with open(path, 'r') as f:
         raw_profile_only = json.load(f)

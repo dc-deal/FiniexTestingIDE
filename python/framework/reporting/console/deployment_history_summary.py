@@ -152,5 +152,6 @@ def render_deployment_history(
           'where a row')
     print('predates the end stamp it is measured start-to-start and labelled, which '
           'overstates it.')
-    print('Descend into one session: runs/live/<profile>/<run id>/ — see §36 for which log '
-          'answers what.')
+    print('Descend into one session: runs/live/<profile>/<run id>/ — its summary, session log and '
+          'events.csv each answer a different question '
+          '(docs/autotrader/autotrader_observability.md).')

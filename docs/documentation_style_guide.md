@@ -116,6 +116,13 @@ A fact restated in a second document goes wrong the day the first one changes, a
 nobody edits is the one that decays. Link to the owner of the fact. This holds for
 configuration defaults, thresholds, file paths and counts alike.
 
+## 12. Explain a convention in words, never by a rule number
+
+"The error pot (§35)" tells a reader nothing: there is no numbered rulebook in this repository for
+them to open, so the reference answers no question and makes the sentence look as if it had. Where
+a document leans on a convention, it states the convention's reason in a sentence of its own — or
+links to the document that explains it, by that document's heading.
+
 ---
 
 ## Three audiences, three depths
@@ -140,3 +147,4 @@ abstraction and that is the bug to fix.
 - Is every number dated, and does every count refer to something that cannot grow?
 - One H1, headings named for their content, prose wrapped?
 - Is anything restated here that another document owns?
+- Does any sentence lean on a rule number (`§…`) instead of saying the rule?

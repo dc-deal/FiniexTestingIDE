@@ -35,8 +35,13 @@ from python.framework.types.api.directory_types import (
     DirectoryListResponse,
     DirectoryRow,
 )
-from python.framework.types.config_directory_types import ConfigKind, ConfigReadStatus
+from python.framework.types.config_directory_types import (
+    ConfigKind,
+    ConfigReadStatus,
+    DiscoveredConfigFile,
+)
 from python.framework.types.log_layout_types import RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
+from python.framework.validators.config_name_validator import config_name_conflict
 
 # How long a refreshed directory is served before the next request walks the roots again. The
 # walk is the cost — a `stat` per entry across the bridged mount (§42), ~0.2 s on this tree — so
@@ -54,6 +59,29 @@ _MEMO: Dict[str, Tuple[float, List[DirectoryRow], Dict[str, Path]]] = {}
 def clear_config_directory_memo() -> None:
     """Forget every served directory, so the next request walks the roots again."""
     _MEMO.clear()
+
+
+def _with_name_conflict(candidate: DiscoveredConfigFile, row: DirectoryRow) -> DirectoryRow:
+    """
+    A row whose name is also taken by a configuration of the other kind, marked as unusable.
+
+    Judged at serve time, never cached: the conflict is a fact about OTHER files, and a cached row
+    is a function of its own file only.
+
+    Args:
+        candidate: The file, with the same-named files it wins over
+        row: Its reading
+
+    Returns:
+        The row, `unreadable` with the conflict as its reason when the name is ambiguous
+    """
+    if row.status != ConfigReadStatus.READABLE or not candidate.shadowed_files:
+        return row
+    reason = config_name_conflict(candidate.path.name, row.kind,
+                                  candidates=candidate.shadowed_files)
+    if reason is None:
+        return row
+    return row.model_copy(update={'status': ConfigReadStatus.UNREADABLE, 'reason': reason})
 
 
 class ConfigDirectory:
@@ -163,7 +191,7 @@ class ConfigDirectory:
                   'row_json': row.model_dump_json()} for candidate, row in entries],
                 columns=ConfigDirectoryIndex.COLUMNS))
 
-        served = [(candidate, row) for candidate, row in entries
+        served = [(candidate, _with_name_conflict(candidate, row)) for candidate, row in entries
                   if row.status != ConfigReadStatus.NOT_A_CONFIG]
         runs = self._run_index.read()
         rows = [self._with_runs(row.model_copy(update={'shadowed': candidate.shadowed}), runs)

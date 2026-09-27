@@ -34,7 +34,8 @@ class DirectoryRow(BaseModel):
         origin: The root it lives under
         folder: Its sub-folder inside `configs/` ('' otherwise — the operator's own layout is not
             served)
-        status: `readable` or `unreadable`; never a validation verdict
+        status: `readable` or `unreadable` (it does not parse, or its name is also a
+            configuration of the other kind); never a validation verdict
         reason: Why it is unreadable, '' otherwise
         name: The scenario set's `scenario_set_name`, or the profile's `name`
         modified_at: When the file last changed, ISO-8601 UTC — a file being edited shows here

@@ -11,6 +11,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.store.run_config_store import RunConfigStore
 from python.scenario.scenario_set_resolver import resolve_scenario_set_path
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.config_directory_types import ConfigKind
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.config_types.backtesting_config_types import (
     DefaultScenarioExecutionConfig,
@@ -28,6 +29,7 @@ from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.utils.config_merge_utils import check_unknown_keys, validate_merged_config
 from python.framework.utils.parameter_override_detector import ParameterOverrideDetector
 from python.framework.utils.time_utils import parse_datetime
+from python.framework.validators.config_name_validator import refuse_config_name_conflict
 from python.scenario.generator.window_materializer import WindowMaterializer
 from python.scenario.scenario_cascade import ScenarioCascade
 
@@ -88,10 +90,13 @@ class ScenarioConfigLoader:
             filename: Full path or config filename (e.g., "eurusd_3_windows.json")
 
         Returns:
-            Resolved Path
+            Resolved Path — refused when its name is also an AutoTrader profile's, because a run
+            records its configuration by file name alone
         """
-        return resolve_scenario_set_path(
+        path = resolve_scenario_set_path(
             filename, self._user_config_path, self._user_algo_dirs, self.config_path, self._store)
+        refuse_config_name_conflict(path.name, ConfigKind.SCENARIO_SET)
+        return path
 
     def load_config(self, config_file: str) -> LoadedScenarioConfig:
         """

@@ -50,7 +50,8 @@ class StoreCatalog:
         if store_id not in self._stores:
             raise StoreCatalogError(
                 f'No store registered under {store_id!r}. Every persistent write path is '
-                f'declared in store_registrations.py — add it there (CLAUDE.md §44).'
+                f'declared in store_registrations.py — add it there; a store that is not '
+                f'registered is one nothing can find.'
             )
         return self._stores[store_id]
 

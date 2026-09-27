@@ -15,12 +15,17 @@ from types import SimpleNamespace
 
 import pytest
 
+from python.configuration.autotrader import (
+    autotrader_config_loader as autotrader_config_loader_module,
+)
+from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.config_directory import config_directory as config_directory_module
 from python.framework.config_directory.config_directory import (
     ConfigDirectory,
     clear_config_directory_memo,
 )
 from python.framework.config_directory.config_directory_index import ConfigDirectoryIndex
+from python.framework.exceptions.config_name_errors import ConfigNameConflictError
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.config_directory_types import (
@@ -29,6 +34,13 @@ from python.framework.types.config_directory_types import (
     ConfigReadStatus,
 )
 from python.framework.types.log_layout_types import RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
+from python.framework.validators import config_name_validator
+from python.framework.validators.config_name_validator import (
+    clear_config_name_memo,
+    refuse_config_name_conflict,
+)
+from python.scenario import scenario_config_loader as scenario_config_loader_module
+from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
 
 class _Roots:
@@ -93,10 +105,12 @@ def _write(path: Path, content) -> Path:
 
 @pytest.fixture
 def tree(tmp_path):
-    """An empty configuration tree and a directory pointed at it; the memo cleared around it."""
+    """An empty configuration tree and a directory pointed at it; the memos cleared around it."""
     clear_config_directory_memo()
+    clear_config_name_memo()
     yield tmp_path
     clear_config_directory_memo()
+    clear_config_name_memo()
 
 
 def _directory(tree: Path) -> ConfigDirectory:
@@ -159,7 +173,8 @@ class TestWhatAFileDeclares:
 class TestAFileBeingEditedIsARowNotAnError:
 
     def test_broken_json_is_an_unreadable_row_with_its_line(self, tree):
-        _write(tree / 'user_configs/scenario_sets/my_wip.json', '{"scenario_set_name": "x",\n  oops')
+        _write(tree / 'user_configs/scenario_sets/my_wip.json',
+               '{"scenario_set_name": "x",\n  oops')
 
         row = _rows(tree)['my_wip.json']
 
@@ -200,6 +215,55 @@ class TestWhichCopyWins:
         _write(tree / 'user_algos/my_algo/deep/my_set.json', _set('algo', [_scenario('a')]))
 
         assert _rows(tree)['my_set.json'].folder == ''
+
+
+class TestOneNameBelongsToOneKind:
+    """
+    A run records its configuration by file name alone, so a scenario set and a profile of one
+    name would make every such record ambiguous. Refused — in the directory and at run start.
+    """
+
+    def test_a_set_and_a_profile_of_one_name_are_one_conflict(self, tree):
+        _write(tree / 'configs/scenario_sets/same_name.json', _set('a set', [_scenario('a')]))
+        _write(tree / 'user_configs/autotrader_profiles/same_name.json', _profile())
+
+        row = _rows(tree)['same_name.json']
+
+        assert row.status == ConfigReadStatus.UNREADABLE
+        assert 'also the name of a scenario set (configs)' in row.reason
+
+    def test_a_copy_of_the_same_kind_is_precedence_not_a_conflict(self, tree):
+        _write(tree / 'configs/scenario_sets/my_set.json', _set('shipped', [_scenario('a')]))
+        _write(tree / 'user_configs/scenario_sets/my_set.json', _set('mine', [_scenario('a')]))
+
+        assert _rows(tree)['my_set.json'].status == ConfigReadStatus.READABLE
+
+    def test_the_run_start_is_refused_for_either_kind(self, tree, monkeypatch):
+        _write(tree / 'configs/scenario_sets/same_name.json', _set('a set', [_scenario('a')]))
+        _write(tree / 'user_algos/my_algo/same_name.json', _profile())
+        monkeypatch.setattr(config_name_validator, 'AppConfigManager', lambda: _Roots(tree))
+
+        with pytest.raises(ConfigNameConflictError,
+                           match='an AutoTrader profile \\(user_algos\\)'):
+            refuse_config_name_conflict('same_name.json', ConfigKind.SCENARIO_SET)
+        with pytest.raises(ConfigNameConflictError, match='a scenario set \\(configs\\)'):
+            refuse_config_name_conflict('same_name.json', ConfigKind.AUTOTRADER_PROFILE)
+        refuse_config_name_conflict('another_name.json', ConfigKind.SCENARIO_SET)   # no conflict
+
+    def test_both_loaders_ask_before_a_run_starts(self, monkeypatch, tmp_path):
+        """The refusal is wired into where each pipeline loads its configuration."""
+        def refuse(file_name, kind):
+            raise ConfigNameConflictError(f'{kind.value}:{file_name}')
+
+        monkeypatch.setattr(scenario_config_loader_module, 'refuse_config_name_conflict', refuse)
+        monkeypatch.setattr(autotrader_config_loader_module, 'refuse_config_name_conflict', refuse)
+        scenario_set = _write(tmp_path / 'probe_set.json', _set('probe', [_scenario('a')]))
+        profile = _write(tmp_path / 'probe_profile.json', _profile())
+
+        with pytest.raises(ConfigNameConflictError, match='scenario_set:probe_set.json'):
+            ScenarioConfigLoader().load_config(str(scenario_set))
+        with pytest.raises(ConfigNameConflictError, match='autotrader_profile:probe_profile.json'):
+            load_autotrader_config(str(profile))
 
 
 class TestTheCacheReadsOnlyWhatChanged:
@@ -244,7 +308,8 @@ class TestTheCacheReadsOnlyWhatChanged:
         _write(tree / 'configs/scenario_sets/a.json', _set('a', [_scenario('x')]))
         _rows(tree)
         reads.clear()
-        monkeypatch.setattr(ConfigDirectoryIndex, 'LOGIC_VERSION', ConfigDirectoryIndex.LOGIC_VERSION + 1)
+        monkeypatch.setattr(ConfigDirectoryIndex, 'LOGIC_VERSION',
+                            ConfigDirectoryIndex.LOGIC_VERSION + 1)
 
         _rows(tree)
 

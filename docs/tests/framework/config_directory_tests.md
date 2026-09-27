@@ -41,6 +41,15 @@ real one reads (`_Roots`), so nothing here reads the operator's files.
 | `test_the_operators_copy_wins_and_names_what_it_shadows` | the resolver's order — `user_configs` over `user_algos` over `configs` — and `shadowed` names the losers |
 | `test_the_operators_own_layout_is_not_served` | no sub-folder from a user root |
 
+### `TestOneNameBelongsToOneKind`
+
+| Test | Description |
+|------|-------------|
+| `test_a_set_and_a_profile_of_one_name_are_one_conflict` | the row is `unreadable`, and its reason names where the other file lives |
+| `test_a_copy_of_the_same_kind_is_precedence_not_a_conflict` | a set shadowing a set stays readable |
+| `test_the_run_start_is_refused_for_either_kind` | `refuse_config_name_conflict` raises for a set and for a profile, and passes a name nothing else holds |
+| `test_both_loaders_ask_before_a_run_starts` | the scenario-set loader and the AutoTrader loader both call the refusal |
+
 ### `TestTheCacheReadsOnlyWhatChanged`
 
 | Test | Description |

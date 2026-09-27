@@ -31,12 +31,11 @@ def discover_config_files(app_config: AppConfigManager) -> List[DiscoveredConfig
         app_config: Supplies the roots
 
     Returns:
-        The winners, each carrying the origins it shadows; sorted by file name
+        The winners, each carrying the origins it shadows and those files; sorted by file name
     """
     found: Dict[str, List[DiscoveredConfigFile]] = {}
-    for root, origin, keeps_folder in _roots(app_config):
-        for candidate in _walk(root, origin, keeps_folder):
-            found.setdefault(candidate.path.name, []).append(candidate)
+    for candidate in discover_all_config_files(app_config):
+        found.setdefault(candidate.path.name, []).append(candidate)
 
     winners = []
     rank = {origin: position for position, origin in enumerate(ConfigOrigin)}
@@ -44,8 +43,39 @@ def discover_config_files(app_config: AppConfigManager) -> List[DiscoveredConfig
         ranked = sorted(found[name], key=lambda candidate: rank[candidate.origin])
         winner = ranked[0]
         winner.shadowed = [candidate.origin for candidate in ranked[1:]]
+        winner.shadowed_files = ranked[1:]
         winners.append(winner)
     return winners
+
+
+def discover_all_config_files(app_config: AppConfigManager) -> List[DiscoveredConfigFile]:
+    """
+    Every candidate configuration file under every root — same-named ones included.
+
+    Args:
+        app_config: Supplies the roots
+
+    Returns:
+        One candidate per JSON file, in root order
+    """
+    candidates: List[DiscoveredConfigFile] = []
+    for root, origin, keeps_folder in _roots(app_config):
+        candidates.extend(_walk(root, origin, keeps_folder))
+    return candidates
+
+
+def location_label(origin: ConfigOrigin, folder: str) -> str:
+    """
+    Where a configuration file lives, as the directory names it — never an operator's own path.
+
+    Args:
+        origin: The root it lives under
+        folder: Its sub-folder inside `configs/`, '' otherwise
+
+    Returns:
+        `configs/backtesting`, `user_algos`, …
+    """
+    return f'{origin.value}/{folder}' if folder else origin.value
 
 
 def _roots(app_config: AppConfigManager) -> List[Tuple[Path, ConfigOrigin, bool]]:

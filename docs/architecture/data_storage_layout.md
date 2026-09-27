@@ -211,6 +211,12 @@ data/runtime/config_directory/
 - **A file that does not parse is a row**, `unreadable` with its reason — never an error, never
   cached as anything but what it is. JSON carrying neither marker (an analysis result beside a
   strategy) is cached as `not_a_config`, so it is not read again, and never served.
+- **One name, one kind.** A file name is how a configuration is addressed everywhere a record
+  names it, so a scenario set and an AutoTrader profile named alike is a conflict, not a
+  precedence: the row is `unreadable` with that as its reason (judged at serve time, because it
+  is a fact about another file), and both loaders refuse to start a run from the name —
+  `validators/config_name_validator.py`, which only reads, so a live start depends on nothing it
+  has to write.
 - **The run figures are not in it.** They are joined at serve time from the run index, matched on
   `config_snapshot` (the source file name, in both pipelines) and the run type, so a run that just
   started counts at once — and deleting this cache loses nothing.

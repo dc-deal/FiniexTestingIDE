@@ -37,6 +37,11 @@ class ConfigReadStatus(StrEnum):
     Validation happens at run start (the loader, then the pre-run phases); the directory reads
     files and says what they declare. A file being edited is `unreadable` for minutes at a time,
     and that is a state to show, never an error to raise.
+
+    `unreadable` also covers the one fact about a file that its own bytes cannot show: its NAME is
+    taken by a configuration of the other kind. A run records its configuration by file name, so
+    such a file could not start a run anyone could trace — the loaders refuse it, and the row
+    says why.
     """
     READABLE = 'readable'
     UNREADABLE = 'unreadable'
@@ -58,6 +63,8 @@ class DiscoveredConfigFile:
         mtime: Its modification time, the cache key's first half
         size: Its size in bytes, the cache key's second half
         shadowed: The origins of same-named files this one wins over
+        shadowed_files: Those files themselves — read only to tell whether one of them is a
+            configuration of the OTHER kind, which makes the name ambiguous
     """
     path: Path
     origin: ConfigOrigin
@@ -65,6 +72,7 @@ class DiscoveredConfigFile:
     mtime: float
     size: int
     shadowed: List[ConfigOrigin] = field(default_factory=list)
+    shadowed_files: List['DiscoveredConfigFile'] = field(default_factory=list)
 
 
 @dataclass

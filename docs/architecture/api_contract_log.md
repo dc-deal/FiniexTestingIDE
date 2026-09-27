@@ -26,6 +26,14 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 11 — 2026-09-27 (#554)
+
+- `GET /api/v1/directory`: `status: unreadable` also means the file's NAME is taken by a
+  configuration of the other kind — a scenario set and an AutoTrader profile named alike — with
+  that as its `reason`. The row keeps its `kind`, because the file itself parsed. Both pipelines
+  refuse to start a run from such a name: a run records its configuration by file name alone, so
+  the two could never be told apart afterwards. No such pair exists today.
+
 ## Version 10 — 2026-09-27 (viewer#21)
 
 - `GET /api/v1/validation-checks`, OPEN like `/timeframes`: every validation check a finding can

@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 10
+API_CONTRACT_VERSION = 11
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -31,11 +31,8 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'validation-checks: GET /api/v1/validation-checks (open) serves every check a finding can '
-    'name — `check` (the id in `units_absent[].checks` and `warnings[].check`), a `title` and a '
-    'one-sentence `description`; `key` is `["check"]`',
-    'warnings-errors: `keys` — `errors` → `["name"]`, `warnings` → `[]`, an EMPTY key that '
-    'declares a warning has no identity beyond its position (two identical ones are two rows)',
-    'errors: `detail` is a sentence for the person reading the answer and may be shown as it '
-    'comes; `artifact_not_produced` was reworded to say so without naming a response field',
+    'directory: `status: unreadable` also means the file\'s NAME is taken by a configuration of '
+    'the other kind — a scenario set and an AutoTrader profile named alike — with that as its '
+    '`reason`; both pipelines refuse to start a run from such a name, because a run records its '
+    'configuration by file name alone. The row keeps its `kind`',
 ]
