@@ -55,6 +55,15 @@ class StoreCatalog:
             )
         return self._stores[store_id]
 
+    def indexed_store_ids(self) -> List[StoreId]:
+        """
+        Every store that carries an index this model owns — what `rebuild --all` rebuilds.
+
+        Returns:
+            Their ids, in registration order
+        """
+        return [d.store_id for d in self.all() if d.index_factory is not None]
+
     def rebuild(self, store_id: StoreId) -> int:
         """
         Rebuild one store's index from the store's own contents.

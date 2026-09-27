@@ -198,6 +198,15 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'robustness_overfit', 'Overfit',
         'Out-of-sample results fall sharply below in-sample results: the strategy is likely fitted '
         'to the in-sample windows.'),
+    # --- Dated declarations the installation holds -------------------------------------------
+    ValidationCheckInfo(
+        'certificate_expired', 'Release certificate expired',
+        'The newest certificate of a release gate is past its validity date, so the gate has to '
+        'be run again before a release.'),
+    ValidationCheckInfo(
+        'fee_structure_frozen_long', 'Fee structure frozen long ago',
+        "A broker's declared fee rates were frozen more than ninety days ago; the venue may "
+        'charge this account differently by now.'),
 )
 
 # Each check by its id.

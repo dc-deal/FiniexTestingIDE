@@ -21,9 +21,11 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `bar_index_cli.py` | Bar Index Management | rebuild, status, render |
 | `run_index_cli.py` | Run Index Management | rebuild, status, prune |
 | `run_config_cli.py` | Run Config Store (#538) | list, history, show |
+| `config_directory_cli.py` | Every configuration that can start a run (#554) | list, show |
+| `store_cli.py` | Every data store and its index (#486) | catalog, rebuild |
 | `discoveries_cli.py` | Volatility Profiling, Discoveries & Data Coverage | profile, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
 | `generator_cli.py` | Block & Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
-| `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, list |
+| `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, validate |
 
 ---
 
@@ -773,6 +775,29 @@ Useful for understanding the raw data structure:
 0 2025-09-17 17:58:35   1.18508  1.18522            14  new_york
 1 2025-09-17 17:58:37   1.18509  1.18522            12  new_york
 ```
+
+### 📈 Store: Catalog
+
+| | |
+|---|---|
+| **VS Code** | `📈 Store: Catalog` |
+| **CLI** | `python python/cli/store_cli.py catalog [--sizes]` · `… rebuild <store>` · `… rebuild --all` |
+| **Purpose** | Every data store: its kind, root, index state, entry count, what it is for and where it is explained |
+
+Below the table it lists the indexes that need a rebuild, then two advisories when they apply — a
+release gate whose newest certificate has expired, and a broker fee structure frozen more than
+ninety days ago:
+
+```
+  ⏰ Release certificate expired
+      benchmark            the newest certificate (1.4.0) was valid until 2026-12-14
+
+  ⏰ Fee structure frozen long ago
+      kraken_spot          frozen 2026-09-08, 266 days ago — past the 90-day window. Re-freeze it from a live session's divergence warning, or confirm it still holds
+```
+
+A fee rate is a declared assumption. A live session compares it with the venue on every start; a
+reader who runs only backtests would never see that warning, which is why the catalog asks.
 
 ### Index Rebuild (Maintenance)
 

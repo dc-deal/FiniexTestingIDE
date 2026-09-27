@@ -61,6 +61,11 @@ python python/cli/store_cli.py catalog          # add --sizes to also walk for b
 python python/cli/store_cli.py rebuild --all    # every index this model owns
 ```
 
+Underneath the stores the catalog shows two advisories about dated claims the installation holds:
+a release gate whose newest certificate has expired, and a broker fee structure frozen more than
+ninety days ago. Both are decided in `validators/store_health_checks.py` and come back as findings
+with their own check ids, so any other surface can show them the same way.
+
 ---
 
 ### The ledger's grain, and why it is four parts

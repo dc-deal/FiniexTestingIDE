@@ -118,7 +118,7 @@ tests/
 │   ├── algo_clock_validator/ unit — §9 runtime startup validator: AST scan of loaded algos (CORE + USER) + batch pre-flight (#359)
 │   ├── discovery_validity/ unit — the three discovery caches compare the config fingerprint they were already writing (#486 finding 57); a config change moves no bar file, so mtime alone kept serving a stale cache
 │   ├── static_analysis/   unit — §40 undefined-name gate (pyflakes) over python/ + tests/; the ruff/vulture backlog tier is measured, not gated
-│   └── store/             unit — §44 store catalog: completeness, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope (#486)
+│   └── store/             unit — the store catalog: completeness, what it prints, its two dated-claim advisories, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope (#486)
 │
 ├── data/
 │   ├── import_pipeline/   unit + integration — tick import, duplicate detection

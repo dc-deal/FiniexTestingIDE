@@ -1,7 +1,7 @@
 # Store Model Tests
 
-`tests/framework/store/` — the store catalog, the shared index base, the generic form-A
-retrieval, and the carry-over envelope (#486).
+`tests/framework/store/` — the store catalog and what it prints, the shared index base, the
+generic form-A retrieval, and the carry-over envelope (#486).
 
 Run: `python -m pytest tests/framework/store/ -v`
 Launch entry: `🧩 Pytest: Store Model (All)`
@@ -47,10 +47,33 @@ exercised rather than one of its subclasses:
   that produced the content.
 - An index written before the stamp existed reads as out of date rather than as current.
 
+**Rebuild all.** `rebuild --all` covers exactly the stores that build an index of this model —
+none skipped, and no store asked that has none.
+
+## `test_store_catalog_views.py`
+
+What `store_cli.py catalog` and `rebuild` print, over hand-built rows, so no store on disk decides
+the outcome. Each part of a row reaches the reader in its place: the purpose on the store's own
+line, the key and the help link in the two blocks underneath, an absent root and an uncountable
+store as such rather than as zero. The size column appears only when sizes were measured. A stale
+index is listed as a task and one that refreshes itself as a note, never the other way round. An
+advisory appears under its check's title from the validation check catalog — one block per check
+however many gates or brokers it names — and a catalog with no advisory prints none.
+
+## `test_store_health_checks.py`
+
+The two dated claims the catalog flags, as findings rather than printed lines: a release gate whose
+NEWEST certificate has expired, and a broker fee structure frozen longer ago than ninety days. The
+window's boundary is pinned (past it is flagged, reaching it is not), and so is the absence case —
+a seed that records no freeze date is not an old one. Each finding is an advisory scoped to the
+gate or the broker it concerns. One test runs both checks over this tree's own certificates and
+broker configurations at a moment far ahead, which exercises the path from the stores to the
+findings and holds every id they emit to the validation check catalog.
+
 ## `test_artifact_retrieval.py`
 
-**The spec registry.** Seventeen report artifacts, each binding a `.json` name to a Pydantic model,
-and no two sharing a file name — two specs on one name would silently overwrite each other inside a
+**The spec registry.** Every report artifact binds a `.json` name to a Pydantic model, and no two
+share a file name — two specs on one name would silently overwrite each other inside a
 run directory.
 
 **Round trip.** `write_artifact` / `read_artifact` return the model the spec names.
@@ -237,5 +260,5 @@ suite runs from a tree that is dirty whenever somebody is working on it.
 | Suite | What it covers of this model |
 |---|---|
 | [Reporting Pipeline Tests](reporting_tests.md) | The artifacts themselves, and `ReportStore` against a real run tree |
-| [API Endpoint Tests](api_endpoint_tests.md) | The 15 report endpoints over the generic getter — response shapes unchanged by the collapse |
+| [API Endpoint Tests](api_endpoint_tests.md) | The report endpoints over the generic getter — response shapes unchanged by the collapse |
 | [Algo State Persistence](../autotrader/state_persistence_tests.md) | The carry-over store's cadence, corrupt and staleness policies |

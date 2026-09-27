@@ -32,6 +32,7 @@ class ValidationDomain(Enum):
     PERFORMANCE = 'performance'     # worker / decision timing, coordination overhead
     PORTFOLIO = 'portfolio'         # accounting, currencies
     ROBUSTNESS = 'robustness'       # robustness / overfit assessment
+    RELEASE = 'release'             # release gates and the certificates that pass them
 
 
 @dataclass

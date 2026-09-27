@@ -185,9 +185,10 @@ one. The VALUES stay as they are because they are the wire contract the API and 
 already consume — renaming them would be a consumer-facing change, renaming the members is not.
 
 The general rule this follows, so it does not drift again: **a closed set is an Enum, an open
-set is a string.** `tier` (2 channels) and `domain` (10 areas) are closed. `check` is open —
-every new assertion adds an id, and an Enum would have to be extended by whoever adds one, which
-is exactly the step that gets forgotten. `scope` is open too (any scenario or profile name).
+set is a string.** `tier` (the two channels) and `domain` (the areas of `ValidationDomain`) are
+closed. `check` is open — every new assertion adds an id, and an Enum would have to be extended by
+whoever adds one, which is exactly the step that gets forgotten. `scope` is open too (any scenario
+or profile name).
 
 The pot's messages are unrendered — the buffer carries `LogRecord`s, so nothing has to be
 stripped and no terminal escape code can reach the artifact. See

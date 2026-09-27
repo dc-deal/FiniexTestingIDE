@@ -339,6 +339,13 @@ class TestStatus:
         assert len(rows) == len(list(StoreId))
         assert {r.store_id for r in rows} == set(StoreId)
 
+    def test_rebuild_all_covers_exactly_the_stores_that_build_an_index(self):
+        """`rebuild --all` must neither skip an index of ours nor ask a store that has none."""
+        catalog = StoreCatalog()
+        assert set(catalog.indexed_store_ids()) == {
+            d.store_id for d in catalog.all() if d.build_index() is not None}
+        assert catalog.indexed_store_ids(), 'the model owns indexes'
+
     def test_a_store_without_an_index_of_ours_reports_no_staleness(self):
         """`None` is the honest answer — the catalog cannot judge an index it does not own."""
         rows = {r.store_id: r for r in StoreCatalog().status()}
