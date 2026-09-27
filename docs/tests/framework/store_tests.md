@@ -47,8 +47,12 @@ exercised rather than one of its subclasses:
   that produced the content.
 - An index written before the stamp existed reads as out of date rather than as current.
 
-**Rebuild all.** `rebuild --all` covers exactly the stores that build an index of this model —
-none skipped, and no store asked that has none.
+**Rebuild all.** `rebuild --all` covers every store that builds an index of this model, except the
+ones that declare what their rebuild loses — and asks no store that has none. The run-config store
+is declared lossy (its index alone knows which file each version came from and when it was first
+seen), and rebuilding it without accepting the loss is refused before the index is touched. The
+config directory is declared self-healing: its rebuild deletes the file and its next read writes
+it again, so the catalog must not answer a rebuild with "rebuild before trusting it".
 
 ## `test_store_catalog_views.py`
 
@@ -56,7 +60,9 @@ What `store_cli.py catalog` and `rebuild` print, over hand-built rows, so no sto
 the outcome. Each part of a row reaches the reader in its place: the purpose on the store's own
 line, the key and the help link in the two blocks underneath, an absent root and an uncountable
 store as such rather than as zero. The size column appears only when sizes were measured. A stale
-index is listed as a task and one that refreshes itself as a note, never the other way round. An
+index is listed as a task and one that refreshes itself as a note, never the other way round; a
+stale index whose rebuild loses data is not sent to a rebuild at all, and `rebuild --all` names the
+store it skipped and what its rebuild would lose. An
 advisory appears under its check's title from the validation check catalog — one block per check
 however many gates or brokers it names — and a catalog with no advisory prints none.
 

@@ -339,12 +339,33 @@ class TestStatus:
         assert len(rows) == len(list(StoreId))
         assert {r.store_id for r in rows} == set(StoreId)
 
-    def test_rebuild_all_covers_exactly_the_stores_that_build_an_index(self):
-        """`rebuild --all` must neither skip an index of ours nor ask a store that has none."""
+    def test_rebuild_all_covers_every_index_whose_rebuild_loses_nothing(self):
+        """
+        `rebuild --all` rebuilds every index of ours except those that declare a loss, and asks
+        no store that has none — the two lists together are exactly the stores with an index.
+        """
         catalog = StoreCatalog()
-        assert set(catalog.indexed_store_ids()) == {
+        lossless, lossy = catalog.lossless_rebuild_ids(), catalog.lossy_rebuild_ids()
+        assert set(lossless) | set(lossy) == {
             d.store_id for d in catalog.all() if d.build_index() is not None}
-        assert catalog.indexed_store_ids(), 'the model owns indexes'
+        assert not set(lossless) & set(lossy)
+        assert lossless, 'the model owns indexes'
+        assert all(catalog.get(store_id).rebuild_loses for store_id in lossy)
+
+    def test_the_run_config_rebuild_is_declared_lossy(self):
+        """
+        Its frozen copies carry the content; which file a version came from, when it was first
+        seen and how often it ran exist only in the index. Until #547 corrects that, the
+        declaration is what keeps `rebuild --all` from emptying every history.
+        """
+        catalog = StoreCatalog()
+        assert StoreId.RUN_CONFIGS in catalog.lossy_rebuild_ids()
+        assert 'first seen' in catalog.get(StoreId.RUN_CONFIGS).rebuild_loses
+
+    def test_a_lossy_rebuild_is_refused_unless_the_loss_is_accepted(self):
+        """The refusal comes before the index is touched, so asking the real catalog is safe."""
+        with pytest.raises(StoreCatalogError, match='--accept-loss'):
+            StoreCatalog().rebuild(StoreId.RUN_CONFIGS)
 
     def test_a_store_without_an_index_of_ours_reports_no_staleness(self):
         """`None` is the honest answer — the catalog cannot judge an index it does not own."""
@@ -412,6 +433,9 @@ class TestOperatorSignal:
         assert rows[StoreId.RUN_LEDGER].self_healing is True
         assert rows[StoreId.RUNS].self_healing is False, (
             'the run index is written incrementally at run start and does NOT self-heal')
+        assert rows[StoreId.CONFIG_DIRECTORY].self_healing is True, (
+            'its rebuild deletes the file and the next read writes it again — reporting that as '
+            '"rebuild before trusting it" would send the operator round in a circle')
 
     def test_only_the_newest_certificate_of_a_family_can_expire_a_gate(self, tmp_path):
         """

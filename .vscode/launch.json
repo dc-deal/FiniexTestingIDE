@@ -915,7 +915,7 @@
         // do not go through store_cli — they predate the shared base and #175 converges
         // them; until then the split is real and this group shows it.
         {
-            "name": "🔄 Rebuild: All indexes the store model owns",
+            "name": "🔄 Rebuild: All indexes a rebuild restores fully",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/store_cli.py",

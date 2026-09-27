@@ -62,6 +62,18 @@ def render_store_rebuilt(store_id: StoreId, count: int) -> None:
     print(f'  ✅ {store_id.value:<18} {count} entr(y/ies) indexed')
 
 
+def render_store_rebuild_skipped(store_id: StoreId, loses: str) -> None:
+    """
+    An index `rebuild --all` left alone because its rebuild loses information.
+
+    Args:
+        store_id: The store left out
+        loses: What its rebuild cannot restore
+    """
+    print(f'  ↷  {store_id.value:<18} skipped — a rebuild loses {loses}. Rebuild it alone with '
+          f'--accept-loss if that is intended')
+
+
 def render_store_rebuild_refused(store_id: StoreId, reason: str) -> None:
     """
     An index that could not be rebuilt.
@@ -80,13 +92,20 @@ def _render_staleness(rows: List[StoreStatus]) -> None:
     Args:
         rows: The catalog rows
     """
-    stale = [r for r in rows if r.stale_reason and not r.self_healing]
+    stale = [r for r in rows if r.stale_reason and not r.self_healing and not r.rebuild_loses]
+    lossy = [r for r in rows if r.stale_reason and not r.self_healing and r.rebuild_loses]
     healing = [r for r in rows if r.stale_reason and r.self_healing]
     if stale:
         print('\n  ⚠️  Stale index — rebuild before trusting it '
               '(`store_cli.py rebuild <store>`)')
         for row in stale:
             print(f'      {row.store_id.value:<18} {row.stale_reason}')
+    if lossy:
+        print('\n  ⚠️  Stale index whose rebuild LOSES information — repair it rather than '
+              'rebuilding it')
+        for row in lossy:
+            print(f'      {row.store_id.value:<18} {row.stale_reason}. A rebuild loses '
+                  f'{row.rebuild_loses}')
     if healing:
         print('\n  ↻  Behind, but the store refreshes it on its next read — nothing to do')
         for row in healing:

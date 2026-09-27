@@ -112,6 +112,8 @@ class StoreStatus:
             when the store carries no index of ours to judge. A bare flag sends the operator
             to rebuild the wrong thing: a cache rebuild and an index rebuild are different
             commands
+        rebuild_loses: What a rebuild of the index cannot restore — empty when it restores
+            everything
     """
     store_id: StoreId
     kind: StoreKind
@@ -128,3 +130,4 @@ class StoreStatus:
     exists: bool
     stale_reason: Optional[str] = None
     self_healing: bool = False
+    rebuild_loses: str = ''

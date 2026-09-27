@@ -59,6 +59,10 @@ class StoreDescriptor:
             before trusting it" would be a permanent warning about nothing
         note: Why a store is SPECIAL, or why a managed store deliberately has no index. Empty
             when neither applies
+        rebuild_loses: What a rebuild of the index CANNOT restore, because it was only ever
+            written into the index. Empty for every index that is disposable, as the store model
+            requires; a store that declares a loss is left out of `rebuild --all` and rebuilt
+            alone only on request. A declared exception rather than a silent one
     """
     store_id: StoreId
     kind: StoreKind
@@ -74,6 +78,7 @@ class StoreDescriptor:
     derived_from: Optional[StoreId] = None
     self_healing: bool = False
     note: str = ''
+    rebuild_loses: str = ''
 
     def build_index(self) -> Optional[AbstractStoreIndex]:
         """

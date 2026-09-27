@@ -12,6 +12,7 @@ from typing import List
 from python.framework.reporting.console.store_catalog_summary import (
     render_store_catalog,
     render_store_rebuild_refused,
+    render_store_rebuild_skipped,
     render_store_rebuilt,
 )
 from python.framework.types.store_types import (
@@ -124,6 +125,14 @@ class TestStaleness:
         assert 'never built' in stale_block and 'a fragment is newer' not in stale_block
         assert 'a fragment is newer' in out.split('Behind, but')[1]
 
+    def test_a_stale_index_whose_rebuild_loses_data_is_not_sent_to_a_rebuild(self, capsys):
+        """The plain advice would be to rebuild — for this store that advice is a deletion."""
+        out = _render(capsys, [_row(StoreId.RUN_CONFIGS, stale_reason='1 version has no copy',
+                                    rebuild_loses='when each version was first seen')])
+        assert 'Stale index — rebuild before trusting it' not in out
+        lossy = out.split('rebuild LOSES information')[1]
+        assert '1 version has no copy' in lossy and 'when each version was first seen' in lossy
+
     def test_a_valid_catalog_prints_neither_block(self, capsys):
         out = _render(capsys, [_row()])
         assert 'Stale index' not in out and 'Behind, but' not in out
@@ -163,6 +172,12 @@ class TestRebuild:
     def test_a_rebuild_names_the_store_and_the_count(self, capsys):
         render_store_rebuilt(StoreId.RUNS, 40)
         assert 'runs' in (out := capsys.readouterr().out) and '40' in out
+
+    def test_a_skipped_store_says_what_its_rebuild_would_lose_and_how_to_run_it(self, capsys):
+        render_store_rebuild_skipped(StoreId.RUN_CONFIGS, 'when each version was first seen')
+        out = capsys.readouterr().out
+        assert 'run_configs' in out and 'skipped' in out
+        assert 'when each version was first seen' in out and '--accept-loss' in out
 
     def test_a_refusal_names_the_store_and_the_reason(self, capsys):
         render_store_rebuild_refused(StoreId.TICKS, 'no index this model owns')

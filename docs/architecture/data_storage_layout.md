@@ -58,7 +58,7 @@ See it live, with entry counts and the stated reasons:
 
 ```bash
 python python/cli/store_cli.py catalog          # add --sizes to also walk for bytes
-python python/cli/store_cli.py rebuild --all    # every index this model owns
+python python/cli/store_cli.py rebuild --all    # every index a rebuild restores fully
 ```
 
 Underneath the stores the catalog shows two advisories about dated claims the installation holds:
@@ -406,6 +406,14 @@ artifacts with a CSV surface and the two with a row filter keep that real logic 
 
 An index is **derived**: it may be deleted or go stale without anything being lost, because
 `rebuild()` reconstructs it from the store. The store is the truth; the index is the read path.
+
+**One index breaks that today, and says so: `run_configs`.** Its frozen copies carry each
+version's content, but which file a version came from, when it was first seen and how often it ran
+were only ever written into the index. A rebuild therefore empties every configuration's history.
+The store declares that loss on its descriptor (`rebuild_loses`), so `rebuild --all` leaves it out
+and names it, a rebuild of that store alone needs `--accept-loss`, and the catalog does not advise
+rebuilding it when it is stale. Making the index derivable again, so that it rejoins
+`rebuild --all`, is #547.
 
 - **ONE file, never a fragment per entry.** Measured here: 404 small parquet fragments cost 3.29 s
   to open, the same rows as a single file 0.008 s — 420×, and 99.6 % of it is the file OPEN rather

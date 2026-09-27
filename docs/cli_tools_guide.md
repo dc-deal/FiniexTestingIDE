@@ -781,7 +781,7 @@ Useful for understanding the raw data structure:
 | | |
 |---|---|
 | **VS Code** | `📈 Store: Catalog` |
-| **CLI** | `python python/cli/store_cli.py catalog [--sizes]` · `… rebuild <store>` · `… rebuild --all` |
+| **CLI** | `python python/cli/store_cli.py catalog [--sizes]` · `… rebuild <store> [--accept-loss]` · `… rebuild --all` |
 | **Purpose** | Every data store: its kind, root, index state, entry count, what it is for and where it is explained |
 
 Below the table it lists the indexes that need a rebuild, then two advisories when they apply — a
@@ -798,6 +798,11 @@ ninety days ago:
 
 A fee rate is a declared assumption. A live session compares it with the venue on every start; a
 reader who runs only backtests would never see that warning, which is why the catalog asks.
+
+`rebuild --all` rebuilds every index a rebuild restores fully and names the one it leaves out:
+`run_configs`, whose index alone knows which file each configuration version came from, when it
+was first seen and how often it ran. Rebuilding it empties every history, so it runs only alone and
+only with `--accept-loss`.
 
 ### Index Rebuild (Maintenance)
 

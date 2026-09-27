@@ -127,6 +127,10 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
                  'content id says the bytes differ, param_hash what the algo DECIDES, '
                  'scope_hash WHICH DATA runs. Renaming a scenario moves the first and neither '
                  'of the others.',
+            # The frozen copies carry the content; what was OBSERVED at registration exists
+            # only in the index. Correcting that, so the store rejoins `rebuild --all`, is #547.
+            rebuild_loses='which file each version came from, when it was first seen, how often '
+                          'it ran and its param and scope hashes, so every history empties',
         ),
         StoreId.RUN_PATCHES: StoreDescriptor(
             store_id=StoreId.RUN_PATCHES,
@@ -305,6 +309,10 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             index_path=config_directory_root / CONFIG_DIRECTORY_INDEX_FILE,
             index_factory=lambda: ConfigDirectoryIndex(config_directory_root),
             derived_from=None,
+            # Its rebuild only deletes the file; the directory's next read re-reads every file and
+            # writes it again, and does the same for a file from other logic. Without the flag the
+            # catalog answered its own rebuild with "never built — rebuild", which deletes again.
+            self_healing=True,
             note=('The directory of every configuration that can start a run (#554): one cached '
                   'reading per scenario set or AutoTrader profile, keyed on its path, mtime and '
                   'size, so a request reads only files that changed. `derived_from` stays None on '
