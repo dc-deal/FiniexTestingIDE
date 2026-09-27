@@ -15,13 +15,18 @@ TWO halves, because they fail differently:
   B · SEPARATION — an ADVERSARIAL payload: rows that differ only in the part of the key one
       would be tempted to drop. The real case is `segment_no`, which restarts per bot, so two
       periods of one deployment can both be number 2 and only `run_id` tells them apart.
+
+A response serving ONE list declares `key`; one serving several declares `keys`, one entry per
+list — a single `key` over two row types would name fields one of them does not have.
 """
 
-from typing import get_args, get_origin
+from types import NoneType, UnionType
+from typing import Union, get_args, get_origin
 
 import pytest
 
 from python.api.api_app import create_app
+from python.framework.reporting.builders import deployment_history_builder
 from python.framework.types.api.report_types import (
     BOOKING_PERIOD_KEY,
     DEPLOYMENT_KEY,
@@ -29,6 +34,8 @@ from python.framework.types.api.report_types import (
     DeploymentBookingPeriodRow,
     DeploymentSessionRow,
     DeploymentSummary,
+    TradeHistoryReport,
+    TradeHistoryRow,
 )
 
 # A COLLECTION route serves rows a consumer iterates; a RUN-SCOPED report serves the sections of
@@ -56,9 +63,10 @@ def _list_responses():
         if fields is None:
             continue
         for field_name, field in fields.items():
-            if get_origin(field.annotation) is not list:
+            annotation = _without_none(field.annotation)
+            if get_origin(annotation) is not list:
                 continue
-            (row_model,) = get_args(field.annotation) or (None,)
+            (row_model,) = get_args(annotation) or (None,)
             if getattr(row_model, 'model_fields', None) is None:
                 continue        # list[str] and friends are not rows
             found.append((route.path, model, field_name, row_model))
@@ -96,6 +104,41 @@ def _every_route(app):
     return flat
 
 
+def _without_none(annotation):
+    """
+    The annotation an optional field wraps — `list[X] | None` is still a list of rows.
+
+    Args:
+        annotation: A field's annotation
+
+    Returns:
+        The single non-None member of an optional, else the annotation unchanged
+    """
+    if get_origin(annotation) in (Union, UnionType):
+        members = [arg for arg in get_args(annotation) if arg is not NoneType]
+        if len(members) == 1:
+            return members[0]
+    return annotation
+
+
+def _declared_key(model, field: str):
+    """
+    The key a response declares for one of its lists.
+
+    Args:
+        model: The response model
+        field: The list field
+
+    Returns:
+        The key parts, or None when the model declares none for that list
+    """
+    if 'keys' in model.model_fields:
+        return model.model_fields['keys'].default.get(field)
+    if 'key' in model.model_fields:
+        return model.model_fields['key'].default
+    return None
+
+
 LIST_RESPONSES = _list_responses()
 
 
@@ -113,19 +156,30 @@ class TestEveryServedListSaysWhatMakesARowUnique:
     """
 
     def test_it_declares_a_key(self, path, model, field, row_model):
-        if _RUN_SCOPED in path:
+        declares_any = 'key' in model.model_fields or 'keys' in model.model_fields
+        if _RUN_SCOPED in path and not declares_any:
             pytest.skip('run-scoped section: its identity is the run it was asked for')
-        assert 'key' in model.model_fields, (
-            f'{path} serves `{field}` and declares no key (§49)')
+        assert _declared_key(model, field) is not None, (
+            f'{path} serves `{field}` and declares no key for it (§49)')
 
     def test_the_key_names_only_real_fields(self, path, model, field, row_model):
-        declared = model.model_fields.get('key')
+        declared = _declared_key(model, field)
         if declared is None:
             pytest.skip('covered by the case above')
-        for part in declared.default:
+        for part in declared:
             assert part in row_model.model_fields, (
                 f'{model.__name__}.key names {part!r}, which is not a field of '
                 f'{row_model.__name__} — a consumer keying on it reads nothing')
+
+
+def test_a_response_with_several_lists_keys_each_one():
+    """One `key` over two row types names fields one of them does not have — `keys` it is."""
+    lists_per_model = {}
+    for path, model, field, _ in LIST_RESPONSES:
+        lists_per_model.setdefault((path, model), []).append(field)
+    for (path, model), fields in lists_per_model.items():
+        if len(fields) > 1 and 'key' in model.model_fields:
+            pytest.fail(f'{path} serves {fields} under ONE `key` — declare `keys`, one per list')
 
 
 class TestTheKeyActuallySeparatesTheRows:
@@ -172,8 +226,19 @@ class TestTheKeyActuallySeparatesTheRows:
     def test_the_declared_key_is_the_one_the_fold_groups_by(self):
         # SESSION_KEY is literally the `by=` of `build_deployment_histories`. Held here so a
         # change to the grouping cannot leave the declaration behind.
-        from python.framework.reporting.builders import deployment_history_builder
         assert deployment_history_builder.SESSION_KEY == SESSION_KEY
+
+    def test_a_trade_needs_its_unit_and_its_closing_tick(self):
+        # Both measured cases (2026-09-27): a partial close books several records of ONE
+        # position, and two scenarios of one symbol each count from `pos_<symbol>_1`.
+        key = TradeHistoryReport.model_fields['keys'].default['trades']
+        rows = [
+            _trade('blocks_06', 'pos_ethusd_1', exit_tick_index=410),
+            _trade('blocks_09', 'pos_ethusd_1', exit_tick_index=410),     # another scenario
+            _trade('blocks_09', 'pos_ethusd_1', exit_tick_index=977),     # a partial close
+        ]
+        assert _distinct(rows, key) == 3
+        assert _distinct(rows, ('position_id',)) == 1                  # what it would collapse to
 
 
 def _distinct(rows, key) -> int:
@@ -188,6 +253,26 @@ def _distinct(rows, key) -> int:
         The number of distinct key tuples
     """
     return len({tuple(getattr(row, part) for part in key) for row in rows})
+
+
+def _trade(scenario_name: str, position_id: str, exit_tick_index: int) -> TradeHistoryRow:
+    """
+    One trade row, varying only in what the case under test needs.
+
+    Args:
+        scenario_name: The unit that booked it
+        position_id: Its position
+        exit_tick_index: The tick it closed on
+
+    Returns:
+        The row
+    """
+    return TradeHistoryRow(
+        position_id=position_id, symbol='ETHUSD', direction='long', lots=0.1,
+        entry_price=2000.0, entry_time='2026-01-25T20:20:02+00:00', exit_price=2010.0,
+        exit_time='2026-01-26T01:21:39+00:00', duration_s=18097.0, close_reason='manual',
+        gross_pnl=1.0, total_fees=0.1, net_pnl=0.9, currency='USD',
+        scenario_name=scenario_name, exit_tick_index=exit_tick_index)
 
 
 def _period(run_id: str, segment_no: int) -> DeploymentBookingPeriodRow:

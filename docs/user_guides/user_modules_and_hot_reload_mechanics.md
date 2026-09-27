@@ -91,7 +91,7 @@ Additional directories can be configured in `user_configs/app_config.json`:
 }
 ```
 
-`user_algo_dirs` is used by `ScenarioSetFinder` to discover scenario configs in these directories. Workers and decision logics are still loaded from the explicit paths in those configs — no directory scanning.
+`user_algo_dirs` is walked by the config directory (#554, `config_directory_cli.py list`, `GET /api/v1/directory`) to discover the scenario sets and AutoTrader profiles in these directories. Workers and decision logics are still loaded from the explicit paths in those configs — no directory scanning.
 
 The default value is `["user_algos/"]`.
 

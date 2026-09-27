@@ -92,7 +92,7 @@ class SessionPostRunValidator:
         settings = self._config.scenario_settings
         if settings is None:
             return
-        name = self._config.name or self._config.symbol
+        name = self._config.get_unit_name()
         finding = check_stress_test(
             [(name, settings.stress_test_config)], _SESSION_UNIT_LABEL)
         if finding is not None:

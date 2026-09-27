@@ -198,7 +198,7 @@ def build_run_provenance_from_session(
         error=error,
         run_id=run_id,
         run_timestamp=run_timestamp,
-        scenario_set_name=config.name or config.symbol,
+        scenario_set_name=config.get_unit_name(),
         app_version=AppConfigManager().get_version(),
         git_commit=git_commit,
         git_branch=_framework_branch(code_identity, git, git_commit),

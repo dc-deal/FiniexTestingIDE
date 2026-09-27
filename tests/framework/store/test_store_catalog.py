@@ -8,6 +8,7 @@ compares. So both are asserted here.
 """
 
 import json
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -21,6 +22,7 @@ from python.framework.store.abstract_store_index import (
     store_index_filename,
 )
 from python.framework.store.store_catalog import StoreCatalog
+from python.framework.store.store_descriptor import PURPOSE_MAX_LENGTH
 from python.framework.types.store_types import (
     RetrievalForm,
     StoreBackend,
@@ -46,6 +48,27 @@ class _ToyIndex(AbstractStoreIndex):
         return len(rows)
 
 
+def _heading_anchors(doc: Path) -> set:
+    """
+    The anchors GitHub derives from a document's headings, fenced code excluded.
+
+    Args:
+        doc: The Markdown file
+
+    Returns:
+        One anchor per heading: lower-cased, punctuation dropped, spaces turned into hyphens
+    """
+    anchors, fenced = set(), False
+    for line in doc.read_text(encoding='utf-8').splitlines():
+        if line.lstrip().startswith('```'):
+            fenced = not fenced
+            continue
+        heading = re.match(r'#{1,6}\s+(.+?)\s*$', line)
+        if heading and not fenced:
+            anchors.add(re.sub(r'[^\w\- ]', '', heading.group(1).lower()).replace(' ', '-'))
+    return anchors
+
+
 class TestCatalogCompleteness:
     """Every store is declared, and every declaration says enough to act on."""
 
@@ -69,6 +92,30 @@ class TestCatalogCompleteness:
             assert isinstance(descriptor.form, RetrievalForm)
             assert isinstance(descriptor.backend, StoreBackend)
             assert str(descriptor.root), f'{descriptor.store_id} has no root'
+
+    def test_every_store_says_what_it_is_for(self):
+        """The purpose is printed on the store's catalog row, so it is one clause that fits there."""
+        for descriptor in StoreCatalog().all():
+            purpose = descriptor.purpose
+            assert purpose.strip(), f'{descriptor.store_id} does not say what it is for'
+            assert '\n' not in purpose, f'{descriptor.store_id}: a purpose is one line'
+            assert len(purpose) <= PURPOSE_MAX_LENGTH, (
+                f'{descriptor.store_id}: {len(purpose)} > {PURPOSE_MAX_LENGTH} characters — the '
+                f'longer explanation belongs in `note` or in the linked document')
+
+    def test_every_help_link_reaches_a_real_heading(self):
+        """
+        A help link that points nowhere is a false map (§40): the file must exist, and an anchor
+        must name a heading in it. Renaming a heading therefore fails here, not in a reader's
+        browser.
+        """
+        for descriptor in StoreCatalog().all():
+            path, _, anchor = descriptor.doc.partition('#')
+            doc = Path(path)
+            assert doc.is_file(), f'{descriptor.store_id}: help link {path!r} is no file'
+            if anchor:
+                assert anchor in _heading_anchors(doc), (
+                    f'{descriptor.store_id}: {doc} has no heading with the anchor #{anchor}')
 
     def test_a_special_store_states_why_it_is_special(self):
         """SPECIAL is a declaration, not a loophole — it has to say what it is instead."""

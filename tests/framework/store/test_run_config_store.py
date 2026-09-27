@@ -191,25 +191,6 @@ class TestResolutionIsALookupAndNeverTheOnlyWay:
     def test_an_unknown_name_resolves_to_nothing(self, store):
         assert store.resolve('never_seen.json') is None
 
-    def test_sync_registers_only_what_changed(self, store, source):
-        assert store.sync([source], RunConfigKind.SCENARIO_SET) == 1
-        assert store.sync([source], RunConfigKind.SCENARIO_SET) == 0, (
-            'an unchanged file was re-registered')
-
-        changed = json.loads(json.dumps(_BASE))
-        changed['scenarios'][0]['symbol'] = 'ETHUSD'
-        _write(source, changed)
-        assert store.sync([source], RunConfigKind.SCENARIO_SET) == 1
-
-    def test_sync_survives_a_config_it_cannot_parse(self, store, source, tmp_path):
-        """One broken file must not make every other one unfindable."""
-        broken = tmp_path / 'broken.json'
-        broken.write_text('{ not json', encoding='utf-8')
-
-        store.sync([broken, source], RunConfigKind.SCENARIO_SET)
-
-        assert store.resolve('my_set.json') == source
-
 
 class TestTheIndexDescribesItsStore:
 

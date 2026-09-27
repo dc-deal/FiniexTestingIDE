@@ -182,6 +182,7 @@ class AutotraderMain:
         # #492: resolved at startup by the session-end validator, read by the shutdown.
         self._session_end: Optional[SessionEndDefaults] = None
         self._emergency_reason: Optional[str] = None
+        self._emergency_error_type: Optional[str] = None
         self._session_start: Optional[float] = None
         self._run_timestamp: Optional[datetime] = None
         # Read once at boot, before the header that carries the deployment identity.
@@ -479,7 +480,7 @@ class AutotraderMain:
                     return self._shutdown(0, 0)
                 self._field_study_recorder = FieldStudyRecorder(
                     output_path=str(self._run_dir / 'field_study.jsonl'),
-                    profile=self._config.name or self._config.symbol,
+                    profile=self._config.get_unit_name(),
                     symbol=self._config.symbol,
                     release_target='dev',
                     phase_ids=self._decision_logic.get_phase_ids(),
@@ -529,6 +530,7 @@ class AutotraderMain:
 
         except Exception as e:
             self._emergency_reason = str(e)
+            self._emergency_error_type = type(e).__name__
             if self._tick_loop_started:
                 # Runtime error inside the tick loop — NOT a startup failure.
                 self._global_logger.error(f'❌ AutoTrader runtime error in tick loop: {e}')
@@ -575,13 +577,13 @@ class AutotraderMain:
         # route into a collision is copying a profile and keeping its name, and the copy is
         # exactly what the older continuous-only rule exempted.
         validate_bot_id(
-            self._config.name or self._config.symbol,
+            self._config.get_unit_name(),
             self._config.symbol,
             self._config.bot_id)
 
         validate_carry_over_identity_unique(
             self._config.config_path,
-            self._config.name or self._config.symbol,
+            self._config.get_unit_name(),
             self._config.symbol,
             self._config.bot_id)
 
@@ -614,7 +616,7 @@ class AutotraderMain:
         self._startup_findings = check_market_fit(
             self._decision_logic.get_metadata(), self._decision_logic.name,
             self._config.broker_type, self._config.symbol,
-            self._config.name or self._config.symbol)
+            self._config.get_unit_name())
         for finding in self._startup_findings:
             # INFO, deliberately not WARNING: the VERDICT travels as a Tier-1 finding.
             # A WARNING would also enter the log pot, and the same advisory would appear
@@ -733,7 +735,7 @@ class AutotraderMain:
             weekend_aware = MarketConfigManager().has_weekend_closure(self._config.broker_type)
             self._state_store = AlgoStateStore(
                 config=self._config.state_persistence,
-                profile=self._config.name or self._config.symbol,
+                profile=self._config.get_unit_name(),
                 symbol=self._config.symbol,
                 weekend_aware=weekend_aware,
                 logger=self._session_logger,
@@ -836,7 +838,7 @@ class AutotraderMain:
 
     def _print_startup_banner(self) -> None:
         """Print startup banner directly to console."""
-        session_name = self._config.name or self._config.symbol
+        session_name = self._config.get_unit_name()
         print(f"\n{'=' * 60}")
         print(f'  🚀 FiniexAutoTrader — {session_name}')
         print(f'  Symbol: {self._config.symbol} | Broker: {self._config.broker_type}')
@@ -995,6 +997,7 @@ class AutotraderMain:
             shutdown_mode=self._shutdown_mode,
             operator_interrupted=self._first_interrupt_time > 0,
             emergency_reason=self._emergency_reason,
+            emergency_error_type=self._emergency_error_type,
             session_end_policy=(
                 f'{self._session_end.orders}/{self._session_end.positions}'
                 if self._session_end is not None else ''),
@@ -1280,7 +1283,7 @@ class AutotraderMain:
             return ColdStartPayload()
         store = ColdStartStateStore(
             root=Path(self._config.cold_start.path),
-            profile=self._config.name or self._config.symbol,
+            profile=self._config.get_unit_name(),
             symbol=self._config.symbol,
             logger=get_global_logger(),
             run_id=None,

@@ -53,6 +53,21 @@ class ValidationFinding:
     scope: str = ''
 
 
+@dataclass(frozen=True)
+class ValidationCheckInfo:
+    """
+    What one validation check IS, for a reader — the entry a finding's `check` id resolves to.
+
+    Args:
+        check: The stable id a finding carries, e.g. 'warmup_quality'
+        title: A short name for it, fit for a label or a filter facet
+        description: One sentence saying what the check asserts, for the person reading it
+    """
+    check: str
+    title: str
+    description: str
+
+
 @dataclass
 class ValidationResult:
     """

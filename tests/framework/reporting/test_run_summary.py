@@ -20,6 +20,7 @@ from python.framework.types.api.report_types import (
     PortfolioAggregateRow,
     PortfolioReport,
     PortfolioUnitRow,
+    RunSummary,
     TradeAnalytics,
     TradeHistoryReport,
     UnitRoster,
@@ -124,6 +125,14 @@ class TestTheRosterSaysWhatIsMissing:
         rs = build_run_summary(_RUN_ID, portfolio, trade, _exec())
 
         assert (rs.units_declared, rs.units_disabled, rs.units_absent) == (1, 0, [])
+
+    def test_a_run_recorded_before_the_roster_states_nothing_rather_than_zero(self):
+        """
+        An artifact written before contract 6 carries no roster. Read back, it says NOTHING —
+        null — rather than 0, which the invariant would then disprove on every old run.
+        """
+        old = RunSummary.model_validate({'run_id': _RUN_ID, 'currencies': [], 'unit_count': 8})
+        assert (old.units_declared, old.units_disabled, old.units_absent) == (None, None, None)
 
 
 class TestUndefinedProfitFactor:

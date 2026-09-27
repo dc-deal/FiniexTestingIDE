@@ -9,8 +9,8 @@ BUILDS it, never in `framework/types/` — and here it sits beside its loader.
 
 **What the move bought, measured 2026-09-22 (#395).** Because it lived among the dataclasses, it
 dragged the run index, the broker config, a scenario logger, the run-config store, the signal
-coverage report and git into every module that only wanted `ScenarioSetMetadata` — the pure
-dataclass the `list` command renders. That import cost 904 modules and 1.97 s against 232 and
+coverage report and git into every module that only wanted the scenario listing's pure metadata
+dataclass. That import cost 904 modules and 1.97 s against 232 and
 0.49 s for the data half alone, and on this tree the difference is nearly all OURS: 375 of our
 own files cost 13.48 ms each across the bridged mount, against 0.67 ms for a third-party module
 on the container's own disk (§42).

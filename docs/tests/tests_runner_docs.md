@@ -152,6 +152,7 @@ session. All of them are session-scoped and need no opt-in:
 | the run tree + its index | `_isolate_run_tree` | `tmp_path_factory` |
 | the cross-run results ledger | `_isolate_run_results_ledger` | `tmp_path_factory` |
 | the run-config store | `_isolate_run_config_store` | `tmp_path_factory` |
+| the config directory's cache (#554) | `_isolate_config_directory` | `tmp_path_factory` |
 | the run-patch store — except in a session of release-gate suites alone, whose certificate names its patch (`tests/shared/release_gate_session.py`) | `_isolate_run_patch_store` | `tmp_path_factory` |
 | every strategy repository's own patch home (`.finiex_run_patches/`) | `_isolate_foreign_run_patches` — a test in throwaway repositories puts the real one back with `real_foreign_patch_homes` | `tmp_path_factory` |
 | both carry-over stores | `_isolate_carry_over_stores` | `tmp_path_factory` |
@@ -178,6 +179,7 @@ location and cleans it up:
 │   └── live/<profile>/<run_id>/
 ├── run_results_ledger0/        ← _isolate_run_results_ledger
 ├── run_configs0/               ← _isolate_run_config_store
+├── config_directory0/          ← _isolate_config_directory
 ├── run_patches0/               ← _isolate_run_patch_store
 ├── foreign_run_patches0/       ← _isolate_foreign_run_patches
 └── carry_over0/                ← _isolate_carry_over_stores

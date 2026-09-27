@@ -94,6 +94,8 @@ class StoreCatalog:
             rows.append(StoreStatus(
                 store_id=descriptor.store_id,
                 kind=descriptor.kind,
+                purpose=descriptor.purpose,
+                doc=descriptor.doc,
                 root=str(descriptor.root),
                 key=descriptor.key,
                 form=descriptor.form,

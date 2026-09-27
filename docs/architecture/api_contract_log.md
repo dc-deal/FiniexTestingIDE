@@ -26,6 +26,74 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 10 — 2026-09-27 (viewer#21)
+
+- `GET /api/v1/validation-checks`, OPEN like `/timeframes`: every validation check a finding can
+  name, with its `check` id (the one served in `run-summary.units_absent[].checks` and
+  `warnings-errors.warnings[].check`), a `title` and a one-sentence `description`. `key` is
+  `["check"]`.
+- `warnings-errors` declares `keys`: `errors` → `["name"]` (one row per unit), `warnings` → `[]`.
+  An EMPTY key is a declaration: a warning has no identity beyond its position, because nothing
+  folds two identical ones into one.
+- An error's `detail` is written for the person reading the answer; a consumer may show it as it
+  comes, and branches on `error`. `artifact_not_produced` was reworded: it no longer names a field
+  of another response.
+
+## Version 9 — 2026-09-27 (viewer#21)
+
+- A response serving SEVERAL lists declares `keys`, one entry per list; a response with one list
+  keeps `key`. New keys:
+  - `scenario-details`: `units` → `["name"]`, `data_sources` → `["broker_type"]`;
+  - `portfolio`: `units` → `["name"]`, `aggregates` → `["currency"]`;
+  - `trade-history`: `trades` → `["scenario_name", "position_id", "exit_tick_index"]` (a partial
+    close books several records of one position, and two scenarios of one symbol count from the
+    same position number), `analytics` → `["currency"]`, `scenario_totals` →
+    `["scenario_name", "currency"]`;
+  - `run-summary`: `currencies` → `["currency"]`, `units_absent` → `["name"]`;
+  - `broker`: `key` → `["broker_type"]`.
+
+  The per-unit lists share `name`, and that is a JOIN, meant as one: the roster in
+  `scenario-details` knows every scenario, `portfolio.units` the ones that produced, and
+  `run-summary.units_absent` the ones that did not.
+- `run-summary`: `units_declared`, `units_disabled` and `units_absent` are `null` on a run
+  recorded before contract 6 — NOT STATED — where they read 0 before, which the equation then
+  disproved. The equation holds wherever they are stated.
+- `run-summary`: every `units_absent` row carries `reason_code` — the cause for a program, in the
+  vocabulary of `scenario-details`' `error_type`: `ValidationError`, an exception's class (a live
+  session aborted at startup included), or `NoResults` — and `checks`, the stable ids of the
+  checks that refused it (`warmup_quality`, `tick_stretch_gap`, …).
+- `GET /api/v1/directory`: `key` is `["file"]`. A file name is one entry across every root and both
+  kinds, resolved by precedence; it was `["kind", "file"]`.
+- `scenario-details`: `buy_signals`, `sell_signals`, `flat_signals` and `trades_requested` are
+  `null` when nothing counted them — the decision tracker is off by default in the simulation
+  (`performance_tracking.worker_decision_tracking`) — where they read 0 before on every row, a
+  figure that was never measured. `worker_count` is the number of workers the scenario DECLARES,
+  refused scenarios included; it read 0 whenever the tracker was off. Artifacts written before
+  this version keep their stored zeros.
+
+## Version 8 — 2026-09-27 (viewer#21)
+
+- `GET /api/v1/health` also answers `started_at` — when this server process started serving,
+  ISO-8601 UTC, new on every restart — and `uptime_s`, the seconds since then, measured by the
+  server on its monotonic clock so a consumer needs no clock of its own. A restart is something a
+  consumer sees rather than infers. The route stays open and carries nothing a stranger could use:
+  which code the server runs is not on it.
+
+## Version 7 — 2026-09-25 (#554)
+
+- `GET /api/v1/directory` lists every configuration file that can start a run — scenario sets and
+  AutoTrader profiles, files that never ran included (`run_count: 0`) — with what each declares
+  (scenario counts declared and enabled, symbols, market types, decision logic and workers after
+  the per-scenario cascade; for a profile its bot id, adapter and declared `dry_run`) and its run
+  figures from the run index. `key` is `["kind", "file"]`.
+- A file that does not parse is a row with `status: unreadable` and its `reason`, never an error —
+  a file being edited is broken for minutes at a time. `status: readable` means read, not
+  validated.
+- Served from a cache at most `FRESHNESS_S` (30 s) old; `?refresh=true` walks the roots now.
+- `GET /api/v1/directory/{file}` adds the file's scenarios, read fresh, and the run ids started
+  from it, newest first. An unknown file is `404 config_file_not_found`.
+- A new grant surface, `directory`: a token needs `directory:*`.
+
 ## Version 6 — 2026-09-25 (viewer#21)
 
 - Every error code names its CAUSE, declared once with its status and its sentence
@@ -45,6 +113,8 @@ newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnot
   `units_disabled` and `units_absent` — `[{name, reason}]`, the attempted units that produced
   nothing. `units_declared == units_disabled + len(units_absent) + unit_count`, from two sources.
   A live session is declared 1; one that aborted at startup is absent, with its emergency cause.
+  A run recorded before this version reads `units_declared: 0` — report artifacts are written once
+  and nothing back-fills them, so there 0 means "not stated" and the equation does not hold.
 
 ## Version 5 — 2026-09-25 (viewer#21)
 
@@ -60,7 +130,9 @@ newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnot
   `/config` keeps its own two (`run_not_found`, `config_snapshot_missing`).
 - `scenario-details`: every `units[]` row carries `market_type`, resolved once from the same owner
   as `data_sources[].market_type`, so a filter reads a field instead of joining the two. The row's
-  `data_source` IS the broker type — there is deliberately no second field for it.
+  `data_source` IS the broker type — there is deliberately no second field for it. A run
+  recorded before this version has an empty `market_type` on its rows while `data_sources[]`
+  carries it: report artifacts are written once and nothing back-fills them.
 
 ## Version 4 — 2026-09-24 (#551)
 

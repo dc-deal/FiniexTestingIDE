@@ -69,8 +69,9 @@ For production use, restrict `allow_origins` to the actual deployment domain. No
 
 ## Authentication
 
-Every route but the deliberately open ones — `/api/v1/health`, `/api/v1/contract` and
-`/api/v1/timeframes`, each a decision the endpoint table explains — requires a bearer token, and
+Every route but the deliberately open ones — `/api/v1/health`, `/api/v1/contract`,
+`/api/v1/timeframes` and `/api/v1/validation-checks`, each a decision the endpoint table
+explains — requires a bearer token, and
 holding a token is not the same as being entitled to what it asks for. The model is not this
 project's own: it is the shared `finiex_auth` package, installed from a pinned public tag, so the
 security vocabulary exists once rather than once per service.
@@ -92,6 +93,7 @@ realistic grant there — the model degrades to surface level by design.
 | `brokers` | `broker_router` | `brokers:*` |
 | `bars` | `bars_router` | `bars:kraken_spot`, `bars:mt5` |
 | `deployments` | `deployments_router` | `deployments:*`, `deployments:deploy_20260918_091413` |
+| `directory` | `directory_router` | `directory:*` — it names the operator's own configuration files |
 | `reports` | `reports_router` | `reports:*` |
 | `sweeps` | `sweeps_router` | `sweeps:*` |
 
@@ -111,6 +113,39 @@ list response carries a `key`:
 { "key": ["run_id", "currency"],                "sessions":    [ ... ] }
 { "key": ["run_id", "unit_name", "segment_no"], "periods":     [ ... ] }
 ```
+
+A response serving SEVERAL lists declares `keys` instead, one entry per list, because a single
+key over two row types names fields one of them does not have (contract 9):
+
+```json
+{ "keys": { "units": ["name"], "aggregates": ["currency"] },
+  "units": [ ... ], "aggregates": [ ... ] }                                      // portfolio
+{ "keys": { "trades": ["scenario_name", "position_id", "exit_tick_index"],
+            "analytics": ["currency"], "scenario_totals": ["scenario_name", "currency"] } }
+```
+
+A trade is NOT its position: a partial close books several records of one position, and two
+scenarios of one symbol each count from `pos_<symbol>_1`. Measured 2026-09-27, `position_id`
+alone repeats in 3 of 11 runs on disk; the declared key in none.
+
+**A run's report sections declare keys where a consumer iterates units** — `scenario-details`,
+`portfolio`, `trade-history`, `broker`, `run-summary`, `booking-periods`, `warnings-errors`. An
+EMPTY key is a declaration too, and it means the row's identity IS its position: a warning is an
+event, nothing folds two identical ones into one, and a session that logs one twice has two rows
+with the same text (`warnings-errors`: `errors` → `["name"]`, `warnings` → `[]`). The other sections of a
+run are exempt for now: their identity is the run they were asked for. **The per-unit lists share
+one key, the unit's `name`, and that is a JOIN, meant as one:** the roster in `scenario-details`
+knows every scenario, the figures in `portfolio.units` only the ones that produced, and
+`run-summary.units_absent` the ones that did not — join them on `name`. A set naming one scenario
+twice is refused, and both refused copies are listed; that is the one case the name does not
+separate, and their reason says why.
+
+**One unit, four field names — one identity.** The same unit is `name` on `scenario-details` and
+`portfolio`, `scenario_name` on `trade-history`, and `unit_name` on `booking-periods`. In a
+simulation all four are the scenario's name; in a live session all four are the profile's
+`name`, else its symbol, and that rule is one method (`AutoTraderConfig.get_unit_name()`) rather
+than a copy per section. A selection carried by this value narrows every section, and a unit that
+traded nothing is present in the roster with no trades — never missing from it.
 
 Both of the cases that prompted it are ones where the obvious key is wrong: a deployment row is
 one per (deployment × account currency), and a booking period's running number restarts per bot,
@@ -260,9 +295,10 @@ It is a state to pass through, not one to stay in.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/v1/health` | Server liveness — `{"status":"ok","version":"..."}` |
+| GET | `/api/v1/health` | Server liveness — `status`, `version`, `started_at` (when this process started serving, ISO-8601 UTC, new on every restart) and `uptime_s` (seconds since, on the server's monotonic clock). OPEN, so it carries nothing a stranger could use — no commit, no host, no auth state |
 | GET | `/api/v1/contract` | Which CONTRACT this server serves, beside the app version — they move on different clocks, and a model can change shape inside one app version. `changes` is one line per change that moved into the current contract; every earlier version is in [`api_contract_log.md`](api_contract_log.md). OPEN like `/health`: a consumer must be able to ask which contract they face before they hold a token, or a version mismatch and a credential failure look alike. Every response also carries `X-Api-Contract`, so a saved fixture is self-describing and a consumer's assertion stays local. Deliberately NOT a deprecation channel — no compatibility layers ship (§27), so a number to compare is the honest offer |
 | GET | `/api/v1/timeframes` | All configured timeframes in sorted order |
+| GET | `/api/v1/validation-checks` | Every validation check a finding can name — `check` (the stable id served in `run-summary.units_absent[].checks` and `warnings-errors.warnings[].check`), a `title` fit for a label or a facet, and a one-sentence `description`. Declared once in `python/framework/validators/validation_check_catalog.py`, and a test holds it to the ids the code emits in both directions. OPEN like `/timeframes`: what an id means is the app's own declaration, not data. `key` = `["check"]` |
 | GET | `/api/v1/brokers` | Broker types available in bar index |
 | GET | `/api/v1/caller` | Who the server takes the caller to be (#551): `client` (the consumer the token authenticates as), `account` with `account_kind` (`person` \| `service`) and `display_name` (on whose behalf it calls), `grants` as a list, and the token's `note`. Requires a token while gating is on and takes NO grant — like `/brokers`, it is about the caller, and a grant needed to ask what one holds would be circular. `enforced` is the SERVER's gating state: while it is false nothing verifies a presented token, so every identity field is null even for a caller that sent a valid one, and a 200 is not the token being accepted. A verified consumer bound to no account answers **500 `identity_unbound`** — the boot refuses that state, so reaching it is a defect here, never an anonymous caller |
 | GET | `/api/v1/brokers/{broker}/symbols` | Symbols for a broker with `market_type` |
@@ -273,12 +309,14 @@ It is a state to pass through, not one to stay in.
 | GET | `/api/v1/reports/runs` | Index of EVERY run, newest first — `run_id`, `group` ∈ `simulation` \| `live`, the set / profile name, `artifacts` (every report file the run persisted, by name), and — from the run's header (#475) — `start_time`, `parent_id` (the sweep, deployment or session this run belongs to; null when it stands alone), `parent_kind` (`sweep` \| `deployment` — WHICH of those the id names, since every parent id is a prefix plus a timestamp and they are otherwise indistinguishable; null when the run stands alone, and also on a run indexed before this field existed, where the kind is unknown rather than absent), `app_version`, `git_commit` and `config_snapshot`. **`group` is the PIPELINE, never the nesting:** a sweep combination is a `simulation` whose `parent_id` names its sweep, and a live day fragment (#476) will be a `live` whose `parent_id` names its session. `has_reports` is still served, now derived as `artifacts` being non-empty, so the two can never disagree. **`reporting`** (`expected` \| `none`) says whether the run was COMMISSIONED to report — read it together with `artifacts`: empty + `expected` means still running or died before reporting, empty + `none` means it was never meant to. Without the pair a crashed run is indistinguishable from a deliberately silent one. **`artifacts` is what a consumer should read:** the two pipelines produce DIFFERENT sets (a live session has no `scenario_details` / `profiling` / `run_meta` / `aggregated_portfolio`), so a client that guessed would get a 404 for the difference. Served from the derived run index, built from each run's `header.json`; a lookup is an exact match against that index. A run with no artifacts exists as logs only (a test session writes none). The entry point the routes below are addressed by |
 | GET | `/api/v1/sweeps` | Every recorded parameter sweep, newest first — id, start, duration, combination + ok/error counts, algo, objective. Served from the run-results ledger (#390) |
 | GET | `/api/v1/sweeps/{sweep_id}` | One sweep's combinations, RANKED by the objective the sweep declared. Each row carries its `run_id`, the hinge into the report routes. A row's `git_dirty` covers every repository a component of the run came from, not only this one, and reads true when the code state could not be determined — nothing says it was clean (#551, contract 4) |
+| GET | `/api/v1/directory` | Every configuration file that can start a run — scenario sets and AutoTrader profiles — including files that never ran (`run_count: 0`), from the config directory's cache (#554, contract 7). A row says what the file DECLARES, read from its raw JSON: scenario counts declared and enabled, symbols, market types, decision logic and workers after the per-scenario cascade, and for a profile its bot id, adapter and declared `dry_run`. `status` is `readable` or `unreadable` with a `reason` — read, never validated: a file being edited is a row, not an error. `origin` is `configs` / `user_configs` / `user_algos`; a private path never leaves the server. Run figures come from the run index, matched on `config_snapshot` and the run type. At most `FRESHNESS_S` (30 s) old; `?refresh=true` walks the roots now. `key` = `["file"]` — a file name is ONE entry across every root and both kinds, resolved by precedence (contract 9; it was `["kind", "file"]`) |
+| GET | `/api/v1/directory/{file}` | One file: its row, its scenarios read fresh from the file, and the run ids started from it, newest first. An unknown file is `404 config_file_not_found` |
 | GET | `/api/v1/reports/runs/{run_id}/trade-history` | Trade-history report (query: `symbol`, `close_reason`, `start`, `end`) |
 | GET | `/api/v1/reports/runs/{run_id}/order-history` | Order-history report (query: `symbol`, `status`) |
 | GET | `/api/v1/reports/runs/{run_id}/portfolio` | Portfolio report (per-unit full projection + per-currency aggregates) |
 | GET | `/api/v1/reports/runs/{run_id}/execution-stats` | Execution-stats report (per-unit order counts + summed totals) |
 | GET | `/api/v1/reports/runs/{run_id}/pending-orders` | Pending-orders report (per-unit lifecycle + latency + active orders) |
-| GET | `/api/v1/reports/runs/{run_id}/scenario-details` | Scenario-details report (per-scenario execution + signal metadata, sim-only) — the authority for which scenarios a run has, failed ones included; each row carries its `market_type` |
+| GET | `/api/v1/reports/runs/{run_id}/scenario-details` | Scenario-details report (per-scenario execution + signal metadata, sim-only) — the authority for which scenarios a run has, failed ones included; each row carries its `market_type`. `buy_signals` / `sell_signals` / `flat_signals` / `trades_requested` are `null` when nothing counted them — the decision tracker is off by default in the simulation (`performance_tracking.worker_decision_tracking`); how many trades a scenario CLOSED is `portfolio.units[].total_trades`, joined on `name`. `worker_count` is what the scenario declares |
 | GET | `/api/v1/reports/runs/{run_id}/run-summary` | Run-summary (cross-section KPIs: per-currency + global order counts) |
 | GET | `/api/v1/reports/runs/{run_id}/signal` | Signal-configuration report (per-source provenance + the run's decision basis: fresh / stale / blind ticks) |
 | GET | `/api/v1/reports/runs/{run_id}/worker-decision` | Worker/decision report (per-unit component stats) |
@@ -419,14 +457,25 @@ reading the figures never has to compare routes to learn what they leave out:
 ```json
 "units_declared": 10, "units_disabled": 0, "unit_count": 8,
 "units_absent": [ { "name": "ETHUSD_blocks_01",
-                    "reason": "Scenario 'ETHUSD_blocks_01' failed validation: … Warmup for M30 has 1/20 bars" },
-                  { "name": "ETHUSD_blocks_02", "reason": "…" } ]
+                    "reason": "Scenario 'ETHUSD_blocks_01' failed validation: … Warmup for M30 has 1/20 bars",
+                    "reason_code": "ValidationError", "checks": ["warmup_quality"] },
+                  { "name": "ETHUSD_blocks_02", "reason": "…", "reason_code": "ValidationError",
+                    "checks": ["warmup_quality"] } ]
 ```
 
 `units_declared == units_disabled + len(units_absent) + unit_count`, and the two sides come from
 two sources — declared from the configuration, absent and counted from the results. A live
 session is declared 1: counted when it ran, absent with its emergency cause when it aborted at
-startup.
+startup. **A run recorded before contract 6 states none of the three — they are `null`**, and the
+equation holds wherever they are stated (contract 9; before it they read 0, which the equation
+then disproved).
+
+`reason_code` is the cause for a program, in the vocabulary of `scenario-details`' `error_type`:
+`ValidationError` for a refusal before the run, the exception's class for a crash (a live session
+aborted at startup carries its exception's class too), `NoResults` when nothing failed and
+nothing was produced. `checks` names, for a refusal, the stable ids of the checks that refused it —
+`warmup_quality`, `tick_stretch_gap`, `data_availability`, … — so "which scenarios did warmup cost
+me" is a filter, not a text search.
 
 **`scenario-details` is the authority for "which scenarios does this run have"**: it is the one
 section built from the batch itself rather than from the results, so a scenario that never
@@ -440,6 +489,11 @@ All errors return structured JSON — no raw FastAPI tracebacks:
 ```json
 {"error": "symbol_not_found", "detail": "No symbol 'XYZ' for broker 'mt5' in the bar index"}
 ```
+
+**`error` is for a program, `detail` is for a person.** A consumer branches on the code and may
+show the sentence as it comes: it names what happened and, where the remedy is a setting, the
+setting — never a field of a response or the code behind it (contract 10; a test refuses a
+backtick in any of them). The authentication answers' sentences are the shared package's.
 
 **`error` names the CAUSE, never only the status.** One absence usually has several causes, and a
 consumer renders each differently — so there is no bare `not_found` (contract 6). Every code is
@@ -470,6 +524,7 @@ table to both, in both directions.
 | 404 | `no_bars_in_range` | bars exist, but none in the requested window |
 | 404 | `deployment_not_found` | no such deployment in the run-results ledger |
 | 404 | `sweep_not_found` | no such sweep in the run-results ledger |
+| 404 | `config_file_not_found` | the config directory lists no such file |
 | 409 | `artifact_unreadable` | an artifact exists but no longer matches its model — usually its age |
 | 429 | `rate_limited` | too many attempts (`finiex_auth`) — carries `Retry-After` |
 | 500 | `market_type_not_configured` | a broker in the bar index has no `market_type` in `market_config.json` |

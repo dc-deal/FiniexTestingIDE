@@ -314,7 +314,7 @@ class AutotraderTickLoop:
         # It COLLECTS; the report coordinator writes every period at once when the run ends, so
         # the parquet write stays out of what the throughput benchmark measures.
         self._booking = BookingSegmentRecorder(
-            unit_name=config.name or config.symbol,
+            unit_name=config.get_unit_name(),
             anchor=self._day_anchor,
             carried_segment_no=carried_segment_no,
             log=self._logger.info,

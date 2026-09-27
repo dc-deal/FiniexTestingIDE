@@ -10,7 +10,7 @@ Happy path + one error case per endpoint as specified in #298.
 """
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -27,6 +27,7 @@ from python.framework.types.api.report_types import (
     RunInfo,
     RunResultRow,
 )
+from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS_BY_ID
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -116,6 +117,13 @@ def _sample_bars_df() -> pd.DataFrame:
 
 class TestTimeframes:
 
+    def test_the_validation_checks_are_the_catalog(self, client):
+        body = client.get('/api/v1/validation-checks').json()
+        assert body['key'] == ['check']
+        served = {row['check']: row for row in body['checks']}
+        assert set(served) == set(VALIDATION_CHECKS_BY_ID)
+        assert served['warmup_quality']['title'] == VALIDATION_CHECKS_BY_ID['warmup_quality'].title
+
     def test_list_timeframes_structure(self, client):
         r = client.get('/api/v1/timeframes')
         assert r.status_code == 200
@@ -149,7 +157,26 @@ class TestHealth:
     def test_health_ok(self, client):
         r = client.get('/api/v1/health')
         assert r.status_code == 200
-        assert r.json() == {'status': 'ok', 'version': AppConfigManager().get_version()}
+        body = r.json()
+        assert set(body) == {'status', 'version', 'started_at', 'uptime_s'}
+        assert body['status'] == 'ok'
+        assert body['version'] == AppConfigManager().get_version()
+
+    def test_it_says_when_the_server_started_in_utc(self, client):
+        started = datetime.fromisoformat(client.get('/api/v1/health').json()['started_at'])
+        assert started.utcoffset() == timedelta(0)
+        assert started <= datetime.now(timezone.utc)
+
+    def test_the_uptime_runs_forward_and_a_restart_starts_again(self):
+        """The uptime never goes back within one server; a second server process is a new start."""
+        first_server = TestClient(create_app())
+        before = first_server.get('/api/v1/health').json()
+        after = first_server.get('/api/v1/health').json()
+        assert 0 <= before['uptime_s'] <= after['uptime_s']
+        assert after['started_at'] == before['started_at']
+        restarted = TestClient(create_app()).get('/api/v1/health').json()
+        assert datetime.fromisoformat(restarted['started_at']) >= datetime.fromisoformat(
+            before['started_at'])
 
 
 # ---------------------------------------------------------------------------

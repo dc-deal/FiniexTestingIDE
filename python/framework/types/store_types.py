@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Optional
 
-
 # The discovery caches' directory below data/processed. Named ONCE: the three cache families
 # each declared it, the store catalog declared it a fourth time, and four literals for one
 # directory is how a rename becomes a hunt. No leading dot — a cache is not a hidden file, and
@@ -77,6 +76,7 @@ class StoreId(StrEnum):
     SIGNALS = 'signals'
     DISCOVERY_CACHES = 'discovery_caches'
     BROKER_RUNTIME = 'broker_runtime'
+    CONFIG_DIRECTORY = 'config_directory'
     RAW_INBOX = 'raw_inbox'
     FINISHED_ARCHIVE = 'finished_archive'
     GLOBAL_LOG = 'global_log'
@@ -95,6 +95,8 @@ class StoreStatus:
     Args:
         store_id: Which store this describes
         kind: Its classification
+        purpose: What the store is for, in one line
+        doc: The document that explains it
         root: Where it lives, as configured
         key: How one entry is addressed
         form: How it is read
@@ -113,6 +115,8 @@ class StoreStatus:
     """
     store_id: StoreId
     kind: StoreKind
+    purpose: str
+    doc: str
     root: str
     key: str
     form: RetrievalForm

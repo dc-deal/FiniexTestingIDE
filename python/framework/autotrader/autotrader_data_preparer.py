@@ -41,7 +41,7 @@ def build_scenario_from_config(config: AutoTraderConfig) -> SingleScenario:
         trade_simulator_config['account_currency'] = settings.account_currency
 
     return SingleScenario(
-        name=settings.name or config.name or config.symbol,
+        name=settings.name or config.get_unit_name(),
         scenario_index=0,
         symbol=config.symbol,
         data_broker_type=settings.data_broker_type or config.broker_type,

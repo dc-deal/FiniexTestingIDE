@@ -193,4 +193,5 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Algo Clock Validator](tests/framework/algo_clock_validator_tests.md) | §9 runtime startup validator — AST scan of loaded algos (CORE + USER) + batch pre-flight |
 | [Discovery Cache Validity](tests/framework/discovery_validity_tests.md) | The config-fingerprint comparison across all three cache families, and the single-open metadata reader behind it |
 | [Store Model Tests](tests/framework/store_tests.md) | Catalog completeness, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope |
+| [Config Directory Tests](tests/framework/config_directory_tests.md) | Every file that can start a run, read without running it — unreadable files as rows, precedence, the per-file cache, run figures |
 | [Static Analysis Tests](tests/framework/static_analysis_tests.md) | §40 undefined-name gate (pyflakes) + the measured ruff/vulture backlog tier |

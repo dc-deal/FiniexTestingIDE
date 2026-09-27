@@ -148,5 +148,8 @@ def test_a_scenario_rejected_after_its_package_was_built_is_reported_not_a_crash
     assert (roster.declared, roster.disabled) == (3, 1)
     assert [row.name for row in roster.absent] == ['archive_head_short_warmup']
     assert 'insufficient for indicator stabilization' in roster.absent[0].reason
+    # The cause as a code, and the check that refused it — what lets a reader group absences.
+    assert roster.absent[0].reason_code == 'ValidationError'
+    assert roster.absent[0].checks == ['warmup_quality']
     assert roster.declared == roster.disabled + len(roster.absent) + len(
         run_units_from_batch(summary))

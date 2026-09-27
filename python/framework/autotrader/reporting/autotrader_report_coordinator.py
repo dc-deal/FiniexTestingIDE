@@ -151,7 +151,7 @@ class AutotraderReportCoordinator:
         # Unified report artifacts (#391) — the canonical models the console/CSV
         # render and the API serves; same shape as sim, one set per session run.
         # The session is one run unit → tagged with the profile/symbol name (#393).
-        name = self._config.name or self._config.symbol
+        name = self._config.get_unit_name()
         # Extract the session's single run unit once (#391 Phase 2).
         # Sentiment feed label (#438): the scenario's data_sentiment_type (mock; '' when none / live).
         units = run_units_from_session(

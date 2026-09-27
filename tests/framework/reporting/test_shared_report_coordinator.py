@@ -110,8 +110,18 @@ class TestDeriveAndPersist:
         summary = unified.run_summary
         assert (summary.units_declared, summary.units_disabled, summary.unit_count) == (1, 0, 0)
         assert [row.name for row in summary.units_absent] == ['my_profile']
+        assert summary.units_absent[0].reason_code == 'NoResults'   # nothing raised, nothing made
         assert summary.units_declared == (
             summary.units_disabled + len(summary.units_absent) + summary.unit_count)
+
+    def test_a_session_that_crashed_at_startup_names_the_exception_as_its_code(self):
+        """The live cause as a code: the exception's class, the simulation's vocabulary."""
+        result = AutoTraderResult(execution_stats=_stats(0, 0, 0, 0), shutdown_mode='emergency',
+                                  emergency_reason='venue unreachable',
+                                  emergency_error_type='ConnectionError')
+        absent = unit_roster_from_session(result, 'my_profile').absent
+        assert [(row.reason, row.reason_code, row.checks) for row in absent] == [
+            ('venue unreachable', 'ConnectionError', [])]
 
     def test_a_session_that_ran_is_counted_not_absent(self):
         """The ordinary live case: one declared, one counted, nothing missing."""

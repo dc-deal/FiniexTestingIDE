@@ -31,6 +31,9 @@ class SharedPaths(StrictConfigModel):
     # (#551) — any other repository keeps its own inside itself. A RECORD store: it is what lets a
     # run from uncommitted code be restored to the code that ran.
     run_patches: str = 'run_patches'
+    # The directory of every configuration that can start a run (#554). A DERIVED store: one
+    # cached reading per configuration file, deletable at any time.
+    config_directory: str = 'data/runtime/config_directory'
 
 
 class HistoryConfig(StrictConfigModel):

@@ -116,51 +116,6 @@ class RunConfigStore:
         self._index.upsert(entry)
         return entry
 
-    def sync(self, sources: List[Path], kind: RunConfigKind) -> int:
-        """
-        Bring the store up to date with an authoritative enumeration, cheaply.
-
-        Called with the list SOMEONE ELSE already resolved — the scenario-set finder knows the
-        precedence between `user_configs`, `user_algos` and `configs`, and it pays one recursive
-        walk to establish it. Re-deriving that here would be the same walk a second time (§19),
-        so the enumeration is passed in and this only records what changed.
-
-        The steady state costs one `stat` per file and NO write: a file whose size and
-        modification time match its indexed row is not re-read, not re-hashed and not re-written.
-        Measured: 111 ms of stats for 67 configs, against 613 ms for a single recursive glob.
-
-        Args:
-            sources: The files, as the caller resolved them
-            kind: Which pipeline they start
-
-        Returns:
-            How many were registered — zero when nothing changed
-        """
-        frame = self._index.read()
-        known = {}
-        if not frame.empty:
-            for row in frame.itertuples():
-                if row.source_name:
-                    known[row.source_name] = (float(row.source_mtime), int(row.source_size))
-
-        changed = 0
-        for source in sources:
-            try:
-                stat = source.stat()
-            except OSError:
-                continue
-            if known.get(source.name) == (stat.st_mtime, stat.st_size):
-                continue
-            try:
-                self.register(source, kind)
-                changed += 1
-            except (OSError, ValueError):
-                # A config this store cannot parse is not this store's problem to report: the
-                # loader refuses it with a message naming the file, and swallowing it here keeps
-                # one broken config from making every other one unfindable.
-                continue
-        return changed
-
     def resolve(self, source_name: str) -> Optional[Path]:
         """
         Where a config file lives, without walking the tree.

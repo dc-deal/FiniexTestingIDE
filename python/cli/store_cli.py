@@ -17,6 +17,7 @@ from python.framework.exceptions.store_errors import StoreCatalogError
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.reporting.certificates.certificate_index import CertificateIndex
 from python.framework.store.store_catalog import StoreCatalog
+from python.framework.store.store_descriptor import PURPOSE_MAX_LENGTH
 from python.framework.store.store_registrations import CERTIFICATES_ROOT
 from python.framework.types.store_types import StoreId, StoreStatus
 
@@ -62,11 +63,12 @@ class StoreCli:
             Process exit code
         """
         rows = self._catalog.status(with_sizes=with_sizes)
-        print('\n' + '=' * 112)
-        print(f'🗄️  Store Catalog — {len(rows)} registered store(s)')
-        print('=' * 112 + '\n')
         header = (f'  {"KIND":<11} {"STORE":<18} {"ROOT":<38} {"INDEX":<31} '
-                  f'{"ENTRIES":>8}' + (f' {"SIZE":>10}' if with_sizes else ''))
+                  f'{"ENTRIES":>8}' + (f' {"SIZE":>10}' if with_sizes else '')
+                  + f'  {"PURPOSE":<{PURPOSE_MAX_LENGTH}}')
+        print('\n' + '=' * len(header))
+        print(f'🗄️  Store Catalog — {len(rows)} registered store(s)')
+        print('=' * len(header) + '\n')
         print(header)
         print('  ' + '-' * (len(header) - 2))
         for row in rows:
@@ -78,6 +80,9 @@ class StoreCli:
         print('\n  How ONE entry is addressed:')
         for row in rows:
             print(f'      {row.store_id.value:<18} {row.key}')
+        print('\n  Where each store is explained:')
+        for row in rows:
+            print(f'      {row.store_id.value:<18} {row.doc}')
         stale = [r for r in rows if r.stale_reason and not r.self_healing]
         healing = [r for r in rows if r.stale_reason and r.self_healing]
         if stale:
@@ -140,7 +145,7 @@ class StoreCli:
                 f'{index:<31} {entries:>8}')
         if with_sizes:
             line += f' {_human_size(row.size_bytes):>10}'
-        return line
+        return f'{line}  {row.purpose}'
 
     @staticmethod
     def _print_expired_certificates() -> None:

@@ -46,7 +46,8 @@
     ],
     "run_ledger": "runs/ledger",
     "run_configs": "run_configs",
-    "run_patches": "run_patches"
+    "run_patches": "run_patches",
+    "config_directory": "data/runtime/config_directory"
   },
   "history": {
     "bar_max_history": 1000,

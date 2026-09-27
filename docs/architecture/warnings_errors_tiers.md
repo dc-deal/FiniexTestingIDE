@@ -166,6 +166,12 @@ two levels still follows the console setting.
 the honest answer: no assertion decided a log line, and it belongs to no validator area. The
 channel is already named — by the tier itself.
 
+**Every `check` id is declared once, with a name and a sentence** —
+`python/framework/validators/validation_check_catalog.py`, served as
+`GET /api/v1/validation-checks`. A new check needs its entry in the same change: a test walks the
+source for every id a finding can carry and fails on one the catalog does not know, and on an
+entry no finding can carry any more.
+
 `WarningTier` is an Enum for that reason: it is the ORIGIN question, answered once.
 
 ```python

@@ -98,6 +98,7 @@ tests/
 │   ├── config/            unit — execution_config 3-level cascade (#137) · deep_merge list-merge ·
 │   │                      AutoTrader loader field coverage (every block field reachable from JSON)
 │   ├── connection_ladder/ unit — shared retry decision for every external connection: classification, backoff, jitter, budget, give-up (#473)
+│   ├── config_directory/  unit — every configuration that can start a run: what a file declares, unreadable files as rows, precedence, the per-file cache, run figures from the run index, and the console views over it (#554)
 │   ├── indicators/        unit — the shared indicator library: what each name means (Wilder vs EMA vs simple), the scalar/series parity, and the warmup each recursive average needs (#517)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── signal_workers/    unit — SIGNAL worker type, provider, llm_sentiment, hybrid decision (#141), outage contract + episode capture (#434/#451)

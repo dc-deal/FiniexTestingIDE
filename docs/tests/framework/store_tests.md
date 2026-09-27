@@ -27,7 +27,9 @@ state and the correct state look identical from the outside:
 
 **Catalog completeness.** Every `StoreId` has a registration — this is the assertion behind the
 rule that a new store is entered in the catalog in the same change that creates it. Every descriptor carries a
-kind, a form, a backend and a root. A `SPECIAL` store must state *why* it is special, so the kind
+kind, a form, a backend and a root, and says what it is FOR — one line that fits the catalog row
+— with a help link whose file exists and whose anchor names a real heading, so renaming a heading
+fails here rather than in a reader's browser. A `SPECIAL` store must state *why* it is special, so the kind
 is a declaration rather than a loophole. A managed store must carry an index or a note explaining
 why it has none. Asking the catalog for an unregistered store is named as an error, never answered
 with an empty result.
@@ -176,8 +178,8 @@ hash over nothing would be a claim rather than an absence.
 
 Two more groups. **Resolution is a lookup and never the only way to find anything** — a registered
 name resolves without a walk, a file that MOVED resolves to None rather than to a stale path, an
-unknown name resolves to None, `sync` registers only what changed (zero writes in the steady
-state), and one unparseable config does not make every other one unfindable. And **the index
+and an unknown name resolves to None. (`sync`, the bulk registration a scenario LISTING used to
+do, is gone with that listing: a read must not write this RECORD store, #554.) And **the index
 describes its store** — a missing frozen copy is reported, a `LOGIC_VERSION` bump invalidates, and
 the rebuild finds every frozen copy while leaving `source_name` empty, because `first_seen` and
 `source_path` were observations made at registration and exist nowhere else. The rebuild says so

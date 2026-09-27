@@ -1,7 +1,10 @@
 """
 The API's error vocabulary — every answer that is not a success, declared once.
 
-Each entry pairs an HTTP status with the CAUSE a consumer renders and the sentence it reads. Before
+Each entry pairs an HTTP status with the CAUSE a consumer renders and the sentence it reads. The
+code is for a program to branch on; the sentence is written for the PERSON reading the answer, so
+a consumer may show it as it comes — it names what happened and, where the remedy is a setting,
+the setting, never a field of a response or the code behind it. Before
 this catalog the codes were string literals at the raising line: the same `run_not_found` sentence
 stood in two routes, the same `invalid_limit` in two more, and eight different absences on the
 bars and broker routes shared one bare `not_found` — a code that tells a consumer a status it
@@ -33,9 +36,9 @@ RUN_NOT_COMPLETED = ApiErrorKind(
     "report phase; from here the two look the same")
 ARTIFACT_NOT_PRODUCED = ApiErrorKind(
     404, 'artifact_not_produced',
-    "Run '{run_id}' persisted {artifact_count} report artifact(s) but no {section} — its "
-    "pipeline does not write this section, or its outcome left nothing to write. The run "
-    "list's `artifacts` names what it has")
+    "Run '{run_id}' has {artifact_count} report section(s), but not {section}: this kind of run "
+    "does not produce it, or it ended without anything to put in it. The run list shows which "
+    "sections it has")
 ARTIFACT_UNREADABLE = ApiErrorKind(409, 'artifact_unreadable', '{reason}')
 CONFIG_SNAPSHOT_MISSING = ApiErrorKind(
     404, 'config_snapshot_missing',
@@ -74,6 +77,11 @@ DEPLOYMENT_NOT_FOUND = ApiErrorKind(
 SWEEP_NOT_FOUND = ApiErrorKind(
     404, 'sweep_not_found', "No sweep '{sweep_id}' in the run-results ledger")
 
+# --- Directory: every configuration that can start a run --------------------------------------
+
+CONFIG_FILE_NOT_FOUND = ApiErrorKind(
+    404, 'config_file_not_found', "No configuration file '{file}' in the directory")
+
 # --- Identity ---------------------------------------------------------------------------------
 
 IDENTITY_UNBOUND = ApiErrorKind(
@@ -88,6 +96,7 @@ API_ERRORS: Tuple[ApiErrorKind, ...] = (
     COVERAGE_REPORT_UNAVAILABLE, NO_BARS_IN_RANGE, INVALID_TIMEFRAME, INVALID_LIMIT,
     INVALID_PERIOD, INVALID_RANGE, MARKET_TYPE_NOT_CONFIGURED,
     DEPLOYMENT_NOT_FOUND, SWEEP_NOT_FOUND,
+    CONFIG_FILE_NOT_FOUND,
     IDENTITY_UNBOUND,
 )
 

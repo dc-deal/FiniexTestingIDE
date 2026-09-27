@@ -49,7 +49,9 @@ from typing import Any, Dict, List, Optional
 # row of zeroes, which is the state this script exists to get out of.
 BASE_PROFILE = Path('configs/autotrader_profiles/backtesting/trade_lifecycle_test.json')
 
-BOT_ID = 'demo-btcusd-bot'
+# A declared identity is at most 10 characters of a-z, 0-9 and '-' (declared_id_utils.py); the
+# first id this script used was 15 long, and every session was refused at startup (2026-09-27).
+BOT_ID = 'demo-btc'
 PROFILE_NAME = 'demo_btcusd_bot'
 
 # Long enough to cross the replay's midnight, so a session books more than its closing period.

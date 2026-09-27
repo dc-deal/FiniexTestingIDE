@@ -117,6 +117,21 @@ def _isolate_run_config_store(tmp_path_factory):
 
 
 @pytest.fixture(scope='session', autouse=True)
+def _isolate_config_directory(tmp_path_factory):
+    """
+    Redirect the config directory's cache (#554) to a throwaway dir for the whole session.
+
+    Added with the store: every test that lists the directory would otherwise write its reading
+    of the fixture tree into the operator's `data/runtime/config_directory/` (§34).
+    """
+    store_dir = tmp_path_factory.mktemp('config_directory')
+    mp = pytest.MonkeyPatch()
+    mp.setattr(AppConfigManager, 'get_config_directory_path', lambda self: str(store_dir))
+    yield
+    mp.undo()
+
+
+@pytest.fixture(scope='session', autouse=True)
 def _isolate_run_patch_store(tmp_path_factory, request):
     """
     Redirect the run-patch store to a throwaway dir for the whole test session.

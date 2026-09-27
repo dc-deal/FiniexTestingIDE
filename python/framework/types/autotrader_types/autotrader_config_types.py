@@ -184,3 +184,14 @@ class AutoTraderConfig:
     capital: CapitalDefaults = field(default_factory=CapitalDefaults)
     config_path: Optional[Path] = None
     dry_run: Optional[bool] = None
+
+    def get_unit_name(self) -> str:
+        """
+        The name this session carries as a run unit — in every report row, the booking periods,
+        the carry-over key and the provenance. One rule in one place, because a report consumer
+        matches a session across sections by exactly this value.
+
+        Returns:
+            `name`, else the symbol
+        """
+        return self.name or self.symbol

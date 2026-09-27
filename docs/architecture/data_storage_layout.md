@@ -42,6 +42,7 @@ worse. What they *can* share is how they describe themselves.
 | 8 | `data/processed/discovery_caches/` | DERIVED ← bars | family / broker_symbol | `discovery_caches_index.parquet` | A · document |
 | 9 | `configs/generator_profiles/` | DERIVED ← discovery caches | mode / broker / symbol | none — its own fingerprints | A · document |
 | 10 | `data/runtime/brokers/` | DERIVED ← a remote API | `broker_type` | none — one file per broker | A · document |
+| 10b | `data/runtime/config_directory/` | DERIVED ← the configuration files (not a store) | path of the configuration file | `config_directory_index.parquet` | B · set |
 | 11 | `data/finished/` | ARCHIVE | file name | none — opened by name | A · document |
 | 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
@@ -183,6 +184,38 @@ search that was always there, and a successful search registers what it found. M
 of stats for 67 configs against 613 ms for a single recursive glob, and the scenario listing fell
 from 19.5 s to 6.7 s — of which 5.7 s is Python startup, so the work itself went from 13.8 s to
 0.95 s.
+
+## The config directory reads, and writes nothing but itself (#554)
+
+Every file that can start a run — scenario sets and AutoTrader profiles, under `configs/`,
+`user_configs/` and the user algo directories — read into one row each: what it DECLARES, from its
+raw JSON, never through the loader. The cache is one parquet file at the store's root, one row per
+file keyed on its path, modification time and size, the row itself carried as its JSON:
+
+```
+data/runtime/config_directory/
+  config_directory_index.parquet   path · source_mtime · source_size · status · row_json
+```
+
+- **A read writes nothing but this cache.** The scenario listing it replaced froze every file it
+  saw into `run_configs/` — a RECORD that deletes nothing — so a half-finished file being edited
+  became a permanent "version". The run-config store is not touched here at all.
+- **Only a changed file is read.** A request walks the roots and compares each file's `stat` with
+  its row; an unchanged file costs one `stat`, a new or changed one a parse, a deleted one drops
+  out. A new `LOGIC_VERSION` reads everything again.
+- **The walk is the cost** — one `stat` per directory entry, each a request across the bridged
+  mount — so hidden and bytecode directories are pruned before they are entered (a strategy
+  repository's `.git` is most of what lies under it), and a reading is served for `FRESHNESS_S`
+  (30 s) from memory; `refresh` walks at once. Measured 2026-09-27 over 37 scenario sets and 31
+  profiles: a refresh 0.3 s (0.2 s of it the walk), from memory under 0.1 ms.
+- **A file that does not parse is a row**, `unreadable` with its reason — never an error, never
+  cached as anything but what it is. JSON carrying neither marker (an analysis result beside a
+  strategy) is cached as `not_a_config`, so it is not read again, and never served.
+- **The run figures are not in it.** They are joined at serve time from the run index, matched on
+  `config_snapshot` (the source file name, in both pipelines) and the run type, so a run that just
+  started counts at once — and deleting this cache loses nothing.
+- **`derived_from` is None on purpose:** its sources are hand-written configuration files, which
+  are not a store.
 
 ## Run patches keep the code a dirty tree ran (#551)
 
@@ -435,7 +468,9 @@ just invalidated — but the reason line is what makes the remaining cases actio
 1. Add a `StoreId` value in [`store_types.py`](../../python/framework/types/store_types.py).
 2. Register it in [`store_registrations.py`](../../python/framework/store/store_registrations.py)
    with its kind, root, key, form and — unless it is SPECIAL — its index or a stated reason for
-   having none.
+   having none. Two fields are for the reader of the catalog: `purpose`, one line saying what the
+   store is FOR (printed on its row), and `doc`, the document that explains it, with a heading
+   anchor where one section covers it (printed under the table as its help link).
 3. Add its row to the table above.
 4. `tests/framework/store/` asserts completeness, so a forgotten registration fails the suite
    rather than going unnoticed.

@@ -25,6 +25,7 @@ from python.framework.types.portfolio_types.portfolio_aggregation_types import P
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.run_results_types import BookingSegment
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.pending_order_stats_types import PendingOrderStats
@@ -33,6 +34,7 @@ from python.framework.types.trading_env_types.stress_test_types import (
     StressTestConfig,
 )
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
+from python.framework.types.validation_types import Severity
 
 
 @dataclass
@@ -79,6 +81,9 @@ class RunUnit:
 
 # The reason a unit carries when it produced nothing and left no message saying why.
 _NO_RESULTS = 'produced no results'
+# The same absence as a CODE, in the vocabulary of `error_type` — which names a cause in
+# CamelCase: an exception class, `ValidationError`, `LoggedErrors`.
+_NO_RESULTS_CODE = 'NoResults'
 
 
 def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
@@ -137,7 +142,8 @@ def unit_roster_from_batch(batch: BatchExecutionSummary, disabled_count: int) ->
         disabled_count: Scenarios the set switched off (`enabled: false`), counted by the loader
 
     Returns:
-        The roster; an absent scenario's reason is its error message
+        The roster; an absent scenario's reason is its error message, its code the result's
+        error type, and a refused one names the checks that refused it
     """
     absent = []
     for result in batch.process_result_list:
@@ -146,7 +152,9 @@ def unit_roster_from_batch(batch: BatchExecutionSummary, disabled_count: int) ->
             continue
         absent.append(AbsentUnitRow(
             name=result.scenario_name,
-            reason=result.error_message or result.error_type or _NO_RESULTS))
+            reason=result.error_message or result.error_type or _NO_RESULTS,
+            reason_code=result.error_type or _NO_RESULTS_CODE,
+            checks=_refusing_checks(batch.get_scenario_by_process_result(result))))
     return UnitRoster(declared=len(batch.single_scenario_list) + disabled_count,
                       disabled=disabled_count, absent=absent)
 
@@ -166,7 +174,26 @@ def unit_roster_from_session(session: AutoTraderResult, name: str) -> UnitRoster
     if session.portfolio_stats is not None:
         return UnitRoster(declared=1)
     return UnitRoster(declared=1, absent=[AbsentUnitRow(
-        name=name, reason=session.emergency_reason or _NO_RESULTS)])
+        name=name, reason=session.emergency_reason or _NO_RESULTS,
+        reason_code=session.emergency_error_type or _NO_RESULTS_CODE)])
+
+
+def _refusing_checks(scenario: SingleScenario) -> List[str]:
+    """
+    The stable ids of the checks that refused a scenario, in the order they were found.
+
+    Args:
+        scenario: The scenario, as the batch validated it
+
+    Returns:
+        Distinct check ids of its ERROR findings; empty for a scenario nothing refused
+    """
+    checks: List[str] = []
+    for result in scenario.validation_result:
+        for finding in result.findings:
+            if finding.severity is Severity.ERROR and finding.check not in checks:
+                checks.append(finding.check)
+    return checks
 
 
 def _stamp_unit(

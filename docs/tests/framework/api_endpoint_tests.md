@@ -12,6 +12,7 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestTimeframes` | `test_list_timeframes_structure` | Response has `timeframes` list, each entry has `name` and `minutes` |
 | `TestTimeframes` | `test_list_timeframes_contains_known_entries` | M1=1min, H1=60min, D1=1440min are present and correct |
 | `TestTimeframes` | `test_timeframes_sorted_ascending_by_minutes` | List is sorted from shortest to longest bar duration |
+| `TestTimeframes` | `test_the_validation_checks_are_the_catalog` | `/validation-checks` serves exactly the check catalog, keyed on `check` |
 | `TestHealth` | `test_health_ok` | Status + version in response |
 | `TestBrokers` | `test_list_brokers` | Broker list from mocked index |
 | `TestSymbols` | `test_list_symbols` | Symbols with correct `market_type` |
@@ -45,7 +46,7 @@ is the one that gets forgotten.
 | `TestTheTokenFileIsRefusedWhenItIsTheTrackedOne` | Against real files at their real paths in a throwaway tree: a live token answering from the committed `inbound/` file refuses the boot, and that refusal comes BEFORE the missing-account one, the parse and the account binding — each of those would tell the operator to edit a file whose only right edit is moving the key out; the consumer is named and its token never is. An entry not declared off counts as live, a value the token model cannot read included; one declared off in any spelling the model reads passes. The workspace file is not mistaken for the tracked one, an inactive entry there is fine, which is what lets the placeholder carry examples, and the path the loader REALLY answers from under isolation is recognised. The earlier version passed a path string of the flat layout, so it stayed green while the check never fired on the real path |
 | `TestTheSurfaceVocabularyIsClosed` | An unknown surface fails when the token is parsed, not at request time; and the vocabulary is held to the same set as `api_app.ROUTER_SURFACES`, so a router mounted under a surface no token can name — or a surface no router serves — fails here rather than becoming a denial nobody can explain |
 | `TestACollectionRouteIsGatedToo` | The hole the walk cannot see: a route with no path parameter had nothing for a grant to be about, so `/reports/runs`, `/sweeps` and `/deployments` would answer any authenticated token. Refusal and admission are both named by hand — a new collection route needs its own pair or nothing looks at it |
-| `TestTheAppLevelRoutesAreADecision` | `/timeframes` open beside `/health`, `/brokers` requiring a token and taking no grant — pinned so neither drifts back to being accidental |
+| `TestTheAppLevelRoutesAreADecision` | `/timeframes` and `/validation-checks` open beside `/health`, `/brokers` requiring a token and taking no grant — pinned so none drifts back to being accidental |
 | `TestTheCallerRouteSaysWhoIsCalling` | `/caller` (#551): a valid token is answered with its client, account, account kind, display name, grants as a list and note; a wrong token is a 401 with `WWW-Authenticate: Bearer`, and so is no header; a token holding NOTHING still reaches it, because it is token-only like `/brokers`; with gating off it names nobody even for a valid token (`enforced: false`), and the real scaffold boot answers the same; the real boot from files on disk reaches the route; a verified consumer with no account is a 500 `identity_unbound`, not an anonymous caller; the route is on no grant surface; and it answers under contract 4 or later, which catches a forgotten bump |
 | `TestTheSchemaSurfaceIsOffWhereItCannotBeGuarded` | `/openapi.json`, `/docs` and `/redoc` are FastAPI's own routes at the APP ROOT — outside `/api/v1`, uncoverable by a router dependency, and outside the walk by construction (it filters on a path parameter). They are tied to the auth posture instead: present while nobody is configured, gone once somebody is, and a token does not bring them back |
 | `TestTheCorsPreflightIsNeverGated` | An `OPTIONS` without `Authorization` is not refused, and `WWW-Authenticate` / `Retry-After` are exposed — invisible from every seat but a browser's |
@@ -82,6 +83,16 @@ header and is open like `/health`. And the contract log's newest `## Version N` 
 `API_CONTRACT_VERSION`, newest first: the server serves only the current version's lines, so a bump
 that skipped the log would leave a gap no consumer could see.
 
+## Directory routes (`test_directory_endpoint.py`)
+
+`TestDirectory` pins the router's wiring over a directory double: the list serves its rows and
+declares `key = ["file"]` (a file that never ran is a row with `run_count: 0`), `refresh`
+reaches the directory, a known file's detail is served, and an unknown one is
+`config_file_not_found`. What a row SAYS is the config directory suite's
+([Config Directory Tests](config_directory_tests.md)). Gating: `/directory/{file}` is in the
+auth walk's required routes, and the collection route has its refused/admitted pair in
+`TestACollectionRouteIsGatedToo`.
+
 ## Error vocabulary (`test_api_error_catalog.py`)
 
 Every error the API answers with is declared once in `python/api/api_error_catalog.py` (§49: a
@@ -97,6 +108,23 @@ A missing report section names its cause from the run's index row —
 `TestAMissingSectionSaysWhy` in `test_reports_endpoint.py`: `reports_not_commissioned` for a run
 started with `reporting: none`, `run_not_completed` for one with no artifact yet,
 `artifact_not_produced` for a section the run did not write.
+
+## Row keys (`test_row_keys.py`)
+
+Every list the API serves says what makes one of its rows unique, and this file is what makes
+that declaration more than a comment. The lists are found by walking the MOUNTED routes — an
+optional list included — so a route added tomorrow is covered the day it exists.
+
+- `TestEveryServedListSaysWhatMakesARowUnique` — each list declares a key (`key` for a response
+  with one list, `keys` with one entry per list otherwise), and every part it names is a field of
+  that list's row. An EMPTY key is a declaration too — the row's identity is its position, as for
+  the warnings of `warnings-errors`. A run's report sections are exempt until they declare any key; once they do,
+  every list they serve needs one.
+- `test_a_response_with_several_lists_keys_each_one` — one `key` over two row types is refused.
+- `TestTheKeyActuallySeparatesTheRows` — adversarial rows that differ only in the part one would
+  be tempted to drop: a deployment's currency, a booking period's run, and a trade's unit and
+  closing tick (a partial close books several records of one position, and two scenarios of one
+  symbol both count from `pos_<symbol>_1`).
 
 ## Mocking Strategy
 

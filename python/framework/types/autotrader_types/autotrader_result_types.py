@@ -64,6 +64,8 @@ class AutoTraderResult:
             Mirrors ProcessResult.scenario_logger_buffer, so both pipelines hand the reporting
             stage the same shape and the level filter lives at DERIVE, not here
         emergency_reason: Fatal cause when shutdown_mode == 'emergency' (None otherwise)
+        emergency_error_type: The class of the exception that caused it, None when no
+            exception did — the cause as a code, beside the sentence
         cold_start_situation: What the boot step found at the venue (#355 / #493). None for
             a simulation, a dry run and a Field Study — the three cases with nothing to find.
             Captured raw; the report model is derived from it
@@ -98,6 +100,7 @@ class AutoTraderResult:
     shutdown_mode: str = 'normal'
     operator_interrupted: bool = False
     emergency_reason: Optional[str] = None
+    emergency_error_type: Optional[str] = None
     session_logger_buffer: List[LogRecord] = field(default_factory=list)
     cold_start_situation: Optional[ColdStartSituation] = None
     cold_start_verdict: Optional[ColdStartVerdict] = None

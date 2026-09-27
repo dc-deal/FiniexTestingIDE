@@ -83,6 +83,14 @@ class TestTheCatalogIsOneVocabulary:
             assert (error.status_code, error.error) == (kind.status, kind.code)
             assert '{' not in error.detail, kind.code
 
+    def test_every_sentence_is_written_for_a_person(self):
+        """
+        `detail` is shown to whoever reads the answer, so it names what happened — never a field of
+        a response in backticks, the mark of a sentence written for a developer (contract 10).
+        """
+        for kind in API_ERRORS:
+            assert '`' not in kind.message, f'{kind.code}: {kind.message!r}'
+
 
 class TestTheRoutesRaiseOnlyFromIt:
 

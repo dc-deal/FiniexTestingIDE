@@ -8,16 +8,30 @@
             "name": "📙 List Scenarios",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "program": "${workspaceFolder}/python/cli/config_directory_cli.py",
             "args": [
-                "list",
-                "--full-details"
+                "list"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
                 "order": 1
+            }
+        },
+        {
+            "name": "📙 Validate Scenario Sets",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "validate"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "01_runs_simulation",
+                "order": 2
             }
         },
         // 📡 SIGNAL feature demo: forex_macro_sentiment on mt5/EURUSD. The window straddles the
@@ -37,7 +51,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 2
+                "order": 3
             }
         },
         // 📡 SIGNAL on REAL collected data — both planes real on both markets: live-collected
@@ -57,7 +71,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 3
+                "order": 4
             }
         },
         {
@@ -73,7 +87,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 4
+                "order": 5
             }
         },
         {
@@ -91,7 +105,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 5
+                "order": 6
             }
         },
         {
@@ -109,7 +123,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 6
+                "order": 7
             }
         },
         {
@@ -125,7 +139,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 7
+                "order": 8
             }
         },
         {
@@ -141,7 +155,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 8
+                "order": 9
             }
         },
         {
@@ -157,7 +171,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 9
+                "order": 10
             }
         },
         {
@@ -173,7 +187,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 10
+                "order": 11
             }
         },
         {
@@ -189,7 +203,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 11
+                "order": 12
             }
         },
         {
@@ -205,7 +219,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 12
+                "order": 13
             }
         },
         {
@@ -221,7 +235,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 13
+                "order": 14
             }
         },
         {
@@ -239,7 +253,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "01_runs_simulation",
-                "order": 14
+                "order": 15
             }
         },
         // ====================================================

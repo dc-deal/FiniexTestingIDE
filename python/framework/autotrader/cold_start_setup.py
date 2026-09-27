@@ -120,7 +120,7 @@ def setup_cold_start(
 
     store = ColdStartStateStore(
         root=Path(config.cold_start.path),
-        profile=config.name or config.symbol,
+        profile=config.get_unit_name(),
         symbol=config.symbol,
         logger=logger,
         run_id=run_id,

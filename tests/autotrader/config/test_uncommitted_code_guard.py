@@ -165,7 +165,7 @@ def _session(identity, profile_override, adapter_type='live', allow_dirty=False)
         The session
     """
     session = AutotraderMain.__new__(AutotraderMain)
-    session._config = SimpleNamespace(
+    session._config = AutoTraderConfig(
         name='my_bot_live', symbol='BTCUSD', broker_type=BROKER, bot_id='my-bot',
         adapter_type=adapter_type, dry_run=profile_override, config_path=PROFILE_PATH)
     session._code_identity = identity

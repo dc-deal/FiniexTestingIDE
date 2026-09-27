@@ -3,8 +3,8 @@ FiniexTestingIDE - Scenario Set Resolver (#538)
 
 Where a scenario set file lives, asked by name.
 
-This existed twice, character for character including its docstring — once in
-`ScenarioSetFinder` and once in `ScenarioConfigLoader` (§19). Both walked `user_algos/`
+This existed twice, character for character including its docstring — once in the scenario-set
+finder the config directory later replaced (#554) and once in `ScenarioConfigLoader` (§19). Both walked `user_algos/`
 recursively on every call, and the measurement is why this module exists at all: listing
 seventeen scenario sets cost **19.5 s**, of which **11.6 s** was 79 recursive globs over a tree of
 107 directories, against **0.063 s** spent reading the JSON. On this tree a directory walk costs

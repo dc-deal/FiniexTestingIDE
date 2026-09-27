@@ -713,13 +713,29 @@ Scenario Set: eurusd_3_windows_reference.json
 | `2` | the batch ran, but scenarios failed |
 | `3` | the batch ran, no scenario crashed, but errors were logged |
 
-### 🔬 List Scenarios
+### 📙 List Scenarios — the config directory
 
 | | |
 |---|---|
-| **VS Code** | `🔬 List Scenarios` |
-| **CLI** | `python strategy_runner_cli.py list --full-details` |
-| **Purpose** | Show available scenario sets |
+| **VS Code** | `📙 List Scenarios` |
+| **CLI** | `python python/cli/config_directory_cli.py list [--kind scenario_set\|autotrader_profile] [--refresh]` · `… show <file>` |
+| **Purpose** | Every configuration that can start a run — scenario sets AND AutoTrader profiles — with what each declares and how often it ran (#554) |
+
+The same model `GET /api/v1/directory` serves. It reads each file's raw JSON and never runs the
+loader, so it is fast (a lean CLI: no batch pipeline imported) and a file being edited shows as
+`unreadable` with its reason instead of disappearing. `show <file>` adds the scenarios and the
+runs started from the file.
+
+### 📙 Validate Scenario Sets
+
+| | |
+|---|---|
+| **VS Code** | `📙 Validate Scenario Sets` |
+| **CLI** | `python python/cli/strategy_runner_cli.py validate [file ...]` |
+| **Purpose** | Run the REAL loader — cascade, structural guard, Pydantic — over every scenario set the directory lists, and name each refusal |
+
+It is its own command, not part of the listing, because the loader creates directories and
+logs. Parameter names are not checked here: that happens at the start of a batch.
 
 ---
 

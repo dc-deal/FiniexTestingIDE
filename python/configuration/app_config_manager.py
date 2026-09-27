@@ -343,6 +343,15 @@ class AppConfigManager:
         """
         return self._app_config.paths.run_patches
 
+    def get_config_directory_path(self) -> str:
+        """
+        Get the config-directory store directory from config (#554).
+
+        Returns:
+            Path string for the config-directory cache
+        """
+        return self._app_config.paths.config_directory
+
     def get_scenario_sets_path(self) -> str:
         """
         Get scenario sets config path from config.
@@ -363,6 +372,24 @@ class AppConfigManager:
             Path string for user scenario sets directory
         """
         return 'user_configs/scenario_sets'
+
+    def get_autotrader_profiles_path(self) -> str:
+        """
+        Get the shipped AutoTrader profile root — one sub-folder per purpose (§31).
+
+        Returns:
+            Path string for the AutoTrader profiles directory
+        """
+        return 'configs/autotrader_profiles'
+
+    def get_user_autotrader_profiles_path(self) -> str:
+        """
+        Get the operator's own AutoTrader profile root (gitignored).
+
+        Returns:
+            Path string for the user AutoTrader profiles directory
+        """
+        return 'user_configs/autotrader_profiles'
 
     def get_generator_template_path(self) -> str:
         """

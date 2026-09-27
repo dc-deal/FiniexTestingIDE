@@ -18,6 +18,10 @@ from python.framework.types.store_types import (
     StoreKind,
 )
 
+# A purpose is one clause that fits at the end of the store's catalog row; a longer explanation
+# belongs in `note` or in the linked document.
+PURPOSE_MAX_LENGTH = 52
+
 
 @dataclass(frozen=True)
 class StoreDescriptor:
@@ -27,6 +31,10 @@ class StoreDescriptor:
     Args:
         store_id: Its registered identity
         kind: RECORD / CARRY_OVER / ARCHIVE / DERIVED / SPECIAL
+        purpose: What the store is FOR, in one line — the catalog prints it on the store's row
+        doc: The document that explains the store, relative to the project root, with a heading
+            anchor where one section covers it — the catalog's help link, held to an existing file
+            and heading by a test
         root: Where it lives, resolved from configuration
         key: How ONE entry is addressed — for the operator's eye, not parsed
         form: How it is read; RANGE means the catalog hands out a path and steps aside
@@ -54,6 +62,8 @@ class StoreDescriptor:
     """
     store_id: StoreId
     kind: StoreKind
+    purpose: str
+    doc: str
     root: Path
     key: str
     form: RetrievalForm

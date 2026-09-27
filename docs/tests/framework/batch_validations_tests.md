@@ -304,6 +304,22 @@ matching the index as soon as one scenario is excluded.
 | `test_no_exclusion_is_unaffected` | The case where position and index coincide keeps working |
 | `test_it_raises_rather_than_skipping_silently` | A hole raises `ScenarioPackageMissingError` — it can no longer be explained by an exclusion (§33) |
 
+### `test_validation_check_catalog.py`
+
+The catalog that gives every `check` id a title and a sentence
+(`validators/validation_check_catalog.py`, served as `GET /api/v1/validation-checks`) is complete
+in both directions. The emitted ids are found by walking the SOURCE — a keyword `check='…'`, a
+`…_CHECK` constant, and the helpers that pass an id on (`_add`, `_finding`, `_as`) — so a new check
+fails the suite until it is declared, and an entry for a check the code no longer emits fails too.
+
+| Test | Description |
+|------|-------------|
+| `test_the_walk_found_the_checks` | the walk found a non-trivial number of ids, so the two below are not vacuous |
+| `test_every_emitted_check_is_declared` | an id the code emits with no entry is named with its file and line |
+| `test_every_declared_check_is_emitted_somewhere` | an entry no finding can carry any more |
+| `test_every_id_is_declared_once` | no id twice |
+| `test_every_entry_is_a_label_and_one_sentence_for_a_person` | a title and a one-line sentence, no backticks |
+
 ## Files
 
 - `tests/framework/batch_validations/test_scenario_validator.py`
@@ -319,6 +335,7 @@ matching the index as soon as one scenario is excluded.
 - `tests/framework/batch_validations/test_market_config_manager.py`
 - `tests/framework/batch_validations/test_broker_config_factory.py`
 - `tests/framework/batch_validations/test_kraken_config_fetcher.py`
+- `tests/framework/batch_validations/test_validation_check_catalog.py`
 
 ## Running the Tests
 

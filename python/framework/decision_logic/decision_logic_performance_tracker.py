@@ -43,7 +43,8 @@ class DecisionLogicPerformanceTracker:
 
         # Internal statistics dataclass
         self._stats = DecisionLogicStats(
-            decision_logic_type=decision_logic_type, decision_logic_name=decision_logic_name)
+            decision_logic_type=decision_logic_type, decision_logic_name=decision_logic_name,
+            tracked=True)
 
         # Min/Max tracking (not in dataclass)
         self._min_time_ms = float('inf')
@@ -123,7 +124,7 @@ class DecisionLogicPerformanceTracker:
 
     def reset(self) -> None:
         """Reset all metrics to initial state."""
-        self._stats = DecisionLogicStats()
+        self._stats = DecisionLogicStats(tracked=True)
         self._min_time_ms = float('inf')
         self._max_time_ms = 0.0
         self._recent_times.clear()

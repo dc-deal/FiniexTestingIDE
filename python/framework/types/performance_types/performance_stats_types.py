@@ -73,6 +73,11 @@ class DecisionLogicStats:
     # Optional backtesting metadata for validation
     backtesting_metadata: Optional[BacktestingMetadata] = None
 
+    # True only when the decision tracker counted. Without one (the simulation's default,
+    # `performance_tracking.worker_decision_tracking: false`) the counters above stay at their
+    # defaults, and a report must say "not counted" rather than serve those zeros as figures.
+    tracked: bool = False
+
 
 @dataclass
 class WorkerCoordinatorPerformanceStats:

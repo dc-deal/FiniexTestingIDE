@@ -117,6 +117,7 @@ def _to_row(result: ProcessResult, scenario: SingleScenario,
         account_currency_explicit=bool(
             (scenario.trade_simulator_config or {}).get('account_currency')),
         execution_time_ms=getattr(result, 'execution_time_ms', 0.0) or 0.0,
+        worker_count=len((scenario.strategy_config or {}).get('worker_instances') or {}),
         error_type=result.error_type or '',
         error_message=result.error_message or '',
     )
@@ -129,16 +130,17 @@ def _to_row(result: ProcessResult, scenario: SingleScenario,
     decision = tick_loop.decision_statistics
     coordination = tick_loop.coordination_statistics
     tick_range = tick_loop.tick_range_stats
+    # Only a tracker counts decisions; without one the counters are unknown, not zero.
+    counted = decision is not None and decision.tracked
     return ScenarioDetailsRow(
         status='hybrid' if has_error else 'success',
         ticks_processed=coordination.ticks_processed,
         first_tick_time=tick_range.first_tick_time.isoformat() if tick_range.first_tick_time else '',
         last_tick_time=tick_range.last_tick_time.isoformat() if tick_range.last_tick_time else '',
         tick_timespan_seconds=tick_range.tick_timespan_seconds,
-        buy_signals=decision.buy_signals,
-        sell_signals=decision.sell_signals,
-        flat_signals=decision.flat_signals,
-        trades_requested=decision.trades_requested,
-        worker_count=len(tick_loop.worker_statistics),
+        buy_signals=decision.buy_signals if counted else None,
+        sell_signals=decision.sell_signals if counted else None,
+        flat_signals=decision.flat_signals if counted else None,
+        trades_requested=decision.trades_requested if counted else None,
         **common,
     )

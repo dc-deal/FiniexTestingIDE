@@ -10,6 +10,8 @@ which says for each what it serves and what it deliberately does not — a secon
 would be the copy nobody updates. `ROUTER_SURFACES` below is the authoritative mount table.
 """
 
+import time
+from datetime import datetime, timezone
 from typing import Dict
 
 from fastapi import Depends, FastAPI, Request, Security
@@ -23,6 +25,7 @@ from python.api.endpoints import (
     bars_router,
     broker_router,
     deployments_router,
+    directory_router,
     reports_router,
     sweeps_router,
 )
@@ -33,13 +36,15 @@ from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 from python.framework.types.api.api_types import (
     ApiContractResponse,
     BrokerListResponse,
+    CallerResponse,
     HealthResponse,
     TimeframeInfo,
     TimeframeListResponse,
-    CallerResponse,
+    ValidationCheckListResponse,
+    ValidationCheckRow,
 )
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
-
+from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS
 
 # Every gated router and the surface its grants name. The surface is the ROUTER's name, and a
 # grant names the thing a route addresses — its first path parameter. So `bars:kraken_spot` is
@@ -54,6 +59,7 @@ ROUTER_SURFACES = (
     (broker_router.router, 'brokers'),
     (bars_router.router, 'bars'),
     (deployments_router.router, 'deployments'),
+    (directory_router.router, 'directory'),
     (reports_router.router, 'reports'),
     (sweeps_router.router, 'sweeps'),
 )
@@ -103,6 +109,11 @@ def create_app() -> FastAPI:
         Configured FastAPI instance with CORS, error handler, and routes registered.
     """
     app_version = AppConfigManager().get_version()
+    # When THIS process started serving — a provenance stamp, so the wall clock is right for it
+    # (§9) — and the monotonic reading the uptime is measured from, so a clock step cannot make
+    # the server look younger or older than it is.
+    started_at = datetime.now(timezone.utc)
+    started_monotonic = time.monotonic()
     auth = setup_api_auth()
     print(auth.boot_line)
 
@@ -172,7 +183,9 @@ def create_app() -> FastAPI:
 
     @app.get('/api/v1/health', response_model=HealthResponse)
     def health() -> HealthResponse:
-        return HealthResponse(status='ok', version=app_version)
+        return HealthResponse(status='ok', version=app_version,
+                              started_at=started_at.isoformat(),
+                              uptime_s=round(time.monotonic() - started_monotonic, 1))
 
     # Open beside /health, decided rather than inherited: a timeframe list is the app's own
     # static configuration, not data about a venue or a run, and it is none of the
@@ -191,6 +204,15 @@ def create_app() -> FastAPI:
         return TimeframeListResponse(timeframes=[
             TimeframeInfo(name=tf, minutes=TimeframeConfig.get_minutes(tf))
             for tf in TimeframeConfig.sorted()
+        ])
+
+    # Open beside /timeframes for the same reason: the check vocabulary is the app's own static
+    # declaration — what an id MEANS — and says nothing about a venue, a run or an account.
+    @app.get('/api/v1/validation-checks', response_model=ValidationCheckListResponse)
+    def list_validation_checks() -> ValidationCheckListResponse:
+        return ValidationCheckListResponse(checks=[
+            ValidationCheckRow(check=info.check, title=info.title, description=info.description)
+            for info in VALIDATION_CHECKS
         ])
 
     @app.get('/api/v1/brokers', response_model=BrokerListResponse,

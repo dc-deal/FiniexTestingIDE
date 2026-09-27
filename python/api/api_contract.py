@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 6
+API_CONTRACT_VERSION = 10
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -31,13 +31,11 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'errors: every error code now names its CAUSE, declared once with its status and sentence. '
-    'The eight bare `not_found` answers on the bars and broker routes became `broker_not_found`, '
-    '`symbol_not_found`, `no_bars_indexed`, `timeframe_not_rendered`, '
-    '`coverage_report_unavailable` and `no_bars_in_range`; the 500 `config_error` became '
-    '`market_type_not_configured`. Every other code is unchanged',
-    'run-summary: `units_declared`, `units_disabled` and `units_absent` ([{name, reason}]) say '
-    'which units the figures are NOT summed over, in both pipelines. '
-    '`units_declared == units_disabled + len(units_absent) + unit_count`. A live session is '
-    'declared 1; one that aborted at startup is absent with its emergency cause',
+    'validation-checks: GET /api/v1/validation-checks (open) serves every check a finding can '
+    'name — `check` (the id in `units_absent[].checks` and `warnings[].check`), a `title` and a '
+    'one-sentence `description`; `key` is `["check"]`',
+    'warnings-errors: `keys` — `errors` → `["name"]`, `warnings` → `[]`, an EMPTY key that '
+    'declares a warning has no identity beyond its position (two identical ones are two rows)',
+    'errors: `detail` is a sentence for the person reading the answer and may be shown as it '
+    'comes; `artifact_not_produced` was reworded to say so without naming a response field',
 ]

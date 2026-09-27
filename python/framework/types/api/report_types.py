@@ -191,6 +191,15 @@ class TradeHistoryReport(RunScopedReport):
     symbols: list[str]      # distinct symbols present (filter UX)
     analytics: list[TradeAnalytics]  # one entry per account currency (no cross-currency mixing)
     scenario_totals: list[TradeScenarioTotals] = []  # per-scenario footer totals (no re-sum)
+    # What makes one row of each list unique (§49). A trade is NOT its position: a partial close
+    # books several records of one position, and two scenarios of one symbol each count from
+    # `pos_<symbol>_1` — so the key needs the unit and the tick the record closed on. Measured
+    # 2026-09-27: `position_id` alone repeats in 3 of 11 runs on disk, this key in none.
+    keys: dict[str, list[str]] = {
+        'trades': ['scenario_name', 'position_id', 'exit_tick_index'],
+        'analytics': ['currency'],
+        'scenario_totals': ['scenario_name', 'currency'],
+    }
 
 
 class OrderHistoryRow(BaseModel):
@@ -382,6 +391,9 @@ class PortfolioReport(RunScopedReport):
     """
     units: list[PortfolioUnitRow]
     aggregates: list[PortfolioAggregateRow]
+    # What makes one row of each list unique (§49). `units` shares its key with the roster in
+    # `scenario-details` and with `run-summary.units_absent`: that is the join, and it is meant.
+    keys: dict[str, list[str]] = {'units': ['name'], 'aggregates': ['currency']}
 
 
 class ExecutionStatsRow(BaseModel):
@@ -475,10 +487,16 @@ class ScenarioDetailsRow(BaseModel):
     first_tick_time: str = ''       # ISO-8601 UTC, '' if none
     last_tick_time: str = ''
     tick_timespan_seconds: float = 0.0
-    buy_signals: int = 0
-    sell_signals: int = 0
-    flat_signals: int = 0
-    trades_requested: int = 0
+    # What the decision logic did — None = NOT COUNTED: the decision tracker was off, which is
+    # the simulation's default (`performance_tracking.worker_decision_tracking`). A 0 here is a
+    # count. Before contract 9 an uncounted scenario read 0 on all four (#137 kept the tracker
+    # off the hot path; the row served its defaults as figures).
+    buy_signals: int | None = None
+    sell_signals: int | None = None
+    flat_signals: int | None = None
+    trades_requested: int | None = None
+    # The workers the scenario DECLARES, read from its configuration — known whether or not
+    # anything was timed, and for a scenario refused before it ran as well.
     worker_count: int = 0
     error_type: str = ''
     error_message: str = ''
@@ -516,6 +534,11 @@ class ScenarioDetailsReport(RunScopedReport):
     # The per-source roll-up over those rows. On the model so the console, the artifact and
     # the API read one derivation instead of three.
     data_sources: list[DataSourceRow] = []
+    # What makes one row of each list unique (§49). A scenario is its name within its set — the
+    # validator refuses a set naming one twice, and then lists BOTH refused copies, the one case
+    # the key does not separate (their reason says why). `units` is the roster the per-unit
+    # figures of `portfolio` join onto, on this key.
+    keys: dict[str, list[str]] = {'units': ['name'], 'data_sources': ['broker_type']}
 
 
 class RunReporting(StrEnum):
@@ -830,9 +853,23 @@ class BookingPeriodsReport(RunScopedReport):
 
 
 class AbsentUnitRow(BaseModel):
-    """One unit a run ATTEMPTED that produced nothing — and the reason, so the absence speaks."""
+    """
+    One unit a run ATTEMPTED that produced nothing — and the reason, so the absence speaks.
+
+    Args:
+        name: The unit's name — the same key the roster and the portfolio rows carry
+        reason: The sentence, for a person
+        reason_code: The cause, for a program — the vocabulary of `scenario-details`'
+            `error_type`: `ValidationError` for a refusal before the run, the exception's class
+            for a crash (the live session's too), `NoResults` when nothing failed and nothing
+            was produced
+        checks: For a refusal, the stable ids of the checks that refused it (`warmup_quality`,
+            `tick_stretch_gap`, …) — what lets a reader ask "which scenarios did warmup cost me"
+    """
     name: str
     reason: str = ''
+    reason_code: str = ''
+    checks: list[str] = []
 
 
 class UnitRoster(BaseModel):
@@ -869,10 +906,12 @@ class RunSummary(RunScopedReport):
     unit_count: int = 0     # sim: N scenarios | live: 1
     # Which units are MISSING from the figures above, and why (contract 6). Before these, a run
     # of ten scenarios with two rejected read as a run of eight, with nothing on the response
-    # saying so. `units_declared == units_disabled + len(units_absent) + unit_count`.
-    units_declared: int = 0
-    units_disabled: int = 0
-    units_absent: list[AbsentUnitRow] = []
+    # saying so. `units_declared == units_disabled + len(units_absent) + unit_count` wherever
+    # they are stated. None = NOT STATED: a run recorded before contract 6 never counted them,
+    # and a 0 there would be a figure the equation then disproves (contract 9).
+    units_declared: int | None = None
+    units_disabled: int | None = None
+    units_absent: list[AbsentUnitRow] | None = None
     # Weakest SIGNAL channel of the run (#433): min fresh ratio over all usages. None = no
     # SIGNAL worker was involved — deliberately NOT 1.0, which would claim a perfect feed.
     # Rides into the run-results ledger so a sweep/robustness ranking carries the data
@@ -884,6 +923,9 @@ class RunSummary(RunScopedReport):
     disturbance_stale_seconds: float = 0.0
     disturbance_source_count: int = 0
     disturbance_stress_injected: int = 0
+    # What makes one row of each list unique (§49). An absent unit is keyed like every other
+    # per-unit row, so it can be matched against the roster in `scenario-details`.
+    keys: dict[str, list[str]] = {'currencies': ['currency'], 'units_absent': ['name']}
 
 
 class RunResultRow(BaseModel):
@@ -1547,6 +1589,8 @@ class BrokerReport(RunScopedReport):
     session one unit for its own broker + traded symbol (no scenario grid).
     """
     units: list[BrokerInfoRow]
+    # One unit per broker (§49).
+    key: list[str] = ['broker_type']
 
 
 
@@ -2028,6 +2072,11 @@ class WarningsErrorsReport(RunScopedReport):
     warnings: list[WarningRow] = []
     errors: list[UnitErrorRow] = []
     outcome: WarningsErrorsOutcome = WarningsErrorsOutcome()
+    # What makes one row of each list unique (§49). An error row is one per unit. A warning has
+    # NO identity beyond its place in the list, and the empty key says exactly that: warnings are
+    # events, nothing collapses them, and a session that logs one twice has two rows with the
+    # same text — keyed on anything but position, they would fold into one.
+    keys: dict[str, list[str]] = {'errors': ['name'], 'warnings': []}
 
 
 class AggregatedPortfolioSpotScenarioRow(BaseModel):
