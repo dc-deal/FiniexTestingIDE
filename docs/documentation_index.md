@@ -40,8 +40,8 @@
 | [AutoTrader Capital and Safety](autotrader/autotrader_capital_and_safety.md) | What the bot may spend, committed funds, whose account it is, protective levels, the circuit breaker |
 | [AutoTrader Venue Integration](autotrader/autotrader_venue_integration.md) | Broker config acquisition, the Kraken execution tier, polling, drift audit, the connection ladder |
 | [AutoTrader Observability](autotrader/autotrader_observability.md) | The live console, the clipping monitor, the three log channels |
-| [Live Outage Handling](user_guides/live_outage_handling_guide.md) | Connection/feed outages — mandatory staleness hooks, escalation ladder, OrderGuard floor, outage drills (#434/#436) |
-| [Live Deployment & Ledger](user_guides/live_deployment_ledger_guide.md) | Reading a bot across its restarts — the mandatory `deployment` declaration, the history command, gaps and parameter changes (#497) |
+| [Outage Handling](user_guides/outage_handling_guide.md) | Connection/feed outages — mandatory staleness hooks, escalation ladder, OrderGuard floor, outage drills (#434/#436) |
+| [Deployment & Ledger](user_guides/deployment_ledger_guide.md) | Reading a bot across its restarts — the mandatory `deployment` declaration, the history command, gaps and parameter changes (#497) |
 | [Adapter Development Guide](user_guides/adapter/adapter_development_guide.md) | How to implement a new broker adapter (Tier 1/2/3, config files, credentials, test suite) |
 | [Kraken Adapter Setup](user_guides/adapter/setup_kraken_adapter.md) | API keys, broker settings, dry run, first run |
 

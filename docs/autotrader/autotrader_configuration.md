@@ -268,4 +268,4 @@ deployments` marks the session it happened on — and whether the halves may be 
 judgement a person makes. The full resolved configuration rides the same row, so a tool can say
 `rsi_buy_threshold: 45 → 40` rather than only "the hash differs".
 
-End-user view of all of this: [Deployment Ledger](../user_guides/live_deployment_ledger_guide.md).
+End-user view of all of this: [Deployment Ledger](../user_guides/deployment_ledger_guide.md).

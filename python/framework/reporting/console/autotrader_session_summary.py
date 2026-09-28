@@ -25,7 +25,7 @@ from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
-class LiveSessionSummary:
+class AutotraderSessionSummary:
     """The AutoTrader closing block: session stats + output locations."""
 
     def __init__(

@@ -18,7 +18,7 @@ from python.framework.types.mount_package_types import MountPackage
 from python.framework.types.run_origin_types import RunChannel
 from python.framework.types.run_results_types import SweepContext
 from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig
-from python.scenario.generator.profile_loader import ProfileLoader
+from python.scenario.generator.generator_profile_loader import GeneratorProfileLoader
 from python.scenario.scenario_set import ScenarioSet
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
@@ -109,7 +109,7 @@ def run_profile_batch(
         app_config_loader = AppConfigManager()
 
         # Load all profiles into WindowSets
-        loader = ProfileLoader()
+        loader = GeneratorProfileLoader()
         window_sets = []
         for path in profile_paths:
             window_set = loader.load_profile(path)

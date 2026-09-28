@@ -98,7 +98,7 @@ header): a start, and an end unless it is open. Not a span over several units.
 
 **deployment** — The sessions of one bot joined into one history by a `deployment_id`, because its
 profile declares `deployment.continuous: true`. Not itself a run. See
-[Deployment Ledger](user_guides/live_deployment_ledger_guide.md).
+[Deployment Ledger](user_guides/deployment_ledger_guide.md).
 
 **dry run** — An AutoTrader session on a live adapter whose `dry_run` resolves true: real ticks,
 every order validated by the venue and never placed, fills simulated locally. A mock session is not

@@ -470,6 +470,6 @@ cheapest answer, and it is still there weeks later.
 
 - `algo_state_persistence_guide.md` — what your *algorithm* remembers across a restart, which is
   a separate store with a separate opt-in
-- `live_outage_handling_guide.md` — what happens to an AutoTrader session when its inputs go away
+- `outage_handling_guide.md` — what happens to an AutoTrader session when its inputs go away
 - `../architecture/data_storage_layout.md` — every store this project writes, and why the ledger
   and the run tree retain differently

@@ -149,7 +149,7 @@ the tick status-plane carve stays sim-only (→ #444). The mock market-data outa
 the forex weekend gate (don't flag market closure as stale) lands with the MT5 adapter via
 MarketClock. On #375 the evaluation trigger moves onto the event timeline; the contract
 surface (status, hook, guard reason, config) carries over unchanged. Authoring guidance:
-`docs/user_guides/live_outage_handling_guide.md`.
+`docs/user_guides/outage_handling_guide.md`.
 
 ## Warmup (#231)
 

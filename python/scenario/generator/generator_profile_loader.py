@@ -1,6 +1,6 @@
 """
-Profile Loader
-================
+Generator Profile Loader
+==========================
 Loads profile artifacts from JSON files into WindowSets
 and validates discovery fingerprints for freshness.
 """
@@ -18,7 +18,7 @@ from python.scenario.generator.window_set_serializer import WindowSetSerializer
 vLog = get_global_logger()
 
 
-class ProfileLoader:
+class GeneratorProfileLoader:
     """Loads and validates profile artifacts into WindowSets."""
 
     def __init__(self, logger: AbstractLogger = None):

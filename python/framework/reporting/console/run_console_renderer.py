@@ -34,7 +34,11 @@ from python.framework.utils.console_renderer import ConsoleRenderer
 
 
 class ClosingBlock(Protocol):
-    """The pipeline-specific closing section (sim: SimExecutiveSummary, live: LiveSessionSummary)."""
+    """
+    The pipeline-specific closing section.
+
+    SimExecutiveSummary in the simulation, AutotraderSessionSummary in the AutoTrader pipeline.
+    """
 
     def render(self, renderer: ConsoleRenderer) -> None: ...
 

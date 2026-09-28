@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Sim Executive Summary
 One-screen overview of batch execution results — the sim pipeline's closing block of the unified
-end-of-run console (the counterpart to LiveSessionSummary). The user-facing heading stays
+end-of-run console (the counterpart to AutotraderSessionSummary). The user-facing heading stays
 "🎯 EXECUTIVE SUMMARY".
 
 Provides comprehensive summary:

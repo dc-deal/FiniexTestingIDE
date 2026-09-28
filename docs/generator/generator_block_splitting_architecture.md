@@ -29,7 +29,7 @@ generator_cli ─▶ GenerationCoordinator ─▶ SplitterFactory ─▶ Abstrac
                                                                   (all use ContinuousRegionExtractor)
                                            split() ─▶ WindowSet  ◀── the model (single truth)
                                                          │
-                           WRITE: WindowSetSerializer ───┤── READ: ProfileLoader
+                           WRITE: WindowSetSerializer ───┤── READ: GeneratorProfileLoader
                              set-JSON | profile-JSON     │     profile-JSON → WindowSet
                                                          ▼
                                              WindowMaterializer
@@ -46,7 +46,7 @@ generator_cli ─▶ GenerationCoordinator ─▶ SplitterFactory ─▶ Abstrac
 | `WindowSet` / `GeneratedWindow` | the window model (pure data; no role, no strategy params) |
 | `WindowMaterializer` | `WindowSet` → scenarios; the single home for roles + quote-balance + regime/session + naming |
 | `WindowSetSerializer` | present-layer: `WindowSet` → set-JSON / profile-JSON (the swappable output stage) |
-| `ProfileLoader` | profile-JSON → `WindowSet` (the read side) |
+| `GeneratorProfileLoader` | profile-JSON → `WindowSet` (the read side) |
 | `GenerationCoordinator` | orchestration; keeps the CLI to parameter reception — a CLI file holds no logic |
 
 **Parameter-agnostic invariant:** a `WindowSet` describes only data / time / role — never strategy

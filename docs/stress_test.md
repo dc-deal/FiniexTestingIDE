@@ -70,7 +70,7 @@ Rejects open orders with seeded probability at fill time. Rejected orders appear
 ### `stale_data_stress` (#436)
 
 Planned, deterministic stale windows on the sim time axis — drills BOTH staleness
-contracts ([outage handling guide](user_guides/live_outage_handling_guide.md))
+contracts ([outage handling guide](user_guides/outage_handling_guide.md))
 without a live outage. Not probability-based: events fire at exact timestamps.
 
 ```json

@@ -96,7 +96,7 @@ written answer). It is dispatched by the AutoTrader loop's heartbeat evaluation
 unless a planned `stale_data_stress` window drives it deterministically. The OrderGuard
 additionally blocks NEW entries while stale (framework floor). Instruments, escalation ladder,
 and the outage decision tree: **read
-[Live Outage Handling](live_outage_handling_guide.md)** before writing the override.
+[Outage Handling](outage_handling_guide.md)** before writing the override.
 
 ---
 

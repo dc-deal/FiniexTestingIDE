@@ -67,5 +67,5 @@ pytest tests/simulation/stale_stress/ -v
 
 **Related docs:** [Stress Test System](../../stress_test.md) ·
 [Signal Data Source](../../data_pipeline/signal_data_source.md) (source vs. decision basis) ·
-[Live Outage Handling](../../user_guides/live_outage_handling_guide.md) ·
+[Outage Handling](../../user_guides/outage_handling_guide.md) ·
 loop-side unit tests in [Loop Cadence Tests](../autotrader/loop_cadence_tests.md).

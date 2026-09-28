@@ -72,7 +72,7 @@ uses a bare *live* for a kind of run — it says which of the four it means.
 - A **deployment** joins the sessions of one bot into one history. A profile that declares
   `deployment.continuous: true` gives each session a parent: the deployment. Each session is still
   its own run and writes its own rows; the deployment history reads across them. A session that
-  belongs to none is **one-off** ([Deployment Ledger](user_guides/live_deployment_ledger_guide.md)).
+  belongs to none is **one-off** ([Deployment Ledger](user_guides/deployment_ledger_guide.md)).
 
 ## What every run leaves behind
 

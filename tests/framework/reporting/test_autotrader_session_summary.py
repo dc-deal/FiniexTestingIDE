@@ -1,15 +1,15 @@
 """
 AutoTrader session summary tests (#403 Phase 2).
 
-`LiveSessionSummary` is the AutoTrader closing block of the unified end-of-run console: session
-stats + warnings/errors (from the session buffers, §35) + output locations. Built against a real
+`AutotraderSessionSummary` is the AutoTrader closing block of the unified end-of-run console:
+session stats + warnings/errors (from the session buffers, §35) + output locations. Built against a real
 AutoTraderResult (not a stand-in); rendered through the real ConsoleRenderer with stdout captured.
 """
 
 from datetime import datetime, timezone
 from pathlib import Path
 
-from python.framework.reporting.console.live_session_summary import LiveSessionSummary
+from python.framework.reporting.console.autotrader_session_summary import AutotraderSessionSummary
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
@@ -27,7 +27,7 @@ def _render(result: AutoTraderResult, run_dir=None, trade_report=None) -> str:
     old = sys.stdout
     sys.stdout = buf = io.StringIO()
     try:
-        LiveSessionSummary(result, trade_report, run_dir).render(ConsoleRenderer())
+        AutotraderSessionSummary(result, trade_report, run_dir).render(ConsoleRenderer())
     finally:
         sys.stdout = old
     return buf.getvalue()
@@ -54,7 +54,7 @@ def _stats_holding_one_position() -> PortfolioStats:
         initial_balance=1000.0, unrealized_pnl=10.50, spot_mode=True)
 
 
-class TestLiveSessionSummary:
+class TestAutotraderSessionSummary:
     """The live closing block renders the session outcome."""
 
     def test_an_open_position_appears_in_the_headline(self):

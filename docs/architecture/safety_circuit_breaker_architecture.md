@@ -240,4 +240,4 @@ Absent only when no baseline was ever taken — a session that saw no tick it co
 | `python/framework/autotrader/risk_baseline_tracker.py` | `RiskBaselineTracker` — takes, restores and advances the denominator |
 | `python/framework/types/autotrader_types/safety_session_types.py` | What the loop captures for the report |
 | `python/framework/reporting/builders/safety_report_builder.py` | DERIVE — the `SafetyReport` model |
-| `python/framework/reporting/console/live_session_summary.py` | PRESENT — the closing-block safety section |
+| `python/framework/reporting/console/autotrader_session_summary.py` | PRESENT — the closing-block safety section |

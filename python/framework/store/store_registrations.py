@@ -338,8 +338,8 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             entry_glob='*/*/*.json',
             derived_from=StoreId.DISCOVERY_CACHES,
             note=('Generated window sets. Each carries `profile_meta.discovery_fingerprints` for '
-                  'all three cache families, and `ProfileLoader.validate_fingerprints` already '
-                  'compares them — the one derived store in this project whose validity rule was '
+                  'all three cache families, and '
+                  '`GeneratorProfileLoader.validate_fingerprints` already compares them — the one derived store in this project whose validity rule was '
                   'complete before the model existed. Lives under configs/ and is VERSIONED, which '
                   'is unusual for a DERIVED store; the kind describes its nature, not its tracking.'),
         ),

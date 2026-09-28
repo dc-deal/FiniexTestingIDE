@@ -36,7 +36,7 @@ from python.framework.reporting.builders.warnings_errors_report_builder import (
 )
 from python.framework.reporting.console.broker_summary import BrokerSummary
 from python.framework.reporting.console.feed_stability_summary import FeedStabilitySummary
-from python.framework.reporting.console.live_session_summary import LiveSessionSummary
+from python.framework.reporting.console.autotrader_session_summary import AutotraderSessionSummary
 from python.framework.reporting.console.performance_summary import PerformanceSummary
 from python.framework.reporting.console.portfolio_summary import PortfolioSummary
 from python.framework.reporting.console.run_console_renderer import RunConsoleRenderer
@@ -292,7 +292,7 @@ class AutotraderReportCoordinator:
             # session renders once, with detail ON, so it always gets the full table on the
             # terminal AND in the file.
             booking_periods_summary=BookingPeriodsSummary(booking_periods),
-            closing_block=LiveSessionSummary(
+            closing_block=AutotraderSessionSummary(
                 result, unified.trade_history, self._run_dir, unified.run_summary,
                 warnings_errors_report, cold_start_report, safety_report),
         )

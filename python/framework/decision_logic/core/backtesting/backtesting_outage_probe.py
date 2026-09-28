@@ -80,7 +80,7 @@ class BacktestingOutageProbe(AbstractDecisionLogic):
         """CORE test probe metadata (#436)."""
         return ComponentMetadata(
             version='1.0.0',
-            doc_link='docs/user_guides/live_outage_handling_guide.md',
+            doc_link='docs/user_guides/outage_handling_guide.md',
         )
 
     @classmethod
