@@ -3,7 +3,7 @@
 ## Overview
 
 The import pipeline converts JSON tick exports from data collectors into optimized Parquet files
-with UTC-normalized timestamps, quality metrics, and preserved source metadata. After tick import,
+with UTC-normalized timestamps, validated on the way in, and preserved source metadata. After tick import,
 bars are pre-rendered for all standard timeframes (M1 through D1).
 
 **Related**: [tick_collector_guide.md](tick_collector_guide.md) — MQL5 collector usage, JSON schema, error classification.
@@ -75,7 +75,7 @@ The MQL5 JSON tick export has two top-level keys: `metadata` and `ticks`.
 | `volume_timeframe_minutes` | int | Volume timeframe in minutes |
 | `symbol_info` | object | Symbol specification (see nested schema) |
 | `collection_settings` | object | Collector configuration (see nested schema) |
-| `error_tracking` | object | Error tracking config (see nested schema) |
+| `error_tracking` | object | The collector's own quality-check settings — read, not stored (see below) |
 
 ### Metadata Timestamp Architecture
 
@@ -143,7 +143,9 @@ local_device_time:   "2026.03.08 18:41:34"
 
 ### Nested Metadata Schemas
 
-These are stored as JSON strings in Parquet under `source_meta_*` prefix.
+`symbol_info` and `collection_settings` are stored as JSON strings in Parquet under the
+`source_meta_*` prefix. `error_tracking` is read and deliberately NOT stored: it configures the
+collector's own quality checks, and nothing downstream reads them. The raw file keeps it.
 
 **symbol_info:**
 
@@ -164,7 +166,7 @@ These are stored as JSON strings in Parquet under `source_meta_*` prefix.
 | `include_tick_flags` | bool | Whether tick flags are collected |
 | `stop_on_fatal_errors` | bool | Abort on fatal errors |
 
-**error_tracking:**
+**error_tracking** (raw file only):
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -388,7 +390,8 @@ Each output Parquet file includes metadata in the file header:
 
 Original MQL5 metadata is preserved with `source_meta_` prefix:
 - Flat scalars: `source_meta_broker_type`, `source_meta_data_format_version`, etc.
-- Nested objects stored as JSON strings: `source_meta_symbol_info`, `source_meta_collection_settings`, `source_meta_error_tracking`
+- Nested objects stored as JSON strings: `source_meta_symbol_info`, `source_meta_collection_settings`
+  (a file imported before 2026-09-28 also carries `source_meta_error_tracking`, which nothing reads)
 
 ### Data Format Version Tracking
 

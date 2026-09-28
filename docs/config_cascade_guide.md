@@ -587,7 +587,6 @@ These parameters are **scenario-specific only** - no inheritance:
   "start_date": "2025-09-19",          // Scenario-specific
   "end_date": "2025-09-21",            // Scenario-specific
   "max_ticks": 4000,                   // Scenario-specific
-  "data_mode": "realistic",            // Scenario-specific
   "enabled": true                      // Scenario-specific
 }
 ```

@@ -4,7 +4,6 @@
   "created": "2026-06-26T00:00:00.000000",
   "description": "Sweep base set (#390) for CORE/trend_channel_reference \u2014 two mt5 EURUSD windows, limit_pullback. The parameter grid in configs/sweeps/trend_channel_reference_grid.json varies sl_mult/tp_mult over this set. Didactic teaching example, NOT a profitable strategy.",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/trend_channel_reference",
       "worker_instances": {
@@ -53,7 +52,6 @@
       "data_broker_type": "mt5",
       "start_date": "2026-01-05T00:00:00+00:00",
       "end_date": "2026-01-09T20:00:00+00:00",
-      "data_mode": "realistic",
       "enabled": true
     },
     {
@@ -62,7 +60,6 @@
       "data_broker_type": "mt5",
       "start_date": "2026-02-02T00:00:00+00:00",
       "end_date": "2026-02-06T20:00:00+00:00",
-      "data_mode": "realistic",
       "enabled": true
     }
   ]

@@ -4,7 +4,6 @@
     "created": "2026-04-10T00:00:00.000000",
     "description": "Spot SELL validation — Verifies that SELL signals on spot correctly sell held base currency (SHORT direction passes through guard and executor) and that SELL with insufficient base balance produces INSUFFICIENT_FUNDS rejection",
     "global": {
-        "data_mode": "realistic",
         "strategy_config": {
             "decision_logic_type": "CORE/backtesting/backtesting_margin_stress",
             "worker_instances": {
@@ -71,7 +70,6 @@
             "start_date": "2026-02-10T10:00:00+00:00",
             "end_date": "2026-02-10T20:00:00+00:00",
             "max_ticks": 3000,
-            "data_mode": "realistic",
             "enabled": true,
             "strategy_config": {},
             "execution_config": {},

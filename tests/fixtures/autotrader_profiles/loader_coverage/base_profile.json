@@ -15,7 +15,6 @@
   "scenario_settings": {
     "start_date": "2026-01-24T14:19:46+00:00",
     "end_date": "2026-01-25T14:14:00+00:00",
-    "data_mode": "realistic",
     "balances": {
       "USD": 10000.0
     }

@@ -3,7 +3,6 @@
   "scenario_set_name": "cascade_no_overrides",
   "description": "Cascade test fixture — neither global nor scenario overrides execution_config. App defaults must apply (Level 1 only).",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {

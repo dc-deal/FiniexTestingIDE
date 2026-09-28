@@ -40,7 +40,7 @@ from python.framework.utils.config_fingerprint_utils import generate_config_fing
 # The keys that decide WHICH DATA a scenario runs, as opposed to what the algo decides with it.
 # Kept here rather than inferred, because a reader has to know the difference to read a history
 # correctly and inference would guess (§49).
-_SCOPE_KEYS = ('symbol', 'start_date', 'end_date', 'max_ticks', 'enabled', 'data_mode')
+_SCOPE_KEYS = ('symbol', 'start_date', 'end_date', 'max_ticks', 'enabled')
 
 
 class RunConfigStore:

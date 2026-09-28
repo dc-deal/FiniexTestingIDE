@@ -3,7 +3,6 @@
   "scenario_set_name": "cascade_unknown_key_typo",
   "description": "Cascade test fixture — global execution_config carries an unknown typoed key. The loader must hard-fail with ValueError before any merge happens.",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {

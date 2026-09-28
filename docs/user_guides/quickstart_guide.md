@@ -535,7 +535,6 @@ The JSON config connects everything together.
   "version": "1.0",
   "scenario_set_name": "my_strategy_test",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {

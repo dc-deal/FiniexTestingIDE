@@ -13,7 +13,6 @@
     "disposition_trust_pct": 25.0
   },
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/trend_channel_reference",
       "worker_instances": {
@@ -66,7 +65,6 @@
       "start_date": "2025-11-03T00:00:00+00:00",
       "end_date": "2025-11-12T15:40:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -77,7 +75,6 @@
       "start_date": "2025-11-13T21:16:00+00:00",
       "end_date": "2025-11-18T01:57:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -88,7 +85,6 @@
       "start_date": "2025-11-18T20:52:00+00:00",
       "end_date": "2025-11-28T20:52:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -99,7 +95,6 @@
       "start_date": "2025-11-28T20:52:00+00:00",
       "end_date": "2025-12-08T20:52:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -110,7 +105,6 @@
       "start_date": "2025-12-08T20:52:00+00:00",
       "end_date": "2025-12-18T20:52:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -121,7 +115,6 @@
       "start_date": "2025-12-18T20:52:00+00:00",
       "end_date": "2025-12-28T20:52:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -132,7 +125,6 @@
       "start_date": "2025-12-29T00:00:00+00:00",
       "end_date": "2026-01-08T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -143,7 +135,6 @@
       "start_date": "2026-01-08T00:00:00+00:00",
       "end_date": "2026-01-18T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -154,7 +145,6 @@
       "start_date": "2026-01-19T00:00:00+00:00",
       "end_date": "2026-01-29T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -165,7 +155,6 @@
       "start_date": "2026-01-29T00:00:00+00:00",
       "end_date": "2026-02-08T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -176,7 +165,6 @@
       "start_date": "2026-02-09T00:00:00+00:00",
       "end_date": "2026-02-19T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -187,7 +175,6 @@
       "start_date": "2026-02-19T00:00:00+00:00",
       "end_date": "2026-03-01T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -198,7 +185,6 @@
       "start_date": "2026-03-02T00:00:00+00:00",
       "end_date": "2026-03-12T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -209,7 +195,6 @@
       "start_date": "2026-03-12T00:00:00+00:00",
       "end_date": "2026-03-22T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     },
@@ -220,7 +205,6 @@
       "start_date": "2026-03-23T00:00:00+00:00",
       "end_date": "2026-04-02T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     },
@@ -231,7 +215,6 @@
       "start_date": "2026-04-02T00:00:00+00:00",
       "end_date": "2026-04-12T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     },
@@ -242,7 +225,6 @@
       "start_date": "2026-04-13T00:00:00+00:00",
       "end_date": "2026-04-23T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     },
@@ -253,7 +235,6 @@
       "start_date": "2026-04-23T00:00:00+00:00",
       "end_date": "2026-04-30T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     },
@@ -264,7 +245,6 @@
       "start_date": "2025-11-03T00:00:00+00:00",
       "end_date": "2025-11-12T15:40:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -275,7 +255,6 @@
       "start_date": "2025-11-13T21:16:00+00:00",
       "end_date": "2025-11-18T01:57:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -286,7 +265,6 @@
       "start_date": "2025-11-18T20:52:00+00:00",
       "end_date": "2025-11-28T20:52:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -297,7 +275,6 @@
       "start_date": "2025-11-28T20:52:00+00:00",
       "end_date": "2025-12-08T20:52:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -308,7 +285,6 @@
       "start_date": "2025-12-08T20:52:00+00:00",
       "end_date": "2025-12-18T20:52:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -319,7 +295,6 @@
       "start_date": "2025-12-18T20:52:00+00:00",
       "end_date": "2025-12-28T20:52:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -330,7 +305,6 @@
       "start_date": "2025-12-29T00:00:00+00:00",
       "end_date": "2026-01-08T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -341,7 +315,6 @@
       "start_date": "2026-01-08T00:00:00+00:00",
       "end_date": "2026-01-18T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -352,7 +325,6 @@
       "start_date": "2026-01-19T00:00:00+00:00",
       "end_date": "2026-01-29T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -363,7 +335,6 @@
       "start_date": "2026-01-29T00:00:00+00:00",
       "end_date": "2026-02-08T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -374,7 +345,6 @@
       "start_date": "2026-02-09T00:00:00+00:00",
       "end_date": "2026-02-19T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -385,7 +355,6 @@
       "start_date": "2026-02-19T00:00:00+00:00",
       "end_date": "2026-03-01T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -396,7 +365,6 @@
       "start_date": "2026-03-02T00:00:00+00:00",
       "end_date": "2026-03-12T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "in_sample"
     },
@@ -407,7 +375,6 @@
       "start_date": "2026-03-12T00:00:00+00:00",
       "end_date": "2026-03-22T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     },
@@ -418,7 +385,6 @@
       "start_date": "2026-03-23T00:00:00+00:00",
       "end_date": "2026-04-02T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     },
@@ -429,7 +395,6 @@
       "start_date": "2026-04-02T00:00:00+00:00",
       "end_date": "2026-04-12T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     },
@@ -440,7 +405,6 @@
       "start_date": "2026-04-13T00:00:00+00:00",
       "end_date": "2026-04-23T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     },
@@ -451,7 +415,6 @@
       "start_date": "2026-04-23T00:00:00+00:00",
       "end_date": "2026-04-30T00:00:00+00:00",
       "max_ticks": null,
-      "data_mode": "realistic",
       "enabled": true,
       "role": "out_of_sample"
     }

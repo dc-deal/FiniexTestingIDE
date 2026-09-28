@@ -9,7 +9,6 @@
     "oos_split": 0.4
   },
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/simple_consensus",
       "worker_instances": {

@@ -4,7 +4,6 @@
     "created": "2026-04-27T00:00:00.000000",
     "description": "SIGNAL worker smoke — drives the hybrid_sentiment_reference decision (RSI + CORE/llm_sentiment) over BTCUSD ticks with a pre-collected sentiment week, validating the end-to-end SIGNAL data path (load → provider injection → decision fusion). Didactic, not a profit claim.",
     "global": {
-        "data_mode": "realistic",
         "strategy_config": {
             "decision_logic_type": "CORE/hybrid_sentiment_reference",
             "worker_instances": {
@@ -47,7 +46,6 @@
             "start_date": "2026-04-27T00:00:00+00:00",
             "end_date": "2026-04-27T12:00:00+00:00",
             "max_ticks": 3000,
-            "data_mode": "realistic",
             "enabled": true,
             "strategy_config": {},
             "execution_config": {},

@@ -41,7 +41,6 @@ class SingleScenario:
     start_date: datetime
     end_date: Optional[datetime] = None
     max_ticks: Optional[int] = None
-    data_mode: str = 'realistic'
     enabled: bool = True  # Default: enabled
 
     # ============================================

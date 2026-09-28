@@ -33,6 +33,7 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.reporting.duplicate_report import DuplicateReport
 from python.framework.types.import_schema_types import (
     ALREADY_CAPTURED_METADATA_KEYS,
+    DISCARDED_METADATA_KEYS,
     NESTED_METADATA_KEYS,
 )
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
@@ -422,6 +423,8 @@ class TickDataImporter:
         # they describe. A nested block that is missing from NESTED_METADATA_KEYS
         # falls to str() and lands as a Python repr rather than as JSON.
         for meta_key, meta_value in metadata.items():
+            if meta_key in DISCARDED_METADATA_KEYS:
+                continue
             if meta_key in NESTED_METADATA_KEYS:
                 parquet_metadata[f'source_meta_{meta_key}'] = json.dumps(
                     meta_value)

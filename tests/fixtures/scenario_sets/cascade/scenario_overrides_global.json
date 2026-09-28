@@ -3,7 +3,6 @@
   "scenario_set_name": "cascade_scenario_overrides_global",
   "description": "Cascade test fixture — scenario overrides global which already overrides app (Level 3 wins over Level 2 wins over Level 1).",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {

@@ -4,7 +4,6 @@
   "created": "2026-06-26T00:00:00.000000",
   "description": "Test fixture \u2014 CORE/trend_channel_reference in stop_breakout mode (mt5 EURUSD). Drives resting STOP entries + SL/TP + trailing + partial close + gate-flip cancels for behavior assertions.",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/trend_channel_reference",
       "worker_instances": {
@@ -53,7 +52,6 @@
       "data_broker_type": "mt5",
       "start_date": "2026-01-12T00:00:00+00:00",
       "end_date": "2026-01-16T20:00:00+00:00",
-      "data_mode": "realistic",
       "enabled": true
     }
   ]

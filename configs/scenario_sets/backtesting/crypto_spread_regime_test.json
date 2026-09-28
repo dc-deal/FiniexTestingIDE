@@ -4,7 +4,6 @@
   "created": "2026-09-20T16:30:00.000000+00:00",
   "description": "The same mechanical round trips over the two Kraken tick REGIMES, so the only thing that differs between the two scenarios is the data. `legacy` reads pre-1.6.0 files where bid == ask, so its fills cross no spread and the reported spread cost is honestly 0.00. `quoted` reads format 1.7.0, where the collector records the quote a trade executed against, so the same code measures a real effective spread. The decision logic is a fixed trade sequence on purpose: a signal-driven strategy would trade DIFFERENTLY in the two windows, and then the comparison would be between two strategies rather than between two data regimes.",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/backtesting/backtesting_margin_stress",
       "worker_instances": {
@@ -62,7 +61,6 @@
       "start_date": "2026-02-10T10:00:00+00:00",
       "end_date": "2026-02-10T20:00:00+00:00",
       "max_ticks": 4000,
-      "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
       "execution_config": {},
@@ -75,7 +73,6 @@
       "start_date": "2026-09-19T00:00:00+00:00",
       "end_date": "2026-09-20T09:00:00+00:00",
       "max_ticks": 4000,
-      "data_mode": "realistic",
       "enabled": true,
       "strategy_config": {},
       "execution_config": {},

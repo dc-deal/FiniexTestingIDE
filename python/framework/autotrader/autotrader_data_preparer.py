@@ -48,7 +48,6 @@ def build_scenario_from_config(config: AutoTraderConfig) -> SingleScenario:
         start_date=parse_datetime(settings.start_date),
         end_date=parse_datetime(settings.end_date) if settings.end_date else None,
         max_ticks=settings.max_ticks,
-        data_mode=settings.data_mode,
         data_sentiment_type=settings.data_sentiment_type,
         strategy_config=config.strategy_config,
         trade_simulator_config=trade_simulator_config,

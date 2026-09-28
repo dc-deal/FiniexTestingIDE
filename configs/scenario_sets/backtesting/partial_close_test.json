@@ -4,7 +4,6 @@
     "created": "2026-02-23T00:00:00.000000",
     "description": "Partial Position Close Validation (#119) - Proportional P&L, fee splitting, multiple partial closes, remaining close",
     "global": {
-        "data_mode": "realistic",
         "strategy_config": {
             "decision_logic_type": "CORE/backtesting/backtesting_multi_position",
             "worker_instances": {
@@ -71,7 +70,6 @@
             "start_date": "2025-09-25T16:00:00+00:00",
             "end_date": "2025-09-26T02:00:00+00:00",
             "max_ticks": 12000,
-            "data_mode": "realistic",
             "enabled": true,
             "strategy_config": {},
             "execution_config": {},

@@ -268,7 +268,6 @@ The benchmark scenario `backtesting_loadtest_40_scenarios.json` defines 40 USDJP
   "version": "1.0",
   "scenario_set_name": "backtesting_loadtest_40_scenarios",
   "global": {
-    "data_mode": "realistic",
     "strategy_config": {
       "decision_logic_type": "CORE/aggressive_trend",
       "worker_instances": {

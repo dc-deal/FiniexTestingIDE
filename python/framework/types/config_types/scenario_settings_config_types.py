@@ -18,7 +18,7 @@ class ScenarioSettingsConfig(BaseModel):
     Scenario data + account description for a mock session.
 
     Field names mirror the simulation scenario scalars (data_broker_type, data_sentiment_type,
-    start/end_date, max_ticks, data_mode) so there is one vocabulary across both pipelines. The
+    start/end_date, max_ticks) so there is one vocabulary across both pipelines. The
     balances live here too (the sim carries them on the scenario's trade_simulator_config), which
     is why the AutoTrader profile no longer needs a separate `account` block.
 
@@ -28,7 +28,6 @@ class ScenarioSettingsConfig(BaseModel):
         start_date: Window start (UTC ISO string), index-resolved
         end_date: Window end (UTC ISO string); None with max_ticks = tick-limited mode
         max_ticks: Cap the loaded ticks; None with end_date = timespan mode
-        data_mode: Tick data mode (e.g. 'realistic')
         balances: Starting account balances (e.g. {'USD': 10000.0, 'BTC': 0.0})
         account_currency: Explicit account currency; None → derived from balances + symbol
         scenario_name: Optional scenario name; '' → derived from the profile name
@@ -41,7 +40,6 @@ class ScenarioSettingsConfig(BaseModel):
     start_date: str
     end_date: Optional[str] = None
     max_ticks: Optional[int] = None
-    data_mode: str = 'realistic'
     balances: Dict[str, float] = Field(default_factory=dict)
     account_currency: Optional[str] = None
     scenario_name: str = ''

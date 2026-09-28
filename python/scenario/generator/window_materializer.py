@@ -111,7 +111,6 @@ class WindowMaterializer:
                 'start_date': window.start_time.isoformat(),
                 'end_date': window.end_time.isoformat(),
                 'max_ticks': effective_max_ticks,  # None → null in JSON
-                'data_mode': 'realistic',
                 'enabled': True,
             }
             if role is not None:
@@ -165,7 +164,6 @@ class WindowMaterializer:
                 data_broker_type=window_set.broker_type,
                 start_date=window.start_time,
                 end_date=window.end_time,
-                data_mode='realistic',
                 max_ticks=None,
                 strategy_config=copy.deepcopy(global_strategy),
                 execution_config=copy.deepcopy(global_execution),

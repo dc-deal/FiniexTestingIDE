@@ -112,7 +112,7 @@ class ImportMetadataSchema(TypedDict, total=False):
     # Nested optional
     symbol_info: SymbolInfoSchema
     collection_settings: CollectionSettingsSchema
-    error_tracking: ErrorTrackingSchema
+    error_tracking: ErrorTrackingSchema  # read from the raw file, never stored (DISCARDED_METADATA_KEYS)
 
 
 class ImportTickSchema(TypedDict, total=False):
@@ -205,11 +205,17 @@ MANDATORY_TICK_FIELDS: List[str] = [
 NESTED_METADATA_KEYS: List[str] = [
     'symbol_info',
     'collection_settings',
-    'error_tracking',
     # Who wrote this file (#518). It travels VERBATIM: the block is the producer's statement
     # and stays readable as such, beside the class this side resolved from it. Keeping both is
     # the point — a resolved class can be re-derived later only if the identity survived.
     'origin',
+]
+
+# Metadata a collector still writes that nothing downstream reads: the settings of the collector's
+# own data-quality checks. The raw file keeps them (it is never rewritten), so a file carrying them
+# imports as before — the block is simply not carried into the Parquet header.
+DISCARDED_METADATA_KEYS: List[str] = [
+    'error_tracking',
 ]
 
 # Metadata keys already captured at top level in Parquet header

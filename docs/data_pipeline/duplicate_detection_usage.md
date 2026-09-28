@@ -1,11 +1,15 @@
-# Duplicate Detection & Data Mode System
+# Duplicate Detection
 
 ## 📋 Overview
 
 The system protects data integrity through:
 1. **Artificial Duplicate Detection** - Detects a source file imported a second time
 2. **Cross-Broker Detection** - Detects the same source imported under a different broker directory
-3. **Data Mode Support** - Controls the handling of natural duplicates
+
+**Natural duplicates are kept as received.** Two ticks with the same time and the same prices are
+what the venue sent, and nothing in the import or in a run's data loading filters them. There is no
+setting that changes this: the `data_mode` key that once selected a filter (`raw` / `realistic` /
+`clean`) had been read by nothing since October 2025 and was removed on 2026-09-28.
 
 ---
 
@@ -256,43 +260,3 @@ read source metadata — it skips when the target parquet already exists, unless
 
 Do not carry assumptions from one to the other — a signal re-import under a changed path
 would not be detected as a duplicate the way a tick re-import is.
-
----
-
-## 🎯 Data Modes
-
-### `data_mode="raw"`
-- **Purpose:** Maximum realism for stress tests
-- **Behavior:** All duplicates are preserved (as received from the broker)
-- **Use-Case:** Phase 3 testing, algo stress under real conditions
-
-### `data_mode="realistic"`
-- **Purpose:** Normal test conditions
-- **Behavior:** Natural duplicates are removed
-- **Use-Case:** Standard testing, performance validation
-
-### `data_mode="clean"`
-- **Purpose:** Optimized test conditions
-- **Behavior:** Natural duplicates are removed (same as realistic)
-- **Use-Case:** Benchmark tests, clean data scenarios
-
----
-
-## 💻 Usage in Code
-
-### In a Scenario Set (JSON)
-
-```json
-{
-  "global": {
-    "data_mode": "realistic"
-  },
-  "scenarios": [
-    {
-      "scenario_name": "EURUSD_stress_test",
-      "symbol": "EURUSD",
-      "data_mode": "raw"  // Override for this scenario
-    }
-  ]
-}
-```

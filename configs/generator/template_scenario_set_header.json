@@ -3,7 +3,6 @@
     "scenario_set_name": "",
     "created": "",
     "global": {
-        "data_mode": "realistic",
         "strategy_config": {
             "decision_logic_type": "CORE/aggressive_trend",
             "worker_instances": {

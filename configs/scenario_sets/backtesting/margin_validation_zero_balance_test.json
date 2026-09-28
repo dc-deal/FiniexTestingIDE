@@ -4,7 +4,6 @@
     "created": "2026-02-19T00:00:00.000000",
     "description": "Zero Balance Validation - All orders rejected due to insufficient margin with zero starting balance",
     "global": {
-        "data_mode": "realistic",
         "strategy_config": {
             "decision_logic_type": "CORE/backtesting/backtesting_margin_stress",
             "worker_instances": {
@@ -60,7 +59,6 @@
             "start_date": "2025-09-25T16:00:00+00:00",
             "end_date": "2025-09-26T02:00:00+00:00",
             "max_ticks": 1000,
-            "data_mode": "realistic",
             "enabled": true,
             "strategy_config": {},
             "execution_config": {},
