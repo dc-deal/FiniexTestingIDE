@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Safety Circuit Breaker Integration Tests
 
-End-to-end tests through the AutoTrader mock pipeline.
+End-to-end tests through a mock AutoTrader session.
 Validates that safety checks use equity (spot) and balance (margin)
 correctly during a real tick loop session.
 
@@ -21,7 +21,7 @@ from python.framework.types.log_level import LogLevel
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
 # Base profile: spot, 15K ticks, display off, INSTANT_FILL mock adapter
-BASE_PROFILE = 'configs/autotrader_profiles/backtesting/btcusd_mock_safety.json'
+BASE_PROFILE = 'configs/autotrader_profiles/mock/btcusd_mock_safety.json'
 
 
 def _run_with_safety(safety: SafetyConfig) -> AutoTraderResult:

@@ -338,16 +338,16 @@ class TestASweepRanksCandidatesNotDays:
         from datetime import datetime, timedelta, timezone
 
         from python.framework.types.api.report_types import RunSummaryCurrency
-        from python.framework.types.run_results_types import BookingSegment, SegmentCloseReason
+        from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 
         start = datetime(2026, 9, 21, tzinfo=timezone.utc)
         for run, parts in (('rA', (10.0, -4.0, 6.0)), ('rB', (1.0, 1.0, 1.0))):
             segments = [
-                BookingSegment(
-                    segment_no=i + 1, unit_name='scenario',
+                BookingPeriod(
+                    period_no=i + 1, unit_name='scenario',
                     opened_at=start + timedelta(days=i),
                     closed_at=start + timedelta(days=i + 1),
-                    reason=SegmentCloseReason.ANCHOR, trade_count=1,
+                    reason=PeriodCloseReason.ANCHOR, trade_count=1,
                     figures=RunSummaryCurrency(
                         currency='USD', net_pnl=part, profit_factor=None, win_rate=0.0,
                         account_max_drawdown=0.0, total_fees=0.0, total_trades=1,

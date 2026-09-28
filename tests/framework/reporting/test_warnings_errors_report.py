@@ -314,7 +314,7 @@ class TestRender:
             outcome=WarningsErrorsOutcome(failed_count=1))
         out = self._render(report)
         assert 'WARNINGS & ERRORS' in out
-        assert 'Scenario errors detected — 1 unit(s)' in out
+        assert 'Errors detected — 1 unit(s)' in out
         assert '✗ start before data' in out
         assert '1 logged error(s)' in out
         assert 'DEBUG MODE' in out

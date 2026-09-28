@@ -36,13 +36,13 @@ it. A test that cannot tell a working stop from a decorative one is worse than n
 |---|---|
 | `test_both_pipelines_name_an_enforcer` | The crossing property: neither executor may answer "nobody". This is the defect as one assertion |
 | `test_a_live_level_is_watched_by_this_process` | Today's live answer, which the report has to be able to state out loud |
-| `test_a_breach_closes_the_position` | The behaviour that did not exist: a live stop acts |
+| `test_a_breach_closes_the_position` | The behaviour that did not exist: a stop acts in an AutoTrader session |
 | `test_the_exit_carries_the_reason_across_the_round_trip` | The reason is known at the TRIGGER and the fill lands a round trip later, so it rides on the `PendingOrder`. Without it a stop-out records as a plain manual close |
 | `test_a_target_breach_closes_it_too` | The same, the other direction |
 | `test_a_position_without_levels_is_left_alone` | The regression guard: nothing closes what declared nothing |
 | `test_a_second_breach_while_the_close_is_in_flight_triggers_nothing` | A live close takes a round trip and the next tick is usually worse. Without the in-flight guard the position would be closed twice — the risk the old early return was wrongly protecting against |
 | `test_the_simulation_still_answers_local` | The sim's answer is unchanged |
-| `test_a_simulated_stop_fills_at_the_level_itself` | And so is its mechanism: AT the level, in-tick. This is the difference from live, pinned rather than smoothed over |
+| `test_a_simulated_stop_fills_at_the_level_itself` | And so is its mechanism: AT the level, in-tick. This is the difference from an AutoTrader session, pinned rather than smoothed over |
 | `test_a_strategy_partial_close_holds_the_stop_off_while_it_flies` | The guard matches ANY close in flight, so a partial close suppresses the level for one round trip. Conservative on purpose: a partial takes some lots and a stop takes all of them |
 | `test_a_real_adapter_still_answers_local` | Parametrised over the REAL Kraken and MT5 adapters built from the checked-in broker JSON. The two LOCAL assertions above run over the mock — the one adapter that can never trip — while 110 of 120 checked-in backtest scenarios declare `mt5`, so this is the case that would actually break |
 | `test_no_adapter_declares_a_venue_held_level_yet` | The precondition under the constant, asserted instead of assumed: no adapter declares `native_position_sl_tp`. It goes red the day one does, and then the RESOLVER is the thing to look at |
@@ -99,7 +99,7 @@ order can name a position other than itself.
 | `test_a_full_close_emits_it_once` | `POSITION_CLOSED` fires on a full close — until now a full close emitted nothing and the algo learned of it by noticing the position missing |
 | `test_a_venue_initiated_close_says_nobody_here_asked` | `requested_locally=False` where the venue fired its own order |
 | `test_a_partial_close_emits_the_partial_event_and_not_this_one` | The two events do not overlap |
-| `test_the_simulation_emits_it_too` | Parity, and it is the point rather than a bonus: an event only live can produce would make a backtest stop predicting the live run |
+| `test_the_simulation_emits_it_too` | Parity, and it is the point rather than a bonus: an event only an AutoTrader session can produce would make a backtest stop predicting the session |
 
 ### `test_venue_close_resolver.py` (#503, stage C)
 
@@ -113,7 +113,7 @@ all of them without closing twice.
 | `test_the_counter_is_not_the_fills_aggregate` | **Decision 13.a asserted rather than assumed.** On a venue with trade-level reporting the trades drain fills `cumulative_filled_lots` BEFORE anything is booked, so a delta taken against it would be zero exactly in the case this exists for — and the failure would be silent: no error, just a position that stays open while the venue has already sold it |
 | `test_it_books_a_partial_close_then_the_close` | Kraken has no PARTIALLY_FILLED — a half-filled order stays `open` and reports what executed beside it. Both halves are real lots |
 | `test_the_second_booking_does_not_reuse_the_first_executions` | `_fill_close_order` hands its trade list to the portfolio as the closing record's executions; handed the same list twice, the second close would report the first partial's executions and fee again |
-| `test_a_close_for_a_position_we_no_longer_hold_is_reported` | §35: not attributable is never silent, and the venue's reference is always named — it is the only handle left for a manual check |
+| `test_a_close_for_a_position_we_no_longer_hold_is_reported` | Not attributable is never silent, and the venue's reference is always named — it is the only handle left for a manual check |
 | `test_more_lots_than_the_position_holds_is_reported` | The excess is reported; what COULD be attributed is still booked |
 | `test_an_unattributable_report_is_not_replayed_forever` | The counter advances even where nothing could be booked, or every poll rediscovers the same orphan volume and buries the session channel |
 
@@ -185,9 +185,9 @@ never needed before.
 ## The difference between the two pipelines is real
 
 The simulation fills a synthetic close at exactly the level, deterministically, in the same
-tick. Live has no such price on offer: it goes through the normal asynchronous close, so the
+tick. An AutoTrader session has no such price on offer: it goes through the normal asynchronous close, so the
 exit lands at whatever the venue gives it a round trip later. **A backtest therefore reports
-protected exits slightly better than live can deliver them**, and the suite pins both sides so
+protected exits slightly better than an AutoTrader session can deliver them**, and the suite pins both sides so
 that nobody "fixes" the divergence by making the backtest non-deterministic.
 
 ## The two windows in which a level is not acted upon
@@ -232,7 +232,7 @@ orphan cleanup are OUR work — a close on another route leaves the protective o
 holding that is gone. The release-gate test that used to be a strict `xfail` here was RETIRED
 rather than flipped: it checked the entry payload for a conditional close, and #503 deliberately
 never puts one there. Its replacement asserts the real contract — the entry payload stays EMPTY —
-and the acceptance it was standing in for was taken live instead, by the field study's
+and the acceptance it was standing in for was taken at the venue instead, by the field study's
 `protective_level_test` phase on a real account.
 
 **The `ClosedOrders` read named above is no longer missing (#487).** The adapter now has a

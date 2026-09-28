@@ -25,7 +25,7 @@ Stress tests are configured via `stress_test_config` in scenario JSON files. The
   },
   "scenarios": [
     {
-      "name": "scenario_01",
+      "scenario_name": "scenario_01",
       "stress_test_config": {
         "reject_open_order": {
           "enabled": true,
@@ -158,7 +158,7 @@ in one place. Its tick source additionally declares a transport-real silence via
 freeze means no tick ARRIVES, the planned window means the status is flagged while ticks keep
 coming. Both feed the same label join.
 
-**One rule the live loop needs and the simulation does not:** the AutoTrader has a second
+**One rule the AutoTrader loop needs and the simulation does not:** the AutoTrader has a second
 stale source — the wall-clock evaluation on its idle heartbeat (`market_data_stale_after_s`)
 — and both write the same status field. While a planned window is active that evaluation is
 SILENT, so a measurement cannot overwrite a deterministic drill. It says nothing new there
@@ -171,7 +171,7 @@ configured span. Testing for overlap is what makes the join work at all. A conse
 knowing: if a genuine outage happens to overlap a planned window, it is reported as injected.
 
 **Validation:** a `data_source` the scenario does not bind → config error
-(scenario excluded at preparation, batch continues, §33). Missing
+(scenario excluded at preparation, batch continues). Missing
 `data_source` / inverted window → config error. A window without (partial)
 overlap with the scenario's data range → warning `data deviation` (the event
 can never fire).

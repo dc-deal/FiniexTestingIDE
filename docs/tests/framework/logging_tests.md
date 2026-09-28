@@ -30,9 +30,9 @@ the scenario console output.
 
 | Class | What it pins |
 |---|---|
-| `TestTheRecordCarriesTheFact` | the message is bare (no colour, no level, no timestamp); observation time (`timestamp`) and event time (`event_time`) are separate fields per §9; no event time without a clock; a record survives `pickle` — it crosses the process boundary on `ProcessResult` |
+| `TestTheRecordCarriesTheFact` | the message is bare (no colour, no level, no timestamp); observation time (`timestamp`) and event time (`event_time`) are separate fields, as the time policy requires; no event time without a clock; a record survives `pickle` — it crosses the process boundary on `ProcessResult` |
 | `TestOneFormulaForBothSurfaces` | the file line is the console line with the ANSI codes stripped, with and without the column; a log without the column renders exactly the pre-column line, so `global.log` and the run-level logs are provably untouched |
-| `TestTheColumnIsARole` | the column is absent when the role was not declared, and holds a fixed-width filler when the role is declared but no clock has been attached — the two states a record alone cannot tell apart; the filler is never a wall-clock substitute (§9) |
+| `TestTheColumnIsARole` | the column is absent when the role was not declared, and holds a fixed-width filler when the role is declared but no clock has been attached — the two states a record alone cannot tell apart; the filler is never a wall-clock substitute |
 | `TestADisplaySettingCannotHideAReportInput` | with the console gate closed, WARNING and ERROR are still captured; INFO and DEBUG are not; `get_records(level)` filters; **both** display surfaces re-apply the threshold — `flush_buffer` and `print_buffer` |
 | `TestTheClockIsPulledNotPushed` | a logger with no clock records no event time; an attached clock stamps every later record. The pull is one attachment instead of a call site per pass kind — the pushed variant is what left the live session log without a time column for as long as it existed |
 

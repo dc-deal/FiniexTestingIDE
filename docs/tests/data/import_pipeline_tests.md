@@ -308,7 +308,7 @@ import and the origin COMPARISON here.
 ## The refusal, in `test_origin_stamp.py`
 
 From format 1.7.0 a file naming no producer is refused. The proof is the **absence of a parquet**
-rather than an exception: a data error is a scenario-level failure and not a crash (§33), so what
+rather than an exception: a data error is a scenario-level failure and not a crash, so what
 matters downstream is that the file does not enter the archive.
 
 Two controls sit beside it and are what make the boundary readable. The same file WITH an identity

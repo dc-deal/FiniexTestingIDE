@@ -3,7 +3,7 @@ FiniexTestingIDE - Signal Parquet Reader
 
 Reads the imported signal parquet (#429) into a runtime SignalSeries, projected to ONE
 symbol's consumed fields (the #128/#429 field projection). Standalone so both the sim
-index-resolution path (SharedDataPreparator) and a future AutoTrader mock sentiment_source
+index-resolution path (SharedDataPreparator) and a future mock-session sentiment_source
 share it — mirroring the shared tick parquet reader.
 """
 

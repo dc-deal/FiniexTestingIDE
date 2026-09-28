@@ -40,7 +40,7 @@ from python.framework.types.config_directory_types import (
     ConfigReadStatus,
     DiscoveredConfigFile,
 )
-from python.framework.types.log_layout_types import RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.validators.config_name_validator import config_name_conflict
 
 # How long a refreshed directory is served before the next request walks the roots again. The
@@ -50,7 +50,7 @@ FRESHNESS_S = 30.0
 
 # Which run type a configuration kind starts — how a row finds its runs in the run index.
 _RUN_TYPE_OF = {ConfigKind.SCENARIO_SET: RUN_TYPE_SIMULATION,
-                ConfigKind.AUTOTRADER_PROFILE: RUN_TYPE_LIVE}
+                ConfigKind.AUTOTRADER_PROFILE: RUN_TYPE_AUTOTRADER}
 
 # The last refresh per cache file, stamped on the MONOTONIC clock (§9): (when, rows, paths).
 _MEMO: Dict[str, Tuple[float, List[DirectoryRow], Dict[str, Path]]] = {}

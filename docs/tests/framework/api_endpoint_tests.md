@@ -23,7 +23,7 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestBars` | `test_bars_carry_the_tick_count` | `tc` per bar — the activity measure on feeds whose volume is 0.0 |
 | `TestBars` | `test_a_cut_response_says_that_it_was_cut` | `X-Bar-Truncated` / `Count` / `Total` / `Limit` on a capped range |
 | `TestBars` | `test_a_complete_response_says_it_was_not_cut` | the same headers on an uncut range |
-| `TestBars` | `test_every_response_states_its_own_semantics` | `X-Bar-Time-Basis` `open` · `X-Bar-Timezone` `UTC` · `X-Bar-Price-Basis` `mid` |
+| `TestBars` | `test_every_response_states_its_own_semantics` | `X-Bar-Time-Basis` `open` · `X-Bar-Timezone` `UTC` · `X-Bar-Price-Basis` `order_driven` (the file's stamp) |
 | `TestBars` | `test_a_limit_above_the_cap_is_refused_rather_than_clamped` | 400 + `error: invalid_limit` |
 | `TestBars` | `test_a_limit_below_one_is_refused` | 400 + `error: invalid_limit` |
 | `TestBars` | `test_invalid_timeframe_returns_400` | 400 + `error: invalid_timeframe` |
@@ -72,7 +72,7 @@ switched off where the case is about the workspace copy.
 | `TestTheAccountsFile` | No file is no account and not an error; the key is the id; an id named twice is refused (JSON keeps the last); the workspace copy takes precedence; the tracked placeholder holds none |
 | `TestEveryTokenNamesAnAccount` | Entries without an account are refused ALL AT ONCE with the command and the restart, and a switched-off entry is refused too — off is one flag from on; an unknown and a switched-off account are refused; a switched-off token may name an account that does not exist; a bound consumer carries its account and its grants as a list; the boot line names the account; `setup_api_auth` hands the identities to the bundle |
 | `TestTheTokenLoaderHonoursConfigIsolation` | Under isolation only the tracked copy answers, without it the workspace does |
-| `TestTheCommandsWriteNothing` | `account` prints the whole file when none exists and a fragment when one does, refuses an existing id and `operator`; `mint` carries its account, refuses an unknown or malformed one, says what the boot needs when no accounts file exists, and is a usage error without `--account`; neither changes a file |
+| `TestTheCommandsWriteNothing` | `account` prints the whole file when none exists and only the entry to paste when one does, refuses an existing id and `operator`; `mint` carries its account, refuses an unknown or malformed one, says what the boot needs when no accounts file exists, and is a usage error without `--account`; neither changes a file |
 
 ## Contract (`TestTheContractSaysWhatItIs`)
 
@@ -95,7 +95,7 @@ auth walk's required routes, and the collection route has its refused/admitted p
 
 ## Error vocabulary (`test_api_error_catalog.py`)
 
-Every error the API answers with is declared once in `python/api/api_error_catalog.py` (§49: a
+Every error the API answers with is declared once in `python/api/api_error_catalog.py` (a
 declaration earns its place only with a test that it is complete). `TestTheCatalogIsOneVocabulary`
 holds the constants to `API_ERRORS`, keeps every code unique, refuses a bare `not_found` — a code
 that states the status and no cause — and fills every sentence from its own placeholders.
@@ -156,18 +156,18 @@ read the ledger and only the ledger.
 | Test | Description |
 |------|-------------|
 | `test_lists_recorded_deployments` | `/deployments` groups the ledger rows into one row per deployment |
-| `test_a_deployments_pnl_sums_and_its_drawdown_does_not` | The one arithmetic this view must not get wrong: each live row carries the RUNNING decline against the inherited peak, so the reduction is `max()` and a sum counts one decline once per session that was still inside it |
+| `test_a_deployments_pnl_sums_and_its_drawdown_does_not` | The one arithmetic this view must not get wrong: each AutoTrader row carries the RUNNING decline against the inherited peak, so the reduction is `max()` and a sum counts one decline once per session that was still inside it |
 | `test_no_deployment_is_not_an_error` | Nothing declared yet is a state, not a failure |
 | `test_sessions_read_forwards` | Oldest first — the opposite order to the console, deliberately |
 | `test_a_configuration_change_is_reported_before_the_table` | The advisory rides on the response rather than inside a row, so a client cannot render the table and drop the sentence that says whether the rows may be added up |
-| `test_a_session_that_never_reached_its_close_is_counted` | The ledger row is written last, so a killed session is absent from the list by construction (§44) |
+| `test_a_session_that_never_reached_its_close_is_counted` | The ledger row is written last, so a killed session is absent from the list by construction |
 | `test_unknown_deployment_is_a_404_and_not_an_empty_history` | An empty list would read as a deployment that ran and did nothing |
 | `test_the_detail_route_filters_in_the_store` | `read_rows(deployment_id=...)`, not a full read followed by a filter |
 | `test_the_periods_of_every_session_come_back_in_one_call` | `/deployments/{id}/booking-periods` — the thirty-day picture without walking the sessions |
-| `test_every_period_names_the_session_that_booked_it` | `segment_no` restarts wherever a session wrote no carry-over floor, so two periods of one deployment can both be #1; `run_id` is what tells them apart |
+| `test_every_period_names_the_session_that_booked_it` | `period_no` restarts wherever a session wrote no carry-over floor, so two periods of one deployment can both be #1; `run_id` is what tells them apart |
 | `test_a_row_that_books_no_period_is_skipped_and_counted` | Every row written before the booking journal is one of those — skipped, and its session counted, so an incomplete history is not read as a quiet one |
-| `test_the_periods_carry_their_own_band_not_the_cumulative_one` | `segment_max_drawdown`, not `account_max_drawdown` — the running figure would repeat the same number down the column |
-| `test_there_is_no_reconciliation_and_that_is_deliberate` | Pinned as an ABSENCE: across many runs no second, independently derived figure exists, so a check could only compare the rows with themselves (§48) |
+| `test_the_periods_carry_their_own_band_not_the_cumulative_one` | `period_max_drawdown`, not `account_max_drawdown` — the running figure would repeat the same number down the column |
+| `test_there_is_no_reconciliation_and_that_is_deliberate` | Pinned as an ABSENCE: across many runs no second, independently derived figure exists, so a check could only compare the rows with themselves |
 | `test_periods_of_an_unknown_deployment_are_a_404` | An id with no ledger rows |
 
 ## TestGaps — `/brokers/{broker}/symbols/{symbol}/gaps`

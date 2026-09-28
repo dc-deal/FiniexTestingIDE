@@ -21,7 +21,7 @@ from python.framework.types.log_level import LogLevel
 from python.framework.types.trading_env_types.order_types import CloseType, OrderSide
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
-MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/partial_close_lifecycle.json'
+MOCK_PROFILE = 'configs/autotrader_profiles/mock/partial_close_lifecycle.json'
 
 
 @pytest.fixture(scope='module')

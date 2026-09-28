@@ -50,7 +50,7 @@ def _profile(root: Path, relative: str, name: str, symbol: str,
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({
-        'name': name, 'symbol': symbol, 'adapter_type': adapter}), encoding='utf-8')
+        'profile_name': name, 'symbol': symbol, 'adapter_type': adapter}), encoding='utf-8')
     return path
 
 
@@ -335,7 +335,7 @@ class TestTheCheckCrossesTheConfigBoundary:
     @staticmethod
     def _write(path: Path, name: str, symbol: str, bot_id: str) -> Path:
         path.write_text(json.dumps(
-            {'name': name, 'symbol': symbol, 'bot_id': bot_id}), encoding='utf-8')
+            {'profile_name': name, 'symbol': symbol, 'bot_id': bot_id}), encoding='utf-8')
         return path
 
     def test_a_forgotten_id_on_a_copy_into_the_workspace_is_caught(self, tmp_path):

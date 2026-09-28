@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Safety Session Types
 
-What the circuit breaker SAW over one live session, captured raw for the report (#356/#314).
+What the circuit breaker SAW over one AutoTrader session, captured raw for the report (#356/#314).
 
 The breaker's own state answers one question — is the bot blocked right now — and that is
 the wrong question at the end of a thirty-day run. A session-end snapshot showing
@@ -25,10 +25,10 @@ from python.framework.types.persistence_types import RiskBaseline
 @dataclass
 class SafetyDayRecord:
     """
-    One UTC trading day, its own denominator, and the worst loss measured against it.
+    One trading day, its own denominator, and the worst loss measured against it.
 
     Args:
-        day: The UTC date, YYYY-MM-DD
+        day: The trading day, YYYY-MM-DD — the date it opened, in the anchor's timezone
         baseline: The DAY_START record this day's loss was measured against
         worst_loss_abs: The largest drop below that baseline seen during the day
         worst_loss_pct: The same drop as a percentage of it. ONE instant, not two: a
@@ -78,7 +78,7 @@ class SafetySessionRecord:
             spent blocked. One number the operator can read as "how often did this happen"
         blocked_at_end: Whether new entries were still blocked when the session ended
         reason_at_end: The breaker's reason at that moment, empty when it was not blocked
-        days: One row per UTC day the session ran through
+        days: One row per trading day the session ran through
         flatten_fired: Whether the HARD stop tripped
         flatten_reason: What tripped it, with its numbers
         flatten_completed: Whether the book was confirmed flat before the session ended.

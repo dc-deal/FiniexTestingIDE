@@ -58,7 +58,7 @@ def _config(
         The configuration
     """
     return AutoTraderConfig(
-        name='session_end_probe',
+        profile_name='session_end_probe',
         symbol='BTCUSD',
         broker_type='kraken_spot',
         session_end=SessionEndDefaults(orders=orders, positions=positions),

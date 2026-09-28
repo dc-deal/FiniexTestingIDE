@@ -7,7 +7,7 @@ right for crypto by coincidence and wrong for forex, whose day flips at the swap
 
 What these tests pin is the pair that makes the answer trustworthy: the DST-aware boundary
 (17:00 New York is 21:00 UTC in summer and 22:00 in winter, so a fixed offset would put
-every winter fragment an hour out) and the off-by-one either side of it — an instant at
+every winter booking period an hour out) and the off-by-one either side of it — an instant at
 16:59 local still belongs to the day before, and mislabelling it is invisible in every
 artifact it touches.
 """

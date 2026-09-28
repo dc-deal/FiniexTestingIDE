@@ -94,7 +94,7 @@ class PortfolioStats(BasePortfolioStats):
     # stats (#500). Stamped at capture, because it is the EXECUTOR's answer and these stats
     # come from the portfolio. An operator reading a level must be able to read who holds it.
     protective_level_enforcement: str = ''
-    # WHICH PERIOD the three drawdown figures above describe (#497). A live session can
+    # WHICH PERIOD the three drawdown figures above describe (#497). An AutoTrader session can
     # inherit its predecessor's peak and trough through the cold-start carry-over, so the
     # number may span a month of restarts — or one afternoon, and nothing in the figure
     # itself says which. `drawdown_carried_from` is the stamp of the inherited record ('' =

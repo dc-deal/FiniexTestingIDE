@@ -135,7 +135,7 @@ keep every run, where a dict comprehension keyed on the group silently keeps onl
 
 ## `test_carry_over_identity.py`
 
-Two live bots must not share one carry-over document. The stores file one per BOT under
+Two bots must not share one carry-over document. The stores file one per BOT under
 `<profile name>_<symbol>`, and both halves are free text nothing validates — so a collision is
 invisible from inside either store: each asks whether a document belongs to THIS bot, and in a
 collision it does, for both. The check therefore runs once across the profile tree at boot,
@@ -152,19 +152,22 @@ carry every character, so `dot live` and `dot-live` legitimately meet. That is o
 two ways rather than two bots merging, and it is the reason for a check rather than for a
 stricter sanitiser.
 
-**A continuous deployment MUST declare one**, and four tests pin the refusal: a continuous
-profile without a `bot_id` is rejected at boot, the message carries a usable suggestion and shows
-the identity it would produce (a complaint the operator cannot act on is one they work around), a
-declared one passes, and `--one-off` is exempt because it inherits nothing.
+**Every profile MUST declare one** — required of every profile since 2026-09-24, one-off
+included — and the tests pin the refusal: a profile without a `bot_id` is rejected at boot, a
+`--one-off` session is no longer exempt (the route into a collision is copying a profile and
+keeping its name, and that copy was exactly what the older continuous-only rule exempted), the
+message carries a usable suggestion and shows the identity it would produce (a complaint the
+operator cannot act on is one they work around), and a declared one passes.
 
 **A declared `bot_id` takes precedence over the name**, and three tests pin why: it produces the
 key, it survives a rename of everything else, and leaving it empty composes from the name exactly
 as before — so no profile changes key by the field existing. Without it the identity moves when
-the display name does, which is the one rename that silently orphans a live bot's position book.
+the display name does, which is the one rename that silently orphans a bot's position book.
 
 **Nothing is exempt, and one test exists to pin the correction that produced that rule.** The
 first version of the check excluded mock profiles on the reasoning that they run no live
-executor — which is wrong: `adapter_type: mock` selects the tick SOURCE, and every AutoTrader
+executor — which is wrong: `adapter_type: mock` selects the broker adapter (a
+`MockBrokerAdapter`); the tick source is `tick_source.type`. Every AutoTrader
 session runs a `LiveTradeExecutor` and builds both carry-over stores. Measured 2026-09-21, 15 of
 the 16 documents in `data/runtime/cold_start_state/` belong to mock profiles, so the exclusion
 would have skipped almost the entire population the check protects. An unknown adapter counts for

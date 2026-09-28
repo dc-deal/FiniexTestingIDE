@@ -103,9 +103,9 @@ class RunIndexCli:
 
     def cmd_deployments(self, deployment: str) -> int:
         """
-        Show a live bot's sessions as one history (#497).
+        Show a bot's sessions as one history (#497).
 
-        The ledger's only other reader filters on `sweep_id`, which a live session does not
+        The ledger's only other reader filters on `sweep_id`, which an AutoTrader session does not
         have — so before this command a session's row was written and unreachable (§44: a
         store with no read path). This is that path.
 

@@ -1,7 +1,7 @@
 """
-A backtest never inherits a live session's equity curve (#497).
+A backtest never inherits an AutoTrader session's equity curve (#497).
 
-The drawdown carry-over is a LIVE mechanism: a thirty-day unattended run restarts, and the
+The drawdown carry-over is an AUTOTRADER mechanism: a thirty-day unattended run restarts, and the
 report has to continue the curve rather than open a new one. The simulation is the opposite
 case by construction — a scenario starts at its own start, and a peak read from a file outside
 its own inputs would make the run depend on which bot happened to trade yesterday.
@@ -49,7 +49,7 @@ class TestTheSimulationNeverRestoresACurve:
 
         assert offenders == [], (
             f'{_RESTORE} is reachable from the simulation pipeline ({offenders}) — a backtest '
-            f'would then open its equity curve at a peak carried over from a live session, and '
+            f'would then open its equity curve at a peak carried over from an AutoTrader session, and '
             f'two runs over identical data would report different drawdowns')
 
     def test_the_simulation_never_constructs_the_carry_over_store(self):

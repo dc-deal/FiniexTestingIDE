@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Booking Periods (#537)
 
-The run's Hauptbuch, one line per booking period, and a total line that RECONCILES.
+The run's ledger entries, one line per booking period, and a total line that RECONCILES.
 
 Formatting only — every figure was derived in `booking_periods_report_builder` (§12). The last
 line is what the table is for: the sum of the periods against the figure the run reports by its
@@ -27,7 +27,7 @@ _REASON_MARK = {
 
 
 class BookingPeriodsSummary:
-    """The run's Hauptbuch as an ordered console section, fed by `RunConsoleRenderer`."""
+    """The run's booking periods as an ordered console section, fed by `RunConsoleRenderer`."""
 
     def __init__(self, report: BookingPeriodsReport):
         """
@@ -93,7 +93,7 @@ def render_booking_periods(
           f'{"fees":>8} {"win":>6} {"equity":>12} {"period DD":>11}')
     print(f'{indent}' + '─' * 104)
 
-    # The unit is a SUB-HEADING rather than a column: with one unit — the live session, and the
+    # The unit is a SUB-HEADING rather than a column: with one unit — an AutoTrader session, and the
     # comparison backtest the parity proof actually uses — it would be the same string on every
     # line, and the table is already as wide as a terminal allows.
     for unit_name, rows in units.items():
@@ -125,7 +125,7 @@ def _render_period_rows(rows, indent: str) -> None:
     """
     for row in rows:
         mark = _REASON_MARK.get(row.reason, '?')
-        print(f'{indent}{row.segment_no:>3}{mark} {_stamp(row.opened_at):<17} '
+        print(f'{indent}{row.period_no:>3}{mark} {_stamp(row.opened_at):<17} '
               f'{_stamp(row.closed_at):<17} {row.trade_count:>6} {row.net_pnl:>11.2f} '
               f'{row.total_fees:>8.2f} {row.win_rate * 100:>5.0f}% {row.final_equity:>12.2f} '
               f'{-abs(row.max_drawdown):>11.2f}')

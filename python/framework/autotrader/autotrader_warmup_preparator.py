@@ -1,10 +1,11 @@
 """
 FiniexTestingIDE - AutoTrader Warmup Preparator
-Loads warmup bars for AutoTrader sessions (mock from parquet, live from API).
+Loads warmup bars for AutoTrader sessions (a mock session from parquet, a live-adapter session
+from the venue API).
 
 Two paths:
 - Mock: parquet bar files via BarsIndexManager (same data as backtesting)
-- Live: Kraken OHLC REST API (extensible to MT5 via ABC)
+- Live adapter: Kraken OHLC REST API (extensible to MT5 via ABC)
 
 Direct Bar object creation — no subprocess serialization round-trip.
 """
@@ -197,7 +198,7 @@ class AutotraderWarmupPreparator:
 
     def _require_venue_can_serve(self, timeframes: Iterable[str]) -> None:
         """
-        Refuse a live session whose workers need a timeframe the venue cannot warm up from.
+        Refuse a live-adapter session whose workers need a timeframe the venue cannot warm up from.
 
         Args:
             timeframes: The timeframes the workers require

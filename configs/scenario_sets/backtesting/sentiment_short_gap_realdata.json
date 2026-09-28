@@ -40,7 +40,7 @@
     },
     "scenarios": [
         {
-            "name": "BTCUSD_staleness_30min",
+            "scenario_name": "BTCUSD_staleness_30min",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment",
@@ -53,7 +53,7 @@
             "trade_simulator_config": {}
         },
         {
-            "name": "BTCUSD_staleness_15min",
+            "scenario_name": "BTCUSD_staleness_15min",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment",

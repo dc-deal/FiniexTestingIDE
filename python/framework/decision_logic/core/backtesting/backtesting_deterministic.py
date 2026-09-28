@@ -131,12 +131,12 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             - tick_number: When to apply modification
             - stop_loss: New SL price (optional, omit = no change)
             - take_profit: New TP price (optional, omit = no change)
-        modify_limit_sequence: List of pending limit order modification specs (optional)
+        modify_limit_sequence: List of resting limit order modification specs (optional)
             - tick_number: When to apply modification
             - price: New limit price (optional, omit = no change)
             - stop_loss: New SL price (optional, omit = no change)
             - take_profit: New TP price (optional, omit = no change)
-        modify_stop_sequence: List of pending stop order modification specs (optional)
+        modify_stop_sequence: List of resting stop order modification specs (optional)
             - tick_number: When to apply modification
             - stop_price: New stop price (optional, omit = no change)
             - price: New limit price for STOP_LIMIT (optional, omit = no change)
@@ -222,12 +222,12 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             'modify_limit_sequence': InputParamDef(
                 param_type=list,
                 default=[],
-                description='List of pending limit order modification specs: tick_number, price, stop_loss, take_profit'
+                description='List of resting limit order modification specs: tick_number, price, stop_loss, take_profit'
             ),
             'modify_stop_sequence': InputParamDef(
                 param_type=list,
                 default=[],
-                description='List of pending stop order modification specs: tick_number, stop_price, price, stop_loss, take_profit'
+                description='List of resting stop order modification specs: tick_number, stop_price, price, stop_loss, take_profit'
             ),
             'cancel_limit_sequence': InputParamDef(
                 param_type=list,
@@ -292,7 +292,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             ),
             'price': OutputParamDef(
                 param_type=float, min_val=0.0,
-                description='Price at decision time',
+                description='Price at decision time — traded where the venue prints one, else mid',
                 category='INFO',
             ),
         }
@@ -403,7 +403,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 action=DecisionLogicAction.FLAT,
                 outputs={
                     'reason': f'Close trade at tick {self.tick_count}',
-                    'price': tick.mid,
+                    'price': tick.price,
                 },
             )
 
@@ -469,7 +469,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                         'stop_loss': spec.get('stop_loss'),
                         'take_profit': spec.get('take_profit'),
                         'reason': f'Open {direction} at tick {self.tick_count}',
-                        'price': tick.mid,
+                        'price': tick.price,
                     },
                 )
 
@@ -480,7 +480,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
             action=DecisionLogicAction.FLAT,
             outputs={
                 'reason': 'Waiting for next trade trigger',
-                'price': tick.mid,
+                'price': tick.price,
             },
         )
 
@@ -631,9 +631,9 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
     def _process_modify_limit_sequence(self) -> None:
         """
-        Execute pending limit order modifications from modify_limit_sequence config.
+        Execute resting limit order modifications from modify_limit_sequence config.
 
-        Modifies the tracked pending limit order at the configured tick_number.
+        Modifies the tracked resting limit order at the configured tick_number.
         Only keys present in the spec are passed (omitted = no change).
         """
         if not self.modify_limit_sequence:
@@ -644,7 +644,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 if not self._pending_limit_order_id:
                     self.logger.warning(
                         f'Modify limit at tick {self.tick_count}: '
-                        f'no pending limit order tracked')
+                        f'no resting limit order tracked')
                     return
 
                 kwargs: Dict[str, Any] = {}
@@ -666,9 +666,9 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
     def _process_modify_stop_sequence(self) -> None:
         """
-        Execute pending stop order modifications from modify_stop_sequence config.
+        Execute resting stop order modifications from modify_stop_sequence config.
 
-        Modifies the tracked pending stop order at the configured tick_number.
+        Modifies the tracked resting stop order at the configured tick_number.
         Only keys present in the spec are passed (omitted = no change).
         """
         if not self.modify_stop_sequence:
@@ -679,7 +679,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 if not self._pending_stop_order_id:
                     self.logger.warning(
                         f'Modify stop at tick {self.tick_count}: '
-                        f'no pending stop order tracked')
+                        f'no resting stop order tracked')
                     return
 
                 kwargs: Dict[str, Any] = {}
@@ -703,9 +703,9 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
     def _process_cancel_limit_sequence(self) -> None:
         """
-        Execute pending limit order cancellations from cancel_limit_sequence config.
+        Execute resting limit order cancellations from cancel_limit_sequence config.
 
-        Cancels the tracked pending limit order at the configured tick_number.
+        Cancels the tracked resting limit order at the configured tick_number.
         Clears the tracked order ID after cancellation.
         """
         if not self.cancel_limit_sequence:
@@ -716,7 +716,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 if not self._pending_limit_order_id:
                     self.logger.warning(
                         f'Cancel limit at tick {self.tick_count}: '
-                        f'no pending limit order tracked')
+                        f'no resting limit order tracked')
                     return
 
                 result = self.trading_api.cancel_limit_order(
@@ -730,9 +730,9 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
     def _process_cancel_stop_sequence(self) -> None:
         """
-        Execute pending stop order cancellations from cancel_stop_sequence config.
+        Execute resting stop order cancellations from cancel_stop_sequence config.
 
-        Cancels the tracked pending stop order at the configured tick_number.
+        Cancels the tracked resting stop order at the configured tick_number.
         Clears the tracked order ID after cancellation.
         """
         if not self.cancel_stop_sequence:
@@ -743,7 +743,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
                 if not self._pending_stop_order_id:
                     self.logger.warning(
                         f'Cancel stop at tick {self.tick_count}: '
-                        f'no pending stop order tracked')
+                        f'no resting stop order tracked')
                     return
 
                 result = self.trading_api.cancel_stop_order(

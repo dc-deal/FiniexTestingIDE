@@ -1,6 +1,6 @@
 # AutoTrader Runtime Model
 
-A live session is two threads, one queue and one ordered lifecycle, and getting any of the three
+An AutoTrader session is two threads, one queue and one ordered lifecycle, and getting any of the three
 wrong costs money rather than a test. A tick that arrives while the algorithm is still deciding
 must not be dropped; a shutdown that skips a phase leaves an order at the venue that nobody owns;
 a restart that forgets what the previous session held reads its own holding as flat.
@@ -48,12 +48,12 @@ async def run_tick_loop():
 ```
 
 This breaks the design constraint: Workers and DecisionLogic must be **identical** classes in
-backtesting and live. The queue stops the infection — Thread 1 can use `await websocket.recv()`
-internally (#232), Thread 2 only sees synchronous `queue.get()`.
+backtesting and in the AutoTrader. The queue stops the infection — Thread 1 can use `await
+websocket.recv()` internally (#232), Thread 2 only sees synchronous `queue.get()`.
 
 ## Tick Sources vs Broker Adapters — Separation of Concerns
 
-Tick sources and broker adapters are **intentionally separate abstractions**, even though both connect to the same exchange (e.g., Kraken). This is an explicit design decision, not an accident of file layout.
+Tick sources and broker adapters are **intentionally separate abstractions**, even though both connect to the same venue (e.g., Kraken). This is an explicit design decision, not an accident of file layout.
 
 ### Why They Are Separate
 
@@ -67,18 +67,20 @@ Tick sources and broker adapters are **intentionally separate abstractions**, ev
 | **Error handling** | Exception → OrderResult.REJECTED | Reconnect loop with backoff |
 | **Used by** | Backtesting + AutoTrader | AutoTrader only |
 
-### Independent Combinability
+### Which pairings are allowed
 
-Keeping them separate enables mix-and-match testing:
+The two are separate classes, but not every pairing is safe, and the loader refuses the one that
+is not (`validators/adapter_wiring_validator.py`):
 
 | Tick Source | Adapter | Use Case |
 |---|---|---|
-| `MockTickSource` | `MockBrokerAdapter` | Full pipeline test (no external deps) |
-| `MockTickSource` | `KrakenAdapter` | Test order execution with replay data |
-| `KrakenTickSource` | `MockBrokerAdapter` | Test WebSocket feed without real orders |
-| `KrakenTickSource` | `KrakenAdapter` | Production live trading |
+| `MockTickSource` | `MockBrokerAdapter` | A mock session: the full pipeline over replayed data, no venue |
+| `KrakenTickSource` | `MockBrokerAdapter` | Watching the real feed without placing anything |
+| `KrakenTickSource` | `KrakenAdapter` | A live-adapter session — dry run or real orders |
+| `MockTickSource` | `KrakenAdapter` | **Refused.** The adapter trades at today's market, so decisions on replayed history would become real orders once `dry_run` is off |
 
-Merging them into one class would lose this combinability.
+A live adapter is also refused together with `scenario_settings`, which is the replayed data
+window a mock session reads.
 
 ### Industry Reference
 
@@ -105,19 +107,19 @@ The adapter is one part of that. `tick_source.type` maps directly to a `TickSour
 
 ```
 python/framework/
-  trading_env/              ← Execution layer (backtesting + live)
+  trading_env/              ← Execution layer (backtesting + AutoTrader)
     adapters/               ← Broker ops — used by BOTH contexts
     live/                   ← LiveTradeExecutor — AutoTrader only
     simulation/             ← TradeSimulator — backtesting only
-  autotrader/               ← Live runner application
+  autotrader/               ← AutoTrader application
     reporting/              ← Session reports (console, CSV) — AutoTrader only
     tick_sources/           ← Data feeds — AutoTrader only
 ```
 
 `trading_env/` is the **framework layer** — shared between backtesting and AutoTrader. `autotrader/`
 is the **application layer** — AutoTrader only. Tick sources live in `autotrader/` because they are
-exclusively a live concern. Moving them into `trading_env/adapters/` would leak live-only components
-into the shared framework.
+exclusively an AutoTrader concern. Moving them into `trading_env/adapters/` would leak AutoTrader-only
+components into the shared framework.
 
 ## Session Lifecycle
 
@@ -171,8 +173,9 @@ instead of freezing. See "Polling Cadence" below.
 **Canonical clock (#360):** `get_current_time()` returns a loop-injected time — set from
 the tick timestamp in `on_tick`, and from the wall-clock on the heartbeat. The loop owns
 the between-tick time source, so the clock never freezes to the last tick. This is the one
-place wall-clock is read in live (decision logic / workers only call `get_current_time()`,
-§9). In sim the injected time is the simulated tick time (reproducible).
+place wall-clock is read in the AutoTrader (decision logic and workers only ever call
+`get_current_time()`, the one canonical clock). In sim the injected time is the simulated tick
+time (reproducible).
 
 ### Shutdown
 
@@ -228,12 +231,14 @@ Full taxonomy: [Warnings & Errors — Tier Taxonomy](../architecture/warnings_er
 
 Restart-safe algo memory (Category B): an algo's own internal state — counters, regime
 flags, "already entered today", risk high-water-marks — snapshotted to disk and restored on
-restart. Live-only; opt-in per algo via `AbstractDecisionLogic.uses_state_persistence()`; mock
-auto-disabled. The store mirrors the Reconciler's optional-component shape (config gate +
-`isinstance(LiveTradeExecutor)` + algo opt-in).
+restart. AutoTrader only; opt-in per algo via `AbstractDecisionLogic.uses_state_persistence()`.
+The store mirrors the Reconciler's optional-component shape (config gate +
+`isinstance(LiveTradeExecutor)`, which every AutoTrader session passes + algo opt-in). A mock
+session has it off by default: the loader resolves `state_persistence.enabled` to false for
+`adapter_type: mock` unless the profile sets it explicitly.
 
 `AlgoStateStore` (`python/framework/persistence/algo_state_store.py`) writes atomic JSON
-(temp file + `os.replace`) keyed by `<profile>_<symbol>` under `data/runtime/session_state/`
+(temp file + `os.replace`) keyed by `<bot_id>_<symbol>` under `data/runtime/session_state/`
 (stable across runs). Envelope: `{schema_version, saved_at_utc, profile, symbol, snapshot}`. The
 store is decoupled — it knows only a JSON dict plus the bot identity; orchestration
 (restore / snapshot / freshness gate) lives in `AutotraderMain`.
@@ -251,7 +256,7 @@ counts calendar days). The coarse age guard runs first; an algo can refine it vi
 
 A pre-flight (the first member of the algo pre-flight check family,
 `python/framework/validators/algo_state_preflight.py`) asserts the snapshot is JSON-serializable.
-In live it runs at boot → hard `STARTUP FAILED`. In Simulation it runs centrally in the batch
+In the AutoTrader it runs at boot → hard `STARTUP FAILED`. In Simulation it runs centrally in the batch
 `RequirementsCollector` (Phase 3, cached per distinct decision logic) → a non-serializable
 snapshot marks the scenario invalid and excludes it before data loading, so a broken algo
 surfaces once, not as N failed runs.

@@ -1,5 +1,5 @@
 """
-Producer identity probe (#141 Part 2a): which journal a live session consumed from.
+Producer identity probe (#141 Part 2a): which journal a live-adapter session consumed from.
 
 Runs against a local stub, never against a real producer — a suite that needs someone else's
 container to be running is a suite that fails for reasons unrelated to the code.

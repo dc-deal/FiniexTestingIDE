@@ -102,7 +102,14 @@ class RunLedgerIndex(AbstractStoreIndex):
     # The booking columns carry the sharper form of that: absent means "this row books no
     # period", which every row written before this version is, and it must never read as a
     # period zero.
-    LOGIC_VERSION: int = 12
+    #
+    # 12 → 13 (contract 12, the vocabulary renames of 2026-09-28): `config_snapshot` — the full
+    # strategy configuration as JSON — is `strategy_config_json`, because the run index's
+    # `config_snapshot` is a FILE NAME and one column name held two different things; and
+    # `run_type` reads `autotrader` where it read `live`. A RENAME, unlike every step above: the
+    # fragments on disk were rewritten once by `python/experiments/migrate_run_vocabulary/`, and
+    # an index built before reports itself out of date.
+    LOGIC_VERSION: int = 13
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

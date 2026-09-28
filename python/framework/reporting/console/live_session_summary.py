@@ -1,7 +1,7 @@
 """
-Live session summary (#403 Phase 2) — the AutoTrader closing block.
+AutoTrader session summary (#403 Phase 2) — the AutoTrader closing block.
 
-The live counterpart to the sim Executive Summary: the last section of the unified end-of-run
+The AutoTrader counterpart to the sim Executive Summary: the last section of the unified end-of-run
 console. Renders the session-outcome stats (duration · ticks · shutdown/emergency · balance ·
 orders · #389 analytics · clipping) and the output-file locations. The emergency cause stays here
 prominently (§35); the warnings/errors list itself is the shared `WarningsSummary` section above
@@ -108,10 +108,11 @@ class LiveSessionSummary:
         if report.skipped:
             print(f'  Left alone:      {len(report.skipped)} '
                   f'({", ".join(report.skipped_reasons)})')
-        if report.algo_name and report.algo_accounted_for is not None:
-            verdict = 'accounted for' if report.algo_accounted_for else 'not accounted for'
-            note = f' — {report.algo_note}' if report.algo_note else ''
-            print(f'  {report.algo_name}: {verdict}{note}')
+        if report.decision_logic_class and report.decision_logic_accounted_for is not None:
+            verdict = ('accounted for' if report.decision_logic_accounted_for
+                       else 'not accounted for')
+            note = f' — {report.decision_logic_note}' if report.decision_logic_note else ''
+            print(f'  {report.decision_logic_class}: {verdict}{note}')
 
     def _render_safety(self, renderer: ConsoleRenderer) -> None:
         """
@@ -127,7 +128,7 @@ class LiveSessionSummary:
         report = self._safety_report
         # The coordinator only builds this report once a baseline exists, and the block is
         # written entirely against that record. The second half of the guard is therefore
-        # belt and braces on purpose: this is the closing block of a live session, and a
+        # belt and braces on purpose: this is the closing block of an AutoTrader session, and a
         # renderer crashing here would take the whole session summary with it.
         if report is None or report.baseline is None:
             return

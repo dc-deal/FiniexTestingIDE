@@ -5,7 +5,7 @@
 The data integration test suite validates the data pipeline integrity from tick import through bar rendering to index generation. Tests ensure volume and tick count data flows correctly across all market types.
 
 **Test Location:** `tests/data/data_integration/`
-**Index Source:** `.parquet_bars_index.json` (auto-loaded via BarsIndexManager)
+**Index Source:** `bars_index.parquet` (auto-loaded via BarsIndexManager)
 
 **Market Type Rules:**
 | Market | Volume | Tick Count |

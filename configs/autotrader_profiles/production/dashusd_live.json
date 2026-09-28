@@ -1,5 +1,5 @@
 {
-  "name": "dashusd_live",
+  "profile_name": "dashusd_live",
   "bot_id": "dashlive01",
   "symbol": "DASHUSD",
   "broker_type": "kraken_spot",

@@ -1,5 +1,5 @@
 {
-  "name": "loader_field_coverage",
+  "profile_name": "loader_field_coverage",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",

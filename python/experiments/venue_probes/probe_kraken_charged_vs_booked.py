@@ -12,7 +12,7 @@ It reads three things and puts them side by side, per order:
      question cannot be confused for one another
 
 READ ONLY. QueryOrders is a private read: it places nothing and costs no fee, one rate-limit
-unit per batch. Subjects are harvested from `runs/live/` — no argument, no fixture.
+unit per batch. Subjects are harvested from `runs/autotrader/` — no argument, no fixture.
 
 Recorded results:
   2026-09-08 — run 20260908_070032 (Kraken spot ETHUSD, real money). Every CLOSE leg recorded
@@ -29,7 +29,7 @@ venue's own figure, and the order-level `fee` is what the account was actually d
 
 Usage:
     python python/experiments/venue_probes/probe_kraken_charged_vs_booked.py [<run dir>]
-    (no argument = the newest run under runs/live/ that carries Kraken references)
+    (no argument = the newest run under runs/autotrader/ that carries Kraken references)
 """
 
 import csv
@@ -45,7 +45,7 @@ from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 
 _ROOT = Path(__file__).resolve().parents[3]
 _BROKER_CONFIG = _ROOT / 'configs/brokers/kraken/kraken_spot_broker_config.json'
-_RUNS_DIR = _ROOT / 'runs/live'
+_RUNS_DIR = _ROOT / 'runs/autotrader'
 
 _TXID_PATTERN = re.compile(r'O[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{6}')
 _BATCH_SIZE = 20

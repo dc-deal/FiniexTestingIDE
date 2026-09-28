@@ -141,7 +141,7 @@ run admission ──► admitted, or the scenario is excluded
 
 **Resolved once at import and never re-resolved.** A registry is a judgement that can be edited,
 so a surface asking it again would report today's meaning against a file imported under the
-meaning of the day it arrived. The same argument the price basis already rests on (§31c): during a
+meaning of the day it arrived. The same argument the price basis already rests on: during a
 re-render, configuration describes what a render *would* produce while half the files on disk
 still hold the previous answer.
 
@@ -168,9 +168,9 @@ can answer the question at all.
 
 The argument is `logic_version`'s, one column over in the same table: that one exists because a
 ranking cannot otherwise tell it is comparing a measure taken one way against one taken another.
-These say the same about the INPUT. **For the thirty-day parity proof it is not a nicety** — a live
-run and the backtest it is compared against have to be *shown* to have read the same archive, and
-the ledger is where that survives.
+These say the same about the INPUT. **For the thirty-day parity proof it is not a nicety** — a
+real-money session and the backtest it is compared against have to be *shown* to have read the same
+archive, and the ledger is where that survives.
 
 **Two grains, and the finer one answers what the roll-up cannot.** The ledger records per RUN;
 `scenario_details.json` records the same three values per SCENARIO, in the same encoding. A run-level
@@ -179,15 +179,17 @@ it may not — it cannot say WHICH scenario, and for a set mixing brokers that i
 it raises. The scenario row answers it, and it is filled for a FAILED scenario too: a run that failed
 over development data and one that failed over production data are different failures.
 
-**`input_plane` is what keeps an empty value honest.** A live session consumes a socket, so its
-three joined strings are empty by construction; without that field the emptiness would be
-indistinguishable from a sim row whose recording broke — the same bytes for "nothing to read" and
-"we were not looking". The distinct strings say WHAT was read and collapse multiplicity; the two
-counts say how much and cannot be recovered from them.
+**`input_plane` is what keeps an empty value honest.** A live-adapter session consumes a socket
+(`input_plane: stream`), so its three joined strings are empty by construction; without that field
+the emptiness would be indistinguishable from a sim row whose recording broke — the same bytes for
+"nothing to read" and "we were not looking". The distinct strings say WHAT was read and collapse
+multiplicity; the two counts say how much and cannot be recovered from them. A mock session reads
+the archive, so it records its consumption exactly as a backtest does: `input_plane: archive`, the
+format versions, the origins, and the price bases measured by the rule below.
 
-**Never on a tick row.** A live tick has no origin — it comes from a socket, and this side is the
-source. A field present in the archive and absent live is a parity break, so origin is file
-metadata plus an index column and never a row.
+**Never on a tick row.** A tick from a venue feed has no origin — it comes from a socket, and this
+side is the source. A field present in the archive and absent in a live-adapter session is a parity
+break, so origin is file metadata plus an index column and never a row.
 
 ### The signal archive records the same answer in a different place
 
@@ -210,8 +212,9 @@ carries `data_origin` — whether the data is live or synthetic — at the top l
 meanings, one line apart. Agreed with the producer rather than imposed.
 
 **It is a row column, not file metadata.** Every provenance fact in that archive already is one:
-`schema_version`, `pipeline_id`, `data_origin`. The tick side uses file metadata because §41
-forbids a column repeated across fifty thousand ticks; a signal file holds orders of magnitude
+`schema_version`, `pipeline_id`, `data_origin`. The tick side uses file metadata because a
+tick-row column would repeat across fifty thousand ticks and would be a field the venue feed cannot
+fill — the archive and a live feed are one contract; a signal file holds orders of magnitude
 fewer rows and parquet dictionary-encodes a constant column to almost nothing. Like `data_origin`,
 the three stay **out** of `SIGNAL_RUNTIME_COLUMNS`, so no worker can reach them.
 
@@ -236,11 +239,14 @@ during a re-render, configuration describes what a render *would* produce while 
 archive still holds the previous answer, so a run over the mixture honestly answers
 `order_driven,unknown`.
 
-The LIVE row is the one exception and inverts the rule deliberately. A live session renders
-its bars at runtime from the tick's own price, so no file exists to carry a stamp and nothing
-can be out of date with the declaration — there, configuration IS the truth. `input_plane`
-is what lets a reader tell the two apart, and leaving the live value blank would have defeated
-the field: the parity proof has to compare the live basis against the backtest's.
+The live-adapter row is the one exception and inverts the rule deliberately. A live-adapter
+session renders its bars at runtime from the tick's own price, so no file exists to carry a stamp
+and nothing can be out of date with the declaration — there, configuration IS the truth.
+`input_plane` is what lets a reader tell the two apart, and leaving that value blank would have
+defeated the field: the parity proof has to compare the live-adapter session's price basis against
+the backtest's. A mock session is not the exception: it replays the archive, so its basis is
+measured from the bar files its mount read, like a backtest's — and is empty where it read none,
+never declared.
 
 ## The gate, and why it starts open
 

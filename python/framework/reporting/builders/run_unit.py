@@ -24,7 +24,7 @@ from python.framework.types.performance_types.performance_stats_types import (
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.portfolio_types.portfolio_types import Position
-from python.framework.types.run_results_types import BookingSegment
+from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.trading_env_types.order_types import OrderResult
@@ -59,8 +59,8 @@ class RunUnit:
     portfolio_stats: Optional[PortfolioStats] = None
     execution_stats: Optional[ExecutionStats] = None
     pending_stats: Optional[PendingOrderStats] = None
-    # Worker / decision performance (unified — both pipelines; #398). Coordination
-    # is sim-only (the live session has no worker coordinator) → Optional, None on live.
+    # Worker / decision performance (unified — both pipelines; #398), coordination included:
+    # the orchestrator counts the ticks that reach the algo path in both pipelines.
     worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)
     decision_statistics: Optional[DecisionLogicStats] = None
     coordination_statistics: Optional[WorkerCoordinatorPerformanceStats] = None
@@ -72,11 +72,11 @@ class RunUnit:
     disturbance_episodes: List[DisturbanceEpisode] = field(default_factory=list)
     market_data_tick_stats: Optional[MarketDataTickStats] = None
     planned_outages: List[StaleDataEvent] = field(default_factory=list)
-    # The unit's HAUPTBUCH (#537) — one entry per closed booking period. On the unit rather
+    # The unit's LEDGER entries (#537) — one per closed booking period. On the unit rather
     # than on the run, because a run's scenarios cover DIFFERENT windows (measured: 40
     # scenarios, 40 distinct ones), so "day 1 of the run" is not a thing and only "day 1 of
     # this unit" is.
-    booking_segments: List[BookingSegment] = field(default_factory=list)
+    booking_periods: List[BookingPeriod] = field(default_factory=list)
 
 
 # The reason a unit carries when it produced nothing and left no message saying why.
@@ -123,7 +123,7 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
                 tick_loop.disturbance_episodes or [], result.scenario_name, scenario.symbol),
             market_data_tick_stats=tick_loop.market_data_tick_stats,
             planned_outages=_planned_outages(scenario.stress_test_config),
-            booking_segments=tick_loop.booking_segments or [],
+            booking_periods=tick_loop.booking_periods or [],
         ))
     return units
 
@@ -161,7 +161,7 @@ def unit_roster_from_batch(batch: BatchExecutionSummary, disabled_count: int) ->
 
 def unit_roster_from_session(session: AutoTraderResult, name: str) -> UnitRoster:
     """
-    A live session's roster: one declared unit, the session itself — the simulation's shape.
+    An AutoTrader session's roster: one declared unit, the session itself — the simulation's shape.
 
     Args:
         session: The collected session result
@@ -242,7 +242,7 @@ def run_units_from_session(
     sentiment_source: str = '',
     stress_test_config: Optional[Dict[str, Any]] = None) -> List[RunUnit]:
     """
-    The single run unit of a live session.
+    The single run unit of an AutoTrader session.
 
     Args:
         session: The collected session result
@@ -252,7 +252,7 @@ def run_units_from_session(
             by, so a consumer can link a unit to its chart
         sentiment_source: The session's sentiment feed label (#431; '' if none)
         stress_test_config: The mock session's stress config (#438) — the origin label
-            source for #451; a real live session has none
+            source for #451; a live-adapter session has none
 
     Returns:
         A one-element list with the session's RunUnit
@@ -277,5 +277,5 @@ def run_units_from_session(
             session.disturbance_episodes or [], name, symbol),
         market_data_tick_stats=session.market_data_tick_stats,
         planned_outages=_planned_outages(stress_test_config),
-        booking_segments=session.booking_segments or [],
+        booking_periods=session.booking_periods or [],
     )]

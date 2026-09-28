@@ -1,9 +1,10 @@
 """
 FiniexTestingIDE - Signal Transport Setup
-Builds a live session's signal transport from the source resolved at startup (#141, #468).
+Builds a live-adapter session's signal transport from the source resolved at startup (#141,
+#468).
 
 Mirrors `tick_sources/tick_source_setup.py`, which does the same job for the other external
-input a live session takes: a session should say WHICH subsystems it runs, not how each one
+input a live-adapter session takes: a session should say WHICH subsystems it runs, not how each one
 is assembled. One deliberate difference from that precedent — the transport is returned
 built but NOT started, because the session that owns `stop()` should own `start()` too.
 
@@ -40,7 +41,8 @@ from python.framework.types.signal_data_types import (
 @dataclass
 class SignalTransportSetup:
     """
-    The three objects a live session's signal transport consists of (#141 Part 2a, #468).
+    The three objects a live-adapter session's signal transport consists of (#141 Part 2a,
+    #468).
 
     Returned together because they are wired to each other and useless apart: the transport
     fills the inbox, the accumulator records what arrived, and the loop drains the inbox.

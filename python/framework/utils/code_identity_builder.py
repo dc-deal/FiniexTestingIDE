@@ -86,7 +86,7 @@ def build_code_identity(
 
     Args:
         strategy_configs: Every strategy_config the run will execute (one per scenario in a
-            simulation, one for a live session) — the union of their components is recorded
+            simulation, one for an AutoTrader session) — the union of their components is recorded
         patch_sink: Stores the patch of a dirty repository and returns its reference; None
             records the diff hash without storing the patch
         ignore_untracked_under: A directory of THIS repository whose untracked files are not

@@ -40,6 +40,9 @@ from python.framework.utils.config_merge_utils import (
     deep_merge,
     without_meta_keys,
 )
+from python.framework.validators.adapter_wiring_validator import (
+    refuse_live_adapter_on_replayed_ticks,
+)
 from python.framework.validators.config_name_validator import refuse_config_name_conflict
 
 # ============================================
@@ -179,6 +182,13 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
             f'irrecoverably, guessing continuous welds unrelated runs together. Add '
             f'"deployment": {{"continuous": false}} for an ordinary or one-off profile.')
 
+    # `profile_name` is REQUIRED: without it the run directory and the unit name used to answer
+    # "which profile is this" two different ways.
+    if not raw.get('profile_name'):
+        raise ValueError(
+            f'{path}: missing required `profile_name` — the name every run directory, report row '
+            f'and ledger row of this profile carries.')
+
     # Structural key validation — profile level (pre-construction, full provenance)
     check_unknown_keys('profile (top level)', raw,              _KNOWN_PROFILE_TOP_KEYS)
     check_unknown_keys('execution',           execution_raw,    _KNOWN_EXECUTION_KEYS)
@@ -230,7 +240,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         api_monitor_enabled_resolved = api_monitor_raw.get('enabled', True)
 
     # State persistence auto-disables for mock adapters too: a mock session is a
-    # dress-rehearsal, not a real restart context, and would otherwise write a
+    # replay, not a real restart context, and would otherwise write a
     # state file for a test profile. Auto-disable for mock UNLESS the profile sets
     # `enabled` explicitly (same provenance pattern as drift_audit/reconciliation).
     if adapter_type_resolved == 'mock' and not profile_explicitly_set_state_persistence_enabled:
@@ -238,8 +248,8 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     else:
         state_persistence_enabled_resolved = state_persistence_raw.get('enabled', True)
 
-    return AutoTraderConfig(
-        name=raw.get('name', ''),
+    config = AutoTraderConfig(
+        profile_name=raw.get('profile_name', ''),
         bot_id=raw.get('bot_id', ''),
         symbol=raw.get('symbol', ''),
         broker_type=raw.get('broker_type', ''),
@@ -275,3 +285,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         state_persistence=StatePersistenceDefaults(**_block(state_persistence_raw, enabled=state_persistence_enabled_resolved)),
         config_path=path,
     )
+    # On the RESOLVED config: the tick source's type comes from the app_config cascade when a
+    # profile does not set it, and its default is the replaying source.
+    refuse_live_adapter_on_replayed_ticks(config)
+    return config

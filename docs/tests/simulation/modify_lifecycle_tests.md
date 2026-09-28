@@ -138,7 +138,7 @@ pytest tests/simulation/modify_lifecycle/test_modify_pending_lifecycle.py -v
 pytest tests/simulation/modify_lifecycle/test_modify_pending_lifecycle.py::TestModifyLimitOrderAsyncLifecycle -v
 ```
 
-Launch.json entry: `🧩 Pytest: Sim Modify Lifecycle (#318)`
+Launch.json entry: `🧩 Pytest: Sim Modify Lifecycle`
 
 ---
 
@@ -177,9 +177,9 @@ The `_modify_cancel_delay_msc = 1` default means resolution happens on the very 
 
 ### Sim/Live Parity
 
-The algo-facing contract is identical to the live pipeline:
+The algo-facing contract is identical to the AutoTrader pipeline:
 - Same `ModificationResult` shape (success, status, rejection_reason)
 - Same `in_flight_operation` transitions
 - Same `has_in_flight_operation(order_id)` semantics
 
-The resolution mechanism differs (sim: msc-clock-based on next tick / live: worker-thread → drain_inbox). The parity is verified in `tests/parity/test_modify_cancel_parity.py`.
+The resolution mechanism differs (sim: msc-clock-based on next tick / AutoTrader: worker-thread → drain_inbox). The parity is verified in `tests/parity/test_modify_cancel_parity.py`.

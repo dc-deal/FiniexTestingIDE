@@ -48,12 +48,12 @@ subprocess needs to start:
 | | Decided in | Lands on |
 |---|---|---|
 | Simulation | `ScenarioValidator.validate_market_fit`, Phase 0 of the mount (after `BrokerDataPreparator` assigns `scenario.broker_type`) | `SingleScenario.validation_result` |
-| AutoTrader | `AutotraderMain` at startup — a live operator must see it before the first trade | held, then `AutoTraderResult.session_validation_result` in `_collect_results` (the channel lives on the result) |
+| AutoTrader | `AutotraderMain` at startup — the operator must see it before the first trade | held, then `AutoTraderResult.session_validation_result` in `_collect_results` (the channel lives on the result) |
 
-Both surface as **Tier-1** rows in the run report, carrying `check='market_fit'` and
-`domain='algo'` — see [Warnings & Errors — Tier Taxonomy](warnings_errors_tiers.md). Live logs
-the message at INFO as well, so it is visible at startup; deliberately not at WARNING, which
-would put the same advisory in the report a second time as an unadjudicated pot line.
+Both surface as **Tier-1** rows in the run report, carrying `check='market_fit'` and `domain='algo'`
+— see [Warnings & Errors — Tier Taxonomy](warnings_errors_tiers.md). The AutoTrader logs the message
+at INFO as well, so it is visible at startup; deliberately not at WARNING, which would put the same
+advisory in the report a second time as an unadjudicated pot line.
 
 ## Authoring
 

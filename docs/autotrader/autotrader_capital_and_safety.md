@@ -1,6 +1,6 @@
 # AutoTrader Capital and Safety
 
-This is the half of the live system where a defect costs money directly. What the bot may spend,
+This is the half of the AutoTrader where a defect costs money directly. What the bot may spend,
 what the venue has already reserved against that, who enforces a stop when the process is not
 running, and what ends a session that is losing.
 
@@ -15,7 +15,7 @@ policy — `docs/architecture/session_end_policy.md`.
 
 The framework hands the bot the account's balances and lets it trade against them. Two things
 sit between "the account holds this" and "the bot may spend this", and both are on the SHARED
-executor, so simulation and live answer them identically.
+executor, so simulation and the AutoTrader answer them identically.
 
 ### Committed funds — a venue reserves at PLACEMENT, our balances move at FILL
 
@@ -162,7 +162,7 @@ Balances cannot answer who owns them; orders can. An order with no key of ours i
 *proof* of a second actor, not a suspicion. The check only runs when exclusivity was declared,
 and it can only see an actor who happens to have an order resting at that moment.
 
-**What follows.** The ERROR lands in the session pot (§35), so it reaches the end-of-session
+**What follows.** The ERROR lands in the session pot, so it reaches the end-of-session
 summary — and the run is graded `FINISHED_WITH_ERRORS`, **exit code 3**, which a supervisor,
 a cron job or alerting (#235) can read. The message names the foreign order's venue reference
 and both ways out: cancel it at the venue, or set the declaration to `false` and accept that the

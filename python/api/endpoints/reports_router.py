@@ -118,7 +118,7 @@ def get_trade_history(
     Trade-history report for a run, filtered by the query parameters.
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
         symbol / close_reason / start / end: Optional filters
 
     Returns:
@@ -147,7 +147,7 @@ def get_order_history(
     Order-history report for a run, filtered by the query parameters.
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
         symbol / status: Optional filters
 
     Returns:
@@ -165,7 +165,7 @@ def get_portfolio(run_id: str) -> PortfolioReport:
     Portfolio headline report for a run (per-unit rows + per-currency aggregates).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The PortfolioReport (404 if the run has no portfolio artifact)
@@ -182,7 +182,7 @@ def get_execution_stats(run_id: str) -> ExecutionStatsReport:
     Execution-stats report for a run (per-unit order counts + summed totals).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The ExecutionStatsReport (404 if the run has no execution-stats artifact)
@@ -199,7 +199,7 @@ def get_pending_orders(run_id: str) -> PendingOrdersReport:
     Pending-orders report for a run (per-unit lifecycle + latency + active orders).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The PendingOrdersReport (404 if the run has no pending-orders artifact)
@@ -216,7 +216,7 @@ def get_scenario_details(run_id: str) -> ScenarioDetailsReport:
     Scenario-details report for a run (per-scenario execution + signal metadata, sim-only).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The ScenarioDetailsReport (404 if the run has no scenario-details artifact)
@@ -233,7 +233,7 @@ def get_run_summary(run_id: str) -> RunSummary:
     Cross-section KPI summary for a run (per-currency KPIs + global order counts).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The RunSummary (404 if the run has no run-summary artifact)
@@ -250,7 +250,7 @@ def get_worker_decision(run_id: str) -> WorkerDecisionReport:
     Worker/decision report for a run (per-unit worker + decision performance, unified).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The WorkerDecisionReport (404 if the run has no worker-decision artifact)
@@ -267,7 +267,7 @@ def get_profiling(run_id: str) -> ProfilingReport:
     Profiling report for a run (per-scenario operation timing + inter-tick + clipping + warmup, sim-only).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The ProfilingReport (404 if the run has no profiling artifact)
@@ -284,7 +284,7 @@ def get_aggregated_portfolio(run_id: str) -> AggregatedPortfolioReport:
     Aggregated per-currency portfolio report for a run (the rich detail view, sim).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The AggregatedPortfolioReport (404 if the run has no aggregated-portfolio artifact)
@@ -301,7 +301,7 @@ def get_warnings_errors(run_id: str) -> WarningsErrorsReport:
     Warnings & errors report for a run (tiered warnings + per-unit errors + outcome, both pipelines).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The WarningsErrorsReport (404 if the run has no warnings-errors artifact)
@@ -321,7 +321,7 @@ def get_broker(run_id: str) -> BrokerReport:
     Broker-configuration report for a run (per-broker spec + scenarios + symbols, sim-only).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The BrokerReport (404 if the run has no broker artifact)
@@ -339,7 +339,7 @@ def get_signal(run_id: str) -> SignalReport:
     decision basis (fresh / stale / blind ticks per scenario).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The SignalReport (404 if the run has no signal artifact)
@@ -357,7 +357,7 @@ def get_feed_stability(run_id: str) -> FeedStabilityReport:
     across both staleness domains (tick stream + signal sources).
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The FeedStabilityReport (404 if the run has no feed-stability artifact)
@@ -371,7 +371,7 @@ def get_feed_stability(run_id: str) -> FeedStabilityReport:
 @router.get('/reports/runs/{run_id}/booking-periods', response_model=BookingPeriodsReport)
 def get_booking_periods(run_id: str) -> BookingPeriodsReport:
     """
-    The run's Hauptbuch (#537): one summary per booking period, and whether they add up.
+    The run's ledger entries (#537): one summary per booking period, and whether they add up.
 
     Served from the stored artifact rather than rebuilt from the ledger, and the reconciliation
     is the reason. It compares the periods against the figure the run reports by its own
@@ -380,7 +380,7 @@ def get_booking_periods(run_id: str) -> BookingPeriodsReport:
     construction and can never fail.
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The BookingPeriodsReport (404 if the run has no booking-periods artifact — every run
@@ -417,7 +417,7 @@ def get_run_config(run_id: str) -> RunConfigSnapshot:
     run" would send a consumer looking for the wrong fault.
 
     Args:
-        run_id: The run-timestamp directory name
+        run_id: The run's id (<timestamp>_<hash>), resolved through the run index
 
     Returns:
         The snapshot, parsed, with the name and content id the index attributes to this run

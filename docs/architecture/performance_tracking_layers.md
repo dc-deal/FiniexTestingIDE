@@ -1,6 +1,6 @@
 # Performance Tracking — Two-Layer Model
 
-**Two independent tracking layers, two independent switches.** Both can be toggled off completely for production-lean runs (Field Study, latency-sensitive live profiles).
+**Two independent tracking layers, two independent switches.** Both can be toggled off completely for production-lean runs (Field Study, latency-sensitive production profiles).
 
 ---
 
@@ -34,7 +34,7 @@ between every loop step (`trade_simulator`, `bar_rendering`, `bar_history`, `wor
 
 **Cost per tick:** 12 × `time.perf_counter()` + 12 × dict-updates. Constant regardless of worker count.
 
-**Note:** AutoTrader has no Layer B equivalent. Its `autotrader_tick_loop.py` carries no operation-level timers — only Layer A applies in the live pipeline.
+**Note:** AutoTrader has no Layer B equivalent. Its `autotrader_tick_loop.py` carries no operation-level timers — only Layer A applies in the AutoTrader pipeline.
 
 ---
 

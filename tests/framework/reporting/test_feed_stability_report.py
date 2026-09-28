@@ -268,7 +268,7 @@ class TestRender:
         assert '600 stale' in output               # the signal counters
 
     def test_long_episode_list_collapses(self):
-        """A live session with many short outages must not bury the source summary."""
+        """A live-adapter session with many short outages must not bury the source summary."""
         episodes = [_tick_episode(i * 10, i * 10 + 5) for i in range(12)]
         report = build_feed_stability_report(_RUN_ID, [_unit(episodes)])
         output = self._render(report)

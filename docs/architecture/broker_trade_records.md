@@ -92,7 +92,7 @@ Each synthesized trade gets a `MOCK-TRADE-XXXXXX` ID and a quote-currency fee co
 
 ## Drain-Layer Distribution (Post-Drain Anchor)
 
-Reference: ISSUE_326 §8.
+Reference: #326.
 
 ```
 worker thread: HTTP / RPC trades_query → parse → push TradesQueryResponse

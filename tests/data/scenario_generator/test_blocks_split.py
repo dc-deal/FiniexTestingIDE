@@ -49,7 +49,7 @@ class TestExtractContinuousRegions:
         assert regions[0]['preceding_gap'] is None
 
     def test_small_gaps_ignored(self):
-        """SMALL gaps don't split regions."""
+        """SHORT gaps don't split regions."""
         extractor = ContinuousRegionExtractor()
         start = utc(2025, 10, 1)
         end = utc(2025, 10, 5)

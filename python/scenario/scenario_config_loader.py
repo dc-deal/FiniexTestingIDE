@@ -153,16 +153,20 @@ class ScenarioConfigLoader:
 
         current_scenario_index = 0
         for scenario_data in config.get('scenarios', []):
+            # `scenario_name`, not `name`: a bare name is the word with five meanings, and the
+            # set itself already says `scenario_set_name`. A scenario without one is refused by
+            # the name check, which says which key it looked for.
+            scenario_name = scenario_data.get('scenario_name', '')
             # Filters out disabled scenarios during load
             is_enabled = scenario_data.get('enabled', True)  # Default: True
             if not is_enabled:
                 disabled_count += 1
                 vLog.debug(
-                    f"🔻 Skipping disabled scenario: {scenario_data['name']}")
+                    f'🔻 Skipping disabled scenario: {scenario_name}')
                 continue  # Skip disabled
 
             # Structural key validation — scenario level (pre-merge, full provenance)
-            _scenario_name = scenario_data.get('name', '<unnamed>')
+            _scenario_name = scenario_name or '<unnamed>'
             check_unknown_keys(f'scenario[{_scenario_name}].execution_config',       scenario_data.get('execution_config', {}),       _KNOWN_EXECUTION_KEYS)
             check_unknown_keys(f'scenario[{_scenario_name}].trade_simulator_config', scenario_data.get('trade_simulator_config', {}), _KNOWN_TRADE_SIM_KEYS)
             check_unknown_keys(f'scenario[{_scenario_name}].order_guard',            scenario_data.get('order_guard', {}),            _KNOWN_ORDER_GUARD_KEYS)
@@ -211,7 +215,7 @@ class ScenarioConfigLoader:
             # PARAMETER OVERRIDE DETECTION & WARNING (COMPLETE!)
             # ============================================
             ParameterOverrideDetector.detect_and_log_overrides(
-                scenario_name=scenario_data['name'],
+                scenario_name=scenario_name,
                 global_strategy=global_strategy,
                 global_execution=global_execution,
                 global_trade_simulator=global_trade_simulator,
@@ -230,13 +234,13 @@ class ScenarioConfigLoader:
             data_broker_type = scenario_data.get('data_broker_type')
             if not data_broker_type:
                 raise ValueError(
-                    f"Scenario '{scenario_data['name']}' missing required field 'data_broker_type'.\n"
+                    f"Scenario '{scenario_name}' missing required field 'data_broker_type'.\n"
                     f"\n"
                     f"This field specifies which data collection to load ticks/bars from.\n"
                     f"\n"
                     f"Add to your scenario:\n"
                     f"  {{\n"
-                    f"    \"name\": \"{scenario_data['name']}\",\n"
+                    f"    \"scenario_name\": \"{scenario_name}\",\n"
                     f"    \"data_broker_type\": \"mt5\",  <-- ADD THIS\n"
                     f"    \"symbol\": \"{scenario_data.get('symbol', 'SYMBOL')}\",\n"
                     f"    ...\n"
@@ -248,7 +252,7 @@ class ScenarioConfigLoader:
                 )
 
             scenario = SingleScenario(
-                name=scenario_data['name'],
+                name=scenario_name,
                 # important for data packages in parallel processing -> sub processes.
                 scenario_index=current_scenario_index,
                 symbol=scenario_data['symbol'],

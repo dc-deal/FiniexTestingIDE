@@ -26,6 +26,47 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 12 — 2026-09-28 (viewer#21)
+
+The vocabulary contract: the words the API serves follow the project glossary
+([`docs/glossary.md`](../glossary.md)), and a run says which kind of run it is.
+
+- `GET /api/v1/reports/runs`: an AutoTrader session's `group` is `autotrader` — it read `live`,
+  which also named a real venue and real money elsewhere. Every AutoTrader session carries it,
+  mock, dry run or real orders alike, and `live` no longer occurs in any `run_type` the API serves.
+- `GET /api/v1/reports/runs`: every run carries `ticks_from` (`archive` | `venue`) and `orders_to`
+  (`simulated` | `venue`), recorded at the run's start from its RESOLVED configuration — never read
+  back from a profile file that may have changed since. With `group` they separate the kinds:
+
+  | Kind | `group` | `ticks_from` | `orders_to` |
+  |---|---|---|---|
+  | Backtest | `simulation` | `archive` | `simulated` |
+  | Mock session | `autotrader` | `archive` | `simulated` |
+  | Dry run | `autotrader` | `venue` | `simulated` |
+  | Real-money session | `autotrader` | `venue` | `venue` |
+
+- `GET /api/v1/reports/runs`: `data_windows` — the market window each unit was DECLARED to cover,
+  one per unit (`unit_name`, `start_date`, `end_date`; `end_date` null means open: a tick-limited
+  scenario, or a venue session that has not ended). Deliberately no single span over all units: it
+  would cover the gaps between scenarios. What a scenario actually processed stays on
+  `scenario-details`. All three fields are null on a run recorded before this version — unknown,
+  never a guess.
+- `GET /api/v1/sweeps/{sweep_id}`: a combination row's `config_snapshot` — the full strategy
+  configuration as JSON — is `strategy_config_json`. The run index's `config_snapshot`, a FILE NAME,
+  keeps its name.
+- `GET /api/v1/directory`: the AutoTrader test profiles moved from the folder `backtesting` to
+  `mock`; the one live-adapter probe among them moved to `observation`.
+- `GET /api/v1/reports/runs/{run_id}/config`: a configuration recorded from this version on names a
+  scenario `scenario_name` and a profile `profile_name`. A run recorded before keeps the snapshot it
+  recorded.
+- Booking periods: every `segment_*` field is `period_*` — `period_no`, `period_opened_at`,
+  `period_closed_at`, `period_close_reason`, `period_max_equity`, `period_min_equity`,
+  `period_max_drawdown` — on `GET /api/v1/reports/runs/{run_id}/booking-periods`,
+  `GET /api/v1/deployments/{deployment_id}/booking-periods` and a sweep's combination rows, and
+  every declared `key` names `period_no` (`["unit_name", "period_no"]` on a run's periods). The
+  stored runs and ledger rows were migrated, so a run recorded before this version serves the new
+  names as well — the one rename here that reaches back.
+
 ## Version 11 — 2026-09-27 (#554)
 
 - `GET /api/v1/directory`: `status: unreadable` also means the file's NAME is taken by a
@@ -67,8 +108,8 @@ newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnot
   recorded before contract 6 — NOT STATED — where they read 0 before, which the equation then
   disproved. The equation holds wherever they are stated.
 - `run-summary`: every `units_absent` row carries `reason_code` — the cause for a program, in the
-  vocabulary of `scenario-details`' `error_type`: `ValidationError`, an exception's class (a live
-  session aborted at startup included), or `NoResults` — and `checks`, the stable ids of the
+  vocabulary of `scenario-details`' `error_type`: `ValidationError`, an exception's class (an
+  AutoTrader session aborted at startup included), or `NoResults` — and `checks`, the stable ids of the
   checks that refused it (`warmup_quality`, `tick_stretch_gap`, …).
 - `GET /api/v1/directory`: `key` is `["file"]`. A file name is one entry across every root and both
   kinds, resolved by precedence; it was `["kind", "file"]`.
@@ -120,7 +161,8 @@ newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnot
   `units_declared` (every unit the configuration names, `enabled: false` ones included),
   `units_disabled` and `units_absent` — `[{name, reason}]`, the attempted units that produced
   nothing. `units_declared == units_disabled + len(units_absent) + unit_count`, from two sources.
-  A live session is declared 1; one that aborted at startup is absent, with its emergency cause.
+  An AutoTrader session is declared 1; one that aborted at startup is absent, with its emergency
+  cause.
   A run recorded before this version reads `units_declared: 0` — report artifacts are written once
   and nothing back-fills them, so there 0 means "not stated" and the equation does not hold.
 

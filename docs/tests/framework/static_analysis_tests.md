@@ -24,8 +24,9 @@ never silence the test.**
 
 ## Tier 1 — the second gate: no formula leaves its single source
 
-`§38`, `§45` and `§46` each declare that a piece of mathematics lives in exactly one module,
-and each carries a REPORT RULE against reimplementing it. Those were held by review alone
+Value normalization (`Normalizer`), the order-versus-quote predicates (`price_trigger`) and
+indicator mathematics (`trading_math/indicators/`) each live in exactly one module by project
+convention, and reimplementing one elsewhere is to be reported rather than written. Those were held by review alone
 until a case slipped through and cost eleven months: `SpreadFee.calculate_cost` computed
 `(ask - bid) * 10**digits * tick_value * lots` while `gross_pnl_from_price_diff` computed
 `price_diff * 10**digits * tick_value * lots` — the same conversion of the same quantity, in
@@ -64,7 +65,7 @@ difference already inside the P&L?*
 
 ## Tier 2 — the backlog: measured, not gated
 
-Unused imports (§7), placeholder-free f-strings (§5) and dead code (§19) are real findings
+Unused imports, placeholder-free f-strings and dead code are real findings
 with a large pre-existing backlog. They are cleaned as a unit is touched and swept
 project-wide at release — deliberately **not** a daily gate, because a gate that is red on
 day one gets skipped, and a skipped gate stops protecting the undefined-name check beside it.
@@ -80,7 +81,8 @@ day one gets skipped, and a skipped gate stops protecting the undefined-name che
 pyflakes reports disuse *within* one module. A public getter that no caller anywhere
 invokes is used nowhere and reported by nobody — that gap is vulture's entire job.
 
-**Never run either tool bare.** `ruff`'s default quote style is double, the opposite of §5
+**Never run either tool bare.** `ruff`'s default quote style is double, the opposite of this
+project's single-quote convention
 (~6900 findings pointing the wrong way). `vulture` without its config reports 353 findings
 including every pytest fixture and FastAPI route.
 
@@ -92,7 +94,7 @@ first full sweep (292 findings under `vulture.toml`):
 
 | Bucket | Count | What to do with it |
 |---|---|---|
-| `python/framework/types/` | 126 | Mostly dataclass / Pydantic **fields**. Serialization reads them by name at dump time, so vulture cannot see the use — a judgement pass, not a delete list. §19 still applies: a config key with no consumer is dead |
+| `python/framework/types/` | 126 | Mostly dataclass / Pydantic **fields**. Serialization reads them by name at dump time, so vulture cannot see the use — a judgement pass, not a delete list. The dead-config rule still applies: a config key with no consumer is dead |
 | unused imports | 48 | Mostly the 21 test modules whose imports ARE pytest's collection mechanism (see below) — those stay |
 | everything else | 118 | The actionable core — methods, attributes, classes, functions, properties |
 
@@ -109,7 +111,7 @@ Three blind spots are stated in `vulture.toml` and repeated here because deletin
 positive is the expensive mistake: **`user_algos/` is not scanned** (separate gitignored
 workspace — a framework method only a private algo calls reads as dead), **serialization hides
 reads**, and — the one that bites hardest — **configuration selects by string**. A decision
-logic is a path in a profile, a worker is a `USER/name` type, an adapter is a `broker_type`:
+logic is a path in a profile, a worker is a `CORE/` name or a file path, an adapter is a `broker_type`:
 none of that is an import, so no config-selected class is visible to the tool. Grep the JSON
 under `configs/` and `tests/fixtures/` before deleting a class.
 

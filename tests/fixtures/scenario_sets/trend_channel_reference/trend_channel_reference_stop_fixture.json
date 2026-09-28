@@ -48,7 +48,7 @@
   },
   "scenarios": [
     {
-      "name": "EURUSD_stop_w1",
+      "scenario_name": "EURUSD_stop_w1",
       "symbol": "EURUSD",
       "data_broker_type": "mt5",
       "start_date": "2026-01-12T00:00:00+00:00",

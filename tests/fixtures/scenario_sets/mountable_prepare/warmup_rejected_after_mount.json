@@ -40,7 +40,7 @@
   },
   "scenarios": [
     {
-      "name": "archive_head_short_warmup",
+      "scenario_name": "archive_head_short_warmup",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-24T14:20:00+00:00",
@@ -50,7 +50,7 @@
       "enabled": true
     },
     {
-      "name": "ordinary_window",
+      "scenario_name": "ordinary_window",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-25T02:20:00+00:00",
@@ -60,7 +60,7 @@
       "enabled": true
     },
     {
-      "name": "switched_off",
+      "scenario_name": "switched_off",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-25T08:20:00+00:00",

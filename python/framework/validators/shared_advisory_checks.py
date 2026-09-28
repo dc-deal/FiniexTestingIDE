@@ -7,7 +7,7 @@ inputs that RETURNS findings; the caller routes them into its own validation cha
 `AutoTraderResult.session_validation_result` (live).
 
 Functions rather than a shared validator base class: almost none of the sim's post-run checks
-apply to a single live session (they need profiling data, a tick budget, several scenarios or
+apply to a single AutoTrader session (they need profiling data, a tick budget, several scenarios or
 several currencies), and a function over its inputs is testable without building a batch. Same
 division the reporting pipeline already uses — shared derivation, pipeline-specific coordinators.
 """
@@ -51,7 +51,7 @@ def check_stress_test(
 
     Args:
         units: One (unit name, raw stress config) pair per unit — scenarios in a sim batch,
-            the single profile in a live session
+            the single profile in an AutoTrader session
         unit_label: What a unit is called in the message ('Scenarios' / 'Session')
 
     Returns:

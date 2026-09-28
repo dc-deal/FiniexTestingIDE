@@ -1,10 +1,11 @@
 """
-FiniexTestingIDE - Sim <-> AutoTrader-mock Data Parity (#438)
+FiniexTestingIDE - Sim <-> Mock Session Data Parity (#438)
 
-The AutoTrader-mock replays scenario base data through the SAME shared MountPreparer the sim uses.
+The mock session replays scenario base data through the SAME shared MountPreparer the sim uses.
 This asserts the prepared ticks (and signal sources) are identical for the same scenario window —
-the mock is truly "a scenario replayed through the live decision path". The only difference is
-`include_warmup_bars`: the AT skips bar preparation (it loads warmup bars itself), the sim loads it.
+the mock session is truly "a scenario replayed through the AutoTrader decision path". The only
+difference is `include_warmup_bars`: the AT skips bar preparation (it loads warmup bars itself),
+the sim loads it.
 """
 
 from python.configuration.app_config_manager import AppConfigManager
@@ -58,10 +59,10 @@ def test_at_mock_and_sim_share_the_same_ticks():
     pkg_at = _prepare(_scenario('at'), include_warmup_bars=False)
 
     assert pkg_at.ticks == pkg_sim.ticks, (
-        'AutoTrader-mock ticks diverge from the sim for the same scenario window'
+        'mock-session ticks diverge from the sim for the same scenario window'
     )
     assert pkg_at.signal_series.keys() == pkg_sim.signal_series.keys(), (
-        'AutoTrader-mock signal sources diverge from the sim'
+        'mock-session signal sources diverge from the sim'
     )
 
 
@@ -70,5 +71,5 @@ def test_at_mock_skips_warmup_bars_the_sim_loads():
     pkg_sim = _prepare(_scenario('sim2'), include_warmup_bars=True)
     pkg_at = _prepare(_scenario('at2'), include_warmup_bars=False)
 
-    assert pkg_at.bars == {}, 'AutoTrader-mock package must carry no warmup bars'
+    assert pkg_at.bars == {}, 'mock-session package must carry no warmup bars'
     assert pkg_sim.bars, 'sim package must carry warmup bars'

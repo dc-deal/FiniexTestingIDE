@@ -30,7 +30,7 @@ Time source:
 - The guard is clock-agnostic — all time-dependent methods take an explicit
   `now: datetime` parameter supplied by the caller. In backtesting this is the
   current simulated tick timestamp (ensures determinism and sim-correct
-  cooldown durations). In live trading it is the wall-clock tick timestamp
+  cooldown durations). In a live-adapter session it is the wall-clock tick timestamp
   (effectively datetime.now()). The guard never calls datetime.now() itself.
 
 State updates flow through two paths:
@@ -108,7 +108,7 @@ class OrderGuard:
             OrderResult(REJECTED) if blocked, None otherwise
         """
         # Stale-market-data block (#436): never open new positions on blind
-        # data. Only live sessions can be stale; sim status is always fresh.
+        # data. Only AutoTrader sessions can be stale; sim status is always fresh.
         if (
             self._block_stale_market_data
             and market_data_status is not None

@@ -150,7 +150,7 @@ Lost:   5 trading days (1 full trading week)
 ```
 
 The `Lost:` line appears only for markets with a weekend closure. A 24/7 market has no trading
-week, so calendar days are already the whole truth there — the §37 gate lives in the caller,
+week, so calendar days are already the whole truth there — the market-type gate lives in the caller,
 because `MarketCalendar.get_trading_days()` counts Mon–Fri without knowing the market type. It
 also appears only from a full day up: the count is calendar-day based and would read a two-hour
 Wednesday gap as "1 trading day".
@@ -269,7 +269,7 @@ actually-loaded tick stretch:
 |---|---|---|
 | scenario binds no signal source | — | skipped |
 | source declares `data_origin: synthetic` | 2 | **warning** — generated data, not a market record |
-| source/symbol not imported | 2 | **error** — scenario excluded, batch continues (§33) |
+| source/symbol not imported | 2 | **error** — scenario excluded, batch continues |
 | window closes before the series opens | 2 | **error** — no snapshot can ever resolve |
 | no snapshot at or before `start_date` | 2 | **warning** — run starts blind, blind duration named |
 | `start_date` inside a gap | 2 | **warning** — age of the snapshot the run starts on |
@@ -303,7 +303,8 @@ enforces is the signal analogue: *a snapshot must already exist at the first tic
 
 ## VS Code Launch Configs
 
-All discovery entries are grouped under the `DISCOVERIES` section with `🔍 Disc -` prefix:
+All discovery entries carry the `🔍 Disc -` prefix; they sit in the `📚 COVERAGE & GAPS`,
+`🔄 REBUILDS` and `🔍 DISCOVERY ANALYSIS` groups. For example:
 
 ```
 🔍 Disc - Cache: Rebuild All

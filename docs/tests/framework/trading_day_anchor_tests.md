@@ -21,7 +21,7 @@ file pins what the answer IS, including the two cases a caller never produces on
 
 00:00 UTC, so a trading day and a calendar day coincide. The boundary case is the one that
 would be invisible in production: an instant one second before midnight belongs to the day
-before, and mislabelling it moves a whole fragment.
+before, and mislabelling it moves a whole booking period.
 
 | Test | Description |
 |------|-------------|
@@ -32,7 +32,7 @@ before, and mislabelling it moves a whole fragment.
 ### `TestForexAnchorAcrossDst`
 
 17:00 America/New_York. The reason this class exists is that the UTC instant MOVES with
-daylight saving while the label does not — a fixed offset would put every winter fragment an
+daylight saving while the label does not — a fixed offset would put every winter boundary an
 hour out, and nothing would fail.
 
 | Test | Description |
@@ -46,7 +46,7 @@ hour out, and nothing would fail.
 
 Which anchor a broker gets. These build the market rules rather than reading the merged config,
 deliberately: an operator override in `user_configs/market_config.json` is legitimate — shifting
-the crypto anchor a few minutes ahead is how the live boundary is rehearsed — and a test
+the crypto anchor a few minutes ahead is how a day boundary is rehearsed in a dry run — and a test
 asserting the operator's current VALUES would go red for that, which is the wrong reason. One
 smoke test is all that touches real config.
 

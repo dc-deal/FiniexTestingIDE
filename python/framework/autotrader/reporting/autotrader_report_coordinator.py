@@ -66,6 +66,7 @@ from python.framework.reporting.store.run_results_ledger import append_run_to_le
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.log_level import LogLevel
 from python.framework.types.signal_data_types import SignalObservedSeries
 from python.framework.utils.console_renderer import ConsoleRenderer
@@ -96,6 +97,7 @@ class AutotraderReportCoordinator:
         global_logger: ScenarioLogger,
         broker_config: Optional[BrokerConfig] = None,
         signal_scenario_map: Optional[Dict[Tuple[str, str], SignalScenarioInfo]] = None,
+        replayed_scenario: Optional[SingleScenario] = None,
         observed_feed: Optional[SignalObservedSeries] = None,
         deployment_id: str = '',
     ):
@@ -116,6 +118,8 @@ class AutotraderReportCoordinator:
                 broker report; None when the session has no executor (startup failure)
             signal_scenario_map: The session's prepared signal sources (#433) — from the same
                 shared MountPreparer run the sim batch uses; empty for a session without one
+            replayed_scenario: A mock session's scenario after the mount filled what it read —
+                its ledger row's consumption record; None for a live-adapter session
         """
         self._result = result
         self._run_dir = run_dir
@@ -133,6 +137,7 @@ class AutotraderReportCoordinator:
         # `broker_type` is a `BrokerType` enum), so reporting needs no key translation.
         self._broker_config = broker_config
         self._signal_scenario_map = signal_scenario_map or {}
+        self._replayed_scenario = replayed_scenario
         self._observed_feed = observed_feed
 
     def generate_and_log(self) -> None:
@@ -166,7 +171,7 @@ class AutotraderReportCoordinator:
                 self._config.scenario_settings.data_sentiment_type
                 if self._config.scenario_settings else ''),
             # #451: the mock session's planned windows label an episode's origin — the
-            # timestamps always come from the run (a real live session has none).
+            # timestamps always come from the run (a live-adapter session has none).
             stress_test_config=(
                 self._config.scenario_settings.stress_test_config
                 if self._config.scenario_settings else None))
@@ -229,7 +234,7 @@ class AutotraderReportCoordinator:
             write_artifact(safety_report, io_dir, SAFETY_ARTIFACT)
 
         # The booking periods, derived once and used three times: the artifact, the table below,
-        # and — through the segments themselves — the ledger rows. The reconciliation against the
+        # and — through the periods themselves — the ledger rows. The reconciliation against the
         # run's own figure is computed here rather than in the renderer (§12), and it is why the
         # report is PERSISTED rather than rebuilt from the ledger later: the independent figure it
         # checks against exists only while the run does (#539).
@@ -244,28 +249,29 @@ class AutotraderReportCoordinator:
         # Run-results ledger (#390) — append the session to the persistent cross-run store the
         # Parameter Optimization system ranks over. Same RunSummary model + provenance as the sim
         # pipeline; the profile's strategy_config makes the param_hash comparable to the backtest
-        # (sim/live parity). A live session is never swept; an emergency → status='error' row.
-        # The header is read from THIS run directory, never looked up in the derived run index
+        # (sim/live parity). An AutoTrader session is never swept; an emergency → status='error'
+        # row. The header is read from THIS run directory, never looked up in the derived run index
         # (#551), and an unreadable one is reported in the session's own summary log.
         provenance = build_run_provenance_from_session(
             self._config, self._run_id, self._run_timestamp, warnings_errors_report,
             deployment_id=self._deployment_id, run_dir=self._run_dir,
-            logger=self._summary_logger)
-        # The session's Hauptbuch (#537): its booking periods ARE its ledger rows, and no
+            logger=self._summary_logger, replayed_scenario=self._replayed_scenario)
+        # The session's ledger entries (#537): its booking periods ARE its ledger rows, and no
         # aggregate row is written beside them — the deployment history sums over rows, and a
         # summary standing next to its own evidence would count the month twice.
         append_run_to_ledger(
             unified.run_summary, provenance,
-            [segment for unit in units for segment in unit.booking_segments])
+            [period for unit in units for period in unit.booking_periods])
 
         # Diagnostics CSV (#376) — algo-declared sinks, next to events.csv.
         if self._decision_logic:
             flush_decision_diagnostics(self._decision_logic, self._run_dir)
 
         # === PRESENT — the unified end-of-run console (#403 Phase 2): the shared sections in
-        # sim order (trade / portfolio / broker / worker performance), then the live session
-        # summary as the closing block. Live is one unit → the per-currency aggregates are
-        # skipped (redundant); the same ordered renderer the sim coordinator uses. ===
+        # sim order (trade / portfolio / broker / worker performance), then the AutoTrader
+        # session summary as the closing block. A session is one unit → the per-currency
+        # aggregates are skipped (redundant); the same ordered renderer the sim coordinator
+        # uses. ===
         renderer = ConsoleRenderer()
         threshold = AppConfigManager().get_console_logging_config_object().scenario_detail_threshold
 
@@ -282,8 +288,9 @@ class AutotraderReportCoordinator:
                 if unified.feed_stability.units else None),
             performance_summary=PerformanceSummary(unified.worker_decision),
             warnings_summary=WarningsSummary(warnings_errors_report),
-            # The session's Hauptbuch as an ordered section (#537) — live renders once, with
-            # detail ON, so it always gets the full table on the terminal AND in the file.
+            # The session's booking periods as an ordered section (#537) — an AutoTrader
+            # session renders once, with detail ON, so it always gets the full table on the
+            # terminal AND in the file.
             booking_periods_summary=BookingPeriodsSummary(booking_periods),
             closing_block=LiveSessionSummary(
                 result, unified.trade_history, self._run_dir, unified.run_summary,

@@ -558,7 +558,7 @@ class TestEveryListSaysWhatMakesARowUnique:
     """
     An unordered list of objects says nothing about its own identity, and the two cases here
     are both ones where the obvious key is wrong: a deployment row is one per (deployment x
-    currency), and `segment_no` repeats across the sessions of one deployment (§49).
+    currency), and `period_no` repeats across the sessions of one deployment (§49).
     """
 
     def test_the_deployment_list_names_the_currency_in_its_key(self, client):
@@ -581,7 +581,7 @@ class TestDeployments:
     directory, no artifacts. Its rows live in the ledger and nowhere else — which is why these
     routes read the ledger and only the ledger (one route, one store).
 
-    Before #539 the ledger's only reader filtered on `sweep_id`, which a live session does not
+    Before #539 the ledger's only reader filtered on `sweep_id`, which an AutoTrader session does not
     have, so every one of these rows was written and unreachable (§44).
     """
 
@@ -708,11 +708,11 @@ class TestDeployments:
             return RunResultRow(
                 run_id=run_id, param_hash='p1', run_timestamp=opened, currency='USD',
                 deployment_id='deploy_1', scenario_set_name='dotusd_live', status='ok',
-                unit_name='dotusd_live', segment_no=no, segment_opened_at=opened,
-                segment_closed_at=closed, segment_close_reason=reason,
+                unit_name='dotusd_live', period_no=no, period_opened_at=opened,
+                period_closed_at=closed, period_close_reason=reason,
                 total_trades=trades, net_pnl=pnl,
-                segment_min_equity=90.0, segment_max_equity=110.0,
-                segment_max_drawdown=5.0, final_equity=100.0 + pnl)
+                period_min_equity=90.0, period_max_equity=110.0,
+                period_max_drawdown=5.0, final_equity=100.0 + pnl)
 
         return [
             row('s1', 1, '2026-09-01T00:00:00+00:00', '2026-09-02T00:00:00+00:00', 12.0, 3),
@@ -742,7 +742,7 @@ class TestDeployments:
 
     def test_every_period_names_the_session_that_booked_it(self, client):
         """
-        `segment_no` is a per-BOT counter and restarts wherever a session wrote no carry-over
+        `period_no` is a per-BOT counter and restarts wherever a session wrote no carry-over
         floor, so two periods of one deployment can both be #1. `run_id` is then the only
         thing that tells them apart — and it is the hinge into that run's report routes.
         """
@@ -751,7 +751,7 @@ class TestDeployments:
         with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
             periods = client.get('/api/v1/deployments/deploy_1/booking-periods').json()['periods']
         assert [p['run_id'] for p in periods] == ['s1', 's1', 's2']
-        assert [p['segment_no'] for p in periods] == [1, 2, 1]
+        assert [p['period_no'] for p in periods] == [1, 2, 1]
 
     def test_a_row_that_books_no_period_is_skipped_and_counted(self, client):
         """
@@ -776,7 +776,7 @@ class TestDeployments:
         ledger.read_rows.return_value = self._period_rows()
         with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger):
             first = client.get('/api/v1/deployments/deploy_1/booking-periods').json()['periods'][0]
-        assert first['max_drawdown'] == 5.0     # segment_max_drawdown, not account_max_drawdown
+        assert first['max_drawdown'] == 5.0     # period_max_drawdown, not account_max_drawdown
         assert (first['min_equity'], first['max_equity']) == (90.0, 110.0)
 
     def test_there_is_no_reconciliation_and_that_is_deliberate(self, client):
@@ -972,10 +972,10 @@ class TestRunConfigSnapshot:
     """
 
     def test_it_serves_the_snapshot_parsed(self, client):
-        info = RunInfo(run_id='r1', group='live', name='p', config_snapshot='autotrader_config.json',
+        info = RunInfo(run_id='r1', group='autotrader', name='p', config_snapshot='autotrader_config.json',
                        config_id='abc123')
         snapshot = RunConfigSnapshot(run_id='r1', config_snapshot='autotrader_config.json',
-                                     config_id='abc123', config={'name': 'p', 'symbol': 'BTCUSD'})
+                                     config_id='abc123', config={'profile_name': 'p', 'symbol': 'BTCUSD'})
         with patch('python.api.endpoints.reports_router.ReportStore') as store:
             store.return_value.get_config_snapshot.return_value = snapshot
             store.return_value.list_runs.return_value = [info]
@@ -996,7 +996,7 @@ class TestRunConfigSnapshot:
     def test_a_declared_but_unfiled_snapshot_says_so(self, client):
         # The run EXISTS — it died between the header write and the copy, or its file logging
         # was off. Reading that as "unknown run" sends a consumer after the wrong fault.
-        info = RunInfo(run_id='r1', group='live', name='p', config_snapshot='autotrader_config.json')
+        info = RunInfo(run_id='r1', group='autotrader', name='p', config_snapshot='autotrader_config.json')
         with patch('python.api.endpoints.reports_router.ReportStore') as store:
             store.return_value.get_config_snapshot.return_value = None
             store.return_value.list_runs.return_value = [info]

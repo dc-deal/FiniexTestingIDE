@@ -62,9 +62,9 @@ run dir
 
 Rows accumulate in memory and write once at run end — a crash mid-run loses the buffered
 diagnostics. That is acceptable: this is diagnostics, not the trade record, and it matches
-the §35 villain/pot separation (a hard crash is the villain; diagnostics are not a recovery
-artifact). For a long live session this trades crash-durability for zero hot-path cost; an
-incremental-flush mode can be added later if needed.
+the error model's separation of the villain from the error pot (a hard crash is the villain;
+diagnostics are not a recovery artifact). For a long AutoTrader session this trades
+crash-durability for zero hot-path cost; an incremental-flush mode can be added later if needed.
 
 Exposed on decision logic only for now (workers can follow if demand appears). The schema is
 entirely the strategy's — the framework never inspects the columns or values.

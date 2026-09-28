@@ -153,7 +153,7 @@ The only response that DriftAuditor truly ignores is one where the snapshot was 
 matching entry in `_pending_audits` — e.g., trades-query triggered by something other than us, or
 already-popped by an earlier response with the same order_id).
 
-### MT5 Carryover
+### The same pattern on MT5
 
 The same two-ID pattern carries to MT5 (#209) with broker-specific value spaces:
 

@@ -2,7 +2,7 @@
 FiniexTestingIDE - Backtesting Event Probe Decision Logic (#348)
 
 Exercises the Decision Event Channel end-to-end in BOTH pipelines (simulation
-and AutoTrader-mock). It subscribes to every decision event, drives a small
+and a mock AutoTrader session). It subscribes to every decision event, drives a small
 deterministic plan that generates events, and records the ordered sequence it
 receives via the on_* hooks.
 
@@ -14,7 +14,7 @@ of pipeline:
 - SESSION_END    — from request_session_end at the end of the plan
 
 The recorded sequence is exposed two ways:
-- get_received_event_log() — in-process access (AutoTrader-mock test)
+- get_received_event_log() — in-process access (mock-session test)
 - get_statistics().backtesting_metadata.received_events — cross-process channel
   (simulation test, where the decision logic runs in a subprocess)
 
@@ -62,8 +62,8 @@ class BacktestingEventProbe(AbstractDecisionLogic):
 
     Opens one MARKET position, partially closes it, then requests session end —
     and records every decision event delivered through the on_* hooks. The
-    recorded sequence must be identical in the simulation and AutoTrader-mock
-    pipelines.
+    recorded sequence must be identical in the simulation and in a mock AutoTrader
+    session.
     """
 
     def __init__(
@@ -142,7 +142,7 @@ class BacktestingEventProbe(AbstractDecisionLogic):
             ),
             'price': OutputParamDef(
                 param_type=float, min_val=0.0,
-                description='Price at decision time',
+                description='Price at decision time — traded where the venue prints one, else mid',
                 category='INFO',
             ),
         }
@@ -223,13 +223,13 @@ class BacktestingEventProbe(AbstractDecisionLogic):
                 outputs={
                     'lot_size': self._lot_size,
                     'reason': f'Event-probe open at tick {self.tick_count}',
-                    'price': tick.mid,
+                    'price': tick.price,
                 },
             )
 
         return Decision(
             action=DecisionLogicAction.FLAT,
-            outputs={'reason': 'No signal', 'price': tick.mid},
+            outputs={'reason': 'No signal', 'price': tick.price},
         )
 
     def _execute_decision_impl(

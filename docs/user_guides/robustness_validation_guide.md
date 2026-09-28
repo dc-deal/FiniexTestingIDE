@@ -1,7 +1,7 @@
 # Robustness Validation — In-Sample / Out-of-Sample & Multi-Window
 
 A parameter-centric testing IDE needs a built-in guard against **overfitting** — the most common
-way a great-looking backtest fails live. Robustness mode runs one constant strategy across many
+way a great-looking backtest fails with real money. Robustness mode runs one constant strategy across many
 time windows and reports whether the performance generalizes, instead of trusting a single number.
 
 This is a **simulation** feature (the backtest pipeline). It adds no simulation cost — it is a
@@ -51,10 +51,10 @@ Define the strategy once in `global`, then one window per scenario with a `role`
     "strategy_config": { "decision_logic_type": "user_algos/my_algo/my_strategy.py", "...": "the ONE strategy" }
   },
   "scenarios": [
-    { "name": "w_jan", "symbol": "EURUSD", "data_broker_type": "mt5",
+    { "scenario_name": "w_jan", "symbol": "EURUSD", "data_broker_type": "mt5",
       "start_date": "2024-01-01T00:00:00+00:00", "end_date": "2024-02-01T00:00:00+00:00",
       "role": "in_sample" },
-    { "name": "w_feb", "symbol": "EURUSD", "data_broker_type": "mt5",
+    { "scenario_name": "w_feb", "symbol": "EURUSD", "data_broker_type": "mt5",
       "start_date": "2024-02-01T00:00:00+00:00", "end_date": "2024-03-01T00:00:00+00:00",
       "role": "out_of_sample" }
   ]

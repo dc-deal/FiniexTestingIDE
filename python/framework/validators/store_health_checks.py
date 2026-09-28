@@ -8,9 +8,9 @@ and runs both. The store catalog shows the result beside the stores, and because
 data rather than printed lines, any other surface can serve them the same way.
 
 Both are advisories. Neither rejects anything: a release checks its gates on its own, and only the
-venue can say whether a declared fee rate is actually wrong — a live session asks it on every
-start and warns on divergence. What these checks add is the question for someone who runs only
-backtests and therefore never sees that warning.
+venue can say whether a declared fee rate is actually wrong — a live-adapter session asks it on
+every start and warns on divergence. What these checks add is the question for someone who runs
+only backtests and therefore never sees that warning.
 """
 
 from datetime import datetime
@@ -94,7 +94,7 @@ def check_fee_freeze_ages(
         severity=Severity.WARNING, check=FEE_STRUCTURE_FROZEN_LONG_CHECK,
         domain=ValidationDomain.BROKER, scope=broker_type,
         message=f'frozen {age[0]}, {age[1]} days ago — past the {window_days}-day window. '
-                f"Re-freeze it from a live session's divergence warning, or confirm it still "
+                f"Re-freeze it from a live-adapter session's divergence warning, or confirm it still "
                 f'holds')
         for broker_type, age in ages.items() if age and age[1] > window_days]
 

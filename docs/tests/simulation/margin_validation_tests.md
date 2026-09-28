@@ -286,8 +286,8 @@ python python/cli/strategy_runner_cli.py run backtesting/margin_validation_zero_
 
 **VS Code:** Use launch configurations:
 - `🧩 Pytest: Margin Validation (All)` — run all margin tests (including zero balance)
-- `🧪 Run (MARGIN_VALIDATION Scenario)` — run main scenario only
-- `🧪 Run (ZERO_BALANCE Scenario)` — run zero balance scenario only
+- `🧪 Simulation: Margin Validation` — run main scenario only
+- `🧪 Simulation: Zero Balance` — run zero balance scenario only
 
 ---
 

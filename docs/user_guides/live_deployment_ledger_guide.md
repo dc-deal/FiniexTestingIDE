@@ -1,10 +1,10 @@
-# Reading a live bot across its restarts
+# Reading a bot across its restarts
 
 A bot you leave running for a month will not run for a month. It will be stopped for an update,
 it will die at 03:00 and be relaunched, the machine will reboot. Each of those starts is a
-separate run with its own identity, its own report and its own row in the results ledger — and
-by default nothing says they belong together. Open the ledger after four weeks and you find
-eleven rows that look like eleven unrelated bots, each reporting a drawdown that begins at the
+separate run with its own identity, its own report and its own rows in the results ledger — and
+by default nothing says they belong together. Open the ledger after four weeks and you find the
+rows of eleven sessions that look like eleven unrelated bots, each reporting a drawdown that begins at the
 moment it happened to start.
 
 A **deployment** is what ties them back together: one declaration in your profile, and the
@@ -52,7 +52,7 @@ own: open any profile in this project and it now states what it is.
 
 ## What a deployment is, and what it is not
 
-It **is** a declaration that these sessions are one bot's continuous life. It is a name that
+It **is** a declaration that these sessions are one bot's life, restarts and all. It is a name that
 rows carry, nothing more.
 
 It is **not** a claim that the sessions are comparable. A deployment survives you changing the
@@ -121,7 +121,7 @@ run id                     started               ran     net P&L  max DD (cum)  
 20260901_060000_9f2c       2026-09-01 06:00   12.0 h       41.20        -58.40   0.58%
 ────────────────────────────────────────────────────────────────────────────────────────────────
 Amounts in USD. Newest session first. …
-Descend into one session: runs/live/<profile>/<run id>/
+Descend into one session: runs/autotrader/<profile>/<run id>/
 ```
 
 **A configuration change is drawn as a line ACROSS the table**, not as a mark on one row. It
@@ -135,7 +135,7 @@ next question needs. The three steps are meant to be walked in order:
   deployments                    which deployment do I want?
        ↓  --id <deployment>
   its sessions                   which session do I want?
-       ↓  runs/live/<profile>/<run id>/
+       ↓  runs/autotrader/<profile>/<run id>/
   that run's logs and reports    what happened in it?
 ```
 
@@ -194,14 +194,14 @@ differs".
 
 ## What breaks a deployment
 
-**A dry run hands on what it can honestly claim — and nothing more.** A dry-run session places
-no order at any venue, so it never records a session key or an open position book: a successor
+**A session that places nothing hands on what it can honestly claim — and nothing more.** A dry
+run or a mock session places no order at any venue, so it never records a session key or an open position book: a successor
 inheriting either would trade beside orders that do not exist. But the deployment identity, the
 risk baseline and the drawdown curve are numbers the process computed, and those are true
 whether or not the venue was real, so they are carried.
 
 The practical consequence is a good one: **a mock profile CAN rehearse a whole deployment
-chain** — start it, stop it, start it again, and read the history. What a rehearsal cannot show
+chain** — start it, stop it, start it again, and read the history. What a mock session cannot show
 you is the position book surviving a restart, because there were never any positions at a venue
 to survive.
 
@@ -219,10 +219,10 @@ an algo for thirty days and then goes on holiday. The order that works:
 
 ```bash
 # step 2 — the probe day
-python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/my_bot_live.json --one-off
+python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/production/my_bot_live.json --one-off
 
 # step 4 — the deployment starts
-python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/my_bot_live.json
+python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/production/my_bot_live.json
 ```
 
 **Past step 4 the flag is REFUSED**, and the refusal names the three ways out. The reason is
@@ -237,9 +237,9 @@ what stood on the command line. Two columns of one table would then describe dif
    from the deployment history while its drawdown keeps running inside it, so two columns of
    one table would describe different periods.
      • starting over on purpose?  --new-deployment
-     • just trying something?     copy the profile and give it its own name
+     • just trying something?     copy the profile and give it its own `bot_id`
      • only probing before you deploy? that is what --one-off is for, and it belongs BEFORE
-       the first continuous start
+       the deployment's first start
 ```
 
 **`--new-deployment` begins a fresh one.** Use it when the bot is genuinely starting over — a
@@ -248,7 +248,7 @@ before. The old history stays readable under its own name.
 
 **Neither flag can create a deployment out of a profile that declares `false`.** The command line
 can only narrow, never widen, and that asymmetry is deliberate: an unattended restart re-executes
-a command nobody typed, so a deployment declared on the command line would fragment at exactly
+a command nobody typed, so a deployment declared on the command line would break apart at exactly
 the restarts it exists to span — silently, because a missing flag looks like a one-off. The flag
 whose absence is expensive lives in the profile; the flags whose absence is harmless live on the
 command line.
@@ -265,7 +265,7 @@ It is recoverable, and in two different ways depending on what you want.
 own name; nothing already recorded is lost or changed.
 
 **Or pull the missed days in.** The rows for those sessions exist — they are simply missing the
-join key. A one-off migration can stamp a deployment id onto ledger rows selected by profile
+join key. A single-use migration can stamp a deployment id onto ledger rows selected by profile
 name and time range; `python/experiments/` is where such scripts live, and one of them did
 exactly this shape of job on 2026-09-18 when the pipeline column was backfilled onto 586 rows.
 
@@ -303,7 +303,7 @@ can fail. The report reads both and names the difference:
 ⚠️  1 run(s) started and never completed — no ledger row was written.
    A run registers at START; its ledger row is the LAST step at close. So
    these ended abnormally — or one of them is running right now.
-   live session — traded, and left no record of what it did
+   AutoTrader session — ran, and left no record of what it did
      20260918_174713_0dbd978c  2026-09-18T17:47:13  deployment_continuity_test  parent=deploy_...
 ```
 
@@ -325,19 +325,19 @@ happened, never the state itself.
 
 ## What a row IS, since the ledger books in periods
 
-A row used to be one session. It is now one **booking period** of one unit — for a live bot,
-one trading day of that session. A thirty-day run therefore leaves thirty rows instead of one,
+A row used to be one session. It is now one **booking period** of one unit — for an AutoTrader
+session, one trading day of that session. A thirty-day run therefore leaves thirty rows instead of one,
 and the deployment view reads them as what they are: a column you can walk down until the day
 something happened.
 
-That is not a reporting preference. It is the reason the run exists: the thirty-day live run is
-a **parity proof**, and afterwards the same period is backtested and the divergence measured.
+That is not a reporting preference. It is the reason the run exists: the thirty-day deployment on a
+real account is a **parity proof**, and afterwards the same period is backtested and the divergence measured.
 With one row per month that divergence is a single number — it says THAT the two differ and
 never WHERE:
 
 ```
 one row per session                      one row per booking period
-Live      +412.00                        segment  live      backtest      Δ
+Session   +412.00                        period   session   backtest      Δ
 Backtest  +487.50                           18    +18.30    +18.30      0.00
           ───────                           19    -42.10    +11.80    -53.90   ← here
           diverged by 75.50                 20    +31.40    +31.40      0.00
@@ -370,7 +370,7 @@ would read as nine flat days and one outlier.
 
 The history is read from the results ledger in `runs/ledger/` — one small file per run, plus a
 single index over all of them. It is deliberately not the same thing as the run directories in
-`runs/live/`, which hold the logs and reports of each session and are pruned much sooner.
+`runs/autotrader/`, which hold the logs and reports of each session and are pruned much sooner.
 
 So this is normal and not a fault: **most ledger rows no longer have a run directory.** Measured
 2026-09-17, 428 of 580 rows had none. The ledger keeps the record long after the logs are gone —
@@ -415,7 +415,7 @@ GET /api/v1/deployments/{deployment_id}/booking-periods   its periods, across al
 
 The third one is the whole history at the grain the ledger actually books in: one entry per
 trading day for a bot that restarted a dozen times, in one call. Each entry names the `run_id`
-that booked it — necessary, because `segment_no` is a per-BOT counter that restarts wherever a
+that booked it — necessary, because `period_no` is a per-BOT counter that restarts wherever a
 session wrote no carry-over floor, so two periods of one deployment can both be number 1.
 
 Two differences from the terminal, both deliberate. The sessions come back **oldest first** — a
@@ -458,7 +458,8 @@ profile declaring `continuous` started with `--one-off` reads `ONE-OFF` everywhe
 
 - the live display title, beside the symbol
 - the session log, as one line near the start:
-  `🔗 Deployment deploy_… — continuing a continuous run` or `🔗 One-off session`
+  `🔗 Continuing deployment deploy_… — this session's ledger row joins that history` (`Starting`
+  on its first session) or `🔗 One-off session — its ledger row names no deployment.`
 
 If you are ever unsure what a long-running bot is currently part of, that log line is the
 cheapest answer, and it is still there weeks later.
@@ -469,6 +470,6 @@ cheapest answer, and it is still there weeks later.
 
 - `algo_state_persistence_guide.md` — what your *algorithm* remembers across a restart, which is
   a separate store with a separate opt-in
-- `live_outage_handling_guide.md` — what happens to a live session when its inputs go away
+- `live_outage_handling_guide.md` — what happens to an AutoTrader session when its inputs go away
 - `../architecture/data_storage_layout.md` — every store this project writes, and why the ledger
   and the run tree retain differently

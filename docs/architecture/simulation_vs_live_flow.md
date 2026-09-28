@@ -1,4 +1,4 @@
-# Simulation vs Live: Tick Flow Comparison
+# Simulation vs AutoTrader: Tick Flow Comparison
 
 Two execution modes, one strategy layer. The trading strategy (DecisionLogic + Workers) runs identically in both modes — only the tick source and execution backend differ.
 
@@ -69,19 +69,20 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
   `wants_heartbeat()`, the loop drives ghost-passes in the simulated gap between two data ticks
   (`_run_sim_heartbeats`): every `heartbeat_interval_ms` it injects the simulated clock, resolves
   latency-queue fills at that moment (`TradeSimulator.heartbeat()` → `process_up_to_msc`), and runs
-  `process_heartbeat()` → `execute_decision(tick=None)`. This gives the
-  **same relative reaction point** as the live ghost-pass (sim/live parity). It is **hard-gated**: a
-  non-opt-in decision (all current algos) sees no heartbeat path at all. A **correctness gate**
-  suppresses ghost-passes across a gap longer than `inter_tick_gap_threshold_s` (#208) — across a
-  data/weekend gap the market says nothing. The clock is injected (sim = simulated time,
-  deterministic) and never freezes to the last tick.
+  `process_heartbeat()` → `execute_decision(tick=None)`. This gives the **same relative reaction
+  point** as the AutoTrader ghost-pass (sim/live parity). It is **hard-gated**: a non-opt-in
+  decision (all current algos) sees no heartbeat path at all. A **correctness gate** suppresses
+  ghost-passes across a gap longer than `inter_tick_gap_threshold_s` (#208) — across a data/weekend
+  gap the market says nothing. The clock is injected (sim = simulated time, deterministic) and never
+  freezes to the last tick.
 
 ---
 
-## Live Tick Flow
+## AutoTrader Tick Flow
 
-The live flow processes real-time ticks from a broker connection. The runner is `AutotraderTickLoop`
-— implemented and validated against live Kraken Spot. Ticks are pulled from a thread-safe queue fed
+The AutoTrader flow processes the ticks of its tick source — in a live-adapter session, real-time
+ticks from a broker connection. The runner is `AutotraderTickLoop` — implemented and validated
+against real Kraken Spot. Ticks are pulled from a thread-safe queue fed
 by a TickSource thread (KrakenTickSource — Kraken WebSocket v2); the loop is synchronous on the main
 thread.
 
@@ -104,7 +105,7 @@ AutotraderTickLoop.run()
         ├── 1. executor.on_tick(tick)                # AbstractTradeExecutor (sets clock from tick)
         │       ├── Update prices (bid/ask)
         │       ├── _process_pending_orders()         # LiveRequestProcessor: poll broker for fills
-        │       └── _check_sl_tp_triggers(tick)       # Live: runs too (#500) — closes via close_position()
+        │       └── _check_sl_tp_triggers(tick)       # AutoTrader: runs too (#500) — closes via close_position()
         │
         ├── 2. render_bars_for_tick(tick, ...)        # SHARED CORE (#303)
         │
@@ -132,11 +133,12 @@ AutotraderTickLoop.run()
 **Key characteristics:**
 - Ticks arrive in real-time via WebSocket, buffered through a thread-safe queue
 - SL/TP is enforced by THIS process unless the venue was asked to hold it (#500, #503) —
-  `_check_sl_tp_triggers` runs in live too, and `get_protective_level_enforcement()` names who holds
-  the level. A submit still carries no level to the venue; what #503 adds is a standalone STOP order
-  placed after the entry fills, opt-in via `execution.venue_held_protection` and OFF by default. So
-  `LOCAL` remains the answer unless that switch is on, and even then it covers the STOP only — the
-  take profit has no second order to rest in. Contract: `docs/architecture/protective_levels.md`
+  `_check_sl_tp_triggers` runs in the AutoTrader too, and `get_protective_level_enforcement()` names
+  who holds the level. A submit still carries no level to the venue; what #503 adds is a standalone
+  STOP order placed after the entry fills, opt-in via `execution.venue_held_protection` and OFF by
+  default. So `LOCAL` remains the answer unless that switch is on, and even then it covers the STOP
+  only — the take profit has no second order to rest in. Contract:
+  `docs/architecture/protective_levels.md`
 - Pending orders resolved by broker polling today (#320 cadence); WebSocket push is the V1.4 primary (#331)
 - Fills on the fast path reach the algo immediately via the #348 Decision Event Channel — drained each tick AND during idle heartbeats
 - The Reconciler (#151) runs as a separate trust layer (ALERT_ONLY) — it verifies broker truth, it does not learn fills
@@ -163,13 +165,13 @@ ordering divergence (the #293 bug class) is impossible by construction:
 | `run_ghost_pass` | heartbeat decision compute (#360) | idle heartbeats (opt-in algos) |
 
 Deliberately runner-specific (NOT in the shared core): the simulation clipping
-gate + per-step profiling, the live safety override / display / clipping
+gate + per-step profiling, the AutoTrader safety override / display / clipping
 monitor, step 5 `execute_decision` with its per-runner error handling, the
 #348 event-drain boundary, and clock injection (simulated vs wall-clock, #360).
 
 ## Side-by-Side Comparison
 
-| Aspect | Backtesting | Live |
+| Aspect | Backtesting | Live-adapter session |
 |--------|-------------|------|
 | **Tick source** | Pre-loaded list (finite) | WebSocket / REST (real-time, infinite) |
 | **Loop type** | `for tick in ticks` | `while running` / event-driven |
@@ -216,7 +218,7 @@ Portfolio (shared)
 
 **EventSource:**
 - Simulation: TickDataProvider reads historical CSV/binary tick data
-- Live: WebSocket connection to broker delivers real-time ticks
+- Live-adapter session: WebSocket connection to broker delivers real-time ticks
 
 **Strategy:**
 - DecisionLogic + Workers — completely unchanged between modes
@@ -225,11 +227,11 @@ Portfolio (shared)
 
 **ExecutionHandler:**
 - Simulation: TradeSimulator with OrderLatencySimulator
-- Live: LiveTradeExecutor with LiveRequestProcessor
+- AutoTrader: LiveTradeExecutor with LiveRequestProcessor
 
 **PendingOrderManager:**
 - Simulation: OrderLatencySimulator (tick-based fill detection)
-- Live: LiveRequestProcessor (broker-response fill detection)
+- AutoTrader: LiveRequestProcessor (broker-response fill detection)
 - Both inherit from AbstractPendingOrderManager (shared storage/query)
 
 **Fill Processing:**
@@ -239,4 +241,4 @@ Portfolio (shared)
 **Portfolio:**
 - PortfolioManager — shared, single source of truth
 - In simulation: IS the truth (no external state to reconcile)
-- In live: Shadow state that tracks expected broker state — verified by the Reconciler (#151, ALERT_ONLY); correction (#349) lands in V1.4
+- In the AutoTrader: Shadow state that tracks expected broker state — verified by the Reconciler (#151, ALERT_ONLY); correction (#349) lands in V1.4

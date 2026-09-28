@@ -535,7 +535,7 @@ class SignalEpisodeEdge(str, Enum):
 @dataclass
 class SignalHealthStatus:
     """
-    Identity of the producer engine a live session is consuming from (#141 Part 2a).
+    Identity of the producer engine a live-adapter session is consuming from (#141 Part 2a).
 
     Exists because nothing on an envelope says which store it came from. Two producer
     instances can share a schema, a pipeline_id and a seq range, so a measurement taken
@@ -829,7 +829,7 @@ class ProducerPipelineRegistry:
 @dataclass
 class SignalBootMount:
     """
-    What the boot bridge established before a live session opened its stream (#468).
+    What the boot bridge established before a live-adapter session opened its stream (#468).
 
     Args:
         series: The archive slice the SIGNAL workers start from — possibly empty
@@ -849,7 +849,8 @@ class SignalBootMount:
 @dataclass
 class SignalLiveBoot:
     """
-    Everything a live session established about its signal source before starting (#468).
+    Everything a live-adapter session established about its signal source before starting
+    (#468).
 
     Carried rather than re-derived, for the reason the resolver exists: the archive is read
     ONCE at boot, and the values the producer serves are read once with it. A second site

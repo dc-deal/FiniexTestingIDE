@@ -166,7 +166,7 @@ def _session(identity, profile_override, adapter_type='live', allow_dirty=False)
     """
     session = AutotraderMain.__new__(AutotraderMain)
     session._config = AutoTraderConfig(
-        name='my_bot_live', symbol='BTCUSD', broker_type=BROKER, bot_id='my-bot',
+        profile_name='my_bot_live', symbol='BTCUSD', broker_type=BROKER, bot_id='my-bot',
         adapter_type=adapter_type, dry_run=profile_override, config_path=PROFILE_PATH)
     session._code_identity = identity
     session._allow_dirty = allow_dirty
@@ -187,7 +187,7 @@ def _guard(session, broker_default):
     Returns:
         The patched MarketConfigManager, for assertions on whether it was asked
     """
-    with patch('python.framework.autotrader.autotrader_main.MarketConfigManager') as manager:
+    with patch('python.framework.autotrader.dry_run_resolver.MarketConfigManager') as manager:
         manager.return_value.get_dry_run.return_value = broker_default
         session._guard_uncommitted_code()
     return manager
@@ -204,7 +204,7 @@ def _post_run_findings(session):
         The findings the session's validation channel received
     """
     result = AutoTraderResult()
-    config = AutoTraderConfig(name='my_bot_live', symbol='BTCUSD', broker_type=BROKER)
+    config = AutoTraderConfig(profile_name='my_bot_live', symbol='BTCUSD', broker_type=BROKER)
     SessionPostRunValidator(
         result, config,
         uncommitted_code_allowed=session._uncommitted_code_allowed,
@@ -415,11 +415,11 @@ class TestTheTier1Warning:
         session = _session(DIRTY, None, allow_dirty=True)
         _guard(session, broker_default=False)
         result = AutoTraderResult()
-        config = AutoTraderConfig(name='my_bot_live', symbol='BTCUSD', broker_type=BROKER)
+        config = AutoTraderConfig(profile_name='my_bot_live', symbol='BTCUSD', broker_type=BROKER)
         SessionPostRunValidator(result, config, uncommitted_code_allowed=True,
                                 code_identity=DIRTY).validate()
 
-        report = build_warnings_errors_report_from_session(_RUN_ID, result, config.name,
+        report = build_warnings_errors_report_from_session(_RUN_ID, result, config.profile_name,
                                                            config.symbol)
         major = [row for row in report.warnings if row.tier == WarningTier.VALIDATOR_PRODUCED]
         assert [row.check for row in major] == [UNCOMMITTED_CODE_CHECK]
@@ -427,7 +427,7 @@ class TestTheTier1Warning:
     def test_the_shutdown_hands_the_verdict_to_the_post_run_validation(self, monkeypatch):
         """The call site, not only the check: the verdict must survive to the session's end."""
         session = AutotraderMain(AutoTraderConfig(
-            name='my_bot_live', symbol='BTCUSD', broker_type=BROKER))
+            profile_name='my_bot_live', symbol='BTCUSD', broker_type=BROKER))
         session._uncommitted_code_allowed = True
         session._code_identity = DIRTY
         session._global_logger = _RecordingLogger()
@@ -469,7 +469,7 @@ class TestTheGuardIsPartOfStartup:
     def test_a_dirty_real_money_start_is_refused_there(self, monkeypatch):
         calls = []
         session = self._startup_session(monkeypatch, DIRTY, calls)
-        with patch('python.framework.autotrader.autotrader_main.MarketConfigManager') as manager:
+        with patch('python.framework.autotrader.dry_run_resolver.MarketConfigManager') as manager:
             manager.return_value.get_dry_run.return_value = False
             with pytest.raises(UncommittedCodeError):
                 session._validate_startup()
@@ -478,7 +478,7 @@ class TestTheGuardIsPartOfStartup:
     def test_a_clean_start_passes_on_to_the_next_check(self, monkeypatch):
         calls = []
         session = self._startup_session(monkeypatch, CLEAN, calls)
-        with patch('python.framework.autotrader.autotrader_main.MarketConfigManager') as manager:
+        with patch('python.framework.autotrader.dry_run_resolver.MarketConfigManager') as manager:
             manager.return_value.get_dry_run.return_value = False
             with pytest.raises(RuntimeError, match='swap-mode'):
                 session._validate_startup()

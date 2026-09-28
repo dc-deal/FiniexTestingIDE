@@ -14,6 +14,7 @@ from python.configuration.autotrader.abstract_broker_config_fetcher import (
 from python.configuration.autotrader.broker_config_fetcher_factory import BrokerConfigFetcherFactory
 from python.configuration.autotrader.kraken_config_fetcher import get_runtime_cache_path
 from python.configuration.market_config_manager import MarketConfigManager
+from python.framework.autotrader.dry_run_resolver import resolve_dry_run
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter
@@ -53,7 +54,8 @@ def create_broker_config(
         broker_config_path = MarketConfigManager().get_broker_config_path(config.broker_type)
         broker_config = BrokerConfigFactory.build_broker_config(broker_config_path)
         mock_adapter = MockBrokerAdapter(
-            broker_config=broker_config.adapter.broker_config
+            broker_config=broker_config.adapter.broker_config,
+            broker_type=BrokerType(config.broker_type),
         )
         result = BrokerConfig(
             broker_type=broker_config.broker_type,
@@ -163,21 +165,19 @@ def _create_live_broker_config_dynamic(
     """
     entry = MarketConfigManager().get_broker_entry(config.broker_type)
 
-    # Profile-level dry_run override (#332): a profile may scope dry_run to itself
-    # instead of relying on the global market_config default. Deliberately LOUD —
-    # overriding (especially forcing LIVE) reintroduces the forget-risk we originally
-    # avoided by keeping dry_run global, so it is never silent.
-    dry_run = config.dry_run if config.dry_run is not None else entry.dry_run
+    # Resolved FIRST, by the same rule the session reads (#332): a profile may tighten the
+    # broker's posture and never loosen it, and a loosening is refused here — before anything
+    # is fetched and before the adapter is armed. This used to take the profile's value
+    # outright, so a refused profile armed a real adapter first and was refused afterwards.
+    dry_run = resolve_dry_run(config)
     if config.dry_run is not None and config.dry_run != entry.dry_run:
-        note = (
-            'LIVE TRADING — real orders will be placed'
-            if not config.dry_run else 'validate-only'
-        )
+        # The one disagreement the rule lets through is a tightening. Still LOUD: a profile
+        # scoping dry_run to itself is exactly what a reader of market_config would not expect.
         logger.warning(
-            f"⚠️ dry_run OVERRIDE by profile '{config.name}': dry_run={config.dry_run} "
-            f"(market_config default={entry.dry_run}) → {note}"
+            f"⚠️ dry_run OVERRIDE by profile '{config.profile_name}': dry_run={config.dry_run} "
+            f"(market_config default={entry.dry_run}) → validate-only"
         )
-        print(f'  ⚠️  dry_run OVERRIDE by profile → dry_run={config.dry_run} ({note})')
+        print(f'  ⚠️  dry_run OVERRIDE by profile → dry_run={config.dry_run} (validate-only)')
 
     logger.info(f'🔧 Broker config: {config.broker_type} (dry_run={dry_run})')
     print(f'  ▸ Broker: {config.broker_type} (dry_run={dry_run})')
@@ -195,8 +195,9 @@ def _create_live_broker_config_dynamic(
 
     # ONE declared source for both pipelines (#337). The runtime cache's own fee block comes
     # from a literal inside the config fetcher, so a re-frozen seed would never have reached a
-    # live session. Starting from the seed means live and the backtest agree about what was
-    # EXPECTED, and the venue's answer below is the only thing that may differ from it.
+    # live-adapter session. Starting from the seed means that session and the backtest agree
+    # about what was EXPECTED, and the venue's answer below is the only thing that may differ
+    # from it.
     config_dict['fee_structure'] = BrokerConfigFactory.fee_structure_from(
         MarketConfigManager().get_broker_config_path(config.broker_type))
 
@@ -217,7 +218,7 @@ def _create_live_broker_config_dynamic(
         if balance is None:
             raise ConnectionError(
                 f"Could not fetch account balance for '{currency}' from Kraken API. "
-                f"Live trading requires a confirmed balance. "
+                f"A live-adapter session requires a confirmed balance. "
                 f"Check API credentials and account permissions."
             )
         logger.info(f'💰 Live balance: {balance} {currency}')
@@ -237,8 +238,8 @@ def _create_live_broker_config_dynamic(
     # DANGER, not to the deviation, and a warning also reaches the session summary (§35)
     # where an info line does not, so the run's own record says it traded for real.
     if dry_run:
-        logger.info('🚀 Mode: DRY RUN (validate only)')
-        print('  ▸ Mode: DRY RUN (validate only)')
+        logger.info('🚀 Mode: DRY RUN (venue validates, fills simulated locally)')
+        print('  ▸ Mode: DRY RUN (venue validates, fills simulated locally)')
     else:
         decided_by = 'the profile' if config.dry_run is not None else 'market_config'
         logger.warning(
@@ -258,7 +259,7 @@ def _create_live_broker_config_static(
     config: AutoTraderConfig, logger: ScenarioLogger, balances: Dict[str, float]
 ) -> BrokerConfig:
     """
-    Load broker config from static JSON for live sessions with config_mode=static.
+    Load broker config from static JSON for live-adapter sessions with config_mode=static.
 
     Symbol specs are not refreshed from the broker API. Use config_mode=dynamic
     in market_config.json to enable auto-refresh via runtime cache.
@@ -272,7 +273,7 @@ def _create_live_broker_config_static(
     """
     broker_config_path = MarketConfigManager().get_broker_config_path(config.broker_type)
     logger.info(
-        f'ℹ️  Using static broker config for live session.\n'
+        f'ℹ️  Using static broker config for a live-adapter session.\n'
         f'    File:   {broker_config_path}\n'
         f'    Note:   config_mode=static — symbol specs are not refreshed from the broker API.\n'
         f'    Tip:    Set \"config_mode\": \"dynamic\" for {config.broker_type} in '

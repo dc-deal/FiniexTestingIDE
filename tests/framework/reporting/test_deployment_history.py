@@ -3,8 +3,8 @@ Reading a restarted bot's ledger rows back as ONE history (#497).
 
 A thirty-day live run restarts — #476 rehearses it on purpose — and every restart writes its
 own ledger row under its own run id. Until the deployment identity those rows were a pile: the
-ledger's only other reader filters on `sweep_id`, which a live session does not have, so a live
-row was written and unreachable (§44 calls that a store with no read path).
+ledger's only other reader filters on `sweep_id`, which an AutoTrader session does not have, so
+its row was written and unreachable (§44 calls that a store with no read path).
 
 What is pinned here is the GROUPING and what it refuses to do. It groups, it orders, it names
 the gaps and the two kinds of change — and it judges none of them. Whether eleven hours between
@@ -32,7 +32,7 @@ DEPLOYMENT = 'deploy_20260901_060000_ab12'
 
 def row(run_id: str, timestamp: str, deployment: str = DEPLOYMENT, **overrides) -> RunResultRow:
     """
-    One ledger row as a live session writes it.
+    One ledger row as an AutoTrader session writes it.
 
     Args:
         run_id: The session's own identity
@@ -378,14 +378,14 @@ class TestTheDetailViewDescendsFromTheList:
         assert printed.index('newest') < printed.index('oldest')
 
     def test_each_line_is_keyed_by_the_run_id(self, capsys):
-        """The id is what opens `runs/live/<profile>/<run id>/`; a position number is not."""
+        """The id is what opens `runs/autotrader/<profile>/<run id>/`; a position number is not."""
         sessions = build_deployment_histories(
             [row('20260916_060500_8e10', '2026-09-16T06:05:00+00:00')])[DEPLOYMENT]
         render_deployment_history(DEPLOYMENT, sessions)
 
         printed = capsys.readouterr().out
         assert '20260916_060500_8e10' in printed
-        assert 'runs/live/<profile>/<run id>/' in printed
+        assert 'runs/autotrader/<profile>/<run id>/' in printed
 
     def test_a_session_reports_how_long_it_ran(self):
         sessions = build_deployment_histories([

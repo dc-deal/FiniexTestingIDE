@@ -139,7 +139,7 @@ def _run_autotrader(ticks):
     controller._required_timeframes = {TIMEFRAME}
 
     config = AutoTraderConfig(
-        name='bar_parity_kraken_spot_btcusd',
+        profile_name='bar_parity_kraken_spot_btcusd',
         symbol=SYMBOL,
         # The VENUE, not the tick source: `adapter_type='mock'` is what makes this a mock
         # session, while broker_type names the market whose rules apply — and since #476 the
@@ -300,7 +300,7 @@ def _run_autotrader_trades(ticks):
     controller._required_timeframes = {TIMEFRAME}
 
     config = AutoTraderConfig(
-        name='trade_parity_kraken_spot_btcusd',
+        profile_name='trade_parity_kraken_spot_btcusd',
         symbol=SYMBOL,
         # The VENUE, not the tick source: `adapter_type='mock'` is what makes this a mock
         # session, while broker_type names the market whose rules apply — and since #476 the

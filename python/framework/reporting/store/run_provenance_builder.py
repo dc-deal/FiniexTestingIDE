@@ -40,7 +40,7 @@ from python.framework.types.data_origin_types import (
 )
 from python.framework.types.git_info_types import GitInfo
 from python.framework.types.log_layout_types import (
-    RUN_TYPE_LIVE,
+    RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
 )
 from python.framework.types.run_origin_types import CodeIdentity, ComponentRole
@@ -134,7 +134,7 @@ def build_run_provenance(
         decision_logic_type=strategy_config.get('decision_logic_type', ''),
         decision_version=decision_version,
         worker_versions=worker_versions,
-        config_snapshot=json.dumps(strategy_config, sort_keys=True),
+        strategy_config_json=json.dumps(strategy_config, sort_keys=True),
         symbols=sorted({s.symbol for s in scenarios}),
         data_broker_type=','.join(sorted({s.data_broker_type for s in scenarios})),
         sweep_id=sweep_context.sweep_id if sweep_context else None,
@@ -159,13 +159,14 @@ def build_run_provenance_from_session(
     *,
     run_dir: Optional[Path],
     logger: AbstractLogger,
+    replayed_scenario: Optional[SingleScenario] = None,
 ) -> RunProvenance:
     """
-    Build a live session's provenance bundle for the results ledger.
+    Build an AutoTrader session's provenance bundle for the results ledger.
 
-    The live counterpart to build_run_provenance: the profile's strategy_config has the same
+    The AutoTrader counterpart to build_run_provenance: the profile's strategy_config has the same
     shape as a sim scenario's, so the param_hash + component versions are directly comparable
-    to the backtest. A live session is never swept (sweep tagging stays None); an emergency
+    to the backtest. An AutoTrader session is never swept (sweep tagging stays None); an emergency
     (total failure) → ledger status 'error'.
 
     Args:
@@ -181,6 +182,8 @@ def build_run_provenance_from_session(
             deletable (§44); None when the session has no run directory, which reads as unknown
         logger: The session's own logger — where an unreadable header is reported, so the
             operator finds it beside the session instead of only in the global log
+        replayed_scenario: A mock session's scenario after the mount filled what it read. Its
+            consumption is recorded exactly as a backtest's; None for a live-adapter session
 
     Returns:
         The provenance bundle
@@ -206,23 +209,29 @@ def build_run_provenance_from_session(
         decision_logic_type=strategy_config.get('decision_logic_type', ''),
         decision_version=decision_version,
         worker_versions=worker_versions,
-        config_snapshot=json.dumps(strategy_config, sort_keys=True),
+        strategy_config_json=json.dumps(strategy_config, sort_keys=True),
         symbols=[config.symbol],
         data_broker_type=config.broker_type,
-        # A live session consumes a socket, not an archive, so the consumption record is empty
-        # and `input_plane` is what says that on purpose rather than by omission.
-        input_plane='stream',
-        # The ONE exception to that emptiness, and the one place config is the right source:
-        # a live session renders its bars at runtime from `tick.price`, so there is no file to
-        # carry a stamp and nothing can be out of date with the declaration. Leaving it blank
-        # would defeat the field — the parity proof has to compare the live basis against the
-        # backtest's, and `input_plane='stream'` is what tells a reader this one is DECLARED
-        # rather than measured (§31c).
-        price_bases=MarketConfigManager().get_price_formation(config.broker_type).value,
+        # A mock session REPLAYS the archive, so it records what it read exactly as a backtest
+        # does. It used to be stamped as a stream like every AutoTrader session, which recorded
+        # "a socket, nothing read" for sessions that had read tick files.
+        **(consumption_record([replayed_scenario]) if replayed_scenario is not None else {
+            # A live-adapter session consumes a socket, not an archive, so the consumption
+            # record is empty and `input_plane` is what says that on purpose rather than by
+            # omission.
+            'input_plane': 'stream',
+            # The ONE exception to that emptiness, and the one place config is the right
+            # source: such a session renders its bars at runtime from `tick.price`, so there is
+            # no file to carry a stamp and nothing can be out of date with the declaration.
+            # Leaving it blank would defeat the field — the parity proof has to compare the
+            # live session's price basis against the backtest's, and `input_plane='stream'` is
+            # what tells a reader this one is DECLARED rather than measured.
+            'price_bases': MarketConfigManager().get_price_formation(config.broker_type).value,
+        }),
         deployment_id=deployment_id,
         bot_id=config.bot_id,
         profile_hash=_profile_fingerprint(config),
-        run_type=RUN_TYPE_LIVE,
+        run_type=RUN_TYPE_AUTOTRADER,
     )
 
 
@@ -290,7 +299,7 @@ def _plain(value: Any) -> Any:
 # run's own identity rather than its configuration: a renamed profile or a moved file is not
 # an operational change.
 _NON_OPERATIONAL_FIELDS = frozenset({
-    'strategy_config', 'config_path', 'name', 'symbol', 'broker_type', 'scenario_settings',
+    'strategy_config', 'config_path', 'profile_name', 'symbol', 'broker_type', 'scenario_settings',
 })
 
 
@@ -379,7 +388,7 @@ def _read_code_identity(run_id: str, run_dir: Optional[Path],
     Which runs reach the ledger decides what "missing" means here, and it was checked rather than
     assumed: both report coordinators write into the run directory the header was written into,
     a simulation always captures a code identity when it is commissioned to report — and only
-    such a run is given a report coordinator — and a live session always captures one. So a
+    such a run is given a report coordinator — and an AutoTrader session always captures one. So a
     header without one is either a run whose header could not be read, or a caller that built
     provenance for a run nobody started (a unit test). Both are UNKNOWN, and are said to be.
 

@@ -11,23 +11,23 @@ as an order of its own** — opt-in, default OFF.
 
 ## 1 · The local check, and the hole it cannot close
 
-A declared level is evaluated by **this process**, against the tick stream, in both pipelines.
-When it is breached the position is closed: live through the normal asynchronous close, so the
-exit fills at the venue's next price; in simulation through a synthetic close at exactly the
-level, which is what keeps a backtest deterministic. **A backtest therefore reports protected
-exits slightly better than live can deliver them**, and that difference is pinned by tests rather
-than smoothed over.
+A declared level is evaluated by **this process**, against the tick stream, in both pipelines. When
+it is breached the position is closed: in an AutoTrader session through the normal asynchronous
+close, so the exit fills at the venue's next price; in simulation through a synthetic close at
+exactly the level, which is what keeps a backtest deterministic. **A backtest therefore reports
+protected exits slightly better than a real-money session can deliver them**, and that difference is
+pinned by tests rather than smoothed over.
 
-**Until #500 a live level was enforced by nobody.** The engine skipped its own check outside the
-simulation, on the stated assumption that the broker enforced it server-side — but the submit
-payload never carried a level, so the assumption was never true. The level was recorded on the
-position, shown to the strategy, printed on the console and carried into the run report, and
+**Until #500 a level in an AutoTrader session was enforced by nobody.** The engine skipped its own
+check outside the simulation, on the stated assumption that the broker enforced it server-side — but
+the submit payload never carried a level, so the assumption was never true. The level was recorded
+on the position, shown to the strategy, printed on the console and carried into the run report, and
 nothing acted on it. Kraken's own answer to a submit carrying `stop_loss` confirmed it: the order
 came back described without any conditional close.
 
 | | Covered by the local check |
 |---|---|
-| The price moves while we are running and connected | ✅ live ticks come from the venue's trade channel, so every price it printed reaches the check |
+| The price moves while we are running and connected | ✅ a live-adapter session's ticks come from the venue's trade channel, so every price it printed reaches the check |
 | Our process dies, or the connection drops | ❌ nothing watches the level until we are back |
 | The venue gaps past the level | partly — the exit is market-on-trigger, so it fills below a long's stop |
 
@@ -47,13 +47,13 @@ a position adopted at cold start — which are the two states an unattended mont
 time.
 
 A **standalone stop order** has none of those limits, and Kraken Spot accepts one. Since #500 the
-live path routes `STOP` and `STOP_LIMIT`, so a strategy can place its own; since #503 the
+live execution stack routes `STOP` and `STOP_LIMIT`, so a strategy can place its own; since #503 the
 framework places one for a declared `stop_loss`.
 
 > **A premise this project once held is false, and was corrected by measurement (2026-09-07):** a
 > cash account does NOT reserve the whole holding per resting exit. Kraken reserves nothing and
 > **links** nothing. That is the reason OCO and orphan cleanup are OUR work rather than the
-> venue's, and it shapes every rule in §4.
+> venue's, and it shapes every rule in *The order's life* below.
 
 ---
 
@@ -67,8 +67,8 @@ framework places one for a declared `stop_loss`.
                     ⊕  adapter capability        →  refused where the venue cannot carry it
 ```
 
-- **Live**, venue cannot carry it → the session **refuses to start** (a per-order rejection would
-  reject every protected entry one at a time, and each would read as an isolated incident).
+- **Live adapter**, venue cannot carry it → the session **refuses to start** (a per-order rejection
+  would reject every protected entry one at a time, and each would read as an isolated incident).
 - **Mock / simulation** → the flag is **accepted and ignored**. A strategy that opts in must stay
   backtestable and rehearsable, and sim/live parity is the point of the project.
 
@@ -201,7 +201,7 @@ a stop can always read who is behind it.
 
 ## What is measured, and what is not
 
-- **Measured against the live venue:** placement, the stamp, the amend, the cancel-before-close
+- **Measured against the real venue:** placement, the stamp, the amend, the cancel-before-close
   ordering, and the release — the field study's `protective_level_test` phase proves the whole
   sequence end to end on a real account, and is part of the release gate.
 - **Not measured:** a protective order that the venue fills only PARTIALLY. The resolver is built

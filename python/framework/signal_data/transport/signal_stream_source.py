@@ -87,7 +87,8 @@ FrameModel = TypeVar('FrameModel', bound=BaseModel)
 # has published a socket yet, so none of them can be shut down from another thread, and a
 # stop landing inside one waits it out. Bounding it at the watchdog meant a session end
 # could hold for a minute against an unreachable producer — measured 58 s at the served
-# 20 s keep-alive — and in a live session that wait sits ahead of closing open positions.
+# 20 s keep-alive — and in a live-adapter session that wait sits ahead of closing open
+# positions.
 CONNECT_TIMEOUT_S = 10.0
 
 # The smallest watchdog the transport will use, whatever the producer serves. Guards the
@@ -97,7 +98,7 @@ MINIMUM_WATCHDOG_S = 1.0
 # How long a session end waits for the reader thread before abandoning it. Short on
 # purpose: after the socket is shut down a blocked read returns at once, so the only phase
 # that can outlast this is a connect nothing can interrupt — and a session end must not
-# wait that out. In a live session `stop()` runs BEFORE open positions are closed, so a
+# wait that out. In a live-adapter session `stop()` runs BEFORE open positions are closed, so a
 # patient shutdown here is a patient shutdown in front of the thing that actually matters.
 # The thread is a daemon; abandoning it costs a reported error, not a leak.
 SHUTDOWN_JOIN_BUDGET_S = 2.0

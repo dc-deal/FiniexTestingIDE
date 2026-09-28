@@ -45,7 +45,7 @@
   },
   "scenarios": [
     {
-      "name": "DASHUSD_sandbox_01",
+      "scenario_name": "DASHUSD_sandbox_01",
       "symbol": "DASHUSD",
       "data_broker_type": "mt5",
       "start_date": "2026-01-25T10:00:00+00:00",
@@ -58,7 +58,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "DASHUSD_sandbox_02",
+      "scenario_name": "DASHUSD_sandbox_02",
       "symbol": "DASHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-25T16:00:00+00:00",

@@ -8,7 +8,7 @@ them at midnight UTC: the session-log rotation, the daily-loss baseline (#314), 
 it exists — the record seal. Midnight UTC is right for crypto by coincidence and wrong for
 forex, whose day flips at the swap rollover (17:00 America/New_York). Two further
 consequences of deriving it from the TICK: a silent feed over the boundary misses it
-entirely, and a replay and a live session can disagree.
+entirely, and a replay and a live-adapter session can disagree.
 
 Pure functions over an anchor and an instant — no tick, no config manager, no state. The
 anchor is resolved once by `MarketConfigManager.get_trading_day_anchor`; the caller passes
@@ -16,7 +16,7 @@ the instant from the CANONICAL clock, which the heartbeat advances while the mar
 
 The trading day is labelled by the calendar date, in the anchor's own timezone, on which it
 OPENED. So the forex session that begins Monday 17:00 New York is Monday's, not Tuesday's.
-It is an internal segment label rather than a venue statement; what it has to be is the same
+It is an internal period label rather than a venue statement; what it has to be is the same
 answer everywhere, which is the whole reason this module exists.
 """
 

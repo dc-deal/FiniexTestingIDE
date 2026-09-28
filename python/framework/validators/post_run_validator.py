@@ -125,7 +125,7 @@ class PostRunValidator:
             'use a non-debug run for performance numbers.'))
 
     def _check_stress_test(self) -> None:
-        """Warn when any scenario has active stress tests (shared with the live session check)."""
+        """Warn when any scenario has active stress tests (shared with the AutoTrader check)."""
         finding = check_stress_test(
             [(s.name, s.stress_test_config) for s in self._batch.single_scenario_list],
             _SCENARIO_UNIT_LABEL)
@@ -133,7 +133,7 @@ class PostRunValidator:
             self._add_finding(finding)
 
     def _check_unversioned_code(self) -> None:
-        """Warn when the run's code lies under no version control (shared with the live session)."""
+        """Warn when the run's code lies under no version control (shared with the AutoTrader)."""
         finding = check_unversioned_code(self._code_identity)
         if finding is not None:
             self._add_finding(finding)

@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - AutotraderMain
-Live trading runner: Ticks → Workers → DecisionLogic → LiveTradeExecutor.
+AutoTrader runner: Ticks → Workers → DecisionLogic → LiveTradeExecutor.
 
 Threading model 8.a: sync algo loop in main thread,
 tick source in separate thread, queue.Queue communication.
@@ -23,6 +23,7 @@ from python.framework.autotrader.autotrader_startup import (
 )
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.cold_start_setup import ColdStartSetup, setup_cold_start
+from python.framework.autotrader.dry_run_resolver import resolve_dry_run
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.reporting.autotrader_report_coordinator import (
     AutotraderReportCoordinator,
@@ -36,10 +37,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.exceptions.code_identity_errors import CodeIdentityCaptureError
-from python.framework.exceptions.live_execution_errors import (
-    DryRunConflictError,
-    OneOffInsideDeploymentError,
-)
+from python.framework.exceptions.live_execution_errors import OneOffInsideDeploymentError
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -75,6 +73,7 @@ from python.framework.types.persistence_types import (
 )
 from python.framework.types.process_data_types import ProcessDataPackage
 from python.framework.types.run_origin_types import CodeIdentity, RunChannel
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.signal_data_types import (
     SignalObservedSeries,
 )
@@ -124,7 +123,7 @@ def _mint_deployment_id(run_timestamp: datetime) -> str:
 
 class AutotraderMain:
     """
-    Live trading runner for FiniexTestingIDE.
+    AutoTrader runner for FiniexTestingIDE.
 
     Mirrors the backtesting process_tick_loop but for live execution:
     - Tick source runs in a separate thread (Threading model 8.a)
@@ -196,7 +195,10 @@ class AutotraderMain:
         # (signal source, symbol) → coverage + window, from the same shared preparation
         # the sim batch uses — the 📡 report section reads it (#433).
         self._signal_scenario_map: Dict[Tuple[str, str], SignalScenarioInfo] = {}
-        # Live counterpart of the prepared map: a live session has no archive to read its
+        # The replayed scenario of a mock session, after the mount filled what it read; None for
+        # a live-adapter session, which reads a socket and no archive.
+        self._replayed_scenario: Optional[SingleScenario] = None
+        # Live counterpart of the prepared map: a live-adapter session has no archive to read its
         # signal facts out of, so the transport accumulates them as envelopes pass through.
         self._signal_observed: Optional[SignalObservedAccumulator] = None
         # #141 Part 2a: the live signal transport and its hand-off buffer. Both stay None
@@ -326,9 +328,8 @@ class AutotraderMain:
         if self._deployment_id:
             carried = self._carried.deployment_id == self._deployment_id
             self._session_logger.info(
-                f'🔗 Deployment {self._deployment_id} — '
-                f'{"continuing" if carried else "starting"} a continuous run; this session\'s '
-                f'ledger row joins that history')
+                f'🔗 {"Continuing" if carried else "Starting"} deployment {self._deployment_id} — '
+                "this session's ledger row joins that history")
         else:
             self._session_logger.info(
                 '🔗 One-off session — its ledger row names no deployment. '
@@ -364,6 +365,7 @@ class AutotraderMain:
                     self._config, self._session_logger)
                 self._data_package = prepared.package
                 self._signal_scenario_map = prepared.signal_scenario_map
+                self._replayed_scenario = prepared.scenario
 
             # === PIPELINE ===
             # Pipeline objects get session_logger — they produce per-tick output.
@@ -730,7 +732,7 @@ class AutotraderMain:
                 and isinstance(self._executor, LiveTradeExecutor)
                 and self._decision_logic.uses_state_persistence()):
             # Boot pre-flight: a non-serializable snapshot must fail loudly NOW
-            # (startup), not after hours of live trading.
+            # (startup), not hours into the session.
             validate_state_snapshot_serializable(self._decision_logic)
             weekend_aware = MarketConfigManager().has_weekend_closure(self._config.broker_type)
             self._state_store = AlgoStateStore(
@@ -804,7 +806,7 @@ class AutotraderMain:
             signal_inbox=self._signal_inbox,
             signal_transport=self._signal_transport,
             # #444: the planned tick-plane stale windows a mock profile declared. None on
-            # every live session, so the loop runs exactly as it did before.
+            # every live-adapter session, so the loop runs exactly as it did before.
             stale_stress_driver=self._stale_stress_driver,
             display_label_cache=self._display_label_cache,
             drift_auditor=self._drift_auditor,
@@ -814,9 +816,9 @@ class AutotraderMain:
             state_store=self._state_store,
             risk_baseline=self._risk_baseline,
             # The FLOOR this session's booking periods continue from (#537). Read from the
-            # carry-over the boot already opened, so a restarted deployment's Hauptbuch has one
+            # carry-over the boot already opened, so a restarted deployment's ledger has one
             # unbroken sequence instead of a second period 1.
-            carried_segment_no=self._carried.highest_segment_no,
+            carried_period_no=self._carried.highest_period_no,
             # Wired wherever a write can actually happen: a dry run and a refused boot
             # must not persist, which `persist` already answers on its own.
             # It used to be gated on SPOT as well, because a margin session has no book
@@ -1084,7 +1086,7 @@ class AutotraderMain:
             result.safety_session = self._tick_loop.get_safety_session()
             # Seals the period that was still running, so the final and necessarily
             # incomplete one is filed like every other (#537).
-            result.booking_segments = self._tick_loop.get_booking_segments()
+            result.booking_periods = self._tick_loop.get_booking_periods()
             # Directly after the seal, and inside this block for the reason the next comment
             # gives: the floor can only be final once the last period is sealed, and a failed
             # write has to reach the error pot that is taken a few lines below.
@@ -1127,6 +1129,7 @@ class AutotraderMain:
             global_logger=self._global_logger,
             broker_config=self._executor.broker if self._executor else None,
             signal_scenario_map=self._signal_scenario_map,
+            replayed_scenario=self._replayed_scenario,
             observed_feed=self._collect_observed_feed(),
             deployment_id=self._deployment_id,
         ).generate_and_log()
@@ -1257,9 +1260,9 @@ class AutotraderMain:
                     f'keeps running inside it, so two columns of one table would describe '
                     f'different periods.\n'
                     f'  • starting over on purpose?  --new-deployment\n'
-                    f'  • just trying something?     copy the profile and give it its own name\n'
+                    f'  • just trying something?     copy the profile and give it its own `bot_id`\n'
                     f'  • only probing before you deploy? that is what --one-off is for, and '
-                    f'it belongs BEFORE the first continuous start')
+                    f"it belongs BEFORE the deployment's first start")
             return ''
         if self._new_deployment:
             return _mint_deployment_id(run_timestamp)
@@ -1391,7 +1394,7 @@ class AutotraderMain:
         refused, which must not let a restart loop consume its own key window.
 
         A failure is logged to the session channel and swallowed — a carry-over problem must
-        never end a live trading session. It is REPORTED, though: the caller that watches the
+        never end an AutoTrader session. It is REPORTED, though: the caller that watches the
         open book only advances its state on a write that went through, so a failed write is
         retried on the next pass instead of being forgotten.
 
@@ -1425,8 +1428,8 @@ class AutotraderMain:
                 # 0 before the loop exists — the carry-over is written at BOOT too, and the
                 # store treats the value as a FLOOR, so a zero leaves the stored count alone
                 # rather than resetting a deployment's period numbering to the start.
-                highest_segment_no=(
-                    self._tick_loop.get_highest_segment_no() if self._tick_loop else 0),
+                highest_period_no=(
+                    self._tick_loop.get_highest_period_no() if self._tick_loop else 0),
                 keys_in_use=self._cold_start.keys_in_use if venue else None,
                 # SPOT only. A spot holding is a balance the venue cannot describe as a
                 # position, so it only survives a restart if WE write it down; a margin
@@ -1498,7 +1501,7 @@ class AutotraderMain:
         A partial write is what the store is built for, so this second write cannot contradict
         the first: a FLOOR for the counters, and "leave alone" for everything the venue owns.
         A failure is logged and swallowed for the same reason as the write above — a carry-over
-        problem must never end a live trading session.
+        problem must never end an AutoTrader session.
         """
         if not (self._cold_start.persist
                 and self._cold_start.store
@@ -1513,7 +1516,7 @@ class AutotraderMain:
                 # the drawdown curve and the deployment identity.
                 session_key='',
                 highest_position_counter=0,
-                highest_segment_no=self._tick_loop.get_highest_segment_no(),
+                highest_period_no=self._tick_loop.get_highest_period_no(),
                 # OUR OWN record, like the floor above — never a claim about the venue — so it
                 # rides this write without the dry-run split the first one needs.
                 account_drawdown=self._executor.portfolio.get_account_drawdown_carry_over(),
@@ -1541,7 +1544,7 @@ class AutotraderMain:
         certificate could not contradict a `realized_cost` of zero.
 
         ORDER COUNT still comes from the flat check where there is one; without a reconciler
-        (a mock dress rehearsal) the executor's own order book answers, so the certificate's
+        (a mock session) the executor's own order book answers, so the certificate's
         end-criterion still resolves.
 
         Args:
@@ -1633,33 +1636,10 @@ class AutotraderMain:
         """
         Whether this session simulates order execution instead of placing real orders.
 
-        Mock adapter is always dry-run. Otherwise the broker's market_config setting
-        applies, which a profile may TIGHTEN but never loosen: `dry_run: true` in the
-        profile wins over a live broker default, while `dry_run: false` against a
-        dry-run broker default is refused rather than honoured or ignored.
-
-        The asymmetry is deliberate. A profile is a per-run file that gets copied and
-        edited; the broker setting is the operator's standing posture. Letting a profile
-        switch real money ON would put that decision in the most easily-shared place,
-        and silently ignoring the attempt would leave a file claiming a safety it does
-        not have — which is exactly how a profile marked `dry_run: true` was read as an
-        observation run while the broker default said otherwise.
+        One rule for the whole session, shared with the broker setup that arms the adapter
+        (`dry_run_resolver.resolve_dry_run`).
 
         Returns:
             True if dry-run mode
         """
-        if self._config.adapter_type == 'mock':
-            return True
-        broker_default = MarketConfigManager().get_dry_run(self._config.broker_type)
-        profile_override = self._config.dry_run
-        if profile_override is None:
-            return broker_default
-        if broker_default and not profile_override:
-            raise DryRunConflictError(
-                f"Profile '{self._config.name}' sets dry_run=false, but "
-                f"market_config.json has dry_run=true for broker "
-                f"'{self._config.broker_type}'. A profile may only tighten the dry-run "
-                f"posture, never loosen it — enabling real orders is a deliberate change "
-                f"to market_config.json (or its user_configs override)."
-            )
-        return profile_override
+        return resolve_dry_run(self._config)

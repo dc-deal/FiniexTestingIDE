@@ -564,7 +564,7 @@ It is standard exchange/broker behavior to not render bars for time periods wher
 | Data gap (collector outage) | No bars (time jump) | Data quality problem detected via gap detection |
 | Crypto weekend | Normal bars | 24/7 market, no closure |
 
-This behavior is consistent across all three renderers: `VectorizedBarRenderer` (batch import), `BarRenderer` (tick loop / backtesting), and live operation.
+This behavior is consistent across all three renderers: `VectorizedBarRenderer` (batch import), `BarRenderer` (tick loop / backtesting), and AutoTrader sessions.
 
 The market closure behavior is controlled by `market_config.json` → `market_rules.{market_type}.weekend_closure`. Forex has `weekend_closure: true`, Crypto has `weekend_closure: false`.
 

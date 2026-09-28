@@ -14,9 +14,9 @@ The project uses three rendering contexts:
 |---------|----------|------|
 | Backtesting | BarRenderer | Tick-by-tick streaming |
 | Import Pipeline | VectorizedBarRenderer | Pandas batch (resample) |
-| Live Trading | BarRenderer | Tick-by-tick streaming |
+| AutoTrader session | BarRenderer | Tick-by-tick streaming |
 
-If the renderers diverge, backtesting results won't match imported data, and live trading signals could differ from historical analysis.
+If the renderers diverge, backtesting results won't match imported data, and AutoTrader signals could differ from historical analysis.
 
 ## What Is Tested
 
@@ -70,7 +70,7 @@ central place where trades happen. Nothing asserted that a bar price is positive
 archive of zeros in silence. Both venues are checked.
 
 **The renderer refuses an unnormalized frame.** It is a pure transformation running in a
-worker pool, so it does not resolve the basis itself — resolving there would mean one config
+worker pool, so it does not resolve the price basis itself — resolving there would mean one config
 read per process and a second copy of the rule. `read_tick_parquet` derives the `price` column
 and every consumer inherits it; a frame that bypassed the reader is refused by name.
 

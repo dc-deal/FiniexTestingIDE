@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Unit tests for what the live pipeline resolves BEFORE a session starts — the settings that
+Unit tests for what the AutoTrader pipeline resolves BEFORE a session starts — the settings that
 decide whether real orders are sent and what they are expected to cost. Everything here runs
 offline with a stubbed fetcher; nothing reaches a venue.
 
@@ -27,7 +27,7 @@ Two halves:
 - **`_resolve_deployment()`, every combination.** The profile declares, `--one-off` and
   `--new-deployment` may only narrow. The case that matters most is the one that must NOT work:
   no flag can promote a profile declaring `false`, because an unattended restart re-executes a
-  command nobody typed and a command-line deployment would fragment at exactly the restarts it
+  command nobody typed and a command-line deployment would break apart at exactly the restarts it
   exists to span.
 
 Plus a sweep over every tracked profile asserting the block is actually there — the loadability
@@ -47,7 +47,7 @@ It has TWO jobs, and the second runs even when the first is switched off:
   the session.
 - **REPORT** — a divergence WARNS either way. Measured 2026-09-08, the declared rates were half
   the account's real tier and nothing said so; the warning is what turns that from invisible
-  into a line in the session channel (§35).
+  into a line in the session channel, which reaches the session summary.
 
 | Test | Description |
 |------|-------------|
@@ -60,9 +60,9 @@ It has TWO jobs, and the second runs even when the first is switched off:
 
 ### `test_startup_guards.py` (#503, finding 205)
 
-`setup_pipeline` is the one path every live session is obliged to walk, and until 2026-09-10 no
+`setup_pipeline` is the one path every AutoTrader session is obliged to walk, and until 2026-09-10 no
 test imported it — so every one of its abort conditions was unverified, including the three that
-predate this file. §35 puts pre-run problems in the ABORT class precisely because a session that
+predate this file. A pre-run problem ABORTS an AutoTrader session precisely because a session that
 starts wrong cannot be corrected later: it trades, or refuses to trade, for as long as nobody is
 watching.
 
@@ -71,16 +71,16 @@ assert what it REFUSES, which is reachable before the heavy construction.
 
 | Test | What it verifies |
 |---|---|
-| `test_a_live_session_refuses_to_start` | A profile-wide `venue_held_protection` opt-in against a venue that cannot carry one aborts the session. Left to the submit path it would reject every protected entry one at a time, and each would read as an isolated incident rather than one wrong line in the profile |
+| `test_a_live_session_refuses_to_start` | A live-adapter session: a profile-wide `venue_held_protection` opt-in against a venue that cannot carry one aborts the session. Left to the submit path it would reject every protected entry one at a time, and each would read as an isolated incident rather than one wrong line in the profile |
 | `test_the_refusal_names_both_sides` | The message names the profile switch AND the broker, and says the per-order route is refused the same way |
-| `test_a_mock_rehearsal_is_not_stopped` | The refusal is LIVE-only. A mock session builds a `MockBrokerAdapter` whatever its `broker_type` says, so it can never carry a protective order — refusing there would make an opted-in profile unrehearsable, the same mistake the simulation avoids by accepting the flag and changing nothing. It warns once and ignores the switch for the run |
+| `test_a_mock_rehearsal_is_not_stopped` | The refusal is for live-adapter sessions only. A mock session builds a `MockBrokerAdapter` whatever its `broker_type` says, so it can never carry a protective order — refusing there would make an opted-in profile unrehearsable, the same mistake the simulation avoids by accepting the flag and changing nothing. It warns once and ignores the switch for the run |
 | `test_the_switch_is_off_by_default` | A profile that never mentions it starts against any venue. Opting in changes what the bot does with real money, so a session must never acquire the behaviour by accident |
 | `test_a_profile_that_resolves_no_balances_refuses` | One of the older guards, covered for the first time |
 | `test_a_resting_logic_without_a_cold_start_hook_refuses` · `test_and_the_same_profile_starts_with_it` | #493's guard, proven at its WIRING rather than at its rule — the rule has its own suite in `tests/autotrader/cold_start/`; what was never executed is that `setup_pipeline` asks it at all. A bot whose logic can leave an order resting must answer for finding one there after a 03:00 restart, and the boot is the only place that refusal is still cheap |
 
 ### `test_session_origin.py` (#551)
 
-Where a live session says it came from and which code it runs. The live header site differs from
+Where an AutoTrader session says it came from and which code it runs. The AutoTrader header site differs from
 the simulation's in one way: the code identity is captured BEFORE the header and kept on the
 session, because the startup guard asks it whether real orders would run from uncommitted code —
 and that answer must not depend on a run directory having been created. The capture itself is
@@ -104,7 +104,7 @@ the session's loggers exist.
 A session whose EFFECTIVE `dry_run` resolves to false refuses to start while any repository it
 loads code from is dirty, unversioned or unreadable — unless `--allow-dirty` is typed, which the
 session log states before the first order and the post-run validation reports as a Tier-1
-warning. The parity backtest after a live run needs the code that ran, and a strategy can sit
+warning. The parity backtest after a real-money session needs the code that ran, and a strategy can sit
 untracked in its own repository, where this repository's commit says nothing about it.
 
 Built on the SimpleNamespace + patched `MarketConfigManager` pattern of

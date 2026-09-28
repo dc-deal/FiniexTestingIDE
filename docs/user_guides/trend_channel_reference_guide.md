@@ -23,11 +23,11 @@ surface**:
 | Resting-order **re-price / cancel** | the resting entry follows the band, and is cancelled if the trend gate flips |
 | **Cold-start answer** (#493) | `on_cold_start` — what to do when a restart finds one of its own orders still resting at the venue |
 
-> **Who enforces what, if you run this live.** The two RESTING ENTRIES are real orders at the
+> **Who enforces what, if you run this on a live adapter.** The two RESTING ENTRIES are real orders at the
 > venue: `stop_breakout` places a Kraken `stop-loss` and `limit_pullback` a `limit`, so both
 > survive this process dying and both are cancelled or left standing by the session-end policy.
 > The **SL/TP and the trailing stop are levels on the position**, enforced by this framework
-> against the tick stream — in live exactly as in a backtest (#500). **Since #503 the stop can
+> against the tick stream — in an AutoTrader session exactly as in a backtest (#500). **Since #503 the stop can
 > also rest at the venue**: switch `autotrader.execution.venue_held_protection` on in the profile
 > (default OFF) and the framework places a real STOP for the declared `stop_loss` once the entry
 > fills, so it survives this process dying. Only the stop — Kraken has no OCO, so the take profit

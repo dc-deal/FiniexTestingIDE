@@ -64,8 +64,8 @@ class ScenarioLogger(AbstractLogger):
             file_name_prefix_override: Custom file name prefix (bypasses config). E.g., 'autotrader' → autotrader_<name>.log
             use_scenario_logs_subdir: Place log file in scenario_logs/ subdir (backtesting per-scenario logs only)
             event_time_column: This log lies on the run's own time axis, so every line carries
-                the event-time column. True for the per-scenario logs and the live session log;
-                false for the run-level logs (global, summary, system info), which describe the
+                the event-time column. True for the per-scenario logs and the AutoTrader session
+                log; false for the run-level logs (global, summary, system info), which describe the
                 run from outside rather than from a moment inside it
             flat_log_filename: Write this ONE file directly into log_root_override instead of
                 opening a <owner>/<run_timestamp>/ run directory. For output that describes
@@ -85,7 +85,7 @@ class ScenarioLogger(AbstractLogger):
 
         if self._file_logging_config.scenario_enabled:
             # Create scenario run directory
-            # The caller hands over the root it belongs to — a live session, a standalone
+            # The caller hands over the root it belongs to — an AutoTrader session, a standalone
             # run, or one sweep's combinations. They come from config (file_logging.run_logs),
             # which is the same source the API reads.
             log_root = (log_root_override if log_root_override

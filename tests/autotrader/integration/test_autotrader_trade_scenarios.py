@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - AutoTrader Trade Scenario Tests
 Validates SL/TP close paths, duplicate signal guard, and minimal warmup
-through the AutoTrader mock pipeline.
+through a mock AutoTrader session.
 
 Profile calibration (BTCUSD parquet, entry bid ~89308 at tick 10):
   - SL=89200: bid drops below that level at tick ~1768
@@ -17,10 +17,10 @@ from python.framework.types.log_level import LogLevel
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
-_PROFILE_SL = 'configs/autotrader_profiles/backtesting/sl_triggered_test.json'
-_PROFILE_TP = 'configs/autotrader_profiles/backtesting/tp_triggered_test.json'
-_PROFILE_DUPLICATE = 'configs/autotrader_profiles/backtesting/duplicate_signal_guard_test.json'
-_PROFILE_WARMUP = 'configs/autotrader_profiles/backtesting/minimal_warmup_test.json'
+_PROFILE_SL = 'configs/autotrader_profiles/mock/sl_triggered_test.json'
+_PROFILE_TP = 'configs/autotrader_profiles/mock/tp_triggered_test.json'
+_PROFILE_DUPLICATE = 'configs/autotrader_profiles/mock/duplicate_signal_guard_test.json'
+_PROFILE_WARMUP = 'configs/autotrader_profiles/mock/minimal_warmup_test.json'
 
 
 def _make_session_fixture(profile: str):

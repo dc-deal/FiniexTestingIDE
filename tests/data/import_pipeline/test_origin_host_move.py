@@ -27,7 +27,7 @@ def _block(host: str, instance_id: str = 'a7f21c0b4e88') -> dict:
         instance_id: The identity, shared across hosts unless overridden
 
     Returns:
-        The metadata fragment
+        The metadata block
     """
     return {'origin': {'instance_id': instance_id, 'collected_on': host,
                        'producer': 'finiex-data-collector', 'producer_version': '1.2.1'}}

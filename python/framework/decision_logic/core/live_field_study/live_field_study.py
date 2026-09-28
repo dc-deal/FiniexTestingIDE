@@ -204,7 +204,7 @@ class LiveFieldStudy(AbstractDecisionLogic):
     @classmethod
     def get_required_order_types(cls, decision_logic_config: Dict[str, Any]) -> List[OrderType]:
         # MARKET is always needed; LIMIT only if the configured phase sequence uses a
-        # limit phase — so a limit-free sequence (e.g. the mock dress-rehearsal) can run
+        # limit phase — so a limit-free sequence (e.g. the mock session) can run
         # against a MARKET-only adapter.
         types = [OrderType.MARKET]
         for raw in decision_logic_config.get('phase_sequence', []):
@@ -274,7 +274,9 @@ class LiveFieldStudy(AbstractDecisionLogic):
                 param_type=str, description='Human-readable phase narration', category='INFO',
             ),
             'price': OutputParamDef(
-                param_type=float, min_val=0.0, description='Price at decision time', category='INFO',
+                param_type=float, min_val=0.0,
+                description='Price at decision time — traded where the venue prints one, else mid',
+                category='INFO',
             ),
         }
 

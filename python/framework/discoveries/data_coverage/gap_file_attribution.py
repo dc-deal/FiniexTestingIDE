@@ -15,7 +15,7 @@ import pandas as pd
 
 from python.framework.types.coverage_report_types import Gap
 
-# A file that rolls over during a live session opens at the instant the previous
+# A file that rolls over while the collector runs opens at the instant the previous
 # one closed. Measured over all 5216 archive transitions: 97.5% land within 60 s
 # (p95 = 4 s), the rest is an order of magnitude higher. A few land marginally
 # negative — the new file is opened while the old one still flushes.

@@ -40,7 +40,7 @@
   },
   "scenarios": [
     {
-      "name": "BTCUSD_blocks_01",
+      "scenario_name": "BTCUSD_blocks_01",
       "symbol": "BTCUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-08-01T00:00:00+00:00",
@@ -50,7 +50,7 @@
       "enabled": true
     },
     {
-      "name": "BTCUSD_blocks_02",
+      "scenario_name": "BTCUSD_blocks_02",
       "symbol": "BTCUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-08-04T00:00:00+00:00",
@@ -60,7 +60,7 @@
       "enabled": true
     },
     {
-      "name": "BTCUSD_blocks_03",
+      "scenario_name": "BTCUSD_blocks_03",
       "symbol": "BTCUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-08-07T00:00:00+00:00",
@@ -70,7 +70,7 @@
       "enabled": true
     },
     {
-      "name": "ETHUSD_blocks_01",
+      "scenario_name": "ETHUSD_blocks_01",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-08-01T00:00:00+00:00",
@@ -80,7 +80,7 @@
       "enabled": true
     },
     {
-      "name": "ETHUSD_blocks_02",
+      "scenario_name": "ETHUSD_blocks_02",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-08-04T00:00:00+00:00",
@@ -90,7 +90,7 @@
       "enabled": true
     },
     {
-      "name": "ETHUSD_blocks_03",
+      "scenario_name": "ETHUSD_blocks_03",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-08-07T00:00:00+00:00",
@@ -100,7 +100,7 @@
       "enabled": true
     },
     {
-      "name": "SOLUSD_blocks_01",
+      "scenario_name": "SOLUSD_blocks_01",
       "symbol": "SOLUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-08-01T00:00:00+00:00",
@@ -110,7 +110,7 @@
       "enabled": true
     },
     {
-      "name": "SOLUSD_blocks_02",
+      "scenario_name": "SOLUSD_blocks_02",
       "symbol": "SOLUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-08-04T00:00:00+00:00",
@@ -120,7 +120,7 @@
       "enabled": true
     },
     {
-      "name": "SOLUSD_blocks_03",
+      "scenario_name": "SOLUSD_blocks_03",
       "symbol": "SOLUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-08-07T00:00:00+00:00",

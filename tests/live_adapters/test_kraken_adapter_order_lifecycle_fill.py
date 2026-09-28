@@ -52,7 +52,7 @@ def live_adapter_fill(request, real_orders_authorised):
     with open(_BROKER_CONFIG_PATH, 'r') as f:
         broker_config = json.load(f)
 
-    # The SAME source a live session reads (#505 follow-up). `configs/broker_settings/` was
+    # The SAME source a live-adapter session reads (#505 follow-up). `configs/broker_settings/` was
     # a leftover of the #252 migration that production had stopped reading, so this suite —
     # the only one that spends real money — was proving something about a file nobody obeyed.
     entry = MarketConfigManager().get_broker_entry('kraken_spot')

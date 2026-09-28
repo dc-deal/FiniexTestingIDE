@@ -25,9 +25,16 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.logging.system_info_writer import write_system_version_parameters
+from python.framework.reporting.io.run_header_io import data_windows_of
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.store.run_config_store import RunConfigStore
-from python.framework.types.api.report_types import ParentKind, RunHeader, RunReporting
+from python.framework.types.api.report_types import (
+    OrdersTo,
+    ParentKind,
+    RunHeader,
+    RunReporting,
+    TicksFrom,
+)
 from python.framework.types.config_types.robustness_config_types import RobustnessConfig
 from python.framework.types.log_layout_types import MOUNT_BUILD_LOG, RUN_TYPE_SIMULATION
 from python.framework.types.run_config_types import RunConfigKind
@@ -166,6 +173,11 @@ class ScenarioSet:
                 reporting=reporting,
                 origin=origin,
                 code_identity=self._code_identity,
+                # A backtest replays the archive and simulates every fill — the same two answers
+                # for every simulation run, recorded so the run list needs no rule of its own.
+                ticks_from=TicksFrom.ARCHIVE,
+                orders_to=OrdersTo.SIMULATED,
+                data_windows=data_windows_of(self._scenarios),
             )
             RunIndex(app_config.get_file_logging_config_object().run_index).register_run(
                 header, self.logger.get_log_dir())

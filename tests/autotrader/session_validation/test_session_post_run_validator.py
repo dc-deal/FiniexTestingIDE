@@ -1,11 +1,11 @@
 """
 Session Post-Run Validator Tests.
 
-A live session used to have no validation channel at all: `WarningsErrorsReport` could carry
-Tier-2 rows (the log pot) and nothing else. The visible consequence was that an ACTIVE stress
-config produced no `STRESS TEST ACTIVE` warning live, although the project rule states without
-qualification that every active stress config surfaces as a Tier-1 warning — so a stressed live
-session was indistinguishable from a clean one.
+An AutoTrader session used to have no validation channel at all: `WarningsErrorsReport` could
+carry Tier-2 rows (the log pot) and nothing else. The visible consequence was that an ACTIVE
+stress config produced no `STRESS TEST ACTIVE` warning in an AutoTrader session, although the
+project rule states without qualification that every active stress config surfaces as a Tier-1
+warning — so a stressed mock session was indistinguishable from a clean one.
 
 These tests pin the channel: the validator produces the findings, and they arrive in the report
 as Tier-1 rows carrying their own origin. The stress check is SHARED with the sim batch
@@ -52,12 +52,12 @@ _STRESS = {
 
 
 def _config(stress=None, with_settings=True) -> AutoTraderConfig:
-    """A profile config; `with_settings=False` is a real live session (no mock replay)."""
+    """A profile config; `with_settings=False` is a live-adapter session (no mock replay)."""
     settings = None
     if with_settings:
         settings = ScenarioSettingsConfig(start_date='2026-04-27', stress_test_config=stress)
     return AutoTraderConfig(
-        name='live_probe', symbol='BTCUSD', broker_type='kraken_spot',
+        profile_name='live_probe', symbol='BTCUSD', broker_type='kraken_spot',
         scenario_settings=settings)
 
 
@@ -90,13 +90,13 @@ class TestTheStressWarningReachesALiveSession:
         assert _validated(AutoTraderResult(), _config()) == []
 
     def test_a_session_without_scenario_settings_is_not_an_error(self):
-        """A real live session has no mock-replay settings at all — that is not a finding."""
+        """A live-adapter session has no mock-replay settings at all — that is not a finding."""
         assert _validated(AutoTraderResult(), _config(with_settings=False)) == []
 
 
 class TestTheClippingAdvisory:
     """
-    The one performance verdict a live session can honestly make. It exists BECAUSE the fixed
+    The one performance verdict an AutoTrader session can honestly make. It exists BECAUSE the fixed
     per-component threshold was removed: a ratio is measured against real tick arrival, so it
     says how often the algo failed to keep up — where an absolute millisecond figure could not.
     The line itself is a policy question, so it comes from config, never a constant.
@@ -148,7 +148,7 @@ class TestTheChannelReachesTheReport:
     @staticmethod
     def _report(result: AutoTraderResult, config: AutoTraderConfig):
         SessionPostRunValidator(result, config).validate()
-        return build_warnings_errors_report_from_session(_RUN_ID, result, config.name, config.symbol)
+        return build_warnings_errors_report_from_session(_RUN_ID, result, config.profile_name, config.symbol)
 
     def test_a_finding_becomes_a_tier_1_row_with_its_origin(self):
         report = self._report(AutoTraderResult(), _config(stress=_STRESS))
@@ -220,7 +220,7 @@ class TestTheSharedChecksProduceOneFormula:
 
 class TestCodeUnderNoVersionControl:
     """
-    The simulation's `unversioned_code` warning, on the live side (#551). A real-money session
+    The simulation's `unversioned_code` warning, on the AutoTrader side (#551). A real-money session
     from such code is refused unless `--allow-dirty` let it through, and then that finding names it;
     so this one is the dry-run and mock case — a rehearsal nobody can repeat on the code it ran.
     """

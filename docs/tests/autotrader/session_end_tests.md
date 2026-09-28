@@ -1,12 +1,12 @@
 # Session-End Tests (#492)
 
-What a live session does with what it still holds when it ends — and, more importantly, what
+What an AutoTrader session does with what it still holds when it ends — and, more importantly, what
 it no longer *claims* to have done.
 
 | Item | Value |
 |---|---|
 | Suite path | [tests/autotrader/session_end/](../../../tests/autotrader/session_end/) |
-| Profile | [configs/autotrader_profiles/backtesting/session_end_test.json](../../../configs/autotrader_profiles/backtesting/session_end_test.json) |
+| Profile | [configs/autotrader_profiles/mock/session_end_test.json](../../../configs/autotrader_profiles/mock/session_end_test.json) |
 | Pytest mark | `autotrader` (auto-applied via path) |
 | Launch entries | `🧩 Pytest: Session End (#492)` · `🤖 AutoTrader: BTCUSD Mock - Session End (#492)` |
 | Architecture doc | [session_end_policy.md](../../architecture/session_end_policy.md) — the full treatment, with the order-type map |

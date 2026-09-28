@@ -1,7 +1,7 @@
 # Time Utils UTC Tests
 
 `tests/framework/test_time_utils_utc.py` — that `parse_datetime` and `ensure_utc_aware`
-(`python/framework/utils/time_utils.py`, §9) hand back UTC and nothing else. Runs under the
+(`python/framework/utils/time_utils.py`) hand back UTC and nothing else. Runs under the
 synthetic `framework/_root` suite.
 
 ## Why this file exists at all

@@ -165,7 +165,7 @@ class TestRegressionsThatMotivatedTheResolver:
         """
         Was: every profile without a SIGNAL worker failed startup while a live transport
         was enabled (the interim poll, at the time) — 20 of 24 profiles, including four
-        live trading profiles, both field-study release gates, and mock tests with no
+        live-adapter profiles, both field-study release gates, and mock tests with no
         broker connection at all.
         """
         resolution = SignalSourceResolver.resolve(

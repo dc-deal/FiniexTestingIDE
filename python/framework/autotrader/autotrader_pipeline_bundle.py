@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - AutoTrader Pipeline Bundle
 
-What `setup_pipeline` hands back to a live session: the wired objects the tick loop runs on.
+What `setup_pipeline` hands back to an AutoTrader session: the wired objects the tick loop runs on.
 
 A bundle rather than a tuple, and the reason is the failure it prevents: seven returns in a
 fixed order met seven targets in a fixed order, so two neighbours of related type could be
@@ -40,7 +40,7 @@ class AutotraderPipelineBundle:
         trading_model: SPOT or MARGIN, resolved from the broker config
         display_label_cache: Pre-resolved labels, so the display renders without lookups
         stale_stress_driver: The planned tick-plane stale windows a mock profile declared
-            (#444), None when none is declared — which is every live session
+            (#444), None when none is declared — which is every live-adapter session
     """
     executor: AbstractTradeExecutor
     bar_controller: BarRenderingController

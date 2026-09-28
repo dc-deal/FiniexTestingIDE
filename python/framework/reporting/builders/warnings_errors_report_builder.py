@@ -52,7 +52,7 @@ def build_warnings_errors_report_from_session(
     run_id: str,
     result: AutoTraderResult, name: str, symbol: str) -> WarningsErrorsReport:
     """
-    Build the report for a live session.
+    Build the report for an AutoTrader session.
 
     Args:
         run_id: The run this report belongs to
@@ -184,7 +184,7 @@ def _log_entries(buffer: Optional[list], level: LogLevel) -> list[LogEntryRow]:
 
     Maps rather than reduces: the record reaches DERIVE with level, both times and scope intact,
     and dropping them here would make them unreachable for the artifact and the API alike (#391).
-    Shared by both pipelines — the sim hands its scenario buffer, the live session its own.
+    Shared by both pipelines — the sim hands its scenario buffer, the AutoTrader session its own.
 
     Args:
         buffer: The logger's records, or None when nothing was buffered

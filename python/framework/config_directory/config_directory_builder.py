@@ -143,7 +143,7 @@ def read_scenarios(path: Path, market_type_of: MarketTypeOf) -> List[DirectorySc
         broker_type = _text(scenario.get('data_broker_type'))
         max_ticks = scenario.get('max_ticks')
         entries.append(DirectoryScenario(
-            name=_text(scenario.get('name')),
+            name=_text(scenario.get('scenario_name')),
             symbol=_text(scenario.get('symbol')),
             broker_type=broker_type,
             market_type=market_type_of(broker_type) if broker_type else '',
@@ -206,7 +206,7 @@ def _profile_fields(data: Dict[str, Any], market_type_of: MarketTypeOf) -> Dict[
         raise ConfigFileUnreadable('`symbol` and `broker_type` must be strings')
     dry_run = data.get('dry_run')
     return dict(
-        name=_text(data.get('name')),
+        name=_text(data.get('profile_name')),
         scenarios_declared=1,
         scenarios_enabled=1,
         symbols=[symbol],
@@ -255,7 +255,7 @@ def _merged_strategy(global_strategy: Dict[str, Any], scenario: Dict[str, Any]) 
     """
     override = scenario.get('strategy_config') or {}
     if not isinstance(override, dict):
-        raise ConfigFileUnreadable(f"scenario '{scenario.get('name')}': `strategy_config` is "
+        raise ConfigFileUnreadable(f"scenario '{scenario.get('scenario_name')}': `strategy_config` is "
                                    f'not an object')
     return ScenarioCascade.merge_strategy_config(global_strategy, override)
 

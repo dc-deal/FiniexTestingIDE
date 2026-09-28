@@ -4,7 +4,8 @@ Broker report builder (#391) — the broker-configuration postprocessor.
 Maps a resolved `BrokerConfig` (static broker spec + per-symbol specs) to a `BrokerReport`.
 Two entry points, one shared row mapper:
 - sim batch → one `BrokerInfoRow` per broker (from `broker_scenario_map`: scenarios + symbols);
-- live session → one `BrokerInfoRow` for the session's single broker + symbol (no scenario grid).
+- AutoTrader session → one `BrokerInfoRow` for the session's single broker + symbol (no
+  scenario grid).
 
 Both read the **already-resolved** `BrokerConfig` (its `broker_type` is a `BrokerType` enum),
 never a raw config key — so the sim `data_broker_type` vs. live `broker_type` JSON-key asymmetry
@@ -43,7 +44,7 @@ def build_broker_report_from_batch(run_id: str, batch: BatchExecutionSummary) ->
 
 def build_broker_report_from_session(run_id: str, broker_config: BrokerConfig, symbol: str) -> BrokerReport:
     """
-    Build the broker report for a live session — the single broker + traded symbol.
+    Build the broker report for an AutoTrader session — the single broker + traded symbol.
 
     Args:
         run_id: The run this report belongs to

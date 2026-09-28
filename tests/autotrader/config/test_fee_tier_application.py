@@ -1,5 +1,5 @@
 """
-Which fee rates a live session prices with, and what happens when the venue disagrees.
+Which fee rates a live-adapter session prices with, and what happens when the venue disagrees.
 
 A volume-tiered venue prices per ACCOUNT, so the rate written into a broker config is a guess
 about which tier that account sits in. Measured 2026-09-08 against this project's own Kraken
@@ -13,7 +13,7 @@ Two behaviours are pinned here, and the second one matters more than the first:
 number into a fetched one should be a decision rather than a default.
 
 **Reporting** a divergence is NOT optional. It runs whether the switch is on or off, because
-the BACKTEST reads the git-tracked seed on purpose — a live session that quietly corrected
+the BACKTEST reads the git-tracked seed on purpose — a live-adapter session that quietly corrected
 itself would leave the backtest wrong and silent, which is the state this replaces. Only a
 human can re-freeze the seed, so only a warning can ask for it.
 """

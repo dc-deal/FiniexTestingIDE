@@ -295,7 +295,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
             ),
             'price': OutputParamDef(
                 param_type=float, min_val=0.0,
-                description='Price at decision time',
+                description='Price at decision time — traded where the venue prints one, else mid',
                 category='INFO',
             ),
         }
@@ -367,7 +367,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                         'expect_rejection': expect_rejection,
                         'event_type': 'trade_sequence',
                         'reason': f'Margin stress open {direction} at tick {self.tick_count}',
-                        'price': tick.mid,
+                        'price': tick.price,
                     },
                 )
 
@@ -399,7 +399,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                         'event_type': 'retry',
                         'retry_index': idx,
                         'reason': f'Margin recovery retry at tick {self.tick_count}',
-                        'price': tick.mid,
+                        'price': tick.price,
                     },
                 )
 
@@ -420,7 +420,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                             'position_id': spec.get('position_id', 'FAKE_POS_999'),
                             'edge_index': idx,
                             'reason': f'Edge case: close_nonexistent at tick {self.tick_count}',
-                            'price': tick.mid,
+                            'price': tick.price,
                         },
                     )
                 else:
@@ -447,7 +447,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
                             'edge_index': idx,
                             'expect_rejection': True,
                             'reason': f'Edge case: {edge_type} at tick {self.tick_count}',
-                            'price': tick.mid,
+                            'price': tick.price,
                         },
                     )
 
@@ -456,7 +456,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
             action=DecisionLogicAction.FLAT,
             outputs={
                 'reason': 'No signal',
-                'price': tick.mid,
+                'price': tick.price,
             },
         )
 

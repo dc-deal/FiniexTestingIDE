@@ -9,15 +9,15 @@ from one model, with the derivation off the hot loop.
 
 ```
 CAPTURE  (source-specific, raw)         DERIVE  (shared, pure)            PRESENT  (thin renderers)
-  sim:  List[TradeRecord]  ──┐                                              ┌─► console (text)
-        per scenario        ├─► postprocessor → ReportModel ───────────────┼─► CSV (table)
-  live: List[TradeRecord]  ──┘   (off the hot loop)                         └─► API → frontend (JSON)
-        the session
+  sim:        List[TradeRecord] ──┐                                         ┌─► console (text)
+              per scenario        ├─► postprocessor → ReportModel ──────────┼─► CSV (table)
+  AutoTrader: List[TradeRecord] ──┘   (off the hot loop)                    └─► API → frontend (JSON)
+              the session
 ```
 
 The migrated slices are **trade-history**, **order-history**, **portfolio**, **execution-stats**,
 **pending-orders**, **scenario-details**, and the cross-section **run-summary**. The `RunUnit`
-abstraction (#391 Phase 2, done) lets sim + live share the *same* extraction for every section —
+abstraction (#391 Phase 2, done) lets sim + AutoTrader share the *same* extraction for every section —
 see *Pipeline in detail* below.
 
 > **Report pipeline ≠ live streaming export.** This pipeline is about the *report* — the
@@ -28,24 +28,24 @@ see *Pipeline in detail* below.
 
 ## The pieces
 
-| Layer | Unit | Role |
+| Layer | Module | Role |
 |---|---|---|
 | Model | `framework/types/api/report_types.py` | the canonical, Pydantic, serializable models (the same models the API serves and the console/CSV render). **Every artifact model inherits `RunScopedReport`, whose one required field is `run_id`** (#475): a body that does not name its run cannot be checked against the run that was asked for — measured, two sweep combinations produce byte-identical portfolio bodies, so a consumer receiving the wrong one has nothing to notice it by. The route is not proof; the payload is. Inheriting also puts `run_id` FIRST in every serialized artifact, and the three CSVs carry it as their first COLUMN, on every row, because a CSV is the format that gets exported and merged. Models: `TradeHistoryReport`, `OrderHistoryReport`, `PortfolioReport` (full per-unit projection), `ExecutionStatsReport`, `PendingOrdersReport`, `ScenarioDetailsReport`, `RunSummary` (cross-section KPIs), `WorkerDecisionReport` (per-unit worker + decision performance — incl. the #420 cadence telemetry: per-worker `compute_basis`, compute/tick ratio, last-compute idle), `ProfilingReport` (per-unit operation timing + inter-tick + clipping + run-level aggregate + warmup, sim-only) |
-| Run units | `framework/reporting/builders/run_unit.py` — `RunUnit` (+ `run_units_from_batch` / `run_units_from_session`) | the **unified per-unit source** (#391 Phase 2): the run extracted once into units (sim: N scenarios; live: 1 session), each carrying `name` · `symbol` · the raw trade / order / portfolio / execution sources. Every builder maps from these — no per-section extraction, no flat variants |
+| Run units | `framework/reporting/builders/run_unit.py` — `RunUnit` (+ `run_units_from_batch` / `run_units_from_session`) | the **unified per-unit source** (#391 Phase 2): the run extracted once into units (sim: N scenarios; AutoTrader: 1 session), each carrying `name` · `symbol` · the raw trade / order / portfolio / execution sources. Every builder maps from these — no per-section extraction, no flat variants |
 | Postprocessor | `framework/reporting/builders/{trade_history,order_history,portfolio,execution_stats,pending_orders,worker_decision,scenario_details,profiling,broker,warnings_errors,aggregated_portfolio}_report_builder.py` | **pure** derivation: `RunUnit`s → report. One `build_*_report(run_id, units, …)` per section — `run_id` leads, because the model requires it. The shared filter (trade / order) lives here. `scenario_details` / `profiling` / `broker` / `warnings_errors` are the exceptions — not via `RunUnit`: they read the batch directly (failed scenarios carry no `RunUnit`; `warnings_errors` reads the validation channels + log pots — the verdicts are decided by validators upstream, never here). `aggregated_portfolio` rolls up the per-unit portfolio / execution / pending **rows** |
 | Aggregators | `framework/reporting/builders/report_aggregators.py` | the **measures** over the report rows — one pure `aggregate_*(rows)` per section (trade analytics per currency incl. P&L totals, execution totals, the lean portfolio per-currency roll-up + the rich `aggregate_full_portfolio` for #397). Ratios recomputed from summed components (byte-identical to the retired console `PortfolioAggregator`) |
 | Run summary | `framework/reporting/builders/run_summary_builder.py` — `build_run_summary()` | the **cross-section KPI** composer (#390 prework): joins the per-section aggregates (portfolio roll-up + trade analytics + execution totals) into one run-wide `RunSummary` (per-currency KPIs + global counts) — composes, never re-derives. The single object the sweep / API / console headline reads |
-| Shared core | `framework/reporting/shared_report_coordinator.py` — `SharedReportCoordinator.derive_and_persist(run_id, units, io_dir, signal_scenario_map)` (+ `builders/unified_reports.py` — `UnifiedReports`) | the **units-derived DERIVE+PERSIST core both pipelines delegate to** (#403): builds + writes the 9 sections identical across sim + live (trade / order / portfolio / pending / execution-stats / run-summary / worker-decision / signal / feed-stability) and returns them as `UnifiedReports`, which each coordinator reuses for its own console + ledger. Its `record_run_artifacts(run_dir)` is called LAST by each pipeline — deliberately not inside `derive_and_persist`, because both pipelines write further artifacts of their own after it returns, so a list taken there would be short by exactly those |
-| IO | `framework/reporting/io/` — `artifact_specs.py` (the 17 specs: file name + model) · `report_artifact_io.py` (`write_artifact` / `read_artifact`, generic and typed) · `report_csv_io.py` (the 3 CSV surfaces) · `report_filters.py` (the 2 API row filters) | write the artifact(s); read back + filter (the API path). One writer and one reader for every artifact since #486 — it used to be one unit per artifact, eighteen of them differing in a file name and a model class |
+| Shared core | `framework/reporting/shared_report_coordinator.py` — `SharedReportCoordinator.derive_and_persist(run_id, units, io_dir, signal_scenario_map)` (+ `builders/unified_reports.py` — `UnifiedReports`) | the **units-derived DERIVE+PERSIST core both pipelines delegate to** (#403): builds + writes the 9 sections identical across sim + AutoTrader (trade / order / portfolio / pending / execution-stats / run-summary / worker-decision / signal / feed-stability) and returns them as `UnifiedReports`, which each coordinator reuses for its own console + ledger. Its `record_run_artifacts(run_dir)` is called LAST by each pipeline — deliberately not inside `derive_and_persist`, because both pipelines write further artifacts of their own after it returns, so a list taken there would be short by exactly those |
+| IO | `framework/reporting/io/` — `artifact_specs.py` (the 17 specs: file name + model) · `report_artifact_io.py` (`write_artifact` / `read_artifact`, generic and typed) · `report_csv_io.py` (the 3 CSV surfaces) · `report_filters.py` (the 2 API row filters) | write the artifact(s); read back + filter (the API path). One writer and one reader for every artifact since #486 — it used to be one module per artifact, eighteen of them differing in a file name and a model class |
 | Store | `framework/reporting/store/report_store.py` — `ReportStore` | resolves a run's artifacts through the **run index** (`run_index.py`), never by walking the tree: a run is looked up by id, and its directory is a column. The lookup is an EXACT match against the index, and that is the guard: the id arrives from a URL and was previously interpolated into a glob (`'*'` matched the first run). Membership in a table of known ids is strictly stronger than a shape check, which accepts anything well-formed. The depth-dependent search this used to need is gone with it. **One typed getter serves every artifact** (#486): `get(run_id, BROKER_ARTIFACT)` is statically `Optional[BrokerReport]`. The two artifacts the API filters server-side keep their own methods — `get_trade_history` / `get_order_history` — because filtering is a store concern, so console, file and API cannot disagree |
-| Ledger | `framework/reporting/store/run_results_ledger.py` — `RunResultsLedger` | the **cross-run** PERSIST sink (#390): appends one flat row per (run × currency) — the `RunSummary` KPIs + provenance (`param_hash`, git, component versions, config snapshot, sweep tagging) — to `runs/ledger/` as one parquet fragment per run. Separate from the per-run API artifacts above; it is the substrate the Parameter Optimization system ranks over. Since #518 the row also records **which DATA the run was produced over** (`input_plane`, the distinct format versions / origin classes / evidence grades, the input-file counts, and `price_bases` — which price the bars it read were rendered from, §31c) — recorded here rather than in the run header, which is written before anything is mounted and cannot know. Provenance via `store/run_provenance_builder.py` — `build_run_provenance` (sim) / `build_run_provenance_from_session` (live, #403 · 5.a); **both pipelines append**. See [Parameter Optimization System](parameter_optimization_system.md) |
-| Console | `framework/reporting/console/run_console_renderer.py` — `RunConsoleRenderer` (+ the `*_summary` sub-presenters) | the **PRESENT** layer: `RunConsoleRenderer` owns the one canonical end-of-run section order both pipelines render through (#403 Phase 2). A `None` slot is skipped (render-if-present → live omits the sim-only sections); the per-currency AGGREGATE blocks render only for a multi-unit run (`unit_count > 1`); the closing block is pipeline-specific — `sim_executive_summary` (sim) / `live_session_summary` (live) |
+| Ledger | `framework/reporting/store/run_results_ledger.py` — `RunResultsLedger` | the **cross-run** PERSIST sink (#390): appends one flat row per (run × currency) — the `RunSummary` KPIs + provenance (`param_hash`, git, component versions, the strategy configuration as `strategy_config_json`, sweep tagging) — to `runs/ledger/` as one parquet fragment per run. Separate from the per-run API artifacts above; it is the substrate the Parameter Optimization system ranks over. Since #518 the row also records **which DATA the run was produced over** (`input_plane`, the distinct format versions / origin classes / evidence grades, the input-file counts, and `price_bases` — which price the bars it read were rendered from) — recorded here rather than in the run header, which is written before anything is mounted and cannot know. Provenance via `store/run_provenance_builder.py` — `build_run_provenance` (sim) / `build_run_provenance_from_session` (AutoTrader, #403 · 5.a); **both pipelines append**. See [Parameter Optimization System](parameter_optimization_system.md) |
+| Console | `framework/reporting/console/run_console_renderer.py` — `RunConsoleRenderer` (+ the `*_summary` sub-presenters) | the **PRESENT** layer: `RunConsoleRenderer` owns the one canonical end-of-run section order both pipelines render through (#403 Phase 2). A `None` slot is skipped (render-if-present → the AutoTrader omits the sim-only sections); the per-currency AGGREGATE blocks render only for a multi-unit run (`unit_count > 1`); the closing block is pipeline-specific — `sim_executive_summary` (sim) / `live_session_summary` (AutoTrader) |
 | Persist (sim) | `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()` | consumes the finished `BatchExecutionSummary`; delegates the 8 shared sections to `SharedReportCoordinator`, derives + writes its sim-only sections, renders the console via `RunConsoleRenderer` (Executive Summary closing), and appends to the ledger |
-| Persist (live) | `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()` | the live mirror: consumes the finished `AutoTraderResult`; same shared core, writes its live-specific sections, renders the **same** `RunConsoleRenderer` (the shared sections in sim order + the live Session Summary closing, #403 Phase 2), and appends to the ledger (5.a) |
+| Persist (AutoTrader) | `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()` | the AutoTrader mirror: consumes the finished `AutoTraderResult`; same shared core, writes its AutoTrader-specific sections, renders the **same** `RunConsoleRenderer` (the shared sections in sim order + the AutoTrader Session Summary closing, #403 Phase 2), and appends to the ledger (5.a) |
 | API | `python/api/endpoints/reports_router.py` | `GET /api/v1/reports/runs/{run_id}/{trade-history,order-history,portfolio,execution-stats,pending-orders,scenario-details,run-summary,worker-decision,profiling,broker,signal,feed-stability}` with section-specific filters |
 
 The reporting home is organized by pipeline stage: `builders/` (DERIVE — the `build_*_report`
-units + `report_aggregators` + `run_unit` + `run_summary_builder` + `unified_reports`), `io/`
+modules + `report_aggregators` + `run_unit` + `run_summary_builder` + `unified_reports`), `io/`
 (PERSIST — the per-section `*_report_io` writers), `store/` (the read-master `report_store` + the
 cross-run `run_results_ledger` + `run_provenance_builder`), and `console/` (PRESENT); the
 `shared_report_coordinator.py` at the top owns the shared DERIVE+PERSIST core (#403). The other
@@ -100,7 +100,7 @@ after a crash, so a run graded `SUCCESS` shipped `'emergency'` with nothing to e
 `AutoTraderResult.operator_interrupted` had existed all along and simply never reached
 `WarningsErrorsOutcome`. See [Warnings & Errors — Tier Taxonomy](warnings_errors_tiers.md).
 
-A live-only field on a sim run is `''` / `False` and means **not applicable**, not *unknown* —
+An AutoTrader-only field on a sim run is `''` / `False` and means **not applicable**, not *unknown* —
 the same distinction the `None` rule above makes, one level down.
 
 ### Artifact encoding — UTF-8 always, the process locale never
@@ -116,33 +116,33 @@ locale-dependent read, an artifact written as UTF-8 and read on a Windows host d
 cp1252 — `—` becomes `â€"`, and `⚠️` **raises**, because UTF-8's `0x8F` has no cp1252 mapping
 at all. One artifact class corrupts quietly, the other 500s. Guarded by
 `tests/framework/reporting/test_report_io_encoding.py`, including a drift check that no IO
-unit reintroduces the platform default.
+module reintroduces the platform default.
 
 ## Section map — shared vs pipeline-specific (#403)
 
 What each coordinator owns vs delegates. The DERIVE+PERSIST of the eight units-derived sections is
 shared (`SharedReportCoordinator`); the end-of-run **console order** is shared too
-(`RunConsoleRenderer`), with sim-only slots simply absent on the live side (render-if-present).
+(`RunConsoleRenderer`), with sim-only slots simply absent on the AutoTrader side (render-if-present).
 
-| Report section | Built from | Sim | Live | Outcome |
+| Report section | Built from | Sim | AutoTrader | Outcome |
 |---|---|:--:|:--:|---|
 | Trade / order / portfolio / pending / execution-stats / run-summary / worker-decision / signal / feed-stability | `units` (+ the prepared signal map) | ✓ | ✓ | **SharedReportCoordinator** (9 sections → `UnifiedReports`) |
 | Warnings/errors · Broker | batch / session (differs) | from_batch | from_session | build pipeline-side · **shared writer** |
 | Run meta · scenario details · profiling · aggregated portfolio · block-splitting | batch | ✓ | — | **sim-only** |
-| Run-results ledger append (#390) | run_summary + provenance | ✓ | ✓ | **both** (live via `build_run_provenance_from_session`, 5.a) |
+| Run-results ledger append (#390) | run_summary + provenance | ✓ | ✓ | **both** (AutoTrader via `build_run_provenance_from_session`, 5.a) |
 | events.csv | trade/order history | per-scenario `events/` | single `events.csv` | pipeline-side (different shape) |
 | Diagnostics CSV (#376) | decision sinks | during run | flush at end | pipeline-side |
 | End-of-run console order | report models | rich | enriched (sim order) | **RunConsoleRenderer** (shared order; per-currency aggregates **+ the cross-scenario bottleneck analysis** gated on `unit_count > 1`; the **Warnings & Errors** section is the shared `WarningsSummary` in both, always rendered — clean zero-state when none) |
-| Closing block | run-level | Executive Summary | Live Session Summary | pipeline-specific slot (last) |
+| Closing block | run-level | Executive Summary | AutoTrader Session Summary | pipeline-specific slot (last) |
 
 ## Pipeline in detail (with RunUnit)
 
 The flow has four stages. **CAPTURE** is the only source-specific part; from the `RunUnit`
-list onward everything is shared, so sim and live produce identical reports by construction.
+list onward everything is shared, so sim and AutoTrader produce identical reports by construction.
 
 ```
 CAPTURE  (source-specific, raw)
-   sim:  BatchExecutionSummary                 live:  AutoTraderResult
+   sim:  BatchExecutionSummary           AutoTrader:  AutoTraderResult
          (N scenario results)                         (1 session)
               │                                            │
               │  run_units_from_batch                      │  run_units_from_session
@@ -179,13 +179,13 @@ PRESENT  (thin renderers — the SAME models on every surface)
   sim symbol comes from the index-synced `SingleScenario` (`ProcessResult` carries none); a
   scenario without a tick-loop result is skipped.
 - **DERIVE:** each builder maps a single unit's source to rows; the **array model** keeps the
-  units (sim: N, live: 1). Trade / order rows are tagged with their unit name (grouping);
+  units (sim: N, AutoTrader: 1). Trade / order rows are tagged with their unit name (grouping);
   portfolio + execution carry the unit explicitly. The aggregates (portfolio per-currency
   roll-up, execution totals, trade analytics) are the shared **`report_aggregators`** — one pure
   `aggregate_*(rows)` per section (facts → measures), recomputing ratios from summed components,
   never re-deriving per surface. The cross-section run-wide KPI roll-up (`RunSummary`, #390
   prework) composes these once and is the seam every consumer reads (sweep objective, dashboard
-  headline, live snapshot).
+  headline, in-run snapshot).
 - **PRESENT:** every surface renders the *same* model — the file log is the captured console
   stdout (ANSI-stripped), CSV is the flat per-unit table, the API serves the persisted JSON via
   `ReportStore`. Adding a surface = adding a renderer over the model, never a re-derivation.
@@ -202,7 +202,7 @@ API/`ReportStore`. So a console renderer **never re-computes a total it can read
 e.g. the per-currency trade P&L totals come straight from `TradeAnalytics`, not a row re-sum.
 
 - **sim:** `framework/batch/batch_report_coordinator.py` — `BatchReportCoordinator.generate_and_log()`
-- **live:** `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()`
+- **AutoTrader:** `framework/autotrader/reporting/autotrader_report_coordinator.py` — `AutotraderReportCoordinator.generate_and_log()`
 
 Both granularities are model-served, by their own aggregate: the **per-currency** trade totals
 live on `TradeAnalytics`, the **per-scenario** table footer on `TradeScenarioTotals` — so neither
@@ -213,8 +213,8 @@ sorts chronologically; a frontend may sort differently).
 ## Realised vs valued — the accounting rule (#492)
 
 A run may end while it still HOLDS something. Since #492 neither pipeline force-closes at the
-end (live never reached the venue when it tried; simulation invented an exit the strategy never
-chose), so the model has to answer two different questions without mixing them:
+end (the AutoTrader never reached the venue when it tried; simulation invented an exit the
+strategy never chose), so the model has to answer two different questions without mixing them:
 
 ```
 trade statistics (count, win rate, profit factor)  →  COMPLETED trades only
@@ -248,7 +248,7 @@ Three consequences worth knowing before touching a figure here:
     moment — never `max_drawdown / max_equity` at the end. Those two floats belong to
     different instants, and dividing them understates every run that recovered, which is
     every profitable one.
-  - **A live figure may span several sessions.** A restart used to open a new curve at
+  - **An AutoTrader figure may span several sessions.** A restart used to open a new curve at
     whatever the account was worth on boot, so a resumed session reported no loss at all.
     The peak, the deepest decline and its percentage now travel through the cold-start
     carry-over, governed by `safety.persist_baseline`. `drawdown_carried_from` and
@@ -257,7 +257,7 @@ Three consequences worth knowing before touching a figure here:
     backtest starts at its own start, and a peak read from outside its inputs would make two
     runs over identical data disagree. Crash-safety between the store's write points is
     #476's subject, not this one.
-  - **A LIVE ledger row is therefore CUMULATIVE over its deployment, not session-local**, and
+  - **An AutoTrader ledger row is therefore CUMULATIVE over its deployment, not session-local**, and
     that decides how to read several of them. Each session writes its own fragment under its
     own run id; the rows are grouped by the deployment identity the run header carries as its
     `parent_id` — the same field, and the same kind of parent, a sweep's combinations use.
@@ -270,7 +270,7 @@ Three consequences worth knowing before touching a figure here:
     percentage cannot be re-derived from the other two — it was measured against the peak
     standing at the time.
   Two other readings exist and are deliberately NOT this one: a TRADE's own excursion
-  (`TradeRecord.mae_pnl`, #389, measured against that one position's entry) and the live
+  (`TradeRecord.mae_pnl`, #389, measured against that one position's entry) and the AutoTrader
   SAFETY reading (measured against a configured baseline, `fixed` or `high_water_mark`).
   Each renders under its own label; merging them is the defect #497 removed.
 - **The ledger carries both.** `unrealized_pnl`, `final_equity` and `open_position_count` are
@@ -301,8 +301,8 @@ the row will carry. That line is the safety net the deferred write leaves open: 
 dies before the report phase still leaves its periods recoverable.
 
 ```
-Tick loop, at the seal      derive (memory) · collect BookingSegment · log the line
-        ↓ process bridge (sim) / directly (live)
+Tick loop, at the seal      derive (memory) · collect BookingPeriod · log the line
+        ↓ process bridge (sim) / directly (AutoTrader)
 Coordinator, at the end     ONE write over all periods · one line about the write itself
 ```
 
@@ -316,7 +316,7 @@ booking-periods` serves that file.
 Rebuilding it later from the ledger rows would look equivalent and is not. The check compares
 the periods against a figure the run keeps beside them, and that figure exists only while the
 run does. Rebuilt from the ledger the same line would be `sum(rows) − sum(rows)`, a control
-total that holds by construction and can never fail (§48). A check that cannot fail is worse
+total that holds by construction and can never fail. A check that cannot fail is worse
 than no check, because it is read as a passed one.
 
 **What that check proves is COMPLETENESS, not arithmetic — corrected 2026-09-22.** The two
@@ -346,7 +346,7 @@ render_all(summary_detail=cfg)    →  captured  →  the terminal              
 ```
 
 `console_logging.summary.detail` therefore governs the CONSOLE alone. It exists because a
-terminal has a height and a file does not — never to decide what is recorded. The live
+terminal has a height and a file does not — never to decide what is recorded. The AutoTrader
 coordinator renders once with detail ON, so its terminal and its file agree.
 
 What a section drops when it is trimmed is its own decision, and the rule is the same one
@@ -367,10 +367,10 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 |---|---|---|---|---|
 | Trade History (#389 analytics) | unified | ✅ | ✅ | offload the still-inline per-currency aggregates: trade-breakdown counts · duration · slippage distribution · rejection-by-reason |
 | Order History | unified | ✅ | ✅ | — |
-| Portfolio — per-scenario | unified | ✅ | ✅ (linear, boxes removed) | — `max_dd_pct`, the spot dual-balance estimate and `final_equity` are derived in the builder; the renderer's `symbol[-3:]` currency split was replaced by the broker-config split stamped at capture (#265). Carries `open_positions` / `unrealized_pnl` / `session_end_policy` (#492), and on each open position `protective_level_enforcement` — who enforces its stop/target, stamped at capture because it is the executor's answer while the stats come from the portfolio (#500) |
+| Portfolio — per-unit | unified | ✅ | ✅ (linear, boxes removed) | — `max_dd_pct`, the spot dual-balance estimate and `final_equity` are derived in the builder; the renderer's `symbol[-3:]` currency split was replaced by the broker-config split stamped at capture (#265). Carries `open_positions` / `unrealized_pnl` / `session_end_policy` (#492), and on each open position `protective_level_enforcement` — who enforces its stop/target, stamped at capture because it is the executor's answer while the stats come from the portfolio (#500) |
 | Portfolio — aggregated (by currency) | sim | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (byte-identical; `PortfolioAggregator` retired) | — |
 | Pending Orders / Active | unified (sim-populated) | ✅ | ✅ | — |
-| Execution Stats — per-scenario | unified | ✅ | ✅ | — |
+| Execution Stats — per-unit | unified | ✅ | ✅ | — |
 | Execution — aggregated ORDER EXECUTION | sim | ✅ (in `AggregatedPortfolioReport`) | ✅ from the model | — (folded into the portfolio aggregate, #397) |
 | Scenario Details | **sim-only** | ✅ | ✅ (linear, incl. failed + `account_currency` hint) | — |
 | Run Summary (#390) | unified | ✅ | ✅ executive headline | — |
@@ -379,46 +379,47 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 | Warmup phases (#399) | **sim-only** | ✅ (in `ProfilingReport`) | ✅ from the model (`ProfilingSummary.render_warmup`; `warmup_phase_summary` retired) | — |
 | Block-Splitting Disposition | **sim-only** (Profile Run) | ⏳ | ✅ inline | **separate follow-up** — generation-quality metric (`generator_profiles` + the tick loop's open positions / trade history), not runtime profiling |
 | Robustness Validation (#367) | **sim-only** (robustness mode) | ✅ (`RobustnessReport`) | ✅ from the model (`RobustnessSummary`; ROBUST/⚠/OVERFIT display class only) | — verdict is a decision in `PostRunValidator` (`_check_robustness`, gated on the block-splitting disposition); reuses `build_run_summary` per window |
-| Broker Configuration | unified | ✅ (`BrokerReport`) | ✅ from the model (sim full table · live compact line) | — |
+| Broker Configuration | unified | ✅ (`BrokerReport`) | ✅ from the model (sim full table · AutoTrader compact line) | — |
 | Signal Configuration (#433) | unified | ✅ (`SignalReport`) | ✅ from the model (`SignalSummary`) | — Part C (fresh/stale/blind per tick) + Part A (the section) done; Part D moved to its own section below (#451) |
 | Feed Stability (#451) | unified | ✅ (`FeedStabilityReport`) | ✅ from the model (`FeedStabilitySummary`) | — the disturbance episodes of **both** staleness domains (tick stream #436 + every SIGNAL source #434) in one per-source table, plus the tick-domain fresh/stale counters and the `RunSummary` totals behind the executive line. Rendered only when the run saw an episode |
-| Warnings & Errors | unified | ✅ (`WarningsErrorsReport`) | ✅ from the model — tiered (errors / Tier-1 major / Tier-2 minor); executive failed-scenario headline reads the model outcome; warnings lifted into validators (`PostRunValidator`), the orchestrator keeps only a thin global-log line (#395). Each Tier-1 row carries its ORIGIN (`check` / `domain`) from the `ValidationFinding` that produced it. The ERROR pot reaches the model as `LogEntryRow`s (level / both times / scope / message), mapped by one shared helper for both pipelines — a reduction to the message here would put those fields out of reach of every surface behind DERIVE | **both pipelines render the shared `WarningsSummary`** (always shown — clean zero-state when none, #403 Phase 2); live messages get the logger prefix stripped in the builder |
+| Warnings & Errors | unified | ✅ (`WarningsErrorsReport`) | ✅ from the model — tiered (errors / Tier-1 major / Tier-2 minor); executive failed-scenario headline reads the model outcome; warnings lifted into validators (`PostRunValidator`), the orchestrator keeps only a thin global-log line (#395). Each Tier-1 row carries its ORIGIN (`check` / `domain`) from the `ValidationFinding` that produced it. The ERROR pot reaches the model as `LogEntryRow`s (level / both times / scope / message), mapped by one shared helper for both pipelines — a reduction to the message here would put those fields out of reach of every surface behind DERIVE | **both pipelines render the shared `WarningsSummary`** (always shown — clean zero-state when none, #403 Phase 2); AutoTrader messages get the logger prefix stripped in the builder |
 | Executive — detailed portfolio-performance block | **sim-only** | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (margin / spot / mixed preserved, byte-identical) | — (#397); the profit factor is read from the model instead of recomputed with a divergent formula, and the order execution rate is carried as `execution_rate_pct` |
 | Cold start (inherited at boot) | **autotrader-only** | ✅ `ColdStartReport` | ✅ inside `LiveSessionSummary` | complete (#355 / #493): what was adopted, what was left alone with its reason, what the position book restored, the book shortfall, and the decision logic's verdict with its note. Filed whether the algo accounted for the situation or not — a yes must not make the case invisible — and it carries `applied`, so a boot that REFUSED is not read as one that inherited a book. Absent for sim, dry run and Field Study |
-| Safety (risk baseline + limits) | **autotrader-only** | ✅ `SafetyReport` | ✅ inside `LiveSessionSummary` | complete (#356 / #314): the baseline RECORD the session measured against — kind, stamp, origin, and on spot the price and holdings its value can be re-derived from — beside the extremes the account actually reached. The extremes are RUNNING MAXIMA captured by the tick loop, not the value at the end: a session that touched 18 % at hour three and recovered would otherwise be indistinguishable from one that never moved. The absolute and the percentage low are two separate instants, because a high-water mark moves. One row per UTC day, each naming its own day-start baseline — a maximum across thirty days would be a maximum across thirty denominators. Written whenever a baseline was taken, including for a session whose limits were OFF, because that record is what says what would have fired. No HTTP endpoint yet, same as cold start |
-| Booking periods | **unified** | ✅ `BookingPeriodsReport` | ✅ `BookingPeriodsSummary` | the run's Hauptbuch: one line per closed booking period, and a total line that RECONCILES against the run's own figure derived by the independent path. Silent when the run booked none. Derived in `booking_periods_report_builder`; the periods themselves come from the tick loop's seals (#537). PERSISTED since #539 — `io/booking_periods.json`, served by `/reports/runs/{run_id}/booking-periods`; the stored artifact carries the reconciliation, which a rebuild from the ledger could not (see the section above) |
-| Shutdown / Emergency / Session | **autotrader-only** | ✅ | ✅ `LiveSessionSummary` | the live closing block of the unified `RunConsoleRenderer` (#403 Phase 2): session stats + warnings/errors (session buffers, §35) + output locations; #389 analytics line model-sourced |
+| Safety (risk baseline + limits) | **autotrader-only** | ✅ `SafetyReport` | ✅ inside `LiveSessionSummary` | complete (#356 / #314): the baseline RECORD the session measured against — kind, stamp, origin, and on spot the price and holdings its value can be re-derived from — beside the extremes the account actually reached. The extremes are RUNNING MAXIMA captured by the tick loop, not the value at the end: a session that touched 18 % at hour three and recovered would otherwise be indistinguishable from one that never moved. The absolute and the percentage low are two separate instants, because a high-water mark moves. One row per trading day, each naming its own day-start baseline — a maximum across thirty days would be a maximum across thirty denominators. Written whenever a baseline was taken, including for a session whose limits were OFF, because that record is what says what would have fired. No HTTP endpoint yet, same as cold start |
+| Booking periods | **unified** | ✅ `BookingPeriodsReport` | ✅ `BookingPeriodsSummary` | the run's ledger: one line per closed booking period, and a total line that RECONCILES against the run's own figure derived by the independent path. Silent when the run booked none. Derived in `booking_periods_report_builder`; the periods themselves come from the tick loop's seals (#537). PERSISTED since #539 — `io/booking_periods.json`, served by `/reports/runs/{run_id}/booking-periods`; the stored artifact carries the reconciliation, which a rebuild from the ledger could not (see the section above) |
+| Shutdown / Emergency / Session | **autotrader-only** | ✅ | ✅ `LiveSessionSummary` | the AutoTrader closing block of the unified `RunConsoleRenderer` (#403 Phase 2): session stats + warnings/errors (the session buffers — the error pot) + output locations; #389 analytics line model-sourced |
 | **Final:** directory consolidation | — | — | — | ✅ **#396 DONE** — `batch_reporting/` folded into `framework/reporting/` by stage: `run_reports/` (DERIVE) · `io/` (PERSIST) · `console/` (PRESENT) |
-| Shared coordinator + folder split | — | — | — | ✅ **#403 DONE** — the units-derived DERIVE+PERSIST core extracted into `SharedReportCoordinator` (both pipelines delegate, returning `UnifiedReports`); the home re-split into `builders/` (DERIVE) · `io/` (PERSIST writers) · `store/` (read-master + cross-run ledger + provenance). Live ledger append wired (5.a) |
-| IO collapse onto the store model | — | — | — | ✅ **#486 DONE** — the eighteen `*_report_io.py` units became four: `artifact_specs.py` (name + model per artifact), `report_artifact_io.py` (one generic typed `write_artifact` / `read_artifact`), `report_csv_io.py` (the 3 CSV surfaces), `report_filters.py` (the 2 API filters). `ReportStore`'s fifteen getters became one `get(run_id, spec)` plus the two filtered ones; every response model and endpoint is unchanged. The "artifact present but undecodable is NAMED" guard existed for one getter and is now the rule for all |
+| Shared coordinator + folder split | — | — | — | ✅ **#403 DONE** — the units-derived DERIVE+PERSIST core extracted into `SharedReportCoordinator` (both pipelines delegate, returning `UnifiedReports`); the home re-split into `builders/` (DERIVE) · `io/` (PERSIST writers) · `store/` (read-master + cross-run ledger + provenance). AutoTrader ledger append wired (5.a) |
+| IO collapse onto the store model | — | — | — | ✅ **#486 DONE** — the eighteen `*_report_io.py` modules became four: `artifact_specs.py` (name + model per artifact), `report_artifact_io.py` (one generic typed `write_artifact` / `read_artifact`), `report_csv_io.py` (the 3 CSV surfaces), `report_filters.py` (the 2 API filters). `ReportStore`'s fifteen getters became one `get(run_id, spec)` plus the two filtered ones; every response model and endpoint is unchanged. The "artifact present but undecodable is NAMED" guard existed for one getter and is now the rule for all |
 
-The **array model** is the unifier: a run is a list of units (sim: N scenarios; live: 1
+The **array model** is the unifier: a run is a list of units (sim: N scenarios; AutoTrader: 1
 session). Where a section carries per-unit meaning (portfolio breakdown) the model keeps the
 units; for flat record lists (trades, orders) every row carries its `symbol` and the list is
 filtered, not grouped. The generic `RunUnit` abstraction that deduplicates the per-source
 extraction is **implemented** (`builders/run_unit.py`); every builder maps from it.
 
-## Reporting is OPTIONAL in simulation and MANDATORY live — on purpose
+## Reporting is OPTIONAL in simulation and MANDATORY in the AutoTrader — on purpose
 
 The two pipelines differ in **who decides that a report is written**, and the difference is a
 decision, not an oversight:
 
 ```
-SIM    orchestrator.run()                          → the CALLER then chooses to build
+SIM          orchestrator.run()                    → the CALLER then chooses to build
                                                      BatchReportCoordinator, or not
-LIVE   autotrader_main.run() calls                 → no way past it
-       self._generate_reports(result) internally
+AUTOTRADER   autotrader_main.run() calls           → no way past it
+             self._generate_reports(result) internally
 ```
 
 **A backtest can be repeated; its report may be optional.** The simulation test path relies on
 exactly this — it stops after `orchestrator.run()` and writes no artifacts, which is how ~35 of
 the tree's runs legitimately carry none.
 
-**A live session cannot be repeated. Its report is the only record that real money moved.** If
-the call sat with the caller, "forgotten" would be a reachable state, and the price of reaching
-it is a real-money session with no record. So the live pipeline does not offer the choice.
+**A real-money session cannot be repeated. Its report is the only record that real money
+moved.** If the call sat with the caller, "forgotten" would be a reachable state, and the price of
+reaching it is a real-money session with no record. So the AutoTrader pipeline does not offer the
+choice.
 
-Making the two symmetric would mean either lifting the live call out — which introduces exactly
+Making the two symmetric would mean either lifting the AutoTrader call out — which introduces exactly
 that footgun — or making the sim call mandatory, which the test path cannot afford. The
 asymmetry is the correct shape, and it is recorded here so it reads as a decision.
 
@@ -460,15 +461,15 @@ reports and persists them into its run directory:
 - **AutoTrader** — `autotrader_main._collect_results()` builds the `AutoTraderResult`, then
   `AutotraderReportCoordinator.generate_and_log()` writes the same artifacts at session end (the
   single session = one portfolio unit, which is its own currency aggregate). The two coordinators
-  are the symmetric per-pipeline persist units — same model, same artifacts, one per pipeline.
+  are the symmetric per-pipeline persist modules — same model, same artifacts, one per pipeline.
 
-The `ReportStore` resolves runs at `<logs_root>/{scenario_sets,autotrader}/<owner>/<run_id>/`, so
+The `ReportStore` resolves runs at `runs/{simulation,autotrader}/<owner>/<run_id>/`, so
 the API serves either pipeline's run by `run_id`.
 
 **Cross-run ledger (#390).** Beyond the per-run artifacts, both coordinators append the run to the
 **Run Results Ledger** (`runs/ledger/`) via `RunResultsLedger.append()` — the same `RunSummary`
 model plus provenance. This is a separate, accumulating store (one parquet fragment per run), the
-substrate the Parameter Optimization system ranks over. Both pipelines append (#403 · 5.a): the live
+substrate the Parameter Optimization system ranks over. Both pipelines append (#403 · 5.a): the
 `AutotraderReportCoordinator` writes its session row through the same sink via
 `build_run_provenance_from_session`, whose `param_hash` is comparable to the backtest. See
 [Parameter Optimization System](parameter_optimization_system.md).
@@ -515,7 +516,7 @@ substrate the Parameter Optimization system ranks over. Both pipelines append (#
    (`price_unit`) are stamped on the `TradeRecord` at the source (position open), so the row's
    `mae_distance` / `mfe_distance` render in the correct unit (`pip` on Forex, `tick` on crypto) on
    every surface — the builder no longer approximates with `10^-(digits-1)`.
-4. **Live on-demand snapshot (#392)** — bounded in-memory window + flush, so a months-long session
+4. **In-run on-demand snapshot (#392)** — bounded in-memory window + flush, so a months-long session
    can render the report at any time (between-ticks consistent read).
 5. The remaining report sections (block-splitting / the executive's detailed portfolio block)
    migrate to the model; the visual channel (#379) consumes the API.
@@ -529,8 +530,8 @@ substrate the Parameter Optimization system ranks over. Both pipelines append (#
    model, `warmup_phase_summary` retired, #399 3c), **performance** (worker/decision detail +
    aggregate + bottleneck now model-fed, the duplicate per-scenario worker list removed, #399 3d),
    and the **broker** configuration section (`BrokerReport`, both pipelines — sim renders the full
-   table, the live post-session summary a compact broker/symbol line; `broker.json` written by both,
-   the AutoTrader `broker_config` threaded in from the executor), and **warnings & errors**
+   table, the AutoTrader post-session summary a compact broker/symbol line; `broker.json` written
+   by both, the AutoTrader `broker_config` threaded in from the executor), and **warnings & errors**
    (`WarningsErrorsReport`, both pipelines — tiered; the inline warning checks were lifted into
    `PostRunValidator`, the executive failed-headline reads the model outcome, the orchestrator keeps
    a thin global-log line, #395). The decision **smells** in the already-migrated profiling /
@@ -564,6 +565,6 @@ substrate the Parameter Optimization system ranks over. Both pipelines append (#
    pipeline-specific sections + console + ledger (composition, not a base class). The `framework/reporting/`
    home was re-split by stage: `run_reports/` → **`builders/`** (DERIVE), `io/` keeps the per-section
    writers, and a new **`store/`** holds the read-master `report_store` + the cross-run `run_results_ledger`
-   + `run_provenance_builder`. Pure refactor — every `io/` artifact stays byte-identical (sim + live).
-   The live pipeline now also appends to the run-results ledger (5.a): `build_run_provenance_from_session`
-   mirrors the sim provenance, so a live session's `param_hash` is directly comparable to the backtest.
+   + `run_provenance_builder`. Pure refactor — every `io/` artifact stays byte-identical (sim + AutoTrader).
+   The AutoTrader pipeline now also appends to the run-results ledger (5.a): `build_run_provenance_from_session`
+   mirrors the sim provenance, so an AutoTrader session's `param_hash` is directly comparable to the backtest.

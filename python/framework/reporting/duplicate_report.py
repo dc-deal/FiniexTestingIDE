@@ -172,7 +172,7 @@ class DuplicateReport:
 
         lines.extend([
             '   5. PREVENT: Never manually copy Parquet files in processed/ directory',
-            '   6. Rebuild index after cleanup: python python/cli/data_index_cli.py rebuild',
+            '   6. Rebuild index after cleanup: python python/cli/tick_index_cli.py rebuild',
             '',
             '=' * 80
         ])

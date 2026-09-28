@@ -11,7 +11,7 @@ that would have fired inside an unattended real-money session.
 |---|---|
 | `SentimentConfigManager` | anchor written into the wrong file — 54 tests failed hours later |
 | `DryRunConflictError` | no existing import from that module |
-| `SignalSeries` | the empty-provider branch a live session takes, never executed |
+| `SignalSeries` | the empty-provider branch a live-adapter session takes, never executed |
 | `SignalObservedSeries` | an import guard that tested for the name, which the freshly
     inserted signature already contained |
 

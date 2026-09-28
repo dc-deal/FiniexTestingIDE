@@ -1,6 +1,6 @@
 # Tick Source Tests
 
-The live tick source decides what a tick *is* before anything else sees it — and until #520 step B
+The venue tick source decides what a tick *is* before anything else sees it — and until #520 step B
 it had no offline coverage at all: `KrakenTickSource` and its parser appeared nowhere under
 `tests/`, while sitting in the path that feeds a real-money session.
 
@@ -23,8 +23,8 @@ and never opens a connection.
 
 Kraken's trade channel reports executions, and an execution happens at exactly one price — so a
 trade tick on its own carries `bid == ask` and no spread. The quote it executed against rides the
-ticker channel. The collector has stamped it on every tick since format 1.6.0; the live source now
-does the same, so an archived tick and a live one describe the same thing.
+ticker channel. The collector has stamped it on every tick since format 1.6.0; our Kraken tick source
+now does the same, so an archived tick and one from the venue describe the same thing.
 
 The rules under test are decisions rather than style, which is why each has its own case:
 
@@ -33,7 +33,7 @@ The rules under test are decisions rather than style, which is why each has its 
 - **No quote means no age — `None`, never `0`.** A zero asserts a quote observed in that same
   millisecond, a measurement nobody made.
 - **An impossible quote is dropped, not stored.** Crossed or non-positive, the previous quote
-  survives and ages visibly instead of failing invisibly. Measured live: 0 crossed and 0 equal in
+  survives and ages visibly instead of failing invisibly. Measured at the venue: 0 crossed and 0 equal in
   202 quotes, so this is a guard rather than a routine event.
 - **A quote is never discarded for being old.** A quiet ticker channel is a degraded state, not a
   session-ending one.
@@ -42,7 +42,7 @@ The rules under test are decisions rather than style, which is why each has its 
 
 The case that matters most is `test_the_traded_price_survives_the_quote`. `last` stays the traded
 price while `bid`/`ask` become the quote, so `tick.price` — what bars, indicators and decisions
-read (§31c) — is identical before and after this feature. Only `mid` moves, and with it the
+read — is identical before and after this feature. Only `mid` moves, and with it the
 valuation plane. That guarantee is pinned rather than argued.
 
 ## Bursts
@@ -67,7 +67,7 @@ The asymmetry between the two channels is deliberate and tested from both sides:
 
 | Channel refused | Result |
 |---|---|
-| `ticker` | degraded — one session-logger warning (§35), trades continue without a quote |
+| `ticker` | degraded — one session-logger warning, trades continue without a quote |
 | `trade` | fatal for the attempt — raises, the outer loop reconnects |
 
 A data-quality improvement must not become a new reason a bot refuses to start.

@@ -1,5 +1,5 @@
 """
-Ledger aggregation (#537) — the ABSCHLUSS step, and the first caller of `COLUMN_REDUCTION`.
+Ledger aggregation (#537) — the CLOSING step, and the first caller of `COLUMN_REDUCTION`.
 
 A ledger row is one booking period of one unit. Every question above that level — what did this
 session earn, what did this deployment do, how does this parameter combination rank — is asked
@@ -11,7 +11,7 @@ which is the state §49 warns about: a declaration with no caller is a comment t
 it summarised, and neither the deployment history (which SUMS rows) nor the sweep ranking (which
 SORTS them) could tell a summary from its own evidence. Derived here instead, the total is
 recomputed on demand and cannot drift from the rows it comes from — the same argument that makes
-a Hauptbuch trustworthy in the first place (§48).
+a ledger trustworthy in the first place (§48).
 
 **A DERIVE column is not folded, it is REBUILT**, and each one needs its own domain knowledge:
 a win rate comes from the summed counts, a profit factor from the summed components, a mean from
@@ -30,9 +30,9 @@ from python.framework.types.api.report_types import RunResultRow
 from python.framework.types.run_results_types import Reduction
 
 # How a row is ordered when a column asks for "the most recent". The first stamp a row actually
-# carries wins: a booking period is closed at `segment_closed_at`, a row that books no period was
+# carries wins: a booking period is closed at `period_closed_at`, a row that books no period was
 # written at `recorded_at_utc`, and everything older than that column has only its run timestamp.
-_RECENCY_KEYS = ('segment_closed_at', 'recorded_at_utc', 'run_timestamp')
+_RECENCY_KEYS = ('period_closed_at', 'recorded_at_utc', 'run_timestamp')
 
 
 def aggregate_ledger_rows(

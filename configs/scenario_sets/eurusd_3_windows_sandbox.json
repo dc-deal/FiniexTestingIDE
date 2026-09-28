@@ -51,7 +51,7 @@
   },
   "scenarios": [
     {
-      "name": "GBPUSD_window_01",
+      "scenario_name": "GBPUSD_window_01",
       "symbol": "GBPUSD",
       "data_broker_type": "mt5",
       "start_date": "2025-10-09T20:00:00+00:00",
@@ -64,7 +64,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "GBPUSD_window_02",
+      "scenario_name": "GBPUSD_window_02",
       "symbol": "GBPUSD",
       "data_broker_type": "mt5",
       "start_date": "2025-10-14T14:00:00+00:00",
@@ -77,7 +77,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "BTCUSD_blocks_04",
+      "scenario_name": "BTCUSD_blocks_04",
       "symbol": "BTCUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-27T16:00:00+00:00",
@@ -95,7 +95,7 @@
       }
     },
     {
-      "name": "GBPUSD_window_03",
+      "scenario_name": "GBPUSD_window_03",
       "symbol": "GBPUSD",
       "data_broker_type": "mt5",
       "start_date": "2025-09-25T16:00:00+00:00",
@@ -108,7 +108,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "USDJPY_window_04",
+      "scenario_name": "USDJPY_window_04",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
       "start_date": "2025-09-23T16:00:00+00:00",
@@ -126,7 +126,7 @@
       }
     },
     {
-      "name": "GBPUSD_window_05",
+      "scenario_name": "GBPUSD_window_05",
       "symbol": "GBPUSD",
       "data_broker_type": "mt5",
       "start_date": "2025-09-24T16:00:00+00:00",
@@ -139,7 +139,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "GBPUSD_window_06",
+      "scenario_name": "GBPUSD_window_06",
       "symbol": "GBPUSD",
       "data_broker_type": "mt5",
       "start_date": "2025-10-09T20:00:00+00:00",
@@ -152,7 +152,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "GBPUSD_window_07",
+      "scenario_name": "GBPUSD_window_07",
       "symbol": "GBPUSD",
       "data_broker_type": "mt5",
       "start_date": "2025-09-25T14:00:00+00:00",
@@ -165,7 +165,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "GBPUSD_window_08",
+      "scenario_name": "GBPUSD_window_08",
       "symbol": "GBPUSD",
       "data_broker_type": "mt5",
       "start_date": "2025-09-25T16:00:00+00:00",
@@ -178,7 +178,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "GBPUSD_window_09",
+      "scenario_name": "GBPUSD_window_09",
       "symbol": "GBPUSD",
       "data_broker_type": "mt5",
       "start_date": "2025-09-23T16:00:00+00:00",
@@ -191,7 +191,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "GBPUSD_window_10",
+      "scenario_name": "GBPUSD_window_10",
       "symbol": "GBPUSD",
       "data_broker_type": "mt5",
       "start_date": "2025-09-24T16:00:00+00:00",

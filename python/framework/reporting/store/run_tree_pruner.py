@@ -344,7 +344,7 @@ class RunTreePruner:
             known_dirs: The directories the index lists
             report: Filled in place
         """
-        for root in (Path(self._roots.simulation), Path(self._roots.live)):
+        for root in (Path(self._roots.simulation), Path(self._roots.autotrader)):
             if not root.exists():
                 continue
             for dirpath, dirnames, filenames in os.walk(root):

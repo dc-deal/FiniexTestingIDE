@@ -113,12 +113,12 @@ Located in `python/framework/types/autotrader_types/autotrader_config_types.py`.
 
 | Pipeline | Safety Available | Rationale |
 |----------|-----------------|-----------|
-| **AutoTrader** (live/paper) | Yes | Production safety net — prevents account blowup |
+| **AutoTrader** (every session: mock, dry run, real orders) | Yes | Production safety net — prevents account blowup |
 | **Backtesting** (simulation) | No | Simulation should show full consequences of algo behavior, including worst-case drawdowns. A breaker would mask problems |
 
 This is a deliberate design choice. Backtesting exists to *find* the scenarios where an algo loses
 money — artificially cutting losses in simulation defeats the purpose. The operator evaluates
-drawdown from batch reports and decides whether the algo is safe for live deployment.
+drawdown from batch reports and decides whether the algo is safe to trade real money.
 
 ---
 
@@ -168,9 +168,9 @@ not decoration: four quantities in this codebase are called "initial", none of t
 recorded when or at what price it was taken, and two of them are different numbers for the same
 holdings — so a bare "−12 %" could not be traced back to the denominator that produced it.
 
-The report is written to `io/safety.json` and rendered as a block in the live session summary. It
-goes through the unified reporting pipeline (`docs/architecture/reporting_pipeline.md`): the tick
-loop CAPTURES, `safety_report_builder.py` DERIVES, the console only formats.
+The report is written to `io/safety.json` and rendered as a block in the AutoTrader session
+summary. It goes through the unified reporting pipeline (`docs/architecture/reporting_pipeline.md`):
+the tick loop CAPTURES, `safety_report_builder.py` DERIVES, the console only formats.
 
 ### What it answers, and why each answer has the shape it has
 
@@ -206,7 +206,7 @@ excursion consumed. The percentage limit and the absolute one are independent an
 first, so the figure reports whichever came CLOSER. Where no limit is configured it is `null`, never
 zero — "no limit" and "nothing used of the limit" are different statements.
 
-**One row per UTC day.** A daily limit is measured against a reference struck fresh every morning,
+**One row per trading day.** A daily limit is measured against a reference struck fresh every morning,
 so a single "worst daily loss" across a month would be a maximum across thirty different
 denominators. Each row names its own day-start baseline. The console prints the deepest day plus
 every day that tripped a limit; the artifact carries them all.
@@ -220,7 +220,7 @@ resolved to `false` at capture, with the positions still open at the venue named
 
 The record is produced whenever a baseline was taken, including for a session with
 `safety.enabled: false`. That session still has a denominator and still moves against it, and the
-resulting record is what says what WOULD have fired. Refusing to measure it would mean arming a live
+resulting record is what says what WOULD have fired. Refusing to measure it would mean arming a real
 limit in order to find out what the limit should be.
 
 Absent only when no baseline was ever taken — a session that saw no tick it could value.

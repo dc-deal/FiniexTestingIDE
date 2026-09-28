@@ -62,7 +62,7 @@ class TestFrameSample:
     ])
     def test_the_episode_fields_keep_their_shape(self, field, kind):
         """
-        A reissue that changes either shape fails here rather than at the next live session.
+        A reissue that changes either shape fails here rather than at the next live-adapter session.
 
         `breaking_episode_start` is a FLAG, not a timestamp — the producer's episode start
         instant lives inside the opaque id, and typing this as a datetime is exactly the

@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Session Log Retention (#357)
 
-A live session rotates its log at the trading-day boundary and, until this existed, kept
+An AutoTrader session rotates its log at the trading-day boundary and, until this existed, kept
 every rotated day for as long as the session ran. Over a thirty-day run that is thirty files
 nobody removes — the kind of pressure that arrives in the middle of the one run the project
 exists to complete, not at its start.

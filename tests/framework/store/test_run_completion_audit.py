@@ -3,7 +3,7 @@ Which runs started and never reached their close.
 
 A run registers in the run index from its header, written before anything can fail, while its
 ledger row is the last step at close. A process killed between the two exists in one store and
-not the other — measured 2026-09-18 on a live session stopped from the debugger, and again on
+not the other — measured 2026-09-18 on a live-adapter session stopped from the debugger, and again on
 a deliberately SIGKILLed mock session.
 
 The plain reverse direction must stay OUT: the ledger predates the run index, so it
@@ -21,14 +21,14 @@ from python.framework.reporting.store.run_completion_audit import (
 from python.framework.types.api.report_types import ParentKind, RunInfo, RunResultRow
 
 
-def _run(run_id: str, group: str = 'live', start: str = '2026-09-18T10:00:00+00:00',
+def _run(run_id: str, group: str = 'autotrader', start: str = '2026-09-18T10:00:00+00:00',
          parent: str = None, parent_kind: ParentKind = None) -> RunInfo:
     """
     A run index entry.
 
     Args:
         run_id: The run's id
-        group: 'live' or 'simulation'
+        group: 'autotrader' or 'simulation'
         start: Start stamp, which is also the sort key
         parent: Deployment or sweep this run belongs to
         parent_kind: Which of the two that is, or None where the row does not say
@@ -134,14 +134,14 @@ class TestGroupingSeparatesTheConsequence:
     def test_two_runs_of_one_group_both_survive(self):
         # A dict comprehension keyed on the group keeps only the last entry — the defect this
         # pins, caught in review before it shipped.
-        runs = [_run('a', group='live'), _run('b', group='live'),
+        runs = [_run('a', group='autotrader'), _run('b', group='autotrader'),
                 _run('c', group='simulation')]
         grouped = unfinished_by_group(runs, [])
-        assert [r.run_id for r in grouped['live']] == ['a', 'b']
+        assert [r.run_id for r in grouped['autotrader']] == ['a', 'b']
         assert [r.run_id for r in grouped['simulation']] == ['c']
 
     def test_a_group_with_nothing_unfinished_is_omitted(self):
-        grouped = unfinished_by_group([_run('a', group='live')], [_row('a')])
+        grouped = unfinished_by_group([_run('a', group='autotrader')], [_row('a')])
         assert grouped == {}
 
 

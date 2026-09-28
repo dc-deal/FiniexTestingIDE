@@ -24,14 +24,17 @@ the run end **does** with them, and what a **position** even is in this account 
 
 `session_end.orders` governs RESTING orders. A MARKET order never rests.
 
-| Order type | AutoTrader **live** (Kraken spot) | AutoTrader **mock** | **Simulation** |
+| Order type | AutoTrader **live adapter** (Kraken spot) | AutoTrader **mock** | **Simulation** |
 |---|---|---|---|
 | MARKET | fills, never rests | fills (instant / delayed) | fills after latency |
-| LIMIT | **rests at the venue** | **rests locally** | **rests locally** |
-| STOP | **rests at the venue** (#500) | **rests locally** | **rests locally** |
-| STOP_LIMIT | **rests at the venue** (#500) | **rests locally** | **rests locally** |
+| LIMIT | **rests at the venue** — in a dry run, in `DryRunOrderSimulator` | refused at pre-flight | **rests locally** |
+| STOP | **rests at the venue** (#500) — in a dry run, in `DryRunOrderSimulator` | refused at pre-flight | **rests locally** |
+| STOP_LIMIT | **rests at the venue** (#500) — in a dry run, in `DryRunOrderSimulator` | refused at pre-flight | **rests locally** |
 
-**So `session_end.orders` touches three types in live, and the stop types are the ones that matter most.**
+The mock adapter declares market orders only (`MockBrokerAdapter.get_order_capabilities()`), so a
+decision logic that requires a resting type is refused before a mock session starts.
+
+**So `session_end.orders` touches three types in a live-adapter session, and the stop types are the ones that matter most.**
 Kraken states it themselves: a `stop-loss-limit` "is not automatically linked to a specific
 position" and has to be cancelled by hand once the position is gone. A stop left standing after the
 position it protected was closed by another route is a naked order at the venue.
@@ -40,9 +43,9 @@ position it protected was closed by another route is a naked order at the venue.
 
 | | resting orders | open positions |
 |---|---|---|
-| **Live, `orders: cancel`** (default) | cancelled AT the venue + `EXPIRED` record **only where the venue CONFIRMED the cancel** — an unconfirmed one is reported into the session error pot and deliberately left unrecorded, because `EXPIRED` is a claim about the VENUE and we did not obtain one (#505). **A protective order (#503) is exempt entirely** | **left open**, reported and valued |
-| **Live, `orders: leave`** | left at the venue, and **not** expired locally — an order that can still fill is not finished | left open |
-| **Mock** | same code path; the cancel reaches the mock adapter | left open |
+| **Live adapter, `orders: cancel`** (default) | cancelled AT the venue (in a dry run: in the `DryRunOrderSimulator`, which stands where the venue would) + `EXPIRED` record **only where the venue CONFIRMED the cancel** — an unconfirmed one is reported into the session error pot and deliberately left unrecorded, because `EXPIRED` is a claim about the VENUE and we did not obtain one (#505). **A protective order (#503) is exempt entirely** | **left open**, reported and valued |
+| **Live adapter, `orders: leave`** | left at the venue, and **not** expired locally — an order that can still fill is not finished | left open |
+| **Mock** | same code path, with nothing to cancel — no resting type passes pre-flight | left open |
 | **Simulation** | always expired — there is no venue to leave them at, so `cancel_orders` is accepted only for the shared contract | left open |
 
 ### 2b · The one order the policy does not govern (#503)
@@ -114,7 +117,7 @@ exactly this — *Time in Force* (`DAY`/`GTC`/`IOC`) plus venue-side Cancel-on-D
 for **positions** there deliberately is none: a position belongs to the ACCOUNT, not to the
 process. Even the kill switch that market-access rules require cancels orders and blocks new
 ones; it does not flatten. nautilus_trader answers a restart with reconciliation at start
-rather than a flatten at stop; MetaTrader leaves both positions and pending orders untouched
+rather than a flatten at stop; MetaTrader leaves both positions and resting orders untouched
 when an EA stops; LEAN, backtrader and zipline all mark an open position to market at the end
 of a backtest and never record it as a closed trade.
 

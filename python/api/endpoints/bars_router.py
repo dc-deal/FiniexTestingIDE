@@ -57,7 +57,7 @@ HEADER_TRUNCATED = 'X-Bar-Truncated'
 
 # Three facts a caller cannot infer from the rows and has no second chance to get right:
 # a bar is stamped with the OPEN of its period (pandas resample labels left), the stamp is
-# UTC, and OHLC is the MID of bid/ask rather than a traded price.
+# UTC, and OHLC is of the price the FILE was rendered from — traded or midpoint, its stamp says.
 HEADER_TIME_BASIS = 'X-Bar-Time-Basis'
 HEADER_TIMEZONE = 'X-Bar-Timezone'
 HEADER_PRICE_BASIS = 'X-Bar-Price-Basis'

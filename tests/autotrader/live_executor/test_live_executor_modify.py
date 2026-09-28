@@ -2,13 +2,13 @@
 LiveTradeExecutor — Limit Order Modification Tests
 
 Tests modify_limit_order() via broker adapter:
-- Successful modification of pending limit orders
+- Successful modification of resting limit orders
 - Non-existent order rejection
 - Broker rejection handling
 - Adapter exception handling
 - LiveRequestProcessor.get_broker_ref() reverse lookup
 
-Uses DELAYED_FILL mode so orders stay in pending (broker_ref tracked).
+Uses DELAYED_FILL mode so orders stay resting (broker_ref tracked).
 """
 
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
@@ -24,7 +24,7 @@ from python.framework.types.trading_env_types.order_types import (
 
 
 class TestModifyLimitOrderSuccess:
-    """Successful modification of pending limit orders via broker.
+    """Successful modification of resting limit orders via broker.
 
     LIMIT submit is async (#319 step 7): open_order returns PENDING with
     broker_ref=None. An additional feed_tick is needed so drain_inbox
@@ -56,7 +56,7 @@ class TestModifyLimitOrderSuccess:
         assert mod_result.rejection_reason is None
 
     def test_modify_pending_order_sl_tp(self, mock_delayed, executor_delayed):
-        """modify_limit_order() can modify SL and TP on pending LIMIT order."""
+        """modify_limit_order() can modify SL and TP on a resting LIMIT order."""
         mock_delayed.feed_tick(executor_delayed, bid=49999.0, ask=50001.0)
 
         result = executor_delayed.open_order(OpenOrderRequest(
@@ -134,7 +134,7 @@ class TestModifyLimitOrderBrokerRejection:
 
     def test_broker_rejects_modify(self):
         """modify_limit_order() returns PENDING; broker rejection arrives via drain."""
-        # Start with delayed mode to get a pending LIMIT order
+        # Start with delayed mode to get a resting LIMIT order
         mock = MockOrderExecution(mode=MockExecutionMode.DELAYED_FILL)
         executor = mock.create_executor()
         mock.feed_tick(executor, bid=49999.0, ask=50001.0)

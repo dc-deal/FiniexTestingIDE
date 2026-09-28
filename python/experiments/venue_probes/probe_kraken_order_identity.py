@@ -157,7 +157,7 @@ from python.framework.utils.run_id_utils import (
 
 _ROOT = Path(__file__).resolve().parents[3]
 _BROKER_CONFIG = _ROOT / 'configs/brokers/kraken/kraken_spot_broker_config.json'
-_RUNS_DIR = _ROOT / 'runs/live'
+_RUNS_DIR = _ROOT / 'runs/autotrader'
 
 # Kraken's own reference shape. Every payload is validated against it, so a client order id
 # can never end up in a txid slot — the one confusion that could aim a cancel at a stranger.

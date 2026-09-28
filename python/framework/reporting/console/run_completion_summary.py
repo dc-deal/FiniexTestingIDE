@@ -12,7 +12,7 @@ from python.framework.types.api.report_types import RunInfo, RunResultRow
 # A run whose group is not one of these still prints — the label just falls back to the raw
 # group name, because an unknown group is a reason to show MORE rather than to hide one.
 _GROUP_LABEL = {
-    'live': 'live session — traded, and left no record of what it did',
+    'autotrader': 'AutoTrader session — ran, and left no record of what it did',
     'simulation': 'backtest — a batch that did not finish',
 }
 

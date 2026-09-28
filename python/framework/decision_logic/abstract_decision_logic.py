@@ -411,7 +411,7 @@ class AbstractDecisionLogic(ABC):
         StrategyEvent to the in-memory ring buffer for live UI consumption.
         Tick time is resolved via the trading API clock source, matching
         the OrderGuard clock semantics (sim time in backtests, wall-clock
-        in live trading).
+        in a live-adapter session).
 
         Args:
             message: Human-readable event description

@@ -256,7 +256,8 @@ pytest tests/ -v
 pytest tests/simulation/multi_position/test_multi_position.py::TestHedging -v
 ```
 
-**VS Code:** Use launch configuration `🧪 Pytest (multi_position)`.
+**VS Code:** Use launch configuration `🧩 Pytest: Multi Position (All)` (or `🧪 Simulation: Multi Position`
+for the scenario run with its full log).
 
 **Performance:** Full suite runs in ~2–4 seconds (scenario execution ~2s + 65 tests < 0.1s).
 

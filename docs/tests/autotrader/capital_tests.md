@@ -27,7 +27,7 @@ market BUY          0.010 BTC @ 50001  →  needs  501.31 USD
 
 Both passed. The venue then refused the second one, and the bot could not explain the rejection
 to itself — its own books still showed the money. In the simulation nothing refused it at all,
-so the backtest stopped predicting the live run, which is the one thing this framework exists to
+so the backtest stopped predicting the session, which is the one thing this framework exists to
 prevent.
 
 Two consequences shape the suite. The claim must be derived from the **executor's** order book
@@ -82,7 +82,7 @@ sides on purpose — so an empty quote balance alone must not refuse a boot.
 ## Where the price comes from, and why not earlier
 
 The sufficiency check runs **after warmup** (`setup_pipeline` Phase 9), because that is the first
-point in a live boot where a price exists: no tick has arrived during startup, and the adapter
+point in an AutoTrader boot where a price exists: no tick has arrived during startup, and the adapter
 contract carries no price read at all. The reference is the newest warmup bar close. A strategy
 with no bar workers produces no bars — then the buy side cannot be judged and the session is told
 so.

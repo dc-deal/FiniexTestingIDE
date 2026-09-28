@@ -1,7 +1,8 @@
 # Price Trigger Tests
 
 `tests/framework/test_price_trigger.py` — the shared order-vs-quote predicate
-(`python/framework/utils/trading_math/price_trigger.py`, §45). Runs under the synthetic
+(`python/framework/utils/trading_math/price_trigger.py`, the one place that answers it). Runs
+under the synthetic
 `framework/_root` suite.
 
 ## Why this file exists at all
@@ -53,7 +54,7 @@ The inverse, because a stop exists to get out or to follow a breakout.
 ## Why It Matters
 
 The comparison used to live privately in the simulation executor while the dry-run simulator had
-none at all — so a rehearsal filled a resting order because time had passed and a backtest filled
+none at all — so a dry run filled a resting order because time had passed and a backtest filled
 it because the market had arrived. Two answers to one question breaks the framework's central
 claim. Verified by mutation: inverting the book side turns three of these tests red, and
 inverting the limit comparison turns six tests of `simulation/sltp_limit_validation` red.

@@ -14,8 +14,10 @@ import pytest
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
+from python.framework.testing.mock_broker_adapter import MockBrokerAdapter
 from python.framework.trading_env.adapters.mt5_adapter import Mt5Adapter
 from python.framework.types.config_types.market_config_types import PipMode
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.trading_math.pip_math import derive_pip_size
 
 
@@ -100,3 +102,16 @@ class TestAdapterEndToEnd:
         assert m.get_pip_mode().unit_label == 'pip'
         assert m.get_pip_size('EURUSD') == pytest.approx(0.0001)
         assert m.get_pip_size('USDJPY') == pytest.approx(0.01)
+
+    def test_a_mock_of_an_mt5_broker_has_forex_pips(self):
+        """
+        A mock session stands in for ITS broker, not for Kraken.
+
+        The mock adapter answered KRAKEN_SPOT for every broker, so an MT5 mock profile resolved
+        the crypto pip mode and EURUSD came out at the tick (0.00001) — the value stamped on its
+        trade records and read by every pip-denominated parameter of the decision logic.
+        """
+        with open('configs/brokers/mt5/mt5_broker_config.json') as f:
+            mock = MockBrokerAdapter(broker_config=json.load(f), broker_type=BrokerType.MT5_FOREX)
+        assert mock.get_pip_mode() is PipMode.FRACTIONAL_PIP
+        assert mock.get_pip_size('EURUSD') == pytest.approx(0.0001)

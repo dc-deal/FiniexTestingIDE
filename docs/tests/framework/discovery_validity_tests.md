@@ -29,7 +29,7 @@ produced the content, but the configuration it was produced under.
 
 | Test | Asserts |
 |---|---|
-| `test_a_matching_fingerprint_is_valid_and_a_changed_one_is_not` | Parameterized over all **three** families: a cache built under the live config stays valid; a changed fingerprint invalidates it while the source file has not moved |
+| `test_a_matching_fingerprint_is_valid_and_a_changed_one_is_not` | Parameterized over all **three** families: a cache built under the current config stays valid; a changed fingerprint invalidates it while the source file has not moved |
 | `test_a_cache_without_a_fingerprint_is_not_valid` | A file written before the fingerprint existed cannot vouch for itself and is rebuilt |
 | `test_it_returns_every_key_decoded` | `read_cache_metadata` yields every key from ONE file open |
 | `test_a_missing_file_is_none_rather_than_an_error` | An absent cache is `None`, never an exception |
@@ -42,5 +42,5 @@ whichever API is used, and a second read of the same files adds the same again. 
 opens once and returns the decoded dict, so the comparison adds **one config load per instance
 (~9 ms), and zero file operations per entry** — it is genuinely free, not merely cheap.
 
-The live fingerprint is memoized per instance for the same reason: `DiscoveriesConfigLoader` reads
+The current fingerprint is memoized per instance for the same reason: `DiscoveriesConfigLoader` reads
 its JSON twice per construction, and a validity check runs once per cached entry.

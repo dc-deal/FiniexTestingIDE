@@ -194,7 +194,7 @@ class TestCatalogCompleteness:
             Path('configs/brokers'): 'hand-written broker seed configuration (§28)',
             Path('configs/credentials'): 'credential files (§29) — never indexed, never listed',
             Path('configs/scenario_sets'): 'hand-written scenario configuration',
-            Path('configs/autotrader_profiles'): 'hand-written live/backtest profiles',
+            Path('configs/autotrader_profiles'): 'hand-written AutoTrader profiles',
             Path('configs/discoveries'): 'hand-written discovery configuration',
             Path('configs/test_scenarios'): 'hand-written test scenario configuration',
             Path('configs/generator'): 'hand-written generator configuration + header template',

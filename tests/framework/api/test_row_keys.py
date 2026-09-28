@@ -13,7 +13,7 @@ TWO halves, because they fail differently:
       is not there.
 
   B · SEPARATION — an ADVERSARIAL payload: rows that differ only in the part of the key one
-      would be tempted to drop. The real case is `segment_no`, which restarts per bot, so two
+      would be tempted to drop. The real case is `period_no`, which restarts per bot, so two
       periods of one deployment can both be number 2 and only `run_id` tells them apart.
 
 A response serving ONE list declares `key`; one serving several declares `keys`, one entry per
@@ -213,15 +213,15 @@ class TestTheKeyActuallySeparatesTheRows:
         assert _distinct(rows, ('run_id',)) == 1
 
     def test_a_booking_period_needs_its_run(self):
-        # The measured case (2026-09-22): `segment_no` is a per-BOT counter carried through the
+        # The measured case (2026-09-22): `period_no` is a per-BOT counter carried through the
         # cold-start state, so two periods of ONE deployment are both number 2 and only the run
         # tells them apart. Without `run_id` a Gantt draws one bar where there were two.
         rows = [
-            _period(run_id='20260922_231031_90cee58a', segment_no=2),
-            _period(run_id='20260922_231104_79574544', segment_no=2),
+            _period(run_id='20260922_231031_90cee58a', period_no=2),
+            _period(run_id='20260922_231104_79574544', period_no=2),
         ]
         assert _distinct(rows, BOOKING_PERIOD_KEY) == 2
-        assert _distinct(rows, ('unit_name', 'segment_no')) == 1
+        assert _distinct(rows, ('unit_name', 'period_no')) == 1
 
     def test_the_declared_key_is_the_one_the_fold_groups_by(self):
         # SESSION_KEY is literally the `by=` of `build_deployment_histories`. Held here so a
@@ -275,19 +275,19 @@ def _trade(scenario_name: str, position_id: str, exit_tick_index: int) -> TradeH
         scenario_name=scenario_name, exit_tick_index=exit_tick_index)
 
 
-def _period(run_id: str, segment_no: int) -> DeploymentBookingPeriodRow:
+def _period(run_id: str, period_no: int) -> DeploymentBookingPeriodRow:
     """
     One booking-period row, varying only in what the case under test needs.
 
     Args:
         run_id: Which session booked it
-        segment_no: Its running number
+        period_no: Its running number
 
     Returns:
         The row
     """
     return DeploymentBookingPeriodRow(
-        run_id=run_id, unit_name='demo_btcusd_bot', segment_no=segment_no,
+        run_id=run_id, unit_name='demo_btcusd_bot', period_no=period_no,
         opened_at='2026-01-24T14:19:46+00:00', closed_at='2026-01-25T00:00:00+00:00',
         reason='anchor', currency='USD', trade_count=0, net_pnl=0.0, total_fees=0.0,
         win_rate=0.0, profit_factor=None, final_equity=10_000.0, min_equity=10_000.0,

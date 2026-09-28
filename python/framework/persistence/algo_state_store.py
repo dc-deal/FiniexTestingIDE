@@ -51,7 +51,7 @@ class AlgoStateStore:
     """
     Atomic JSON persistence for algo-internal state, keyed by bot identity.
 
-    One state file per running bot (`<profile>_<symbol>.json`) in a stable
+    One state file per running bot (`<bot_id>_<symbol>.json`) in a stable
     cross-run directory. Writes are atomic (temp file + os.replace) so a crash
     mid-write never leaves a half-written file. Loading applies a corrupt policy
     (file unreadable) and a staleness policy (file too old), both configurable.
@@ -240,7 +240,7 @@ class AlgoStateStore:
         The resolved state file path for this bot.
 
         Returns:
-            Path to <profile>_<symbol>.json under the configured directory
+            Path to <bot_id>_<symbol>.json under the configured directory
         """
         return self._path
 

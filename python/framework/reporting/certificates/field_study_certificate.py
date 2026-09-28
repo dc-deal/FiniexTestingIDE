@@ -55,13 +55,13 @@ class FieldStudyCertificate:
         declaration of a path config already owns, and it is correct only until the tree moves.
 
         Args:
-            search_root: Directory to scan recursively; None resolves run_logs.live
+            search_root: Directory to scan recursively; None resolves run_logs.autotrader
 
         Returns:
             Path to the newest field_study.jsonl, or None if none exist
         """
         root = Path(search_root) if search_root else Path(
-            AppConfigManager().get_file_logging_config_object().run_logs.live)
+            AppConfigManager().get_file_logging_config_object().run_logs.autotrader)
         if not root.exists():
             return None
         candidates = list(root.rglob('field_study.jsonl'))

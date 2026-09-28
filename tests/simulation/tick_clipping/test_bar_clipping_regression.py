@@ -235,7 +235,7 @@ def _build_autotrader_tick_loop(ticks_with_flags):
     tick_queue.put(None)  # Sentinel: end of stream
 
     config = AutoTraderConfig(
-        name='bar_clipping_at_test',
+        profile_name='bar_clipping_at_test',
         symbol=SYMBOL,
         # The VENUE, not the tick source: `adapter_type='mock'` is what makes this a mock
         # session, while broker_type names the market whose rules apply — and since #476 the

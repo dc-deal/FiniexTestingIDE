@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - Live Execution Errors
-Exception types for live trading failures (Horizon 2).
+Exception types for failures of the live execution stack (Horizon 2).
 
 Used by LiveTradeExecutor and broker adapters to signal
 broker communication and order execution failures.
@@ -17,6 +17,17 @@ class DryRunConflictError(FiniexError):
     and never loosen it. Profiles are copied, shared and edited quickly; enabling real
     money is a deliberate act on the broker's own configuration, not a side effect of
     picking up someone's profile file.
+    """
+    pass
+
+
+class AdapterWiringError(FiniexError, ValueError):
+    """
+    A profile pairs a real broker adapter with ticks that do not come from that venue.
+
+    A live adapter trades at today's market, so a session feeding it replayed ticks decides on
+    history and — once the broker's dry_run is off — sends real orders on those decisions.
+    Refused at load, because nothing downstream can tell the replayed ticks from real ones.
     """
     pass
 

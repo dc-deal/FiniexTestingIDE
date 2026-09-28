@@ -23,7 +23,7 @@ from python.configuration.autotrader.autotrader_config_loader import load_autotr
 from python.framework.reporting.store.run_provenance_builder import _plain, _profile_fingerprint
 
 PROFILE_ROOT = Path(__file__).resolve().parents[3] / 'configs' / 'autotrader_profiles'
-BASE_PROFILE = PROFILE_ROOT / 'backtesting' / 'minimal_warmup_test.json'
+BASE_PROFILE = PROFILE_ROOT / 'mock' / 'minimal_warmup_test.json'
 
 
 @pytest.fixture
@@ -113,7 +113,7 @@ class TestWhatItDeliberatelyIgnores:
 
     def test_the_profile_name_is_not_operational(self, make_config):
         before = _profile_fingerprint(make_config())
-        after = _profile_fingerprint(make_config(name='renamed_but_identical'))
+        after = _profile_fingerprint(make_config(profile_name='renamed_but_identical'))
         assert before == after
 
 

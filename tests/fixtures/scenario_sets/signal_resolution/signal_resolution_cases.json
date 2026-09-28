@@ -33,7 +33,7 @@
     },
     "scenarios": [
         {
-            "name": "clean",
+            "scenario_name": "clean",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment_mock",
@@ -46,7 +46,7 @@
             "trade_simulator_config": {}
         },
         {
-            "name": "restart_short_gap",
+            "scenario_name": "restart_short_gap",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment_mock",
@@ -72,7 +72,7 @@
             }
         },
         {
-            "name": "outage_2h",
+            "scenario_name": "outage_2h",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment_mock",
@@ -98,7 +98,7 @@
             }
         },
         {
-            "name": "stale_tail",
+            "scenario_name": "stale_tail",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment_mock",
@@ -124,7 +124,7 @@
             }
         },
         {
-            "name": "blind_head",
+            "scenario_name": "blind_head",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment_mock",
@@ -150,7 +150,7 @@
             }
         },
         {
-            "name": "tight_threshold",
+            "scenario_name": "tight_threshold",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment_mock",

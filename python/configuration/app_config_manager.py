@@ -297,7 +297,7 @@ class AppConfigManager:
 
     def get_user_algo_dirs(self) -> List[str]:
         """
-        Get user algo directories scanned for scenario configs.
+        Get user algo directories scanned for scenario sets, AutoTrader profiles and sweep specs.
 
         Returns:
             List of directory paths (default: ["user_algos/"])

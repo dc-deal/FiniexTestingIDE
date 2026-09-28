@@ -14,7 +14,7 @@ import queue
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Tuple
 
 from rich import box
 from rich.console import Console
@@ -37,7 +37,7 @@ from python.framework.types.trading_env_types.order_types import CloseType, Orde
 
 class AutoTraderLiveDisplay:
     """
-    Real-time console dashboard for AutoTrader live sessions.
+    Real-time console dashboard for AutoTrader sessions.
 
     Queue-based design: tick loop pushes AutoTraderDisplayStats snapshots,
     display thread drains queue and renders via rich.live.
@@ -204,7 +204,8 @@ class AutoTraderLiveDisplay:
         if config_hash:
             title.append(f' [{config_hash}]', style='bright_black')
         title.append(' — ')
-        title.append('DRY RUN' if dry_run else 'LIVE TRADING', style='yellow' if dry_run else 'green bold')
+        label, style = self._session_mode(dry_run)
+        title.append(label, style=style)
         # WHICH KIND OF RUN this is, from the RESOLVED answer rather than the profile's
         # declaration (#497) — a profile that says continuous while `--one-off` is in force
         # must read ONE-OFF here, or this is the `dry_run` near-miss in a new costume. Always
@@ -216,6 +217,26 @@ class AutoTraderLiveDisplay:
         else:
             title.append('ONE-OFF', style='bright_black')
         return title
+
+    def _session_mode(self, dry_run: bool) -> Tuple[str, str]:
+        """
+        What kind of session this is, as the header and the status line name it.
+
+        A mock session is named for what it is. It is also dry — the flag reads true for every
+        mock session — but "DRY RUN" is the word for a live-adapter session whose orders the
+        venue validates and never places, and a mock session reaches no venue at all.
+
+        Args:
+            dry_run: Whether the session places no real orders
+
+        Returns:
+            (label, rich style)
+        """
+        if self._config.adapter_type == 'mock':
+            return 'MOCK', 'yellow'
+        if dry_run:
+            return 'DRY RUN', 'yellow'
+        return 'LIVE TRADING', 'green bold'
 
     # =========================================================================
     # LAYOUT VARIANTS
@@ -337,7 +358,8 @@ class AutoTraderLiveDisplay:
         minutes, seconds = divmod(remainder, 60)
         uptime_str = f'{hours}h {minutes:02d}m {seconds:02d}s'
 
-        mode = '[yellow]DRY RUN[/yellow]' if stats.dry_run else '[green]LIVE[/green]'
+        label, style = self._session_mode(stats.dry_run)
+        mode = f'[{style}]{label}[/{style}]'
         win_rate = (stats.core.winning_trades / stats.core.total_trades *
                     100) if stats.core.total_trades > 0 else 0.0
 
@@ -348,7 +370,7 @@ class AutoTraderLiveDisplay:
         else:
             safety_str = '[dim]off[/dim]'
 
-        config_name = self._config.name
+        config_name = self._config.profile_name
         config_file = self._config.config_path.name if self._config.config_path else ''
         config_str = f'{config_name}  [dim]({config_file})[/dim]' if config_file else config_name
 
@@ -1205,7 +1227,7 @@ class AutoTraderLiveDisplay:
         Human-readable relative time for event tape display.
 
         Uses reference_time (last tick time) instead of wall-clock so
-        the display is correct in both live trading and mock replay.
+        the display is correct in both a live-adapter session and a mock session.
 
         Args:
             tick_time: Event tick timestamp (timezone-aware)

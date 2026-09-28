@@ -65,7 +65,7 @@
     },
     "scenarios": [
         {
-            "name": "ETHUSD_spot_sell_validation",
+            "scenario_name": "ETHUSD_spot_sell_validation",
             "symbol": "ETHUSD",
             "data_broker_type": "kraken_spot",
             "start_date": "2026-02-10T10:00:00+00:00",

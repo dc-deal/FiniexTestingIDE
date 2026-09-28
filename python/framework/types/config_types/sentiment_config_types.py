@@ -6,7 +6,7 @@ The signal side's mirror of market_config.json: that file holds market and broke
 and a scenario points at them with broker_type; this one holds producer and pipeline
 facts and a scenario points at them with data_sentiment_type. Both pipelines read it —
 the per-source facts describe a SOURCE, not a run, so a simulation needs them as much as
-a live session does.
+an AutoTrader session does.
 """
 from dataclasses import dataclass
 from typing import Dict, Optional

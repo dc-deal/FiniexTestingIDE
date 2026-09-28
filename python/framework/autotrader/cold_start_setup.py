@@ -158,12 +158,12 @@ def setup_cold_start(
     return ColdStartSetup(
         proceed=True,
         store=store,
-        # A dry run writes too, but only what it can honestly claim. Splitting the two halves
-        # is what makes the mechanism rehearsable at all: a mock session is a dry run by
-        # definition (`_is_dry_run` answers on the adapter type), so before this the deployment
-        # identity and the drawdown curve could not be exercised without a real venue — while
-        # the reason for the old blanket refusal only ever applied to the session KEY and the
-        # position BOOK, which describe orders the venue does not hold.
+        # A session treated as dry writes too, but only what it can honestly claim. Splitting
+        # the two halves is what makes the mechanism rehearsable at all: a mock session is
+        # always treated as dry (`_is_dry_run` answers on the adapter type), so before this the
+        # deployment identity and the drawdown curve could not be exercised without a real
+        # venue — while the reason for the old blanket refusal only ever applied to the session
+        # KEY and the position BOOK, which describe orders the venue does not hold.
         persist=True,
         persist_venue_claims=not dry_run,
         keys_in_use=adopter.get_venue_session_keys(),

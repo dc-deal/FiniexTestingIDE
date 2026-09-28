@@ -30,16 +30,16 @@ def build_cold_start_report_from_session(
     run_id: str,
     situation: ColdStartSituation,
     verdict: Optional[ColdStartVerdict] = None,
-    algo_name: str = '',
+    decision_logic_class: str = '',
 ) -> ColdStartReport:
     """
-    Build the cold-start report for one live session.
+    Build the cold-start report for one AutoTrader session.
 
     Args:
         run_id: The run this report belongs to
         situation: What the boot step found at the venue
         verdict: What the decision logic answered, when it was asked
-        algo_name: The decision logic's class name, empty when none was asked
+        decision_logic_class: The decision logic's class name, empty when none was asked
 
     Returns:
         The report, ready to persist and to render
@@ -91,7 +91,7 @@ def build_cold_start_report_from_session(
         attended=situation.attended,
         carry_over_present=situation.carry_over_present,
         carry_over_saved_at=situation.carry_over_saved_at or '',
-        algo_name=algo_name,
-        algo_accounted_for=verdict.accounted_for if verdict is not None else None,
-        algo_note=verdict.note if verdict is not None else '',
+        decision_logic_class=decision_logic_class,
+        decision_logic_accounted_for=verdict.accounted_for if verdict is not None else None,
+        decision_logic_note=verdict.note if verdict is not None else '',
     )

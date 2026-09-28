@@ -35,7 +35,7 @@ def build_safety_report_from_session(
     symbol: str,
 ) -> SafetyReport:
     """
-    Build the safety report for one live session.
+    Build the safety report for one AutoTrader session.
 
     Args:
         run_id: The run this report belongs to

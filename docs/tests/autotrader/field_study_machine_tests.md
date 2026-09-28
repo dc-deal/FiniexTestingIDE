@@ -81,5 +81,5 @@ pytest tests/autotrader/field_study_machine/ -v
 
 Or launch.json: `🧩 Pytest: Field Study Machine (#332)`.
 
-The live counterpart — what each phase proves against a real venue, and what it costs — is
+The real-money counterpart — what each phase proves against a real venue, and what it costs — is
 [field_study_guide.md](../live_field_study/field_study_guide.md).

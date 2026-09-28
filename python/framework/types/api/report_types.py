@@ -37,14 +37,14 @@ DEPLOYMENT_KEY = ('deployment_id', 'currency')
 #
 # Four parts because the store holds TWO row shapes and one key has to separate both:
 #
-#     aggregate row   run_id=...  currency=USD  unit_name=''         segment_no=None
-#     period row      run_id=...  currency=USD  unit_name='btc_run'  segment_no=3
+#     aggregate row   run_id=...  currency=USD  unit_name=''         period_no=None
+#     period row      run_id=...  currency=USD  unit_name='btc_run'  period_no=3
 #
 # `currency` is not redundant beside `unit_name`: a unit has exactly one account currency, but an
 # AGGREGATE row carries no unit at all and is one per (run x currency).
-LEDGER_ROW_KEY = ('run_id', 'currency', 'unit_name', 'segment_no')
+LEDGER_ROW_KEY = ('run_id', 'currency', 'unit_name', 'period_no')
 SESSION_KEY = ('run_id', 'currency')
-BOOKING_PERIOD_KEY = ('run_id', 'unit_name', 'segment_no')
+BOOKING_PERIOD_KEY = ('run_id', 'unit_name', 'period_no')
 
 
 class ExecutionRow(BaseModel):
@@ -152,7 +152,7 @@ class TradeAnalytics(BaseModel):
     #
     # It carries a warning with it: this figure is NOT combinable across groups, and it is the
     # one KPI here where the obvious reduction is wrong. A streak can cross a period boundary, so
-    # `max()` of two periods understates the truth — 2 and 3 adjacent segments can be a run of 5.
+    # `max()` of two periods understates the truth — 2 and 3 adjacent periods can be a run of 5.
     # Its ledger column is therefore `DERIVE`, never `MAX`.
     max_consecutive_wins: int = 0
     max_consecutive_losses: int = 0
@@ -294,7 +294,7 @@ class PortfolioUnitRow(BaseModel):
     # excursion is `TradeRecord.mae_pnl` (#389) and is a different number.
     account_max_drawdown: float
     account_max_dd_pct: float = 0.0   # worst decline over the peak it fell FROM, per tick
-    # WHICH PERIOD the two figures above describe (#497). A live session inherits its
+    # WHICH PERIOD the two figures above describe (#497). An AutoTrader session inherits its
     # predecessor's curve through the cold-start carry-over, so the drawdown may span a month
     # of restarts — and nothing in the number itself says so. Empty stamp = this session began
     # its own curve, which is always the case in the simulation.
@@ -562,12 +562,55 @@ class ParentKind(StrEnum):
     apart by.
 
     Deriving it from `run_type` would be right today and silently wrong later: a simulation's
-    parent is a sweep and a live session's is a deployment ONLY until #476 gives a live day
-    fragment a parent that is itself a SESSION. A rule that expires without saying so is worse
+    parent is a sweep and an AutoTrader session's is a deployment ONLY until #476 gives a day
+    record a parent that is itself a SESSION. A rule that expires without saying so is worse
     than a column.
     """
     SWEEP = 'sweep'
     DEPLOYMENT = 'deployment'
+
+
+class TicksFrom(StrEnum):
+    """
+    Where a run's ticks came from — one of the two axes that tell the kinds of run apart.
+
+    ARCHIVE: replayed from the tick archive — every backtest, and a mock session
+    VENUE: read from the venue as they happened — a dry run or a real-money session
+    """
+    ARCHIVE = 'archive'
+    VENUE = 'venue'
+
+
+class OrdersTo(StrEnum):
+    """
+    Where a run's orders went — the other axis. Together with `run_type` the two say which kind
+    of run this is (`docs/introduction_to_the_ide.md`), so no reader has to derive it.
+
+    SIMULATED: filled by a simulator — every backtest, a mock session, and a dry run
+    VENUE: placed at the venue — a real-money session, and only that
+    """
+    SIMULATED = 'simulated'
+    VENUE = 'venue'
+
+
+class DataWindow(BaseModel):
+    """
+    The market window one unit of a run was DECLARED to cover — the date filter's axis.
+
+    Declared, not measured: the header is written at the start, before a tick is read. What a
+    scenario actually processed is on `scenario-details` (`first_tick_time` / `last_tick_time`).
+    One window per unit and never one span over all of them — a span over several scenarios would
+    cover the gaps between them and claim a run touched a week none of its scenarios read.
+
+    Args:
+        unit_name: The unit the window belongs to (scenario name, or the session's unit name)
+        start_date: Where the window starts, ISO-8601 UTC
+        end_date: Where it ends, ISO-8601 UTC; None when it is open — a tick-limited scenario, or
+            a venue session that has not ended
+    """
+    unit_name: str
+    start_date: str
+    end_date: Optional[str] = None
 
 
 class RunHeader(BaseModel):
@@ -586,11 +629,11 @@ class RunHeader(BaseModel):
         run_id: The run's identity — also its directory name
         start_time: When the run began (UTC, tz-aware)
         run_type: Its category, the same value the API serves as `RunInfo.group`
-        run_name: The owning scenario set (sim) or profile (live)
+        run_name: The owning scenario set (sim) or profile (AutoTrader)
         parent_id: What this run belongs to, or None when it stands alone — a sweep's id for one
             of its combinations, a deployment's id for one of its sessions. Named `parent_id`
             and not `parent_run_id` on purpose: a sweep is NOT itself a run (it has no header —
-            it is defined by the runs naming it), while the daily fragments of #476 will point
+            it is defined by the runs naming it), while the day records of #476 will point
             at a parent that IS one. One field, several kinds of parent, and the name has to
             stay true for all of them
         parent_kind: WHICH kind of parent `parent_id` names. Written together with it and never
@@ -619,6 +662,12 @@ class RunHeader(BaseModel):
             came from, and one entry per component (#551). Captured only for a run that is
             COMMISSIONED to report: the capture costs a `git status` (~1.8 s on this tree,
             §42), which the ledger used to pay at the end anyway and now reads from here
+        ticks_from: Where its ticks came from, from the RESOLVED configuration. None on a run
+            written before the field existed — unknown, never guessed from a profile file that
+            may have changed since
+        orders_to: Where its orders went, from the RESOLVED dry-run rule. None as above, and on
+            a session whose profile the dry-run rule refuses (it never trades)
+        data_windows: The market window each unit was declared to cover; None as above
     """
     run_id: str
     start_time: datetime
@@ -633,6 +682,9 @@ class RunHeader(BaseModel):
     reporting: RunReporting = RunReporting.EXPECTED
     origin: Optional[RunOrigin] = None
     code_identity: Optional[CodeIdentity] = None
+    ticks_from: Optional[TicksFrom] = None
+    orders_to: Optional[OrdersTo] = None
+    data_windows: Optional[list[DataWindow]] = None
 
 
 class RunConfigSnapshot(BaseModel):
@@ -666,12 +718,13 @@ class RunInfo(BaseModel):
     """One discoverable run in the report store — identity only, no report content."""
     run_id: str
     # The run's TYPE, which is also where its logs live (file_logging.run_logs):
-    # 'simulation' (a backtest — standalone, or one combination of a sweep) | 'live' (an
-    # AutoTrader session). Nesting is NOT part of the type: `parent_id` carries it.
+    # 'simulation' (a backtest — standalone, or one combination of a sweep) | 'autotrader' (an
+    # AutoTrader session: mock, dry run or real orders). Nesting is NOT part of the type:
+    # `parent_id` carries it.
     group: str
-    name: str               # scenario-set name (sim) | profile name (live)
+    name: str               # scenario-set name (sim) | profile name (AutoTrader)
     # Every report artifact this run persisted, by file name — 'portfolio.json',
-    # 'trade_history.csv', … The two pipelines produce DIFFERENT sets (a live session has no
+    # 'trade_history.csv', … The two pipelines produce DIFFERENT sets (an AutoTrader session has no
     # scenario_details / profiling / run_meta / aggregated_portfolio), so a consumer that
     # guessed would get a 404 for the difference. Empty = the run exists as logs alone, which
     # a test session legitimately does; such a run is listed rather than hidden, because an
@@ -681,7 +734,7 @@ class RunInfo(BaseModel):
     # instead of making a consumer open each run to find out.
     start_time: str = ''
     # The run this one belongs to: a sweep for one of its combinations, a deployment for one of
-    # its sessions, and — once the daily cycle lands (#476) — the session a day fragment was cut
+    # its sessions, and — once the daily cycle lands (#476) — the session a day record was cut
     # from. None means it stands alone. `parent_kind` says WHICH of those the id is; read the
     # two together, because the ids are indistinguishable by shape. None on a row indexed before
     # the discriminator existed, where the kind is genuinely unknown rather than absent.
@@ -703,6 +756,15 @@ class RunInfo(BaseModel):
     # indistinguishable here on purpose, because both mean "no figure was recorded", and a
     # consumer showing it says UNKNOWN rather than inventing an empty run.
     size_bytes: int = 0
+    # WHICH KIND of run this is, as the run recorded it at its start (contract 12): where its
+    # ticks came from and where its orders went. With `group` the two separate a backtest, a
+    # mock session, a dry run and a real-money session without a consumer deriving anything.
+    # None on a run indexed before the fields existed — unknown, never a guess.
+    ticks_from: Optional[TicksFrom] = None
+    orders_to: Optional[OrdersTo] = None
+    # The market window each unit was DECLARED to cover — what a date filter asks, where
+    # `start_time` is only when the run was executed. None as above.
+    data_windows: Optional[list[DataWindow]] = None
 
     @computed_field
     @property
@@ -751,7 +813,7 @@ class RunSummaryCurrency(BaseModel):
     total_fees: float       # ← PortfolioAggregateRow.total_fees
     # The two halves `profit_factor` is the quotient OF. Carried because a rate cannot be
     # folded out of two rows while its COMPONENTS can be summed on any level: without these,
-    # a session's profit factor is not recoverable from its booking segments and a
+    # a session's profit factor is not recoverable from its booking periods and a
     # deployment's is not recoverable from its sessions (#537, CLAUDE.md §48). `win_rate`
     # already had this property through winning_trades / total_trades; this gives it to the
     # second rate. Appended, so older fragments read back as 0.0.
@@ -787,14 +849,14 @@ class RunSummaryCurrency(BaseModel):
 
 class BookingPeriodRow(BaseModel):
     """
-    One booking period as the report renders it — the Hauptbuch, one line per entry.
+    One booking period as the report renders it — the booking-periods table, one line per entry.
 
     Deliberately NOT the ledger row: this carries what a reader compares down a column, not what
     a ranking needs. The ledger keeps the full figure set; this keeps the ones that make a period
     legible beside its neighbours.
     """
     unit_name: str
-    segment_no: int
+    period_no: int
     opened_at: str
     closed_at: str
     reason: str
@@ -828,7 +890,7 @@ class BookingPeriodsReport(RunScopedReport):
     """
     # Run-scoped, so `run_id` is the report's own and not a column: the pair below is what
     # separates the rows WITHIN it.
-    key: list[str] = ['unit_name', 'segment_no']
+    key: list[str] = ['unit_name', 'period_no']
     periods: list[BookingPeriodRow] = Field(default_factory=list)
     # Which currency the TOTALS are about, and every currency the ROWS carry. They differ on a
     # multi-currency run, where a sum across them would not be a number — so the rows keep
@@ -861,7 +923,7 @@ class AbsentUnitRow(BaseModel):
         reason: The sentence, for a person
         reason_code: The cause, for a program — the vocabulary of `scenario-details`'
             `error_type`: `ValidationError` for a refusal before the run, the exception's class
-            for a crash (the live session's too), `NoResults` when nothing failed and nothing
+            for a crash (an AutoTrader session's too), `NoResults` when nothing failed and nothing
             was produced
         checks: For a refusal, the stable ids of the checks that refused it (`warmup_quality`,
             `tick_stretch_gap`, …) — what lets a reader ask "which scenarios did warmup cost me"
@@ -877,7 +939,7 @@ class UnitRoster(BaseModel):
     Which units a run declared, and what became of each one that is not counted.
 
     Built by each pipeline from its own source — the simulation from its batch and its loaded
-    configuration, the live session from itself — and folded into `RunSummary`. `declared` comes
+    configuration, an AutoTrader session from itself — and folded into `RunSummary`. `declared` comes
     from the configuration and `absent` from the results, so the invariant
     `declared == disabled + len(absent) + unit_count` compares two sources rather than restating
     one (CLAUDE.md §48).
@@ -956,7 +1018,7 @@ class RunResultRow(BaseModel):
     decision_logic_type: str = ''
     decision_version: str = ''
     worker_versions: dict[str, str] = {}
-    config_snapshot: str = ''                    # full resolved strategy_config (JSON string)
+    strategy_config_json: str = ''               # full resolved strategy_config (JSON string)
     symbols: list[str] = []
     data_broker_type: str = ''
     # WHICH DATA the row was produced over (#518) and WHICH PRICE its bars were rendered from
@@ -978,7 +1040,7 @@ class RunResultRow(BaseModel):
     # deployment; only this answers "is this the same bot as the row above" across both.
     bot_id: str = ''
     profile_hash: str = ''
-    # 'simulation' | 'live'; '' on a fragment written before the column existed, which means
+    # 'simulation' | 'autotrader'; '' on a fragment written before the column existed, which means
     # UNKNOWN and never a guess.
     run_type: str = ''
     # When this row was written — within seconds of the run's end. '' on an older fragment,
@@ -998,14 +1060,14 @@ class RunResultRow(BaseModel):
     # what closed it. `None` / '' on a row that books no period, which is what every row
     # written before this version is — absent, never a made-up period zero.
     unit_name: str = ''
-    segment_no: int | None = None
-    segment_opened_at: str = ''
-    segment_closed_at: str = ''
-    segment_close_reason: str = ''
+    period_no: int | None = None
+    period_opened_at: str = ''
+    period_closed_at: str = ''
+    period_close_reason: str = ''
     # The period's own equity band and its own decline, beside the cumulative trio above.
-    segment_max_equity: float | None = None
-    segment_min_equity: float | None = None
-    segment_max_drawdown: float | None = None
+    period_max_equity: float | None = None
+    period_min_equity: float | None = None
+    period_max_drawdown: float | None = None
     # What a period looks like beyond its net result.
     avg_mae_winners: float | None = None
     avg_mae_losers: float | None = None
@@ -1284,9 +1346,9 @@ class DeploymentBookingPeriodRow(BookingPeriodRow):
     A booking period seen from a DEPLOYMENT, which needs one field more than a run does.
 
     Inside a run report `run_id` would be redundant — the report is run-scoped and says it
-    once. Across a deployment it is the only thing that tells two periods apart: `segment_no`
+    once. Across a deployment it is the only thing that tells two periods apart: `period_no`
     is a per-BOT counter carried through the cold-start state, and a session that writes no
-    carry-over (a dry run, a mock) leaves the floor at zero, so its successor starts at 1
+    carry-over (a dry run, a mock session) leaves the floor at zero, so its successor starts at 1
     again. Three sessions of such a deployment then produce three rows numbered 1 — measured
     2026-09-22 on the only deployment in this tree.
 
@@ -1305,7 +1367,7 @@ class DeploymentBookingPeriodsResponse(BaseModel):
 
     The thirty-day picture: one entry per booking period — a trading day, or the stretch a
     session actually covered — for a bot that restarted a dozen times. `/reports/runs/{run_id}/
-    booking-periods` answers the same shape for ONE run, so a consumer renders both with one
+    booking periods` answers the same shape for ONE run, so a consumer renders both with one
     component and this route saves it the N+1 walk over the sessions.
 
     Read from the LEDGER, which is the only store that holds a deployment's periods together.
@@ -1416,9 +1478,9 @@ class WorkerStatRow(BaseModel):
 
 class WorkerDecisionUnitRow(BaseModel):
     """
-    Per-unit worker + decision performance (#398, **unified** — sim scenario / live session).
-    Coordination fields are sim-only (the live session has no worker coordinator) and stay at
-    their defaults on live.
+    Per-unit worker + decision performance (#398, **unified** — sim scenario / AutoTrader
+    session). Coordination fields included: both pipelines' orchestrators count the ticks that
+    reach the algo path.
     """
     name: str
     symbol: str
@@ -1434,7 +1496,7 @@ class WorkerDecisionUnitRow(BaseModel):
     decision_avg_time_ms: float = 0.0
     decision_min_time_ms: float = 0.0
     decision_max_time_ms: float = 0.0
-    # coordination (sim-only)
+    # coordination (both pipelines)
     ticks_processed: int = 0
     parallel_workers: bool = False
     parallel_time_saved_ms: float = 0.0
@@ -1695,9 +1757,10 @@ class ColdStartReport(RunScopedReport):
         attended: Whether a human declared they were watching the start
         carry_over_present: Whether a carry-over document was found
         carry_over_saved_at: When it was written, ISO-8601 UTC (provenance)
-        algo_name: The decision logic that was asked, empty when none was
-        algo_accounted_for: What it answered; None when it was not asked or answered wrongly
-        algo_note: Its reason, in its own words
+        decision_logic_class: The decision logic that was asked, empty when none was
+        decision_logic_accounted_for: What it answered; None when it was not asked or answered
+            wrongly
+        decision_logic_note: Its reason, in its own words
     """
     symbol: str = ''
     applied: bool = False
@@ -1710,9 +1773,9 @@ class ColdStartReport(RunScopedReport):
     attended: bool = False
     carry_over_present: bool = False
     carry_over_saved_at: str = ''
-    algo_name: str = ''
-    algo_accounted_for: Optional[bool] = None
-    algo_note: str = ''
+    decision_logic_class: str = ''
+    decision_logic_accounted_for: Optional[bool] = None
+    decision_logic_note: str = ''
 
 
 class SafetyLimits(BaseModel):
@@ -1758,10 +1821,10 @@ class SafetyLimits(BaseModel):
 
 class SafetyDayRow(BaseModel):
     """
-    One UTC trading day, its own denominator, and the worst loss measured against it.
+    One trading day, its own denominator, and the worst loss measured against it.
 
     Args:
-        day: The UTC date, YYYY-MM-DD
+        day: The trading day, YYYY-MM-DD — the date it opened, in the anchor's timezone
         baseline: The DAY_START record, so this row's percentage names its denominator
         baseline_value: That record's value, 0.0 when the day never took one
         worst_loss_abs: The deepest drop below it during the day
@@ -1826,9 +1889,9 @@ class SafetyReport(RunScopedReport):
         blocked_at_end: Whether new entries were still blocked when the session ended
         reason_at_end: The breaker's reason at that moment, empty when it was not blocked
         limits: What was armed
-        days: One row per UTC day the session ran through
+        days: One row per trading day the session ran through
         days_limit_hit: How many of those days tripped a daily limit
-        worst_day: The UTC date of the deepest daily loss, empty when no day took a
+        worst_day: The trading day of the deepest daily loss, empty when no day took a
             baseline. Derived here rather than in a renderer: thirty rows do not belong on
             a console, and a renderer that picks the maximum out of them has built its own
             aggregate, which is how two surfaces come to disagree about the same figure
@@ -1937,7 +2000,7 @@ class SignalReport(RunScopedReport):
     """
     Signal configuration view (#433): one unit per signal source, each with its archive
     provenance and the scenarios consuming it. Unified — both pipelines build it from the
-    same shared data preparation, so sim batch and AutoTrader-mock session render identically.
+    same shared data preparation, so sim batch and mock session render identically.
     """
     units: list[SignalSourceRow]
 

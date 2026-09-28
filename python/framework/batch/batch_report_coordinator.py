@@ -174,9 +174,10 @@ class BatchReportCoordinator:
             self._scenario_set.get_generator_profiles() or [])
         # Robustness validation — multi-window + IS/OOS (empty unless robustness enabled; sim-only, #367).
         robustness_report = build_robustness_report_from_batch(run_id, self._batch_execution_summary)
-        # The run's Hauptbuch (#537) — derived here, used three times: the artifact, the console
-        # table and (through the segments themselves) the ledger rows. Derived rather than read
-        # back, because the reconciliation needs the run's own independent figure (#539).
+        # The run's booking periods (#537) — derived here, used three times: the artifact, the
+        # console table and (through the periods themselves) the ledger rows. Derived rather
+        # than read back, because the reconciliation needs the run's own independent figure
+        # (#539).
         booking_periods_report = build_booking_periods_report(run_id, units, run_summary)
 
         # === PRESENT — build the section sub-presenters from the models and render them
@@ -206,7 +207,7 @@ class BatchReportCoordinator:
             warnings_summary=WarningsSummary(warnings_errors_report),
             block_splitting_disposition=BlockSplittingDisposition(block_splitting_report),
             robustness_summary=RobustnessSummary(robustness_report),
-            # The run's Hauptbuch as an ordered section — inside the renderer, so the capture
+            # The run's booking periods as an ordered section — inside the renderer, so the capture
             # below carries it into `scenario_summary.log` like every other section (#537).
             booking_periods_summary=BookingPeriodsSummary(booking_periods_report),
             closing_block=SimExecutiveSummary(
@@ -284,10 +285,10 @@ class BatchReportCoordinator:
         provenance = build_run_provenance(
             self._batch_execution_summary, self._scenario_set, run_id,
             self._sweep_context, warnings_errors_report)
-        # The run's Hauptbuch (#537): its booking periods ARE its ledger rows, and no aggregate
+        # The run's ledger entries (#537): its booking periods ARE its ledger rows, and no aggregate
         # row is written beside them — a summary standing next to its own evidence puts the same
         # money in the same column twice, and every reader that sums or ranks would see it.
-        booking_segments = [
-            segment for unit in units for segment in unit.booking_segments]
-        append_run_to_ledger(run_summary, provenance, booking_segments)
+        booking_periods = [
+            period for unit in units for period in unit.booking_periods]
+        append_run_to_ledger(run_summary, provenance, booking_periods)
 

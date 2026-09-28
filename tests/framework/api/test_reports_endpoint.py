@@ -43,6 +43,7 @@ from python.framework.types.api.report_types import (
     BrokerInfoRow,
     BrokerReport,
     BrokerSymbolRow,
+    DataWindow,
     ExecutionStatsReport,
     ExecutionStatsRow,
     ExecutionStatsTotals,
@@ -51,6 +52,7 @@ from python.framework.types.api.report_types import (
     FeedStabilitySourceRow,
     OrderHistoryReport,
     OrderHistoryRow,
+    OrdersTo,
     PendingOrdersReport,
     PendingOrdersUnitRow,
     PortfolioAggregateRow,
@@ -65,6 +67,7 @@ from python.framework.types.api.report_types import (
     SignalReport,
     SignalSourceRow,
     SignalUsageRow,
+    TicksFrom,
     TradeAnalytics,
     TradeHistoryReport,
     TradeHistoryRow,
@@ -74,7 +77,7 @@ from python.framework.types.api.report_types import (
     WarningsErrorsReport,
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
-from python.framework.types.log_layout_types import RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -218,12 +221,12 @@ def _booking_periods_report() -> BookingPeriodsReport:
     # path — which is the line the table exists for.
     rows = [
         BookingPeriodRow(
-            unit_name='btc_run', segment_no=1, opened_at='2026-06-15T00:00:00+00:00',
+            unit_name='btc_run', period_no=1, opened_at='2026-06-15T00:00:00+00:00',
             closed_at='2026-06-16T00:00:00+00:00', reason='day_boundary', currency='USD',
             trade_count=3, net_pnl=12.0, total_fees=0.6, win_rate=0.667, profit_factor=2.0,
             final_equity=10012.0, min_equity=9995.0, max_equity=10015.0, max_drawdown=20.0),
         BookingPeriodRow(
-            unit_name='btc_run', segment_no=2, opened_at='2026-06-16T00:00:00+00:00',
+            unit_name='btc_run', period_no=2, opened_at='2026-06-16T00:00:00+00:00',
             closed_at='2026-06-16T09:30:00+00:00', reason='run_end', currency='USD',
             trade_count=2, net_pnl=-4.0, total_fees=0.4, win_rate=0.5, profit_factor=0.8,
             final_equity=10008.0, min_equity=10004.0, max_equity=10013.0, max_drawdown=9.0),
@@ -255,7 +258,7 @@ def _aggregated_portfolio_report() -> AggregatedPortfolioReport:
 
 def _run_logs(root: Path) -> RunLogPaths:
     """The two run-type roots under a tmp logs tree."""
-    return RunLogPaths(simulation=root / 'simulation', live=root / 'live')
+    return RunLogPaths(simulation=root / 'simulation', autotrader=root / 'autotrader')
 
 
 def _index_path(root: Path) -> Path:
@@ -567,7 +570,7 @@ def test_booking_periods_returns_the_table(client):
     response = client.get(_BOOKING_URL)
     assert response.status_code == 200
     body = response.json()
-    assert [row['segment_no'] for row in body['periods']] == [1, 2]
+    assert [row['period_no'] for row in body['periods']] == [1, 2]
     assert body['currency'] == 'USD'
     assert body['total_trades'] == 5
 
@@ -588,3 +591,30 @@ def test_booking_periods_carries_its_reconciliation(client):
 def test_booking_periods_run_not_found(client):
     response = client.get('/api/v1/reports/runs/nope/booking-periods')
     assert response.status_code == 404
+
+
+class TestTheRunListSaysWhichKindARunIs:
+    """
+    Contract 12: the run list carries the kind of run and the windows it covers, as the run
+    recorded them — a consumer filters on them without deriving anything from a profile file.
+    """
+
+    def test_the_kind_and_the_windows_reach_the_route(self, tmp_path):
+        run_dir = _run_logs(tmp_path).autotrader / 'my_profile' / _RUN
+        run_dir.mkdir(parents=True)
+        RunIndex(_index_path(tmp_path)).register_run(RunHeader(
+            run_id=_RUN, start_time=datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc),
+            run_type=RUN_TYPE_AUTOTRADER, run_name='my_profile',
+            ticks_from=TicksFrom.ARCHIVE, orders_to=OrdersTo.SIMULATED,
+            data_windows=[DataWindow(unit_name='my_profile', start_date='2026-08-11T00:00:00+00:00',
+                                     end_date='2026-08-14T00:00:00+00:00')]), run_dir)
+        with patch('python.api.endpoints.reports_router.ReportStore',
+                   lambda: ReportStore(_index_path(tmp_path))):
+            body = TestClient(create_app()).get('/api/v1/reports/runs').json()
+
+        run = body['runs'][0]
+        assert run['group'] == 'autotrader'
+        assert (run['ticks_from'], run['orders_to']) == ('archive', 'simulated'), 'a mock session'
+        assert run['data_windows'] == [{'unit_name': 'my_profile',
+                                        'start_date': '2026-08-11T00:00:00+00:00',
+                                        'end_date': '2026-08-14T00:00:00+00:00'}]

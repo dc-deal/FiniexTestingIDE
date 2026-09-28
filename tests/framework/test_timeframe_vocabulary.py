@@ -10,7 +10,7 @@ what this pins:
 
 Until 2026-09-14 the third was a second name->minutes table inside the Kraken OHLC fetcher, and
 it fell out of step the first time the first one moved: M10 was added to the vocabulary, the
-venue table knew nothing of it, and a live session would have discovered that on its first
+venue table knew nothing of it, and a live-adapter session would have discovered that on its first
 fetch rather than at boot.
 
 The venue set is now DERIVED — the venue declares which interval LENGTHS it publishes, and the
@@ -47,7 +47,7 @@ class TestTheVenueSetIsDerivedNotListed:
         """
         The concrete case that exposed the split. Kraken publishes no ten-minute OHLC
         interval, so M10 is renderable from ticks and servable over the API while remaining
-        something no live session can warm up from. No configuration changes that.
+        something no live-adapter session can warm up from. No configuration changes that.
         """
         assert TimeframeConfig.exists('M10')
         assert 'M10' not in KrakenOhlcBarFetcher.supported_warmup_timeframes()

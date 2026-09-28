@@ -15,7 +15,7 @@ then what it does about it. A label tells the reader nothing they could not read
 
 Label — the reader still does not know why this exists:
 
-> This guide shows you how to create a custom trading bot with FiniexTestingIDE.
+> This guide shows you how to create a custom strategy with FiniexTestingIDE.
 
 Problem — `architecture/reporting_pipeline.md`:
 

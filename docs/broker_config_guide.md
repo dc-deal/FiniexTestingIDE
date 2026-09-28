@@ -44,7 +44,7 @@ Mt5Adapter / KrakenAdapter  → Broker-specific implementation
 |-------|------|----------|-------------|
 | `company` | string | Always | Broker name |
 | `server` | string | Always | Server identifier |
-| `trade_mode` | string | Always | `"demo"` or `"real"` |
+| `trade_mode` | string | Always | The ACCOUNT's trade mode as its source reports it: `"demo"`, `"contest"` or `"real"` from the MQL5 exporter (`"unknown"` when MT5 reports none), `"live"` from the Kraken fetcher |
 | `leverage` | int | Always | Account leverage (1 = spot, no margin) |
 | `hedging_allowed` | bool | Always | Allow opposite positions on same symbol |
 | `margin_mode` | string | If leverage > 1 | `"retail_hedging"`, `"retail_netting"`, `"exchange"`, `"none"` |
@@ -190,7 +190,7 @@ re-frozen to the measured rates on that date.
 | Reader | Source | Why |
 |---|---|---|
 | **Backtest** | the git-tracked **seed**, always. Never asks | A run must be reproducible from a COMMIT. The rate is a written-down decision with a date, not a by-product of whenever someone last synced |
-| **Live** | the seed as its baseline, **overridden by the venue's answer** when `auto_detect_fee_tier` is on | Correct by construction, and it starts from the same declared number the backtest uses so the two agree about what was expected |
+| **Live-adapter session** | the seed as its baseline, **overridden by the venue's answer** when `auto_detect_fee_tier` is on | Correct by construction, and it starts from the same declared number the backtest uses so the two agree about what was expected |
 | **Both** | a **WARNING** whenever the venue disagrees with the seed | The signal to re-freeze. It fires even with the switch OFF, because only a human can update the seed and the backtest keeps the old rate until they do |
 
 ```json
@@ -240,7 +240,7 @@ ASSUMPTION, and the framework's job is to make it visible, dated and part of the
 Two consequences worth stating plainly:
 
 - **When in doubt, declare the WORSE rate.** A backtest that is too expensive under-promises; one
-  that is too cheap manufactures profit that the live account will not produce. The state
+  that is too cheap manufactures profit that the real account will not produce. The state
   corrected on 2026-09-08 erred in the second direction for an unknown length of time.
 - **A rate the verdict depends on is not a rate, it is a risk.** If a strategy is profitable at
   0.40 % and unprofitable at 0.80 %, the honest report is that the cost assumption decides the
@@ -370,7 +370,7 @@ Currently only `kraken_spot` uses `dynamic`. MT5 and all future static brokers d
 
 ### Broker Entry Schema (`market_config.json`)
 
-Full schema for a dynamic broker entry (all connection fields are relevant to live AutoTrader sessions only):
+Full schema for a dynamic broker entry (all connection fields are relevant to live-adapter sessions only):
 
 ```json
 {
@@ -379,7 +379,7 @@ Full schema for a dynamic broker entry (all connection fields are relevant to li
   "trading_model": "spot",
   "config_mode": "dynamic",
   "broker_config_path": "configs/brokers/kraken/kraken_spot_broker_config.json",
-  "credentials_file": "kraken_credentials.json",
+  "credentials_file": "venues/kraken_credentials.json",
   "dry_run": true,
   "broker_transport": {
     "api_base_url": "https://api.kraken.com",
@@ -397,14 +397,15 @@ Full schema for a dynamic broker entry (all connection fields are relevant to li
 | `trading_model` | Optional | `"spot"` or `"margin"` — affects portfolio and display |
 | `config_mode` | All | `"static"` (default) or `"dynamic"` |
 | `broker_config_path` | All | Path to git-tracked broker config JSON (static seed) |
-| `credentials_file` | Live only | Credentials filename, resolved via `user_configs/credentials/` cascade |
-| `dry_run` | Live only | `true` = validate orders, no execution. Safe default. |
-| `broker_transport.api_base_url` | Live only | Broker REST API base URL |
-| `broker_transport.rate_limit_interval_s` | Live only | Minimum interval between private API calls (seconds) |
-| `broker_transport.request_timeout_s` | Live only | HTTP request timeout (seconds) |
-| `broker_transport.poll_interval_ms` | Live only | Minimum interval between per-order status polls (milliseconds, default 5000) |
+| `credentials_file` | Live adapter | Credentials filename, resolved via `user_configs/credentials/` cascade |
+| `dry_run` | Live adapter | `true` = the venue validates each order, fills are simulated locally, no money moved. Safe default. |
+| `broker_transport.api_base_url` | Live adapter | Broker REST API base URL |
+| `broker_transport.rate_limit_interval_s` | Live adapter | Minimum interval between private API calls (seconds) |
+| `broker_transport.request_timeout_s` | Live adapter | HTTP request timeout (seconds) |
+| `broker_transport.poll_interval_ms` | Live adapter | Minimum interval between per-order status polls (milliseconds, default 5000) |
 
-To override any live setting (e.g., disable dry-run for production), create `user_configs/market_config.json`:
+To override any live-adapter setting (e.g., switch `dry_run` off for real-money sessions), create
+`user_configs/market_config.json`:
 
 ```json
 {
@@ -419,18 +420,21 @@ To override any live setting (e.g., disable dry-run for production), create `use
 
 `user_configs/market_config.json` is gitignored. The committed default always has `dry_run: true`.
 
-`dry_run` is a **broker-level deployment decision** — not a per-session flag. It applies to all AutoTrader sessions using that broker type, analogous to Alpaca's `paper_trading` environment variable or QuantConnect's brokerage model setting.
+`dry_run` in `market_config.json` is the broker's standing posture. A profile may only tighten it:
+`true` wins, and `false` against a `true` default is refused at startup (`DryRunConflictError`). A
+mock session is always dry. The broker-level posture is analogous to Alpaca's `paper_trading`
+environment variable or QuantConnect's brokerage model setting.
 
 ### Static Seed + Hot Cache Model
 
 ```
 configs/brokers/kraken/kraken_spot_broker_config.json  ← git-tracked "seed"
-  → FEE STRUCTURE for every run, live and backtest alike
+  → FEE STRUCTURE for every run, AutoTrader session and backtest alike
   → Symbol specs for static-mode brokers
   → Never auto-overwritten
 
 data/runtime/brokers/kraken_spot/kraken_spot_broker_config.json  ← gitignored hot cache
-  → SYMBOL SPECS for dynamic-mode brokers, live and backtest alike
+  → SYMBOL SPECS for dynamic-mode brokers, AutoTrader session and backtest alike
   → Auto-refreshed from Kraken API (weekly)
 ```
 
@@ -504,7 +508,7 @@ The examples below show the identity stamped onto a loaded config:
 The hash appears in:
 - Startup log (global logger)
 - Batch summary: `Config:  [a3f82c11]` line under broker info
-- AutoTrader live header: `BTCUSD (kraken_spot) [a3f82c11] — DRY RUN`
+- AutoTrader live display header: `BTCUSD (kraken_spot) [a3f82c11] — DRY RUN`
 
 Neither hash covers `_config_meta`, so a timestamp refresh does not move them.
 
@@ -537,7 +541,7 @@ Review the diff carefully before committing:
 
 ### Pre-Populating the Runtime Cache
 
-Before the first AutoTrader live session (or after deleting the cache), the runtime cache must exist. Use the sync CLI to populate it for all symbols in the tick index:
+Before the first live-adapter session (or after deleting the cache), the runtime cache must exist. Use the sync CLI to populate it for all symbols in the tick index:
 
 ```bash
 python python/cli/broker_config_cli.py sync
@@ -562,7 +566,7 @@ After syncing, AutoTrader sessions can start offline. The weekly staleness check
 - Example: `DASHUSD` must have `base_currency=DASH`, `quote_currency=USD`
 - Error is raised at load time with file path, symbol name, and expected values
 
-This catches copy-paste errors in static configs and schema drift in refreshed cache files before they propagate into a live session.
+This catches copy-paste errors in static configs and schema drift in refreshed cache files before they propagate into a run.
 
 ---
 

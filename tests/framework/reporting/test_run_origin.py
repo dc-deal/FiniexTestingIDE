@@ -6,7 +6,7 @@ this repository it ran. The first was answerable by memory while there was one o
 console; the second was not answerable at all for a strategy living in its own repository. This
 suite pins where the two new blocks are written and where they are read:
 
-- both header sites — the scenario set and the live session — always state an origin, and state
+- both header sites — the scenario set and the AutoTrader session — always state an origin, and state
   a code identity for a run that reports;
 - every entry point DECLARES its channel; code that does not say keeps `direct`;
 - the run index projects both blocks into flat columns, identically on append and on rebuild;
@@ -57,7 +57,7 @@ from python.framework.types.autotrader_types.autotrader_config_types import Auto
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.config_types.host_identity_config_types import TEST_HOST_ID
 from python.framework.types.git_info_types import GitInfo
-from python.framework.types.log_layout_types import RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.types.run_origin_types import (
     CONSOLE_CLIENT,
     OPERATOR_PERSON,
@@ -85,7 +85,7 @@ _MINI_GRID = 'tests/fixtures/optimization/btcusd_mini_grid.json'
 _DECISION = 'user_algos/my_bot/my_strategy.py'
 _STRATEGY = {'decision_logic_type': _DECISION,
              'worker_instances': {'rsi_fast': 'CORE/rsi', 'trend': 'CORE/ma_trend'}}
-_PROFILE = 'configs/autotrader_profiles/backtesting/mock_session_test.json'
+_PROFILE = 'configs/autotrader_profiles/mock/mock_session_test.json'
 
 
 class _RecordingLogger:
@@ -338,15 +338,15 @@ class TestTheIndexProjectsBothBlocks:
 
     @staticmethod
     def _plant(tmp_path: Path):
-        roots = RunLogPaths(simulation=tmp_path / 'simulation', live=tmp_path / 'live')
+        roots = RunLogPaths(simulation=tmp_path / 'simulation', autotrader=tmp_path / 'autotrader')
         index = RunIndex(tmp_path / 'runs_index.parquet', roots)
         planted = [
             (_header('20260924_080000_aaaaaaaa', origin=_origin(),
                      code_identity=_identity(algos_dirty=True)),
              roots.simulation / 'my_set' / '20260924_080000_aaaaaaaa'),
-            (_header('20260924_080001_bbbbbbbb', RUN_TYPE_LIVE,
+            (_header('20260924_080001_bbbbbbbb', RUN_TYPE_AUTOTRADER,
                      origin=_origin(RunChannel.DIRECT), code_identity=_identity()),
-             roots.live / 'my_profile' / '20260924_080001_bbbbbbbb'),
+             roots.autotrader / 'my_profile' / '20260924_080001_bbbbbbbb'),
             # Commissioned not to report: an origin, and no code identity.
             (_header('20260924_080002_cccccccc', origin=_origin(RunChannel.DIRECT)),
              roots.simulation / 'my_set' / '20260924_080002_cccccccc'),
@@ -431,13 +431,13 @@ class TestTheLedgerReadsItsProvenanceFromTheHeader:
             The run directory
         """
         run_dir = tmp_path / run_id
-        write_run_header(_header(run_id, RUN_TYPE_LIVE, origin=_origin(),
+        write_run_header(_header(run_id, RUN_TYPE_AUTOTRADER, origin=_origin(),
                                  code_identity=code_identity), run_dir)
         return run_dir
 
     @staticmethod
     def _config() -> AutoTraderConfig:
-        return AutoTraderConfig(name='my_profile', symbol='BTCUSD', broker_type='kraken_spot',
+        return AutoTraderConfig(profile_name='my_profile', symbol='BTCUSD', broker_type='kraken_spot',
                                 strategy_config=dict(_STRATEGY))
 
     def _provenance(self, run_id: str, run_dir, logger=None):

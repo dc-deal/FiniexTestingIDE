@@ -61,7 +61,7 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import (
-    RUN_TYPE_LIVE,
+    RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
 )
 
@@ -94,7 +94,7 @@ def _report() -> TradeHistoryReport:
 
 def _run_logs(root: Path) -> RunLogPaths:
     """The two run-type roots under a tmp logs tree."""
-    return RunLogPaths(simulation=root / 'simulation', live=root / 'live')
+    return RunLogPaths(simulation=root / 'simulation', autotrader=root / 'autotrader')
 
 
 def _base(root: Path, run_type: str, sweep_id: str = '') -> Path:
@@ -103,15 +103,15 @@ def _base(root: Path, run_type: str, sweep_id: str = '') -> Path:
 
     Args:
         root: The tmp logs tree
-        run_type: 'simulation' or 'live'
+        run_type: 'simulation' or 'autotrader'
         sweep_id: The owning sweep, when the run is one of its combinations
 
     Returns:
         The directory the run's owner folder sits in
     """
     roots = _run_logs(root)
-    if run_type == RUN_TYPE_LIVE:
-        return roots.live
+    if run_type == RUN_TYPE_AUTOTRADER:
+        return roots.autotrader
     return roots.sweeps / sweep_id if sweep_id else roots.simulation
 
 
@@ -203,7 +203,7 @@ class TestTheThreeCategories:
         """A test session writes logs and no artifacts — it exists, and the row says so."""
         # A log-only session still writes its header at start — that is what makes it a run
         # the index knows. Only its artifacts are missing.
-        bare = _planted_run(tmp_path, RUN_TYPE_LIVE, 'probe_test', '20260829_213636_dddddddd')
+        bare = _planted_run(tmp_path, RUN_TYPE_AUTOTRADER, 'probe_test', '20260829_213636_dddddddd')
         (bare / 'session_logs').mkdir(parents=True)
         _write_run(tmp_path, RUN_TYPE_SIMULATION, 'my_set', '20260615_120000_aaaaaaaa')
 
@@ -216,13 +216,13 @@ class TestTheThreeCategories:
         _write_run(tmp_path, RUN_TYPE_SIMULATION, 'plain_set', '20260615_120000_aaaaaaaa')
         _write_run(tmp_path, RUN_TYPE_SIMULATION, 'my_set__c000', '20260829_184007_cccccccc',
                    sweep_id=self._SWEEP)
-        _write_run(tmp_path, RUN_TYPE_LIVE, 'my_profile', '20260615_130000_bbbbbbbb')
+        _write_run(tmp_path, RUN_TYPE_AUTOTRADER, 'my_profile', '20260615_130000_bbbbbbbb')
         store = ReportStore(_index_path(tmp_path))
         runs = {r.run_id: r for r in store.list_runs()}
         assert set(runs) == {'20260615_120000_aaaaaaaa', '20260829_184007_cccccccc', '20260615_130000_bbbbbbbb'}
         assert runs['20260829_184007_cccccccc'].group == RUN_TYPE_SIMULATION
         assert runs['20260615_120000_aaaaaaaa'].group == RUN_TYPE_SIMULATION
-        assert runs['20260615_130000_bbbbbbbb'].group == RUN_TYPE_LIVE
+        assert runs['20260615_130000_bbbbbbbb'].group == RUN_TYPE_AUTOTRADER
         for run_id in runs:
             assert store.get_trade_history(run_id) is not None
 
@@ -238,7 +238,7 @@ class TestResolveRead:
         assert ReportStore(_index_path(tmp_path)).get_trade_history('does_not_exist') is None
 
     def test_resolves_autotrader_run(self, tmp_path):
-        _write_run(tmp_path, RUN_TYPE_LIVE, 'my_profile', '20260615_130000_bbbbbbbb')
+        _write_run(tmp_path, RUN_TYPE_AUTOTRADER, 'my_profile', '20260615_130000_bbbbbbbb')
         report = ReportStore(_index_path(tmp_path)).get_trade_history('20260615_130000_bbbbbbbb')
         assert report is not None and report.count == 3
 
@@ -259,19 +259,19 @@ class TestFilter:
 class TestListRuns:
     def test_lists_both_groups_newest_first(self, tmp_path):
         _write_run(tmp_path, RUN_TYPE_SIMULATION, 'my_set', '20260615_120000_aaaaaaaa')
-        _write_run(tmp_path, RUN_TYPE_LIVE, 'my_profile', '20260615_130000_bbbbbbbb')
+        _write_run(tmp_path, RUN_TYPE_AUTOTRADER, 'my_profile', '20260615_130000_bbbbbbbb')
         assert [run.run_id for run in ReportStore(_index_path(tmp_path)).list_runs()] == [
             '20260615_130000_bbbbbbbb', '20260615_120000_aaaaaaaa']
 
     def test_carries_group_and_owner_name(self, tmp_path):
         """The listing is the viewer's run picker — id alone cannot tell sim from live."""
         _write_run(tmp_path, RUN_TYPE_SIMULATION, 'my_set', '20260615_120000_aaaaaaaa')
-        _write_run(tmp_path, RUN_TYPE_LIVE, 'my_profile', '20260615_130000_bbbbbbbb')
+        _write_run(tmp_path, RUN_TYPE_AUTOTRADER, 'my_profile', '20260615_130000_bbbbbbbb')
         runs = {run.run_id: run for run in ReportStore(_index_path(tmp_path)).list_runs()}
         assert (runs['20260615_120000_aaaaaaaa'].group, runs['20260615_120000_aaaaaaaa'].name) == (
             RUN_TYPE_SIMULATION, 'my_set')
         assert (runs['20260615_130000_bbbbbbbb'].group, runs['20260615_130000_bbbbbbbb'].name) == (
-            RUN_TYPE_LIVE, 'my_profile')
+            RUN_TYPE_AUTOTRADER, 'my_profile')
 
     def test_empty_logs_tree_lists_nothing(self, tmp_path):
         assert ReportStore(_index_path(tmp_path)).list_runs() == []
@@ -341,7 +341,7 @@ class TestOrderHistory:
 
 class TestPortfolio:
     def test_reads_portfolio(self, tmp_path):
-        run_dir = _planted_run(tmp_path, RUN_TYPE_LIVE, 'my_profile', '20260615_130000_bbbbbbbb')
+        run_dir = _planted_run(tmp_path, RUN_TYPE_AUTOTRADER, 'my_profile', '20260615_130000_bbbbbbbb')
         write_artifact(_portfolio_report(), run_dir / IO_SUBDIR, PORTFOLIO_ARTIFACT)
 
         report = ReportStore(_index_path(tmp_path)).get('20260615_130000_bbbbbbbb', PORTFOLIO_ARTIFACT)

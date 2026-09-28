@@ -25,7 +25,7 @@ from python.framework.types.disturbance_episode_types import DisturbanceOrigin
 from python.framework.types.log_level import LogLevel
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
-STRESS_PROFILE = 'configs/autotrader_profiles/backtesting/tick_outage_stress_test.json'
+STRESS_PROFILE = 'configs/autotrader_profiles/mock/tick_outage_stress_test.json'
 
 WINDOW_LABEL = 'tick feed status stale 10min'
 

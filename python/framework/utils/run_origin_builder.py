@@ -4,7 +4,7 @@ FiniexTestingIDE - Run Origin Builder (#551)
 Builds the two blocks a run header states about where a run came from: its ORIGIN — who or what
 started it, for whom, on which installation — and its CODE IDENTITY — which code it ran.
 
-One unit for both header sites, the scenario set and the live session, so the two pipelines
+One unit for both header sites, the scenario set and the AutoTrader session, so the two pipelines
 cannot answer the same question two ways. The types these fill live in `run_origin_types.py`;
 the git reads and the component resolution behind the code identity live in
 `code_identity_builder.py`. What is decided HERE is only the wiring: which host, which client,
@@ -47,7 +47,7 @@ def build_run_origin(channel: RunChannel, allow_dirty: bool = False) -> RunOrigi
     Args:
         channel: How the run was started, as the entry point DECLARES it
         allow_dirty: Whether the operator allowed real orders from uncommitted code
-            (`--allow-dirty`); only a live session can carry it
+            (`--allow-dirty`); only an AutoTrader session can carry it
 
     Returns:
         The run's origin

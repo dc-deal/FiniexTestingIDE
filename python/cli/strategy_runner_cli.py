@@ -112,7 +112,7 @@ class StrategyRunnerCli:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description='Batch strategy testing CLI',
+        description='Backtesting CLI',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
@@ -130,7 +130,7 @@ def main():
         type=str,
         nargs='+',
         default=None,
-        help='Profile JSON file(s) or directory path(s) for Profile Run'
+        help='Generator-profile JSON file(s) or directories for a Profile Run'
     )
 
     # ─────────────────────────────────────────────────────────────────────────

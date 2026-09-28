@@ -7,7 +7,7 @@ hand-built RunUnit fixtures (real `WorkerPerformanceStats` / `DecisionLogicStats
 no-coordination fallback and the empty case.
 
 **A unit without coordination used to be described here as "live-style", and that was the defect
-wearing the words of a design decision.** A live session's orchestrator counts its ticks exactly
+wearing the words of a design decision.** An AutoTrader session's orchestrator counts its ticks exactly
 as the simulation's does; what was missing until 2026-09-24 was the collection, so every session
 reported 0 ticks beside its real decision count and the compute ratio derived from it read 0.0 %
 rather than reading as absent. The fallback below is still real — a unit built from something
@@ -95,7 +95,7 @@ class TestBuild:
         The fallback, not the live shape — see the module docstring.
 
         It still has to hold: a RunUnit can be built from something that is not a run at all
-        (the booking-segment builder makes one out of a trade list), and the row must render
+        (the booking-period builder makes one out of a trade list), and the row must render
         rather than divide by a tick count it does not have.
         """
         u = _unit('no-run', symbol='BTCUSD', workers=[_ws('bollinger', 10.0)],

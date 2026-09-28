@@ -8,16 +8,20 @@
 > **Status:** Alpha
 > **Target:** Developers with Python experience who want to systematically backtest trading strategies
 
+**New here?** Start with the [Introduction](docs/introduction_to_the_ide.md) — the two pipelines and
+the kinds of run on one page — and keep the [Glossary](docs/glossary.md) at hand: each term in this
+project means one thing.
+
 ---
 
 ## What's New in 1.4.0
 
 - **SIGNAL Workers — External Data as a First-Class Input** — A new worker type reads recorded, model-produced signals (LLM sentiment) the same way an indicator reads price. Archived per source and resolved by timestamp with a strict no-look-ahead merge key, so a backtest can never see a signal before it existed.
-- **Live Signal Transport** — A live session starts with an empty provider that a transport fills as envelopes arrive, drained on both the tick and heartbeat paths. The same worker reads a mounted archive or a live feed without knowing which it got.
+- **Live Signal Transport** — A live-adapter session starts with an empty provider that a transport fills as envelopes arrive, drained on both the tick and heartbeat paths. The same worker reads a mounted archive or a live feed without knowing which it got.
 - **Mandatory Staleness Contracts** — Every decision logic must answer what it does when an input goes quiet — for signals and for market data. Not knowing is a state, and a strategy that cannot describe its own blindness is not testable.
 - **Signal Reporting — Offered vs. Decided-On** — Reports separate what the archive *could* have offered from what the strategy *actually decided on*, and record when disturbances happened as observed spans. Two different questions; a report that merges them answers neither.
 - **Run-Outcome Contract & Exit Codes** — A run's outcome is a single canonical value on the report model, and the CLI exit code reflects it. Automation no longer sees green on a failed run.
-- **Compute Only What Is Consumed** — A decision declares the worker outputs it reads, so a worker skips computing the rest; a worker reads only the bar window it needs. Bit-identical results, less work per tick.
+- **Compute Only What Is Consumed** — A decision logic declares the worker outputs it reads, so a worker skips computing the rest; a worker reads only the bar window it needs. Bit-identical results, less work per tick.
 - **Unified Release Certificates** — All four release gates (benchmark, live adapter, field study, signal feed) share one identity: the declared release is checked against the version the tree carries, a declared release from uncommitted work is refused, and each certificate records the configuration it actually ran under.
 
 ### Previous Releases
@@ -36,7 +40,7 @@
 
 ## What is FiniexTestingIDE?
 
-FiniexTestingIDE is a high-performance backtesting and live trading framework for forex and crypto strategies. It processes real tick data, simulates realistic broker execution, and connects directly to live brokers for production trading.
+FiniexTestingIDE is a high-performance backtesting and live trading framework for forex and crypto strategies. It processes real tick data, simulates realistic broker execution, and connects directly to real venues for production trading.
 
 **Core capabilities:**
 - ✅ Tick-by-tick backtesting with real market data
@@ -67,12 +71,12 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 - **Worker System** - Modular indicator computation (RSI, Bollinger, MACD, OBV, ...)
 - **Decision Logic** - Pluggable trading strategies with clear separation
 - **Parameter Validation** - Schema-based validation with strict/non-strict modes
-- **USER Namespace** - Custom workers and decision logic with auto-discovery and hot-reload
+- **User Algo Workspace** - Custom workers and decision logics loaded by file path from `user_algos/` (one class per file, found by introspection; `rescan()` reloads)
 
-### FiniexAutoTrader (Live Trading)
-- **Live Pipeline** - Real-time tick loop connecting broker WebSocket → workers → decision logic → order execution
+### FiniexAutoTrader
+- **AutoTrader Pipeline** - Real-time tick loop connecting broker WebSocket → workers → decision logic → order execution
 - **Kraken Spot Adapter** - WebSocket v2 tick source, REST warmup (OHLC bars), live account balance, order execution
-- **Dry-Run Mode** - Full pipeline validation without order execution (`validate=true` on Kraken)
+- **Dry-Run Mode** - Every order is validated by the venue (`validate=true` on Kraken) and never placed; fills are simulated locally when the market reaches the order's price
 - **Live Console UI** - Rich terminal dashboard: session health, portfolio, positions, orders, trade history, algo state
 - **Spot Trading Model** - Dual-balance (quote + base asset), equity calculation, safety circuit breaker on equity
 - **Order Guard** - Duplicate signal guard, SHORT protection in spot mode, rejection cooldown
@@ -91,9 +95,9 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 - **Mock Testing** - MockBrokerAdapter for deterministic pipeline verification
 
 ### Signal Data (External / Model-Produced Input)
-- **SIGNAL Worker Type** - Reads recorded, model-produced signals (LLM sentiment) as a first-class worker input, in both the backtesting and live pipelines
+- **SIGNAL Worker Type** - Reads recorded, model-produced signals (LLM sentiment) as a first-class worker input, in both the backtesting and AutoTrader pipelines
 - **No-Look-Ahead Merge** - Snapshots resolve by their receive timestamp, so a backtest cannot see a signal before it existed
-- **Live Transport** - A live session starts empty and is filled by an arriving feed; the worker cannot tell a mounted archive from a live one
+- **Live Transport** - A live-adapter session starts empty and is filled by an arriving feed; the worker cannot tell a mounted archive from a live one
 - **Staleness Contracts** - Every decision logic must declare its reaction when a signal or the market data goes quiet
 - **Coverage & Decision Reporting** - What the archive could offer, what the strategy decided on, and when disturbances happened — reported separately
 
@@ -119,9 +123,9 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 
 ```
 1. Collect tick data    →  TickCollector (MT5)
-2. Import to Parquet    →  📥 Import (config-driven offsets)
-3. Create your bot      →  Worker + Decision + Config
-4. Run backtest         →  🔬 Run Scenario
+2. Import to Parquet    →  📥 Import (Override)
+3. Create your strategy →  Worker + Decision Logic + Config
+4. Run backtest         →  🔬🧪 Run User Scenario Set (prompt)
 ```
 
 → See [Quickstart Guide](docs/user_guides/quickstart_guide.md) for step-by-step instructions.
@@ -148,9 +152,9 @@ Extract the ZIP contents to `data/processed/`:
 
 ```
 data/processed/
-├── .parquet_tick_index.parquet
-├── .parquet_bars_index.parquet
-├── .discovery_caches/
+├── ticks_index.parquet
+├── bars_index.parquet
+├── discovery_caches/
 ├── mt5/
 │   ├── ticks/
 │   │   ├── AUDUSD/ ... USDJPY/
@@ -160,9 +164,13 @@ data/processed/
 │   │   ├── BTCUSD/ ... XRPUSD/
 │   └── bars/
 └── signals/
-    ├── .signal_index.parquet
+    ├── signals_index.parquet
     └── crypto_sentiment/ ... forex_macro_sentiment/
 ```
+
+The index files and discovery caches are derived: each is rebuilt from the data it describes, and a
+missing index is built on first use. A ZIP that predates the current index names therefore works as
+it is — its older index files are ignored and can be deleted.
 
 ### Dataset Overview
 
@@ -262,8 +270,7 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 ## Current Limitations
 
 - **No native OCO/Iceberg/trailing-stop order types** - Market, Limit, Stop, and Stop-Limit are supported; extended order types are planned. Strategy-level trailing (moving a position's stop as price advances) is supported and demonstrated by the reference strategy.
-- **No Broker-Side Partial-Fill Detection on Live** - A live order is treated as pending until fully filled; a broker-reported *partial* fill (one order, multiple executions) is not yet surfaced as its own state. Partial position close (closing a fraction of an open position) is supported in both backtesting and live.
-- **Live signals arrive by polling** - The live signal transport pulls the producer's latest envelope on an interval; a push stream is the next step. A snapshot superseded between two polls is not recovered, and an envelope is up to one poll interval old.
+- **No Broker-Side Partial-Fill Detection** - An order at a real venue is treated as pending until fully filled; a broker-reported *partial* fill (one order, multiple executions) is not yet surfaced as its own state. Partial position close (closing a fraction of an open position) is supported in both backtesting and AutoTrader sessions.
 - **FiniexViewer in progress** - HTTP API available; browser UI in active development (see [FiniexViewer Setup](docs/user_guides/finiexviewer_setup.md))
 
 > **Note on Multiple Positions:** Full multi-position support is implemented and validated by integration tests, and the reference strategy (`CORE/trend_channel_reference`) actively stacks several positions on a symbol. Holding multiple *symbols* against one shared capital pool — portfolio backtesting — is the next core-engine milestone. See `configs/scenario_sets/backtesting/multi_position_test.json` for a reference on how to build multi-position scenarios.
@@ -284,7 +291,7 @@ See the [Documentation Index](docs/documentation_index.md) for a complete overvi
 - Live acceptance certificate (Field Study), reconciliation foundation, decision event channel, timer-driven loop cadence (V1.3.0)
 - Production-bot case study, restart-safe algo memory, unified reporting, trade analytics, robustness validation, and parameter sweep (V1.3.1)
 - The SIGNAL chain — external, model-produced data as a first-class worker input, with mandatory staleness contracts and a live transport (V1.4)
-- Next: unattended live operation — everything a strategy needs to run thirty days on a real account without a human watching: state recovery, alerting, reconciliation resolution, paper trading as a first-class mode, and the signal push stream (V1.5)
+- Next: unattended live operation — everything a strategy needs to run thirty days on a real account without a human watching: state recovery, alerting, reconciliation resolution, and paper trading as a first-class mode (V1.5)
 
 For the full vision, detailed roadmap, and feature path see **[Issue #138 — Vision & Roadmap](https://github.com/dc-deal/FiniexTestingIDE/issues/138)**.
 

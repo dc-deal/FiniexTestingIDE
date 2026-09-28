@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Session-End Policy Validation (#492)
 
-Resolves what a live session does with what it still holds when it ends, and refuses the
+Resolves what an AutoTrader session does with what it still holds when it ends, and refuses the
 combinations that would leave the operator worse off than either half suggests. One thin
 call from `AutotraderMain.run()`, before anything is set up — a refusal here must arrive
 before the first order, not after.
@@ -40,7 +40,7 @@ def resolve_session_end_policy(
     attended: bool,
 ) -> SessionEndDefaults:
     """
-    Resolve and validate the session-end policy for one live session.
+    Resolve and validate the session-end policy for one AutoTrader session.
 
     Args:
         config: The loaded profile
@@ -56,7 +56,7 @@ def resolve_session_end_policy(
 
     if policy.orders == 'leave' and broker_posture != 'leave':
         raise SessionEndPolicyConflictError(
-            f"Profile '{config.name}' sets session_end.orders='leave', but "
+            f"Profile '{config.profile_name}' sets session_end.orders='leave', but "
             f"market_config.json has session_end_orders='{broker_posture}' for broker "
             f"'{config.broker_type}'. A profile may only TIGHTEN the session-end posture, "
             f'never loosen it — leaving resting orders at a venue after the process ends '
@@ -65,7 +65,7 @@ def resolve_session_end_policy(
 
     if policy.positions == 'close':
         raise SessionEndCloseUnsupportedError(
-            f"Profile '{config.name}' sets session_end.positions='close', which is not "
+            f"Profile '{config.profile_name}' sets session_end.positions='close', which is not "
             f'built yet. A close that really reaches the venue is an asynchronous order — '
             f'the fill arrives on the next tick, and at session end the tick source is '
             f'already stopped — so it needs a synchronous drain with a timeout and the '
@@ -108,7 +108,7 @@ def _check_adoption_pair(
         return
     if not config.cold_start.enabled:
         raise SessionEndPolicyConflictError(
-            f"Profile '{config.name}' sets session_end.orders='leave' while "
+            f"Profile '{config.profile_name}' sets session_end.orders='leave' while "
             f'cold_start.enabled=false. The orders would stay at the venue and no session '
             f'would ever adopt them back — nothing would manage them again.'
         )
@@ -118,7 +118,7 @@ def _check_adoption_pair(
         return
 
     raise SessionEndPolicyConflictError(
-        f"Profile '{config.name}' sets session_end.orders='leave' together with "
+        f"Profile '{config.profile_name}' sets session_end.orders='leave' together with "
         f"cold_start.adoption_mode='operator_confirm', and this start is unattended. The "
         f'orders would stay at the venue and the next boot would REFUSE to adopt them, '
         f'because it cannot ask anyone — so the bot that is meant to manage them would not '

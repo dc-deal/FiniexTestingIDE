@@ -226,7 +226,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
             ),
             'price': OutputParamDef(
                 param_type=float, min_val=0.0,
-                description='Price at decision time',
+                description='Price at decision time — traded where the venue prints one, else mid',
                 category='INFO',
             ),
         }
@@ -332,7 +332,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
                         'sequence_index': idx,
                         'hold_ticks': hold_ticks,
                         'reason': f'Multi-position open {direction} at tick {self.tick_count}',
-                        'price': tick.mid,
+                        'price': tick.price,
                     },
                 )
 
@@ -343,7 +343,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
             action=DecisionLogicAction.FLAT,
             outputs={
                 'reason': 'No open signal',
-                'price': tick.mid,
+                'price': tick.price,
             },
         )
 

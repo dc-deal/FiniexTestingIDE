@@ -52,7 +52,7 @@ class SpyStore:
         self._fail = fail
 
     def save(self, session_key: str, highest_position_counter: int,
-             highest_segment_no: int = 0,
+             highest_period_no: int = 0,
              keys_in_use: Optional[Set[str]] = None,
              open_positions: Optional[List[PositionCarryOver]] = None,
              risk_baseline: Optional[RiskBaseline] = None,
@@ -64,7 +64,7 @@ class SpyStore:
         self.saves.append({
             'session_key': session_key,
             'highest_position_counter': highest_position_counter,
-            'highest_segment_no': highest_segment_no,
+            'highest_period_no': highest_period_no,
             'keys_in_use': set(keys_in_use or ()),
             'open_positions': open_positions,
             'risk_baseline': risk_baseline,
@@ -183,7 +183,7 @@ class TestADryRunWritesOnlyWhatItCanClaim:
     process computed, true whether or not the venue was real.
 
     Before the split the whole write was refused, which had a consequence nobody wanted: a
-    MOCK session is a dry run by definition (`_is_dry_run` answers on the adapter type), so
+    MOCK session is always treated as dry (`_is_dry_run` answers on the adapter type), so
     the deployment identity and the drawdown curve could not be exercised at all without a
     real venue.
     """

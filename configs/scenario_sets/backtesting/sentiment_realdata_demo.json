@@ -40,7 +40,7 @@
     },
     "scenarios": [
         {
-            "name": "BTCUSD_sentiment_realdata",
+            "scenario_name": "BTCUSD_sentiment_realdata",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment",
@@ -58,7 +58,7 @@
             "trade_simulator_config": {}
         },
         {
-            "name": "GBPUSD_sentiment_realdata",
+            "scenario_name": "GBPUSD_sentiment_realdata",
             "symbol": "GBPUSD",
             "data_broker_type": "mt5",
             "data_sentiment_type": "forex_macro_sentiment",

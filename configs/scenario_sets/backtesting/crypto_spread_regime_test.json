@@ -56,7 +56,7 @@
   },
   "scenarios": [
     {
-      "name": "ETHUSD_legacy_no_spread_in_data",
+      "scenario_name": "ETHUSD_legacy_no_spread_in_data",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-02-10T10:00:00+00:00",
@@ -69,7 +69,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "ETHUSD_quoted_real_spread",
+      "scenario_name": "ETHUSD_quoted_real_spread",
       "symbol": "ETHUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-09-19T00:00:00+00:00",

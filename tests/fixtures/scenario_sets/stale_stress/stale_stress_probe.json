@@ -33,7 +33,7 @@
     },
     "scenarios": [
         {
-            "name": "BTCUSD_market_stress",
+            "scenario_name": "BTCUSD_market_stress",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment_mock",
@@ -59,7 +59,7 @@
             }
         },
         {
-            "name": "BTCUSD_signal_stress",
+            "scenario_name": "BTCUSD_signal_stress",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment_mock",
@@ -85,7 +85,7 @@
             }
         },
         {
-            "name": "BTCUSD_no_stress_control",
+            "scenario_name": "BTCUSD_no_stress_control",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment_mock",
@@ -98,7 +98,7 @@
             "trade_simulator_config": {}
         },
         {
-            "name": "BTCUSD_overlap_warning",
+            "scenario_name": "BTCUSD_overlap_warning",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment_mock",
@@ -124,7 +124,7 @@
             }
         },
         {
-            "name": "BTCUSD_unknown_source",
+            "scenario_name": "BTCUSD_unknown_source",
             "symbol": "BTCUSD",
             "data_broker_type": "kraken_spot",
             "data_sentiment_type": "crypto_sentiment_mock",

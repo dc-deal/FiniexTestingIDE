@@ -6,7 +6,7 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  WORKFLOW                                                                   │
 │                                                                             │
-│  TickCollector (MT5) → Import → Profiling → Scenario Generation → Backtest │
+│  TickCollector (MT5) → Import → Discovery → Scenario Generation → Backtest │
 │        ↓                 ↓         ↓              ↓                  ↓      │
 │    JSON Files      Parquet+Bars  Gaps/ATR      blocks             Results   │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -23,8 +23,8 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `run_config_cli.py` | Run Config Store (#538) | list, history, show |
 | `config_directory_cli.py` | Every configuration that can start a run (#554) | list, show |
 | `store_cli.py` | Every data store and its index (#486) | catalog, rebuild |
-| `discoveries_cli.py` | Volatility Profiling, Discoveries & Data Coverage | profile, extreme-moves, data-coverage (build/show/validate/status/clear), cache (rebuild-all/status) |
-| `generator_cli.py` | Block & Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
+| `discoveries_cli.py` | Volatility Profiles, Discoveries & Data Coverage | volatility-profile, extreme-moves, data-coverage (build/show/validate/status/clear), signal-coverage (validate/show), cache (rebuild-all/status) |
+| `generator_cli.py` | Block & Generator-Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
 | `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, validate |
 
 ---
@@ -35,7 +35,7 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 Every configuration that can start a run is registered under an id derived from its CONTENT, so
 two runs naming the same id ran the same configuration and an edited file mints a new version
 beside the old one. Nothing has to be registered by hand: listing or running a scenario set does
-it, and a live session registers its profile at boot.
+it, and an AutoTrader session registers its profile at boot.
 
 ```bash
 python python/cli/run_config_cli.py list
@@ -63,15 +63,17 @@ Tick data is collected by the **TickCollector** (MQL5 Expert Advisor) and export
 
 > 📖 See `tick_collector_guide.md` for details on data collection.
 
-### 📥 Import: Offset +3
+### 📥 Import (Override)
 
 | | |
 |---|---|
-| **VS Code** | `📥 Import: Offset +3` |
-| **CLI** | `python data_index_cli.py import --time-offset +3 --offset-broker mt5` |
+| **VS Code** | `📥 Import (Override)` |
+| **CLI** | `python python/cli/data_index_cli.py import [--override]` |
 | **Purpose** | Convert JSON tick files to Parquet, render bars |
 
-The `--time-offset` parameter corrects broker timezones to UTC. After import, bars are automatically rendered for all timeframes (M1, M5, M15, M30, H1, H4, D1).
+Each broker's UTC offset comes from the offset registry in `import_config.json` (see
+[Data Import Pipeline](data_pipeline/data_import_pipeline.md)); `--override` re-imports files that
+already have a Parquet. After import, bars are automatically rendered for all timeframes (M1, M5, M15, M30, H1, H4, D1).
 
 ```
 📄 Processing: EURGBP_20251128_235635_ticks.json
@@ -99,8 +101,8 @@ The `--time-offset` parameter corrects broker timezones to UTC. After import, ba
 
 | | |
 |---|---|
-| **VS Code** | `📊 Tick Data Report` |
-| **CLI** | `python python/cli/data_index_cli.py tick-data-report` |
+| **VS Code** | `📊 Tick Data Report: mt5` / `📊 Tick Data Report: kraken_spot` |
+| **CLI** | `python python/cli/data_index_cli.py tick-data-report [broker_type]` |
 | **Purpose** | Complete report of all available symbols |
 
 Shows for each symbol: time range, tick count, session distribution, spread statistics, market type.
@@ -158,11 +160,11 @@ Symbols:      16
 Total files:  1462
 ```
 
-### 🔹 Bar Index: Status
+### 📈 Bar Index: Status
 
 | | |
 |---|---|
-| **VS Code** | `🔹 Bar Index: Status` |
+| **VS Code** | `📈 Bar Index: Status` |
 | **CLI** | `python bar_index_cli.py status` |
 | **Purpose** | Overview of all timeframes per symbol |
 
@@ -188,19 +190,19 @@ USDJPY:
 ```
 📇 Run Index — 6 run(s) · runs/runs_index.parquet
 
-  20260830_173933_f54f1d3d  live        14 artifact(s)  mock_session_test
+  20260830_173933_f54f1d3d  autotrader  14 artifact(s)  mock_session_test
   20260830_173819_81d96b02  simulation  18 artifact(s)  btcusd_mini_set__sweep_20260830_173753_c003
   20260830_173704_ce76e830  simulation  18 artifact(s)  multi_position_test
 ```
 
-**`run_type` is the PIPELINE, never the nesting.** Two values only — `simulation` and `live`. A
-sweep combination is a `simulation` whose `parent_id` names its sweep; a live day fragment (#476)
-will be a `live` whose `parent_id` names its session.
+**`run_type` is the PIPELINE, never the nesting.** Two values only — `simulation` and
+`autotrader`. A sweep combination is a `simulation` whose `parent_id` names its sweep; a day record
+(#476) will be an `autotrader` run whose `parent_id` names its session.
 
 The artifact count is the length of the run's `artifacts` list — every report file it persisted,
 by name. A run with none is not automatically incomplete: the header's `reporting` field says
-whether it was commissioned to report at all. **The two pipelines produce different sets** (18 for a simulation run, 14 for a live
-session: live has no `scenario_details` / `profiling` / `run_meta` / `aggregated_portfolio`), which
+whether it was commissioned to report at all. **The two pipelines produce different sets** (an
+AutoTrader session has no `scenario_details` / `profiling` / `run_meta` / `aggregated_portfolio`), which
 is why the index carries the list rather than a boolean — a consumer that only learned "yes, some"
 would still be guessing which. A run with none exists as logs alone and is listed rather than
 hidden.
@@ -209,16 +211,16 @@ hidden.
 
 | | |
 |---|---|
-| **VS Code** | `📈 Run Index: Prune (dry run)` |
+| **VS Code** | `📈 Run Index: Prune (preview)` |
 | **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--older-than AGE] [--apply]` |
 | **Purpose** | Remove what the run tree no longer needs — after showing exactly what that is |
 
-**The dry run is the default and it IS the product.** Without `--apply` nothing is touched. A run
+**The preview is the default and it IS the product.** Without `--apply` nothing is touched. A run
 directory is the only copy of its logs; the closest existing command, `discoveries coverage clear`,
 deletes without ceremony because a cache is rebuildable — this is not that.
 
 ```
-🧹 Prune Run Tree — DRY RUN (nothing deleted; add --apply)
+🧹 Prune Run Tree — PREVIEW (nothing deleted; add --apply)
 
   DELETE     87 · not runs (no header, not indexed)   0.3 MB
              runs/simulation/parity/20260830_175903_00557431
@@ -230,7 +232,7 @@ deletes without ceremony because a cache is rebuildable — this is not that.
   KEEP       34 · complete
   SKIP       17 · sweep directories — not runs, deliberately header-less
 
-  The run-results ledger is untouched: 430 fragment(s) remain, including those of the runs above.
+  The run-results ledger KEEPS its rows: 430 fragment(s) remain, including those of the runs above.
 ```
 
 **Two things it will never delete, whatever flags are given:**
@@ -244,7 +246,7 @@ always on):
 
 | Flag | Removes |
 |---|---|
-| `--keep-last N` | per scenario set / profile, all but the N newest complete runs. **A sweep is the unit, not the combination** — the N newest sweeps survive WHOLE, the rest go WHOLE, because a half-pruned sweep leaves a `ranked.csv` ranking runs that no longer exist |
+| `--keep-last N` | per scenario set / AutoTrader profile, all but the N newest complete runs. **A sweep is the unit, not the combination** — the N newest sweeps survive WHOLE, the rest go WHOLE, because a half-pruned sweep leaves a `ranked.csv` ranking runs that no longer exist |
 | `--older-than AGE` | runs that started longer ago than `AGE`, written as whole days or hours (`30d`, `12h`). The age comes from the run header's own start time; a run that records none is KEPT and reported separately, because an age nobody can measure is not a reason to delete |
 | `--orphans` | directories that are not runs: no header, not in the index. Never sweep directories (correctly header-less) and never a run's own `io/`, `scenario_logs/`, … |
 | *(always on)* | `reporting=none` with no artifacts — commissioned to produce nothing, and it did not |
@@ -267,7 +269,7 @@ being old, which is the opposite of what asking for both means.
 being edited alongside it. One unremovable directory is reported and does not abort the rest.
 
 **No config default, deliberately.** This command is the trigger, and it stays that way: a
-retention rule that fires by itself is a deletion nobody asked for. The live session's rotated
+retention rule that fires by itself is a deletion nobody asked for. An AutoTrader session's rotated
 logs are the one exception and for a stated reason — they belong to a session that is still
 running, where nobody is present to trigger anything (see below).
 
@@ -275,7 +277,7 @@ running, where nobody is present to trigger anything (see below).
 
 | | |
 |---|---|
-| **VS Code** | `📈 Run Index: Rebuild` |
+| **VS Code** | `🔄 Rebuild: runs` |
 | **CLI** | `python run_index_cli.py rebuild` |
 | **Purpose** | Rebuild the index from the per-run `header.json` files |
 
@@ -293,11 +295,11 @@ A run with no header is skipped — it cannot be identified, which is the condit
 exists to end. A duplicate id is reported rather than resolved: a minted id cannot collide, so a
 duplicate means two directories carry the same header — a copy, or a hand-edited one.
 
-### 📚 Tick File Coverage: SYMBOL
+### 📚 File Coverage: SYMBOL
 
 | | |
 |---|---|
-| **VS Code** | `📚 Tick File Coverage: mt5/EURUSD` |
+| **VS Code** | `📚 File Coverage: mt5/EURUSD` |
 | **CLI** | `python tick_index_cli.py file-coverage mt5 EURUSD` |
 | **Purpose** | File list for a symbol |
 
@@ -573,9 +575,9 @@ Coverage: 1752.7h usable, 818.3h gaps filtered (20 gaps: 15 weekend, 2 holiday, 
 |---|---|
 | **VS Code** | `⚡ Generate Profile: mt5/EURUSD (volatility_split)` |
 | **CLI** | `python generator_cli.py generate-profile mt5 EURUSD --start 2025-09-01T00:00:00 --end 2025-10-01T00:00:00 --mode volatility_split` |
-| **Purpose** | Pre-computed, immutable block profile with volatility-based splitting |
+| **Purpose** | Pre-computed, immutable generator profile with volatility-based splitting |
 
-Generates a profile artifact (JSON) with blocks split at ATR minima — the quietest volatility periods. Produces metadata per block (regime, ATR, session, split reason) for correctness analysis.
+Generates a generator profile (JSON) with blocks split at ATR minima — the quietest volatility periods. Produces metadata per block (regime, ATR, session, split reason) for correctness analysis.
 
 **Parameters:**
 - `--start` / `--end` — Time range (ISO format, required)
@@ -599,7 +601,7 @@ python python/cli/strategy_runner_cli.py run my_set.json \
   --generator-profile configs/generator_profiles/volatility_split
 ```
 
-Multiple profiles are merged into a single batch with globally unique scenario indices. Scenario
+Multiple generator profiles are merged into a single batch with globally unique scenario indices. Scenario
 names follow the pattern `{SYMBOL}_{mode}_{block_index:02d}` (e.g. `BTCUSD_vol_00`,
 `EURUSD_cont_03`). The batch summary header shows profile count and symbol count for profile runs.
 
@@ -649,7 +651,7 @@ The generator produces a JSON configuration:
   },
   "scenarios": [
     {
-      "name": "USDJPY_blocks_01",
+      "scenario_name": "USDJPY_blocks_01",
       "symbol": "USDJPY",
       "start_date": "2025-09-18T16:00:00+00:00",
       "end_date": "2025-09-19T04:00:00+00:00",
@@ -667,7 +669,7 @@ The generator produces a JSON configuration:
 
 | | |
 |---|---|
-| **VS Code** | `🔬 Run (eurusd_3 - REFERENCE)` |
+| **VS Code** | `🔬 Run eurusd_3_windows_reference` |
 | **CLI** | `python strategy_runner_cli.py run eurusd_3_windows_reference.json` |
 | **Purpose** | Backtesting run with a scenario set configuration |
 
@@ -743,11 +745,11 @@ logs. Parameter names are not checked here: that happens at the start of a batch
 
 ## G) Technical Tools (Advanced)
 
-### 📊 TEST LOAD: Ticks & Bars
+### 🛠️ Inspect Ticks & Bars
 
 | | |
 |---|---|
-| **VS Code** | `📊 TEST LOAD: Ticks&Bars` |
+| **VS Code** | `🛠️ Inspect Ticks&Bars: mt5` / `🛠️ Inspect Ticks&Bars: kraken_spot` |
 | **CLI** | `python data_index_cli.py inspect mt5 EURUSD M30` |
 | **Purpose** | Display Parquet schema, metadata and sample data |
 
@@ -793,10 +795,10 @@ ninety days ago:
       benchmark            the newest certificate (1.4.0) was valid until 2026-12-14
 
   ⏰ Fee structure frozen long ago
-      kraken_spot          frozen 2026-09-08, 266 days ago — past the 90-day window. Re-freeze it from a live session's divergence warning, or confirm it still holds
+      kraken_spot          frozen 2026-09-08, 266 days ago — past the 90-day window. Re-freeze it from a live-adapter session's divergence warning, or confirm it still holds
 ```
 
-A fee rate is a declared assumption. A live session compares it with the venue on every start; a
+A fee rate is a declared assumption. A live-adapter session compares it with the venue on every start; a
 reader who runs only backtests would never see that warning, which is why the catalog asks.
 
 `rebuild --all` rebuilds every index a rebuild restores fully and names the one it leaves out:
@@ -808,7 +810,7 @@ only with `--accept-loss`.
 
 | | |
 |---|---|
-| **VS Code** | `📚 Tick Index: Rebuild` / `🔹 Bar Index: Rebuild` |
+| **VS Code** | `🔄 Rebuild: ticks (own manager, #175)` / `🔄 Rebuild: bars (own manager, #175)` |
 | **CLI** | `python tick_index_cli.py rebuild` / `python bar_index_cli.py rebuild` |
 | **Purpose** | Rebuild index in case of inconsistencies |
 
@@ -843,8 +845,8 @@ only with `--accept-loss`.
 
 | Task | VS Code Launch | CLI |
 |------|----------------|-----|
-| **Import data** | `📥 Import: Offset +3` | `data_index_cli.py import --time-offset +3 --offset-broker mt5` |
-| **Data overview** | `📊 Tick Data Report` | `data_index_cli.py tick-data-report` |
+| **Import data** | `📥 Import (Override)` | `data_index_cli.py import [--override]` |
+| **Data overview** | `📊 Tick Data Report: mt5` | `data_index_cli.py tick-data-report [broker_type]` |
 | **Tick Index Status** | `📚 Tick Index: Status` | `tick_index_cli.py status` |
 | **Gap check (all)** | `🔍 Disc - Data Coverage: Validate All` | `discoveries_cli.py data-coverage validate` |
 | **Gap details** | `🔍 Disc - Data Coverage: mt5/EURUSD` | `discoveries_cli.py data-coverage show mt5 EURUSD` |
@@ -853,11 +855,11 @@ only with `--accept-loss`.
 | **Discovery Cache Status** | `🔍 Disc - Cache: Status` | `discoveries_cli.py cache status` |
 | **Discovery Cache Rebuild** | `🔍 Disc - Cache: Rebuild All` | `discoveries_cli.py cache rebuild-all` |
 | **Generate Blocks** | `⚡ Generator - 40 Blocks mt5/USDJPY` | `generator_cli.py generate-blocks mt5 USDJPY --block-size 12 --count 40` |
-| **Generate Profile** | `⚡ Generate Profile: mt5/EURUSD` | `generator_cli.py generate-profile mt5 EURUSD --start ... --end ...` |
+| **Generate Profile** | `⚡ Generate Profile: mt5/EURUSD (volatility_split)` | `generator_cli.py generate-profile mt5 EURUSD --start ... --end ...` |
 | **Generate All Profiles** | `⚡ Generate All Profiles (volatility_split)` | `generator_cli.py generate-all-profiles --mt5-start ... --kraken-spot-start ...` |
-| **Start backtest** | `🔬 Run (eurusd_3 - REFERENCE)` | `strategy_runner_cli.py run <config>.json` |
+| **Start backtest** | `🔬 Run eurusd_3_windows_reference` | `strategy_runner_cli.py run <config>.json` |
 | **Profile Run (single)** | — | `strategy_runner_cli.py run <config>.json --generator-profile <profile>.json` |
-| **Profile Run (directory)** | `🔬 Profile Run: All volatility_split` | `strategy_runner_cli.py run <config>.json --generator-profile <dir>` |
+| **Profile Run (directory)** | `🔬 Generator-Profile Run: volatility_split/ folder` | `strategy_runner_cli.py run <config>.json --generator-profile <dir>` |
 
 ---
 
@@ -866,19 +868,19 @@ only with `--accept-loss`.
 ```
 1. Collect tick data (TickCollector on MT5)
          ↓
-2. Import:          📥 Import: Offset +3
+2. Import:          📥 Import (Override)
          ↓
 3. Build cache:     🔍 Disc - Cache: Rebuild All
          ↓
 4. Check quality:   🔍 Disc - Data Coverage: Validate All
          ↓
-5. Volatility profile: 🔍 Disc - Profile
+5. Volatility profile: 🔍 Disc - Volatility Profile
          ↓
 5b. Extreme Moves:  🔍 Disc - Extreme Moves
          ↓
-6. Create scenarios: ⚡ Generator - Blocks
+6. Create scenarios: ⚡ Generator - 40 Blocks mt5/USDJPY
          ↓
-7. Backtest:        🔬 Run Scenario
+7. Backtest:        🔬 Run eurusd_3_windows_reference
 ```
 
 ---

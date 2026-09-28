@@ -64,7 +64,7 @@ real one reads (`_Roots`), so nothing here reads the operator's files.
 
 | Test | Description |
 |------|-------------|
-| `test_each_file_counts_the_runs_of_its_own_pipeline` | matched on `config_snapshot` AND run type — a live run naming a set's file is not a run of that set; a file that never ran counts 0 |
+| `test_each_file_counts_the_runs_of_its_own_pipeline` | matched on `config_snapshot` AND run type — an AutoTrader session naming a set's file is not a run of that set; a file that never ran counts 0 |
 | `test_the_detail_lists_its_scenarios_and_its_runs_newest_first` | scenarios read fresh with the cascade applied, run ids newest first |
 | `test_an_unknown_file_has_no_detail` | None, which the route turns into `config_file_not_found` |
 

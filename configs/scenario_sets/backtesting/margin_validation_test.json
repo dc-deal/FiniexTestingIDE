@@ -107,7 +107,7 @@
     },
     "scenarios": [
         {
-            "name": "USDJPY_margin_validation_test",
+            "scenario_name": "USDJPY_margin_validation_test",
             "symbol": "USDJPY",
             "data_broker_type": "mt5",
             "start_date": "2025-09-25T16:00:00+00:00",

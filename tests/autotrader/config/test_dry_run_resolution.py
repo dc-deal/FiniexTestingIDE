@@ -1,5 +1,5 @@
 """
-Which setting decides whether a live session places real orders.
+Which setting decides whether a live-adapter session places real orders.
 
 This exists because of a near miss: an observation profile carried `dry_run: true`, the broker's
 `user_configs/market_config.json` carried `dry_run: false` from an earlier real-money field study,
@@ -13,25 +13,30 @@ standing posture. Enabling real money belongs in the place that is changed delib
 """
 
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.autotrader.autotrader_broker_config_setup import create_broker_config
+from python.framework.autotrader.dry_run_resolver import resolve_dry_run
 from python.framework.exceptions.live_execution_errors import DryRunConflictError
+from python.framework.types.config_types.market_config_types import ConfigMode
 
 BROKER = 'kraken_spot'
 
 
+def _profile(profile_override, adapter_type='live') -> SimpleNamespace:
+    """A profile carrying only what the resolution reads."""
+    return SimpleNamespace(
+        profile_name='observation_profile', symbol='BTCUSD', broker_type=BROKER,
+        adapter_type=adapter_type, dry_run=profile_override)
+
+
 def resolve(profile_override, broker_default, adapter_type='live') -> bool:
     """Resolve the effective dry-run flag for one profile/broker combination."""
-    session = AutotraderMain.__new__(AutotraderMain)
-    session._config = SimpleNamespace(
-        name='observation_profile', symbol='BTCUSD', broker_type=BROKER,
-        adapter_type=adapter_type, dry_run=profile_override)
-    with patch('python.framework.autotrader.autotrader_main.MarketConfigManager') as manager:
+    with patch('python.framework.autotrader.dry_run_resolver.MarketConfigManager') as manager:
         manager.return_value.get_dry_run.return_value = broker_default
-        return session._is_dry_run()
+        return resolve_dry_run(_profile(profile_override, adapter_type))
 
 
 class TestBrokerDefaultApplies:
@@ -84,3 +89,30 @@ class TestMockIsAlwaysDryRun:
     @pytest.mark.parametrize('profile_override', [None, True, False])
     def test_mock_ignores_everything(self, profile_override):
         assert resolve(profile_override, False, adapter_type='mock') is True
+
+
+class TestTheAdapterIsNeverArmedAgainstTheRule:
+    """
+    The broker setup arms the adapter, and it used to resolve the flag by its own rule.
+
+    A profile saying `dry_run: false` against a dry-run broker default was refused by the
+    session — two steps AFTER the broker setup had taken the profile's value and armed a real
+    adapter, announcing "LIVE TRADING — real orders will be placed". The refusal came in time,
+    but only because of the order of two calls. Both now read one rule, so the refusal is the
+    first thing the live path does.
+    """
+
+    def test_a_loosening_profile_is_refused_before_anything_is_fetched(self):
+        entry = SimpleNamespace(dry_run=True)
+        with patch('python.framework.autotrader.autotrader_broker_config_setup'
+                   '.MarketConfigManager') as setup_manager, \
+                patch('python.framework.autotrader.dry_run_resolver.MarketConfigManager') \
+                as resolver_manager, \
+                patch('python.framework.autotrader.autotrader_broker_config_setup'
+                      '.BrokerConfigFetcherFactory') as fetcher_factory:
+            setup_manager.return_value.get_config_mode.return_value = ConfigMode.DYNAMIC
+            setup_manager.return_value.get_broker_entry.return_value = entry
+            resolver_manager.return_value.get_dry_run.return_value = True
+            with pytest.raises(DryRunConflictError):
+                create_broker_config(_profile(False), MagicMock(), {})
+        fetcher_factory.create.assert_not_called()

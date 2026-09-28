@@ -65,7 +65,7 @@ def _isolate_run_tree(tmp_path_factory):
     root = tmp_path_factory.mktemp('run_tree')
     real = AppConfigManager().get_file_logging_config_object()
     isolated = real.model_copy(update={
-        'run_logs': RunLogPaths(simulation=root / 'simulation', live=root / 'live'),
+        'run_logs': RunLogPaths(simulation=root / 'simulation', autotrader=root / 'autotrader'),
         # Same naming rule as production (#486): <store_id>_index.parquet
         'run_index': root / store_index_filename(StoreId.RUNS),
         'global_log_dir': root / 'global',

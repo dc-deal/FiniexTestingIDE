@@ -160,7 +160,7 @@ class PortfolioManager:
         self._max_equity = self.balance
         self._account_max_drawdown_pct = 0.0
         # Which period the three figures above describe (#497). Set only by
-        # `restore_drawdown_state`, i.e. only in a LIVE session that inherited a predecessor's
+        # `restore_drawdown_state`, i.e. only in an AutoTrader session that inherited a predecessor's
         # curve. A simulation starts at its scenario start by definition and never touches them.
         self._drawdown_carried_from = ''
         self._drawdown_restarts = 0
@@ -1325,7 +1325,7 @@ class PortfolioManager:
 
         NOTE the name overpromises and deliberately stays: no curve is retained. Two floats
         are carried, and nothing else — a retained series at tick cadence over thirty days is
-        unbounded memory and belongs to #476's fragments (#497).
+        unbounded memory and belongs to #476's day records (#497).
 
         Args:
             equity: A value the caller already holds, to avoid a second evaluation of the

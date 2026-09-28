@@ -10,7 +10,7 @@ Both execution pipelines emit this feed through one shared model, derived off th
 CAPTURE (per pipeline, throttled ~300ms)        MODEL (shared core)            PRESENT (surfaces)
   sim subprocess ─ process_live_export ──┐                                     ┌─► console (rich.live)   ← today
                    builds LiveScenarioStats ├─► LiveCoreSnapshot ───────────────┼─► JSONL replay (#379)   ← groundwork
-  live thread    ─ AutotraderDisplayExporter┘   + per-domain extension          └─► socket push (#380/#331) ← groundwork
+  AutoTrader     ─ AutotraderDisplayExporter┘   + per-domain extension          └─► socket push (#380/#331) ← groundwork
                    builds AutoTraderDisplayStats
 ```
 
@@ -21,7 +21,7 @@ CAPTURE (per pipeline, throttled ~300ms)        MODEL (shared core)            P
 | `LiveCoreSnapshot` | `framework/types/live_types/live_core_snapshot_types.py` | the subset BOTH frames share: `symbol`, `ticks_processed`, `balance`, `initial_balance`, `total_trades`, `winning_trades`, `losing_trades`, `last_awareness` |
 | `LiveScenarioStats` | `framework/types/live_types/live_scenario_stats_types.py` | **sim** frame: `core` + batch-progress envelope (`progress_percent`, `total_ticks`, in-time tracking, `portfolio_dirty_flag`) + optional detailed exports (`portfolio_stats`, `current_bars`) |
 | `LiveStatusFrame` | same unit | **sim** lightweight status-only update (warmup / lifecycle), carried on the same queue |
-| `AutoTraderDisplayStats` | `framework/types/autotrader_types/autotrader_display_types.py` | **live** frame: `core` + rich session state (positions, orders, trades, clipping, safety, rejections, drift, reconcile, api_perf, events, pulse) |
+| `AutoTraderDisplayStats` | `framework/types/autotrader_types/autotrader_display_types.py` | **AutoTrader** frame: `core` + rich session state (positions, orders, trades, clipping, safety, rejections, drift, reconcile, api_perf, events, pulse) |
 
 The shared core is **composed** (a `core: LiveCoreSnapshot` field on each frame), not collapsed —
 the two pipelines stay separate, exactly like the report pipeline's `RunUnit`. A run is a list of
@@ -62,7 +62,7 @@ The frame is built typed in the producer and put on the queue directly — the c
 reconstructs it field-by-field. A `multiprocessing.Queue` pickles every payload; a dataclass costs
 the same as the former dict (which already built intermediate dicts).
 
-### AutoTrader (live) — in-thread
+### AutoTrader — in-thread
 
 ```
 main thread (AutotraderTickLoop.run)                    display thread
@@ -93,7 +93,7 @@ PRESENT-stage step:
 frame_to_json(frame)  # = serialize_value(asdict(frame))  — enums→value, datetime→isoformat
 ```
 
-The frames stay `@dataclass` runtime domain types (§6); JSON is a render concern. **The push
+The frames stay `@dataclass` runtime domain types; JSON is a render concern. **The push
 transport itself is not built here** — it is owned by #380 (live streaming, transport designed
 once with #331's WebSocket) and #379 (the per-run JSONL replay artifact). The hard part is the
 **cross-process bridge**: the sim feed already crosses a process boundary (subprocess → batch
@@ -116,8 +116,8 @@ stream is the fast, lossy live feed. The two never share code:
 
 ## Files
 
-- Producers: `framework/process/process_live_export.py` (sim), `framework/process/process_live_queue_helper.py` + `framework/batch/live_stats_coordinator.py` (sim status), `framework/autotrader/autotrader_display_exporter.py` (live)
-- Consumers: `system/ui/live_progress_display.py` (sim), `system/ui/autotrader_live_display.py` (live)
+- Producers: `framework/process/process_live_export.py` (sim), `framework/process/process_live_queue_helper.py` + `framework/batch/live_stats_coordinator.py` (sim status), `framework/autotrader/autotrader_display_exporter.py` (AutoTrader)
+- Consumers: `system/ui/live_progress_display.py` (sim), `system/ui/autotrader_live_display.py` (AutoTrader)
 - Model: `framework/types/live_types/live_core_snapshot_types.py`, `live_scenario_stats_types.py`, `framework/types/autotrader_types/autotrader_display_types.py`
 - Serializer: `framework/utils/live_frame_serialization_utils.py`
 - Tick-flow context: [simulation_vs_live_flow.md](simulation_vs_live_flow.md)

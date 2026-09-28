@@ -26,7 +26,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 @dataclass
 class AutotraderLoggerBundle:
     """
-    One live session's log channels and run identity.
+    One AutoTrader session's log channels and run identity.
 
     Args:
         global_logger: Startup phases, shutdown and errors (file plus direct console print)

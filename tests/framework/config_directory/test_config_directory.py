@@ -33,7 +33,7 @@ from python.framework.types.config_directory_types import (
     ConfigOrigin,
     ConfigReadStatus,
 )
-from python.framework.types.log_layout_types import RUN_TYPE_LIVE, RUN_TYPE_SIMULATION
+from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.validators import config_name_validator
 from python.framework.validators.config_name_validator import (
     clear_config_name_memo,
@@ -82,14 +82,14 @@ def _set(name: str, scenarios: list, strategy: dict = None) -> dict:
 
 def _scenario(name: str, symbol: str = 'BTCUSD', broker: str = 'kraken_spot', **extra) -> dict:
     """One scenario as a file declares it."""
-    return {'name': name, 'symbol': symbol, 'data_broker_type': broker,
+    return {'scenario_name': name, 'symbol': symbol, 'data_broker_type': broker,
             'start_date': '2026-01-01T00:00:00+00:00', 'end_date': '2026-01-02T00:00:00+00:00',
             **extra}
 
 
 def _profile(**extra) -> dict:
     """An AutoTrader profile as a file declares it."""
-    return {'name': 'btc_mock', 'bot_id': 'mybot01', 'symbol': 'BTCUSD',
+    return {'profile_name': 'btc_mock', 'bot_id': 'mybot01', 'symbol': 'BTCUSD',
             'broker_type': 'kraken_spot',
             'strategy_config': {'decision_logic_type': 'CORE/simple_consensus',
                                 'worker_instances': {'obv': 'CORE/obv'}}, **extra}
@@ -152,7 +152,7 @@ class TestWhatAFileDeclares:
     def test_a_profile_is_one_unit_with_its_live_facts(self, tree):
         _write(tree / 'configs/autotrader_profiles/production/btc_live.json',
                _profile(adapter_type='live', dry_run=False))
-        _write(tree / 'configs/autotrader_profiles/backtesting/btc_mock.json', _profile())
+        _write(tree / 'configs/autotrader_profiles/mock/btc_mock.json', _profile())
 
         rows = _rows(tree)
         live, mock = rows['btc_live.json'], rows['btc_mock.json']
@@ -353,13 +353,13 @@ class TestTheRunsAreJoinedFromTheRunIndex:
 
     def test_each_file_counts_the_runs_of_its_own_pipeline(self, tree):
         _write(tree / 'configs/scenario_sets/my_set.json', _set('my_set', [_scenario('a')]))
-        _write(tree / 'configs/autotrader_profiles/backtesting/my_bot.json', _profile())
+        _write(tree / 'configs/autotrader_profiles/mock/my_bot.json', _profile())
         _write(tree / 'configs/scenario_sets/never_ran.json', _set('never', [_scenario('a')]))
         self._run(tree, '20260925_080000_aaaaaaaa', RUN_TYPE_SIMULATION, 'my_set.json', 8)
         self._run(tree, '20260925_090000_bbbbbbbb', RUN_TYPE_SIMULATION, 'my_set.json', 9)
-        self._run(tree, '20260925_100000_cccccccc', RUN_TYPE_LIVE, 'my_bot.json', 10)
+        self._run(tree, '20260925_100000_cccccccc', RUN_TYPE_AUTOTRADER, 'my_bot.json', 10)
         # A live run naming a scenario set's file is not a run OF that set.
-        self._run(tree, '20260925_110000_dddddddd', RUN_TYPE_LIVE, 'my_set.json', 11)
+        self._run(tree, '20260925_110000_dddddddd', RUN_TYPE_AUTOTRADER, 'my_set.json', 11)
 
         rows = _rows(tree)
 

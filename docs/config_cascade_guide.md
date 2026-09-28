@@ -30,7 +30,7 @@
 | `order_guard` | 2 | global → scenario | Yes (per-parameter) |
 | `strategy_config.decision_logic_type` | 1 | global only | No |
 | `strategy_config.worker_instances` | 1 | global only | No |
-| Top-level properties (name, symbol, dates) | — | scenario only | N/A (scenario-specific) |
+| Top-level properties (scenario_name, symbol, dates) | — | scenario only | N/A (scenario-specific) |
 
 ---
 
@@ -92,7 +92,9 @@ This system enables:
 
 **Purpose:** Application-wide defaults and feature flags
 
-**Scope:** Entire application, **NOT part of scenario cascade**
+**Scope:** Entire application. Only two blocks enter the scenario cascade, as its level 1:
+`backtesting.execution.default_scenario_execution_config` and
+`backtesting.default_trade_simulator_config`. Everything else here is app-level configuration.
 
 ```json
 {
@@ -131,7 +133,10 @@ This system enables:
 ```
 
 **Key Points:**
-- ❌ **NOT inherited by scenarios** - This is app-level configuration
+- ⚠️ **Only two blocks are inherited by scenarios** -
+  `backtesting.execution.default_scenario_execution_config` and
+  `backtesting.default_trade_simulator_config` are level 1 of the cascade; the rest is app-level
+  configuration
 - ✅ **Loaded at app boot** - Singleton pattern (AppConfigLoader)
 - ✅ **Controls behavior** - Flags like `warn_on_parameter_override`
 - ✅ **Default paths** - Where to find scenario sets, data, etc.
@@ -160,26 +165,23 @@ This system enables:
       },
       "workers": {
         "rsi_fast": {
-          "period": 14,
-          "timeframe": "M5"
+          "periods": { "M5": 14 }
         },
         "bollinger_main": {
-          "period": 20,
-          "deviation": 2.0,
-          "timeframe": "M5"
+          "periods": { "M5": 20 },
+          "deviation": 2.0
         }
       },
       "decision_logic_config": {
-        "rsi_oversold": 30,
-        "rsi_overbought": 70,
+        "rsi_buy_threshold": 30,
+        "rsi_sell_threshold": 70,
         "min_confidence": 0.6
       }
     },
     "execution_config": {
       "parallel_workers": true,
       "worker_parallel_threshold_ms": 1.0,
-      "adaptive_parallelization": true,
-      "log_performance_stats": true
+      "adaptive_parallelization": true
     },
     "trade_simulator_config": {
       "broker_config_path": "./configs/brokers/mt5/ic_markets_demo.json",
@@ -210,7 +212,7 @@ This system enables:
 {
   "scenarios": [
     {
-      "name": "EURUSD_window_02",
+      "scenario_name": "EURUSD_window_02",
       "symbol": "EURUSD",
       "start_date": "2025-09-19",
       "end_date": "2025-09-21",
@@ -218,8 +220,7 @@ This system enables:
       "strategy_config": {
         "workers": {
           "rsi_fast": {
-            "period": 5,
-            "timeframe": "M1"
+            "periods": { "M5": 5 }
           }
         },
         "decision_logic_config": {
@@ -237,7 +238,9 @@ This system enables:
 
 **Key Points:**
 - ✅ **Only overrides** - Empty sections (`{}`) mean "use global"
-- ✅ **Per-parameter merge** - `workers.rsi_fast.period: 5` overrides only period, not timeframe
+- ✅ **Per-parameter merge** - `workers.rsi_fast.periods.M5: 5` overrides only that timeframe's period;
+  `periods` is deep-merged, so a scenario naming a DIFFERENT timeframe adds it beside the global one
+  rather than replacing it
 - ✅ **worker_instances NOT overridable** - Worker architecture is global only
 - ✅ **Automatic detection** - Override warnings logged if `warn_on_parameter_override: true`
 
@@ -278,7 +281,7 @@ This system enables:
 │       ├─ Detect overrides (if warn_on_override)         │
 │       │  └─ Log: ⚠️  Parameter overrides...             │
 │       │                                                  │
-│       └─ Create TestScenario with merged config         │
+│       └─ Create SingleScenario with merged config       │
 └──────────────────────────────────────────────────────────┘
                           ↓
 ┌──────────────────────────────────────────────────────────┐
@@ -314,11 +317,10 @@ Worker parameters cascade **per worker instance, per parameter**. Each worker in
 },
 "workers": {
   "rsi_fast": {
-    "period": 14,
-    "timeframe": "M5"
+    "periods": { "M5": 14 }
   },
   "bollinger_main": {
-    "period": 20,
+    "periods": { "M5": 20 },
     "deviation": 2.0
   }
 }
@@ -328,7 +330,7 @@ Worker parameters cascade **per worker instance, per parameter**. Each worker in
 ```json
 "workers": {
   "rsi_fast": {
-    "period": 5
+    "periods": { "M5": 5 }
   }
 }
 ```
@@ -337,12 +339,11 @@ Worker parameters cascade **per worker instance, per parameter**. Each worker in
 ```json
 "workers": {
   "rsi_fast": {
-    "period": 5,        // ← FROM SCENARIO
-    "timeframe": "M5"   // ← FROM GLOBAL
+    "periods": { "M5": 5 }    // ← FROM SCENARIO
   },
   "bollinger_main": {
-    "period": 20,       // ← FROM GLOBAL (unchanged)
-    "deviation": 2.0     // ← FROM GLOBAL (unchanged)
+    "periods": { "M5": 20 },  // ← FROM GLOBAL (unchanged)
+    "deviation": 2.0          // ← FROM GLOBAL (unchanged)
   }
 }
 ```
@@ -350,7 +351,7 @@ Worker parameters cascade **per worker instance, per parameter**. Each worker in
 **Override Log:**
 ```
 ⚠️  Parameter overrides in scenario 'EURUSD_window_02':
-   └─ strategy_config.workers.rsi_fast.period: 14 → 5
+   └─ strategy_config.workers.rsi_fast.periods.M5: 14 → 5
 ```
 
 **Important:** You cannot add new worker instances in scenarios. The `worker_instances` dict defines the architecture globally and cannot be overridden per scenario. You can only change parameters of existing instances.
@@ -364,8 +365,8 @@ DecisionLogic configuration parameters cascade individually. This allows fine-tu
 **Global:**
 ```json
 "decision_logic_config": {
-  "rsi_oversold": 30,
-  "rsi_overbought": 70,
+  "rsi_buy_threshold": 30,
+  "rsi_sell_threshold": 70,
   "min_confidence": 0.6
 }
 ```
@@ -380,8 +381,8 @@ DecisionLogic configuration parameters cascade individually. This allows fine-tu
 **Result (Merged):**
 ```json
 "decision_logic_config": {
-  "rsi_oversold": 30,     // ← FROM GLOBAL
-  "rsi_overbought": 70,   // ← FROM GLOBAL
+  "rsi_buy_threshold": 30,    // ← FROM GLOBAL
+  "rsi_sell_threshold": 70,   // ← FROM GLOBAL
   "min_confidence": 0.8   // ← FROM SCENARIO
 }
 ```
@@ -452,7 +453,7 @@ Execution settings cascade individually, allowing performance testing with diffe
 
 Trading simulator settings cascade individually (app_config → global → scenario), enabling testing
 across different account configurations. App-level defaults are defined in
-`app_config.json::default_trade_simulator_config` and provide latency simulation ranges.
+`app_config.json::backtesting.default_trade_simulator_config` and provide latency simulation ranges.
 
 **App Defaults** (`app_config.json` → `backtesting.default_trade_simulator_config`):
 ```json
@@ -581,7 +582,7 @@ These parameters are **scenario-specific only** - no inheritance:
 
 ```json
 {
-  "name": "EURUSD_window_02",          // Scenario-specific
+  "scenario_name": "EURUSD_window_02", // Scenario-specific
   "symbol": "EURUSD",                  // Scenario-specific
   "start_date": "2025-09-19",          // Scenario-specific
   "end_date": "2025-09-21",            // Scenario-specific
@@ -640,7 +641,7 @@ When `app_config.json → logging.warn_on_parameter_override: true`:
 ```python
 # In config_loader.py:
 ParameterOverrideDetector.detect_and_log_overrides(
-    scenario_name=scenario_data['name'],
+    scenario_name=scenario_name,
     global_strategy=global_strategy,
     global_execution=global_execution,
     global_trade_simulator=global_trade_simulator,
@@ -701,46 +702,45 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
       },
       "workers": {
         "rsi_fast": {
-          "period": 14,
-          "timeframe": "M5"
+          "periods": { "M5": 14 }
         },
         "bollinger_main": {
-          "period": 20,
-          "deviation": 2.0 
+          "periods": { "M5": 20 },
+          "deviation": 2.0
         }
       }
     }
   },
   "scenarios": [
     {
-      "name": "RSI_Fast_Period5",
+      "scenario_name": "RSI_Fast_Period5",
       "symbol": "EURUSD",
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
       "strategy_config": {
         "workers": {
           "rsi_fast": {
-            "period": 5
+            "periods": { "M5": 5 }
           }
         }
       }
     },
     {
-      "name": "RSI_Standard_Period14",
+      "scenario_name": "RSI_Standard_Period14",
       "symbol": "EURUSD",
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
-      "strategy_config": {}  // Uses global (period: 14)
+      "strategy_config": {}  // Uses global (periods: {"M5": 14})
     },
     {
-      "name": "RSI_Slow_Period21",
+      "scenario_name": "RSI_Slow_Period21",
       "symbol": "EURUSD",
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
       "strategy_config": {
         "workers": {
           "rsi_fast": {
-            "period": 21
+            "periods": { "M5": 21 }
           }
         }
       }
@@ -753,83 +753,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 
 ---
 
-### Example 2: Multiple Worker Instances with Different Timeframes
-
-**Use Case:** Strategy uses both fast RSI (M1) and slow RSI (M5) for trend confirmation
-
-**Config:**
-```json
-{
-  "global": {
-    "strategy_config": {
-      "decision_logic_type": "user_algos/dual_rsi/dual_rsi_strategy.py",
-      "worker_instances": {
-        "rsi_fast": "CORE/rsi",
-        "rsi_slow": "CORE/rsi",
-        "bollinger_main": "CORE/bollinger"
-      },
-      "workers": {
-        "rsi_fast": {
-          "period": 14,
-          "timeframe": "M1"
-        },
-        "rsi_slow": {
-          "period": 14,
-          "timeframe": "M5"
-        },
-        "bollinger_main": {
-          "period": 20,
-          "deviation": 2.0 
-        }
-      }
-    }
-  },
-  "scenarios": [
-    {
-      "name": "Standard_M1_M5",
-      "symbol": "EURUSD",
-      "start_date": "2025-09-23",
-      "end_date": "2025-09-24",
-      "strategy_config": {}  // Uses global config
-    },
-    {
-      "name": "Aggressive_M1_M1",
-      "symbol": "EURUSD",
-      "start_date": "2025-09-23",
-      "end_date": "2025-09-24",
-      "strategy_config": {
-        "workers": {
-          "rsi_slow": {
-            "timeframe": "M1"  // Both on M1 now
-          }
-        }
-      }
-    },
-    {
-      "name": "Conservative_M5_M15",
-      "symbol": "EURUSD",
-      "start_date": "2025-09-23",
-      "end_date": "2025-09-24",
-      "strategy_config": {
-        "workers": {
-          "rsi_fast": {
-            "timeframe": "M5"
-          },
-          "rsi_slow": {
-            "timeframe": "M15"
-          }
-        }
-      }
-    }
-  ]
-}
-```
-
-**Result:** Compare different timeframe combinations. Worker periods remain at 14, only timeframes change per scenario!
-
----
-
-### Example 3: Sequential vs Parallel Testing
+### Example 2: Sequential vs Parallel Testing
 
 **Use Case:** Test same strategy with parallel ON and OFF to measure performance impact
 
@@ -840,20 +764,19 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
     "execution_config": {
       "parallel_workers": true,
       "worker_parallel_threshold_ms": 1.0,
-      "adaptive_parallelization": true,
-      "log_performance_stats": true
+      "adaptive_parallelization": true
     }
   },
   "scenarios": [
     {
-      "name": "Parallel_Enabled",
+      "scenario_name": "Parallel_Enabled",
       "symbol": "EURUSD",
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
       "execution_config": {}  // Uses global (parallel: true)
     },
     {
-      "name": "Sequential_Only",
+      "scenario_name": "Sequential_Only",
       "symbol": "EURUSD",
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
@@ -869,7 +792,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 
 ---
 
-### Example 4: Multi-Balance Testing
+### Example 3: Multi-Balance Testing
 
 **Use Case:** Test strategy performance across different account sizes
 
@@ -884,7 +807,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
   },
   "scenarios": [
     {
-      "name": "Micro_Account_1K",
+      "scenario_name": "Micro_Account_1K",
       "symbol": "EURUSD",
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
@@ -893,7 +816,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
       }
     },
     {
-      "name": "Small_Account_5K",
+      "scenario_name": "Small_Account_5K",
       "symbol": "EURUSD",
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
@@ -902,14 +825,14 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
       }
     },
     {
-      "name": "Standard_Account_10K",
+      "scenario_name": "Standard_Account_10K",
       "symbol": "EURUSD",
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
       "trade_simulator_config": {}  // Uses global balances (EUR: 10000)
     },
     {
-      "name": "Large_Account_50K",
+      "scenario_name": "Large_Account_50K",
       "symbol": "EURUSD",
       "start_date": "2025-09-23",
       "end_date": "2025-09-24",
@@ -937,8 +860,7 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
     },
     "workers": {
       "rsi_fast": {
-        "period": 14,
-        "timeframe": "M5"
+        "periods": { "M5": 14 }
       }
     }
   }
@@ -946,9 +868,9 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 
 // ❌ BAD - Repeat in every scenario
 "scenarios": [
-  {"name": "S1", "strategy_config": {"workers": {"rsi_fast": {...}}}},
-  {"name": "S2", "strategy_config": {"workers": {"rsi_fast": {...}}}},
-  {"name": "S3", "strategy_config": {"workers": {"rsi_fast": {...}}}}
+  {"scenario_name": "S1", "strategy_config": {"workers": {"rsi_fast": {...}}}},
+  {"scenario_name": "S2", "strategy_config": {"workers": {"rsi_fast": {...}}}},
+  {"scenario_name": "S3", "strategy_config": {"workers": {"rsi_fast": {...}}}}
 ]
 ```
 
@@ -956,11 +878,11 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 
 ### 2. **Override Only What Changes**
 ```json
-// ✅ GOOD - Only override period
+// ✅ GOOD - Only override deviation
 "strategy_config": {
   "workers": {
-    "rsi_fast": {
-      "period": 5
+    "bollinger_main": {
+      "deviation": 2.5
     }
   }
 }
@@ -968,9 +890,9 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 // ❌ BAD - Repeat entire config
 "strategy_config": {
   "workers": {
-    "rsi_fast": {
-      "period": 5,
-      "timeframe": "M5"  // ← Unnecessary! Same as global
+    "bollinger_main": {
+      "periods": { "M5": 20 },  // ← Unnecessary! Same as global
+      "deviation": 2.5
     }
   }
 }
@@ -1025,12 +947,11 @@ formatted = ParameterOverrideDetector.format_overrides_for_display(overrides)
 ### 6. **Document Override Intent**
 ```json
 {
-  "name": "EURUSD_ScalpingTest",
+  "scenario_name": "EURUSD_ScalpingTest",
   "strategy_config": {
     "workers": {
       "rsi_fast": {
-        "period": 5,      // Faster RSI for scalping
-        "timeframe": "M1" // Tick-level sensitivity
+        "periods": { "M5": 5 }  // Faster RSI for scalping
       }
     }
   }

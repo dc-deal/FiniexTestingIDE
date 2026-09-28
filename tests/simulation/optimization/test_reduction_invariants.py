@@ -11,7 +11,7 @@ that wants a plain maximum.
 answer for each of ~80 columns would be a second copy of `COLUMN_REDUCTION`, and two copies of
 one rule is the pair §19 exists to prevent. The honest limit follows from that and is worth
 stating: a property test confirms the declaration is APPLIED correctly, and cannot know whether
-the declaration is the RIGHT one for that column. `segment_max_equity` under `MAX_ABS` would
+the declaration is the RIGHT one for that column. `period_max_equity` under `MAX_ABS` would
 satisfy every assertion here. Catching a wrong ASSIGNMENT needs per-column knowledge, which is
 the map itself.
 
@@ -99,7 +99,7 @@ def _rows(column: str, values: List[Any]) -> List[RunResultRow]:
             'currency': 'USD',
             'run_timestamp': f'2026-09-2{index + 1}T00:00:00+00:00',
             'recorded_at_utc': f'2026-09-2{index + 1}T12:00:00+00:00',
-            'segment_no': index + 1,
+            'period_no': index + 1,
         }
         fields[column] = value
         rows.append(RunResultRow(**fields))
@@ -144,7 +144,7 @@ class TestEveryNumericColumn:
     def test_a_selector_never_invents_a_value(self, column):
         if COLUMN_REDUCTION[column] not in _SELECTORS:
             pytest.skip('this reduction computes rather than selects')
-        if COLUMN_REDUCTION[column] is Reduction.SPAN_END and column == 'segment_no':
+        if COLUMN_REDUCTION[column] is Reduction.SPAN_END and column == 'period_no':
             pytest.skip('its own value is the ordering key here, so the pair cannot vary')
         assert _fold(column, [3.0, 11.0]) in (3.0, 11.0)
 
@@ -164,18 +164,18 @@ class TestTheTwoMaximaDifferWhereItMatters:
     """
 
     def test_max_takes_the_largest(self):
-        assert _fold('segment_max_equity', [-9.0, -1.0]) == -1.0
+        assert _fold('period_max_equity', [-9.0, -1.0]) == -1.0
 
     def test_max_abs_takes_the_deepest(self):
-        assert _fold('segment_max_drawdown', [-9.0, -1.0]) == -9.0
+        assert _fold('period_max_drawdown', [-9.0, -1.0]) == -9.0
 
     def test_they_agree_over_magnitudes(self):
-        assert _fold('segment_max_equity', [9.0, 1.0]) == 9.0
-        assert _fold('segment_max_drawdown', [9.0, 1.0]) == 9.0
+        assert _fold('period_max_equity', [9.0, 1.0]) == 9.0
+        assert _fold('period_max_drawdown', [9.0, 1.0]) == 9.0
 
     def test_adding_a_row_can_only_deepen_a_magnitude(self):
-        two = abs(_fold('segment_max_drawdown', [-3.0, -11.0]))
-        three = abs(_fold('segment_max_drawdown', [-3.0, -11.0, -40.0]))
+        two = abs(_fold('period_max_drawdown', [-3.0, -11.0]))
+        three = abs(_fold('period_max_drawdown', [-3.0, -11.0, -40.0]))
         assert three >= two
 
 

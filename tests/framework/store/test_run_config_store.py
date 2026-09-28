@@ -30,7 +30,7 @@ _BASE = {
     'scenario_set_name': 'demo',
     'global': {'strategy_config': {'workers': {'rsi': {'period': 14}}}},
     'scenarios': [
-        {'name': 'a', 'symbol': 'BTCUSD', 'start_date': '2026-01-01', 'enabled': True},
+        {'scenario_name': 'a', 'symbol': 'BTCUSD', 'start_date': '2026-01-01', 'enabled': True},
     ],
 }
 
@@ -148,7 +148,7 @@ class TestTheThreeHashesSeparateFourKindsOfChange:
     def test_an_added_scenario_moves_the_scope_and_not_the_decisions(self, store, source):
         base = self._register(store, source, lambda p: None)
         wider = self._register(store, source, lambda p: p['scenarios'].append(
-            {'name': 'b', 'symbol': 'ETHUSD', 'start_date': '2026-02-01', 'enabled': True}))
+            {'scenario_name': 'b', 'symbol': 'ETHUSD', 'start_date': '2026-02-01', 'enabled': True}))
 
         assert wider[2] != base[2], 'the scope did not move'
         assert wider[1] == base[1], 'adding a scenario changed the decisions'
@@ -164,7 +164,7 @@ class TestTheThreeHashesSeparateFourKindsOfChange:
 
     def test_a_profile_has_no_scope_hash(self, store, tmp_path):
         """It holds one symbol and no scenario list — a scope hash over nothing would be a lie."""
-        profile = _write(tmp_path / 'p.json', {'name': 'bot', 'symbol': 'BTCUSD'})
+        profile = _write(tmp_path / 'p.json', {'profile_name': 'bot', 'symbol': 'BTCUSD'})
         entry = store.register(profile, RunConfigKind.AUTOTRADER_PROFILE)
 
         assert entry.scope_hash is None

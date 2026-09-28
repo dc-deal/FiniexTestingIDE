@@ -29,7 +29,7 @@ from python.framework.types.config_types.scenario_settings_config_types import (
 @dataclass
 class SafetyConfig:
     """
-    Circuit breaker configuration for live trading.
+    Circuit breaker configuration for an AutoTrader session.
 
     Soft stop: blocks new positions when triggered, existing positions run out normally.
     Both conditions are OR-combined — either alone triggers the block.
@@ -122,15 +122,17 @@ class DeploymentConfig:
 @dataclass
 class AutoTraderConfig:
     """
-    Top-level configuration for FiniexAutoTrader live sessions.
+    Top-level configuration for an AutoTrader session.
 
-    Loaded from configs/autotrader_profiles/<profile>.json.
+    Loaded from configs/autotrader_profiles/<purpose>/<profile>.json.
     Own format — NOT scenario-set based (different lifecycle).
 
     Args:
-        name: Session name (used for log directory, e.g., 'btcusd_mock')
+        profile_name: The profile's name — its run directory and its unit name in every report
+            (e.g. 'btcusd_mock'). Required: a profile without one used to get a run directory
+            named `<symbol>_<adapter>` and a unit name of its symbol, two answers to one question
         bot_id: The bot's DECLARED identity, and what its carry-over state is filed under
-            (#538). Optional, and empty means the identity is composed from `name` instead —
+            (#538). Optional, and empty means the identity is composed from `profile_name` instead —
             which is what every profile did before this field existed. Declaring one matters
             when a profile is RENAMED: a display name is something an operator improves, and
             without a declared id the improvement points the bot at a new, empty document while
@@ -158,7 +160,7 @@ class AutoTraderConfig:
             is refused at startup (DryRunConflictError). Enabling real orders stays a
             deliberate change to market_config.json, not something a copied profile does.
     """
-    name: str = ''
+    profile_name: str = ''
     bot_id: str = ''
     symbol: str = ''
     broker_type: str = ''
@@ -192,6 +194,6 @@ class AutoTraderConfig:
         matches a session across sections by exactly this value.
 
         Returns:
-            `name`, else the symbol
+            `profile_name`, else the symbol
         """
-        return self.name or self.symbol
+        return self.profile_name or self.symbol

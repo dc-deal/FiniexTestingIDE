@@ -3,7 +3,7 @@
 A run header used to record the commit of this repository and nothing else about the code that
 ran. That is not enough, for two reasons. A user strategy lives in `user_algos/`, which is its own
 git repository and is ignored by this one, so a threshold changed in the bot's own module — with
-its declared version left at `1.0.0` — produced a live run and a backtest with identical
+its declared version left at `1.0.0` — produced an AutoTrader session and a backtest with identical
 identities and different code. And the header could not say **who** or **what** started a run, or
 **on which machine**: answerable from memory while there is one operator at one console, and not
 at all once the viewer can start a run.
@@ -97,7 +97,7 @@ and writes it to `user_configs/host_identity.json`, on the bind mount that survi
 
 - a **missing** file is minted, and the mint is logged as a warning naming the file;
 - a file that is **present but cannot be trusted** refuses the start and is never re-minted — a
-  silent re-mint is an identity change nobody notices. A live session builds its origin FIRST,
+  silent re-mint is an identity change nobody notices. An AutoTrader session builds its origin FIRST,
   before the code identity is captured and before its header is written, so the refusal costs no
   git work, stores no patch and leaves no header stating an identity nobody trusts. The
   AutoTrader CLI reports it as a refusal: exit code 2, the file named, no stack trace;
@@ -195,10 +195,10 @@ could not be read records its code as unknown.
 |---|---|
 | a simulation commissioned to report (`reporting: expected`) — every CLI run and sweep combination | captured over EVERY scenario's strategy |
 | a simulation commissioned not to report (`reporting: none`, the test path) | none — nothing will read it |
-| a live or mock AutoTrader session | always, over the profile's strategy |
+| an AutoTrader session — mock, dry run or real orders | always, over the profile's strategy |
 | a sweep's mount build | no header at all — it is not a run |
 
-A live session captures it after its origin and BEFORE its header, and keeps it on the session,
+An AutoTrader session captures it after its origin and BEFORE its header, and keeps it on the session,
 because the startup guard below asks it and must not depend on a run directory having been
 created. The git state per repository is cached per process; the package digests are read FRESH
 at every capture. When a later capture in the same process — the next sweep combination — finds a
@@ -228,21 +228,21 @@ ledger row is the LAST thing a run writes, so a session killed before its close 
 its component versions and its dirty flag entirely; the header is written first.
 
 - `decision_version` and `worker_versions` come from the header's components, filtered to the
-  strategy the row's `config_snapshot` records. A component the factories could not resolve is
+  strategy the row's `strategy_config_json` records. A component the factories could not resolve is
   left out, as it always was.
 - **`git_dirty` changed meaning.** It covered only this repository, so a run of an uncommitted
   strategy in `user_algos/` read as clean. It is now `code_identity.is_dirty()` — every
   repository — and a run whose header carries no code identity reads as dirty, because nothing
   says it was clean. The old default for "git could not answer" was `false`.
 - `git_commit` and `git_branch` come from the header too: the capture reads the branch in the
-  same breath as the commit. A live row is written at the END of its session, and a branch read
+  same breath as the commit. An AutoTrader row is written at the END of its session, and a branch read
   then would pair the start's commit with whatever is checked out after thirty days. Only a run
   whose header carries no code identity falls back to the process's read — and a recorded identity
   whose commit git could not read keeps that commit MISSING rather than borrowing a later read.
 
 Every run that reaches the ledger carries a code identity: both report coordinators write into the
 run directory its header was written into, only a simulation commissioned to report is given a
-coordinator, and a live session always captures — or refuses to start when it cannot. A missing
+coordinator, and an AutoTrader session always captures — or refuses to start when it cannot. A missing
 one therefore means an unreadable header, or a session refused because its capture failed —
 logged as a warning, recorded as unknown, never a failed report phase.
 
@@ -282,15 +282,15 @@ in progress, each read in a fresh process:
 The `git status` is not new: the ledger used to pay it at the END of every run and now reuses the
 one the capture paid at the START (`get_git_info()` at the ledger fell from 2.7 s to 0.3 s). What
 is new is the diff hash and the patch, and only on a dirty tree: about 1.8 s on `/app` in the
-state measured above. A clean repository pays neither. The package re-check at the live startup
+state measured above. A clean repository pays neither. The package re-check at the real-money startup
 guard reads one package directory per path component — milliseconds.
 
 ## Real orders from uncommitted code
 
-**A session that would send real orders refuses to start while the code it would run is not
-exactly one known commit.** The thirty-day live run is a parity proof: afterwards a backtest over
-the same period is run and the divergence measured, and that backtest needs the code that ran. A
-run from a dirty tree can be tied to its code only through its stored patch; a run from a tree git
+**A session that would send real orders refuses to start while the code it would run is not exactly
+one known commit.** The thirty-day real-money session is a parity proof: afterwards a backtest over
+the same period is run and the divergence measured, and that backtest needs the code that ran. A run
+from a dirty tree can be tied to its code only through its stored patch; a run from a tree git
 cannot read cannot be tied to anything. `--allow-dirty` is the one way through, and it is recorded.
 
 ### Which sessions it guards
@@ -302,9 +302,9 @@ neither the file nor its folder can say whether money moves.
 
 | Session | Guarded |
 |---|---|
-| live, effective `dry_run` false | yes |
-| live, effective `dry_run` true — by the broker's setting or the profile's | no |
-| mock (`adapter_type: mock`) | no — a mock session is always a dry run |
+| live adapter, effective `dry_run` false | yes |
+| live adapter, effective `dry_run` true — by the broker's setting or the profile's | no |
+| mock (`adapter_type: mock`) | no — `dry_run` always resolves true for a mock session |
 | simulation | no — it never sends an order |
 
 When #304 replaces `dry_run` with `mode: live|paper`, the guard follows `mode: live`.
@@ -328,7 +328,7 @@ a guard reading "clean" where git could not answer would pass exactly the run it
 ### The refusal
 
 The guard runs in `_validate_startup()`, after the carry-over identity checks and before the
-swap-mode check. That is after `setup_pipeline`, so a live start has already fetched its broker
+swap-mode check. That is after `setup_pipeline`, so a live-adapter start has already fetched its broker
 configuration and warmup bars — but no order can have been sent. It is raised as
 `UncommittedCodeError` and ends the session through the ordinary `STARTUP FAILED` path, exit
 code 2, with the message as the emergency cause in the summary:

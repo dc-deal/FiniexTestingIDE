@@ -1,4 +1,4 @@
-# Handling Connection & Feed Outages in Live Trading
+# Handling Connection & Feed Outages in AutoTrader Sessions
 
 How do I react when my bot goes blind? This guide covers the two staleness
 domains, the instruments the framework hands you, and the questions only YOU
@@ -13,7 +13,7 @@ answered — it never answers it for you.**
 |---|---|---|
 | What died | ONE worker's external feed (e.g. LLM sentiment) | The tick stream itself — the session is blind |
 | Scope | Per-worker | Session-level (hits every worker + decision) |
-| Detection | Snapshot age vs. `max_staleness_minutes` (tick clock, deterministic) | No real tick for `market_data_stale_after_s` wall seconds (live idle heartbeat) |
+| Detection | Snapshot age vs. `max_staleness_minutes` (tick clock, deterministic) | No real tick for `market_data_stale_after_s` wall seconds (AutoTrader idle heartbeat) |
 | Readable state | `WorkerResult.is_stale` (envelope — delivered with EVERY result, cannot be filtered away) | `trading_api.get_market_data_status()` (`is_stale`, `stale_since`, `seconds_since_last_tick`, `reconnect_count`) |
 | Wake-up call | `on_signal_stale(worker_name, source)` — **mandatory when a SIGNAL worker is consumed** | `on_market_data_stale(status)` — **mandatory for EVERY decision logic** |
 | Fires | Edge-triggered: once per fresh→stale episode | Edge-triggered: once per episode; recovery = ticks resuming |
@@ -30,7 +30,7 @@ and mandatory for everyone.
    the decision computes, so you can react in the same pass. An explicit `pass`
    is a valid, conscious answer — but it is YOUR written line, reviewed with your
    strategy. Startup validation rejects a decision logic without the override
-   (both pipelines: sim-validated = live-ready).
+   (both pipelines: sim-validated = AutoTrader-ready).
 2. **The readable state — the escalation instrument.** One hook call cannot
    answer "…and what if it is STILL gone after an hour?". The state can:
    `get_market_data_status().seconds_since_last_tick` keeps growing while the
@@ -38,7 +38,7 @@ and mandatory for everyone.
 3. **`wants_heartbeat()` — acting WITHOUT ticks.** During a market-data outage
    there are no `compute_tick` calls. A logic that opts into the heartbeat
    (`wants_heartbeat() → True`) keeps getting `compute_heartbeat` passes
-   (~every 500 ms live) and can escalate on its own timescale.
+   (~every 500 ms in an AutoTrader session) and can escalate on its own timescale.
 4. **The OrderGuard floor.** `order_guard.block_stale_market_data` (default
    `true`) rejects new entries while market data is stale — even a `pass`-author
    never opens a position on blind data. Closes and cancels are deliberately
@@ -64,7 +64,7 @@ A session gets its signal series in one of two ways, and the panel says which:
 | **live** | a transport filling the series while the session runs | `Signal Feed: ● live epoch 1 seq 4914` |
 
 A mounted session is a replay: it decides on whatever the archive held at boot and
-never learns anything new. That is correct for a backtest or a mock run and wrong
+never learns anything new. That is correct for a backtest or a mock session and wrong
 for a bot meant to trade on current sentiment — which is why the panel names the
 mode rather than leaving it to be inferred.
 
@@ -192,7 +192,7 @@ There is no correct default — every answer is wrong for SOME strategy:
 | `max_staleness_minutes` | per SIGNAL worker (`strategy_config.workers`) | `30` | Snapshot age above which the worker's envelope flags stale |
 | `tick_source.connection_check_interval_s` / `connection_dead_s` | profile `tick_source` block | `30` / `90` | TRANSPORT repair knobs (forced WS reconnect) — distinct from the data-quality contract above |
 
-## Drilling Your Reaction (before it happens live)
+## Drilling Your Reaction (before it happens at a venue)
 
 - **Backtest (deterministic):** planned stale windows via
   `stress_test_config.stale_data_stress` — events block DATA SOURCES the
@@ -200,21 +200,22 @@ There is no correct default — every answer is wrong for SOME strategy:
   `data_sentiment_type`) or blind the tick source (`data_source` = its
   `data_broker_type`) at exact timestamps. See the
   [Stress Test System](../stress_test.md).
-- **AutoTrader mock — two drills (#438):** for the **market-data** side,
+- **Mock session — two drills (#438):** for the **market-data** side,
   `tick_source.freeze_after_ticks` + `freeze_duration_s` pause the replay feeder mid-session
   (wall-clock real) — the REAL heartbeat measurement path flips, `on_market_data_stale` fires,
   the guard blocks, recovery follows. For the **signal** side, a
   `scenario_settings.stress_test_config.stale_data_stress` event carves a window out of the
   sentiment series (the same deterministic data-plane carve the sim uses) → the worker goes
-  `is_stale` and `on_signal_stale` fires. (The tick status-plane carve stays sim-only → #444.)
+  `is_stale` and `on_signal_stale` fires. (A planned window on the tick source's status plane runs
+  in a mock session too, since #444.)
 - Reference implementations: `CORE/hybrid_sentiment_reference` (hold + surface),
   `CORE/backtesting/backtesting_outage_probe` (the test probe asserting the
   whole chain).
 
-## How an Episode Is Recorded (live)
+## How an Episode Is Recorded (AutoTrader)
 
 One observer records the disturbance episodes of the tick stream, and it is the SAME unit in
-both pipelines (`MarketDataEpisodeTracker`) — live it simply gets fed from the two event sources
+both pipelines (`MarketDataEpisodeTracker`) — in an AutoTrader session it simply gets fed from the two event sources
 the loop already has:
 
 ```
@@ -228,21 +229,21 @@ tracker.on_tick(...)                        tracker.on_heartbeat(...)
   · counts this tick fresh/stale              · OPENS the episode
   · CLOSES the open episode                   · stale_from = the last tick still seen fresh
   · writes the recovery span                  · wall anchor = that tick's wall time
-    into the §35 pot                          · counts nothing (no tick happened)
+    into the error pot                        · counts nothing (no tick happened)
 ```
 
 The outage is therefore **detected on the heartbeat but dated back to the last healthy tick** —
 otherwise every episode would start `market_data_stale_after_s` (default 300 s) too late.
 
-What differs from a simulation or mock run:
+What differs from a backtest or a mock session:
 
-| | Live | Mock / Simulation |
+| | Live-adapter session | Mock session / backtest |
 |---|---|---|
 | Trigger | a real feed outage | a planned window / the freeze drill |
-| Origin column | always `live-real` — a real source declares no injection and a live session has no planned windows | `stress-injected` (label from the driver or the join) |
+| Origin column | always `live-real` — a real source declares no injection and a live-adapter session has no planned windows | `stress-injected` (label from the driver or the join) |
 | Time axes | canonical clock **=** wall clock, so span and duration agree | the canonical clock is bimodal in a mock replay (replay tick time vs wall heartbeat) |
-| Counting basis | every processed tick (live has no clipping gate — clipping is only measured) | non-clipped algo ticks only |
-| Signal domain | not yet present — a live session has no signal series (that is #375); only tick episodes are recorded | both domains |
+| Counting basis | every processed tick (a live-adapter session has no clipping gate — clipping is only measured) | non-clipped algo ticks only |
+| Signal domain | not yet present — a live-adapter session has no signal series (that is #375); only tick episodes are recorded | both domains |
 
 **During the session** the only live indicators are the `[STALE]` tag on the CONNECTION panel and
 the pot warnings in `autotrader_session.log`; the table itself is written at session end. For a
@@ -284,6 +285,6 @@ guarantees a result per declared instance on every pass: indicators compute
 from bars, SIGNAL workers always answer with the last snapshot + the `is_stale`
 envelope. A worker that fails to produce a result (e.g. a division by zero on
 corrupt-but-typed ticks) is a BUG, not an outage — the framework lets it crash
-(sim: the scenario fails, the batch continues; live: emergency shutdown with a
+(sim: the scenario fails, the batch continues; AutoTrader: emergency shutdown with a
 prominent cause banner). We error in that case, by design: degrading around
 bugs would hide them.

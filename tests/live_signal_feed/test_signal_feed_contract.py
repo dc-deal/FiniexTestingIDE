@@ -146,7 +146,7 @@ class TestReaderContract:
         `available_msc`, the honest publish instant, identical in every copy.
 
         Not our receive time: two consumers reading the same envelope must resolve it at
-        the same moment, or a backtest and a live session disagree about when a decision
+        the same moment, or a backtest and a live-adapter session disagree about when a decision
         could have been made.
         """
         assert_check(assessment, 'resolution_key_is_available_msc')

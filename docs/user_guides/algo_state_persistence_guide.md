@@ -1,11 +1,11 @@
 # Algo State Persistence — Restart-Safe Algo Memory
 
-A long-running live bot loses all in-memory state on every restart (deploy, crash,
+A long-running bot loses all in-memory state on every restart (deploy, crash,
 container restart, power loss). Over a multi-day session a restart is near-certain. State
 persistence lets an algo snapshot and restore **its own internal memory** across restarts —
 swing counters, regime flags, "already entered today", risk high-water-marks.
 
-This is **opt-in** and **AutoTrader (live) only**. Backtesting is deterministic and
+This is **opt-in** and **AutoTrader only** (a mock session skips it, see below). Backtesting is deterministic and
 self-contained — there is no restart concept, so the subsystem never runs there. An algo
 that does not opt in is bypassed entirely (no file, no overhead).
 
@@ -52,7 +52,7 @@ round-trip symmetric (what you put in is exactly what you get back — no `datet
 returning as a string). A non-serializable value fails the **boot pre-flight** at startup
 (`STARTUP FAILED`, naming the offending key). In the backtest the same check runs centrally in
 the batch pre-flight — a broken snapshot excludes that scenario with the same message — so you
-catch it during development, before going live.
+catch it during development, before a real-money session.
 
 ### Empty snapshot = nothing persisted
 
@@ -69,7 +69,7 @@ STOP → final save → exit
 
 Restore runs **after** warmup and **before** the first decision. Saves are atomic (temp file +
 rename) — a crash mid-write never corrupts the file. A mid-session save failure is logged but
-never aborts the live session.
+never aborts the AutoTrader session.
 
 ## Staleness — opening a bot after days away
 
@@ -84,7 +84,7 @@ Two policies (config `on_stale`):
   with reset counters/flags. **Note:** open broker positions are not recognized yet (until
   Cold-Start Recovery) — check your account before letting it run.
 - **`halt`** — refuse to boot; you decide (delete the state file to start fresh, or raise
-  `max_age_trading_days`). For sharp live bots.
+  `max_age_trading_days`). For bots that trade real money.
 
 For finer control, override `accepts_restored_state(snapshot, ctx)`: it runs after the coarse
 age guard and lets the algo apply its own rule (e.g. a daily flag is stale across a UTC date
@@ -108,9 +108,9 @@ never reads the wall clock itself.
 }
 ```
 
-State files live at `data/runtime/session_state/<profile>_<symbol>.json` (one per running bot,
-stable across runs). Mock adapters auto-disable persistence (a mock session is a dress-rehearsal,
-not a real restart context). `on_corrupt` (`warn_reset` / `fail`) governs an unreadable file.
+State files live at `data/runtime/session_state/<bot_id>_<symbol>.json` (one per running bot,
+stable across runs). Mock adapters auto-disable persistence (a mock session replays a window and
+is not a real restart context). `on_corrupt` (`warn_reset` / `fail`) governs an unreadable file.
 
 ## Worked example
 

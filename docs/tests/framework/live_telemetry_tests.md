@@ -8,7 +8,7 @@ dashboards) into a JSON-safe dict so the same model can later feed a viewer push
 
 | Test | Description |
 |------|-------------|
-| `test_frame_to_json_is_json_dumpable` | all three frame kinds (sim progress, sim status, live session) encode to a `json.dumps`-able dict |
+| `test_frame_to_json_is_json_dumpable` | all three frame kinds (sim progress, sim status, AutoTrader session) encode to a `json.dumps`-able dict |
 | `test_sim_core_and_enums_serialized` | identity/balances live under the shared `core` (not top-level); `ScenarioStatus` / `AwarenessLevel` enums become their string values |
 | `test_status_frame_carries_no_progress` | `LiveStatusFrame` is the lean three-field shape (index, name, status), never a progress frame |
 | `test_live_session_nested_lists_serialized` | live frame: `core` + nested position list with enum direction encode cleanly |

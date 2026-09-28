@@ -204,7 +204,7 @@ and the Phase 7 `BrokerSummary`.
   time between consecutive ticks. Session/weekend gaps are filtered using a configurable threshold
   from `market_config.json`. A budget warning is shown when avg tick processing time exceeds the 5th
   percentile interval (P5), indicating the algorithm may not keep up with peak tick arrival rate in
-  live operation.
+  a live-adapter session.
 
 **Performance:** Fast (<1s)
 

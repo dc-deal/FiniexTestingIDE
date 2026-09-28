@@ -27,7 +27,9 @@ class ConfigDirectoryIndex(AbstractStoreIndex):
     """
 
     COLUMNS = ['path', 'source_mtime', 'source_size', 'status', 'row_json']
-    LOGIC_VERSION = 1
+    # 1 → 2: the builder reads `scenario_name` / `profile_name` (2026-09-28); a row cached by the
+    # older logic read the retired `name` keys and is re-read rather than trusted.
+    LOGIC_VERSION = 2
 
     def __init__(self, root: Path):
         super().__init__(Path(root) / CONFIG_DIRECTORY_INDEX_FILE)

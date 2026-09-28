@@ -1,11 +1,11 @@
 """
 FiniexTestingIDE - AutoTrader Scenario-Settings Config Schema (#438)
 
-The AutoTrader-mock's single-scenario data + account description. Mirrors a simulation
-scenario's core fields so a mock session replays scenario base data through the live decision
-path: the index-resolved data window PLUS the account balances the run starts from. Fed into a
-SingleScenario and prepared through the shared MountPreparer — the same index/validation stack
-the backtesting batch uses.
+A mock session's single-scenario data + account description. Mirrors a simulation
+scenario's core fields so a mock session replays scenario base data through the AutoTrader
+decision path: the index-resolved data window PLUS the account balances the run starts from.
+Fed into a SingleScenario and prepared through the shared MountPreparer — the same
+index/validation stack the backtesting batch uses.
 """
 
 from typing import Any, Dict, Optional
@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ScenarioSettingsConfig(BaseModel):
     """
-    Scenario data + account description for an AutoTrader-mock session.
+    Scenario data + account description for a mock session.
 
     Field names mirror the simulation scenario scalars (data_broker_type, data_sentiment_type,
     start/end_date, max_ticks, data_mode) so there is one vocabulary across both pipelines. The
@@ -31,7 +31,7 @@ class ScenarioSettingsConfig(BaseModel):
         data_mode: Tick data mode (e.g. 'realistic')
         balances: Starting account balances (e.g. {'USD': 10000.0, 'BTC': 0.0})
         account_currency: Explicit account currency; None → derived from balances + symbol
-        name: Optional scenario name; '' → derived from the profile name
+        scenario_name: Optional scenario name; '' → derived from the profile name
         stress_test_config: Optional stress config (stale_data_stress signal plane etc.), mirrors the sim scenario
     """
     model_config = ConfigDict(extra='forbid')
@@ -44,5 +44,5 @@ class ScenarioSettingsConfig(BaseModel):
     data_mode: str = 'realistic'
     balances: Dict[str, float] = Field(default_factory=dict)
     account_currency: Optional[str] = None
-    name: str = ''
+    scenario_name: str = ''
     stress_test_config: Optional[Dict[str, Any]] = None

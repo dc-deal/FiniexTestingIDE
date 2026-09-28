@@ -92,7 +92,7 @@ In dry-run nothing at the venue holds the order, so `DryRunOrderSimulator` plays
 used to play it blind: every order flipped to FILLED after two polls and a MARKET order filled at
 `0.0`. With `poll_interval_ms = 5000` that meant every resting order "filled" about ten seconds
 after placement at a price nobody chose — and `dry_run: true` is the shipped default for
-kraken_spot, so a rehearsal reported a stop that had fired at zero.
+kraken_spot, so a dry run reported a stop that had fired at zero.
 
 | Test class | Pins |
 |---|---|
@@ -102,7 +102,7 @@ kraken_spot, so a rehearsal reported a stop that had fired at zero.
 | `TestTheLifecycleShapeIsUnchanged` | the ref format, non-colliding refs, idempotent cancel, in-place amend, and a re-query after the fill still reading FILLED |
 
 Neither the comparison nor the book side is duplicated here: both live in
-`utils/trading_math/price_trigger.py`, the same module the backtest uses, so a rehearsal and a
+`utils/trading_math/price_trigger.py`, the same module the backtest uses, so a dry run and a
 backtest cannot disagree about WHEN or AT WHAT an order fills. The refusal's VISIBILITY and the
 quote's journey to the simulator are a different suite —
 `tests/autotrader/live_executor/test_undecided_dry_run_poll.py`, because the executor is what
@@ -132,7 +132,7 @@ our key without a txid, so for an unresolved submit — the case where no txid e
 | `TestWhatTheCountMeans` | one cancelled order is a cancel, none is UNKNOWN, an answer without the field says nothing either way, and the raw payload survives for forensics |
 | `TestThePayload` | the range goes out as unix seconds, an absent key sends no field, a key narrows the range, and a long key is truncated to the venue's 18 characters |
 | `TestTheAnswer` | a filled order is visible where the open pull is blind, a cancelled one is not a filled one, TWO orders can answer to one key, and an unmappable status becomes UNKNOWN rather than "still working" |
-| `TestDryRun` | a dry run reaches no venue and answers nothing, rather than something |
+| `TestDryRun` | in a dry run the query reaches no venue and answers nothing, rather than something |
 
 ## Run
 

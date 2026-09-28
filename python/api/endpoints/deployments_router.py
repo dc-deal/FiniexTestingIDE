@@ -138,7 +138,7 @@ def get_deployment_booking_periods(deployment_id: str) -> DeploymentBookingPerio
     # Counted over distinct RUNS, not rows: a run writes one row per period, so counting rows
     # would report a thirty-day session as thirty sessions. The second count is what keeps a
     # short list honest — a session whose row predates the booking journal books nothing.
-    booked = {row.run_id for row in rows if row.segment_opened_at}
+    booked = {row.run_id for row in rows if row.period_opened_at}
     return DeploymentBookingPeriodsResponse(
         deployment_id=deployment_id,
         periods=periods,

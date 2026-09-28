@@ -39,7 +39,7 @@ python/
         report_types.py ← Unified report models (#391) served by reports_router
 ```
 
-The `endpoints/` directory holds one `APIRouter` module per domain, well past the §26 threshold. Each is registered in `create_app()` from `ROUTER_SURFACES` — the mount table that pairs a router with the surface its grants name — via `app.include_router(..., prefix='/api/v1')`.
+The `endpoints/` directory holds one `APIRouter` module per domain, well past the three files at which a concern gets its own directory. Each is registered in `create_app()` from `ROUTER_SURFACES` — the mount table that pairs a router with the surface its grants name — via `app.include_router(..., prefix='/api/v1')`.
 
 ## Request Lifecycle
 
@@ -111,7 +111,7 @@ list response carries a `key`:
 { "key": ["sweep_id"],                          "sweeps":      [ ... ] }
 { "key": ["deployment_id", "currency"],         "deployments": [ ... ] }
 { "key": ["run_id", "currency"],                "sessions":    [ ... ] }
-{ "key": ["run_id", "unit_name", "segment_no"], "periods":     [ ... ] }
+{ "key": ["run_id", "unit_name", "period_no"], "periods":     [ ... ] }
 ```
 
 A response serving SEVERAL lists declares `keys` instead, one entry per list, because a single
@@ -142,10 +142,10 @@ separate, and their reason says why.
 
 **One unit, four field names — one identity.** The same unit is `name` on `scenario-details` and
 `portfolio`, `scenario_name` on `trade-history`, and `unit_name` on `booking-periods`. In a
-simulation all four are the scenario's name; in a live session all four are the profile's
-`name`, else its symbol, and that rule is one method (`AutoTraderConfig.get_unit_name()`) rather
-than a copy per section. A selection carried by this value narrows every section, and a unit that
-traded nothing is present in the roster with no trades — never missing from it.
+simulation all four are the scenario's name; in an AutoTrader session all four are the profile's
+`profile_name`, else its symbol, and that rule is one method (`AutoTraderConfig.get_unit_name()`)
+rather than a copy per section. A selection carried by this value narrows every section, and a unit
+that traded nothing is present in the roster with no trades — never missing from it.
 
 Both of the cases that prompted it are ones where the obvious key is wrong: a deployment row is
 one per (deployment × account currency), and a booking period's running number restarts per bot,
@@ -156,11 +156,11 @@ knowledge is declared beside the thing rather than left in prose.
 **It is NOT the store's key.** A store entry's identity (`StoreEntry.key`) answers how one
 ENTRY is addressed; this answers what makes one ROW of THIS response unique, and the two differ
 wherever a route aggregates: `/deployments` groups ledger rows by (deployment_id, currency),
-while the ledger's own row identity is (run_id, currency, segment_no).
+while the ledger's own row identity is (run_id, currency, unit_name, period_no).
 
 **A COLLECTION route has no path parameter, so a grant has nothing to be about — and that was a
 hole.** Measured 2026-09-13 against a token holding only `bars:*` and `brokers:*`:
-`/api/v1/reports/runs` answered 200 with the full run index, naming every live run, and
+`/api/v1/reports/runs` answered 200 with the full run index, naming every AutoTrader session, and
 `/api/v1/sweeps` answered 200 — while every identity route beside them was correctly refused. The
 package closes it with a floor: a collection route requires **at least one** grant on its router's
 surface, and a caller entitled to part of a list still reaches the handler, which filters it.
@@ -296,7 +296,7 @@ It is a state to pass through, not one to stay in.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/v1/health` | Server liveness — `status`, `version`, `started_at` (when this process started serving, ISO-8601 UTC, new on every restart) and `uptime_s` (seconds since, on the server's monotonic clock). OPEN, so it carries nothing a stranger could use — no commit, no host, no auth state |
-| GET | `/api/v1/contract` | Which CONTRACT this server serves, beside the app version — they move on different clocks, and a model can change shape inside one app version. `changes` is one line per change that moved into the current contract; every earlier version is in [`api_contract_log.md`](api_contract_log.md). OPEN like `/health`: a consumer must be able to ask which contract they face before they hold a token, or a version mismatch and a credential failure look alike. Every response also carries `X-Api-Contract`, so a saved fixture is self-describing and a consumer's assertion stays local. Deliberately NOT a deprecation channel — no compatibility layers ship (§27), so a number to compare is the honest offer |
+| GET | `/api/v1/contract` | Which CONTRACT this server serves, beside the app version — they move on different clocks, and a model can change shape inside one app version. `changes` is one line per change that moved into the current contract; every earlier version is in [`api_contract_log.md`](api_contract_log.md). OPEN like `/health`: a consumer must be able to ask which contract they face before they hold a token, or a version mismatch and a credential failure look alike. Every response also carries `X-Api-Contract`, so a saved fixture is self-describing and a consumer's assertion stays local. Deliberately NOT a deprecation channel — no compatibility layers ship, so a number to compare is the honest offer |
 | GET | `/api/v1/timeframes` | All configured timeframes in sorted order |
 | GET | `/api/v1/validation-checks` | Every validation check a finding can name — `check` (the stable id served in `run-summary.units_absent[].checks` and `warnings-errors.warnings[].check`), a `title` fit for a label or a facet, and a one-sentence `description`. Declared once in `python/framework/validators/validation_check_catalog.py`, and a test holds it to the ids the code emits in both directions. OPEN like `/timeframes`: what an id means is the app's own declaration, not data. `key` = `["check"]` |
 | GET | `/api/v1/brokers` | Broker types available in bar index |
@@ -306,7 +306,7 @@ It is a state to pass through, not one to stay in.
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/bars` | OHLCV bars (query: `timeframe`, `from`, `to`, `limit`) |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/gaps` | Every interruption in the archive, each with its CATEGORY — a venue outage and a quiet weekend are different facts and the caller never has to infer which from a duration. Served from the discovery cache; computes nothing |
 | GET | `/api/v1/brokers/{broker}/symbols/{symbol}/indicators/atr` | Average True Range per bar (query: `timeframe`, `from`, `to`, `period`, `smoothing`, `limit`) |
-| GET | `/api/v1/reports/runs` | Index of EVERY run, newest first — `run_id`, `group` ∈ `simulation` \| `live`, the set / profile name, `artifacts` (every report file the run persisted, by name), and — from the run's header (#475) — `start_time`, `parent_id` (the sweep, deployment or session this run belongs to; null when it stands alone), `parent_kind` (`sweep` \| `deployment` — WHICH of those the id names, since every parent id is a prefix plus a timestamp and they are otherwise indistinguishable; null when the run stands alone, and also on a run indexed before this field existed, where the kind is unknown rather than absent), `app_version`, `git_commit` and `config_snapshot`. **`group` is the PIPELINE, never the nesting:** a sweep combination is a `simulation` whose `parent_id` names its sweep, and a live day fragment (#476) will be a `live` whose `parent_id` names its session. `has_reports` is still served, now derived as `artifacts` being non-empty, so the two can never disagree. **`reporting`** (`expected` \| `none`) says whether the run was COMMISSIONED to report — read it together with `artifacts`: empty + `expected` means still running or died before reporting, empty + `none` means it was never meant to. Without the pair a crashed run is indistinguishable from a deliberately silent one. **`artifacts` is what a consumer should read:** the two pipelines produce DIFFERENT sets (a live session has no `scenario_details` / `profiling` / `run_meta` / `aggregated_portfolio`), so a client that guessed would get a 404 for the difference. Served from the derived run index, built from each run's `header.json`; a lookup is an exact match against that index. A run with no artifacts exists as logs only (a test session writes none). The entry point the routes below are addressed by |
+| GET | `/api/v1/reports/runs` | Index of EVERY run, newest first — `run_id`, `group` ∈ `simulation` \| `autotrader`, the set / profile name, `ticks_from` (`archive` \| `venue`) and `orders_to` (`simulated` \| `venue`) — which kind of run this is, recorded at its start from the resolved configuration, null on a run recorded before contract 12 — `data_windows` (the market window each unit was DECLARED to cover, one per unit, `end_date` null = open; what a scenario actually processed is on `scenario-details`), `artifacts` (every report file the run persisted, by name), and — from the run's header (#475) — `start_time`, `parent_id` (the sweep, deployment or session this run belongs to; null when it stands alone), `parent_kind` (`sweep` \| `deployment` — WHICH of those the id names, since every parent id is a prefix plus a timestamp and they are otherwise indistinguishable; null when the run stands alone, and also on a run indexed before this field existed, where the kind is unknown rather than absent), `app_version`, `git_commit` and `config_snapshot`. **`group` is the PIPELINE, never the nesting:** a sweep combination is a `simulation` whose `parent_id` names its sweep, and a day record (#476) will be an `autotrader` run whose `parent_id` names its session. `has_reports` is still served, now derived as `artifacts` being non-empty, so the two can never disagree. **`reporting`** (`expected` \| `none`) says whether the run was COMMISSIONED to report — read it together with `artifacts`: empty + `expected` means still running or died before reporting, empty + `none` means it was never meant to. Without the pair a crashed run is indistinguishable from a deliberately silent one. **`artifacts` is what a consumer should read:** the two pipelines produce DIFFERENT sets (an AutoTrader session has no `scenario_details` / `profiling` / `run_meta` / `aggregated_portfolio`), so a client that guessed would get a 404 for the difference. Served from the derived run index, built from each run's `header.json`; a lookup is an exact match against that index. A run with no artifacts exists as logs only (a test session writes none). The entry point the routes below are addressed by |
 | GET | `/api/v1/sweeps` | Every recorded parameter sweep, newest first — id, start, duration, combination + ok/error counts, algo, objective. Served from the run-results ledger (#390) |
 | GET | `/api/v1/sweeps/{sweep_id}` | One sweep's combinations, RANKED by the objective the sweep declared. Each row carries its `run_id`, the hinge into the report routes. A row's `git_dirty` covers every repository a component of the run came from, not only this one, and reads true when the code state could not be determined — nothing says it was clean (#551, contract 4) |
 | GET | `/api/v1/directory` | Every configuration file that can start a run — scenario sets and AutoTrader profiles — including files that never ran (`run_count: 0`), from the config directory's cache (#554, contract 7). A row says what the file DECLARES, read from its raw JSON: scenario counts declared and enabled, symbols, market types, decision logic and workers after the per-scenario cascade, and for a profile its bot id, adapter and declared `dry_run`. `status` is `readable` or `unreadable` with a `reason` — read, never validated: a file being edited is a row, not an error. A file whose NAME is also a configuration of the other kind is `unreadable` too, with that as its reason, and no run starts from it (contract 11). `origin` is `configs` / `user_configs` / `user_algos`; a private path never leaves the server. Run figures come from the run index, matched on `config_snapshot` and the run type. At most `FRESHNESS_S` (30 s) old; `?refresh=true` walks the roots now. `key` = `["file"]` — a file name is ONE entry across every root and both kinds, resolved by precedence (contract 9; it was `["kind", "file"]`) |
@@ -322,14 +322,14 @@ It is a state to pass through, not one to stay in.
 | GET | `/api/v1/reports/runs/{run_id}/worker-decision` | Worker/decision report (per-unit component stats) |
 | GET | `/api/v1/reports/runs/{run_id}/profiling` | Profiling report (per-operation timings + inter-tick stats) |
 | GET | `/api/v1/reports/runs/{run_id}/aggregated-portfolio` | Aggregated-portfolio report (cross-unit, per-currency) |
-| GET | `/api/v1/reports/runs/{run_id}/warnings-errors` | Warnings/errors report (the run's tiered advisory + error pot). `errors[].logged_errors` carries `LogEntryRow` objects — level, `observed_at`, `event_time`, `scope`, `message` — not bare strings. An artifact written before that shape answers **409 `artifact_unreadable`**, never 500: run output is regenerated, not migrated (§27) |
+| GET | `/api/v1/reports/runs/{run_id}/warnings-errors` | Warnings/errors report (the run's tiered advisory + error pot). `errors[].logged_errors` carries `LogEntryRow` objects — level, `observed_at`, `event_time`, `scope`, `message` — not bare strings. An artifact written before that shape answers **409 `artifact_unreadable`**, never 500: run output is regenerated, not migrated |
 | GET | `/api/v1/reports/runs/{run_id}/broker` | Broker report (broker + symbol specifications the run executed against) |
 | GET | `/api/v1/reports/runs/{run_id}/feed-stability` | Feed-stability report (disturbance episodes as observed spans) |
 | GET | `/api/v1/reports/runs/{run_id}/config` | The configuration the run was commissioned with, PARSED, with the file name and the content id (#538) the index attributes to it. The index carried only those two pointers, so a reader who saw a change mark between two sessions of a deployment could not ask what changed. Resolved from the run-config STORE through `config_id` — the per-run copy was retired (#546), because the store holds the same content, is not governed by the file-logging switch the copy was, and writes once per distinct content rather than once per run. The store's INDEX is never served: its `source_path` column carries an operator's private workspace path. Two distinct 404s: `run_not_found` for an unknown identity, `config_snapshot_missing` for a run that declared a snapshot it never filed, which is ordinary because the header is written at run start and the file is copied later |
-| GET | `/api/v1/reports/runs/{run_id}/booking-periods` | The run's Hauptbuch (#537): one summary per booking period — a trading day, or the stretch the run actually covered — plus its COMPLETENESS check. `reconciles` is three-state: true / false / **null when the run reports no figure in this currency**, which is an absent check and not a passed one. What it proves is that every closed trade reached exactly one period; it cannot prove a P&L is right, because both figures carry the same per-trade value along two routes. One table is ONE account currency — `currencies` names the others, whose periods are ledger rows like these. Served from the stored artifact, never rebuilt from the ledger: recomputed there the check would be `sum(rows) − sum(rows)` and could never fail. A run from before the artifact existed answers 404 |
-| GET | `/api/v1/deployments` | Every recorded deployment, newest first — one entry per (deployment × account currency), because a P&L column added over two currencies is not a number. `net_pnl` SUMS over the sessions; `max_drawdown` is their MAXIMUM and never a sum, since each live row carries the running decline against the inherited peak. `changed` marks a deployment whose sessions were not all produced by one configuration. Served from the run-results ledger (#497) |
-| GET | `/api/v1/deployments/{deployment_id}` | One deployment's sessions, OLDEST first — a life reads forwards, the opposite order to the console. Each session carries `ran_hours`, the `gap_hours` BEFORE it (with `gap_between_starts` where only a start-to-start measure was possible, which overstates it) and the two change marks. `advisory` says whether the rows may be read as one series at all; `unfinished` counts the runs that never reached their close, absent from the sessions by construction because the ledger row is written last (§44). **No reconciliation line, and there cannot be one** — over many runs there is no single run summary to sum against |
-| GET | `/api/v1/deployments/{deployment_id}/booking-periods` | Every booking period the deployment booked, across ALL of its sessions — the thirty-day picture in one call, where the run-scoped route would be an N+1 walk. Same row shape as `/reports/runs/{run_id}/booking-periods` plus `run_id`, which across a deployment is the only thing that tells two periods apart (`segment_no` is a per-BOT counter that continues across restarts; until 2026-09-23 the floor was persisted before the last period was sealed, so sessions REPEATED a number rather than continuing it — runs recorded before that date carry the repeats) and is the hinge into that run's report routes. Rows that book no period are skipped and their sessions counted in `sessions_without_periods`, so an incomplete history is not read as a quiet one. **No reconciliation, by construction** — see the note under the route above |
+| GET | `/api/v1/reports/runs/{run_id}/booking-periods` | The run's ledger (#537): one summary per booking period — a trading day, or the stretch the run actually covered — plus its COMPLETENESS check. `reconciles` is three-state: true / false / **null when the run reports no figure in this currency**, which is an absent check and not a passed one. What it proves is that every closed trade reached exactly one period; it cannot prove a P&L is right, because both figures carry the same per-trade value along two routes. One table is ONE account currency — `currencies` names the others, whose periods are ledger rows like these. Served from the stored artifact, never rebuilt from the ledger: recomputed there the check would be `sum(rows) − sum(rows)` and could never fail. A run from before the artifact existed answers 404 |
+| GET | `/api/v1/deployments` | Every recorded deployment, newest first — one entry per (deployment × account currency), because a P&L column added over two currencies is not a number. `net_pnl` SUMS over the sessions; `max_drawdown` is their MAXIMUM and never a sum, since each AutoTrader row carries the running decline against the inherited peak. `changed` marks a deployment whose sessions were not all produced by one configuration. Served from the run-results ledger (#497) |
+| GET | `/api/v1/deployments/{deployment_id}` | One deployment's sessions, OLDEST first — a life reads forwards, the opposite order to the console. Each session carries `ran_hours`, the `gap_hours` BEFORE it (with `gap_between_starts` where only a start-to-start measure was possible, which overstates it) and the two change marks. `advisory` says whether the rows may be read as one series at all; `unfinished` counts the runs that never reached their close, absent from the sessions by construction because the ledger row is written last. **No reconciliation line, and there cannot be one** — over many runs there is no single run summary to sum against |
+| GET | `/api/v1/deployments/{deployment_id}/booking-periods` | Every booking period the deployment booked, across ALL of its sessions — the thirty-day picture in one call, where the run-scoped route would be an N+1 walk. Same row shape as `/reports/runs/{run_id}/booking-periods` plus `run_id`, which across a deployment is the only thing that tells two periods apart (`period_no` is a per-BOT counter that continues across restarts; until 2026-09-23 the floor was persisted before the last period was sealed, so sessions REPEATED a number rather than continuing it — runs recorded before that date carry the repeats) and is the hinge into that run's report routes. Rows that book no period are skipped and their sessions counted in `sessions_without_periods`, so an incomplete history is not read as a quiet one. **No reconciliation, by construction** — see the note under the route above |
 
 ### Timeframes Endpoint Details
 
@@ -361,13 +361,13 @@ ignores them is unaffected, and a shortened payload can no longer end in silence
 | `X-Bar-Truncated` | `true` when the range held more than the cap |
 | `X-Bar-Time-Basis` | `open` — the stamp is the period's start, never its close |
 | `X-Bar-Timezone` | `UTC` |
-| `X-Bar-Price-Basis` | `mid` — OHLC is `(bid + ask) / 2`, not a traded price |
+| `X-Bar-Price-Basis` | the price basis the requested bar FILE was stamped with at render: `order_driven` (OHLC of the traded price) · `quote_driven` (OHLC of the midpoint) · `unknown` (a file rendered before the stamp) |
 
 The last three are facts a caller cannot infer from the rows and gets no second chance to get
-right: reading a bar stamp as a close-time, or a mid as a traded price, produces a plausible
+right: reading a bar stamp as a close-time, or a midpoint as a traded price, produces a plausible
 number that is wrong.
 
-Bars are **rendered from ticks** (a DERIVED store, §44): periods with no ticks produce no bar —
+Bars are **rendered from ticks** (a DERIVED store): periods with no ticks produce no bar —
 gaps are omitted, never zero-filled.
 
 ### Gaps Endpoint Details
@@ -412,7 +412,7 @@ caller's back is worse than a refusal.
 The reports endpoints serve the **persisted** run-report artifacts of the unified reporting
 pipeline (#391) — the same canonical models the console and CSV render. They do **not** run or
 re-derive anything: `ReportStore` resolves a run by `run_id` through the run index under the run
-tree (`runs/{simulation,live}/<owner>/<run_id>/io/`, the `io/` subfolder holding the report
+tree (`runs/{simulation,autotrader}/<owner>/<run_id>/io/`, the `io/` subfolder holding the report
 artifacts), reads the section's artifact, and applies the section's filters server-side so the
 frontend renders rather than derives.
 
@@ -425,15 +425,17 @@ records `reporting` and the artifacts the run persisted:
 | `run_not_found` | no such run in the run index |
 | `reports_not_commissioned` | the run was started with `reporting: none` |
 | `run_not_completed` | no report artifact YET — the run is still running, or it ended before its report phase; from the server's side the two look the same (a running session and a dead one both have a header and nothing else) |
-| `artifact_not_produced` | the run persisted other sections but not this one — its pipeline does not write it (a live run has no `scenario-details`, `profiling` or `aggregated-portfolio`), or its outcome left nothing to write |
+| `artifact_not_produced` | the run persisted other sections but not this one — its pipeline does not write it (an AutoTrader session has no `scenario-details`, `profiling` or `aggregated-portfolio`), or its outcome left nothing to write |
 
 `/config` keeps its own pair (`run_not_found`, `config_snapshot_missing`), because a configuration
 is registered at run START and a report section at its end.
 
 `GET /api/v1/reports/runs` is the index the `{run_id}` routes are addressed by: a consumer
 discovers runs there rather than guessing timestamp directory names. Each row carries the run's
-type as `group` (`simulation` | `live`) and the owning set / profile name, so a run picker needs no
-follow-up request per run. Every indexed run appears, whether or not it produced a report —
+type as `group` (`simulation` | `autotrader`), the owning set / profile name, and — since contract
+12 — which KIND of run it is (`ticks_from` × `orders_to`, the table in
+[the introduction](../introduction_to_the_ide.md#the-kinds-of-run)) and the market window each
+unit covers (`data_windows`), so a run picker needs no follow-up request per run. Every indexed run appears, whether or not it produced a report —
 `artifacts` names what it has and `has_reports` says whether it has any; an empty index is a normal
 `200`, never a 404. The model definitions live in `framework/types/api/report_types.py`; the
 pipeline is documented in [reporting_pipeline.md](reporting_pipeline.md).
@@ -463,24 +465,24 @@ reading the figures never has to compare routes to learn what they leave out:
                     "checks": ["warmup_quality"] } ]
 ```
 
-`units_declared == units_disabled + len(units_absent) + unit_count`, and the two sides come from
-two sources — declared from the configuration, absent and counted from the results. A live
+`units_declared == units_disabled + len(units_absent) + unit_count`, and the two sides come from two
+sources — declared from the configuration, absent and counted from the results. An AutoTrader
 session is declared 1: counted when it ran, absent with its emergency cause when it aborted at
 startup. **A run recorded before contract 6 states none of the three — they are `null`**, and the
-equation holds wherever they are stated (contract 9; before it they read 0, which the equation
-then disproved).
+equation holds wherever they are stated (contract 9; before it they read 0, which the equation then
+disproved).
 
 `reason_code` is the cause for a program, in the vocabulary of `scenario-details`' `error_type`:
-`ValidationError` for a refusal before the run, the exception's class for a crash (a live session
-aborted at startup carries its exception's class too), `NoResults` when nothing failed and
+`ValidationError` for a refusal before the run, the exception's class for a crash (an AutoTrader
+session aborted at startup carries its exception's class too), `NoResults` when nothing failed and
 nothing was produced. `checks` names, for a refusal, the stable ids of the checks that refused it —
 `warmup_quality`, `tick_stretch_gap`, `data_availability`, … — so "which scenarios did warmup cost
 me" is a filter, not a text search.
 
 **`scenario-details` is the authority for "which scenarios does this run have"**: it is the one
-section built from the batch itself rather than from the results, so a scenario that never
-produced anything is still a row. The gap between declared and attempted is the disabled
-scenarios. A live run has no scenario grid at all — a session IS one unit, and the list of a bot's
+section built from the batch itself rather than from the results, so a scenario that never produced
+anything is still a row. The gap between declared and attempted is the disabled scenarios. An
+AutoTrader session has no scenario grid at all — a session IS one unit, and the list of a bot's
 sessions is `/deployments/{deployment_id}`.
 
 ### Error Responses
@@ -548,7 +550,7 @@ report sections).
 
 ## Pydantic Exception Note
 
-Project convention is `@dataclass` for all data structures (§6). The `api/` types use Pydantic
+Project convention is `@dataclass` for runtime data structures. The `api/` types use Pydantic
 `BaseModel` instead because FastAPI's OpenAPI schema generation and response validation depend on
 it. This exception is scoped to `python/framework/types/api/` only.
 

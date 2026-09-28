@@ -46,7 +46,7 @@ class ComputeBasis(Enum):
 
     - LIVE: includes the forming (current) bar / tick.price and recomputes every tick —
       the value drifts intra-bar, so the worker reacts to events within a bar. The
-      tick-native default; required by tick-reactive consumers (live %B from tick.price).
+      tick-native default; required by tick-reactive consumers (intra-bar %B from tick.price).
       A worker is on the STRATEGY plane and therefore reads `price`, never `mid` (§31c).
     - BAR_CLOSE: completed bars only, recomputes only when one of the worker's required
       timeframes closes a bar (cached result served in between). Stable and cheap; only

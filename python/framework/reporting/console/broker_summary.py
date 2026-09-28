@@ -59,7 +59,9 @@ class BrokerSummary(AbstractBatchSummarySection):
         indent = '   '
         print(f'{indent}Market:  {unit.market_type}')
         print(f'{indent}Company: {unit.company}')
-        print(f'{indent}Server: {unit.server} | Mode: {unit.trade_mode.upper()}')
+        # The ACCOUNT's trade mode (real / demo / live as the venue names it) — `Mode:` read as
+        # the run's own mode in a backtest, which never trades on any account.
+        print(f'{indent}Server: {unit.server} | Account: {unit.trade_mode}')
         print(f'{indent}Leverage: 1:{unit.leverage} | Margin: {unit.margin_mode}')
         print(f"{indent}Risk: MC {unit.margin_call_level}% / SO {unit.stopout_level}% | "
               f"Hedging: {'✅' if unit.hedging_allowed else '❌'}")

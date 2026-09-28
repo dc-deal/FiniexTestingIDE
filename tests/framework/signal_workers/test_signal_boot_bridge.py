@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Signal Boot Bridge (#468)
 
-What a live session knows before its first envelope arrives. Without the bridge it knows
+What a live-adapter session knows before its first envelope arrives. Without the bridge it knows
 nothing: the SIGNAL workers start empty and the first decision waits out a full producer
 cadence. On a thirty-day unattended run that is not a corner case — it is every restart.
 
@@ -53,7 +53,7 @@ class FakeIndex:
     Mirrors the real manager's CONTRACT and not just its shape: the index must be built
     (loaded) before it is asked, and asking first answers "nothing" rather than raising.
     The first version of this fake had no `build_index` at all, so the bridge could omit
-    the call and every test still passed — while a live session reported "starts blind"
+    the call and every test still passed — while a live-adapter session reported "starts blind"
     for an empty index it had never loaded.
     """
 
@@ -165,7 +165,7 @@ class TestTheCursor:
 
 class TestTheIndexIsLoadedBeforeItIsAsked:
     """
-    The bridge builds the index it constructs. Found by running a live session, not by a
+    The bridge builds the index it constructs. Found by running a live-adapter session, not by a
     test: the first version queried an unloaded index, got nothing, and reported "no
     archived signals — the session starts blind". Blind is a legitimate answer, so nobody
     would have looked twice at a message that was describing its own omission.
@@ -181,7 +181,7 @@ class TestTheIndexIsLoadedBeforeItIsAsked:
     def test_an_unbuilt_index_would_have_reported_a_blind_start(self, loaded):
         """
         The defect, pinned from the other side: without the build the lookup answers
-        nothing and the bridge reports exactly what it reported in the live session.
+        nothing and the bridge reports exactly what it reported in the live-adapter session.
         """
         loaded(stream_snapshot(2, seq=1043, epoch=1))
         index = FakeIndex(['a.parquet'])

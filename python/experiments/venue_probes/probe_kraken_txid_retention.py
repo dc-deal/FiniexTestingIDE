@@ -13,7 +13,7 @@ and record the answer beside the previous ones.
 READ ONLY. It places nothing, cancels nothing, amends nothing: QueryOrders is a private read.
 It costs one rate-limit unit per batch of txids and no fee.
 
-It harvests its own subjects from `runs/live/`, so it needs no argument and no fixture: every
+It harvests its own subjects from `runs/autotrader/`, so it needs no argument and no fixture: every
 live session leaves the venue's own references in its logs.
 
 Two answers per run:
@@ -46,7 +46,7 @@ from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 
 _ROOT = Path(__file__).resolve().parents[3]
 _BROKER_CONFIG = _ROOT / 'configs/brokers/kraken/kraken_spot_broker_config.json'
-_RUNS_DIR = _ROOT / 'runs/live'
+_RUNS_DIR = _ROOT / 'runs/autotrader'
 
 # Kraken's own reference shape, as it appears in every live session log.
 _TXID_PATTERN = re.compile(r'O[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{6}')

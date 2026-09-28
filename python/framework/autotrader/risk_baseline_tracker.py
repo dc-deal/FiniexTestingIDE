@@ -32,7 +32,7 @@ from python.framework.types.persistence_types import (
 
 class RiskBaselineTracker:
     """
-    Takes, restores and advances the risk baseline for one live session.
+    Takes, restores and advances the risk baseline for one AutoTrader session.
 
     Args:
         mode: Which denominator this session uses — SESSION_FIXED or HIGH_WATER_MARK

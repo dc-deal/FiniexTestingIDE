@@ -102,7 +102,7 @@ class SharedReportCoordinator:
             units: The run's units (sim: N scenarios; live: 1 session)
             io_dir: The run's io/ subfolder (created if missing)
             observed_feed: What a live transport accumulated while the session ran — the
-                live counterpart of the prepared map, since a live session has no archive
+                live-adapter counterpart of the prepared map, since such a session has no archive
             signal_scenario_map: The prepared signal sources (#433); both pipelines get it
                 from the same MountPreparer run. Empty / None = no SIGNAL source bound
             roster: Which units the run declared and which produced nothing — each pipeline

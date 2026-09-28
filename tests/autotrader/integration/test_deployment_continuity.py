@@ -39,7 +39,7 @@ from python.framework.reporting.builders.deployment_history_builder import (
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from tests.shared.fixture_helpers import remove_run_dir
 
-PROFILE = 'configs/autotrader_profiles/backtesting/deployment_continuity_test.json'
+PROFILE = 'configs/autotrader_profiles/mock/deployment_continuity_test.json'
 
 
 def run_session(carry_over_dir: Path, **flags) -> AutotraderMain:
@@ -173,7 +173,7 @@ class TestTheFlagsNarrowARealSession:
 
     def test_one_off_is_refused_once_the_deployment_exists(self, chain, tmp_path_factory):
         """
-        The order is the contract. Past the first continuous start the same flag would let a
+        The order is the contract. Past the deployment's first start the same flag would let a
         session trade this account while leaving no mark on the history its own drawdown
         keeps running inside — so it is refused, with the three ways out named.
         """
@@ -198,7 +198,7 @@ class TestWhatADryRunMayNotHandOn:
     """
     The other half of the split, checked on a real session rather than on a double.
 
-    These sessions ARE dry runs — every mock session is. What they write is the deployment
+    These sessions are treated as dry — every mock session is. What they write is the deployment
     identity and the risk records; what they must never write is a claim about a venue that
     holds nothing: the session key this bot supposedly sent orders under, and the open
     position book. A successor inheriting either would trade beside orders that do not exist.
@@ -229,10 +229,10 @@ def _period_numbers(run_id: str) -> list:
         run_id: The session whose periods to read
 
     Returns:
-        Its `segment_no` values, ascending
+        Its `period_no` values, ascending
     """
     ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
-    return sorted(row.segment_no for row in ledger.read_rows(run_id=run_id))
+    return sorted(row.period_no for row in ledger.read_rows(run_id=run_id))
 
 
 class TestThePeriodNumberingContinues:
@@ -278,7 +278,7 @@ class TestThePeriodNumberingContinues:
         """
         documents = sorted(Path(chain['fresh']._config.cold_start.path).glob('*.json'))
         stored = json.loads(documents[0].read_text())['snapshot']
-        assert stored['highest_segment_no'] == max(_period_numbers(chain['fresh']._run_id)), (
+        assert stored['highest_period_no'] == max(_period_numbers(chain['fresh']._run_id)), (
             'the stored floor is not the last number this session sealed')
 
 

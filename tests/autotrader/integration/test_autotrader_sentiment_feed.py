@@ -24,8 +24,8 @@ from python.framework.reporting.store.report_store import IO_SUBDIR
 from python.framework.types.log_level import LogLevel
 from tests.shared.fixture_helpers import logged_messages, remove_run_dir
 
-MOCK_PROFILE = 'configs/autotrader_profiles/backtesting/sentiment_mock_test.json'
-OUTAGE_PROFILE = 'configs/autotrader_profiles/backtesting/sentiment_outage_test.json'
+MOCK_PROFILE = 'configs/autotrader_profiles/mock/sentiment_mock_test.json'
+OUTAGE_PROFILE = 'configs/autotrader_profiles/mock/sentiment_outage_test.json'
 
 
 @pytest.fixture(scope='module')

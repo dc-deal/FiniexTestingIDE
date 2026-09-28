@@ -39,7 +39,7 @@
   },
   "scenarios": [
     {
-      "name": "long_tp_trigger",
+      "scenario_name": "long_tp_trigger",
       "description": "LONG position with take profit — TP should trigger during uptrend (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -66,7 +66,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "long_sl_trigger",
+      "scenario_name": "long_sl_trigger",
       "description": "LONG position against downtrend — SL should trigger (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -93,7 +93,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "short_tp_trigger",
+      "scenario_name": "short_tp_trigger",
       "description": "SHORT position with take profit — TP should trigger during downtrend (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -120,7 +120,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "short_sl_trigger",
+      "scenario_name": "short_sl_trigger",
       "description": "SHORT position against uptrend — SL should trigger (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -147,7 +147,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "modify_tp_trigger",
+      "scenario_name": "modify_tp_trigger",
       "description": "LONG position with modify — initial TP unreachable, modified TP triggers (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -180,7 +180,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "long_limit_fill",
+      "scenario_name": "long_limit_fill",
       "description": "LONG limit buy fills when price drops to limit level (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -207,7 +207,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "short_limit_fill",
+      "scenario_name": "short_limit_fill",
       "description": "SHORT limit sell fills when price rises to limit level (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -234,7 +234,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "limit_fill_then_sl",
+      "scenario_name": "limit_fill_then_sl",
       "description": "LONG limit fills at dip, then SL triggers as price drops further (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -263,7 +263,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "modify_limit_price_fill",
+      "scenario_name": "modify_limit_price_fill",
       "description": "Limit order placed deep, price modified closer before fill (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -296,7 +296,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "stop_long_trigger",
+      "scenario_name": "stop_long_trigger",
       "description": "STOP LONG — stop triggers when uptrend pushes price above stop_price (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -323,7 +323,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "stop_short_trigger",
+      "scenario_name": "stop_short_trigger",
       "description": "STOP SHORT — stop triggers when downtrend pushes price below stop_price (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -350,7 +350,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "stop_limit_long_trigger",
+      "scenario_name": "stop_limit_long_trigger",
       "description": "STOP_LIMIT LONG — stop triggers at 156.400, fills at limit 156.450 (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -378,7 +378,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "stop_limit_short_trigger",
+      "scenario_name": "stop_limit_short_trigger",
       "description": "STOP_LIMIT SHORT — stop triggers at 151.700, fills at limit 151.600 (SHORT extreme move #28: -37.8 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -406,7 +406,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "stop_long_then_tp",
+      "scenario_name": "stop_long_then_tp",
       "description": "STOP LONG triggers, then TP closes position — validates STOP+TP combo (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -434,7 +434,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "modify_stop_trigger",
+      "scenario_name": "modify_stop_trigger",
       "description": "STOP LONG with unreachable stop, modified closer — triggers after modification (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -467,7 +467,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "cancel_stop_no_fill",
+      "scenario_name": "cancel_stop_no_fill",
       "description": "STOP LONG cancelled before trigger — validates 0 trades after cancellation (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",
@@ -499,7 +499,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "cancel_limit_no_fill",
+      "scenario_name": "cancel_limit_no_fill",
       "description": "LONG LIMIT at utopian price cancelled before fill — validates 0 trades after cancellation (LONG extreme move #28: +49.7 pips, 50 bars)",
       "symbol": "USDJPY",
       "data_broker_type": "mt5",

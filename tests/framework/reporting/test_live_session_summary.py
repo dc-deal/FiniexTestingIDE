@@ -1,5 +1,5 @@
 """
-Live session summary tests (#403 Phase 2).
+AutoTrader session summary tests (#403 Phase 2).
 
 `LiveSessionSummary` is the AutoTrader closing block of the unified end-of-run console: session
 stats + warnings/errors (from the session buffers, §35) + output locations. Built against a real

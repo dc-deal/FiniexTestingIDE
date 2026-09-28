@@ -49,7 +49,7 @@
   },
   "scenarios": [
     {
-      "name": "EURUSD_breakout_w1",
+      "scenario_name": "EURUSD_breakout_w1",
       "symbol": "EURUSD",
       "data_broker_type": "mt5",
       "start_date": "2026-01-05T00:00:00+00:00",
@@ -58,7 +58,7 @@
       "enabled": true
     },
     {
-      "name": "EURUSD_breakout_w2",
+      "scenario_name": "EURUSD_breakout_w2",
       "symbol": "EURUSD",
       "data_broker_type": "mt5",
       "start_date": "2026-02-02T00:00:00+00:00",

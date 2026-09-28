@@ -133,7 +133,7 @@ class _LoopStub:
         AutotraderTickLoop._check_safety(self, value, baseline)
 
     def start_day(self, day: str, value: float) -> None:
-        """Open a new daily baseline, as a tick crossing into a new UTC day does."""
+        """Open a new daily baseline, as a tick crossing into a new trading day does."""
         self._close_safety_day()
         self._safety_current_day = day
         self._day_baseline = RiskBaselineTracker(

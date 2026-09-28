@@ -31,7 +31,7 @@
   },
   "scenarios": [
     {
-      "name": "scenario_01_active_limit_display",
+      "scenario_name": "scenario_01_active_limit_display",
       "description": "Smoke test: LONG LIMIT at utopian price stays active at scenario end — validates active order reporting",
       "symbol": "GBPUSD",
       "data_broker_type": "mt5",
@@ -61,7 +61,7 @@
       "trade_simulator_config": {}
     },
     {
-      "name": "scenario_02_active_stop_display",
+      "scenario_name": "scenario_02_active_stop_display",
       "description": "Smoke test: LONG STOP at utopian price stays active at scenario end — validates active stop order reporting",
       "symbol": "GBPUSD",
       "data_broker_type": "mt5",

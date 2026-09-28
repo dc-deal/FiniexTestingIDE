@@ -4,7 +4,7 @@
 
 The OrderGuard is a spam protection layer inside `DecisionTradingApi` that prevents rejection storms
 **before** orders reach the executor. It is the universal gateway for all decision logics (CORE and
-USER), covering both backtesting and live trading.
+user-authored), covering both backtesting and every AutoTrader session.
 
 Its single responsibility is the **Rejection Cooldown** — blocking a direction after N consecutive broker rejections for a configurable period, preventing rejection spam (e.g. repeated INSUFFICIENT_MARGIN attempts).
 
@@ -17,9 +17,9 @@ Structural validation (market type, balance, order type compatibility) belongs i
 The guard is clock-agnostic — cooldown methods take an explicit `now: datetime` parameter supplied by `DecisionTradingApi` via `executor.get_current_time()`. This resolves to:
 
 - **Backtesting:** the current tick's simulated timestamp. Cooldowns advance with simulated market time, which keeps them deterministic across runs and sim-correct under accelerated playback.
-- **AutoTrader:** the broker-delivered tick timestamp (effectively wall-clock real time).
+- **AutoTrader:** the tick timestamp — broker-delivered in a live-adapter session (effectively wall-clock real time), replayed from the archive in a mock session.
 
-The guard itself never calls `datetime.now()`. This is the reason cooldowns behave identically for a backtest that compresses weeks of ticks into seconds and for a live run where ticks arrive in real time.
+The guard itself never calls `datetime.now()`. This is the reason cooldowns behave identically for a backtest that compresses weeks of ticks into seconds and for a live-adapter session where ticks arrive in real time.
 
 > **Relation to Safety Circuit Breaker:** See [Two Independent Safety Layers](#two-independent-safety-layers) at the end of this document. Full Safety architecture: [safety_circuit_breaker_architecture.md](safety_circuit_breaker_architecture.md)
 
@@ -52,7 +52,7 @@ The guard sits at the top of the call chain. Blocked orders **never reach the ex
 
 ## Async State Update Mechanism
 
-Orders go through a latency pipeline (simulation) or broker polling (live). The actual fill or rejection happens asynchronously, ticks after the initial `open_order()` call returns PENDING.
+Orders go through a latency pipeline (simulation) or broker polling (live execution stack). The actual fill or rejection happens asynchronously, ticks after the initial `open_order()` call returns PENDING.
 
 The OrderGuard needs to know about these async outcomes to maintain its rejection counter. This is solved with a **callback mechanism**:
 
@@ -116,7 +116,7 @@ once the rejection confirmation arrives.
 
 Guard state (`record_rejection` / `record_success`) is updated through two paths:
 
-1. **Synchronous** — direct rejections from `open_order()` that return immediately (lot validation errors, adapter exceptions, immediate broker rejection in live mode). Handled in `send_order()` before returning to the decision logic.
+1. **Synchronous** — direct rejections from `open_order()` that return immediately (lot validation errors, adapter exceptions, immediate broker rejection on the live execution stack). Handled in `send_order()` before returning to the decision logic.
 
 2. **Asynchronous** — outcomes after PENDING return (margin check at fill time, broker polling results). Flow through `_notify_outcome()` → `_on_order_outcome()` callback.
 

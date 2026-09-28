@@ -88,7 +88,7 @@ class WorkerOrchestrator:
             signal_source: What feeds this session's SIGNAL workers, resolved at startup.
                            Carried here rather than re-derived so the transport setup and the
                            inbox drain follow the same answer the provider wiring used.
-            signal_boot: What a LIVE session established before connecting — the mounted
+            signal_boot: What a LIVE-ADAPTER session established before connecting — the mounted
                          archive slice, its cursor and the values the producer serves.
                          Carried for the same reason: the archive is read once, at boot.
         """
@@ -605,7 +605,7 @@ class WorkerOrchestrator:
 
     def get_signal_boot(self) -> Optional[SignalLiveBoot]:
         """
-        What a live session established before opening its connection.
+        What a live-adapter session established before opening its connection.
 
         Returns:
             The boot result passed in at construction; None for a mounted session, which
@@ -1023,7 +1023,7 @@ class WorkerOrchestrator:
         """
         Collect the per-tick signal resolution counters (#433 Part C).
 
-        One capture, two transports: the sim tick loop and the live session both
+        One capture, two transports: the sim tick loop and the AutoTrader session both
         read it here, so neither pipeline builds its own counter.
 
         The clamp counters are read from each worker's PROVIDER at collection time rather

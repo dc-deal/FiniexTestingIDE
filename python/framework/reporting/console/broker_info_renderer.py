@@ -34,7 +34,7 @@ class BrokerInfoRenderer:
         lines = [
             f'{indent}🏦 BROKER CONFIGURATION',
             f'{indent}   Company: {broker_spec.company}',
-            f'{indent}   Server: {broker_spec.server} | Mode: {broker_spec.trade_mode.upper()}',
+            f'{indent}   Server: {broker_spec.server} | Account: {broker_spec.trade_mode}',
             f'{indent}   Leverage: 1:{broker_spec.leverage} | Margin: {broker_spec.margin_mode.value}',
             f'{indent}   Risk Management: MC {broker_spec.margin_call_level}% / SO {broker_spec.stopout_level}%',
             f"{indent}   Hedging: {'✅ Allowed' if broker_spec.hedging_allowed else '❌ Disabled'}",

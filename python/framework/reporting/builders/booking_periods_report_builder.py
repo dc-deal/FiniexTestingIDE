@@ -1,5 +1,5 @@
 """
-Booking-periods report builder (#537) — the Hauptbuch as a table, and what its check can prove.
+Booking-periods report builder (#537) — the ledger entries as a table, and what its check can prove.
 
 A run's booking periods are already derived; this maps them to renderable rows and answers the
 one question the table exists for: **did every closed trade reach exactly one period?**
@@ -25,7 +25,7 @@ variable inside the close (measured 2026-09-22):
 So the LEFT side has been through retention (the trade deque is capped), windowing (exit_time in
 `[opened, closed)`) and transport (the sim's process bridge); the RIGHT side is an unbounded
 counter that forgets nothing. A disagreement therefore means a record was LOST on the way — the
-deque evicted it, no period's window contains it, a segment list did not survive. It can never
+deque evicted it, no period's window contains it, a period list did not survive. It can never
 mean a wrong P&L, a wrong fee or a wrong close formula: both sides inherit the identical float,
 and an injected 30 % arithmetic defect moves them together with a delta of exactly zero.
 
@@ -76,23 +76,23 @@ def build_booking_periods_report(
         The report; empty when the run booked no period, which is every run before this feature
         and every simulation until the sim books too
     """
-    booked = [segment for unit in units for segment in unit.booking_segments]
+    booked = [period for unit in units for period in unit.booking_periods]
     if not booked:
         return BookingPeriodsReport(run_id=run_id, currency=currency)
 
     # ONE table is ONE account currency — a P&L column in two units is not a column. The
-    # filter existed for that and did not fire: `if not currency or …` admitted EVERY segment
+    # filter existed for that and did not fire: `if not currency or …` admitted EVERY period
     # when `currency` was empty, which is what both coordinators pass, so a two-currency run
     # summed EUR and USD together and compared the result against the figure of ONE of them.
     # Measured: 140.0 against 100.0, `reconciles` false for a run in which nothing was wrong
     # (#539 audit). `currencies` then says the table is one of several — the periods of the
     # others are not lost, they are ledger rows like these and the deployment route serves
     # every one of them.
-    present = sorted({segment.figures.currency for segment in booked})
+    present = sorted({period.figures.currency for period in booked})
     reported = currency or present[0]
-    rows = [_row(segment) for segment in sorted(
+    rows = [_row(period) for period in sorted(
         (s for s in booked if s.figures.currency == reported),
-        key=lambda s: (s.unit_name, s.segment_no))]
+        key=lambda s: (s.unit_name, s.period_no))]
     if not rows:
         return BookingPeriodsReport(
             run_id=run_id, currency=reported, currencies=present)
@@ -124,33 +124,33 @@ def build_booking_periods_report(
     )
 
 
-def _row(segment) -> BookingPeriodRow:
+def _row(period) -> BookingPeriodRow:
     """
     One sealed period as a renderable row.
 
     Args:
-        segment: The BookingSegment
+        period: The BookingPeriod
 
     Returns:
         The row
     """
-    f = segment.figures
+    f = period.figures
     return BookingPeriodRow(
-        unit_name=segment.unit_name,
-        segment_no=segment.segment_no,
-        opened_at=segment.opened_at.isoformat(),
-        closed_at=segment.closed_at.isoformat(),
-        reason=segment.reason.value,
+        unit_name=period.unit_name,
+        period_no=period.period_no,
+        opened_at=period.opened_at.isoformat(),
+        closed_at=period.closed_at.isoformat(),
+        reason=period.reason.value,
         currency=f.currency,
-        trade_count=segment.trade_count,
+        trade_count=period.trade_count,
         net_pnl=f.net_pnl,
         total_fees=f.total_fees,
         win_rate=f.win_rate,
         profit_factor=f.profit_factor,
         final_equity=f.final_equity,
-        min_equity=segment.segment_min_equity,
-        max_equity=segment.segment_max_equity,
-        max_drawdown=segment.segment_max_drawdown,
+        min_equity=period.period_min_equity,
+        max_equity=period.period_max_equity,
+        max_drawdown=period.period_max_drawdown,
     )
 
 
@@ -168,7 +168,7 @@ def booking_periods_from_ledger_rows(
 
     Rows that book no period are skipped, not defaulted. Every row written before the booking
     journal is one of those — an aggregate per currency with no period at all — and an empty
-    `segment_opened_at` is what says so. A made-up period zero would put a bar with no start
+    `period_opened_at` is what says so. A made-up period zero would put a bar with no start
     on a chart.
 
     Args:
@@ -178,16 +178,16 @@ def booking_periods_from_ledger_rows(
         One row per booked period, ordered by currency and then by when the period opened —
         a currency's bars stay contiguous and read forwards inside it. Each carries its
         `run_id`, which across a deployment is the only thing that tells two periods apart:
-        `segment_no` restarts wherever a session wrote no carry-over floor
+        `period_no` restarts wherever a session wrote no carry-over floor
     """
     periods = [
         DeploymentBookingPeriodRow(
             run_id=row.run_id,
             unit_name=row.unit_name,
-            segment_no=row.segment_no or 0,
-            opened_at=row.segment_opened_at,
-            closed_at=row.segment_closed_at,
-            reason=row.segment_close_reason,
+            period_no=row.period_no or 0,
+            opened_at=row.period_opened_at,
+            closed_at=row.period_closed_at,
+            reason=row.period_close_reason,
             currency=row.currency,
             trade_count=row.total_trades,
             net_pnl=row.net_pnl,
@@ -198,11 +198,11 @@ def booking_periods_from_ledger_rows(
             # The period's OWN band and decline, never the cumulative trio beside them on the
             # row: on this table the question is what each period did, and the running figure
             # would repeat the same number down the column.
-            min_equity=row.segment_min_equity or 0.0,
-            max_equity=row.segment_max_equity or 0.0,
-            max_drawdown=row.segment_max_drawdown or 0.0,
+            min_equity=row.period_min_equity or 0.0,
+            max_equity=row.period_max_equity or 0.0,
+            max_drawdown=row.period_max_drawdown or 0.0,
         )
-        for row in rows if row.segment_opened_at
+        for row in rows if row.period_opened_at
     ]
     return sorted(periods, key=lambda p: (p.currency, p.opened_at))
 

@@ -16,7 +16,7 @@ tests/simulation/stale_stress/
 └── test_signal_resolution.py   ← 19 tests over one 6-scenario batch run (#433 counters)
 ```
 
-Fixture set: `tests/fixtures/scenario_sets/stale_stress/stale_stress_probe.json` (§34) —
+Fixture set: `tests/fixtures/scenario_sets/stale_stress/stale_stress_probe.json` —
 BTCUSD kraken_spot ticks (2026-04-27, dense) + the `crypto_sentiment` archive (10-min
 snapshot cadence → a 60-min feed cut guarantees the 30-min staleness flip inside the window).
 Events block DATA SOURCES the scenario binds (`data_source` = `data_broker_type` for the
@@ -28,7 +28,7 @@ tick source, `data_sentiment_type` for the signal source).
 | `BTCUSD_signal_stress` | `crypto_sentiment` window 06:10→07:10 | The carved series ages the resolved snapshot → the REAL #434 chain flips → `on_signal_stale` fired exactly once; `market_data_stale` NEVER fires (the live-only proof: no window → no dispatch in sim) |
 | `BTCUSD_no_stress_control` | none | Zero staleness events — normal replay gaps produce no false positives |
 | `BTCUSD_overlap_warning` | `kraken_spot` window disjoint from the data range | Overlap-guard warning `data deviation` in the scenario buffer; zero events; scenario still succeeds |
-| `BTCUSD_unknown_source` | `nonexistent_feed` window | Scenario excluded at data preparation with a `ValidationError` naming the unknown source (§33 — the batch continues) |
+| `BTCUSD_unknown_source` | `nonexistent_feed` window | Scenario excluded at data preparation with a `ValidationError` naming the unknown source (the batch continues) |
 
 ## Signal resolution counters (#433 Part C)
 
@@ -36,7 +36,7 @@ The second suite asks a different question of the same machinery: not *did the c
 but **what did the strategy actually decide on** — the per-tick `fresh` / `stale` / `blind`
 counters every SIGNAL worker captures.
 
-Fixture set: `tests/fixtures/scenario_sets/signal_resolution/signal_resolution_cases.json` (§34) —
+Fixture set: `tests/fixtures/scenario_sets/signal_resolution/signal_resolution_cases.json` —
 the gap-free synthetic archive `crypto_sentiment_mock` (10-min cadence, zero gaps), so every
 anomaly in a case is provably the carved one and never an archive artifact.
 

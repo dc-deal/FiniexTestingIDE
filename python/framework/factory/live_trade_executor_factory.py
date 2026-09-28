@@ -63,7 +63,7 @@ def build_live_executor(
             before an answer that names nothing counts as evidence (#487).
 
     Returns:
-        LiveTradeExecutor ready for live trading
+        LiveTradeExecutor ready for an AutoTrader session
     """
     # Validate adapter
     if not broker_config.adapter.is_live_capable():

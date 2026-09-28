@@ -6,7 +6,7 @@
 
 ## Why this file exists at all
 
-The live circuit breaker used to read a different quantity per account model: spot got its
+The AutoTrader circuit breaker used to read a different quantity per account model: spot got its
 spot-aware equity, margin got `get_balance()`. A margin balance moves only on REALISED P&L by
 construction, so an open drawdown was invisible to it — which made the account model that can lose
 MORE than it holds the one whose breaker could not see the loss coming.
@@ -37,7 +37,7 @@ An unvalued holding is not a drawdown.
 
 | Test | Description |
 |------|-------------|
-| `test_no_price_means_no_number` | `None` before a price exists — a substituted value would be a drawdown reading invented out of nothing, the same discipline as a missing clock raising rather than falling back to wall time (§9) |
+| `test_no_price_means_no_number` | `None` before a price exists — a substituted value would be a drawdown reading invented out of nothing, the same discipline as a missing clock raising rather than falling back to wall time |
 | `test_with_a_price_it_is_the_spot_equity` | with a price it is exactly `get_spot_equity`, not a second definition |
 
 ### `TestTheDrawdownSeriesAndTheBreakerShareIt`
@@ -52,7 +52,7 @@ The percentage is CARRIED per sample, never derived at the end from `max_drawdow
 Those two floats belong to different instants: the deepest decline fell from whatever peak stood
 at the time, and a later, higher peak does not make it shallower. The quotient therefore
 understates every run that recovered — which is every profitable one. Asserted in BOTH account
-models (§31b), including the spot case the thirty-day run actually uses.
+models, spot and margin, including the spot case the thirty-day run actually uses.
 
 ### `TestTheCurveContinuesAcrossARestart`
 
@@ -65,7 +65,7 @@ a month and an afternoon render identically.
 
 ### `TestTheLedgerReductionOverADeployment`
 
-A live ledger row is CUMULATIVE over its deployment: after a restart the figure is the running
+An AutoTrader ledger row is CUMULATIVE over its deployment: after a restart the figure is the running
 one against the inherited peak, not that session's own. So the rows are not independent samples
 — `max()` is the right reduction and `sum()` would count one decline several times. Pinned on a
 drawdown that STRADDLES the restart (peak in session one, trough in session two), which is the

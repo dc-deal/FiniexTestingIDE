@@ -29,7 +29,7 @@ WHAT IT CANNOT PRODUCE: a meaningful `gap_hours`. The gap is derived from two wa
 so sessions run in one sitting are seconds apart. A long idle stretch has to be waited for, and
 inventing one would mean writing the ledger by hand — the thing this exists not to do.
 
-WHERE IT WRITES: the ordinary dev stores — `runs/live/`, `runs/ledger/`, and the cold-start
+WHERE IT WRITES: the ordinary dev stores — `runs/autotrader/`, `runs/ledger/`, and the cold-start
 carry-over the deployment identity travels in. It adds; it deletes nothing.
 
     python python/experiments/generate_demo_deployment/generate_demo_deployment.py
@@ -47,7 +47,7 @@ from typing import Any, Dict, List, Optional
 # The one mock profile that actually trades: its RSI thresholds were widened to 40/60 for
 # exactly that reason, measured 2026-09-14. A session that books no trade produces a period
 # row of zeroes, which is the state this script exists to get out of.
-BASE_PROFILE = Path('configs/autotrader_profiles/backtesting/trade_lifecycle_test.json')
+BASE_PROFILE = Path('configs/autotrader_profiles/mock/trade_lifecycle_test.json')
 
 # A declared identity is at most 10 characters of a-z, 0-9 and '-' (declared_id_utils.py); the
 # first id this script used was 15 long, and every session was refused at startup (2026-09-27).
@@ -109,7 +109,7 @@ def _profile(
         Path to the written profile
     """
     profile: Dict[str, Any] = json.loads(BASE_PROFILE.read_text())
-    profile['name'] = PROFILE_NAME
+    profile['profile_name'] = PROFILE_NAME
     # Mandatory for a continuous deployment (#538): without it the state of a restarted bot is
     # filed under the profile NAME, and renaming the profile orphans it.
     profile['bot_id'] = BOT_ID

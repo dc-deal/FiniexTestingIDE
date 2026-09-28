@@ -18,7 +18,7 @@ of each indicator agree, and how much history each one needs.
 ## What is NOT here
 
 Worker behaviour. Whether a worker requests the right window, gates its optional outputs or
-recomputes on the right basis belongs to `tests/framework/worker_tests/`. This suite sees
+recomputes on the right compute basis belongs to `tests/framework/worker_tests/`. This suite sees
 arrays and frames, never a `Bar`, a tick or a config.
 
 ## The collapse that hid the deviations

@@ -10,7 +10,7 @@ from typing import List
 @dataclass
 class ClippingReport:
     """
-    Periodic clipping report during live session.
+    Periodic clipping report during an AutoTrader session.
 
     Generated at configurable intervals by LiveClippingMonitor.
 

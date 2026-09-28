@@ -3,6 +3,7 @@ FiniexTestingIDE - Run Index
 The derived, compacted table the API reads instead of walking the run tree.
 """
 
+import json
 import os
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -16,7 +17,7 @@ from python.framework.reporting.io.run_header_io import (
     write_run_header,
 )
 from python.framework.store.abstract_store_index import AbstractStoreIndex
-from python.framework.types.api.report_types import RunHeader, RunInfo, RunReporting
+from python.framework.types.api.report_types import DataWindow, RunHeader, RunInfo, RunReporting
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import IO_SUBDIR
 
@@ -76,6 +77,42 @@ def _artifact_names(run_dir: Path) -> List[str]:
     if not io_dir.is_dir():
         return []
     return sorted(f.name for f in io_dir.iterdir() if f.is_file())
+
+
+def _kind_columns(header: RunHeader) -> Dict[str, Any]:
+    """
+    Which kind of run this is and the windows it covers, flattened from the header (contract 12).
+
+    The windows travel as JSON text: a list of structures in a parquet column is the one shape an
+    incremental append can widen differently from the file it lands in.
+
+    Args:
+        header: The run's header
+
+    Returns:
+        The columns, None where the header predates them
+    """
+    return {
+        'ticks_from': str(header.ticks_from) if header.ticks_from else None,
+        'orders_to': str(header.orders_to) if header.orders_to else None,
+        'data_windows': (json.dumps([w.model_dump() for w in header.data_windows])
+                         if header.data_windows is not None else None),
+    }
+
+
+def _data_windows(value) -> Optional[List[DataWindow]]:
+    """
+    The windows of an index row, parsed back.
+
+    Args:
+        value: The column's cell — JSON text, or empty on a row indexed before the column
+
+    Returns:
+        The windows, or None when the row carries none
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    return [DataWindow(**window) for window in json.loads(value)]
 
 
 def _int_or_zero(value) -> int:
@@ -149,9 +186,9 @@ class RunIndex(AbstractStoreIndex):
     """
     ONE compacted parquet file, derived from the per-run `header.json` files.
 
-    Why one file and not a fragment per run: measured on this project, reading 404 small parquet
-    fragments costs 3.29 s while the same rows as a single file cost 0.008 s — 420×, and 99.6 % of
-    it is the file OPEN, not the work. A per-run fragment reproduces exactly the scan cost this
+    Why one file and not a file per run: measured on this project, reading 404 small parquet
+    files costs 3.29 s while the same rows as a single file cost 0.008 s — 420×, and 99.6 % of
+    it is the file OPEN, not the work. A per-run file reproduces exactly the scan cost this
     index exists to remove.
 
     It is DERIVED, and that is the property the whole design rests on: it may be deleted or go
@@ -175,6 +212,8 @@ class RunIndex(AbstractStoreIndex):
         # contract changes of #551 are the `caller` route and the meaning of the ledger's
         # `git_dirty`, neither of which touches this list.
         'origin_channel', 'origin_person', 'host_id', 'framework_dirty', 'code_dirty',
+        # Which kind of run and the market windows it covers (contract 12), from the header.
+        'ticks_from', 'orders_to', 'data_windows',
     ]
 
     # 1 → 2: `size_bytes` appended. A row written before it reads back as NaN, which means
@@ -183,7 +222,10 @@ class RunIndex(AbstractStoreIndex):
     # 4 → 5: the origin and dirty columns appended (#551). A file written before them reports
     # itself out of date, and a rebuild fills them from the headers; left alone, its existing
     # rows read as unknown — which is also the truth for every run older than the fields.
-    LOGIC_VERSION: int = 5
+    # 5 → 6: `ticks_from`, `orders_to` and `data_windows` appended (contract 12) — which kind of
+    # run this is and the market windows it covers. Same shape as 4 → 5: a rebuild fills them,
+    # and a header older than the fields reads as unknown.
+    LOGIC_VERSION: int = 6
 
     def __init__(self, path: Path, roots: Optional[RunLogPaths] = None):
         """
@@ -228,6 +270,7 @@ class RunIndex(AbstractStoreIndex):
             # figure when it finishes.
             'size_bytes': 0,
             **_origin_columns(header),
+            **_kind_columns(header),
         }])
         self.write_incremental(pd.concat([frame, row], ignore_index=True))
 
@@ -281,7 +324,10 @@ class RunIndex(AbstractStoreIndex):
                         config_snapshot=r.config_snapshot or '',
                         config_id=_or_none(getattr(r, 'config_id', None)) or '',
                         reporting=r.reporting or RunReporting.EXPECTED,
-                        size_bytes=_int_or_zero(getattr(r, 'size_bytes', 0)))
+                        size_bytes=_int_or_zero(getattr(r, 'size_bytes', 0)),
+                        ticks_from=_or_none(getattr(r, 'ticks_from', None)),
+                        orders_to=_or_none(getattr(r, 'orders_to', None)),
+                        data_windows=_data_windows(getattr(r, 'data_windows', None)))
                 for r in frame.itertuples()]
 
     def run_dirs_of(self, run_ids: Iterable[str]) -> List[Optional[str]]:
@@ -336,7 +382,7 @@ class RunIndex(AbstractStoreIndex):
                 'RunIndex(path, roots) when the index is to be rebuilt.'
             )
         rows = []
-        for root in (self._roots.simulation, self._roots.live):
+        for root in (self._roots.simulation, self._roots.autotrader):
             for header_path in Path(root).rglob(RUN_HEADER_ARTIFACT):
                 run_dir = header_path.parent
                 header = read_run_header(header_path)
@@ -359,6 +405,7 @@ class RunIndex(AbstractStoreIndex):
                     # that dropped the sizes would be a worse index than the one it replaced.
                     'size_bytes': dir_size(run_dir),
                     **_origin_columns(header),
+                    **_kind_columns(header),
                 })
         self.write(pd.DataFrame(rows, columns=self.COLUMNS))
         return len(rows)

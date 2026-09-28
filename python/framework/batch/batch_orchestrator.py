@@ -227,7 +227,7 @@ class BatchOrchestrator:
         )
 
         # Mount preparer (#438) — the data-heavy + validation half of the batch, extracted so the
-        # AutoTrader-mock reuses the identical index/validation stack for its single scenario.
+        # mock session reuses the identical index/validation stack for its single scenario.
         self._mount_preparer = MountPreparer(
             logger=self._logger,
             app_config=self._app_config_manager,

@@ -7,7 +7,7 @@ because that reference is exactly what did not arrive. The key has to be one WE 
 Two properties matter and both are cheap to get wrong:
 
   it must FIT      — Kraken allows 18 ASCII characters, and a key one character too long
-                     is refused at runtime, inside a live session, on a real order
+                     is refused at runtime, inside a real-money session, on a real order
   it must not COLLIDE across restarts — the internal counter restarts at 1 with the
                      process, so without a session discriminator a brand-new order would
                      carry the key of one still resting at the venue from last night,

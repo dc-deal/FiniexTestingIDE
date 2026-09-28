@@ -35,7 +35,7 @@ from python.framework.types.run_results_types import RunProvenance
 from python.framework.types.config_types.file_logging_config_types import RunLogPaths
 from python.framework.types.log_layout_types import (
     IO_SUBDIR,
-    RUN_TYPE_LIVE,
+    RUN_TYPE_AUTOTRADER,
     RUN_TYPE_SIMULATION,
 )
 from python.framework.types.run_prune_types import PruneSelectors
@@ -45,7 +45,7 @@ _START = datetime(2026, 8, 30, 13, 20, 34, tzinfo=timezone.utc)
 
 def _roots(root: Path) -> RunLogPaths:
     """The two run-type roots under a tmp tree."""
-    return RunLogPaths(simulation=root / 'simulation', live=root / 'live')
+    return RunLogPaths(simulation=root / 'simulation', autotrader=root / 'autotrader')
 
 
 def _pruner(root: Path) -> RunTreePruner:
@@ -65,7 +65,7 @@ def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMUL
         root: The tmp tree
         run_id: Its identity
         name: The owning scenario set / profile
-        run_type: 'simulation' or 'live'
+        run_type: 'simulation' or 'autotrader'
         artifacts: Whether it persisted report artifacts
         reporting: What it was commissioned to do
         parent: The sweep or deployment it belongs to, when it belongs to one
@@ -83,8 +83,8 @@ def _plant(root: Path, run_id: str, name: str, *, run_type: str = RUN_TYPE_SIMUL
         parent_kind = ParentKind.SWEEP
     if parent and parent_kind is ParentKind.SWEEP:
         run_dir = base.sweeps / parent / name / run_id
-    elif run_type == RUN_TYPE_LIVE:
-        run_dir = base.live / name / run_id
+    elif run_type == RUN_TYPE_AUTOTRADER:
+        run_dir = base.autotrader / name / run_id
     else:
         run_dir = base.simulation / name / run_id
     run_dir.mkdir(parents=True)
@@ -141,9 +141,9 @@ class TestWhatMayNeverBeDeleted:
     def test_field_study_evidence_survives_the_same(self, tmp_path):
         """It is the input to a real-money release certificate, not archive."""
         evidence = _plant(tmp_path, '20260830_132034_cccccccc', 'live_profile',
-                          run_type=RUN_TYPE_LIVE, field_study=True, minutes=0)
+                          run_type=RUN_TYPE_AUTOTRADER, field_study=True, minutes=0)
         _plant(tmp_path, '20260830_140000_dddddddd', 'live_profile',
-               run_type=RUN_TYPE_LIVE, minutes=40)
+               run_type=RUN_TYPE_AUTOTRADER, minutes=40)
 
         report = _pruner(tmp_path).plan(PruneSelectors(keep_last=1))
 
@@ -397,7 +397,7 @@ def _provenance(run_id: str) -> RunProvenance:
         run_timestamp=_START, scenario_set_name='set', app_version='1.3.1',
         git_commit='abc1234', git_branch='main', git_dirty=False,
         decision_logic_type='CORE/aggressive_trend', decision_version='1.0.0',
-        worker_versions={}, config_snapshot='{}', symbols=['BTCUSD'],
+        worker_versions={}, strategy_config_json='{}', symbols=['BTCUSD'],
         data_broker_type='kraken_spot')
 
 
@@ -423,7 +423,7 @@ class TestKeepLastCountsPerParentKind:
     def _sessions(root: Path, deployment_id: str, minutes: int) -> list:
         stamp = deployment_id.split('_', 1)[1]
         return [_plant(root, f'{stamp}_{i}{"b" * 7}', 'my_bot',
-                       run_type=RUN_TYPE_LIVE, parent=deployment_id,
+                       run_type=RUN_TYPE_AUTOTRADER, parent=deployment_id,
                        parent_kind=ParentKind.DEPLOYMENT, minutes=minutes + i)
                 for i in range(2)]
 
@@ -434,7 +434,7 @@ class TestKeepLastCountsPerParentKind:
 
         report = _pruner(tmp_path).plan(PruneSelectors(keep_last=2))
 
-        # The live sessions are the NEWEST runs in the tree, and every sweep is older — yet
+        # The AutoTrader sessions are the NEWEST runs in the tree, and every sweep is older — yet
         # pooled they lost to the prefix, whole.
         assert not any(path in _deleted_paths(report) for path in sessions)
 
@@ -542,7 +542,7 @@ class TestTheAgeSelector:
         crashed = _plant(tmp_path, '20250101_120000_55555555', 'my_set',
                          artifacts=False, started=_aged(400))
         evidence = _plant(tmp_path, '20250101_130000_66666666', 'live_profile',
-                          run_type=RUN_TYPE_LIVE, field_study=True, started=_aged(400))
+                          run_type=RUN_TYPE_AUTOTRADER, field_study=True, started=_aged(400))
 
         report = _pruner(tmp_path).plan(PruneSelectors(older_than=timedelta(days=30)))
 

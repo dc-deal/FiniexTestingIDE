@@ -199,7 +199,7 @@ class AbstractTradeExecutor(ABC):
         self._active_limit_orders: List[PendingOrder] = []
 
         # Active stop orders waiting for trigger price (post-pipeline)
-        # The LIVE session-end cleanup covers this list since #500. It used to read
+        # The AutoTrader session-end cleanup covers this list since #500. It used to read
         # `_active_limit_orders` alone, on the grounds that the live submit gate refused STOP
         # and STOP_LIMIT so nothing could rest here — which was true of the SUBMIT path and
         # false of the situation: boot adoption files a venue-reported stop straight into it.
@@ -1511,13 +1511,13 @@ class AbstractTradeExecutor(ABC):
         new_take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> ModificationResult:
         """
-        Modify a pending limit order's price, SL, and/or TP.
+        Modify a resting limit order's price, SL, and/or TP.
 
         Only applies to active limit orders (post-latency, waiting for price trigger).
         Uses UNSET sentinel to distinguish "don't change" from explicit values.
 
         Args:
-            order_id: Pending limit order ID
+            order_id: Resting limit order ID
             new_price: New limit price (UNSET=keep current)
             new_stop_loss: New SL level (UNSET=no change, None=remove)
             new_take_profit: New TP level (UNSET=no change, None=remove)
@@ -1536,12 +1536,12 @@ class AbstractTradeExecutor(ABC):
         new_take_profit: Union[float, None, _UnsetType] = UNSET
     ) -> ModificationResult:
         """
-        Modify a pending stop order's trigger price, limit price, SL, and/or TP.
+        Modify a resting stop order's trigger price, limit price, SL, and/or TP.
 
         Only applies to active stop orders (post-latency, waiting for trigger price).
 
         Args:
-            order_id: Pending stop order ID
+            order_id: Resting stop order ID
             new_stop_price: New trigger price (UNSET=keep current)
             new_limit_price: New limit price for STOP_LIMIT (UNSET=keep current)
             new_stop_loss: New SL level (UNSET=no change, None=remove)

@@ -105,7 +105,7 @@ class WindowMaterializer:
                 effective_max_ticks = None
 
             scenario: Dict[str, Any] = {
-                'name': name,
+                'scenario_name': name,
                 'symbol': window_set.symbol,
                 'data_broker_type': window_set.broker_type,
                 'start_date': window.start_time.isoformat(),

@@ -38,7 +38,7 @@
     },
     "scenarios": [
         {
-            "name": "EURUSD_sentiment_forex_scenario_01",
+            "scenario_name": "EURUSD_sentiment_forex_scenario_01",
             "symbol": "EURUSD",
             "data_broker_type": "mt5",
             "data_sentiment_type": "forex_macro_sentiment_mock",
@@ -52,7 +52,7 @@
             "trade_simulator_config": {}
         },
         {
-            "name": "EURUSD_sentiment_forex_scenario_02",
+            "scenario_name": "EURUSD_sentiment_forex_scenario_02",
             "symbol": "GBPUSD",
             "data_broker_type": "mt5",
             "data_sentiment_type": "forex_macro_sentiment_mock",

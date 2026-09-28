@@ -29,7 +29,7 @@ pass a test that only checked the archive was reachable.
 
 **An already-imported day is a warning.** The tick importer grades its duplicates that way,
 and re-running an import whose days are all archived is the normal case; an error there
-would put a healthy run into the §35 error pot.
+would put a healthy run into the error pot.
 
 **The move keeps the root's relative path** and is deliberately not rebuilt from the
 resolved `pipeline_id`: a file in a folder that disagrees with its own `pipeline_id` is an

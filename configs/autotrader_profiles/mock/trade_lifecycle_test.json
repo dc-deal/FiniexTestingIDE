@@ -1,0 +1,65 @@
+{
+  "profile_name": "trade_lifecycle_test",
+  "bot_id": "tradelif01",
+    "_comment": "Thresholds are deliberately looser than the textbook 30/70. This fixture exists to exercise the trade LIFECYCLE — order, fill, position at session end — not to validate RSI levels, and at 30/70 it sat on a knife edge: over its 163 bars only 4 ever passed RSI + Bollinger + the OBV filter together. When the RSI moved to Wilder's smoothing (#517) those 4 became 0 and the session stopped trading at all. At 40/60 the same window offers 9, measured 2026-09-14.",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "mock",
+  "deployment": {
+    "_comment": "Do this profile's sessions form ONE deployment whose ledger rows join into one history? MANDATORY — there is no safe default. Declare true only on a profile you are actually deploying; the CLI can narrow it (--one-off) but never widen it.",
+    "continuous": false
+  },
+  "strategy_config": {
+    "decision_logic_type": "CORE/simple_consensus",
+    "worker_instances": {
+      "rsi_fast": "CORE/rsi",
+      "bollinger_main": "CORE/bollinger",
+      "obv_volume": "CORE/obv"
+    },
+    "workers": {
+      "rsi_fast": {
+        "periods": {
+          "M5": 14
+        }
+      },
+      "bollinger_main": {
+        "periods": {
+          "M30": 20
+        },
+        "deviation": 2
+      },
+      "obv_volume": {
+        "periods": {
+          "M5": 20
+        }
+      }
+    },
+    "decision_logic_config": {
+      "rsi_oversold": 40,
+      "rsi_overbought": 60,
+      "bollinger_lower_threshold": 0.4,
+      "bollinger_upper_threshold": 0.6,
+      "min_confidence": 0.5,
+      "lot_size": 0.1,
+      "min_entry_capital": 1000,
+      "obv_filter_enabled": true,
+      "obv_block_opposite_trend": true,
+      "obv_confidence_boost": 0.1
+    }
+  },
+  "tick_source": {
+    "type": "mock"
+  },
+  "display": {
+    "enabled": false
+  },
+  "scenario_settings": {
+    "start_date": "2026-01-24T14:19:46+00:00",
+    "max_ticks": 15000,
+    "data_mode": "realistic",
+    "balances": {
+      "USD": 10000.0,
+      "BTC": 0.0
+    }
+  }
+}

@@ -10,7 +10,8 @@ ARCHITECTURE:
 - Order creation: Tier 1+2 (always available)
 - Order execution: Tier 3 (requires enable_live(), Kraken REST API)
 
-Backtesting works without API access. Live trading requires enable_live().
+Backtesting works without API access. Order execution in a live-adapter session requires
+enable_live().
 """
 
 import base64
@@ -72,7 +73,8 @@ class KrakenAdapter(AbstractAdapter):
     - No swap fees (spot trading)
     - Leverage = 1 for pure spot (no margin)
     - Currencies explicit in config (base_currency, quote_currency)
-    - Dry-run mode: validate=true on AddOrder (no execution, no money moved)
+    - Dry-run mode: validate=true on AddOrder (venue validates, fills are simulated locally,
+      no money moved)
     """
 
     # Kraken order status → BrokerOrderStatus
@@ -583,7 +585,8 @@ class KrakenAdapter(AbstractAdapter):
 
     def get_dry_run(self) -> bool:
         """
-        Whether dry-run mode is active (validate only, no execution).
+        Whether dry-run mode is active (venue validates, fills are simulated locally, no money
+        moved).
 
         Returns:
             True if dry_run is enabled

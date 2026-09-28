@@ -2,7 +2,7 @@
 
 **Suite:** `tests/framework/algo_clock/` · **Mark:** `framework`, `unit`
 
-Enforces the §9 wall-clock rule: decision logic and workers must read time only via
+Enforces the wall-clock rule: decision logic and workers must read time only via
 `DecisionTradingApi.get_current_time()` — never `datetime.now()`, `datetime.utcnow()`, or
 `time.time()`. A direct wall-clock call breaks backtest reproducibility and decouples
 timing from the tick cadence that gates async resolution.

@@ -98,8 +98,8 @@ malformed path or empty list is a spec typo affecting all combinations → abort
 `strategy_config`, and the run validates them in **Phase 0** (`ScenarioValidator.validate_scenario_parameters`,
 against each component's `get_parameter_schema()` — type, range, required, AND unknown keys). An invalid
 combination is marked invalid there, excluded from execution, and recorded as an **error-flagged ledger
-row** that is excluded from the ranking (§33 = config error → per-scenario failure, not a whole-batch
-abort). Other combinations keep running. (Strategy parameters are not Pydantic-typed by design — the
+row** that is excluded from the ranking (a config error fails its own scenario, never the whole
+batch). Other combinations keep running. (Strategy parameters are not Pydantic-typed by design — the
 per-component schema is their type system; lifting the check into Phase 0 means every run — not just
 sweeps — rejects a typo'd parameter instead of silently ignoring it.)
 
@@ -128,9 +128,9 @@ why `/api/v1/sweeps` is derived from the ledger rather than from a sweep object.
 is the level ABOVE the report — the ranking — and `parent_id` makes it reachable from below
 without asking `/sweeps` first.
 
-The same field carries the daily fragments of #476, and the two must not be reasoned about alike:
+The same field carries the day records of #476, and the two must not be reasoned about alike:
 a sweep's children are ALTERNATIVES, contemporaneous and comparable, and ranking them is the point;
-a session's fragments are a SEQUENCE, consecutive slices of one run, where a timeline is what you
+a session's day records are a SEQUENCE, consecutive slices of one run, where a timeline is what you
 want and a ranking would mean nothing.
 
 `mount_build.log` is where the #419 mount build writes: the data window, the tick count, the
@@ -146,7 +146,7 @@ flat and opens no run directory; the count of child directories is pinned by
 
 ## The Run Results Ledger (`runs/ledger/`)
 
-A persistent, accumulating store — **every** run appends to it (sim batch + live session, #403 · 5.a),
+A persistent, accumulating store — **every** run appends to it (sim batch + AutoTrader session, #403 · 5.a),
 not only sweeps — so it doubles as a complete run history. It is a flat directory with **one parquet fragment per run**
 (`<scenario_set>_<run_id>.parquet`); parquet is immutable, so one file per run is the lock-free append.
 Read the whole directory back as one table.
@@ -161,9 +161,9 @@ Read the whole directory back as one table.
   figures; `status='error'` and the `error` column travel beside them, and the ranking excludes the
   row on that column. Only a run that produced NOTHING — no currencies at all, e.g. a combination
   rejected at validation before it ever ran — writes the one figureless `status='error'` row. The
-  distinction matters because a live session has exactly one unit: any uncaught exception, including
-  one in the shutdown path, marks the whole session failed, and zeroing its KPIs discarded real
-  money figures (measured: a field-study session whose own artifact recorded a final equity of
+  distinction matters because an AutoTrader session has exactly one unit: any uncaught exception,
+  including one in the shutdown path, marks the whole session failed, and zeroing its KPIs discarded
+  real money figures (measured: a field-study session whose own artifact recorded a final equity of
   71.97 USD had 0 in the ledger).
 - **A missing column reads as `None`, never as a measured zero.** Every KPI a fragment may predate
   is `| None` on the typed row, so "nobody wrote this down" stays distinguishable from "this was
@@ -195,7 +195,7 @@ from what it summarises.
 
 **Columns:** `param_hash` (leading) · `status` (`ok`/`error`) · `error` · `run_id` · `run_timestamp` ·
 `sweep_id` · `sweep_params` · `scenario_set_name` · `git_commit` / `git_branch` / `git_dirty` ·
-`decision_logic_type` · `decision_version` · `worker_versions` · `config_snapshot` (full resolved
+`decision_logic_type` · `decision_version` · `worker_versions` · `strategy_config_json` (full resolved
 strategy_config) · `symbols` · `data_broker_type` · `currency` · the `RunSummary` KPIs (`net_pnl`,
 `expectancy`, `profit_factor`, `win_rate`, `max_drawdown`, trade / order counts …) · `signal_fresh_ratio` ·
 `trial_count` · `records_pruned_at`.
@@ -285,8 +285,9 @@ instead of repeating it N times:
   missing data), the sweep aborts before any combination runs.
 - **OOM villain:** if the *first executed* combination crashes because a worker subprocess was OOM-killed
   (`BrokenProcessPool`; #416's `SubprocessPoolMemoryError` once that lands), the sweep aborts the rest.
-- **Strategy-level (per combination):** an out-of-range parameter marks only that combination invalid and
-  is recorded as an error ledger row — the sweep keeps going (unchanged §33).
+- **Strategy-level (per combination):** an out-of-range parameter marks only that combination
+  invalid and is recorded as an error ledger row — the sweep keeps going (a config error fails its
+  own scenario, as before).
 
 Off-switches (`app_config.json::backtesting.parameter_optimization`, both default **on**): `mount_reuse_enabled`
 (off → today's cold per-combination path) and `villain_abort_enabled`.
@@ -296,7 +297,7 @@ Off-switches (`app_config.json::backtesting.parameter_optimization`, both defaul
 ## Scope (v0) and follow-ups
 
 - **In:** grid search with single-load **data-mount reuse** across combinations (#419), the cross-run
-  ledger (both pipelines — sim batch + live session, #403 · 5.a), objective ranking, one-factor sensitivity.
+  ledger (both pipelines — sim batch + AutoTrader session, #403 · 5.a), objective ranking, one-factor sensitivity.
 - **Out (follow-ups):** smarter search (random / Bayesian / genetic) = **#32** (new generators on the
   same seam); walk-forward / out-of-sample splitting = **#367**; variance / ANOVA parameter importance
   + worker-contribution = **#31**; composite / weighted objective; per-symbol ledger rows for regime analysis.

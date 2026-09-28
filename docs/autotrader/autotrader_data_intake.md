@@ -5,8 +5,8 @@ go quiet without saying so. A feed that stops sending looks exactly like a marke
 moving, and a bot that cannot tell them apart trades on a price from twenty minutes ago.
 
 This document is what comes IN: the tick source abstraction and its Kraken implementation, the
-sentiment feed, the staleness contract that declares an input blind, and how a live session gets
-the bars it needs before its first decision.
+sentiment feed, the staleness contract that declares an input blind, and how an AutoTrader session
+gets the bars it needs before its first decision.
 
 **Not here:** how the archive is built — `docs/data_pipeline/`. What the executor does with a
 tick — `docs/architecture/architecture_execution_layer.md`. Which venue answers —
@@ -54,7 +54,7 @@ slippage baseline. The cost model stays `MakerTakerFee` — the spread is now cr
 charged, not a second fee.
 
 ```
-DataCollector            AutoTrader (live)
+DataCollector            AutoTrader (live adapter)
 ┌──────────┐            ┌──────────┐
 │ Kraken   │            │ Kraken   │
 │ WS v2    │            │ WS v2    │
@@ -104,11 +104,13 @@ as a `SignalDataProvider` into each SIGNAL worker (`inject_signal_providers`, ph
 `setup_pipeline` — the same function the sim subprocess uses). On every tick pass the worker
 resolves the newest snapshot with `collected_msc ≤ tick.timestamp` (as-of lookup, no second
 thread or queue). Misconfiguration (SIGNAL worker without a feed, no archive overlap for the
-window) aborts at startup (§35) — never at the first tick. Details: signal data source doc
-(`docs/data_pipeline/signal_data_source.md`).
+window) aborts at startup — a session has nothing to exclude, so it refuses to start — never at
+the first tick. Details: signal data source doc (`docs/data_pipeline/signal_data_source.md`).
 
-Real-time/live sentiment is a future event-path feature (#375) — a mock `scenario_settings` feed
-is the only supported path today.
+A live-adapter session mounts no `scenario_settings` window: its SIGNAL workers are fed by the
+producer's push stream (`sentiment_config.json::stream`, #468), which extends the series from its
+first frame on — at boot only the archive slice it connects from is read. The `scenario_settings`
+feed above is the mounted path, and it is the mock session's.
 
 **Live dashboard:** the ALGO STATE panel shows the feed (`📡 Feed: <label>`, flagged
 `[STALE]` in yellow when the SIGNAL worker reports staleness) plus the worker's
@@ -140,22 +142,22 @@ protocol; the aggregated stability table is #433 scope. Transport reconnects
 
 **Boundaries:** sim never evaluates this (replay gaps are DATA — weekend/holiday); the planned
 `stale_data_stress` windows drive the same surface deterministically in backtests (see
-`docs/stress_test.md`). Since #438 the AutoTrader-mock also expresses `stale_data_stress`
+`docs/stress_test.md`). Since #438 a mock session also expresses `stale_data_stress`
 (`scenario_settings.stress_test_config`) — the SIGNAL data-plane carve (a stale sentiment window);
 the tick status-plane carve stays sim-only (→ #444). The mock market-data outage drill is
-`tick_source.freeze_after_ticks` + `freeze_duration_s` (one deliberate mid-replay silence). Live sources today are crypto/24-7 —
+`tick_source.freeze_after_ticks` + `freeze_duration_s` (one deliberate mid-replay silence). Venue tick sources today are crypto/24-7 —
 the forex weekend gate (don't flag market closure as stale) lands with the MT5 adapter via
 MarketClock. On #375 the evaluation trigger moves onto the event timeline; the contract
 surface (status, hook, guard reason, config) carries over unchanged. Authoring guidance:
 `docs/user_guides/live_outage_handling_guide.md`.
 
-## Live Warmup (#231)
+## Warmup (#231)
 
 Workers need warmup bars before producing meaningful signals. Without warmup, a worker with `{"M5": 14}` needs 70 minutes of live ticks before its first valid RSI. The warmup system pre-loads historical bars at startup.
 
 ### Two Paths
 
-| Aspect | Mock (parquet) | Live (API) |
+| Aspect | Mock session (parquet) | Live-adapter session (API) |
 |--------|----------------|------------|
 | **Source** | Pre-rendered bar parquet via `BarsIndexManager` | Kraken `GET /0/public/OHLC` |
 | **Reference time** | First tick timestamp from parquet file | `datetime.now(UTC)` |
@@ -163,7 +165,7 @@ Workers need warmup bars before producing meaningful signals. Without warmup, a 
 | **Extensibility** | Static data | ABC pattern → MT5 (#209) |
 | **On a short read** | warn and continue | **refuse to start** (#473) |
 
-### Why live refuses rather than warns (#473)
+### Why a live-adapter session refuses rather than warns (#473)
 
 The fetch has a retry ladder, and a give-up produces an empty result rather than an
 exception — so the refusal is raised one level up, by the validation that knows *how many*
@@ -194,14 +196,14 @@ Phase 9 in setup_pipeline():
      → warmup_by_timeframe = {"M5": 20, "M30": 20}
 
   2. Reference timestamp:
-     Mock: first tick from parquet → 2026-01-24T14:19:46Z
-     Live: now()
+     Mock:         first tick from parquet → 2026-01-24T14:19:46Z
+     Live adapter: now()
 
   3. Load bars:
-     Mock: BarsIndexManager → parquet → filter before ref_ts → tail(count)
-     Live: KrakenOhlcBarFetcher → GET /0/public/OHLC → Bar objects
+     Mock:         BarsIndexManager → parquet → filter before ref_ts → tail(count)
+     Live adapter: KrakenOhlcBarFetcher → GET /0/public/OHLC → Bar objects
 
-  4. Validate: mock warns if fewer bars than required — LIVE REFUSES (#473)
+  4. Validate: mock warns if fewer bars than required — LIVE ADAPTER REFUSES (#473)
 
   5. bar_renderer.initialize_historical_bars() per timeframe
      → Workers have full history from tick 1
@@ -224,10 +226,17 @@ Public endpoint, no auth. Intervals: 1 (M1), 5 (M5), 15 (M15), 30 (M30), 60 (H1)
 
 ### Data Independence
 
-AutoTrader live sessions are **fully decoupled from backtesting data**. The tick/bar index (`BarsIndexManager`, `TickIndexManager`) is never accessed during live operation:
+Live-adapter sessions are **fully decoupled from backtesting data**. The tick/bar index
+(`BarsIndexManager`, `TickIndexManager`) is never accessed during a live-adapter session:
 
-- **Tick data:** Comes from WebSocket (live) or parquet replay (mock) — not from the tick index
-- **Warmup bars:** Fetched from broker REST API (live) or pre-rendered parquet (mock)
-- **Symbol specs:** Loaded from broker config (`configs/brokers/`), not from imported data
+- **Tick data:** comes from the venue's WebSocket — not from the tick index
+- **Warmup bars:** fetched from the broker REST API
+- **Symbol specs:** loaded from broker config (`configs/brokers/`), not from imported data
 
-This means a broker/symbol can run live **without any backtesting data in the index**. The only requirement is a broker entry in `market_config.json` and a matching OHLC bar fetcher for warmup.
+This means a broker/symbol can run a live-adapter session **without any backtesting data in the
+index**. The only requirement is a broker entry in `market_config.json` and a matching OHLC bar
+fetcher for warmup.
+
+A mock session is the opposite by design: it replays the index-resolved `scenario_settings` window
+through the shared `MountPreparer` — the same index and validation stack a backtest uses — and
+reads its warmup bars via `BarsIndexManager`.

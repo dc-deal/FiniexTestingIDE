@@ -2,7 +2,7 @@
 
 **Suite:** `tests/framework/algo_clock_validator/` · **Mark:** `framework`, `unit`
 
-Verifies the §9 **runtime startup validator** (#359): every decision logic and worker
+Verifies the wall-clock rule's **runtime startup validator** (#359): every decision logic and worker
 actually loaded for a run — CORE *and* USER — is AST-scanned for direct wall-clock reads
 (`datetime.now()`, `datetime.utcnow()`, `time.time()`) before the run starts. USER algos
 live in `user_algos/` (gitignored) and never reach CI, so this runtime scan is the only
@@ -13,8 +13,8 @@ pre-flight check family (siblings: #354 state-snapshot serializability, #249 cer
 
 **Call-sites:**
 - Simulation batch: `RequirementsCollector._algo_clock_preflight` — a violation excludes
-  the scenario via `ValidationResult(is_valid=False)`, the batch continues (§33).
-- AutoTrader: `autotrader_main` startup — a violation aborts the session (§35, STARTUP FAILED).
+  the scenario via `ValidationResult(is_valid=False)`, the batch continues.
+- AutoTrader: `autotrader_main` startup — a violation aborts the session (STARTUP FAILED).
 
 ## Tests
 

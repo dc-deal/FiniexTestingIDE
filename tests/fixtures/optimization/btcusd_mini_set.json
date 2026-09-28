@@ -45,7 +45,7 @@
   },
   "scenarios": [
     {
-      "name": "BTCUSD_mini_01",
+      "scenario_name": "BTCUSD_mini_01",
       "symbol": "BTCUSD",
       "data_broker_type": "kraken_spot",
       "start_date": "2026-01-25T16:00:00+00:00",

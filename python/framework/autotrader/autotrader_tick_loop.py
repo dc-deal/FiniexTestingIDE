@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - AutoTrader Tick Loop
-Main tick processing loop for live trading (Threading model 8.a).
+Main tick processing loop for an AutoTrader session (Threading model 8.a).
 
 Runs in the main thread, pulls ticks from queue, processes through:
 executor.on_tick → bar_controller → workers → decision_logic.
@@ -59,11 +59,11 @@ from python.framework.types.decision_event_types import SessionEndEvent, Session
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.reporting.booking_segment_recorder import (
-    BookingSegmentRecorder,
+from python.framework.reporting.booking_period_recorder import (
+    BookingPeriodRecorder,
     snapshot_from_portfolio,
 )
-from python.framework.types.run_results_types import BookingSegment
+from python.framework.types.run_results_types import BookingPeriod
 from python.framework.utils.trading_day_anchor import trading_day_of
 from python.framework.types.persistence_types import (
     BaselineKind,
@@ -86,14 +86,14 @@ _FLATTEN_DRAIN_TICKS = 200
 
 class AutotraderTickLoop:
     """
-    Tick processing loop for live trading.
+    Tick processing loop for an AutoTrader session.
 
     Pulls ticks from a queue.Queue (fed by a TickSource thread),
     processes each tick through the full algo pipeline:
     on_tick → bars → workers → decision → clipping monitor.
 
-    Session log rotates at midnight UTC — each day gets its own file
-    in session_logs/ to prevent unbounded log growth on 24/7 sessions.
+    Session log rotates when the market crosses into a new trading day — each day gets its
+    own file in session_logs/ to prevent unbounded log growth on 24/7 sessions.
 
     Args:
         config: AutoTrader configuration
@@ -135,7 +135,7 @@ class AutotraderTickLoop:
         persist_carry_over: Optional[Callable[[], bool]] = None,
         signal_inbox: Optional[SignalInbox] = None,
         signal_transport: Optional[AbstractSignalTransport] = None,
-        carried_segment_no: int = 0,
+        carried_period_no: int = 0,
         stale_stress_driver: Optional[StaleDataStressDriver] = None,
     ):
         self._config = config
@@ -156,8 +156,8 @@ class AutotraderTickLoop:
         self._decision_logic = decision_logic
         self._clipping_monitor = clipping_monitor
         # #444: planned tick-plane stale windows, present only on a mock profile that
-        # declares them. None on every live session — the block lives in
-        # scenario_settings, which a live profile does not carry at all.
+        # declares them. None on every live-adapter session — the block lives in
+        # scenario_settings, which a live-adapter profile does not carry at all.
         self._stale_stress_driver = stale_stress_driver
         self._logger = logger
         self._trading_model = trading_model
@@ -308,15 +308,15 @@ class AutotraderTickLoop:
         # cannot rotate its log on one boundary and reset its limit on another.
         self._day_anchor = MarketConfigManager().get_trading_day_anchor(config.broker_type)
 
-        # === BOOKING SEGMENTS (#537) — the Hauptbuch of this session ===
+        # === BOOKING PERIODS (#537) — this session's ledger entries ===
         # One recorder, shared with the simulation loop: the two are shaped differently (a class
         # here, a function there) and a recorder each would be two implementations of one rule.
         # It COLLECTS; the report coordinator writes every period at once when the run ends, so
         # the parquet write stays out of what the throughput benchmark measures.
-        self._booking = BookingSegmentRecorder(
+        self._booking = BookingPeriodRecorder(
             unit_name=config.get_unit_name(),
             anchor=self._day_anchor,
-            carried_segment_no=carried_segment_no,
+            carried_period_no=carried_period_no,
             log=self._logger.info,
         )
 
@@ -464,9 +464,9 @@ class AutotraderTickLoop:
 
             # === DAILY LOG ROTATION ===
             # After on_tick, because that is what advances the canonical clock to this
-            # tick's time — before it, the clock still holds the previous pass. In live the
-            # heartbeat above has almost always rotated first; this covers a replay whose
-            # queue never runs empty.
+            # tick's time — before it, the clock still holds the previous pass. In a
+            # live-adapter session the heartbeat above has almost always rotated first; this
+            # covers a replay whose queue never runs empty.
             self._check_daily_rotation()
             self._booking.check_boundary(
                 self._executor.get_current_time_if_set(), self._seal_source)
@@ -751,7 +751,7 @@ class AutotraderTickLoop:
 
         No-op when no state store is wired (algo did not opt in). Mid-session save
         failures are logged (error pot, §35) and swallowed — a persistence problem
-        must never abort a live trading session.
+        must never abort an AutoTrader session.
 
         Args:
             ticks_processed: Current tick counter (drives the hybrid cadence)
@@ -779,8 +779,8 @@ class AutotraderTickLoop:
         from the note until something else happens to move the book.
 
         No-op when nothing is wired (simulation, or a session without a carry-over store).
-        The write itself logs its own failures — a carry-over problem must never end a live
-        trading session.
+        The write itself logs its own failures — a carry-over problem must never end an
+        AutoTrader session.
 
         Args:
             ticks_processed: Current tick counter — it drives the drift cadence
@@ -1100,8 +1100,8 @@ class AutotraderTickLoop:
 
         The day comes from the canonical clock and this market's anchor (#476), never from
         the wall clock and no longer from the tick stamp: both event sources advance that
-        clock, so a replay and a live session still answer alike, and a quiet feed over the
-        boundary no longer hides it. The check stays deliberately independent of
+        clock, so a mock session and a live-adapter session still answer alike, and a quiet
+        feed over the boundary no longer hides it. The check stays deliberately independent of
         `_check_daily_rotation`: that one rotates a LOG file and returns early when there is
         no run directory, and a loss limit must not depend on whether logs are being written.
 
@@ -1178,11 +1178,11 @@ class AutotraderTickLoop:
         closes.
 
         Returns:
-            (trade records, SegmentSnapshot)
+            (trade records, PeriodSnapshot)
         """
         return snapshot_from_portfolio(self._executor.portfolio)
 
-    def get_highest_segment_no(self) -> int:
+    def get_highest_period_no(self) -> int:
         """
         The largest booking period this session has sealed (#537).
 
@@ -1191,11 +1191,11 @@ class AutotraderTickLoop:
         Returns:
             The high-water mark, which is the inherited floor when nothing was sealed
         """
-        return self._booking.get_highest_segment_no()
+        return self._booking.get_highest_period_no()
 
-    def get_booking_segments(self) -> List[BookingSegment]:
+    def get_booking_periods(self) -> List[BookingPeriod]:
         """
-        This session's Hauptbuch — one entry per closed booking period (#537).
+        This session's ledger entries — one per closed booking period (#537).
 
         Seals the period that was still running, so the final and necessarily incomplete one is
         filed like every other rather than dropped for having no successor. Exactly what

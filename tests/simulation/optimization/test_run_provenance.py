@@ -1,10 +1,11 @@
 """
 Run-provenance (session) tests (#403 · 5.a).
 
-`build_run_provenance_from_session` is the live counterpart to the sim `build_run_provenance`:
-it lets a live session append to the same Run Results Ledger. The key property is sim/live
-parity — the profile's strategy_config has the same shape as a sim scenario's, so the
-param_hash is computed identically and the live row is directly comparable to the backtest.
+`build_run_provenance_from_session` is the AutoTrader counterpart to the sim
+`build_run_provenance`: it lets an AutoTrader session append to the same Run Results Ledger.
+The key property is sim/live parity — the profile's strategy_config has the same shape as a sim
+scenario's, so the param_hash is computed identically and the session's row is directly
+comparable to the backtest.
 Built against the REAL AutoTraderConfig / WarningsErrorsReport, never stand-ins.
 """
 
@@ -58,30 +59,34 @@ def _scenario_reading(versions, classes, grades, bases=()) -> SingleScenario:
 
 def _config() -> AutoTraderConfig:
     return AutoTraderConfig(
-        name='my_profile', symbol='BTCUSD', broker_type='kraken_spot',
+        profile_name='my_profile', symbol='BTCUSD', broker_type='kraken_spot',
         strategy_config={'decision_logic_type': 'CORE/aggressive_trend',
                          'worker_instances': {}})
 
 
 def _session_provenance(config: AutoTraderConfig,
-                        report: Optional[WarningsErrorsReport] = None) -> RunProvenance:
+                        report: Optional[WarningsErrorsReport] = None,
+                        replayed_scenario: Optional[SingleScenario] = None) -> RunProvenance:
     """
-    The live provenance of a session that has no run directory — these tests pin the mapping,
+    The provenance of a session that has no run directory — these tests pin the mapping,
     not the header read, which `tests/framework/reporting/test_run_origin.py` covers.
 
     Args:
         config: The profile
         report: The session's warnings/errors report, or None
+        replayed_scenario: A mock session's scenario as the mount filled it, or None for a
+            live-adapter session
 
     Returns:
         The provenance
     """
     return build_run_provenance_from_session(
-        config, _RUN_ID, _TS, report, run_dir=None, logger=get_global_logger())
+        config, _RUN_ID, _TS, report, run_dir=None, logger=get_global_logger(),
+        replayed_scenario=replayed_scenario)
 
 
 class TestSessionProvenance:
-    """The live session maps onto the same RunProvenance the ledger ranks over."""
+    """An AutoTrader session maps onto the same RunProvenance the ledger ranks over."""
 
     def test_maps_config_to_provenance(self):
         p = _session_provenance(_config())
@@ -135,7 +140,7 @@ class TestWhatARunConsumed:
         """
         The emptiness has to MEAN something, or it is indistinguishable from a broken recorder.
 
-        A live session consumes a socket and has no archive input, so its three joined strings
+        A live-adapter session consumes a socket and has no archive input, so its three joined strings
         are empty by construction. Without `input_plane` that is the same bytes as a sim row
         whose recording failed — the exact failure mode this project spent the day removing
         from its producers.
@@ -147,12 +152,32 @@ class TestWhatARunConsumed:
         assert p.origin_classes == ''
         assert p.origin_evidence_grades == ''
         assert p.input_files == 0
-        # The ONE field that is filled on the live side, and deliberately so: a live session
-        # renders its bars at runtime, so there is no file to stamp and nothing can be out of
-        # date with the declaration. Blank here would defeat the field — the parity proof has
-        # to compare the live basis against the backtest's, and `input_plane` is what says
-        # this one is DECLARED rather than measured (§31c).
+        # The ONE field that is filled for a live-adapter session, and deliberately so: such a
+        # session renders its bars at runtime, so there is no file to stamp and nothing can be
+        # out of date with the declaration. Blank here would defeat the field — the parity proof
+        # has to compare the live-adapter session's price basis against the backtest's, and
+        # `input_plane` is what says this one is DECLARED rather than measured (§31c).
         assert p.price_bases == 'order_driven'
+
+    def test_a_mock_session_records_the_archive_it_replayed(self):
+        """
+        A mock session reads tick files, and its record has to say so.
+
+        Every AutoTrader session used to be stamped `stream` with the declared price basis,
+        so a mock session that replayed the archive was recorded as "a socket, nothing read" —
+        the ledger held that on every mock row on disk. It now takes its consumption record
+        from its own scenario, exactly as a backtest does.
+        """
+        replayed = _scenario_reading(['1.7.0'], ['production'], ['stamped'],
+                                     bases=['order_driven'])
+
+        p = _session_provenance(_config(), replayed_scenario=replayed)
+
+        assert p.input_plane == 'archive'
+        assert p.data_format_versions == '1.7.0'
+        assert p.origin_classes == 'production'
+        assert p.input_files == 1
+        assert p.price_bases == 'order_driven', 'measured from the mounted bars, not declared'
 
     def test_a_sim_run_reports_the_distinct_values_and_the_counts(self):
         """

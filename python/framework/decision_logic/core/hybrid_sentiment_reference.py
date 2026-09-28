@@ -131,7 +131,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
             ),
             'price': OutputParamDef(
                 param_type=float, min_val=0.0,
-                description='Price at decision time',
+                description='Price at decision time — traded where the venue prints one, else mid',
                 category='INFO',
             ),
             'timestamp': OutputParamDef(
@@ -288,7 +288,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
             outputs={
                 'confidence': base_confidence,
                 'reason': reason,
-                'price': tick.mid,
+                'price': tick.price,
                 'timestamp': tick.timestamp.isoformat(),
             },
         )
@@ -320,7 +320,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
             outputs={
                 'confidence': confidence,
                 'reason': reason,
-                'price': tick.mid,
+                'price': tick.price,
                 'timestamp': tick.timestamp.isoformat(),
             },
         )

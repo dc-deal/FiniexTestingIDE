@@ -247,7 +247,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             ),
             'price': OutputParamDef(
                 param_type=float, min_val=0.0,
-                description='Price at decision time',
+                description='Price at decision time — traded where the venue prints one, else mid',
                 category='INFO',
             ),
             'timestamp': OutputParamDef(
@@ -452,7 +452,7 @@ class TrendChannelReference(AbstractDecisionLogic):
                 'take_profit': float(take_profit),
                 'band_width': float(upper - lower),
                 'reason': f'{self.entry_mode} {side.value} armed',
-                'price': tick.mid,
+                'price': tick.price,
                 'timestamp': tick.timestamp.isoformat(),
             },
         )
@@ -955,7 +955,7 @@ class TrendChannelReference(AbstractDecisionLogic):
                 'take_profit': 0.0,
                 'band_width': float(self._upper - self._lower),
                 'reason': reason,
-                'price': tick.mid,
+                'price': tick.price,
                 'timestamp': tick.timestamp.isoformat(),
             },
         )

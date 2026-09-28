@@ -108,7 +108,7 @@ def render_deployment_history(
     # NEWEST FIRST, and the run id instead of a position. The order is the only one anybody
     # wants (what is this bot doing NOW, then how did it get here), so a number counting the
     # other way is a second thing to read. The id is what the next question needs: it is the
-    # directory name under runs/live/<profile>/, so a reader can descend from here into the
+    # directory name under runs/autotrader/<profile>/, so a reader can descend from here into the
     # logs of one session — the last step of deployments → sessions → this run.
     for session in reversed(sessions):
         started = session.started.strftime('%Y-%m-%d %H:%M') if session.started else '?'
@@ -152,6 +152,6 @@ def render_deployment_history(
           'where a row')
     print('predates the end stamp it is measured start-to-start and labelled, which '
           'overstates it.')
-    print('Descend into one session: runs/live/<profile>/<run id>/ — its summary, session log and '
+    print('Descend into one session: runs/autotrader/<profile>/<run id>/ — its summary, session log and '
           'events.csv each answer a different question '
           '(docs/autotrader/autotrader_observability.md).')

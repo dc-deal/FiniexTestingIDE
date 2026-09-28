@@ -4,6 +4,11 @@
 
 Every order passes through up to three distinct stages ("worlds") before becoming a position. Each world has its own storage, trigger logic, and modification rules.
 
+In the vocabulary of the [Glossary](../glossary.md): every order here is a **pending order** until
+it is finished. World 1 holds orders **in flight**; Worlds 2 and 3 hold **resting** limits and
+stops. On the live execution stack a limit or stop enters its world at submit and is in flight
+there until the venue acknowledges it.
+
 > **Execution layer foundation:** see [architecture_execution_layer.md](architecture_execution_layer.md)
 > **Live execution specifics:** see [live_execution_architecture.md](live_execution_architecture.md)
 
@@ -141,11 +146,11 @@ latency has elapsed. See
 **Modification:** `modify_limit_order(order_id, new_price, new_stop_loss, new_take_profit)`
 **Cancellation:** `cancel_limit_order(order_id)` — removes from list, returns `True`
 
-**Live mode:** Broker handles limit matching server-side. `LiveTradeExecutor` maintains
+**Live execution stack:** Broker handles limit matching server-side. `LiveTradeExecutor` maintains
 `_active_limit_orders` as **shadow state** — when the broker accepts a LIMIT order (status=PENDING),
-it is tracked locally. Each tick, `_process_active_orders()` polls the broker for fills. After a
-successful `modify_limit_order()`, the local shadow state is updated to reflect the new price/SL/TP.
-Shadow state correctness depends on #151 (Reconciliation).
+it is tracked locally as resting. Each tick, `_process_active_orders()` polls the broker for fills.
+After a successful `modify_limit_order()`, the local shadow state is updated to reflect the new
+price/SL/TP. Shadow state correctness depends on #151 (Reconciliation).
 
 ---
 
@@ -178,21 +183,21 @@ Shadow state correctness depends on #151 (Reconciliation).
 **Modification:** `modify_stop_order(order_id, new_stop_price, new_limit_price, new_stop_loss, new_take_profit)`
 **Cancellation:** `cancel_stop_order(order_id)` — removes from list, returns `True`
 
-**Live mode: the trigger lives at the VENUE, not here.** The trigger logic above is the simulator's;
-the live executor has no price-trigger predicate of its own and does not want one — a resting stop
-is an order Kraken holds, and `ordertype=stop-loss` / `stop-loss-limit` is how it is placed (`price`
-carries the trigger, `price2` the limit). `LiveTradeExecutor` maintains `_active_stop_orders` as
-**shadow state** exactly as World 2 does: each tick, `_process_active_orders()` polls both lists for
-fills, the session-end cleanup cancels or leaves both, and boot adoption files a venue-reported stop
-into this world by type (#500).
+**Live execution stack: the trigger lives at the VENUE, not here.** The trigger logic above is the
+simulator's; the live executor has no price-trigger predicate of its own and does not want one — a
+resting stop is an order Kraken holds, and `ordertype=stop-loss` / `stop-loss-limit` is how it is
+placed (`price` carries the trigger, `price2` the limit). `LiveTradeExecutor` maintains
+`_active_stop_orders` as **shadow state** exactly as World 2 does: each tick,
+`_process_active_orders()` polls both lists for fills, the session-end cleanup cancels or leaves
+both, and boot adoption files a venue-reported stop into this world by type (#500).
 
-Two consequences worth stating, because they are asymmetries rather than bugs. A live STOP triggers
-on Kraken's **last traded price** (their `trigger` parameter defaults to `last`) while the simulator
-triggers on ask/bid — since `ask > last > bid`, the backtest fires slightly early on both sides and
-fills at the triggering tick with no slippage model, so a
-**stop ENTRY is the one order type whose backtest is optimistic by construction**. And a triggered
-STOP_LIMIT changes identity in the simulation (it converts to a LIMIT and moves to World 2) while at
-the venue it stays one order in this world.
+Two consequences worth stating, because they are asymmetries rather than bugs. A STOP resting at
+Kraken triggers on Kraken's **last traded price** (their `trigger` parameter defaults to `last`)
+while the simulator triggers on ask/bid — since `ask > last > bid`, the backtest fires slightly
+early on both sides and fills at the triggering tick with no slippage model, so a **stop ENTRY is
+the one order type whose backtest is optimistic by construction**. And a triggered STOP_LIMIT
+changes identity in the simulation (it converts to a LIMIT and moves to World 2) while at the venue
+it stays one order in this world.
 
 ---
 
@@ -222,14 +227,14 @@ cancel_stop_order(order_id="EURUSD_1")     ← Same pattern
 get_pending_stats()                         ← ActiveOrderSnapshot.order_id = "EURUSD_1"
 ```
 
-### The wire key — live only (#473)
+### The wire key — live execution stack only (#473)
 
-The internal id above never goes to the venue. Live submits carry a short **client order
-id** derived from it, and the two exist for different reasons:
+The internal id above never goes to the venue. Submits on the live execution stack carry a short
+**client order id** derived from it, and the two exist for different reasons:
 
 ```
 internal (both pipelines)   pos_btcusd_47   readable, ours, unchanged
-wire key (live only)        p1641_47        1641 = 4 chars of the run id's random half
+wire key (live stack)       p1641_47        1641 = 4 chars of the run id's random half
 ```
 
 **It fits:** Kraken allows 18 ASCII characters, which the readable form does not.
@@ -244,7 +249,7 @@ a lost answer.
 
 The key is what makes an UNRESOLVED order answerable: the venue's own reference is exactly
 what a lost answer did not deliver. The **session** owns it, not the run — a #476 day
-fragment must not change it mid-session.
+record must not change it mid-session.
 
 **It is RECORDED on the order, never re-derived.** `PendingOrder.client_order_id` holds what
 actually went on the wire. Rebuilding it from the internal id held only while every key was
@@ -270,8 +275,8 @@ submit → transport fault (5xx, dropped socket, timeout)
 
 **A write is never retried.** A retry after a lost answer is how one intent becomes two
 positions. This is the FIX answer since 1992 — resolve a lost response with an Order Status
-Request, never by re-sending — and dropping the order instead would forget one that is
-live at the broker, manufacturing exactly the divergence reconciliation (#349) exists to
+Request, never by re-sending — and dropping the order instead would forget one that exists
+at the broker, manufacturing exactly the divergence reconciliation (#349) exists to
 resolve.
 
 The algo needs no new code: `has_in_flight_operation()` stays true and the existing
@@ -455,15 +460,15 @@ This matches real broker behavior — order acceptance is separate from order ex
 At scenario end, `finish_remaining_orders()` handles all three worlds:
 
 1. **Open positions:** **not touched.** They used to be closed here via a synthetic
-   `PendingOrder` that bypassed the pipeline — and in live that close never reached the
-   venue. A position now stays open and is reported as open and valued; see
+   `PendingOrder` that bypassed the pipeline — and on the live execution stack that close never
+   reached the venue. A position now stays open and is reported as open and valued; see
    [session_end_policy.md](session_end_policy.md).
 
 2. **Active limit orders** (`_active_limit_orders`): `_expire_active_orders()` creates
    `OrderResult(status=EXPIRED, reason="scenario_end")` entries in `_order_history` for each. Lists
    are **preserved** (not cleared) — `get_pending_stats()` snapshots them into
-   `PendingOrderStats.active_limit_orders` for reporting. In live mode, active limit orders are also
-   cancelled at the broker before expiry. A warning is logged.
+   `PendingOrderStats.active_limit_orders` for reporting. On the live execution stack, active limit
+   orders are also cancelled at the broker before expiry. A warning is logged.
 
 3. **Active stop orders** (`_active_stop_orders`): Same treatment as limit orders — EXPIRED records created, lists preserved for snapshots. A warning is logged.
 

@@ -168,7 +168,7 @@ def get_git_info(ignore_untracked_under: Optional[str] = None) -> Optional[GitIn
     bearable: one CLI run used to pay it 2-3 times, and a pytest process once per run it
     executed. The working tree is read ONCE, at the first call.
 
-    That is a semantic choice, not only a speed one: a long live session then reports the
+    That is a semantic choice, not only a speed one: a long AutoTrader session then reports the
     tree state it STARTED from, which is the honest answer — it describes the code that
     ran, not the code that happens to be checked out when the session ends.
 

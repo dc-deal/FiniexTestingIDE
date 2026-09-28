@@ -54,7 +54,7 @@ carries what every certificate needs:
 `capture_code_identity` — the call a run header makes — so a certificate and a run answer "which
 code" through one path, and the flat `git_*` fields are derived from it. Three consequences:
 
-- **One dirty rule, shared with the live real-money guard** (`CodeIdentity.is_dirty()`): a tree git
+- **One dirty rule, shared with the real-money guard** (`CodeIdentity.is_dirty()`): a tree git
   could not read counts as dirty. Before, the certificate read git on its own and an unreadable
   tree counted as CLEAN — a declared release passed with `git_commit: "unknown"`. It is now
   refused as `TREE STATE UNKNOWN`.

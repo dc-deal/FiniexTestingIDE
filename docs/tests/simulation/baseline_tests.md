@@ -241,7 +241,8 @@ pytest tests/ -v
 pytest tests/simulation/baseline/test_baseline_pnl_calculation.py -v
 ```
 
-**VS Code:** Use launch configuration `🧪 Pytest (baseline)`.
+**VS Code:** Use launch configuration `🧩 Pytest: Baseline (All)` (or `🧪 Simulation: Baseline` for the
+scenario run with its full log).
 
 ---
 
