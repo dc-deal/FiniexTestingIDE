@@ -199,7 +199,7 @@ class TestTheGuardsThatPredateThisFile:
         It does not START in a mock session today, and the test says why instead of tolerating
         any error: the profile rests a STOP_LIMIT entry and the mock adapter carries market
         orders only, so the refusal that follows is the ORDER-TYPE one and names the mock. Once
-        the mock rests orders that refusal is gone, and this becomes the plain "it starts" it
+        the mock rests orders (#556) that refusal is gone, and this becomes the plain "it starts" it
         was meant to be.
         """
         config = load_autotrader_config(_CAUTIOUS_MACD_PROFILE)

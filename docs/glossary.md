@@ -104,7 +104,8 @@ namespace no longer exists. See [Worker Naming](user_guides/worker_naming_doc.md
 **data broker** (`data_broker_type`) — The broker whose tick archive a scenario or a mock session
 reads, and the key the bar routes are addressed by. A backtest simulates its orders against the
 same broker's configuration; a mock session may trade against another one (`broker_type`); a venue
-session reads its own broker's feed. In a report it is each unit's `data_broker_type`.
+session reads its own broker's feed. In a report it is each unit's `data_broker_type`; in the
+configuration directory, a row's `data_broker_types`.
 
 **data origin** — Which kind of source produced an archived file: `origin_class` (`production`,
 `development`, `unknown`) with its evidence grade, stamped at import and carried into every run's

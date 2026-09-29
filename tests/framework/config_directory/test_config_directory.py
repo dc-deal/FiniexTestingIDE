@@ -141,7 +141,7 @@ class TestWhatAFileDeclares:
         assert row.kind == ConfigKind.SCENARIO_SET and row.status == ConfigReadStatus.READABLE
         assert (row.scenarios_declared, row.scenarios_enabled) == (3, 2)
         assert row.symbols == ['BTCUSD', 'ETHUSD'], 'a disabled scenario does not run'
-        assert (row.broker_types, row.market_types) == (['kraken_spot'], ['crypto'])
+        assert (row.data_broker_types, row.market_types) == (['kraken_spot'], ['crypto'])
 
     def test_the_strategy_is_the_one_the_cascade_resolves(self, tree):
         """A scenario overriding the decision logic shows both — the loader's own merge."""
@@ -168,6 +168,21 @@ class TestWhatAFileDeclares:
         assert (mock.adapter_type, mock.dry_run_declared) == ('mock', None), (
             "the loader's default adapter, and no declaration means the broker decides")
         assert (live.scenarios_declared, live.decision_logics) == (1, ['CORE/simple_consensus'])
+
+    def test_a_mock_profile_names_the_broker_whose_archive_it_replays(self, tree):
+        # A mock session may replay another broker's archive than the one it trades against; the
+        # row follows the same rule the loaded config resolves (`get_data_broker_type`).
+        _write(tree / 'configs/autotrader_profiles/mock/btc_mock.json',
+               _profile(scenario_settings={'data_broker_type': 'mt5'}))
+        _write(tree / 'configs/autotrader_profiles/mock/eth_mock.json',
+               _profile(profile_name='eth_mock', bot_id='mybot02'))
+
+        rows = _rows(tree)
+
+        assert (rows['btc_mock.json'].data_broker_types, rows['btc_mock.json'].market_types) == (
+            ['mt5'], ['forex'])
+        assert rows['eth_mock.json'].data_broker_types == ['kraken_spot'], (
+            'no declaration means the broker it trades against')
 
     def test_a_broker_the_market_config_does_not_know_is_unknown_not_a_crash(self, tree):
         _write(tree / 'configs/scenario_sets/odd.json',

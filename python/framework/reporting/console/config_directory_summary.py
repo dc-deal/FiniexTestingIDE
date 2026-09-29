@@ -78,7 +78,7 @@ def render_config_directory_entry(detail: DirectoryDetailResponse, indent: str =
     print(f'{indent}  logic:       {", ".join(row.decision_logics) or "—"}')
     print(f'{indent}  workers:     {", ".join(row.workers) or "—"}')
     print(f'{indent}  markets:     {", ".join(row.market_types) or "—"}  '
-          f'({", ".join(row.broker_types) or "—"})')
+          f'({", ".join(row.data_broker_types) or "—"})')
     if row.kind == ConfigKind.AUTOTRADER_PROFILE:
         dry_run = {True: 'true', False: 'FALSE — real orders', None: 'broker default'}
         print(f'{indent}  bot:         {row.bot_id or "—"}  ·  adapter {row.adapter_type}  ·  '

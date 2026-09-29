@@ -207,9 +207,23 @@ class AutoTraderConfig:
         Returns:
             `scenario_settings.data_broker_type`, else `broker_type`
         """
-        if self.scenario_settings and self.scenario_settings.data_broker_type:
-            return self.scenario_settings.data_broker_type
-        return self.broker_type
+        declared = self.scenario_settings.data_broker_type if self.scenario_settings else ''
+        return AutoTraderConfig.resolve_data_broker_type(self.broker_type, declared)
+
+    @staticmethod
+    def resolve_data_broker_type(broker_type: str, declared: str) -> str:
+        """
+        The rule behind `get_data_broker_type`, for a reader that holds the RAW profile rather
+        than the loaded model — the configuration directory reads files without the loader.
+
+        Args:
+            broker_type: The profile's execution broker
+            declared: Its `scenario_settings.data_broker_type`, '' when absent
+
+        Returns:
+            `declared`, else `broker_type`
+        """
+        return declared or broker_type
 
     def get_data_sentiment_type(self) -> str:
         """

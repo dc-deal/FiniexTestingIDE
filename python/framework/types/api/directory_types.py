@@ -44,7 +44,9 @@ class DirectoryRow(BaseModel):
             (a profile is one unit)
         scenarios_enabled: The ones that would run
         symbols: Distinct symbols of the enabled scenarios
-        broker_types: Distinct data broker types of the enabled scenarios
+        data_broker_types: Distinct data broker types of the enabled scenarios — the brokers
+            whose archives they read (a profile's `scenario_settings.data_broker_type`, else its
+            `broker_type`)
         market_types: What those brokers are (`crypto`, `forex`, `unknown` for a broker the
             market config does not know)
         decision_logics: Distinct decision logic types after the per-scenario cascade
@@ -74,7 +76,7 @@ class DirectoryRow(BaseModel):
     scenarios_declared: int = 0
     scenarios_enabled: int = 0
     symbols: List[str] = []
-    broker_types: List[str] = []
+    data_broker_types: List[str] = []
     market_types: List[str] = []
     decision_logics: List[str] = []
     workers: List[str] = []
@@ -95,7 +97,7 @@ class DirectoryScenario(BaseModel):
     Args:
         name: The scenario's name
         symbol: Its symbol
-        broker_type: Its data broker type
+        data_broker_type: Its data broker type
         market_type: What that broker is
         start: Its window start as written
         end: Its window end as written, '' when open
@@ -105,7 +107,7 @@ class DirectoryScenario(BaseModel):
     """
     name: str
     symbol: str = ''
-    broker_type: str = ''
+    data_broker_type: str = ''
     market_type: str = ''
     start: str = ''
     end: str = ''

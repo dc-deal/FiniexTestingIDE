@@ -24,6 +24,7 @@ real one reads (`_Roots`), so nothing here reads the operator's files.
 | `test_a_scenario_set_counts_its_disabled_scenarios_as_declared` | declared 3, enabled 2; symbols, brokers and market types come from the ENABLED scenarios |
 | `test_the_strategy_is_the_one_the_cascade_resolves` | a scenario overriding its decision logic shows both — through the loader's own `ScenarioCascade.merge_strategy_config` |
 | `test_a_profile_is_one_unit_with_its_live_facts` | bot id, adapter, declared `dry_run`; no adapter means the loader's default `mock`, no `dry_run` means the broker decides; the `configs/` sub-folder is recorded |
+| `test_a_mock_profile_names_the_broker_whose_archive_it_replays` | a profile's `data_broker_types` follows `scenario_settings.data_broker_type` where declared, else its `broker_type` — the rule `AutoTraderConfig.get_data_broker_type` applies to the loaded config |
 | `test_a_broker_the_market_config_does_not_know_is_unknown_not_a_crash` | market type `unknown` |
 
 ### `TestAFileBeingEditedIsARowNotAnError`

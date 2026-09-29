@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 15
+API_CONTRACT_VERSION = 16
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -31,15 +31,8 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'reports/runs: every run says what it DID — `results`, one entry per account currency '
-    '(`currency`, `net_pnl`, `total_trades`, keyed by `results_key`), null when the ledger holds '
-    'nothing for the run and [] when it closed without figures; plus `run_outcome` and the counts '
-    '`error_count`, `warning_count` (Tier 1) and `log_warning_count` (Tier 2), null where not recorded',
-    'reports/runs/{run_id}/warnings-errors: `outcome` carries the same three counts, counted once '
-    'the same way in both pipelines; null on an artifact written before them. Its `run_outcome` is '
-    'typed as the four values — the JSON is unchanged, the schema now names them',
-    'directory: every row carries `last_run_figures` — what its newest run did, the same figures '
-    'the run list carries; null when there is no run or the ledger holds nothing for it',
-    'sweeps/{sweep_id}: `key` is ["run_id", "currency"] — the ranked rows are folded per run and '
-    'currency, and the per-period key it declared before did not describe them',
+    "directory: a row's `broker_types` is `data_broker_types` — the brokers whose archives its "
+    'scenarios read, the same name the run reports use since contract 14. For a profile it follows '
+    '`scenario_settings.data_broker_type` where one is declared, else its `broker_type`',
+    "directory/{file}: a scenario's `broker_type` is `data_broker_type`, for the same reason",
 ]

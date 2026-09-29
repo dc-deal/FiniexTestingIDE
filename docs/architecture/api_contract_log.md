@@ -26,6 +26,19 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 16 — 2026-09-29 (viewer#21)
+
+The directory names its brokers the way the run reports do, so one word means one thing across the
+API.
+
+- `GET /api/v1/directory` and `…/directory/{file}`: a row's `broker_types` is `data_broker_types` —
+  the brokers whose archives its scenarios read. For an AutoTrader profile it follows
+  `scenario_settings.data_broker_type` where one is declared, else the profile's `broker_type`: a
+  mock session may replay another broker's archive than the one it trades against, and the old
+  field named the trading broker.
+- `GET /api/v1/directory/{file}`: a scenario's `broker_type` is `data_broker_type`, the name its
+  run's `scenario-details` rows have carried since contract 14.
+
 ## Version 15 — 2026-09-29 (viewer#21)
 
 The run list says what each run DID, in the one request that lists it — so a consumer choosing which

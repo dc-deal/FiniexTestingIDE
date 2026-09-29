@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.api.directory_types import DirectoryRow, DirectoryScenario
+from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.config_directory_types import (
     ConfigKind,
     ConfigReadStatus,
@@ -140,13 +141,13 @@ def read_scenarios(path: Path, market_type_of: MarketTypeOf) -> List[DirectorySc
         return []
     entries = []
     for scenario, strategy in ((s, _merged_strategy(global_strategy, s)) for s in scenarios):
-        broker_type = _text(scenario.get('data_broker_type'))
+        data_broker_type = _text(scenario.get('data_broker_type'))
         max_ticks = scenario.get('max_ticks')
         entries.append(DirectoryScenario(
             name=_text(scenario.get('scenario_name')),
             symbol=_text(scenario.get('symbol')),
-            broker_type=broker_type,
-            market_type=market_type_of(broker_type) if broker_type else '',
+            data_broker_type=data_broker_type,
+            market_type=market_type_of(data_broker_type) if data_broker_type else '',
             start=_text(scenario.get('start_date')),
             end=_text(scenario.get('end_date')),
             max_ticks=max_ticks if isinstance(max_ticks, int) else None,
@@ -173,14 +174,14 @@ def _scenario_set_fields(data: Dict[str, Any], market_type_of: MarketTypeOf) -> 
     global_strategy, scenarios = _scenario_parts(data)
     enabled = [scenario for scenario in scenarios if scenario.get('enabled', True)]
     strategies = [_merged_strategy(global_strategy, scenario) for scenario in enabled]
-    broker_types = _distinct(scenario.get('data_broker_type') for scenario in enabled)
+    data_broker_types = _distinct(scenario.get('data_broker_type') for scenario in enabled)
     return dict(
         name=name,
         scenarios_declared=len(scenarios),
         scenarios_enabled=len(enabled),
         symbols=_distinct(scenario.get('symbol') for scenario in enabled),
-        broker_types=broker_types,
-        market_types=_distinct(market_type_of(broker) for broker in broker_types),
+        data_broker_types=data_broker_types,
+        market_types=_distinct(market_type_of(broker) for broker in data_broker_types),
         decision_logics=_distinct(strategy.get('decision_logic_type') for strategy in strategies),
         workers=_distinct(worker for strategy in strategies
                           for worker in _worker_types(strategy)),
@@ -205,13 +206,17 @@ def _profile_fields(data: Dict[str, Any], market_type_of: MarketTypeOf) -> Dict[
     if not isinstance(symbol, str) or not isinstance(broker_type, str):
         raise ConfigFileUnreadable('`symbol` and `broker_type` must be strings')
     dry_run = data.get('dry_run')
+    settings = data.get('scenario_settings')
+    declared = settings.get('data_broker_type') if isinstance(settings, dict) else ''
+    data_broker_type = AutoTraderConfig.resolve_data_broker_type(
+        broker_type, declared if isinstance(declared, str) else '')
     return dict(
         name=_text(data.get('profile_name')),
         scenarios_declared=1,
         scenarios_enabled=1,
         symbols=[symbol],
-        broker_types=[broker_type],
-        market_types=[market_type_of(broker_type)],
+        data_broker_types=[data_broker_type],
+        market_types=[market_type_of(data_broker_type)],
         decision_logics=_distinct([strategy.get('decision_logic_type')]),
         workers=_distinct(_worker_types(strategy)),
         bot_id=_text(data.get('bot_id')),
