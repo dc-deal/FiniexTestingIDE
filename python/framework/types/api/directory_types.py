@@ -10,6 +10,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
+from python.framework.types.api.report_types import RunListFigures
 from python.framework.types.config_directory_types import (
     ConfigKind,
     ConfigOrigin,
@@ -37,7 +38,7 @@ class DirectoryRow(BaseModel):
         status: `readable` or `unreadable` (it does not parse, or its name is also a
             configuration of the other kind); never a validation verdict
         reason: Why it is unreadable, '' otherwise
-        name: The scenario set's `scenario_set_name`, or the profile's `name`
+        name: The scenario set's `scenario_set_name`, or the profile's `profile_name`
         modified_at: When the file last changed, ISO-8601 UTC — a file being edited shows here
         scenarios_declared: Every scenario the file names, `enabled: false` ones included
             (a profile is one unit)
@@ -56,6 +57,9 @@ class DirectoryRow(BaseModel):
             no longer count)
         last_run_at: Start of the newest of them, '' when none
         last_run_id: Its run id, '' when none
+        last_run_figures: What that newest run DID, as the run-results ledger recorded it — the
+            same figures the run list carries; None when there is no run or the ledger holds
+            nothing for it
         shadowed: Origins of same-named files this one wins over — why an edit elsewhere does not
             take effect
     """
@@ -80,6 +84,7 @@ class DirectoryRow(BaseModel):
     run_count: int = 0
     last_run_at: str = ''
     last_run_id: str = ''
+    last_run_figures: Optional[RunListFigures] = None
     shadowed: List[ConfigOrigin] = []
 
 

@@ -14,6 +14,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from python.framework.types.api.report_types import RunSummaryCurrency
+from python.framework.types.run_outcome_types import RunOutcome
 
 
 @dataclass
@@ -123,6 +124,13 @@ class RunProvenance:
     # the ledger is countable from the rows carrying this `sweep_id`, so the pair says whether
     # the search completed — the same self-checking shape as a control total (§48).
     trial_count: int = 1
+    # How the run ENDED and what its channels held — taken from the warnings-errors outcome, which
+    # counts them once for both pipelines. None when no report was handed over: not counted,
+    # never zero.
+    run_outcome: Optional[RunOutcome] = None
+    error_count: Optional[int] = None       # ERROR records in the error pot
+    warning_count: Optional[int] = None     # Tier-1 findings (validator-produced)
+    log_warning_count: Optional[int] = None # Tier-2 WARNING records in the log pot
 
 
 class PeriodCloseReason(Enum):

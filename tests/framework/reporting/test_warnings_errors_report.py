@@ -293,6 +293,41 @@ class TestBuildFromSession:
         assert report.outcome.operator_interrupted is False
 
 
+class TestTheCountsAreOneDefinition:
+    """
+    The outcome counts each channel once, the same way in both pipelines. The warning ROWS cannot
+    be counted instead: the simulation summarizes its whole log pot in one row, the AutoTrader
+    writes a row per entry — so the same pot reads as 1 row there and 2 here.
+    """
+
+    _POT = [_record(LogLevel.WARNING, 'w1'), _record(LogLevel.WARNING, 'w2'),
+            _record(LogLevel.ERROR, 'e1'), _record(LogLevel.INFO, 'i1')]
+
+    @staticmethod
+    def _advisory() -> ValidationResult:
+        return ValidationResult('run', [ValidationFinding(
+            severity=Severity.WARNING, check='debug_mode', domain=ValidationDomain.SETUP,
+            message='DEBUG MODE', scope='run')])
+
+    def test_the_same_pot_counts_alike_in_both_pipelines(self):
+        batch = build_warnings_errors_report_from_batch(_RUN_ID, _batch(
+            [_result('s1', 0, buffer=list(self._POT))], [_scenario('s1', 0, 'BTCUSD')],
+            batch_validation_result=[self._advisory()]))
+        session = build_warnings_errors_report_from_session(_RUN_ID, AutoTraderResult(
+            session_logger_buffer=list(self._POT),
+            session_validation_result=[self._advisory()]), 'p', 'BTCUSD')
+
+        counted = [(r.outcome.error_count, r.outcome.warning_count, r.outcome.log_warning_count)
+                   for r in (batch, session)]
+        assert counted == [(1, 1, 2), (1, 1, 2)]
+        assert len(batch.warnings) != len(session.warnings)   # why the rows are not the count
+
+    def test_a_clean_run_counts_zero_rather_than_nothing(self):
+        report = build_warnings_errors_report_from_session(_RUN_ID, AutoTraderResult(), 'p', 'BTCUSD')
+        assert (report.outcome.error_count, report.outcome.warning_count,
+                report.outcome.log_warning_count) == (0, 0, 0)
+
+
 class TestRender:
     def _render(self, report: WarningsErrorsReport) -> str:
         buf = io.StringIO()

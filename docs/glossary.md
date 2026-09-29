@@ -132,6 +132,10 @@ every order validated by the venue and never placed, fills simulated locally. A 
 called a dry run, although the `dry_run` flag reads true for it too. To be renamed *paper* (#304).
 See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 
+**error count** (`error_count`) — The ERROR records in a run's error pot. A unit that failed
+without logging an error shows in the *run outcome*, not here. See
+[Warnings & Errors](architecture/warnings_errors_tiers.md).
+
 **execution time** — How long a run or one of its units took on the *wall clock*:
 `execution_time_ms` for a scenario, `execution_time_s` for a whole backtest run. It says nothing
 about how much market time was processed — that is the *tick timespan*.
@@ -173,6 +177,9 @@ exports as it goes. Here *live* means "as it happens", which is why the code und
 
 **live transport** — Signals arriving over the network from the producer, as opposed to a mounted
 archive. See [Signal Data Source](data_pipeline/signal_data_source.md).
+
+**log warning count** (`log_warning_count`) — The WARNING records in a run's log pot, Tier 2 —
+ignorable by design. Not the *warning count*. See [Warnings & Errors](architecture/warnings_errors_tiers.md).
 
 **market clock** — Not a term here: see *canonical clock* for the clock a decision reads, and
 *tick timespan* for the market time a unit processed.
@@ -230,6 +237,11 @@ price: a resting limit, a resting stop. See [Pending Orders](architecture/pendin
 **run** — One execution with one run id and one `header.json`: a backtest, or one AutoTrader
 session. See [Batch Data Flow](architecture/batch_data_flow.md).
 
+**run outcome** (`run_outcome`) — How a run ended, graded once by its own pipeline: `success`,
+`finished_with_errors` (it completed, but errors were logged), `failed` (units failed, or the session
+ended in an emergency) or `crashed` (the process did not complete). The exit code says the same. See
+[Warnings & Errors](architecture/warnings_errors_tiers.md).
+
 **run type** (`run_type`, served as `group`) — The pipeline that produced a run: `simulation` or
 `autotrader`.
 
@@ -284,6 +296,10 @@ every run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run
 **wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can
 step backwards. Never the time a decision reads — that is the *canonical clock*.
+
+**warning count** (`warning_count`) — A run's Tier-1 findings: advisories a validator decided.
+Not the log's warnings, which are its *log warning count*. See
+[Warnings & Errors](architecture/warnings_errors_tiers.md).
 
 **worker** — A class, one per file, that computes named outputs every tick: an INDICATOR from bars
 and ticks, a SIGNAL from pre-collected external data. See [Worker Naming](user_guides/worker_naming_doc.md).

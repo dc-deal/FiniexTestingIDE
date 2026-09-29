@@ -27,13 +27,16 @@ from python.framework.config_directory.config_directory import (
 from python.framework.config_directory.config_directory_index import ConfigDirectoryIndex
 from python.framework.exceptions.config_name_errors import ConfigNameConflictError
 from python.framework.reporting.store.run_index import RunIndex
-from python.framework.types.api.report_types import RunHeader
+from python.framework.reporting.store.run_results_ledger import RunResultsLedger
+from python.framework.types.api.report_types import RunHeader, RunSummary, RunSummaryCurrency
 from python.framework.types.config_directory_types import (
     ConfigKind,
     ConfigOrigin,
     ConfigReadStatus,
 )
 from python.framework.types.log_layout_types import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
+from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.run_results_types import RunProvenance
 from python.framework.validators import config_name_validator
 from python.framework.validators.config_name_validator import (
     clear_config_name_memo,
@@ -69,6 +72,9 @@ class _Roots:
 
     def get_file_logging_config_object(self):
         return SimpleNamespace(run_index=self._root / 'runs' / 'runs_index.parquet')
+
+    def get_run_ledger_path(self) -> str:
+        return str(self._root / 'runs' / 'ledger')
 
 
 def _set(name: str, scenarios: list, strategy: dict = None) -> dict:
@@ -383,3 +389,35 @@ class TestTheRunsAreJoinedFromTheRunIndex:
 
     def test_an_unknown_file_has_no_detail(self, tree):
         assert _directory(tree).detail('nope.json') is None
+
+    def test_the_newest_run_says_what_it_did(self, tree):
+        """The run list's own ledger join, for the newest run of each file."""
+        _write(tree / 'configs/scenario_sets/my_set.json', _set('my_set', [_scenario('a')]))
+        _write(tree / 'configs/scenario_sets/unbooked.json', _set('unbooked', [_scenario('a')]))
+        self._run(tree, '20260925_080000_aaaaaaaa', RUN_TYPE_SIMULATION, 'my_set.json', 8)
+        self._run(tree, '20260925_090000_bbbbbbbb', RUN_TYPE_SIMULATION, 'unbooked.json', 9)
+        RunResultsLedger(tree / 'runs' / 'ledger').append(
+            RunSummary(run_id='20260925_080000_aaaaaaaa', currencies=[RunSummaryCurrency(
+                currency='USD', net_pnl=12.5, profit_factor=0.0, win_rate=0.0,
+                account_max_drawdown=0.0, total_fees=0.0, gross_profit=0.0, gross_loss=0.0,
+                total_trades=4, winning_trades=0, losing_trades=0, expectancy=0.0,
+                avg_win_r=0.0, avg_loss_r=0.0, r_trade_count=0)],
+                orders_sent=0, orders_executed=0, orders_rejected=0, sl_tp_triggered=0,
+                unit_count=1),
+            RunProvenance(
+                param_hash='h', status='ok', error=None, run_id='20260925_080000_aaaaaaaa',
+                run_timestamp=datetime(2026, 9, 25, 8, tzinfo=timezone.utc),
+                scenario_set_name='my_set', app_version='1.4.0', git_commit='abc', git_branch='dev',
+                git_dirty=False, decision_logic_type='CORE/aggressive_trend', decision_version='1',
+                worker_versions={}, strategy_config_json='{}', symbols=['BTCUSD'],
+                data_broker_type='kraken_spot', run_outcome=RunOutcome.SUCCESS, error_count=0,
+                warning_count=1, log_warning_count=3))
+
+        rows = _rows(tree)
+
+        figures = rows['my_set.json'].last_run_figures
+        assert [(r.currency, r.net_pnl, r.total_trades) for r in figures.results] == [
+            ('USD', 12.5, 4)]
+        assert (figures.run_outcome, figures.warning_count) == (RunOutcome.SUCCESS, 1)
+        # A run the ledger does not know says nothing, rather than a clean zero.
+        assert rows['unbooked.json'].last_run_figures is None

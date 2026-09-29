@@ -201,8 +201,16 @@ from what it summarises.
 `decision_logic_type` · `decision_version` · `worker_versions` · `strategy_config_json` (full resolved
 strategy_config) · `symbols` · `data_broker_type` · `currency` · the `RunSummary` KPIs (`net_pnl`,
 `expectancy`, `profit_factor`, `win_rate`, `max_drawdown`, trade / order counts …) · `signal_fresh_ratio` ·
-`trial_count` · `records_pruned_at`.
+`trial_count` · `records_pruned_at` · `run_outcome` · `error_count` · `warning_count` ·
+`log_warning_count`.
 Typed read: `read_rows() -> List[RunResultRow]` (the JSON columns parsed; what the analysis + API consume).
+
+`run_outcome` and the three counts say how the run ended and what its warnings-errors channels held,
+taken at its close from the outcome the report counted once for both pipelines — so the run list can
+say whether a run is worth opening without opening it. They are one value per run, repeated on each of
+its rows, and fold by identity: across runs a combined row has no single outcome, and summing a count
+every period row repeats would multiply it. None on a row written before the columns existed means
+not recorded, never a clean run.
 
 `signal_fresh_ratio` (#433) is the run's weakest SIGNAL channel — the share of ticks whose signal was
 fresh, minimum over all scenarios; empty when no SIGNAL worker ran. It is not a KPI to rank by but the

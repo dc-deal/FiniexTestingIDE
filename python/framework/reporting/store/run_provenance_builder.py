@@ -44,6 +44,7 @@ from python.framework.types.log_layout_types import (
     RUN_TYPE_SIMULATION,
 )
 from python.framework.types.run_origin_types import CodeIdentity, ComponentRole
+from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_results_types import RunProvenance, SweepContext
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.scenario.scenario_set import ScenarioSet
@@ -147,6 +148,7 @@ def build_run_provenance(
         trial_count=sweep_context.trial_count if sweep_context else 1,
         run_type=RUN_TYPE_SIMULATION,
         **consumption_record(scenarios),
+        **_run_counts(warnings_errors_report),
     )
 
 
@@ -211,7 +213,7 @@ def build_run_provenance_from_session(
         worker_versions=worker_versions,
         strategy_config_json=json.dumps(strategy_config, sort_keys=True),
         symbols=[config.symbol],
-        data_broker_type=config.broker_type,
+        data_broker_type=config.get_data_broker_type(),
         # A mock session REPLAYS the archive, so it records what it read exactly as a backtest
         # does. It used to be stamped as a stream like every AutoTrader session, which recorded
         # "a socket, nothing read" for sessions that had read tick files. Its `price_bases` is
@@ -236,6 +238,7 @@ def build_run_provenance_from_session(
         bot_id=config.bot_id,
         profile_hash=_profile_fingerprint(config),
         run_type=RUN_TYPE_AUTOTRADER,
+        **_run_counts(warnings_errors_report),
     )
 
 
@@ -357,6 +360,29 @@ def consumption_record(scenarios: List[SingleScenario]) -> Dict[str, Any]:
         # other and a shared count would describe neither.
         'price_bases': joined_distinct(bases),
     }
+
+
+def _run_counts(report: Optional[WarningsErrorsReport]) -> Dict[str, Any]:
+    """
+    The run's outcome and channel counts, as the warnings-errors report counted them.
+
+    Read from the outcome rather than re-counted from the rows: the two pipelines shape their
+    warning rows differently, and the report is where both were counted the same way.
+
+    Args:
+        report: The run's warnings/errors report (None → nothing counted)
+
+    Returns:
+        The four RunProvenance fields, None throughout when there is no report
+    """
+    if report is None:
+        return {'run_outcome': None, 'error_count': None,
+                'warning_count': None, 'log_warning_count': None}
+    outcome = report.outcome
+    return {'run_outcome': RunOutcome(outcome.run_outcome) if outcome.run_outcome else None,
+            'error_count': outcome.error_count,
+            'warning_count': outcome.warning_count,
+            'log_warning_count': outcome.log_warning_count}
 
 
 def _run_status(report: Optional[WarningsErrorsReport]) -> Tuple[str, Optional[str]]:

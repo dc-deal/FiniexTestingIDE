@@ -223,7 +223,9 @@ data/runtime/config_directory/
   nothing it has to write.
 - **The run figures are not in it.** They are joined at serve time from the run index, matched on
   `config_snapshot` (the source file name, in both pipelines) and the run type, so a run that just
-  started counts at once — and deleting this cache loses nothing.
+  started counts at once — and deleting this cache loses nothing. What the newest of those runs DID
+  comes from the run-results ledger through the run list's own join, so the directory and the run
+  list cannot disagree about a run.
 - **`derived_from` is None on purpose:** its sources are hand-written configuration files, which
   are not a store.
 

@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, computed_field
 # row type would be a hand-maintained copy of it, and a copy is what silently drops a field.
 from python.framework.types.persistence_types import RiskBaseline
 from python.framework.types.run_origin_types import CodeIdentity, RunOrigin
+from python.framework.types.run_outcome_types import RunOutcome
 
 
 # WHAT MAKES ONE ROW of each deployment view unique. Declared once, read by the response model
@@ -716,8 +717,34 @@ class RunConfigSnapshot(BaseModel):
     config: Dict[str, Any]
 
 
+class RunResultFigures(BaseModel):
+    """What one run earned and did in ONE account currency, folded from its booking periods."""
+    currency: str
+    net_pnl: float
+    total_trades: int
+
+
+class RunListFigures(BaseModel):
+    """
+    What a run DID, as the run-results ledger recorded it at the run's close — the part of a run
+    list row that comes from the ledger rather than from the run index.
+
+    Each figure is folded from the run's booking periods by the ledger's own declared reductions
+    (`COLUMN_REDUCTION`), never summed here, and never across currencies.
+    """
+    # One entry per account currency. EMPTY when the run closed without figures — every scenario
+    # refused before it ran leaves only the ledger's one figureless error row.
+    results: list[RunResultFigures] = Field(default_factory=list)
+    # How the run ended and what its channels held; None on a row recorded before contract 15 —
+    # not recorded, never a clean run.
+    run_outcome: Optional[RunOutcome] = None
+    error_count: Optional[int] = None
+    warning_count: Optional[int] = None
+    log_warning_count: Optional[int] = None
+
+
 class RunInfo(BaseModel):
-    """One discoverable run in the report store — identity only, no report content."""
+    """One discoverable run in the report store — identity, plus what the ledger says it did."""
     run_id: str
     # The run's TYPE, which is also where its logs live (file_logging.run_logs):
     # 'simulation' (a backtest — standalone, or one combination of a sweep) | 'autotrader' (an
@@ -767,6 +794,16 @@ class RunInfo(BaseModel):
     # The market window each unit was DECLARED to cover — what a date filter asks, where
     # `start_time` is only when the run was executed. None as above.
     data_windows: Optional[list[DataWindow]] = None
+    # What the run DID, joined from the run-results ledger (contract 15) so the list needs no
+    # request per run. `results` has THREE states: None — the ledger holds nothing for this run
+    # (still going, died before its close, or never commissioned to report; read it with
+    # `reporting`); [] — it closed without figures; a list — one entry per account currency,
+    # keyed by `currency`. The outcome and the counts are None where not recorded.
+    results: Optional[list[RunResultFigures]] = None
+    run_outcome: Optional[RunOutcome] = None
+    error_count: Optional[int] = None       # ERROR records in the error pot
+    warning_count: Optional[int] = None     # Tier-1 findings (validator-produced)
+    log_warning_count: Optional[int] = None # Tier-2 WARNING records in the log pot
 
     @computed_field
     @property
@@ -791,6 +828,9 @@ class RunListResponse(BaseModel):
     field folds rows together silently, in the direction that loses data (§49).
     """
     key: list[str] = ['run_id']
+    # What makes one entry of a run's `results` unique — a run with two account currencies has
+    # two entries, and they must never be folded into one.
+    results_key: list[str] = ['currency']
     runs: list[RunInfo]
     count: int
 
@@ -1053,6 +1093,13 @@ class RunResultRow(BaseModel):
     # distinction is the whole point of the field, because a result picked as the best of 500 and
     # a result nobody compared cannot be discounted alike.
     trial_count: int | None = None
+    # How the run ENDED and what its channels held, stamped at its close from the warnings-errors
+    # outcome — the same value on every row of one run. None on a fragment written before the
+    # columns existed: not recorded, never a clean run.
+    run_outcome: RunOutcome | None = None
+    error_count: int | None = None          # ERROR records in the error pot
+    warning_count: int | None = None        # Tier-1 findings (validator-produced)
+    log_warning_count: int | None = None    # Tier-2 WARNING records in the log pot
     # WHEN this row's run directory was deleted by a prune, empty while it was not. The row
     # outlives its evidence on purpose; this is what stops it from silently claiming its figures
     # can still be checked against the records they came from (§48).
@@ -1179,10 +1226,10 @@ class SweepDetailResponse(BaseModel):
     Ranked, not alphabetical: the question a sweep answers is which combination won, and each
     row carries its `run_id` so a consumer can open that run through the report routes.
     """
-    # Ledger rows, unaggregated — and since #537 a run writes one row per BOOKING PERIOD, so
-    # this is finer than one row per combination whenever a scenario window spans more than one
-    # trading day. See the ranking note in the sweeps router.
-    key: list[str] = list(LEDGER_ROW_KEY)
+    # One row per combination and account currency: the ranking FOLDS each run's booking periods
+    # back into one row per run × currency before it sorts (`optimization_analysis._scope`), so
+    # the rows are keyed by the session key, not by the ledger's per-period row key.
+    key: list[str] = list(SESSION_KEY)
     sweep_id: str
     objective: str
     maximize: bool
@@ -2125,6 +2172,13 @@ class WarningsErrorsOutcome(BaseModel):
     # An operator Ctrl+C also arrives as shutdown_mode='emergency', so the mode alone cannot
     # separate a deliberate stop from a crash — this flag is the discriminator get_outcome() uses.
     operator_interrupted: bool = False
+    # How many entries each channel held, counted HERE the same way in both pipelines — the rows
+    # above cannot be counted instead, because the simulation summarizes its whole log pot in ONE
+    # warning row while the AutoTrader writes a row per entry. None on an artifact written before
+    # the counts existed: not counted, never zero.
+    error_count: int | None = None          # ERROR records in the error pot
+    warning_count: int | None = None        # Tier-1 findings (validator-produced)
+    log_warning_count: int | None = None    # Tier-2 WARNING records in the log pot
 
 
 class WarningsErrorsReport(RunScopedReport):

@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 14
+API_CONTRACT_VERSION = 15
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -31,15 +31,14 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'reports/runs/{run_id}/portfolio and /scenario-details: the broker a unit read its ticks from '
-    'is `data_broker_type` (was `data_source`) — the same key the scenario configuration uses — '
-    'and the portfolio row\'s sentiment source is `data_sentiment_type` (was `sentiment_source`). '
-    'The stored runs were migrated',
-    'reports/runs/{run_id}/scenario-details: the per-broker roll-up is `data_brokers` (was '
-    '`data_sources`), each row keyed by `data_broker_type` (was `broker_type`); `keys` says so',
-    'a stale-data stress event names the input it makes stale in `stale_data_source` (was '
-    '`data_source`) wherever a configuration is served; a run recorded earlier serves its '
-    'configuration as it was run',
-    'every GET route answers HEAD as well — the same status and headers, no body. It was refused '
-    'with 405',
+    'reports/runs: every run says what it DID — `results`, one entry per account currency '
+    '(`currency`, `net_pnl`, `total_trades`, keyed by `results_key`), null when the ledger holds '
+    'nothing for the run and [] when it closed without figures; plus `run_outcome` and the counts '
+    '`error_count`, `warning_count` (Tier 1) and `log_warning_count` (Tier 2), null where not recorded',
+    'reports/runs/{run_id}/warnings-errors: `outcome` carries the same three counts, counted once '
+    'the same way in both pipelines; null on an artifact written before them',
+    'directory: every row carries `last_run_figures` — what its newest run did, the same figures '
+    'the run list carries; null when there is no run or the ledger holds nothing for it',
+    'sweeps/{sweep_id}: `key` is ["run_id", "currency"] — the ranked rows are folded per run and '
+    'currency, and the per-period key it declared before did not describe them',
 ]

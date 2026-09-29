@@ -415,7 +415,7 @@ class TestReportRuns:
 
     def test_list_runs(self, client):
         store = MagicMock()
-        store.list_runs.return_value = [
+        store.list_runs_with_results.return_value = [
             RunInfo(run_id='20260615_130000', group='autotrader', name='my_profile'),
             RunInfo(run_id='20260615_120000', group='scenario_sets', name='my_set'),
         ]
@@ -432,11 +432,11 @@ class TestReportRuns:
     def test_no_persisted_run_is_not_an_error(self, client):
         """An empty store is a legitimate empty index, never a 404."""
         store = MagicMock()
-        store.list_runs.return_value = []
+        store.list_runs_with_results.return_value = []
         with patch('python.api.endpoints.reports_router.ReportStore', return_value=store):
             r = client.get('/api/v1/reports/runs')
         assert r.status_code == 200
-        assert r.json() == {'key': ['run_id'], 'runs': [], 'count': 0}
+        assert r.json() == {'key': ['run_id'], 'results_key': ['currency'], 'runs': [], 'count': 0}
 
 
 class TestSweeps:

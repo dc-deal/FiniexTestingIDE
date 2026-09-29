@@ -30,11 +30,13 @@ from python.framework.config_directory.config_directory_builder import (
 from python.framework.config_directory.config_directory_discovery import discover_config_files
 from python.framework.config_directory.config_directory_index import ConfigDirectoryIndex
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.reporting.store.run_list_figures import get_run_list_figures
 from python.framework.types.api.directory_types import (
     DirectoryDetailResponse,
     DirectoryListResponse,
     DirectoryRow,
 )
+from python.framework.types.api.report_types import RunListFigures
 from python.framework.types.config_directory_types import (
     ConfigKind,
     ConfigReadStatus,
@@ -194,7 +196,9 @@ class ConfigDirectory:
         served = [(candidate, _with_name_conflict(candidate, row)) for candidate, row in entries
                   if row.status != ConfigReadStatus.NOT_A_CONFIG]
         runs = self._run_index.read()
-        rows = [self._with_runs(row.model_copy(update={'shadowed': candidate.shadowed}), runs)
+        figures = get_run_list_figures(Path(self._app_config.get_run_ledger_path()))
+        rows = [self._with_runs(row.model_copy(update={'shadowed': candidate.shadowed}), runs,
+                                figures)
                 for candidate, row in served]
         rows.sort(key=lambda row: row.modified_at, reverse=True)
         return rows, {candidate.path.name: candidate.path for candidate, _ in served}
@@ -231,16 +235,18 @@ class ConfigDirectory:
                         & (runs['run_type'] == _RUN_TYPE_OF[row.kind])]
         return matching.sort_values('start_time', ascending=False)
 
-    def _with_runs(self, row: DirectoryRow, runs: pd.DataFrame) -> DirectoryRow:
+    def _with_runs(self, row: DirectoryRow, runs: pd.DataFrame,
+                   figures: Dict[str, RunListFigures]) -> DirectoryRow:
         """
         A row with its run figures joined in.
 
         Args:
             row: The cached row
             runs: The run index
+            figures: What the run-results ledger recorded per run id — the run list's own join
 
         Returns:
-            The row with run_count, last_run_at and last_run_id
+            The row with run_count, last_run_at, last_run_id and what that run did
         """
         matching = self._runs_of(runs, row)
         if matching.empty:
@@ -248,4 +254,5 @@ class ConfigDirectory:
         newest = matching.iloc[0]
         return row.model_copy(update={'run_count': len(matching),
                                       'last_run_at': str(newest['start_time']),
-                                      'last_run_id': str(newest['run_id'])})
+                                      'last_run_id': str(newest['run_id']),
+                                      'last_run_figures': figures.get(str(newest['run_id']))})

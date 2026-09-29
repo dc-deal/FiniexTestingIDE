@@ -109,7 +109,11 @@ class RunLedgerIndex(AbstractStoreIndex):
     # `run_type` reads `autotrader` where it read `live`. A RENAME, unlike every step above: the
     # fragments on disk were rewritten once by `python/experiments/migrate_run_vocabulary/`, and
     # an index built before reports itself out of date.
-    LOGIC_VERSION: int = 13
+    #
+    # 13 → 14 (contract 15): `run_outcome`, `error_count`, `warning_count` and `log_warning_count`
+    # appended — how a run ended and what its warnings-errors channels held, so the run list can
+    # serve them from one read. An append like the ones above: an older fragment answers None.
+    LOGIC_VERSION: int = 14
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

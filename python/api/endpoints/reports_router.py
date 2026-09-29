@@ -96,12 +96,13 @@ def _missing_artifact(run_id: str, section: str) -> ApiException:
 @router.get('/reports/runs', response_model=RunListResponse)
 def list_runs() -> RunListResponse:
     """
-    Index of runs carrying persisted report artifacts, newest first.
+    Index of runs carrying persisted report artifacts, newest first, each with what the
+    run-results ledger recorded it did.
 
     Returns:
         The RunListResponse (empty list when no run has been persisted yet)
     """
-    runs: list[RunInfo] = ReportStore().list_runs()
+    runs: list[RunInfo] = ReportStore().list_runs_with_results()
     return RunListResponse(runs=runs, count=len(runs))
 
 

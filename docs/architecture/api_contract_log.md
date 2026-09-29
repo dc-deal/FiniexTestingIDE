@@ -26,6 +26,30 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 15 — 2026-09-29 (viewer#21)
+
+The run list says what each run DID, in the one request that lists it — so a consumer choosing which
+run to open no longer has to open them one by one.
+
+- `GET /api/v1/reports/runs`: every run carries `results`, one entry per account currency —
+  `currency`, `net_pnl`, `total_trades` — folded from its booking periods by the ledger's own declared
+  reductions and never summed across currencies; `results_key` is `["currency"]`. THREE states: null
+  when the run-results ledger holds nothing for the run (still going, died before its close, or
+  `reporting: none`), `[]` when it closed without figures, a list otherwise. Beside it `run_outcome`
+  (`success` | `finished_with_errors` | `failed` | `crashed`), `error_count` (ERROR records in the error
+  pot), `warning_count` (Tier-1 findings) and `log_warning_count` (Tier-2 WARNING records) — null where
+  not recorded, never zero. The stored runs were back-filled from their own warnings-errors artifacts.
+- `GET /api/v1/reports/runs/{run_id}/warnings-errors`: `outcome` carries the same three counts. They
+  are counted once, the same way in both pipelines; the warning ROWS are not a count, because a
+  backtest summarizes its whole Tier-2 pot in one row while an AutoTrader session writes one per entry.
+  Null on an artifact written before this version.
+- `GET /api/v1/directory` and `…/directory/{file}`: every row carries `last_run_figures` — what the
+  newest run started from that file did, exactly the figures the run list carries for it; null when
+  the file never ran or the ledger holds nothing for its newest run.
+- `GET /api/v1/sweeps/{sweep_id}`: `key` is `["run_id", "currency"]`. The ranking folds each run's
+  booking periods into one row per run and currency before it sorts, and the per-period key declared
+  until now did not describe the rows it served.
+
 ## Version 14 — 2026-09-29 (viewer#21)
 
 `data_source` meant two things: in a report, the broker a unit read its ticks from; in a stress

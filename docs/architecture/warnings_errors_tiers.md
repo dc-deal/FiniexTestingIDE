@@ -249,6 +249,12 @@ rendered to console / file / API identically:
   cannot separate a Ctrl+C from a crash, so a surface that carried only the mode would show
   'emergency' beside a run graded `SUCCESS` and have no way to explain it. The AutoTrader-only
   fields are `''` / `False` on a sim run — that means *not applicable*, never *unknown*.
+- The outcome also COUNTS the channels, once and the same way in both pipelines: `error_count` (ERROR
+  records in the error pot), `warning_count` (Tier-1 findings) and `log_warning_count` (Tier-2 WARNING
+  records). The rows cannot be counted instead — the simulation summarizes its whole Tier-2 pot in ONE
+  row, the AutoTrader writes one per entry, so the same pot reads as one row there and many here. None
+  on an artifact written before the counts existed: not counted, never zero. The run-results ledger
+  carries the same four values, which is how the run list serves them.
 
 `run_outcome` is stamped once at DERIVE from the pipeline's own result object
 (`BatchExecutionSummary.get_outcome()` / `AutoTraderResult.get_outcome()`), so the grading a

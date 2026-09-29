@@ -94,6 +94,11 @@ LEDGER_COLUMNS: List[str] = [
     # it, and a second encoding of a fact is the copy that eventually disagrees (§19).
     # `RunResultRow.run_kind` derives it instead.
     'run_type',
+    # How the run ENDED and what its warnings-errors channels held, from the outcome the report
+    # counted once for both pipelines — so a run list can say whether a run is worth opening
+    # without opening it. Run-level values, repeated on every row of the run. Appended, so older
+    # fragments read back None: not recorded, never a clean run.
+    'run_outcome', 'error_count', 'warning_count', 'log_warning_count',
     # WHEN this row was written, which is within seconds of when the run ENDED — the reports
     # are persisted at its close and the append is the last step. The ledger had no end of any
     # kind, and `SweepSummary.duration_s` says so in its own comment ("last - first run start,
@@ -178,6 +183,13 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     'bot_id': Reduction.IDENTITY,
     'profile_hash': Reduction.IDENTITY,
     'run_type': Reduction.IDENTITY,
+    # One run's outcome and counts, repeated on each of its rows — so they agree within a run.
+    # Across runs a combined row has no single outcome, and summing counts that every period row
+    # repeats would multiply them.
+    'run_outcome': Reduction.IDENTITY,
+    'error_count': Reduction.IDENTITY,
+    'warning_count': Reduction.IDENTITY,
+    'log_warning_count': Reduction.IDENTITY,
     # Every row of one sweep was selected from the same search, so the rows agree by
     # construction. Across sweeps the figure is not combinable at all — two searches of 500 are
     # not a search of 1000, and adding them would claim a selection nobody performed.
@@ -549,6 +561,11 @@ class RunResultsLedger:
             'profile_hash': p.profile_hash,
             'run_type': p.run_type,
             'trial_count': p.trial_count,
+            # A parquet column holds the enum's VALUE; reading it back restores the enum.
+            'run_outcome': p.run_outcome.value if p.run_outcome else None,
+            'error_count': p.error_count,
+            'warning_count': p.warning_count,
+            'log_warning_count': p.log_warning_count,
             # Empty at birth: the records exist, because the run that wrote this row just
             # produced them. Only `mark_records_pruned` ever fills it.
             'records_pruned_at': '',

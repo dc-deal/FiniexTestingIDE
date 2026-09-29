@@ -67,6 +67,7 @@ real one reads (`_Roots`), so nothing here reads the operator's files.
 | `test_each_file_counts_the_runs_of_its_own_pipeline` | matched on `config_snapshot` AND run type — an AutoTrader session naming a set's file is not a run of that set; a file that never ran counts 0 |
 | `test_the_detail_lists_its_scenarios_and_its_runs_newest_first` | scenarios read fresh with the cascade applied, run ids newest first |
 | `test_an_unknown_file_has_no_detail` | None, which the route turns into `config_file_not_found` |
+| `test_the_newest_run_says_what_it_did` | the newest run's figures, outcome and counts come from the ledger through the run list's own join; a run the ledger does not know carries None, never a clean zero |
 
 ### `test_config_directory_views.py`
 
