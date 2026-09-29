@@ -35,4 +35,7 @@ CHANGES: List[str] = [
     'scenarios read, the same name the run reports use since contract 14. For a profile it follows '
     '`scenario_settings.data_broker_type` where one is declared, else its `broker_type`',
     "directory/{file}: a scenario's `broker_type` is `data_broker_type`, for the same reason",
+    'reports/runs/{run_id}/warnings-errors: an artifact written before contract 15 carries the '
+    'three counts on `outcome` too, counted from its own rows — the values the run list serves; '
+    'null only where nothing recorded them',
 ]

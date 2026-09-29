@@ -38,6 +38,10 @@ API.
   field named the trading broker.
 - `GET /api/v1/directory/{file}`: a scenario's `broker_type` is `data_broker_type`, the name its
   run's `scenario-details` rows have carried since contract 14.
+- `GET /api/v1/reports/runs/{run_id}/warnings-errors`: an artifact written before contract 15 now
+  carries the three counts on `outcome` too — counted from its own rows, the values the run list
+  already served for that run. The shape is unchanged; what changed is that a stored run no longer
+  answers `null` here and a number there. `null` remains only where nothing recorded them.
 
 ## Version 15 — 2026-09-29 (viewer#21)
 

@@ -253,8 +253,10 @@ rendered to console / file / API identically:
   records in the error pot), `warning_count` (Tier-1 findings) and `log_warning_count` (Tier-2 WARNING
   records). The rows cannot be counted instead — the simulation summarizes its whole Tier-2 pot in ONE
   row, the AutoTrader writes one per entry, so the same pot reads as one row there and many here. None
-  on an artifact written before the counts existed: not counted, never zero. The run-results ledger
-  carries the same four values, which is how the run list serves them.
+  only where nothing recorded them, never zero: the artifacts written before the counts existed were
+  back-filled from their own rows, with the definition the builder applies. The run-results ledger
+  carries the same four values, which is how the run list serves them — so a run answers the same
+  numbers on both routes.
 
 `run_outcome` is stamped once at DERIVE from the pipeline's own result object
 (`BatchExecutionSummary.get_outcome()` / `AutoTraderResult.get_outcome()`), so the grading a

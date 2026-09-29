@@ -2174,8 +2174,10 @@ class WarningsErrorsOutcome(BaseModel):
     operator_interrupted: bool = False
     # How many entries each channel held, counted HERE the same way in both pipelines — the rows
     # above cannot be counted instead, because the simulation summarizes its whole log pot in ONE
-    # warning row while the AutoTrader writes a row per entry. None on an artifact written before
-    # the counts existed: not counted, never zero.
+    # warning row while the AutoTrader writes a row per entry. None only where nothing recorded
+    # them — never zero. The artifacts written before the counts existed were back-filled from
+    # their own rows (`python/experiments/backfill_run_counts.py`), which is why a stored run
+    # answers the same three numbers here as in the run list.
     error_count: int | None = None          # ERROR records in the error pot
     warning_count: int | None = None        # Tier-1 findings (validator-produced)
     log_warning_count: int | None = None    # Tier-2 WARNING records in the log pot

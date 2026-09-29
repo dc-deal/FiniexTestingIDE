@@ -1,11 +1,14 @@
 """
-Fill `run_outcome` and the three channel counts into ledger fragments written before the
-columns existed (contract 15).
+Fill `run_outcome` and the three channel counts into the records written before they existed
+(contract 15): the ledger fragments, and the warnings-errors artifact's own `outcome` — so the
+run list and the artifact of one run answer the same number.
 
 A single-use migration (§27), not a permanent code path: nothing imports it. The values come
 from the one place a finished run already recorded them — its own `io/warnings_errors.json` —
 and a run without that artifact (pruned, or never reported) keeps None: not recorded, never a
-guessed zero.
+guessed zero. Writing them into that same artifact adds nothing it did not already hold: they
+are its own rows, counted — the same definition the builder applies (verified 2026-09-29 against
+built reports of both pipelines), and every other byte of the file stays as it was written.
 
 The artifact's ROWS are counted, with one exception that is the reason the counts moved onto
 the outcome in the first place: a backtest summarizes its whole Tier-2 log pot in ONE row, so
@@ -14,15 +17,15 @@ project writes in exactly one place (`warnings_errors_report_builder._batch_warn
 artifact that already carries the counts on its outcome is taken as it stands.
 
 Usage:
-    python python/experiments/backfill_ledger_run_counts.py --preview
-    python python/experiments/backfill_ledger_run_counts.py
+    python python/experiments/backfill_run_counts.py --preview
+    python python/experiments/backfill_run_counts.py
 """
 
 import argparse
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
 
@@ -32,6 +35,11 @@ from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
 from python.framework.types.log_layout_types import IO_SUBDIR, RUN_TYPE_SIMULATION
 
 _COLUMNS = ('run_outcome', 'error_count', 'warning_count', 'log_warning_count')
+# The three the artifact's outcome gains; its `run_outcome` has always been there.
+_OUTCOME_COUNTS = ('error_count', 'warning_count', 'log_warning_count')
+# How every stored warnings-errors artifact is formatted — measured over all of them, so a
+# rewrite changes the three values and nothing else.
+_ARTIFACT_INDENT = 2
 _POT_SUMMARY = re.compile(r'^(\d+) warning\(s\) in \d+ scenario log\(s\)')
 
 
@@ -86,6 +94,47 @@ def _artifact(run_dirs: Dict[str, str], run_id: str) -> Optional[Dict[str, Any]]
     return json.loads(path.read_text(encoding='utf-8'))
 
 
+def _fill_artifacts(run_types: Dict[str, str], run_dirs: Dict[str, str],
+                    preview: bool) -> Tuple[int, int, int]:
+    """
+    Write the three counts into every stored warnings-errors artifact whose outcome lacks them.
+
+    Args:
+        run_types: run id → run type, out of the run index
+        run_dirs: run id → run directory, out of the run index
+        preview: List and write nothing
+
+    Returns:
+        (filled, already carrying them, without an artifact)
+    """
+    filled, already, missing = 0, 0, 0
+    for run_id, run_dir in run_dirs.items():
+        path = Path(run_dir) / IO_SUBDIR / 'warnings_errors.json'
+        if not path.exists():
+            missing += 1
+            continue
+        report = json.loads(path.read_text(encoding='utf-8'))
+        outcome = report.get('outcome')
+        if not isinstance(outcome, dict):
+            missing += 1
+            continue
+        if all(outcome.get(key) is not None for key in _OUTCOME_COUNTS):
+            already += 1
+            continue
+        counts = _counts(report, run_types.get(run_id, ''))
+        for key in _OUTCOME_COUNTS:
+            outcome[key] = counts[key]
+        filled += 1
+        print(f'  {"would fill" if preview else "filled"} {run_id}/{IO_SUBDIR}/{path.name}: '
+              f'{ {key: counts[key] for key in _OUTCOME_COUNTS} }')
+        if not preview:
+            temporary = path.with_suffix('.json.tmp')
+            temporary.write_text(json.dumps(report, indent=_ARTIFACT_INDENT, ensure_ascii=False),
+                                 encoding='utf-8')
+            temporary.replace(path)
+    return filled, already, missing
+
+
 def main() -> None:
     """Parse arguments and backfill."""
     parser = argparse.ArgumentParser(description='One-time ledger run-count backfill')
@@ -96,6 +145,7 @@ def main() -> None:
     index_path = Path(AppConfigManager().get_file_logging_config_object().run_index)
     index = pd.read_parquet(index_path) if index_path.exists() else pd.DataFrame()
     run_dirs = dict(zip(index.get('run_id', []), index.get('run_dir', [])))
+    run_types = dict(zip(index.get('run_id', []), index.get('run_type', [])))
     ledger_index = RunLedgerIndex(ledger, LEDGER_COLUMNS)
 
     filled, already, missing = 0, 0, 0
@@ -125,6 +175,12 @@ def main() -> None:
     print(f'  no artifact, left None      : {missing} fragment(s)')
     if filled and not args.preview:
         print(f'  rebuilt the ledger index ({ledger_index.rebuild()} rows)')
+
+    print('\n  warnings-errors artifacts:')
+    filled, already, missing = _fill_artifacts(run_types, run_dirs, args.preview)
+    print(f'\n  already carrying the counts : {already} artifact(s)')
+    print(f'  {"would fill" if args.preview else "filled"}                  : {filled} artifact(s)')
+    print(f'  no artifact, left as it is  : {missing} run(s)')
 
 
 if __name__ == '__main__':
