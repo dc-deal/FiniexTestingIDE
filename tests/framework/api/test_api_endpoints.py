@@ -540,6 +540,15 @@ class TestTheContractSaysWhatItIs:
         # a version mismatch and a credential failure look alike from outside.
         assert client.get('/api/v1/contract').status_code == 200
 
+    def test_head_answers_where_get_does(self, client):
+        # HTTP answers HEAD wherever it answers GET (RFC 9110): same status, same headers.
+        # FastAPI alone refused it with a 405, and a consumer reading only the contract header
+        # asks exactly this way.
+        for path in ('/api/v1/contract', '/api/v1/health', '/api/v1/timeframes'):
+            head = client.head(path)
+            assert head.status_code == client.get(path).status_code == 200
+            assert head.headers['X-Api-Contract'] == str(API_CONTRACT_VERSION)
+
     def test_the_log_opens_with_the_version_the_server_serves(self):
         # The server serves only the current version's lines; the log is the ONLY place the
         # older ones survive. A bump that skipped the log would leave a consumer several versions

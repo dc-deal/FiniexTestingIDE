@@ -293,6 +293,10 @@ It is a state to pass through, not one to stay in.
 
 ## Endpoints
 
+Every `GET` route below answers `HEAD` as well, the way HTTP expects: the same status and headers,
+`X-Api-Contract` included, and no body. FastAPI registers only the methods a route names, so a
+small middleware serves `HEAD` as the `GET` it asks about.
+
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/v1/health` | Server liveness — `status`, `version`, `started_at` (when this process started serving, ISO-8601 UTC, new on every restart) and `uptime_s` (seconds since, on the server's monotonic clock). OPEN, so it carries nothing a stranger could use — no commit, no host, no auth state |
@@ -316,7 +320,7 @@ It is a state to pass through, not one to stay in.
 | GET | `/api/v1/reports/runs/{run_id}/portfolio` | Portfolio report (per-unit full projection + per-currency aggregates) |
 | GET | `/api/v1/reports/runs/{run_id}/execution-stats` | Execution-stats report (per-unit order counts + summed totals) |
 | GET | `/api/v1/reports/runs/{run_id}/pending-orders` | Pending-orders report (per-unit lifecycle + latency + active orders) |
-| GET | `/api/v1/reports/runs/{run_id}/scenario-details` | Scenario-details report (per-scenario execution + signal metadata, sim-only) — the authority for which scenarios a run has, failed ones included; each row carries its `market_type`. `buy_signals` / `sell_signals` / `flat_signals` / `trades_requested` are `null` when nothing counted them — the decision tracker is off by default in the simulation (`performance_tracking.worker_decision_tracking`); how many trades a scenario CLOSED is `portfolio.units[].total_trades`, joined on `name`. `worker_count` is what the scenario declares |
+| GET | `/api/v1/reports/runs/{run_id}/scenario-details` | Scenario-details report (per-scenario execution + signal metadata, sim-only) — the authority for which scenarios a run has, failed ones included; each row carries its `data_broker_type` (the broker whose ticks it read, the key the bar routes are addressed by) and that broker's `market_type`, and `data_brokers` rolls the rows up per broker. `buy_signals` / `sell_signals` / `flat_signals` / `trades_requested` are `null` when nothing counted them — the decision tracker is off by default in the simulation (`performance_tracking.worker_decision_tracking`); how many trades a scenario CLOSED is `portfolio.units[].total_trades`, joined on `name`. `worker_count` is what the scenario declares |
 | GET | `/api/v1/reports/runs/{run_id}/run-summary` | Run-summary (cross-section KPIs: per-currency + global order counts) |
 | GET | `/api/v1/reports/runs/{run_id}/signal` | Signal-configuration report (per-source provenance + the run's decision basis: fresh / stale / blind ticks) |
 | GET | `/api/v1/reports/runs/{run_id}/worker-decision` | Worker/decision report (per-unit component stats) |

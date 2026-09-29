@@ -297,7 +297,6 @@ class VolatilityProfileAnalyzerCache:
                 b'symbol': analysis.symbol.encode(),
                 b'timeframe': analysis.timeframe.encode(),
                 b'market_type': analysis.market_type.value.encode(),
-                b'data_source': analysis.data_source.encode(),
                 b'start_time': analysis.start_time.isoformat().encode(),
                 b'end_time': analysis.end_time.isoformat().encode(),
                 b'total_days': str(analysis.total_days).encode(),
@@ -402,7 +401,7 @@ class VolatilityProfileAnalyzerCache:
                 timeframe=metadata.get(b'timeframe', b'M5').decode(),
                 market_type=MarketType(
                     metadata.get(b'market_type', b'forex').decode()),
-                data_source=metadata.get(b'data_source', b'').decode(),
+                broker_type=metadata.get(b'broker_type', b'').decode(),
                 start_time=datetime.fromisoformat(
                     metadata.get(b'start_time', b'').decode()),
                 end_time=datetime.fromisoformat(

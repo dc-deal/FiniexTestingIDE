@@ -90,7 +90,7 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         print()
         self._render_execution_results(renderer)
         print()
-        self._render_data_sources(renderer)
+        self._render_data_brokers(renderer)
         print()
         self._render_time_performance(renderer)
         print()
@@ -226,9 +226,9 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         if tracking_line:
             print(tracking_line)
 
-    def _render_data_sources(self, renderer: ConsoleRenderer):
+    def _render_data_brokers(self, renderer: ConsoleRenderer):
         """
-        Render the data-source roll-up — formatting only.
+        Render the data-broker roll-up — formatting only.
 
         The grouping and the market-type resolution both live in the builder now. This used to
         instantiate a config manager here and group the scenario rows itself, which the
@@ -239,23 +239,23 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         Args:
             renderer: Console renderer
         """
-        renderer.print_bold('DATA SOURCES')
+        renderer.print_bold('DATA BROKERS')
         renderer.print_separator(width=68)
 
-        for source in self._scenario_details.data_sources:
-            symbols_str = ', '.join(source.symbols)
+        for broker in self._scenario_details.data_brokers:
+            symbols_str = ', '.join(broker.symbols)
             # Truncate if too long
             if len(symbols_str) > 40:
                 symbols_str = symbols_str[:37] + '...'
 
             print(
-                f'{source.broker_type} [{source.market_type}]'.ljust(24) +
-                f'{source.scenario_count} scenario(s) ({symbols_str})')
+                f'{broker.data_broker_type} [{broker.market_type}]'.ljust(24) +
+                f'{broker.scenario_count} scenario(s) ({symbols_str})')
             # The price basis the bars were RENDERED from (§31c), not what config declares
             # today. Printed only where the archive knows — a run over tick data alone has
             # no basis to report, and an empty line would read as an answer.
-            if source.price_bases:
-                print(f'{"":24}price basis: {source.price_bases}')
+            if broker.price_bases:
+                print(f'{"":24}price basis: {broker.price_bases}')
 
     def _render_first_failure(self, renderer: ConsoleRenderer):
         """

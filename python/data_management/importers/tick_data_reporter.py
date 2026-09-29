@@ -107,7 +107,6 @@ class TickDataReporter:
 
         # === MARKET METADATA ===
         market_type = self._market_config.get_market_type(broker_type).value
-        data_source = files[0].get('broker_type', broker_type)
 
         return {
             'symbol': symbol,
@@ -136,7 +135,6 @@ class TickDataReporter:
             'file_size_mb': round(total_size_mb, 2),
             'sessions': sessions,
             'market_type': market_type,
-            'data_source': data_source,
         }
 
     def print_symbol_info(self, info: Dict):
@@ -192,7 +190,7 @@ class TickDataReporter:
             vLog.info(f'   │  └─ Sessions:   {sessions_str}')
 
         vLog.info(f"   ├─ Market Type:   {info['market_type']}")
-        vLog.info(f"   └─ Data Source:   {info['data_source']}")
+        vLog.info(f"   └─ Broker:        {info['broker_type']}")
 
     def print_all_symbols(self, broker_types: list = None):
         """

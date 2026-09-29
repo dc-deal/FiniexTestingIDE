@@ -488,10 +488,9 @@ def _build_stale_stress_driver(
         return None
     # The data source the events name is the one the ticks came FROM, which is what
     # build_scenario_from_config resolved — not the execution broker, which can differ.
-    data_source = settings.data_broker_type or config.broker_type
     return build_stale_stress_driver(
         StressTestConfig.from_dict(settings.stress_test_config),
-        data_source,
+        config.get_data_broker_type(),
         package.tick_ranges.get(config.symbol),
         executor, decision_logic, logger)
 
@@ -859,10 +858,7 @@ def _run_warmup(
     display_label_cache = warmup_preparator.build_display_label_cache(
         decision_logic=decision_logic,
         workers=workers,
-        sentiment_source=(
-            config.scenario_settings.data_sentiment_type
-            if config.scenario_settings else ''
-        ),
+        data_sentiment_type=config.get_data_sentiment_type(),
     )
 
     # #489 — a bot that can fund no order at all has nothing to do, and the boot is where

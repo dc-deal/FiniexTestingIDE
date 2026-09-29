@@ -197,3 +197,28 @@ class AutoTraderConfig:
             `profile_name`, else the symbol
         """
         return self.profile_name or self.symbol
+
+    def get_data_broker_type(self) -> str:
+        """
+        The broker whose ticks this session reads — the key its archive and the bar routes are
+        addressed by. A mock session may replay another broker's archive than the one it trades
+        against; a venue session reads its own broker's feed.
+
+        Returns:
+            `scenario_settings.data_broker_type`, else `broker_type`
+        """
+        if self.scenario_settings and self.scenario_settings.data_broker_type:
+            return self.scenario_settings.data_broker_type
+        return self.broker_type
+
+    def get_data_sentiment_type(self) -> str:
+        """
+        The sentiment source this session's SIGNAL workers read. Declared by a mock session's
+        scenario_settings only.
+
+        Returns:
+            `scenario_settings.data_sentiment_type`, else ''
+        """
+        if self.scenario_settings is None:
+            return ''
+        return self.scenario_settings.data_sentiment_type or ''

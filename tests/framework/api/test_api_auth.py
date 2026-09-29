@@ -200,6 +200,13 @@ class TestATokenIsRequired:
         client = _client(_token(token='t-full', grants=['*'], note='full'))
         assert client.get('/api/v1/brokers').status_code == 401
 
+    def test_head_is_refused_like_get(self):
+        # HEAD is served as the GET it asks about, so it passes the same gate — a HEAD that
+        # slipped past authentication would leak which routes and runs exist.
+        client = _client(_token(token='t-full', grants=['*'], note='full'))
+        assert client.head('/api/v1/brokers').status_code == 401
+        assert client.head('/api/v1/brokers', headers=_headers('t-full')).status_code == 200
+
     def test_the_refusal_says_which_scheme_to_retry_with(self):
         # Without WWW-Authenticate a client cannot tell a dead credential from a transport
         # fault — the same conversion §43 forbids one layer down.

@@ -412,10 +412,10 @@ class TestPendingOrders:
 def _scenario_details_report() -> ScenarioDetailsReport:
     return ScenarioDetailsReport(run_id=_RUN_ID, units=[
         ScenarioDetailsRow(
-            name='s1', symbol='EURUSD', data_source='mt5', status='success',
+            name='s1', symbol='EURUSD', data_broker_type='mt5', status='success',
             ticks_processed=15000, buy_signals=296, sell_signals=263, worker_count=2),
         ScenarioDetailsRow(
-            name='bad', symbol='BTCUSD', data_source='kraken_spot', status='failed',
+            name='bad', symbol='BTCUSD', data_broker_type='kraken_spot', status='failed',
             error_type='ValidationError', error_message='start before data'),
     ])
 

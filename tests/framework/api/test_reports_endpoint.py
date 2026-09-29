@@ -171,7 +171,7 @@ def _pending_orders_report() -> PendingOrdersReport:
 def _scenario_details_report() -> ScenarioDetailsReport:
     return ScenarioDetailsReport(run_id=_RUN_ID, units=[
         ScenarioDetailsRow(
-            name='s1', symbol='EURUSD', data_source='mt5', status='success',
+            name='s1', symbol='EURUSD', data_broker_type='mt5', status='success',
             ticks_processed=15000, buy_signals=296, worker_count=2),
         ScenarioDetailsRow(
             name='bad', symbol='BTCUSD', status='failed', error_type='ValidationError'),

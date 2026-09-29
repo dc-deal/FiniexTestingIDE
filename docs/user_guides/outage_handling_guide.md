@@ -196,8 +196,8 @@ There is no correct default — every answer is wrong for SOME strategy:
 
 - **Backtest (deterministic):** planned stale windows via
   `stress_test_config.stale_data_stress` — events block DATA SOURCES the
-  scenario binds: carve a signal source (`data_source` = the scenario's
-  `data_sentiment_type`) or blind the tick source (`data_source` = its
+  scenario binds: carve a signal source (`stale_data_source` = the scenario's
+  `data_sentiment_type`) or blind the tick source (`stale_data_source` = its
   `data_broker_type`) at exact timestamps. See the
   [Stress Test System](../stress_test.md).
 - **Mock session — two drills (#438):** for the **market-data** side,

@@ -240,7 +240,7 @@ class AutotraderWarmupPreparator:
         self,
         decision_logic: AbstractDecisionLogic,
         workers: List[AbstractWorker],
-        sentiment_source: str = '',
+        data_sentiment_type: str = '',
     ) -> DisplayLabelCache:
         """
         Build the immutable display label cache from decision logic and
@@ -254,7 +254,7 @@ class AutotraderWarmupPreparator:
             decision_logic: Instantiated decision logic (for schema access
                 and current param value readback)
             workers: List of instantiated workers for the session
-            sentiment_source: Sentiment feed label (#431; '' = no feed)
+            data_sentiment_type: Sentiment feed label (#431; '' = no feed)
 
         Returns:
             Frozen DisplayLabelCache ready to be shared read-only between
@@ -301,7 +301,7 @@ class AutotraderWarmupPreparator:
             worker_display_output_keys=worker_display_output_keys,
             worker_output_labels=worker_output_labels,
             decision_output_labels=decision_output_labels,
-            sentiment_source=sentiment_source,
+            data_sentiment_type=data_sentiment_type,
         )
 
         self._logger.debug(

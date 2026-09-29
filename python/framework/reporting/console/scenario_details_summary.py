@@ -57,7 +57,7 @@ class ScenarioDetailsSummary(AbstractBatchSummarySection):
     def _render_unit(self, unit: ScenarioDetailsRow, renderer: ConsoleRenderer) -> None:
         """Render one scenario's metadata block (linear)."""
         marker = renderer.red('❌ ') if unit.status != 'success' else ''
-        print(f'{marker}🔍 {renderer.bold(unit.name)} — {unit.data_source}/{unit.symbol}')
+        print(f'{marker}🔍 {renderer.bold(unit.name)} — {unit.data_broker_type}/{unit.symbol}')
 
         if unit.status == 'failed':
             print(renderer.red(f"   Error: {unit.error_type or 'Unknown'}"))

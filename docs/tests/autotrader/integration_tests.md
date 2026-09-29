@@ -91,7 +91,7 @@ fusion in a mock session, and a deterministic signal outage via `stale_data_stre
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
-| `TestSentimentMockSession` | 3 | Full session with index-resolved feed: normal shutdown, tick count (20000), clean pot; SIGNAL worker recomputed on snapshot crossings; portfolio report carries `sentiment_source` |
+| `TestSentimentMockSession` | 3 | Full session with index-resolved feed: normal shutdown, tick count (20000), clean pot; SIGNAL worker recomputed on snapshot crossings; portfolio report carries `data_sentiment_type` |
 | `TestSentimentOutageSession` | 3 | Deterministic signal outage (`stale_data_stress` carve of the sentiment series): the worker computes while fresh then goes `is_stale`, graceful degradation, no errors; the #434 `on_signal_stale` reaction surfaces exactly once in the warning pot |
 | `TestScenarioSettingsValidation` | 1 | Structural guard: a typo in `scenario_settings` hard-fails at load (Pydantic `extra='forbid'`) |
 

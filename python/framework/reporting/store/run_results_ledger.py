@@ -8,8 +8,11 @@ directory back as a single logical table. All identity (param_hash, sweep_id,
 scenario_set_name, …) is COLUMNS, never folder structure — the free-text config name
 never becomes load-bearing layout.
 
-Row grain: one per (run × account currency) = a RunSummary currency row + the run's
-provenance. The logical leading key for ranking is `param_hash`; filter by any column.
+Row grain: one per BOOKING PERIOD (#537) — `LEDGER_ROW_KEY`, i.e. run × account currency × unit ×
+period — each carrying the run's provenance. A run that booked no periods writes one row per
+RunSummary currency instead, and a run that produced nothing one figureless `status='error'` row.
+A reader wanting one row per run folds them with `aggregate_ledger_rows`. The logical leading key
+for ranking is `param_hash`; filter by any column.
 """
 
 import json

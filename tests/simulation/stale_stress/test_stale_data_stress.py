@@ -9,7 +9,7 @@ DATA SOURCES the scenario binds; asserted per scenario:
   REAL #434 chain
 - no-stress control → no events at all (no false positives)
 - disjoint window → overlap-guard warning ("data deviation"), zero events
-- unknown data_source → scenario excluded by preparation validation (§33)
+- unknown stale_data_source → scenario excluded by preparation validation (§33)
 """
 
 from pathlib import Path

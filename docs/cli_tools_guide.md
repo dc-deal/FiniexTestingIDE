@@ -125,7 +125,7 @@ Forex (MT5):
    ├─ Frequency:     0.93 Ticks/Second
    │  └─ Sessions:   new_york: 5318570, sydney_tokyo: 8986214, transition: 169326, london: 12645738
    ├─ Market Type:   forex
-   └─ Data Source:   mt5
+   └─ Broker:        mt5
 ```
 
 Crypto (Kraken Spot) — no weekend closure, and no spread line where the source carries no spread:
@@ -141,7 +141,7 @@ Crypto (Kraken Spot) — no weekend closure, and no spread line where the source
    ├─ Frequency:     0.64 Ticks/Second
    │  └─ Sessions:   24h: 11581323
    ├─ Market Type:   crypto
-   └─ Data Source:   kraken_spot
+   └─ Broker:        kraken_spot
 ```
 
 ### 📚 Tick Index: Status
@@ -172,7 +172,7 @@ Total files:  1462
 USDJPY:
    Timeframes: D1, H1, H4, M1, M15, M30, M5
    Total bars: 203,864
-   Source:     mt5 (v1.0.3 - 1.0.5)
+   Source:     mt5 (collector v1.0.3 - 1.0.5)
       • D1: 108 bars [Ticks: 9,920,219, Ø 91,853/bar]
       • H1: 2,572 bars [Ticks: 9,920,219, Ø 3,857/bar]
       • M5: 30,853 bars [Ticks: 9,920,219, Ø 321/bar]
@@ -496,7 +496,7 @@ Scans bar data with ATR-based normalization over configurable window sizes. Resu
 ==================================================================================================================================
 EXTREME MOVE DISCOVERY: USDJPY
 ==================================================================================================================================
-Data Source:    mt5
+Broker:         mt5
 Timeframe:      M5
 Bars Scanned:   38,989
 Avg ATR:        0.038

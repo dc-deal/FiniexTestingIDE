@@ -81,7 +81,7 @@ class TestBuild:
                        [_scenario('s1', 0, 'EURUSD', workers=_TWO_WORKERS)])
         row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
         assert row.status == 'success'
-        assert row.data_source == 'mt5' and row.symbol == 'EURUSD'
+        assert row.data_broker_type == 'mt5' and row.symbol == 'EURUSD'
         assert (row.buy_signals, row.sell_signals, row.flat_signals) == (296, 263, 14441)
         assert row.trades_requested == 2 and row.ticks_processed == 15000
         assert row.worker_count == 2

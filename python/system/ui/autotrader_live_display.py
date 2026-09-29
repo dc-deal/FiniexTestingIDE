@@ -1209,11 +1209,11 @@ class AutoTraderLiveDisplay:
         if worker_lines:
             lines.append('─' * 40)
             # Sentiment feed line (#431) — envelope-flagged when a SIGNAL result is stale (#434)
-            if cache.sentiment_source:
+            if cache.data_sentiment_type:
                 if stats.feed_stale:
-                    lines.append(f'[yellow]📡 Feed: {cache.sentiment_source} [STALE][/yellow]')
+                    lines.append(f'[yellow]📡 Feed: {cache.data_sentiment_type} [STALE][/yellow]')
                 else:
-                    lines.append(f'📡 Feed: {cache.sentiment_source}')
+                    lines.append(f'📡 Feed: {cache.data_sentiment_type}')
             lines.extend(worker_lines)
 
         if not lines:

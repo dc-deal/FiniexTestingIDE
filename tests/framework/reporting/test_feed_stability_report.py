@@ -93,8 +93,8 @@ def _unit(episodes, planned=None, signal_stats=None, tick_stats=True) -> RunUnit
     return RunUnit(
         name='BTCUSD_long',
         symbol=SYMBOL,
-        data_source=TICK_SOURCE,
-        sentiment_source=SIGNAL_SOURCE,
+        data_broker_type=TICK_SOURCE,
+        data_sentiment_type=SIGNAL_SOURCE,
         disturbance_episodes=episodes,
         planned_outages=planned or [],
         signal_statistics=signal_stats or [],
@@ -107,7 +107,7 @@ def _unit(episodes, planned=None, signal_stats=None, tick_stats=True) -> RunUnit
 def _planned(label: str, source: str, start: int, end: int) -> StaleDataEvent:
     """One configured stale window."""
     return StaleDataEvent(
-        label=label, data_source=source,
+        label=label, stale_data_source=source,
         stale_start_date=_at(start), stale_end_date=_at(end))
 
 

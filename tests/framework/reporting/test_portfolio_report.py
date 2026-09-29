@@ -125,7 +125,7 @@ class TestBatch:
         row = build_portfolio_report(_RUN_ID, run_units_from_batch(_batch())).units[0]
         assert row.broker_name == 'kraken'
         assert row.spot_mode is False
-        assert row.data_source == 'mt5'                # from the index-synced scenario
+        assert row.data_broker_type == 'mt5'                # from the index-synced scenario
         assert (row.total_long_trades, row.total_short_trades) == (10, 0)
         assert row.max_equity == 1100.0
         assert (row.current_balance, row.initial_balance) == (1060.0, 1000.0)

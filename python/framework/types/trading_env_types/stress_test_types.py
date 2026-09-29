@@ -56,22 +56,23 @@ class StaleDataEvent:
     An event blocks a DATA SOURCE the scenario binds — never bars or single
     workers: an outage hits a feed, so EVERY consumer of that source sees it.
     The source kind decides the injection plane:
-    - data_source == the scenario's data_sentiment_type → data-plane cut: the
+    - stale_data_source == the scenario's data_sentiment_type → data-plane cut: the
       window is carved out of the refined signal series (StaleDataSlicer), so
       the real #434 chain fires for all subscribed SIGNAL workers (age grows
       → is_stale flip → on_signal_stale).
-    - data_source == the scenario's data_broker_type → status-plane: ticks
+    - stale_data_source == the scenario's data_broker_type → status-plane: ticks
       keep flowing; status + on_market_data_stale + guard entry-block are
       driven inside the window (a dead FEED does not freeze the market).
 
     Args:
         label: Human-readable event name (logs / episode protocol)
-        data_source: The scenario data source this outage hits
+        stale_data_source: The scenario data source this outage hits — its data_broker_type
+            (the ticks) or its data_sentiment_type (the signals)
         stale_start_date: Window start (UTC, inclusive)
         stale_end_date: Window end (UTC, exclusive)
     """
     label: str
-    data_source: str
+    stale_data_source: str
     stale_start_date: datetime
     stale_end_date: datetime
 
@@ -82,15 +83,15 @@ class StaleDataEvent:
         never on the tick path).
 
         Args:
-            data: Dict with keys: label, data_source, stale_start_date, stale_end_date
+            data: Dict with keys: label, stale_data_source, stale_start_date, stale_end_date
 
         Returns:
             StaleDataEvent instance
         """
-        data_source = data.get('data_source', '')
-        if not data_source:
+        stale_data_source = data.get('stale_data_source', '')
+        if not stale_data_source:
             raise ValueError(
-                "stale_data_stress event: 'data_source' is required (the "
+                "stale_data_stress event: 'stale_data_source' is required (the "
                 "scenario's data_broker_type or data_sentiment_type)")
         start = ensure_utc_aware(parse_datetime(data['stale_start_date']))
         end = ensure_utc_aware(parse_datetime(data['stale_end_date']))
@@ -100,7 +101,7 @@ class StaleDataEvent:
                 f"stale_start_date must be before stale_end_date")
         return StaleDataEvent(
             label=data.get('label', ''),
-            data_source=data_source,
+            stale_data_source=stale_data_source,
             stale_start_date=start,
             stale_end_date=end,
         )
@@ -149,7 +150,7 @@ class StressTestStaleDataConfig:
         return sorted(
             (e.stale_start_date, e.stale_end_date)
             for e in self.events
-            if e.data_source == data_source
+            if e.stale_data_source == data_source
         )
 
     def get_events_for_source(self, data_source: str) -> List[StaleDataEvent]:
@@ -165,7 +166,7 @@ class StressTestStaleDataConfig:
         if not self.enabled:
             return []
         return sorted(
-            (e for e in self.events if e.data_source == data_source),
+            (e for e in self.events if e.stale_data_source == data_source),
             key=lambda e: e.stale_start_date,
         )
 
@@ -174,11 +175,11 @@ class StressTestStaleDataConfig:
         Distinct data sources referenced by the events (validation input).
 
         Returns:
-            Sorted list of data_source values
+            Sorted list of stale_data_source values
         """
         if not self.enabled:
             return []
-        return sorted({e.data_source for e in self.events})
+        return sorted({e.stale_data_source for e in self.events})
 
 
 @dataclass

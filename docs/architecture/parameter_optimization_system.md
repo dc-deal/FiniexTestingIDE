@@ -156,7 +156,10 @@ Read the whole directory back as one table.
 - **No partition by config name** — all identity (`param_hash`, `sweep_id`, `scenario_set_name`,
   `decision_logic_type`, …) is **columns**, never folder structure. The leading key for ranking is
   the logical `param_hash`; filter by any column.
-- **Row grain:** one per (run × account currency) = a `RunSummary` currency row + provenance.
+- **Row grain:** one per booking period (#537) — run × account currency × unit × period, the
+  ledger's row key — each carrying the run's provenance. A run that booked no periods writes one
+  row per `RunSummary` currency instead, and a run that produced nothing the one figureless
+  `status='error'` row described below. A reader wanting one row per run folds the periods.
 - **`status` is a FLAG on the row, not a reason to empty it.** A run that errored still writes its
   figures; `status='error'` and the `error` column travel beside them, and the ranking excludes the
   row on that column. Only a run that produced NOTHING — no currencies at all, e.g. a combination

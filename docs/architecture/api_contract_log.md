@@ -26,6 +26,26 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 14 — 2026-09-29 (viewer#21)
+
+`data_source` meant two things: in a report, the broker a unit read its ticks from; in a stress
+configuration, whichever input of a scenario an outage hits, ticks or signals. Each meaning now has
+its own name, and the report's name is the one the scenario configuration has always used.
+
+- `GET /api/v1/reports/runs/{run_id}/portfolio` and `…/scenario-details`: a unit's `data_source` is
+  `data_broker_type` — the broker whose tick archive the unit read, and the key the bar routes are
+  addressed by. The portfolio row's `sentiment_source` is `data_sentiment_type`. The stored runs
+  were migrated, so an older run serves the new names too.
+- `GET /api/v1/reports/runs/{run_id}/scenario-details`: the per-broker roll-up `data_sources` is
+  `data_brokers`, and its rows carry `data_broker_type` where they carried `broker_type`; `keys`
+  reads `"data_brokers": ["data_broker_type"]`.
+- A stale-data stress event names the input it makes stale in `stale_data_source` (was
+  `data_source`), beside its `stale_start_date` and `stale_end_date`. The new key appears in every
+  configuration served from now on; a run recorded before this version serves its configuration
+  as it was run, with the old key.
+- Every `GET` route answers `HEAD` as well: the same status and headers, including
+  `X-Api-Contract`, and no body. It was refused with `405 Method Not Allowed`.
+
 ## Version 13 — 2026-09-29 (viewer#21)
 
 - `GET /api/v1/reports/runs/{run_id}/scenario-details`: `execution_time_ms` is MILLISECONDS, as its

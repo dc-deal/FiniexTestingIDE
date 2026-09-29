@@ -405,7 +405,7 @@ class ExtremeMoveScanner:
         print('\n' + '=' * 158)
         print(f'EXTREME MOVE DISCOVERY: {result.symbol}')
         print('=' * 158)
-        print(f'Data Source:    {result.broker_type}')
+        print(f'Broker:         {result.broker_type}')
         print(f'Timeframe:      {result.timeframe}')
         print(f'Bars Scanned:   {result.scanned_bars:,}')
         print(f'Avg ATR:        {result.avg_atr}')

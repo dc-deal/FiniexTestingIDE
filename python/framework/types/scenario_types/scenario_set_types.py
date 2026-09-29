@@ -35,7 +35,9 @@ class SingleScenario:
     # ============================================
     # Determines which tick/bar data collection to load from
     # Examples: "mt5", "kraken_spot"
-    # This is SEPARATE from broker_type (trading simulation config)
+    # A separate FIELD from broker_type, not a separate broker: broker_type is derived from it —
+    # the broker config this key names is the one the orders are simulated against
+    # (BrokerDataPreparator assigns it)
     data_broker_type: str  # REQUIRED - no default!
 
     start_date: datetime
@@ -137,7 +139,7 @@ class SingleScenario:
         )
         return (
             f"Scenario: {self.name}\n"
-            f"  Data Source: {self.data_broker_type}\n"
+            f"  Data broker: {self.data_broker_type}\n"
             f"  Symbol: {self.symbol}\n"
             f"{sentiment_line}"
             f"  Period: {self.start_date} → {self.end_date}\n"

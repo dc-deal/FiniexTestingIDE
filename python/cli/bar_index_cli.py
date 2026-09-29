@@ -140,7 +140,6 @@ class BarIndexCli:
                     'source_version_min', 'unknown')
                 source_version_max = first_entry.get(
                     'source_version_max', 'unknown')
-                data_source = first_entry.get('broker_type', broker_type)
 
                 # Version display
                 if source_version_min == source_version_max:
@@ -148,7 +147,7 @@ class BarIndexCli:
                 else:
                     version_str = f'{source_version_min} - {source_version_max}'
 
-                print(f'      Source:     {data_source} (v{version_str})')
+                print(f'      Source:     {broker_type} (collector v{version_str})')
                 print(f'      Market:     {market_type}')
 
                 # Activity metrics using provider

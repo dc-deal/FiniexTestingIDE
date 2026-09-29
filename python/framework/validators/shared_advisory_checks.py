@@ -73,7 +73,7 @@ def check_stress_test(
             # record ("what was planned"). What the run actually experienced is the
             # feed-stability section (#451) — deliberately a different source.
             windows = ' | '.join(
-                f"'{e.label}' on {e.data_source} "
+                f"'{e.label}' on {e.stale_data_source} "
                 f"{e.stale_start_date.isoformat()} → {e.stale_end_date.isoformat()}"
                 for e in sd.events)
             parts.append(

@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from python.api.api_auth_setup import setup_api_auth
 from python.api.api_contract import API_CONTRACT_VERSION, CHANGES, CONTRACT_HEADER
 from python.api.api_error_catalog import IDENTITY_UNBOUND, api_error
+from python.api.head_request_middleware import HeadRequestMiddleware
 from python.api.endpoints import (
     bars_router,
     broker_router,
@@ -150,7 +151,7 @@ def create_app() -> FastAPI:
             'http://localhost:8000',
             'http://127.0.0.1:8000',
         ],
-        allow_methods=['GET'],
+        allow_methods=['GET', 'HEAD'],
         allow_headers=['*'],
         # A browser hides every response header that is not CORS-safelisted, so without this
         # a cross-origin client sees the STATUS of a 401 or 429 and neither the scheme to
@@ -158,6 +159,9 @@ def create_app() -> FastAPI:
         # client; invisible from here, because our other consumer is server-side.
         expose_headers=['WWW-Authenticate', 'Retry-After', CONTRACT_HEADER],
     )
+    # Every GET route answers HEAD too, the way HTTP expects — a consumer reading only the
+    # contract header asks with HEAD, and FastAPI alone refuses that with a 405.
+    app.add_middleware(HeadRequestMiddleware)
 
     @app.middleware('http')
     async def stamp_the_contract(request: Request, call_next):

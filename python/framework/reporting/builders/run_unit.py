@@ -42,10 +42,10 @@ class RunUnit:
     """One run unit's report source (sim: a scenario; live: the session)."""
     name: str
     symbol: str
-    data_source: str = ''           # broker key — sim: scenario.data_broker_type,
-                                    # live: config.broker_type. The key the data API is
-                                    # addressed by, so a consumer can link unit → chart.
-    sentiment_source: str = ''      # sentiment feed label (#429 sim scenario / #431 live profile; '' if none)
+    data_broker_type: str = ''      # the broker whose ticks the unit read — sim: the scenario's,
+                                    # AutoTrader: config.get_data_broker_type(). The key the data
+                                    # API is addressed by, so a consumer can link unit → chart.
+    data_sentiment_type: str = ''   # sentiment feed label (#429 sim scenario / #438 mock session; '' if none)
     has_error: bool = False         # hybrid: partial data + error (sim) / emergency (live)
     trade_history: List[TradeRecord] = field(default_factory=list)
     # Positions still OPEN when the unit ended (#492). A run end no longer flattens, so
@@ -106,8 +106,8 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
         units.append(RunUnit(
             name=result.scenario_name,
             symbol=scenario.symbol,
-            data_source=scenario.data_broker_type,
-            sentiment_source=scenario.data_sentiment_type,
+            data_broker_type=scenario.data_broker_type,
+            data_sentiment_type=scenario.data_sentiment_type,
             has_error=bool(result.error_type or result.error_message),
             trade_history=tick_loop.trade_history or [],
             open_positions=tick_loop.open_positions or [],
@@ -238,8 +238,8 @@ def _planned_outages(
 
 def run_units_from_session(
     session: AutoTraderResult, name: str, symbol: str,
-    data_source: str = '',
-    sentiment_source: str = '',
+    data_broker_type: str = '',
+    data_sentiment_type: str = '',
     stress_test_config: Optional[Dict[str, Any]] = None) -> List[RunUnit]:
     """
     The single run unit of an AutoTrader session.
@@ -248,9 +248,9 @@ def run_units_from_session(
         session: The collected session result
         name: Unit label (profile name / symbol)
         symbol: Traded symbol
-        data_source: The broker key the unit traded on — the same key the data API is addressed
-            by, so a consumer can link a unit to its chart
-        sentiment_source: The session's sentiment feed label (#431; '' if none)
+        data_broker_type: The broker whose ticks the unit read — the same key the data API is
+            addressed by, so a consumer can link a unit to its chart
+        data_sentiment_type: The session's sentiment feed label (#431; '' if none)
         stress_test_config: The mock session's stress config (#438) — the origin label
             source for #451; a live-adapter session has none
 
@@ -260,8 +260,8 @@ def run_units_from_session(
     return [RunUnit(
         name=name,
         symbol=symbol,
-        data_source=data_source,
-        sentiment_source=sentiment_source,
+        data_broker_type=data_broker_type,
+        data_sentiment_type=data_sentiment_type,
         has_error=session.emergency_reason is not None,
         trade_history=session.trade_history or [],
         open_positions=session.open_positions or [],

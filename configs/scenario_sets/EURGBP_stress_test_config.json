@@ -209,7 +209,7 @@
           "events": [
             {
               "label": "market data freeze demo (10m)",
-              "data_source": "mt5",
+              "stale_data_source": "mt5",
               "stale_start_date": "2025-10-29T18:20:00+00:00",
               "stale_end_date": "2025-10-29T18:30:00+00:00"
             }

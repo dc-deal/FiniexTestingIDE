@@ -43,7 +43,7 @@ _STRESS = {
         'enabled': True,
         'events': [{
             'label': 'sentiment feed dies 60min',
-            'data_source': 'crypto_sentiment_mock',
+            'stale_data_source': 'crypto_sentiment_mock',
             'stale_start_date': '2026-04-27T06:10:00+00:00',
             'stale_end_date': '2026-04-27T07:10:00+00:00',
         }],

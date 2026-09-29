@@ -22,6 +22,13 @@ What it rewrites:
                `backtesting_worker` became `probe_worker`: the old strings are replaced in the stored
                report artifacts (text, parsed back) and in the ledger fragments' text columns, then
                the ledger index is rebuilt. Log files keep what they logged.
+  data_brokers (2026-09-29) `data_source` meant two things. A stale-data stress event's key
+               becomes `stale_data_source` in every configuration (only inside
+               `stale_data_stress.events`, checked by parsing the file back). The stored report
+               artifacts name the broker a unit read its ticks from: `data_source` →
+               `data_broker_type` and `sentiment_source` → `data_sentiment_type` in
+               `portfolio.json` and `scenario_details.json`, whose roll-up `data_sources` →
+               `data_brokers` keyed by `data_broker_type`. Text replaced, parsed back.
 
 The run-config store (run_configs/) is left alone on purpose: its index cannot be rebuilt without
 loss, its frozen copies are old versions and stay true of the runs that named them, and a changed
@@ -77,6 +84,13 @@ PROBE_RENAMES: Dict[str, str] = {
     'backtesting_worker': 'probe_worker',
 }
 _PROBE_TOKEN = re.compile('|'.join(re.escape(old) for old in PROBE_RENAMES) + r'(?![A-Za-z0-9_])')
+
+# The two meanings of `data_source`, split on 2026-09-29.
+_STRESS_SOURCE_KEY = re.compile(r'"data_source"(\s*:)')
+_ARTIFACT_KEY_RENAMES: Dict[str, Dict[str, str]] = {
+    'portfolio.json': {'data_source': 'data_broker_type', 'sentiment_source': 'data_sentiment_type'},
+    'scenario_details.json': {'data_source': 'data_broker_type', 'data_sources': 'data_brokers'},
+}
 
 
 def _config_files() -> List[Path]:
@@ -336,12 +350,125 @@ def migrate_probes(preview: bool) -> None:
         print(f'  rebuilt the ledger index ({index.rebuild()} rows)')
 
 
+def _dicts_with_key(node, key: str, path: Tuple[str, ...] = ()) -> List[Tuple[str, ...]]:
+    """
+    Where in a parsed JSON document a dict carries one key.
+
+    Args:
+        node: A parsed JSON value
+        key: The key to look for
+        path: The keys leading to `node`
+
+    Returns:
+        The path of every dict holding the key
+    """
+    found: List[Tuple[str, ...]] = []
+    if isinstance(node, dict):
+        if key in node:
+            found.append(path)
+        for name, value in node.items():
+            found.extend(_dicts_with_key(value, key, path + (name,)))
+    elif isinstance(node, list):
+        for value in node:
+            found.extend(_dicts_with_key(value, key, path))
+    return found
+
+
+def _renamed_stress_sources(path: Path) -> Optional[str]:
+    """
+    The file's text with every stress event's `data_source` renamed, checked by parsing it back.
+
+    Args:
+        path: A JSON file
+
+    Returns:
+        The new text when the file carries a stress event's `data_source`, else None
+    """
+    try:
+        text = path.read_text(encoding='utf-8')
+        data = json.loads(text)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    holders = _dicts_with_key(data, 'data_source')
+    if not holders:
+        return None
+    if any(p[-2:] != ('stale_data_stress', 'events') for p in holders) or \
+            len(_STRESS_SOURCE_KEY.findall(text)) != len(holders):
+        raise ValueError(f'{path}: a "data_source" sits outside a stress event — rename it by hand')
+    new_text = _STRESS_SOURCE_KEY.sub(r'"stale_data_source"\1', text)
+    if _dicts_with_key(json.loads(new_text), 'data_source'):
+        raise ValueError(f'{path}: a "data_source" survived the rewrite — check by hand')
+    return new_text
+
+
+def _renamed_artifact(path: Path) -> Optional[str]:
+    """
+    One stored report artifact's text with the data-broker keys renamed, checked by parsing it back.
+
+    Args:
+        path: A portfolio.json or scenario_details.json artifact
+
+    Returns:
+        The new text when the artifact carries a retired key, else None
+    """
+    text = path.read_text(encoding='utf-8')
+    renames = _ARTIFACT_KEY_RENAMES[path.name]
+    new_text = text
+    for old, new in renames.items():
+        new_text = re.sub(rf'"{old}"(\s*:)', rf'"{new}"\1', new_text)
+    if path.name == 'scenario_details.json':
+        # The roll-up's rows and the `keys` declaration name the broker as `broker_type`; the
+        # rows are the only place that key sits in this artifact.
+        new_text = new_text.replace('"broker_type"', '"data_broker_type"')
+    if new_text == text:
+        return None
+    data = json.loads(new_text)
+    for old in list(renames) + ['broker_type']:
+        if _dicts_with_key(data, old):
+            raise ValueError(f'{path}: "{old}" survived the rewrite — check by hand')
+    return new_text
+
+
+def migrate_data_brokers(preview: bool) -> None:
+    """
+    Split the two meanings of `data_source` in the configurations and the stored artifacts.
+
+    Args:
+        preview: List what would change and write nothing
+    """
+    configs = 0
+    for path in _config_files():
+        new_text = _renamed_stress_sources(path)
+        if new_text is None:
+            continue
+        configs += 1
+        tracked = path.parts[0] in ('configs', 'tests')
+        marker = '' if tracked else '  [your workspace]'
+        print(f'  {"would rewrite" if preview else "rewrote"} stress keys {path}{marker}')
+        if not preview:
+            path.write_text(new_text, encoding='utf-8')
+    print(f'  {configs} configuration file(s)')
+
+    runs_root = Path(AppConfigManager().get_file_logging_config_object().run_index).parent
+    artifacts = 0
+    for name in _ARTIFACT_KEY_RENAMES:
+        for artifact in sorted(runs_root.rglob(f'io/{name}')):
+            new_text = _renamed_artifact(artifact)
+            if new_text is None:
+                continue
+            artifacts += 1
+            if not preview:
+                artifact.write_text(new_text, encoding='utf-8')
+    print(f'  {"would rewrite" if preview else "rewrote"} {artifacts} report artifact(s)')
+
+
 def main() -> None:
     """Parse arguments and migrate."""
     parser = argparse.ArgumentParser(description='One-time vocabulary migration (2026-09-28)')
     parser.add_argument('--preview', action='store_true',
                         help='List what would change and write nothing')
-    parser.add_argument('--only', choices=['configs', 'runs', 'carry_over', 'probes'], default=None,
+    parser.add_argument('--only', choices=['configs', 'runs', 'carry_over', 'probes', 'data_brokers'],
+                        default=None,
                         help='Run one part only')
     args = parser.parse_args()
     if args.only in (None, 'configs'):
@@ -357,6 +484,9 @@ def main() -> None:
     if args.only in (None, 'probes'):
         print('\nRenamed test probes')
         migrate_probes(args.preview)
+    if args.only in (None, 'data_brokers'):
+        print('\nThe two meanings of data_source')
+        migrate_data_brokers(args.preview)
     print()
 
 

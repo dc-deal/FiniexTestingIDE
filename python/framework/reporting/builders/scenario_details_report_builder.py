@@ -12,7 +12,7 @@ from typing import Dict
 
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.api.report_types import (
-    DataSourceRow,
+    DataBrokerRow,
     ScenarioDetailsReport,
     ScenarioDetailsRow,
 )
@@ -40,7 +40,7 @@ def build_scenario_details_report_from_batch(
     market_types = _market_types({scenario.data_broker_type for _, scenario in pairs})
     rows = [_to_row(result, scenario, market_types) for result, scenario in pairs]
     return ScenarioDetailsReport(
-        run_id=run_id, units=rows, data_sources=_data_sources(rows, market_types))
+        run_id=run_id, units=rows, data_brokers=_data_brokers(rows, market_types))
 
 
 def _market_types(broker_types: set) -> Dict[str, str]:
@@ -58,9 +58,9 @@ def _market_types(broker_types: set) -> Dict[str, str]:
             for broker_type in broker_types}
 
 
-def _data_sources(rows: list, market_types: Dict[str, str]) -> list:
+def _data_brokers(rows: list, market_types: Dict[str, str]) -> list:
     """
-    Roll the scenario rows up per data source, resolving what each source IS exactly once.
+    Roll the scenario rows up per data broker, resolving what each broker IS exactly once.
 
     Its own stage rather than something a renderer does on the way past (§12): the console,
     the JSON artifact and the API all want this grouping, and three groupings are three
@@ -74,20 +74,20 @@ def _data_sources(rows: list, market_types: Dict[str, str]) -> list:
         market_types: broker type → market type, resolved once for the whole report
 
     Returns:
-        One row per data source, sorted by broker type
+        One row per data broker, sorted by broker type
     """
     grouped: dict = {}
     for row in rows:
         entry = grouped.setdefault(
-            row.data_source, {'symbols': set(), 'count': 0, 'bases': []})
+            row.data_broker_type, {'symbols': set(), 'count': 0, 'bases': []})
         entry['count'] += 1
         entry['symbols'].add(row.symbol)
         # Already joined at the row; split again so the roll-up de-duplicates across
         # scenarios rather than concatenating their strings.
         entry['bases'].extend(b for b in row.price_bases.split(',') if b)
     return [
-        DataSourceRow(
-            broker_type=broker_type,
+        DataBrokerRow(
+            data_broker_type=broker_type,
             market_type=market_types[broker_type],
             scenario_count=entry['count'],
             symbols=sorted(entry['symbols']),
@@ -104,7 +104,7 @@ def _to_row(result: ProcessResult, scenario: SingleScenario,
     common = dict(
         name=result.scenario_name,
         symbol=scenario.symbol,
-        data_source=scenario.data_broker_type,
+        data_broker_type=scenario.data_broker_type,
         market_type=market_types[scenario.data_broker_type],
         # In `common`, so a FAILED row carries it too: a scenario that failed over development
         # data and one that failed over production data are different failures, and this row is

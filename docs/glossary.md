@@ -6,9 +6,18 @@ a reader who learned a word in one place carried the wrong meaning into the next
 the meaning of each term; the document linked from an entry is where it is explained.
 
 Where one word has several legitimate meanings, each carries a qualifier and the bare word is not
-used alone: the entry for the word lists the qualified terms. A term that is missing here is added
-in the same change that starts using it. A name in the code is used unchanged when the code is
-meant (`adapter_type`, `run_type`), and trading vocabulary stays English everywhere.
+used alone: the entry for the word lists the qualified terms. A name in the code is used unchanged
+when the code is meant (`adapter_type`, `run_type`), and trading vocabulary stays English
+everywhere.
+
+What earns an entry is chosen the way a book's index is: by what a reader will look up, not by
+completeness. A term is here when a reader meets it without the code — an API field, a line on a
+screen or in the console, a configuration key, a heading — and a guess from the word alone would
+go wrong, or when the term is this project's own coinage. A word with a second meaning here is
+listed always. A word used in its ordinary sense is not, and neither is a name nobody outside its
+module sees. A word someone has reached for that is not the one we use points to the one we do
+(*market clock* — see *canonical clock*). A term that qualifies is added in the same change that
+starts using it.
 
 Not here: how things work. The [Introduction](introduction_to_the_ide.md) shows how the kinds of
 run fit together; the linked documents explain the rest.
@@ -51,8 +60,8 @@ numbered from 1; the ledger holds one row per booking period and currency. In co
 `BookingPeriod` and `period_no`. See [Accounting Periods](architecture/accounting_periods.md).
 
 **broker** (`broker_type`) — Our configuration entry for one venue and product in
-`market_config.json` (`kraken_spot`, `mt5`). Not the same as the venue. See
-[Broker Config](broker_config_guide.md).
+`market_config.json` (`kraken_spot`, `mt5`). Not the same as the venue. The broker whose ticks a
+unit read is its *data broker*. See [Broker Config](broker_config_guide.md).
 
 **cache** — A derived store of computed results. Deleting it loses nothing; a "cache" whose
 deletion loses data is misfiled. See [Data Storage Layout](architecture/data_storage_layout.md).
@@ -61,7 +70,6 @@ deletion loses data is misfiled. See [Data Storage Layout](architecture/data_sto
 `get_current_time()`. In a backtest and a mock session it is the time of the replayed tick; in a
 live-adapter session the time of the event being processed. It is market time, never the machine's
 clock — see *wall clock*.
-
 
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and
 the framework's record of keys, positions and the risk baseline. Keyed by the bot, overwritten, and
@@ -93,10 +101,18 @@ runs around the clock. See [Scenario Generator](generator/generator_block_splitt
 resolves against the framework's registry, anything else is a file path. The former `USER/`
 namespace no longer exists. See [Worker Naming](user_guides/worker_naming_doc.md).
 
+**data broker** (`data_broker_type`) — The broker whose tick archive a scenario or a mock session
+reads, and the key the bar routes are addressed by. A backtest simulates its orders against the
+same broker's configuration; a mock session may trade against another one (`broker_type`); a venue
+session reads its own broker's feed. In a report it is each unit's `data_broker_type`.
+
 **data origin** — Which kind of source produced an archived file: `origin_class` (`production`,
 `development`, `unknown`) with its evidence grade, stamped at import and carried into every run's
 consumption record. Not the *broker*. See [Data Provenance](architecture/data_provenance.md).
 
+**data source** — One of the inputs a scenario reads, named by its key: its *data broker* for the
+ticks, its `data_sentiment_type` for the signals. A stale-data stress event names the one it makes
+stale in `stale_data_source`. See [Stress Test](stress_test.md).
 
 **data window** — The market window one run unit was declared to cover (`data_windows` on the run
 header): a start, and an end unless it is open. Not a span over several units.
@@ -119,7 +135,6 @@ See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 **execution time** — How long a run or one of its units took on the *wall clock*:
 `execution_time_ms` for a scenario, `execution_time_s` for a whole backtest run. It says nothing
 about how much market time was processed — that is the *tick timespan*.
-
 
 **field study** — The real-money acceptance test of the live execution stack, whose record becomes
 a release certificate. See [Field Study](tests/live_field_study/field_study_guide.md).
@@ -158,6 +173,9 @@ exports as it goes. Here *live* means "as it happens", which is why the code und
 
 **live transport** — Signals arriving over the network from the producer, as opposed to a mounted
 archive. See [Signal Data Source](data_pipeline/signal_data_source.md).
+
+**market clock** — Not a term here: see *canonical clock* for the clock a decision reads, and
+*tick timespan* for the market time a unit processed.
 
 **mock session** — An AutoTrader session with `adapter_type: mock`: it replays its
 `scenario_settings` window from the archive through the whole AutoTrader stack against the
@@ -254,7 +272,6 @@ its parent. Not itself a run. See [Parameter Optimization](architecture/paramete
 tick (`tick_timespan_seconds`). MEASURED, where the *data window* is DECLARED: a tick-limited
 scenario or a quiet market ends earlier than its window.
 
-
 **ticks from** (`ticks_from`) — Where a run's ticks came from: `archive` or `venue`. Recorded on
 every run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
 
@@ -267,7 +284,6 @@ every run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run
 **wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can
 step backwards. Never the time a decision reads — that is the *canonical clock*.
-
 
 **worker** — A class, one per file, that computes named outputs every tick: an INDICATOR from bars
 and ticks, a SIGNAL from pre-collected external data. See [Worker Naming](user_guides/worker_naming_doc.md).

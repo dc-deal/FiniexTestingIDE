@@ -40,9 +40,9 @@
         "enabled": true,
         "events": [
           {
-            "_comment": "data_source is the TICK source, so this is a STATUS-plane window: the ticks keep flowing and only the feed status is flagged (#444). A dead feed does not freeze the market.",
+            "_comment": "stale_data_source is the TICK source, so this is a STATUS-plane window: the ticks keep flowing and only the feed status is flagged (#444). A dead feed does not freeze the market.",
             "label": "tick feed status stale 10min",
-            "data_source": "kraken_spot",
+            "stale_data_source": "kraken_spot",
             "stale_start_date": "2026-04-27T06:10:00+00:00",
             "stale_end_date": "2026-04-27T06:20:00+00:00"
           }

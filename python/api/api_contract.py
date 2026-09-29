@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 13
+API_CONTRACT_VERSION = 14
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -31,13 +31,15 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'reports/runs/{run_id}/scenario-details: `execution_time_ms` is now milliseconds, as its name '
-    'says — it carried SECONDS before, so a value read as 2 ms was 2 s. Measured on the '
-    'monotonic clock; the stored runs were migrated, so an older run serves milliseconds too',
-    'the CORE test components are named `CORE/test_probes/<name>` (were '
-    '`CORE/backtesting/backtesting_<name>`), and their worker instance is `probe_worker` (was '
-    '`backtesting_worker`) — in every served configuration, directory row and ledger row, stored '
-    'runs included',
-    'directory: the four production AutoTrader profiles are `<symbol>_production.json` (were '
-    '`<symbol>_live.json`), and their `profile_name` changed with them',
+    'reports/runs/{run_id}/portfolio and /scenario-details: the broker a unit read its ticks from '
+    'is `data_broker_type` (was `data_source`) — the same key the scenario configuration uses — '
+    'and the portfolio row\'s sentiment source is `data_sentiment_type` (was `sentiment_source`). '
+    'The stored runs were migrated',
+    'reports/runs/{run_id}/scenario-details: the per-broker roll-up is `data_brokers` (was '
+    '`data_sources`), each row keyed by `data_broker_type` (was `broker_type`); `keys` says so',
+    'a stale-data stress event names the input it makes stale in `stale_data_source` (was '
+    '`data_source`) wherever a configuration is served; a run recorded earlier serves its '
+    'configuration as it was run',
+    'every GET route answers HEAD as well — the same status and headers, no body. It was refused '
+    'with 405',
 ]

@@ -26,8 +26,8 @@ def build_scenario_from_config(config: AutoTraderConfig) -> SingleScenario:
 
     The profile's scenario_settings maps 1:1 onto a simulation scenario's core fields (data window
     + balances + workers), so the mock replays scenario base data through the same preparation
-    stack. The execution broker_type is the data-source default when scenario_settings omits
-    data_broker_type (mock: data source == execution broker).
+    stack. The data broker is the execution broker_type unless scenario_settings names
+    another (AutoTraderConfig.get_data_broker_type).
 
     Args:
         config: AutoTrader configuration (scenario_settings must be present — mock mode)
@@ -44,7 +44,7 @@ def build_scenario_from_config(config: AutoTraderConfig) -> SingleScenario:
         name=settings.scenario_name or config.get_unit_name(),
         scenario_index=0,
         symbol=config.symbol,
-        data_broker_type=settings.data_broker_type or config.broker_type,
+        data_broker_type=config.get_data_broker_type(),
         start_date=parse_datetime(settings.start_date),
         end_date=parse_datetime(settings.end_date) if settings.end_date else None,
         max_ticks=settings.max_ticks,

@@ -304,8 +304,8 @@ class PortfolioUnitRow(BaseModel):
     total_fees: float
     # Full projection — the per-scenario linear block renders purely from these (defaulted:
     # additive columns; the per-currency aggregated section stays on PortfolioAggregator).
-    data_source: str = ''       # the scenario's data broker type (box line "Data: …")
-    sentiment_source: str = ''  # the scenario's data_sentiment_type, if any (#429; box line "· Sentiment: …")
+    data_broker_type: str = ''     # the broker whose ticks the unit read (box line "Data broker: …")
+    data_sentiment_type: str = ''  # the unit's sentiment source, if any (#429; box line "· Sentiment: …")
     broker_name: str = ''
     spot_mode: bool = False
     total_long_trades: int = 0
@@ -464,9 +464,9 @@ class ScenarioDetailsRow(BaseModel):
     """Per-scenario execution + signal metadata (sim batch — the SCENARIO DETAILS section)."""
     name: str
     symbol: str
-    data_source: str = ''           # data broker type ("Symbol: <data_source>/<symbol>")
+    data_broker_type: str = ''      # the scenario's data_broker_type ("<data_broker_type>/<symbol>")
     # What that broker IS, on the row a consumer filters — resolved once in DERIVE from its
-    # authoritative owner, the same answer the `data_sources` roll-up carries, so no reader has
+    # authoritative owner, the same answer the `data_brokers` roll-up carries, so no reader has
     # to join the two to learn whether a scenario traded crypto or forex.
     market_type: str = ''
     # WHICH DATA this one scenario read (#518), beside the broker key it read it from. The
@@ -504,9 +504,9 @@ class ScenarioDetailsRow(BaseModel):
     error_message: str = ''
 
 
-class DataSourceRow(BaseModel):
+class DataBrokerRow(BaseModel):
     """
-    One data source a run read from, with what that source IS and what was read over it.
+    One data broker a run read ticks from, with what that broker IS and what was read over it.
 
     An AGGREGATE and therefore its own stage: it is derived once and serves every surface,
     rather than being rebuilt by whichever renderer happens to want it. The console used to
@@ -520,11 +520,11 @@ class DataSourceRow(BaseModel):
     a render would produce today are two questions that disagree for as long as a re-render is
     unfinished.
     """
-    broker_type: str
+    data_broker_type: str
     market_type: str        # resolved once in DERIVE, never in a renderer
     scenario_count: int
     symbols: list[str]      # sorted, distinct
-    price_bases: str = ''   # distinct, sorted, comma-joined across this source's scenarios
+    price_bases: str = ''   # distinct, sorted, comma-joined across this broker's scenarios
 
 
 class ScenarioDetailsReport(RunScopedReport):
@@ -533,14 +533,14 @@ class ScenarioDetailsReport(RunScopedReport):
     failed ones** (the section's job is the full scenario status grid).
     """
     units: list[ScenarioDetailsRow]
-    # The per-source roll-up over those rows. On the model so the console, the artifact and
+    # The per-broker roll-up over those rows. On the model so the console, the artifact and
     # the API read one derivation instead of three.
-    data_sources: list[DataSourceRow] = []
+    data_brokers: list[DataBrokerRow] = []
     # What makes one row of each list unique (§49). A scenario is its name within its set — the
     # validator refuses a set naming one twice, and then lists BOTH refused copies, the one case
     # the key does not separate (their reason says why). `units` is the roster the per-unit
     # figures of `portfolio` join onto, on this key.
-    keys: dict[str, list[str]] = {'units': ['name'], 'data_sources': ['broker_type']}
+    keys: dict[str, list[str]] = {'units': ['name'], 'data_brokers': ['data_broker_type']}
 
 
 class RunReporting(StrEnum):

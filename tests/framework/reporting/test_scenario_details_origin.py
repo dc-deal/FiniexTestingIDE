@@ -15,7 +15,7 @@ different failures, and this row is the only per-scenario place that survives th
 """
 
 from python.framework.reporting.builders.scenario_details_report_builder import (
-    _data_sources,
+    _data_brokers,
     _market_types,
     _to_row,
 )
@@ -136,7 +136,7 @@ class TestAScenarioRecordsWhatItRead:
         assert row.price_bases == ''
 
 
-class TestTheDataSourceRollUpIsDerivedOnce:
+class TestTheDataBrokerRollUpIsDerivedOnce:
     """
     The roll-up is a DERIVE stage, not something a renderer does on the way past (§12).
 
@@ -155,9 +155,9 @@ class TestTheDataSourceRollUpIsDerivedOnce:
             scenarios: The scenarios to project and group
 
         Returns:
-            The derived data-source rows
+            The derived data-broker rows
         """
-        return _data_sources([_row(_result(), sc) for sc in scenarios],
+        return _data_brokers([_row(_result(), sc) for sc in scenarios],
                              _market_types({sc.data_broker_type for sc in scenarios}))
 
     def test_the_sources_are_grouped_with_their_market_type_resolved(self):
@@ -169,7 +169,7 @@ class TestTheDataSourceRollUpIsDerivedOnce:
             _scenario(['1.5.0'], ['production'], ['attested'],
                       symbol='EURUSD', broker='mt5', bases=['quote_driven']))
 
-        by_broker = {s.broker_type: s for s in sources}
+        by_broker = {s.data_broker_type: s for s in sources}
         assert by_broker['kraken_spot'].scenario_count == 2
         assert by_broker['kraken_spot'].symbols == ['BTCUSD', 'ETHUSD']
         assert by_broker['kraken_spot'].market_type == 'crypto'
@@ -188,10 +188,10 @@ class TestTheDataSourceRollUpIsDerivedOnce:
 
         rows = [_to_row(_result(), crypto, market_types),
                 _to_row(_result(error='boom'), forex, market_types)]
-        sources = {s.broker_type: s.market_type for s in _data_sources(rows, market_types)}
+        sources = {s.data_broker_type: s.market_type for s in _data_brokers(rows, market_types)}
 
         assert [row.market_type for row in rows] == ['crypto', 'forex']
-        assert all(row.market_type == sources[row.data_source] for row in rows)
+        assert all(row.market_type == sources[row.data_broker_type] for row in rows)
 
     def test_the_price_basis_is_de_duplicated_across_a_source_scenarios(self):
         """

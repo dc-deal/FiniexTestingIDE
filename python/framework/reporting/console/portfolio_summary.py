@@ -105,9 +105,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
         """Render a single scenario's portfolio block (linear)."""
         currency_disp = f'{unit.currency} [SPOT]' if unit.spot_mode else unit.currency
         broker = (unit.broker_name[:30] if unit.broker_name else '—')
-        data = f' | Data: {unit.data_source}' if unit.data_source else ''
-        if unit.sentiment_source:
-            data += f' · 📡 Sentiment: {unit.sentiment_source}'
+        data = f' | Data broker: {unit.data_broker_type}' if unit.data_broker_type else ''
+        if unit.data_sentiment_type:
+            data += f' · 📡 Sentiment: {unit.data_sentiment_type}'
         print(f'💰 {renderer.bold(unit.name)} — {broker} ({currency_disp}){data}')
         if unit.has_error:
             print(renderer.red('   ⚠️ CRITICAL: Errors detected'))

@@ -19,7 +19,7 @@ tests/simulation/stale_stress/
 Fixture set: `tests/fixtures/scenario_sets/stale_stress/stale_stress_probe.json` —
 BTCUSD kraken_spot ticks (2026-04-27, dense) + the `crypto_sentiment` archive (10-min
 snapshot cadence → a 60-min feed cut guarantees the 30-min staleness flip inside the window).
-Events block DATA SOURCES the scenario binds (`data_source` = `data_broker_type` for the
+Events block DATA SOURCES the scenario binds (`stale_data_source` = `data_broker_type` for the
 tick source, `data_sentiment_type` for the signal source).
 
 | Scenario | Stress | Asserts |

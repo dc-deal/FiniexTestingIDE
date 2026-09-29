@@ -163,13 +163,12 @@ class AutotraderReportCoordinator:
             result, name, self._config.symbol,
             # The broker key, not the display name: it is what the data API is addressed by,
             # so a report consumer can link this unit to its chart (sim has always carried it).
-            # `self._config.broker_type` is already the addressable key ('kraken_spot') — a
-            # plain str on AutoTraderConfig. NOT self._broker_config.broker_type, which is a
-            # BrokerType enum: the comment above is about that neighbouring attribute.
-            data_source=self._config.broker_type,
-            sentiment_source=(
-                self._config.scenario_settings.data_sentiment_type
-                if self._config.scenario_settings else ''),
+            # The broker whose ticks the session READ — a mock session may replay another
+            # broker's archive than the one it trades against, and the chart lives there. A
+            # plain str ('kraken_spot'), NOT self._broker_config.broker_type, which is a
+            # BrokerType enum.
+            data_broker_type=self._config.get_data_broker_type(),
+            data_sentiment_type=self._config.get_data_sentiment_type(),
             # #451: the mock session's planned windows label an episode's origin — the
             # timestamps always come from the run (a live-adapter session has none).
             stress_test_config=(

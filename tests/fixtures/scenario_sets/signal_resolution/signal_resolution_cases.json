@@ -60,7 +60,7 @@
                     "events": [
                         {
                             "label": "producer restart — one snapshot lost",
-                            "data_source": "crypto_sentiment_mock",
+                            "stale_data_source": "crypto_sentiment_mock",
                             "stale_start_date": "2026-04-27T06:05:00+00:00",
                             "stale_end_date": "2026-04-27T06:15:00+00:00"
                         }
@@ -85,7 +85,7 @@
                     "events": [
                         {
                             "label": "producer outage 2h, recovers inside the window",
-                            "data_source": "crypto_sentiment_mock",
+                            "stale_data_source": "crypto_sentiment_mock",
                             "stale_start_date": "2026-04-27T06:25:00+00:00",
                             "stale_end_date": "2026-04-27T08:25:00+00:00"
                         }
@@ -110,7 +110,7 @@
                     "events": [
                         {
                             "label": "feed dies mid-run and never returns",
-                            "data_source": "crypto_sentiment_mock",
+                            "stale_data_source": "crypto_sentiment_mock",
                             "stale_start_date": "2026-04-27T06:25:00+00:00",
                             "stale_end_date": "2026-04-27T09:00:00+00:00"
                         }
@@ -135,7 +135,7 @@
                     "events": [
                         {
                             "label": "no snapshot exists before the window opens",
-                            "data_source": "crypto_sentiment_mock",
+                            "stale_data_source": "crypto_sentiment_mock",
                             "stale_start_date": "2026-04-27T00:00:00+00:00",
                             "stale_end_date": "2026-04-27T06:05:00+00:00"
                         }
