@@ -10,13 +10,15 @@ which says for each what it serves and what it deliberately does not — a secon
 would be the copy nobody updates. `ROUTER_SURFACES` below is the authoritative mount table.
 """
 
+import textwrap
 import time
 from datetime import datetime, timezone
-from typing import Dict
+from typing import Dict, List
 
 from fastapi import Depends, FastAPI, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 
 from python.api.api_auth_setup import setup_api_auth
 from python.api.api_contract import API_CONTRACT_VERSION, CHANGES, CONTRACT_HEADER
@@ -65,6 +67,10 @@ ROUTER_SURFACES = (
     (sweeps_router.router, 'sweeps'),
 )
 
+# How much of one CHANGES line the boot overview shows: the route and the gist. The full
+# sentence is what `/api/v1/contract` serves.
+_CHANGE_PREVIEW_CHARS = 96
+
 
 def _describe_caller(request: Request, enforced: bool,
                      identities: Dict[str, ApiConsumerIdentity]) -> CallerResponse:
@@ -100,6 +106,41 @@ def _describe_caller(request: Request, enforced: bool,
         grants=list(identity.grants),
         note=identity.note,
     )
+
+
+def _describe_the_api(app: FastAPI, app_version: str) -> List[str]:
+    """
+    The console overview printed once every route is mounted: which contract this process
+    serves, what moved into it, and how many routes each surface carries.
+
+    Args:
+        app: The fully mounted application
+        app_version: The app version from the configuration
+
+    Returns:
+        The lines to print — the routes COUNTED from the app, never taken from a list
+    """
+    # Counted from the ROUTERS the mount loop includes, not from `app.routes`: FastAPI keeps an
+    # included router there as one wrapper object, so `app.routes` lists only the routes the
+    # factory mounts itself — health, contract and the other app-level reads.
+    top_level = sum(isinstance(route, APIRoute) and route.path.startswith('/api/v1')
+                    for route in app.routes)
+    per_surface = [(surface, sum(isinstance(route, APIRoute) for route in router.routes))
+                   for router, surface in ROUTER_SURFACES]
+    total = top_level + sum(count for _, count in per_surface)
+    surfaces = ' · '.join(f'{surface} {count}' for surface, count in per_surface)
+
+    lines = [
+        f'📜 API contract {API_CONTRACT_VERSION} · app {app_version} · '
+        f'{total} routes under /api/v1',
+        f'   per surface: {surfaces} · top-level {top_level}',
+        f'   moved into contract {API_CONTRACT_VERSION} ({len(CHANGES)}), '
+        f'in full at GET /api/v1/contract:',
+    ]
+    lines.extend(
+        f'     · {textwrap.shorten(change, width=_CHANGE_PREVIEW_CHARS, placeholder=" …")}'
+        for change in CHANGES)
+    return lines
 
 
 def create_app() -> FastAPI:
@@ -241,4 +282,5 @@ def create_app() -> FastAPI:
             dependencies=guarded + [Security(auth.grant, scopes=[surface])],
         )
 
+    print('\n'.join(_describe_the_api(app, app_version)))
     return app

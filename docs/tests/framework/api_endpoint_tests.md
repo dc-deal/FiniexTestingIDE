@@ -81,7 +81,9 @@ or when a field starts to mean something else. Every response carries `X-Api-Con
 included, so a saved fixture is self-describing; `/contract` names both clocks, agrees with the
 header and is open like `/health`. And the contract log's newest `## Version N` heading is held to
 `API_CONTRACT_VERSION`, newest first: the server serves only the current version's lines, so a bump
-that skipped the log would leave a gap no consumer could see.
+that skipped the log would leave a gap no consumer could see. The overview a starting server
+prints names the contract, previews each of its changes, and counts the routes it mounted — that
+count is held to the OpenAPI schema, so a router the count misses fails here.
 
 ## Directory routes (`test_directory_endpoint.py`)
 

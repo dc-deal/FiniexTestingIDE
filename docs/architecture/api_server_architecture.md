@@ -52,6 +52,19 @@ python cli/api_server_cli.py --reload
                       └─ Pydantic response → JSON
 ```
 
+Once every router is mounted, the factory prints a short overview beside the authentication boot
+line, so a restart shows in its console which contract it serves and what it mounted:
+
+```
+📜 API contract 15 · app 1.4.0 · 35 routes under /api/v1
+   per surface: brokers 1 · bars 4 · deployments 3 · directory 2 · reports 17 · sweeps 2 · top-level 6
+   moved into contract 15 (4), in full at GET /api/v1/contract:
+     · reports/runs: every run says what it DID — `results`, one entry per account currency …
+```
+
+The routes are counted from the routers `ROUTER_SURFACES` mounts plus the ones the factory mounts
+itself; "top-level" is the second group — `/health`, `/contract` and the other app-level reads.
+
 ## CORS Configuration
 
 During development the Vite dev server runs on `:5173` and the API on `:8000`. Both localhost origins are explicitly allowed:

@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from python.api.api_app import create_app
-from python.api.api_contract import API_CONTRACT_VERSION
+from python.api.api_contract import API_CONTRACT_VERSION, CHANGES
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.types.api.report_types import (
@@ -548,6 +548,19 @@ class TestTheContractSaysWhatItIs:
             head = client.head(path)
             assert head.status_code == client.get(path).status_code == 200
             assert head.headers['X-Api-Contract'] == str(API_CONTRACT_VERSION)
+
+    def test_a_restart_prints_the_contract_and_every_route_it_mounted(self, capsys):
+        # The overview a restarted server prints in its console. Its route count is held to the
+        # schema, which FastAPI derives from what is really mounted — a router the count missed
+        # would show here, not only as a wrong number on a screen.
+        app = create_app()
+        printed = capsys.readouterr().out
+        schema_paths = [path for path in TestClient(app).get('/openapi.json').json()['paths']
+                        if path.startswith('/api/v1')]
+
+        assert f'API contract {API_CONTRACT_VERSION} ·' in printed
+        assert f'{len(schema_paths)} routes under /api/v1' in printed
+        assert printed.count('\n     · ') == len(CHANGES)
 
     def test_the_log_opens_with_the_version_the_server_serves(self):
         # The server serves only the current version's lines; the log is the ONLY place the
