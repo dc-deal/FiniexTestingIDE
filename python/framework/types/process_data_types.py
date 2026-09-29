@@ -589,6 +589,7 @@ class ProcessResult:
     scenario_index: int = ''
 
     # === EXECUTION TIME ===
+    # Milliseconds on the monotonic clock, from the subprocess's start to its result
     execution_time_ms: float = 0.0
 
     # === ERROR INFORMATION (success=False) ===

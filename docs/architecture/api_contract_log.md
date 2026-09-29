@@ -26,6 +26,22 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 13 — 2026-09-29 (viewer#21)
+
+- `GET /api/v1/reports/runs/{run_id}/scenario-details`: `execution_time_ms` is MILLISECONDS, as its
+  name says. It carried seconds under that name: 1.98 for 13,584 ticks was two seconds, not two
+  milliseconds. It is now measured on the monotonic clock, from the scenario subprocess's start to
+  its result, and the stored runs were migrated, so an older run serves milliseconds as well.
+- The CORE test components are named `CORE/test_probes/<name>` — `deterministic_probe`,
+  `event_probe`, `margin_stress_probe`, `multi_position_probe`, `outage_probe`,
+  `sample_probe_worker` — where they were `CORE/backtesting/backtesting_<name>`: they run in mock
+  sessions as well as in backtests, so "backtesting" was the wrong word. Their worker instance is
+  `probe_worker` (was `backtesting_worker`). The new strings appear wherever a configuration is
+  served — a run's configuration, a directory row, a ledger row — and the stored runs carry them
+  too.
+- `GET /api/v1/directory`: the four production AutoTrader profiles are `<symbol>_production.json`
+  (were `<symbol>_live.json`); their `profile_name` changed with the file name.
+
 ## Version 12 — 2026-09-28 (viewer#21)
 
 The vocabulary contract: the words the API serves follow the project glossary

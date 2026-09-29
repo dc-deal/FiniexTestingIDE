@@ -482,6 +482,8 @@ class ScenarioDetailsRow(BaseModel):
     account_currency: str = ''      # resolved P&L denomination currency
     account_currency_explicit: bool = False  # True when set in config (not auto-derived)
     status: str = 'success'         # 'success' | 'failed' | 'hybrid' (partial + error)
+    # Wall time the scenario's subprocess took, preparation to result, in MILLISECONDS
+    # (monotonic clock)
     execution_time_ms: float = 0.0
     ticks_processed: int = 0
     first_tick_time: str = ''       # ISO-8601 UTC, '' if none

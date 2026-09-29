@@ -12,7 +12,7 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 
 | Test | What it validates |
 |------|-------------------|
-| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (29782), 0 clipping, 0 warnings/errors, trades produced, stats collected |
+| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (63412), 0 clipping, 0 warnings/errors, trades produced, stats collected |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
 | `test_broker_report_written` | Broker report persisted (unified model) + rendered in the summary |
 | `test_safety_report_written` | The safety record reaches disk and names its baseline (#356 Phase C) — the end-to-end the unit tests cannot show: a chain of proven links is not a proven chain. Also pins that an unarmed limit reports `null`, not `0.0` |
@@ -76,7 +76,10 @@ test's own directory; the ledger is redirected for the whole suite by `tests/con
 **Runtime:** ~65 seconds — five sessions, chained in one module-scoped fixture because the
 properties are four questions about one sequence rather than four sequences.
 
-**Data Dependency:** Uses `configs/autotrader_profiles/mock/mock_session_test.json` with parquet file `data/processed/kraken_spot/ticks/BTCUSD/BTCUSD_20260124_141946.parquet`.
+**Data Dependency:** Uses `configs/autotrader_profiles/mock/mock_session_test.json`, replaying
+2026-01-25 02:19:46 → 2026-01-26 02:14:00 from the BTCUSD parquet files
+`BTCUSD_20260124_141946.parquet` and `BTCUSD_20260125_141348.parquet`. The window starts twelve
+hours into the archive so that its warmup bars exist, exactly as a backtest of it needs them.
 
 **Runtime:** ~6 seconds total (session shared across both tests via `scope='module'`).
 
@@ -145,7 +148,7 @@ so high that the wall clock cannot speak at all.
 
 Trade lifecycle validation in a mock session. Uses `mock_session_test.json` (simple_consensus, parquet replay), so every fill carries the replayed quote.
 
-One session is shared across all test classes (`scope='module'`) to avoid running 29782 ticks multiple times.
+One session is shared across all test classes (`scope='module'`) to avoid running 63412 ticks multiple times.
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
@@ -187,7 +190,9 @@ Each class runs an independent session from its own profile. Sessions are module
 | `TestDuplicateSignalGuard` | 3 | Exactly 1 position opened despite 490 repeated BUY signals (hold_ticks=5000 > max_ticks=500); the session end fabricates no exit; no errors |
 | `TestMinimalWarmup` | 3 | Session completes without crash when bar_max_history=30 starves M30 workers; ticks processed; no errors |
 
-**Data Dependency:** All four profiles use BTCUSD parquet `BTCUSD_20260124_141946.parquet`. Profiles: `sl_triggered_test.json`, `tp_triggered_test.json`, `duplicate_signal_guard_test.json`, `minimal_warmup_test.json`.
+**Data Dependency:** All four profiles use BTCUSD parquet `BTCUSD_20260124_141946.parquet`, from
+windows that start twelve (the take profit: fourteen) hours into the archive so their warmup bars
+exist. The stop and target levels were measured on those windows. Profiles: `sl_triggered_test.json`, `tp_triggered_test.json`, `duplicate_signal_guard_test.json`, `minimal_warmup_test.json`.
 
 **Runtime:** ~6 seconds total across all 4 sessions.
 

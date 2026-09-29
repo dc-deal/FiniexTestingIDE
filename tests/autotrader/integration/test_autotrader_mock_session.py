@@ -34,7 +34,7 @@ MOCK_PROFILE = 'configs/autotrader_profiles/mock/mock_session_test.json'
 def mock_session():
     """
     Run one full mock session shared across all tests in this module.
-    Avoids running 29782 ticks twice.
+    Avoids running 63412 ticks twice.
     """
     config = load_autotrader_config(MOCK_PROFILE)
     trader = AutotraderMain(config)
@@ -71,8 +71,10 @@ class TestAutotraderMockSession:
         )
 
         # === All ticks processed ===
-        assert result.ticks_processed == 29782, (
-            f'Expected 29782 ticks, got {result.ticks_processed}'
+        # The replayed window 2026-01-25 02:19:46 → 2026-01-26 02:14:00 holds exactly this many
+        # ticks — it starts twelve hours into the archive so its warmup bars exist.
+        assert result.ticks_processed == 63412, (
+            f'Expected 63412 ticks, got {result.ticks_processed}'
         )
 
         # === No clipping in replay mode ===
@@ -105,7 +107,7 @@ class TestAutotraderMockSession:
         assert result.execution_stats is not None, 'Missing execution stats'
 
         # === Clipping monitor reported ===
-        assert result.clipping_summary.total_ticks == 29782
+        assert result.clipping_summary.total_ticks == 63412
 
     def test_the_report_knows_how_many_ticks_reached_the_algo(self, mock_session):
         """

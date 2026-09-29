@@ -63,7 +63,7 @@
     "enabled": false
   },
   "scenario_settings": {
-    "start_date": "2025-09-17T17:58:34+00:00",
+    "start_date": "2025-09-18T05:58:34+00:00",
     "max_ticks": 12000,
     "balances": {
       "JPY": 100000.0

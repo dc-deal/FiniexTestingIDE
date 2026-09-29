@@ -57,6 +57,12 @@ numbered from 1; the ledger holds one row per booking period and currency. In co
 **cache** — A derived store of computed results. Deleting it loses nothing; a "cache" whose
 deletion loses data is misfiled. See [Data Storage Layout](architecture/data_storage_layout.md).
 
+**canonical clock** — The one clock a decision logic, a worker and the execution layer read:
+`get_current_time()`. In a backtest and a mock session it is the time of the replayed tick; in a
+live-adapter session the time of the event being processed. It is market time, never the machine's
+clock — see *wall clock*.
+
+
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and
 the framework's record of keys, positions and the risk baseline. Keyed by the bot, overwritten, and
 never kept per run. See [Data Storage Layout](architecture/data_storage_layout.md).
@@ -87,6 +93,11 @@ runs around the clock. See [Scenario Generator](generator/generator_block_splitt
 resolves against the framework's registry, anything else is a file path. The former `USER/`
 namespace no longer exists. See [Worker Naming](user_guides/worker_naming_doc.md).
 
+**data origin** — Which kind of source produced an archived file: `origin_class` (`production`,
+`development`, `unknown`) with its evidence grade, stamped at import and carried into every run's
+consumption record. Not the *broker*. See [Data Provenance](architecture/data_provenance.md).
+
+
 **data window** — The market window one run unit was declared to cover (`data_windows` on the run
 header): a start, and an end unless it is open. Not a span over several units.
 
@@ -104,6 +115,11 @@ profile declares `deployment.continuous: true`. Not itself a run. See
 every order validated by the venue and never placed, fills simulated locally. A mock session is not
 called a dry run, although the `dry_run` flag reads true for it too. To be renamed *paper* (#304).
 See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
+
+**execution time** — How long a run or one of its units took on the *wall clock*:
+`execution_time_ms` for a scenario, `execution_time_s` for a whole backtest run. It says nothing
+about how much market time was processed — that is the *tick timespan*.
+
 
 **field study** — The real-money acceptance test of the live execution stack, whose record becomes
 a release certificate. See [Field Study](tests/live_field_study/field_study_guide.md).
@@ -234,6 +250,11 @@ its parent. Not itself a run. See [Parameter Optimization](architecture/paramete
 **tick source** — The AutoTrader component that feeds ticks into the loop, chosen by
 `tick_source.type`: the replaying `mock` source or a venue feed.
 
+**tick timespan** — The market time a unit actually processed, from its first to its last processed
+tick (`tick_timespan_seconds`). MEASURED, where the *data window* is DECLARED: a tick-limited
+scenario or a quiet market ends earlier than its window.
+
+
 **ticks from** (`ticks_from`) — Where a run's ticks came from: `archive` or `venue`. Recorded on
 every run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
 
@@ -243,5 +264,15 @@ every run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run
 
 **venue** — The real marketplace behind a broker entry: Kraken, an MT5 broker.
 
+**wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
+`start_time`) and measures durations — on its monotonic form, because the wall clock itself can
+step backwards. Never the time a decision reads — that is the *canonical clock*.
+
+
 **worker** — A class, one per file, that computes named outputs every tick: an INDICATOR from bars
 and ticks, a SIGNAL from pre-collected external data. See [Worker Naming](user_guides/worker_naming_doc.md).
+
+**worker instance** — One named use of a worker in a strategy: `worker_instances` maps the
+instance name (`rsi_fast`) to its type string (`CORE/rsi`), and the instance's parameters sit under
+`workers.<instance name>`. One strategy may use the same worker type twice under two names. See
+[Worker Naming](user_guides/worker_naming_doc.md).

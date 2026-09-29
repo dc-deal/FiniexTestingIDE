@@ -69,7 +69,7 @@ class ScenarioDetailsSummary(AbstractBatchSummarySection):
             hint = renderer.yellow(' (explicit)') if unit.account_currency_explicit else ''
             print(f'   Account currency: {unit.account_currency}{hint}')
 
-        duration = format_duration(unit.execution_time_ms)
+        duration = format_duration(unit.execution_time_ms / 1000.0)
         timespan = format_tick_timespan(
             self._parse(unit.first_tick_time), self._parse(unit.last_tick_time),
             unit.tick_timespan_seconds)

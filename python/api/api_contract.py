@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 12
+API_CONTRACT_VERSION = 13
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -31,24 +31,13 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'reports/runs: an AutoTrader session\'s `group` is `autotrader` (was `live`) — every AutoTrader '
-    'session, mock, dry run or real orders alike. The value `live` no longer occurs, here or in '
-    'any `run_type` the API serves',
-    'reports/runs: every run carries `ticks_from` (`archive` | `venue`) and `orders_to` '
-    '(`simulated` | `venue`), recorded at its start from the resolved configuration — with '
-    '`group` they tell a backtest, a mock session, a dry run and a real-money session apart — and '
-    '`data_windows`, the market window each unit was declared to cover (`unit_name`, `start_date`, '
-    '`end_date`; `end_date` null means open). All three are null on a run recorded before '
-    'contract 12',
-    'sweeps: a combination row\'s `config_snapshot` — the full strategy configuration as JSON — is '
-    'now `strategy_config_json`',
-    'directory: the AutoTrader test profiles moved from the folder `backtesting` to `mock`, and the '
-    'one live-adapter probe among them to `observation`',
-    'reports/runs/{run_id}/config: a configuration recorded from contract 12 on names a scenario '
-    '`scenario_name` and a profile `profile_name`; a run recorded before keeps what it recorded',
-    'booking periods: every `segment_*` field is `period_*` — `period_no`, `period_opened_at`, '
-    '`period_closed_at`, `period_close_reason`, `period_max_equity`, `period_min_equity`, '
-    '`period_max_drawdown` — on reports/runs/{run_id}/booking-periods, '
-    'deployments/{id}/booking-periods and a sweep\'s combination rows, and every declared `key` '
-    'names `period_no`. Stored runs were migrated, so an older run serves the new names too',
+    'reports/runs/{run_id}/scenario-details: `execution_time_ms` is now milliseconds, as its name '
+    'says — it carried SECONDS before, so a value read as 2 ms was 2 s. Measured on the '
+    'monotonic clock; the stored runs were migrated, so an older run serves milliseconds too',
+    'the CORE test components are named `CORE/test_probes/<name>` (were '
+    '`CORE/backtesting/backtesting_<name>`), and their worker instance is `probe_worker` (was '
+    '`backtesting_worker`) — in every served configuration, directory row and ledger row, stored '
+    'runs included',
+    'directory: the four production AutoTrader profiles are `<symbol>_production.json` (were '
+    '`<symbol>_live.json`), and their `profile_name` changed with them',
 ]
