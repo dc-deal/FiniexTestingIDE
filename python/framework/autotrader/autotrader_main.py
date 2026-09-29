@@ -1079,6 +1079,7 @@ class AutotraderMain:
         if self._tick_loop:
             result.disturbance_episodes = self._tick_loop.get_disturbance_episodes()
             result.market_data_tick_stats = self._tick_loop.get_market_data_tick_stats()
+            result.first_tick_time, result.last_tick_time = self._tick_loop.get_tick_span()
             # #356 — the risk denominator and how far the account moved against it. Read
             # from the loop rather than re-derived, because the running maxima only exist
             # there: the portfolio knows what the account is worth NOW, not what the

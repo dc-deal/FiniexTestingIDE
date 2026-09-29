@@ -147,7 +147,8 @@ class SharedReportCoordinator:
 
         # Run summary — cross-section KPIs composed from the section aggregates (#390 prework).
         run_summary = build_run_summary(
-            run_id, portfolio, trade_history, execution_stats, signal, feed_stability, roster)
+            run_id, portfolio, trade_history, execution_stats, signal, feed_stability, roster,
+            units)
         write_artifact(run_summary, io_dir, RUN_SUMMARY_ARTIFACT)
 
         # Worker/decision — per-unit worker + decision performance (#398).

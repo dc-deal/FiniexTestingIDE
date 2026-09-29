@@ -7,6 +7,7 @@ simulation or live run required. Covers mapping, the filter path (symbol / close
 reason / time range), distinct symbols, and the empty case.
 """
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 from python.framework.reporting.builders.run_unit import RunUnit
@@ -19,7 +20,8 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
     EntryType,
     TradeRecord,
 )
-from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
+from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -218,3 +220,56 @@ class TestAnalytics:
 
     def test_empty_analytics(self):
         assert build_trade_history_report(_RUN_ID, _units([])).analytics == []   # no rows → no currency groups
+
+
+def _fill(trade_id: str) -> BrokerTrade:
+    """One execution with a fixed id — the only field the count reads."""
+    return BrokerTrade(
+        trade_id=trade_id, parent_broker_ref='ref', order_id='pos_eurusd_1', volume=0.3,
+        price=1.1, fee=0.0, fee_currency='USD', timestamp=_T0, side=OrderSide.BUY,
+        is_maker=False)
+
+
+class TestASharedFillIsCounted:
+    """
+    A partial close copies the position's entry fills onto every record it produces, so several
+    rows show one fill. The count is stamped on the execution by the builder — over the whole
+    unit, and per unit, because two scenarios on one symbol mint the same synthetic ids.
+    """
+
+    @staticmethod
+    def _with_entry(trade: TradeRecord, trade_id: str) -> TradeRecord:
+        exit_id = f'x-{trade.position_id}-{trade.exit_time.minute}'
+        return replace(trade, entry_trades=[_fill(trade_id)], exit_trades=[_fill(exit_id)])
+
+    def test_the_rows_of_one_fill_say_how_many_share_it(self):
+        first = self._with_entry(_trade('p1', duration_min=10), 'SYNTH-pos_eurusd_1-000001')
+        second = self._with_entry(_trade('p1', duration_min=20), 'SYNTH-pos_eurusd_1-000001')
+
+        report = build_trade_history_report(_RUN_ID, _units([first, second]))
+
+        assert [row.entry_executions[0].shared_by for row in report.trades] == [2, 2]
+        assert [row.exit_executions[0].shared_by for row in report.trades] == [1, 1]
+
+    def test_two_units_minting_the_same_id_do_not_share_it(self):
+        same_id = 'SYNTH-pos_eurusd_1-000001'
+        units = [RunUnit(name='EURUSD_feb', symbol='EURUSD',
+                         trade_history=[self._with_entry(_trade('p1'), same_id)]),
+                 RunUnit(name='EURUSD_oct', symbol='EURUSD',
+                         trade_history=[self._with_entry(_trade('p1'), same_id)])]
+
+        report = build_trade_history_report(_RUN_ID, units)
+
+        assert [row.entry_executions[0].shared_by for row in report.trades] == [1, 1]
+
+    def test_a_filtered_list_keeps_the_count_of_the_whole_unit(self):
+        first = self._with_entry(_trade('p1', duration_min=10), 'SYNTH-pos_eurusd_1-000001')
+        second = self._with_entry(
+            _trade('p1', duration_min=20, close_reason=CloseReason.SL_TRIGGERED),
+            'SYNTH-pos_eurusd_1-000001')
+
+        report = build_trade_history_report(
+            _RUN_ID, _units([first, second]), close_reason=CloseReason.SL_TRIGGERED.value)
+
+        assert len(report.trades) == 1
+        assert report.trades[0].entry_executions[0].shared_by == 2

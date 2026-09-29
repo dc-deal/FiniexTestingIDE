@@ -156,3 +156,44 @@ class TestAPeriodIsNeverFiledInsideOut:
         closed = _MON + timedelta(hours=5)
         periods = rec.close(closed, _seal_source)
         assert periods[0].closed_at == closed
+
+
+class TestWhatAPeriodOpenedWith:
+    """
+    A period's opening equity is the previous period's close, read at the same instant — or a
+    unit's first observed value for its first period. The two pipelines observe in opposite
+    order around the boundary check (the simulation before it, the AutoTrader after), and both
+    must land on the same answer.
+    """
+
+    @staticmethod
+    def _source(equity: float):
+        return lambda: ([], PeriodSnapshot(currency='USD', final_equity=equity))
+
+    def test_the_simulation_order_observes_then_checks(self):
+        rec = _recorder()
+        rec.observe_equity(10_000.0)
+        rec.check_boundary(_MON + timedelta(hours=1), self._source(10_000.0))
+        rec.observe_equity(10_050.0)
+        rec.check_boundary(_MON + timedelta(days=1, seconds=1), self._source(10_050.0))
+        rec.observe_equity(10_070.0)
+        periods = rec.close(_MON + timedelta(days=1, hours=2), self._source(10_070.0))
+
+        assert [p.period_opening_equity for p in periods] == [10_000.0, 10_050.0]
+
+    def test_the_autotrader_order_checks_then_observes(self):
+        rec = _recorder()
+        rec.check_boundary(_MON + timedelta(hours=1), self._source(10_000.0))
+        rec.observe_equity(10_000.0)
+        rec.check_boundary(_MON + timedelta(days=1, seconds=1), self._source(10_050.0))
+        rec.observe_equity(10_050.0)
+        periods = rec.close(_MON + timedelta(days=1, hours=2), self._source(10_070.0))
+
+        assert [p.period_opening_equity for p in periods] == [10_000.0, 10_050.0]
+
+    def test_a_first_period_nothing_observed_in_opens_with_nothing(self):
+        rec = _recorder()
+        rec.check_boundary(_MON + timedelta(hours=1), self._source(10_000.0))
+        periods = rec.close(_MON + timedelta(hours=2), self._source(10_000.0))
+
+        assert periods[0].period_opening_equity is None

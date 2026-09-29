@@ -37,16 +37,21 @@ A mismatch is REPORTED, never raised (§12: reports calculate and render, they d
 is the finding the table exists to surface.
 """
 
+from collections import Counter
 from typing import List
 
 from python.framework.reporting.builders.run_unit import RunUnit
+from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
+from python.framework.reporting.store.run_results_ledger import period_ledger_fields
 from python.framework.types.api.report_types import (
     BookingPeriodRow,
     BookingPeriodsReport,
+    BookingUnitTotalRow,
     DeploymentBookingPeriodRow,
     RunResultRow,
     RunSummary,
 )
+from python.framework.types.run_results_types import BookingPeriod
 
 # How far the period sum and the run's own figure may differ and still count as agreeing.
 # Floating-point addition over thirty periods does not land on the same last bit as one
@@ -90,9 +95,8 @@ def build_booking_periods_report(
     # every one of them.
     present = sorted({period.figures.currency for period in booked})
     reported = currency or present[0]
-    rows = [_row(period) for period in sorted(
-        (s for s in booked if s.figures.currency == reported),
-        key=lambda s: (s.unit_name, s.period_no))]
+    in_currency = [s for s in booked if s.figures.currency == reported]
+    rows = [_row(period) for period in sorted(in_currency, key=lambda s: (s.unit_name, s.period_no))]
     if not rows:
         return BookingPeriodsReport(
             run_id=run_id, currency=reported, currencies=present)
@@ -103,12 +107,15 @@ def build_booking_periods_report(
     # was never reported (measured on a two-currency run, #539 audit).
     run_figures = _run_figures(run_summary, reported)
     run_net_pnl = run_figures.net_pnl if run_figures else None
+    unit_totals = _unit_totals(run_id, in_currency)
+    closing = [total.final_equity for total in unit_totals]
 
     return BookingPeriodsReport(
         run_id=run_id,
         currency=reported,
         currencies=present,
         periods=rows,
+        unit_totals=unit_totals,
         total_net_pnl=total_net_pnl,
         total_fees=sum(row.total_fees for row in rows),
         total_trades=sum(row.trade_count for row in rows),
@@ -120,8 +127,71 @@ def build_booking_periods_report(
         # run's drawdown: a fall that runs across a period boundary is deeper than any one
         # period's own, and the run summary is where that figure lives.
         deepest_period_drawdown=max((row.max_drawdown for row in rows), default=0.0),
-        final_equity=rows[-1].final_equity,
+        total_final_equity=(None if any(value is None for value in closing) else sum(closing)),
     )
+
+
+def _unit_totals(run_id: str, periods: List[BookingPeriod]) -> List[BookingUnitTotalRow]:
+    """
+    Each unit's periods folded into its total — laid out as the ledger lays them out.
+
+    Args:
+        run_id: The run the periods belong to
+        periods: One currency's sealed periods
+
+    Returns:
+        One total per unit, ordered by unit name
+    """
+    # The two identity fields the row model requires and this fold never reads: the rows exist
+    # only inside this call, and the fold drops an empty value as "not measured".
+    rows = [RunResultRow(run_id=run_id, param_hash='-', run_timestamp=period.opened_at.isoformat(),
+                         **period_ledger_fields(period))
+            for period in periods]
+    return unit_totals_from_ledger_rows(rows)
+
+
+def unit_totals_from_ledger_rows(rows: List[RunResultRow]) -> List[BookingUnitTotalRow]:
+    """
+    One run's period rows folded into one total per unit, by the reductions the ledger declares.
+
+    Folded by `aggregate_ledger_rows` — the one fold the sweeps, the deployments and the run
+    list use — rather than summed here, because three of the eight figures fold in a way that
+    looks right and is not: the rates are rebuilt from their components, the drawdown travels
+    with the row that owns it, and a streak is not foldable at all. Shared by the report and by
+    the back-fill of reports written before it, so the two cannot come to disagree.
+
+    Args:
+        rows: One run's ledger rows of ONE currency, one per booked period
+
+    Returns:
+        One total per unit, ordered by unit name
+    """
+    counts = Counter(row.unit_name for row in rows)
+    folded = aggregate_ledger_rows(rows, by=('run_id', 'currency', 'unit_name'))
+    return [BookingUnitTotalRow(
+        unit_name=row.unit_name,
+        currency=row.currency,
+        period_count=counts[row.unit_name],
+        opened_at=row.period_opened_at,
+        closed_at=row.period_closed_at,
+        trade_count=row.total_trades,
+        net_pnl=row.net_pnl,
+        total_fees=row.total_fees,
+        commission_cost=row.period_commission_cost,
+        swap_cost=row.period_swap_cost,
+        spread_cost=row.period_spread_cost,
+        gross_profit=row.gross_profit,
+        gross_loss=row.gross_loss,
+        win_rate=row.win_rate,
+        profit_factor=row.profit_factor,
+        opening_equity=row.period_opening_equity,
+        final_equity=row.final_equity,
+        min_equity=row.period_min_equity,
+        max_equity=row.period_max_equity,
+        deepest_period_drawdown=row.period_max_drawdown,
+        account_max_drawdown=row.account_max_drawdown,
+        account_max_dd_pct=row.account_max_drawdown_pct,
+    ) for row in folded]
 
 
 def _row(period) -> BookingPeriodRow:
@@ -145,8 +215,12 @@ def _row(period) -> BookingPeriodRow:
         trade_count=period.trade_count,
         net_pnl=f.net_pnl,
         total_fees=f.total_fees,
+        commission_cost=period.commission_cost,
+        swap_cost=period.swap_cost,
+        spread_cost=period.spread_cost,
         win_rate=f.win_rate,
         profit_factor=f.profit_factor,
+        opening_equity=period.period_opening_equity,
         final_equity=f.final_equity,
         min_equity=period.period_min_equity,
         max_equity=period.period_max_equity,
@@ -192,8 +266,12 @@ def booking_periods_from_ledger_rows(
             trade_count=row.total_trades,
             net_pnl=row.net_pnl,
             total_fees=row.total_fees,
+            commission_cost=row.period_commission_cost,
+            swap_cost=row.period_swap_cost,
+            spread_cost=row.period_spread_cost,
             win_rate=row.win_rate,
             profit_factor=row.profit_factor,
+            opening_equity=row.period_opening_equity,
             final_equity=row.final_equity,
             # The period's OWN band and decline, never the cumulative trio beside them on the
             # row: on this table the question is what each period did, and the running figure

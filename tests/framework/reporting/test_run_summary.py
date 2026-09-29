@@ -5,6 +5,8 @@ Composes the cross-section KPI model from the section reports (portfolio aggrega
 trade analytics + execution totals) — no re-derivation. Per-currency join + global counts.
 """
 
+from datetime import datetime, timedelta, timezone
+
 from python.framework.reporting.io.artifact_specs import (
     RUN_SUMMARY_ARTIFACT,
 )
@@ -13,6 +15,7 @@ from python.framework.reporting.builders.report_aggregators import (
     aggregate_portfolio_by_currency,
 )
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
+from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
     AbsentUnitRow,
     ExecutionStatsReport,
@@ -25,6 +28,8 @@ from python.framework.types.api.report_types import (
     TradeHistoryReport,
     UnitRoster,
 )
+from python.framework.types.market_types.market_data_types import TickData
+from python.framework.utils.process_debug_info_utils import processed_tick_range_stats
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -164,3 +169,48 @@ class TestUndefinedProfitFactor:
         row.total_loss = 0.0
         row.losing_trades = 0
         assert aggregate_portfolio_by_currency([row])[0].profit_factor is None
+
+
+class TestTheMarketTimeTheRunProcessed:
+    """
+    The run's tick timespan is its units' spans COVERED together — a stretch two scenarios
+    share counts once — beside their plain sum, which is the work. The console used to print the
+    sum of the DECLARED windows as "Total Simulation", i.e. the sum, and not what it measured.
+    """
+
+    _T0 = datetime(2025, 10, 13, tzinfo=timezone.utc)
+
+    def _summary(self, spans):
+        units = [RunUnit(name=f'u{i}', symbol='EURUSD', first_tick_time=first,
+                         last_tick_time=last) for i, (first, last) in enumerate(spans)]
+        portfolio = PortfolioReport(run_id=_RUN_ID, units=[_unit()], aggregates=[_agg()])
+        trade = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[])
+        return build_run_summary(_RUN_ID, portfolio, trade, _exec(), units=units)
+
+    def test_two_scenarios_over_one_window_cover_it_once(self):
+        window = (self._T0, self._T0 + timedelta(hours=10))
+        summary = self._summary([window, window])
+
+        assert summary.tick_timespan_seconds == 10 * 3600
+        assert summary.tick_timespan_total_seconds == 20 * 3600
+
+    def test_separate_windows_add_up(self):
+        summary = self._summary([(self._T0, self._T0 + timedelta(hours=2)),
+                                 (self._T0 + timedelta(hours=5), self._T0 + timedelta(hours=6))])
+
+        assert summary.tick_timespan_seconds == summary.tick_timespan_total_seconds == 3 * 3600
+
+    def test_no_recorded_span_is_no_figure(self):
+        summary = self._summary([(None, None)])
+
+        assert (summary.tick_timespan_seconds, summary.tick_timespan_total_seconds) == (None, None)
+
+    def test_a_unit_s_span_ends_at_the_last_tick_it_processed(self):
+        ticks = tuple(TickData(timestamp=self._T0 + timedelta(minutes=m), symbol='EURUSD',
+                               bid=1.1, ask=1.1) for m in range(10))
+
+        stats = processed_tick_range_stats(ticks, processed=4)
+
+        assert (stats.tick_count, stats.last_tick_time) == (4, ticks[3].timestamp)
+        assert stats.tick_timespan_seconds == 3 * 60
+        assert processed_tick_range_stats(ticks, processed=0).tick_timespan_seconds is None

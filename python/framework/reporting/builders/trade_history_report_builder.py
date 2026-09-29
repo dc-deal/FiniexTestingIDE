@@ -10,6 +10,7 @@ loop, fixture-testable. The shared filter (symbol / close reason / time range) l
 here; the analytics roll-up is the shared aggregator (`report_aggregators`).
 """
 
+from collections import Counter
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional
@@ -67,8 +68,29 @@ def build_trade_history_report(
     Returns:
         The filtered, mapped TradeHistoryReport
     """
-    rows = [_to_row(trade, unit.name) for unit in units for trade in unit.trade_history]
+    rows = []
+    for unit in units:
+        shared = _execution_counts(unit.trade_history)
+        rows.extend(_to_row(trade, unit.name, shared) for trade in unit.trade_history)
     return _assemble(run_id, rows, symbol, close_reason, start, end, window_basis)
+
+
+def _execution_counts(trades: List[TradeRecord]) -> Counter:
+    """
+    How many of one unit's trade records carry each execution.
+
+    Per UNIT, because the id is unique only there: every scenario counts its positions from
+    `pos_<symbol>_1`, so two scenarios on one symbol mint the same synthetic trade ids.
+
+    Args:
+        trades: One unit's trade records
+
+    Returns:
+        trade_id → number of records carrying it
+    """
+    return Counter(bt.trade_id
+                   for trade in trades
+                   for bt in (trade.entry_trades or []) + (trade.exit_trades or []))
 
 
 def _assemble(
@@ -108,8 +130,19 @@ def _assemble(
         scenario_totals=aggregate_trade_scenario_totals(filtered))
 
 
-def _to_row(trade: TradeRecord, scenario_name: str = '') -> TradeHistoryRow:
-    """Map one closed TradeRecord to a renderable row (the full #393 projection)."""
+def _to_row(trade: TradeRecord, scenario_name: str = '',
+            shared: Optional[Counter] = None) -> TradeHistoryRow:
+    """
+    Map one closed TradeRecord to a renderable row (the full #393 projection).
+
+    Args:
+        trade: The record
+        scenario_name: Its unit
+        shared: Its unit's execution counts (`_execution_counts`); None counts each fill once
+
+    Returns:
+        The row
+    """
     pip = trade.pip_size if trade.pip_size > 0 else 1.0
     mae_dist = abs(trade.entry_price - trade.mae_price) if trade.mae_price > 0 else 0.0
     mfe_dist = abs(trade.mfe_price - trade.entry_price) if trade.mfe_price > 0 else 0.0
@@ -152,8 +185,8 @@ def _to_row(trade: TradeRecord, scenario_name: str = '') -> TradeHistoryRow:
         take_profit=trade.take_profit,
         entry_side=trade.entry_side.value if trade.entry_side else '',
         exit_side=trade.exit_side.value if trade.exit_side else '',
-        entry_executions=_execution_rows(trade.entry_trades),
-        exit_executions=_execution_rows(trade.exit_trades),
+        entry_executions=_execution_rows(trade.entry_trades, shared),
+        exit_executions=_execution_rows(trade.exit_trades, shared),
         entry_slippage=entry_slip,
         exit_slippage=exit_slip,
         entry_slippage_pct=entry_slip_pct,
@@ -174,8 +207,18 @@ def _slippage(fill_price: float, submission_mid: Optional[float], side):
     return delta, pct
 
 
-def _execution_rows(broker_trades: Optional[List[BrokerTrade]]) -> List[ExecutionRow]:
-    """Map a trade's per-fill BrokerTrades (#330) to renderable execution rows."""
+def _execution_rows(broker_trades: Optional[List[BrokerTrade]],
+                    shared: Optional[Counter] = None) -> List[ExecutionRow]:
+    """
+    Map a trade's per-fill BrokerTrades (#330) to renderable execution rows.
+
+    Args:
+        broker_trades: The fills
+        shared: The unit's execution counts; None counts each fill once
+
+    Returns:
+        One row per fill
+    """
     return [
         ExecutionRow(
             trade_id=bt.trade_id,
@@ -186,6 +229,7 @@ def _execution_rows(broker_trades: Optional[List[BrokerTrade]]) -> List[Executio
             fee_currency=bt.fee_currency,
             liquidity='maker' if bt.is_maker else 'taker',
             timestamp=bt.timestamp.isoformat() if bt.timestamp else '',
+            shared_by=shared[bt.trade_id] if shared else 1,
         )
         for bt in (broker_trades or [])
     ]

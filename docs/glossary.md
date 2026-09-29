@@ -24,6 +24,11 @@ run fit together; the linked documents explain the rest.
 
 ---
 
+**account** — One run unit's own balance. A backtest has one per scenario, each started from its
+own capital; an AutoTrader session has one. A figure that means one account's value (`final_equity`,
+`max_equity`, the drawdown) is null wherever it would have to speak for several, and a sum over
+several is a *total* that says so. See *total final equity*.
+
 **account model** — How an account holds value: `spot` (an inventory of assets) or `margin` (a
 balance plus margin arithmetic). Configured as `trading_model`, read at runtime as `spot_mode`.
 See [Market Model](architecture/market_model.md).
@@ -195,6 +200,11 @@ ignorable by design. Not the *warning count*. See [Warnings & Errors](architectu
 
 **one-off** — A session that belongs to no deployment.
 
+**opening equity** (`opening_equity`) — The account value a booking period opened with: the
+previous period's close, read at the same instant, or a unit's first observed value. Stamped, never
+`final_equity − net_pnl`, which would drop what was still open. See
+[Accounting Periods](architecture/accounting_periods.md).
+
 **orders to** (`orders_to`) — Where a run's orders went: `simulated` or `venue`. Recorded on every
 run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
 
@@ -258,6 +268,10 @@ the scenarios (`scenario_set_name`). See [Process Execution](process_execution_g
 **session** — Never used for a backtest. An *AutoTrader session* is one start of a profile; a
 *market session* is Sydney, Tokyo, London or New York.
 
+**shared fill** (`shared_by`) — An execution that several trade rows of one unit carry: a partial
+close copies the position's entry fills onto every record it produces. `shared_by` counts them
+per unit, because two scenarios on one symbol mint the same synthetic ids.
+
 **short** — A direction (a short position), or a data gap under half an hour (a *short gap*).
 
 **signal** — A worker output that feeds a decision. The *SIGNAL worker* is the type that reads
@@ -283,12 +297,18 @@ its parent. Not itself a run. See [Parameter Optimization](architecture/paramete
 
 **tick timespan** — The market time a unit actually processed, from its first to its last processed
 tick (`tick_timespan_seconds`). MEASURED, where the *data window* is DECLARED: a tick-limited
-scenario or a quiet market ends earlier than its window.
+scenario or a quiet market ends earlier than its window. On a run it is the units' spans COVERED
+together — a stretch two scenarios share counts once — and `tick_timespan_total_seconds` is their
+sum, the work.
 
 **ticks from** (`ticks_from`) — Where a run's ticks came from: `archive` or `venue`. Recorded on
 every run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run).
 
 **time basis** — What a bar's time stamp marks: the open of its period.
+
+**total final equity** (`total_final_equity`) — The closing equities of several *accounts* added
+up, beside `total_initial_balance`: a total no single account held. On a run with one account it
+equals that account's `final_equity`.
 
 **trade window basis** — Whether a trade is placed in a window by its entry or its exit.
 

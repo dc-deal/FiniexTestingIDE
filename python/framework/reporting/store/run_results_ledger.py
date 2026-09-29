@@ -99,6 +99,10 @@ LEDGER_COLUMNS: List[str] = [
     # without opening it. Run-level values, repeated on every row of the run. Appended, so older
     # fragments read back None: not recorded, never a clean run.
     'run_outcome', 'error_count', 'warning_count', 'log_warning_count',
+    # The market time the run processed — its units' tick timespans covered together, overlap
+    # once (contract 17). Run-level like the four above, so the run list serves it from the
+    # same read. None where it was not recorded.
+    'tick_timespan_seconds',
     # WHEN this row was written, which is within seconds of when the run ENDED — the reports
     # are persisted at its close and the append is the last step. The ledger had no end of any
     # kind, and `SweepSummary.duration_s` says so in its own comment ("last - first run start,
@@ -139,6 +143,11 @@ LEDGER_COLUMNS: List[str] = [
     # neither can be recovered from the other: the cumulative keeps `max()` correct across rows,
     # the own one answers how far this single day fell.
     'period_max_equity', 'period_min_equity', 'period_max_drawdown',
+    # What the period OPENED with, and its costs split the way a trade row splits them — summed
+    # over the trades the period closed, the same set `total_fees` is. Absent on a row that
+    # books no period, and on periods recorded before contract 17 unless back-filled.
+    'period_opening_equity',
+    'period_commission_cost', 'period_swap_cost', 'period_spread_cost',
     # Excursion, holding time and streaks — what a period looks like beyond its net result.
     'avg_mae_winners', 'avg_mae_losers', 'avg_mfe_losers', 'largest_mae', 'largest_mfe',
     'avg_trade_duration_s', 'max_consecutive_wins', 'max_consecutive_losses',
@@ -190,6 +199,7 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     'error_count': Reduction.IDENTITY,
     'warning_count': Reduction.IDENTITY,
     'log_warning_count': Reduction.IDENTITY,
+    'tick_timespan_seconds': Reduction.IDENTITY,
     # Every row of one sweep was selected from the same search, so the rows agree by
     # construction. Across sweeps the figure is not combinable at all — two searches of 500 are
     # not a search of 1000, and adding them would claim a selection nobody performed.
@@ -276,6 +286,11 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
     # formatter turns one of the two into its own opposite without anything going red. The
     # sign is a DISPLAY decision and lives in the renderers.
     'period_max_drawdown': Reduction.MAX_ABS,
+    # The earliest period's opening — what the window began with.
+    'period_opening_equity': Reduction.FIRST,
+    'period_commission_cost': Reduction.SUM,
+    'period_swap_cost': Reduction.SUM,
+    'period_spread_cost': Reduction.SUM,
     # The worst single excursion combines by magnitude; its MEANS do not.
     'largest_mae': Reduction.MAX_ABS,
     'largest_mfe': Reduction.MAX_ABS,
@@ -624,6 +639,7 @@ class RunResultsLedger:
             # Data quality the row was produced under (#433): a ranking over rows with
             # different fresh ratios compares runs that saw different signal.
             'signal_fresh_ratio': run_summary.signal_fresh_ratio,
+            'tick_timespan_seconds': run_summary.tick_timespan_seconds,
         }
 
     def _period_row(
@@ -651,53 +667,15 @@ class RunResultsLedger:
         Returns:
             The row as a column → value mapping
         """
-        f = period.figures
         return {
             **self._provenance_fields(p),
             'status': p.status,
             'error': p.error,
-            'currency': f.currency,
-            'net_pnl': f.net_pnl,
-            'expectancy': f.expectancy,
-            'profit_factor': f.profit_factor,
-            'win_rate': f.win_rate,
-            'account_max_drawdown': f.account_max_drawdown,
-            'max_equity': f.max_equity,
-            'account_max_drawdown_pct': f.account_max_dd_pct,
-            'unrealized_pnl': f.unrealized_pnl,
-            'final_equity': f.final_equity,
-            'open_position_count': f.open_position_count,
-            'total_fees': f.total_fees,
-            'gross_profit': f.gross_profit,
-            'gross_loss': f.gross_loss,
-            'total_trades': f.total_trades,
-            'winning_trades': f.winning_trades,
-            'losing_trades': f.losing_trades,
-            'avg_win_r': f.avg_win_r,
-            'avg_loss_r': f.avg_loss_r,
-            'r_trade_count': f.r_trade_count,
-            'r_win_count': f.r_win_count,
-            'r_loss_count': f.r_loss_count,
-            'avg_mae_winners': f.avg_mae_winners,
-            'avg_mae_losers': f.avg_mae_losers,
-            'avg_mfe_losers': f.avg_mfe_losers,
-            'largest_mae': f.largest_mae,
-            'largest_mfe': f.largest_mfe,
-            'avg_trade_duration_s': f.avg_trade_duration_s,
-            'max_consecutive_wins': f.max_consecutive_wins,
-            'max_consecutive_losses': f.max_consecutive_losses,
+            **period_ledger_fields(period),
             # Run-level and therefore identical on every period of this run: the data quality
-            # the whole run saw is not a property of one day in it.
+            # the whole run saw, and the market time it covered, are not properties of one day.
             'signal_fresh_ratio': run_summary.signal_fresh_ratio,
-            # --- the period itself
-            'unit_name': period.unit_name,
-            'period_no': period.period_no,
-            'period_opened_at': period.opened_at.isoformat(),
-            'period_closed_at': period.closed_at.isoformat(),
-            'period_close_reason': period.reason.value,
-            'period_max_equity': period.period_max_equity,
-            'period_min_equity': period.period_min_equity,
-            'period_max_drawdown': period.period_max_drawdown,
+            'tick_timespan_seconds': run_summary.tick_timespan_seconds,
         }
 
     def _error_row(self, p: RunProvenance, error: str) -> Dict[str, Any]:
@@ -714,6 +692,69 @@ class RunResultsLedger:
             if column not in row:       # all KPI / order-count columns → 0
                 row[column] = 0
         return row
+
+
+def period_ledger_fields(period: BookingPeriod) -> Dict[str, Any]:
+    """
+    One booking period's own columns — its figures and the period itself, without the run's
+    provenance.
+
+    Shared by the ledger row and the booking-periods report, which folds a unit's periods into
+    its total with the SAME reductions the ledger declares: one mapping, so the two cannot come
+    to describe a period differently.
+
+    Args:
+        period: The sealed period
+
+    Returns:
+        Column → value for every period-level column
+    """
+    f = period.figures
+    return {
+        'currency': f.currency,
+        'net_pnl': f.net_pnl,
+        'expectancy': f.expectancy,
+        'profit_factor': f.profit_factor,
+        'win_rate': f.win_rate,
+        'account_max_drawdown': f.account_max_drawdown,
+        'max_equity': f.max_equity,
+        'account_max_drawdown_pct': f.account_max_dd_pct,
+        'unrealized_pnl': f.unrealized_pnl,
+        'final_equity': f.final_equity,
+        'open_position_count': f.open_position_count,
+        'total_fees': f.total_fees,
+        'gross_profit': f.gross_profit,
+        'gross_loss': f.gross_loss,
+        'total_trades': f.total_trades,
+        'winning_trades': f.winning_trades,
+        'losing_trades': f.losing_trades,
+        'avg_win_r': f.avg_win_r,
+        'avg_loss_r': f.avg_loss_r,
+        'r_trade_count': f.r_trade_count,
+        'r_win_count': f.r_win_count,
+        'r_loss_count': f.r_loss_count,
+        'avg_mae_winners': f.avg_mae_winners,
+        'avg_mae_losers': f.avg_mae_losers,
+        'avg_mfe_losers': f.avg_mfe_losers,
+        'largest_mae': f.largest_mae,
+        'largest_mfe': f.largest_mfe,
+        'avg_trade_duration_s': f.avg_trade_duration_s,
+        'max_consecutive_wins': f.max_consecutive_wins,
+        'max_consecutive_losses': f.max_consecutive_losses,
+        # --- the period itself
+        'unit_name': period.unit_name,
+        'period_no': period.period_no,
+        'period_opened_at': period.opened_at.isoformat(),
+        'period_closed_at': period.closed_at.isoformat(),
+        'period_close_reason': period.reason.value,
+        'period_max_equity': period.period_max_equity,
+        'period_min_equity': period.period_min_equity,
+        'period_max_drawdown': period.period_max_drawdown,
+        'period_opening_equity': period.period_opening_equity,
+        'period_commission_cost': period.commission_cost,
+        'period_swap_cost': period.swap_cost,
+        'period_spread_cost': period.spread_cost,
+    }
 
 
 def append_run_to_ledger(

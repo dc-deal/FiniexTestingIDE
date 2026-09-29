@@ -65,6 +65,23 @@ class TestEveryColumnClassIsFollowed:
                 _period(2, '2026-09-23', final_equity=10_050.0)]
         assert aggregate_ledger_rows(rows)[0].final_equity == 10_050.0
 
+    def test_a_stock_over_several_accounts_has_no_value(self):
+        # A backtest's scenarios are separate accounts. The latest reading belongs to whichever
+        # closed last, which says nothing about the run — measured, a sweep row carried one
+        # scenario's equity out of eight. Per unit it is exact.
+        rows = [_period(1, '2026-09-22', unit_name='a', final_equity=9_960.0,
+                        open_position_count=1, net_pnl=-40.0),
+                _period(1, '2026-09-23', unit_name='b', final_equity=10_020.0,
+                        open_position_count=0, net_pnl=20.0)]
+
+        run = aggregate_ledger_rows(rows)[0]
+        per_unit = {row.unit_name: row.final_equity
+                    for row in aggregate_ledger_rows(rows, by=('run_id', 'currency', 'unit_name'))}
+
+        assert (run.final_equity, run.open_position_count) == (None, None)
+        assert run.net_pnl == -20.0, 'a flow still adds up across accounts'
+        assert per_unit == {'a': 9_960.0, 'b': 10_020.0}
+
     def test_a_cumulative_extremum_takes_the_largest_magnitude(self):
         rows = [_period(1, 'd1', account_max_drawdown=-10.0),
                 _period(2, 'd2', account_max_drawdown=-180.0)]

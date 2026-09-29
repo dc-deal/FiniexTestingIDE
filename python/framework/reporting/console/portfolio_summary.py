@@ -506,8 +506,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
         print(f'      Max Drawdown (account, curve): '
               f'{renderer.pnl(force_negative(h.account_max_drawdown), currency)} '
               f'({row.account_max_dd_pct:.1f}%) - Scenario: {row.account_max_drawdown_scenario}')
-        print(f'      Max Equity: {renderer.pnl(force_positive(row.max_equity), currency)} '
-              f'- Scenario: {row.max_equity_scenario}')
+        # The highest peak ANY scenario reached — not the peak the drawdown above fell from.
+        print(f'      Highest Equity: {renderer.pnl(force_positive(row.highest_equity), currency)} '
+              f'- Scenario: {row.highest_equity_scenario}')
 
     @staticmethod
     def _render_pending_stats(

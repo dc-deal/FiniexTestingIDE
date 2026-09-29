@@ -113,6 +113,28 @@ unrealised movement across the boundary. Flow is derived from records; stock is 
 instant. A reader who takes one for the other will find a day whose booked result and
 whose account movement disagree, and conclude that something is broken.
 
+### What a period row carries beyond its result
+
+- **What it opened with.** `opening_equity` is the previous period's closing value, read at the
+  same instant, or — for a unit's first period — its first observed account value. It is stamped
+  where it is known and never computed as `final_equity − net_pnl`: `net_pnl` is realised, while
+  the equity also values what is still open, so that difference is off by exactly the unrealised
+  movement described above.
+- **Its costs, split.** `commission_cost`, `swap_cost` and `spread_cost`, summed over the same
+  trades `total_fees` is — the ones the period closed. Commission and swap add up to `total_fees`;
+  the spread is measured against the mid and stands beside the fees, never inside them. A swap
+  accruing on a position that is still open is therefore not in any period until it closes — it
+  belongs to the open position, not to the closed trades.
+- **Each unit's total.** The booking-periods report folds each unit's periods into one row by the
+  same declared reductions the ledger uses: rates are rebuilt from their summed components, the
+  drawdown comes with the period that owns it, and a streak is not foldable at all. A unit is one
+  account, so its closing equity is defined there.
+
+**Over several units there is no single equity.** A backtest's scenarios each trade their own
+balance. Their closing equities add up to a TOTAL, which the report serves as one
+(`total_final_equity`) beside the capital it started from; a figure that means one account's value
+is null wherever it would have to speak for several.
+
 ## What does not reset
 
 The **session** references do not roll with the day. The safety baseline and its high-water mark

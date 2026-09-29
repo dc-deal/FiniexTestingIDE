@@ -62,7 +62,7 @@ New method in `python/framework/trading_env/portfolio_manager.py`:
 | Aspect | Full Close | Partial Close |
 |--------|-----------|---------------|
 | P&L | Entire position | Proportional: `close_ratio = close_lots / position.lots` |
-| Fees | All fees on position | Remaining fees `*= remaining_ratio`; the CLOSED portion additionally carries the exit fee on `close_lots` (maker/taker only, #506) |
+| Fees | All fees on position | Remaining fees `*= remaining_ratio`; the CLOSED portion additionally carries the exit fee on `close_lots` (maker/taker only, #506) — in its `commission_cost` as well as its `total_fees`, so `commission_cost + swap_cost == total_fees` on every record (`tests/framework/test_round_trip_fees.py::TestTheCostColumnsAddUpToTheFees`, full and partial, margin and spot) |
 | Position | Deleted from `open_positions` | Mutated: reduced lots, PARTIALLY_CLOSED status |
 | TradeRecord | Via `_create_trade_record()` | Built manually with `CloseType.PARTIAL` |
 | `original_lots` | = lots (immutable) | Preserved across partial closes |

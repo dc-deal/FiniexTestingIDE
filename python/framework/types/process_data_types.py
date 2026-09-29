@@ -496,9 +496,9 @@ class TickRangeStats:
     """
         Tick time range (internal tick timestamps)
     """
-    tick_count: int = 0,
-    first_tick_time: Optional[datetime] = None,
-    last_tick_time: Optional[datetime] = None,
+    tick_count: int = 0
+    first_tick_time: Optional[datetime] = None
+    last_tick_time: Optional[datetime] = None
     tick_timespan_seconds: Optional[float] = None
 
 

@@ -93,7 +93,8 @@ def _fold(rows: List[RunResultRow]) -> Dict[str, RunListFigures]:
             run_outcome=_agreed(run_rows, 'run_outcome'),
             error_count=_agreed(run_rows, 'error_count'),
             warning_count=_agreed(run_rows, 'warning_count'),
-            log_warning_count=_agreed(run_rows, 'log_warning_count'))
+            log_warning_count=_agreed(run_rows, 'log_warning_count'),
+            tick_timespan_seconds=_agreed(run_rows, 'tick_timespan_seconds'))
         for run_id, run_rows in by_run.items()
     }
 

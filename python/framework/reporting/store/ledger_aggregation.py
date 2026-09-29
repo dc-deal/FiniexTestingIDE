@@ -105,12 +105,14 @@ def _combine(rows: List[RunResultRow]) -> RunResultRow:
         The combined row
     """
     ordered = sorted(rows, key=_recency)
+    # One account per unit: a backtest's scenarios each trade their own balance.
+    one_account = len({row.unit_name for row in rows}) <= 1
     combined: Dict[str, Any] = {}
     for column in LEDGER_COLUMNS:
         reduction = COLUMN_REDUCTION[column]
         if reduction is Reduction.DERIVE or reduction is Reduction.COMPANION:
             continue                            # both need the folded values below
-        combined[column] = _fold(column, reduction, rows, ordered)
+        combined[column] = _fold(column, reduction, rows, ordered, one_account)
     _apply_companions(combined, rows)
     _apply_derived(combined, rows)
     return RunResultRow(**{k: v for k, v in combined.items() if v is not None})
@@ -121,6 +123,7 @@ def _fold(
     reduction: Reduction,
     rows: List[RunResultRow],
     ordered: List[RunResultRow],
+    one_account: bool,
 ) -> Any:
     """
     Apply one column's declared reduction.
@@ -130,9 +133,10 @@ def _fold(
         reduction: Its declared class
         rows: The group
         ordered: The same group, oldest first
+        one_account: Whether every row belongs to one unit — a stock is only defined then
 
     Returns:
-        The combined value, or None when nothing was measured
+        The combined value, or None when nothing was measured or it is undefined here
     """
     values = [_get(row, column) for row in rows]
     present = [v for v in values if v is not None and v != '']
@@ -148,7 +152,10 @@ def _fold(
     if reduction is Reduction.MIN:
         return min(present) if present else None
     if reduction is Reduction.LAST:
-        return _last_present(ordered, column)
+        return _last_present(ordered, column) if one_account else None
+    if reduction is Reduction.FIRST:
+        # The oldest measured value — `_last_present` walks its argument newest-first.
+        return _last_present(list(reversed(ordered)), column) if one_account else None
     if reduction is Reduction.IDENTITY:
         return present[0] if present else None
     if reduction is Reduction.UNION:

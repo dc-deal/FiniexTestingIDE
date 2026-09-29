@@ -24,9 +24,9 @@ Two rules the suite exists to defend:
 
 | Group | Files | What they pin |
 |---|---|---|
-| **Trade & order** | `test_trade_history_report` · `test_trade_history_render` · `test_order_history_report` · `test_trade_excursion` · `test_trade_projection` | the trade record end to end: MAE/MFE in the instrument's own unit, R/expectancy, per-execution rows |
-| **Portfolio & execution** | `test_portfolio_report` · `test_aggregated_portfolio_report` · `test_execution_stats_report` · `test_execution_header_summary` · `test_pending_orders_report` | balances and currency aggregation; execution counters; the header a reader sees first; the figures derived in the builder rather than the renderer (`max_dd_pct`, the spot estimate over the stamped currency split, `execution_rate_pct`) |
-| **Run-level** | `test_run_summary` · `test_run_summary_render` · `test_run_meta_report` · `test_run_console_renderer` · `test_shared_report_coordinator` | the cross-section KPI model and the one coordinator both pipelines share; an undefined `profit_factor` survives the JSON round trip as `None`; the unit roster reaches the summary and holds `declared = disabled + absent + counted` — an AutoTrader session that aborted at startup is declared and ABSENT, one that ran is counted; the disabled count comes from the LOADER, never from a batch that cannot contain a disabled scenario |
+| **Trade & order** | `test_trade_history_report` · `test_trade_history_render` · `test_order_history_report` · `test_trade_excursion` · `test_trade_projection` | the trade record end to end: MAE/MFE in the instrument's own unit, R/expectancy, per-execution rows; a shared fill counted per UNIT, so two scenarios minting the same synthetic id do not share it, and the count holds on a filtered list |
+| **Portfolio & execution** | `test_portfolio_report` · `test_aggregated_portfolio_report` · `test_execution_stats_report` · `test_execution_header_summary` · `test_pending_orders_report` | balances and currency aggregation; execution counters; the header a reader sees first; the figures derived in the builder rather than the renderer (`max_dd_pct`, the spot estimate over the stamped currency split, `execution_rate_pct`); several scenarios are several ACCOUNTS — their closing equities add up only as `total_final_equity`, `final_equity` is undefined over them, the peak beside the drawdown is that account's and the highest peak is named apart, and the recovery factor is undefined over several |
+| **Run-level** | `test_run_summary` · `test_run_summary_render` · `test_run_meta_report` · `test_run_console_renderer` · `test_shared_report_coordinator` | the cross-section KPI model and the one coordinator both pipelines share; an undefined `profit_factor` survives the JSON round trip as `None`; the unit roster reaches the summary and holds `declared = disabled + absent + counted` — an AutoTrader session that aborted at startup is declared and ABSENT, one that ran is counted; the disabled count comes from the LOADER, never from a batch that cannot contain a disabled scenario; the run's market time — its units' tick timespans covered together (one window shared by two scenarios counts once) beside their sum, measured to the last tick PROCESSED |
 | **Signal** | `test_signal_report` | see below |
 | **Feed stability** | `test_feed_stability_report` | disturbance episodes across both staleness domains (#451) — every boundary derived from observed state, a stress config contributing only its label |
 | **Diagnostics** | `test_profiling_report` · `test_worker_decision_report` · `test_block_splitting_report` · `test_scenario_details_report` · `test_broker_report` | per-worker timing, decision breakdown, window splitting, broker facts; the #420 cadence figures derived once in the builder |
@@ -178,6 +178,11 @@ identical either way**, which is exactly why the behaviour tests cannot catch th
 mutation-checked, the two cost tests go red against the uncached recorder (24 conversions instead
 of 1) while all five behaviour tests stay green.
 
+`TestWhatAPeriodOpenedWith` pins the opening equity: the previous period's close, or a unit's
+first observed value — and the SAME answer in both orders the pipelines use, the simulation
+observing before its boundary check and the AutoTrader after. A first period nothing was observed
+in opens with nothing, never with a zero.
+
 ## `test_booking_period_builder.py` — one booking period, from the records inside it
 
 The ledger step. Every case that matters is a trade that CROSSES a boundary, so the file is
@@ -196,6 +201,10 @@ One test exists only to stop a plausible shortcut: the period's LOW is tracked, 
 run of 100 → 90 → 120 has a peak of 120, a decline of 10 against the peak that stood then, and a
 low of 90 — so `peak − drawdown` answers 110, a value that never occurred.
 
+`TestThePeriodSplitsItsCosts` pins the cost split: commission and swap summed over the trades the
+period CLOSED add up to its `total_fees`, the measured spread stands apart, and a trade closed the
+next day takes its costs with it.
+
 ## `test_booking_periods_report.py` — the table, and the line that makes it trustworthy
 
 The reconciliation is the point. A column of period summaries is believed because it agrees with
@@ -207,6 +216,11 @@ period looks exactly like it.
 A tolerance test guards the opposite failure: thirty additions do not land on the same last bit
 as one aggregate over the same trades, and a table that cried mismatch over 1e-10 would be a
 table nobody reads.
+
+`TestEachUnitIsFoldedIntoItsTotal` pins `unit_totals`: one per unit, folded by the ledger's own
+reductions — a rate rebuilt from its components (1 winner in 4 trades is 25 %, not the mean of
+100 % and 0 %), the opening equity the first period's — and a report total that SUMS the units'
+closing equities rather than taking the last row's.
 
 ## `test_signal_report.py` — two planes, and what each may claim
 

@@ -318,6 +318,37 @@ class TestAPartialCloseChargesOnlyTheClosedLots:
         assert record.net_pnl == pytest.approx(record.gross_pnl - record.total_fees)
 
 
+class TestTheCostColumnsAddUpToTheFees:
+    """
+    `commission_cost + swap_cost == total_fees` on every record, whichever way it closed.
+
+    A partial close charged its exit fee into `total_fees` and left it out of `commission_cost`,
+    so at a maker/taker venue the two columns fell short by exactly that fee — and a period's
+    fee split, summed from those columns, would not have added up to its own total.
+    """
+
+    @pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
+    @pytest.mark.parametrize('partial', [False, True], ids=['full', 'partial'])
+    def test_commission_and_swap_are_the_whole_fee(self, spot_mode, partial):
+        portfolio = _portfolio(spot_mode=spot_mode)
+        if spot_mode:
+            portfolio._balances['EUR'] = 3.0
+        _open(portfolio, entry_fee_cost=2.0, lots=3.0)
+
+        if partial:
+            portfolio.partial_close_position(
+                position_id='p1', close_lots=1.0, exit_price=_PF_EXIT, exit_tick_value=1.0,
+                exit_tick_index=10, exit_fee=_fee(3.0), close_reason=CloseReason.MANUAL)
+        else:
+            portfolio.close_position_portfolio(
+                position_id='p1', exit_price=_PF_EXIT, exit_tick_value=1.0, exit_tick_index=10,
+                exit_fee=_fee(3.0), close_reason=CloseReason.MANUAL)
+
+        record = portfolio.get_trade_history()[-1]
+        assert record.commission_cost + record.swap_cost == pytest.approx(record.total_fees)
+        assert record.commission_cost > 0.0
+
+
 class TestTheSessionCostIsReadableThroughTheApi:
     """
     A decision logic has to be able to ASK what the session has spent (#506).

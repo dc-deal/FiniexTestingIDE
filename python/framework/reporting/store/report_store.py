@@ -235,4 +235,5 @@ def _figure_fields(figures: RunListFigures) -> Dict[str, Any]:
     """
     return {'results': list(figures.results), 'run_outcome': figures.run_outcome,
             'error_count': figures.error_count, 'warning_count': figures.warning_count,
-            'log_warning_count': figures.log_warning_count}
+            'log_warning_count': figures.log_warning_count,
+            'tick_timespan_seconds': figures.tick_timespan_seconds}

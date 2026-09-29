@@ -28,14 +28,6 @@ def build_run_meta_report_from_batch(run_id: str, batch: BatchExecutionSummary,
     is_profile_run = bool(scenarios) and getattr(
         scenarios[0], 'is_profile_run', False)
 
-    # In-time (simulated market time) from the scenario config date windows — scenarios
-    # without both dates contribute nothing (open-ended windows).
-    total_hours = 0.0
-    for s in scenarios:
-        if s.end_date and s.start_date:
-            total_hours += (s.end_date - s.start_date).total_seconds() / 3600
-    count = len(scenarios)
-
     # #137 performance-tracking layer presence (any scenario carried the data) — Layer A =
     # per-worker stats, Layer B = tick-loop operation profiling. Drives the "tracking OFF" notice.
     worker_on = any(
@@ -48,7 +40,7 @@ def build_run_meta_report_from_batch(run_id: str, batch: BatchExecutionSummary,
 
     return RunMetaReport(
         run_id=run_id,
-        scenario_count=count,
+        scenario_count=len(scenarios),
         disabled_count=disabled_count,
         symbols=sorted(set(s.symbol for s in scenarios)),
         is_profile_run=is_profile_run,
@@ -58,9 +50,6 @@ def build_run_meta_report_from_batch(run_id: str, batch: BatchExecutionSummary,
         tickrun_time_s=batch.batch_tickrun_time,
         pickle_time_s=batch.batch_pickle_time,
         pickle_sample_mb=batch.batch_pickle_sample_mb,
-        total_hours=total_hours,
-        total_days=total_hours / 24,
-        avg_hours=total_hours / count if count > 0 else 0.0,
         worker_tracking_on=worker_on,
         profiling_tracking_on=profiling_on,
     )

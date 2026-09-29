@@ -4,7 +4,7 @@ Time utility functions for readable duration formatting
 
 
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from typing import Iterable, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from dateutil import parser
@@ -200,6 +200,37 @@ def format_tick_timespan(
         start_time = first_tick_time.strftime('%b %d %H:%M')
         end_time = last_tick_time.strftime('%b %d %H:%M')
         return f'{start_weekday} {start_time} → {end_weekday} {end_time} ({duration})'
+
+
+def covered_seconds(spans: Iterable[Tuple[datetime, datetime]]) -> float:
+    """
+    How much time a set of spans covers together — overlap counted ONCE.
+
+    The run-level tick timespan is this over the units' spans: two scenarios over one window
+    cover that window once, while their plain sum counts it twice (measured 2026-09-29: eight
+    scenarios in four pairs of identical windows, 928 h summed, 464 h covered).
+
+    Args:
+        spans: (start, end) pairs; an inverted pair covers nothing
+
+    Returns:
+        The covered seconds; 0.0 for no spans
+    """
+    covered = 0.0
+    current_start: Optional[datetime] = None
+    current_end: Optional[datetime] = None
+    for start, end in sorted(spans):
+        if end <= start:
+            continue
+        if current_end is None or start > current_end:
+            if current_end is not None:
+                covered += (current_end - current_start).total_seconds()
+            current_start, current_end = start, end
+        else:
+            current_end = max(current_end, end)
+    if current_end is not None:
+        covered += (current_end - current_start).total_seconds()
+    return covered
 
 
 def parse_datetime(dt_str: str) -> datetime:

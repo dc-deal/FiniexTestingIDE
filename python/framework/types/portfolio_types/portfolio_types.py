@@ -16,6 +16,12 @@ from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_di
 from python.framework.utils.trading_math.price_trigger import mid_price
 
 
+# The fee types a trade record books as its COMMISSION — every charged per-side cost. Declared
+# once because two places classify a fee this way: the position's own total, and the exit fee a
+# partial close charges on top of its share of that total.
+COMMISSION_FEE_TYPES = (FeeType.COMMISSION, FeeType.MAKER_TAKER)
+
+
 class PositionStatus(Enum):
     """Position status"""
     OPEN = 'open'
@@ -304,9 +310,7 @@ class Position:
         Returns:
             The sum of every charged per-side fee on this position
         """
-        charged = (self.get_fees_by_type(FeeType.COMMISSION)
-                   + self.get_fees_by_type(FeeType.MAKER_TAKER))
-        return sum(fee.cost for fee in charged)
+        return sum(fee.cost for fee in self.fees if fee.fee_type in COMMISSION_FEE_TYPES)
 
     def get_swap_cost(self) -> float:
         """Get total swap cost"""

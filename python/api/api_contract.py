@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 16
+API_CONTRACT_VERSION = 17
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -31,11 +31,26 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "directory: a row's `broker_types` is `data_broker_types` — the brokers whose archives its "
-    'scenarios read, the same name the run reports use since contract 14. For a profile it follows '
-    '`scenario_settings.data_broker_type` where one is declared, else its `broker_type`',
-    "directory/{file}: a scenario's `broker_type` is `data_broker_type`, for the same reason",
-    'reports/runs/{run_id}/warnings-errors: an artifact written before contract 15 carries the '
-    'three counts on `outcome` too, counted from its own rows — the values the run list serves; '
-    'null only where nothing recorded them',
+    "reports/runs/{run_id}/run-summary and …/portfolio: `final_equity` is ONE account's closing "
+    'equity and is null when the currency spans several accounts — a backtest of several '
+    'scenarios, whose sum no account ever held. The sum is `total_final_equity`, beside '
+    '`total_initial_balance` and `unit_count`; `account_max_drawdown_unit` names the account the '
+    'drawdown, `max_equity` and `account_max_dd_pct` describe',
+    'reports/runs/{run_id}/aggregated-portfolio: `max_equity` / `max_equity_scenario` are '
+    '`highest_equity` / `highest_equity_scenario` — the highest peak of ANY account, not the peak '
+    'beside the drawdown (that is `headline.max_equity`); `recovery_factor` is null over several '
+    'accounts',
+    'reports/runs/{run_id}/booking-periods: every period carries `opening_equity` and its costs '
+    "split (`commission_cost`, `swap_cost`, `spread_cost`); `unit_totals` folds each unit's "
+    'periods into its total, and `keys` replaces `key`; `final_equity` is `total_final_equity`, '
+    "the sum over the units — it was the last row's own figure. The rows of "
+    'deployments/{deployment_id}/booking-periods carry the same period fields',
+    'reports/runs/{run_id}/trade-history: every execution carries `shared_by` — how many trade '
+    "rows of its unit carry that fill; a partial close's `commission_cost` includes its exit "
+    'fee, so `commission_cost + swap_cost == total_fees` on every row',
+    'reports/runs and directory: every run carries `tick_timespan_seconds` — the market time its '
+    'units processed, covered together so a shared stretch counts once; run-summary adds '
+    '`tick_timespan_total_seconds`, the sum',
+    'sweeps/{sweep_id}: `final_equity`, `unrealized_pnl` and `open_position_count` are null on a '
+    "row that folds several accounts — the latest reading of one of them is not the run's",
 ]

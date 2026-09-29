@@ -96,15 +96,21 @@ def render_booking_periods(
     # The unit is a SUB-HEADING rather than a column: with one unit — an AutoTrader session, and the
     # comparison backtest the parity proof actually uses — it would be the same string on every
     # line, and the table is already as wide as a terminal allows.
+    totals = {total.unit_name: total for total in report.unit_totals}
     for unit_name, rows in units.items():
         if len(units) > 1:
             print(f'{indent}  ▸ {unit_name}')
         _render_period_rows(rows, indent)
+        if len(units) > 1 and unit_name in totals:
+            _render_unit_total(totals[unit_name], indent)
 
+    # Over several units the equity column is a TOTAL of separate accounts, like the P&L beside it.
+    equity = ('—' if report.total_final_equity is None
+              else f'{report.total_final_equity:.2f}')
     print(f'{indent}' + '─' * 104)
     print(f'{indent}{"Σ":>3}  {"":<17} {"":<17} {report.total_trades:>6} '
           f'{report.total_net_pnl:>11.2f} {report.total_fees:>8.2f} {"":>6} '
-          f'{report.final_equity:>12.2f} {-abs(report.deepest_period_drawdown):>11.2f}')
+          f'{equity:>12} {-abs(report.deepest_period_drawdown):>11.2f}')
 
     _render_reconciliation(report, indent)
     print(f'{indent}● = the last period, closed by the session ending rather than by the '
@@ -129,6 +135,20 @@ def _render_period_rows(rows, indent: str) -> None:
               f'{_stamp(row.closed_at):<17} {row.trade_count:>6} {row.net_pnl:>11.2f} '
               f'{row.total_fees:>8.2f} {row.win_rate * 100:>5.0f}% {row.final_equity:>12.2f} '
               f'{-abs(row.max_drawdown):>11.2f}')
+
+
+def _render_unit_total(total, indent: str) -> None:
+    """
+    One unit's folded total, under its periods.
+
+    Args:
+        total: The unit's BookingUnitTotalRow
+        indent: Left padding
+    """
+    equity = '—' if total.final_equity is None else f'{total.final_equity:.2f}'
+    deepest = -abs(total.deepest_period_drawdown or 0.0)
+    print(f'{indent}{"Σ":>4} {"":<17} {"":<17} {total.trade_count:>6} {total.net_pnl:>11.2f} '
+          f'{total.total_fees:>8.2f} {total.win_rate * 100:>5.0f}% {equity:>12} {deepest:>11.2f}')
 
 
 def _render_reconciliation(report: BookingPeriodsReport, indent: str) -> None:

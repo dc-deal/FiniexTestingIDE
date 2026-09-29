@@ -10,6 +10,7 @@ never re-iterates the run.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from python.framework.types.api.report_types import AbsentUnitRow, UnitRoster
@@ -77,6 +78,10 @@ class RunUnit:
     # scenarios, 40 distinct ones), so "day 1 of the run" is not a thing and only "day 1 of
     # this unit" is.
     booking_periods: List[BookingPeriod] = field(default_factory=list)
+    # The unit's TICK TIMESPAN — its first and last processed tick. The run's market time is the
+    # union of these, which only the units together can say (overlapping windows count once).
+    first_tick_time: Optional[datetime] = None
+    last_tick_time: Optional[datetime] = None
 
 
 # The reason a unit carries when it produced nothing and left no message saying why.
@@ -123,6 +128,10 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
                 tick_loop.disturbance_episodes or [], result.scenario_name, scenario.symbol),
             market_data_tick_stats=tick_loop.market_data_tick_stats,
             planned_outages=_planned_outages(scenario.stress_test_config),
+            first_tick_time=(tick_loop.tick_range_stats.first_tick_time
+                             if tick_loop.tick_range_stats else None),
+            last_tick_time=(tick_loop.tick_range_stats.last_tick_time
+                            if tick_loop.tick_range_stats else None),
             booking_periods=tick_loop.booking_periods or [],
         ))
     return units
@@ -278,4 +287,6 @@ def run_units_from_session(
         market_data_tick_stats=session.market_data_tick_stats,
         planned_outages=_planned_outages(stress_test_config),
         booking_periods=session.booking_periods or [],
+        first_tick_time=session.first_tick_time,
+        last_tick_time=session.last_tick_time,
     )]

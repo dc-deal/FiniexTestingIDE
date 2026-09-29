@@ -193,12 +193,17 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
     # peak it fell from and the share it was. Taking each by its own max would pair one
     # scenario's trough with another's peak — the defect #497 removed from the console
     # aggregate, and it would be back here the moment they are reduced separately.
-    max_drawdown, max_equity, max_dd_pct = 0.0, 0.0, 0.0
+    max_drawdown, max_equity, max_dd_pct, max_dd_unit = 0.0, 0.0, 0.0, ''
     for r in rows:
         if abs(r.account_max_drawdown) > abs(max_drawdown):
             max_drawdown = r.account_max_drawdown
             max_equity = r.max_equity
             max_dd_pct = r.account_max_dd_pct
+            max_dd_unit = r.name
+    # Each unit is its own account. Their closing equities add up to a TOTAL, which is served
+    # as one and beside the capital it started from; `final_equity` stays the figure of one
+    # account and has none to describe once there are several.
+    total_final_equity = sum(r.final_equity for r in rows)
     return PortfolioAggregateRow(
         currency=currency,
         unit_count=len(rows),
@@ -213,9 +218,12 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
         account_max_drawdown=max_drawdown,
         max_equity=max_equity,
         account_max_dd_pct=max_dd_pct,
+        account_max_drawdown_unit=max_dd_unit,
         total_fees=sum(r.total_fees for r in rows),
         unrealized_pnl=sum(r.unrealized_pnl for r in rows),
-        final_equity=sum(r.final_equity for r in rows),
+        final_equity=total_final_equity if len(rows) == 1 else None,
+        total_final_equity=total_final_equity,
+        total_initial_balance=sum(r.initial_balance for r in rows),
         open_position_count=sum(len(r.open_positions) for r in rows),
     )
 
@@ -292,11 +300,13 @@ def aggregate_full_portfolio(
         avg_initial=initial / count if count > 0 else 0.0,
         balance_pnl=balance_pnl,
         balance_pnl_pct=(balance_pnl / initial * 100) if initial > 0 else 0.0,
-        recovery_factor=balance_pnl / abs(max_dd) if max_dd != 0 else 0.0,
+        # One account's P&L over its own decline — undefined once the P&L is several accounts'.
+        recovery_factor=(None if count > 1
+                         else balance_pnl / abs(max_dd) if max_dd != 0 else 0.0),
         account_max_dd_pct=max_dd_pct,
         account_max_drawdown_scenario=max_dd_scn,
-        max_equity=max_eq,
-        max_equity_scenario=max_eq_scn,
+        highest_equity=max_eq,
+        highest_equity_scenario=max_eq_scn,
         total_spread_cost=total_spread,
         total_commission=sum(r.total_commission for r in rows),
         total_swap=sum(r.total_swap for r in rows),

@@ -75,6 +75,15 @@ and is then available to the aggregated block AND to every single-unit render �
 view may show the run's aggregate beside its own figures without recomputing it. A renderer that
 builds its own aggregate is the defect this rule prevents.
 
+**An aggregate over several units is an aggregate over several ACCOUNTS.** A backtest's scenarios
+each trade their own balance; an AutoTrader session is one account. So a figure keeps its name only
+while it describes one account — `final_equity`, `max_equity`, the drawdown — and names that
+account where several were folded (`account_max_drawdown_unit`). A figure over several accounts is
+a TOTAL and says so (`total_final_equity` beside `total_initial_balance`); a flow adds up either
+way. Where a one-account figure would have to speak for several, it is `None`: measured before
+contract 17, one run served three different "final equities" — a sum nobody held, the last row's
+account, and whichever account closed last.
+
 ### Undefined KPIs — `None`, never a sentinel
 
 A KPI that has no value carries `None`, and the field comment says what `None` means. It is

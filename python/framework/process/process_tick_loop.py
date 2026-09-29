@@ -53,7 +53,10 @@ from python.framework.types.process_data_types import (
     ProcessTickLoopResult,
 )
 from python.framework.types.trading_env_types.currency_codes import format_currency_simple
-from python.framework.utils.process_debug_info_utils import get_tick_range_stats
+from python.framework.utils.process_debug_info_utils import (
+    get_tick_range_stats,
+    processed_tick_range_stats,
+)
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -176,6 +179,9 @@ def execute_tick_loop(
         prev_interval_msc: int = 0
 
         tick_range_stats = get_tick_range_stats(scenario_logger, trade_simulator, ticks)
+        # How many ticks reached the broker path — measured again after the loop, so a session
+        # that ended early reports the market time it processed rather than the time it loaded.
+        processed_count = 0
 
         live_setup = process_live_setup(
             scenario_logger, config, ticks, live_queue)
@@ -280,6 +286,7 @@ def execute_tick_loop(
             # all operate on the full tick stream.
             if profiling_enabled: t1 = time.perf_counter()
             trade_simulator.on_tick(tick)
+            processed_count = tick_idx + 1
             if profiling_enabled:
                 profile_times['trade_simulator'] += (time.perf_counter() - t1) * 1000
                 profile_counts['trade_simulator'] += 1
@@ -464,6 +471,7 @@ def execute_tick_loop(
         scenario_logger.debug('✅ Coordinator cleanup completed')
 
         # === GET RESULTS ===
+        tick_range_stats = processed_tick_range_stats(ticks, processed_count)
         # Collect statistics from Algorithm section
         decision_statistics = decision_logic.get_statistics()
         worker_statistics = worker_coordinator.get_worker_statistics()

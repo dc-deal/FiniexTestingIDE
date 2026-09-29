@@ -9,6 +9,8 @@ disagreement is reported rather than smoothed over.
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from python.framework.reporting.builders.booking_periods_report_builder import (
     build_booking_periods_report,
 )
@@ -102,11 +104,11 @@ class TestWhatTheTableShows:
             _summary(net_pnl=50.0, total_trades=3))
         assert report.deepest_period_drawdown == 40.0
 
-    def test_the_final_equity_is_the_last_period_s(self):
+    def test_one_unit_s_total_equity_is_its_last_period_s(self):
         report = build_booking_periods_report(
             'r', _units(_segment(1, 0, 60.0, 2), _segment(2, 1, -10.0, 1)),
             _summary(net_pnl=50.0, total_trades=3))
-        assert report.final_equity == 9_990.0
+        assert report.total_final_equity == 9_990.0
 
     def test_the_close_reason_survives_into_the_row(self):
         # Only a `session_end` on the last period says the books are complete.
@@ -114,6 +116,65 @@ class TestWhatTheTableShows:
             'r', _units(_segment(1, 0, 60.0, 2, reason=PeriodCloseReason.SESSION_END)),
             _summary(net_pnl=60.0, total_trades=2))
         assert report.periods[0].reason == 'session_end'
+
+
+class TestEachUnitIsFoldedIntoItsTotal:
+    """
+    A unit is one account, so its total is defined — its equity included. Folded by the
+    ledger's own reductions: the rates are rebuilt from their components, never averaged.
+    """
+
+    @staticmethod
+    def _two_units():
+        a = [_segment(1, 0, 60.0, 2), _segment(2, 1, -10.0, 1)]
+        b = [BookingPeriod(
+            period_no=1, unit_name='other', opened_at=_MON, closed_at=_MON + timedelta(days=1),
+            reason=PeriodCloseReason.SESSION_END, trade_count=1,
+            figures=_figures(net_pnl=-20.0, total_trades=1, losing_trades=1, gross_loss=20.0,
+                             final_equity=9_980.0),
+            period_opening_equity=10_000.0)]
+        return [RunUnit(name='session', symbol='DOTUSD', booking_periods=a),
+                RunUnit(name='other', symbol='ETHUSD', booking_periods=b)]
+
+    def test_there_is_one_total_per_unit_and_the_report_sums_their_equity(self):
+        report = build_booking_periods_report(
+            'r', self._two_units(), _summary(net_pnl=30.0, total_trades=4))
+
+        totals = {t.unit_name: t for t in report.unit_totals}
+        assert set(totals) == {'session', 'other'}
+        assert (totals['session'].period_count, totals['session'].net_pnl,
+                totals['session'].final_equity) == (2, 50.0, 9_990.0)
+        assert report.total_final_equity == pytest.approx(9_990.0 + 9_980.0)
+        assert report.keys['unit_totals'] == ['unit_name']
+
+    def test_a_rate_is_rebuilt_from_its_components(self):
+        periods = [
+            BookingPeriod(period_no=n, unit_name='session', opened_at=_MON + timedelta(days=n),
+                          closed_at=_MON + timedelta(days=n + 1), reason=PeriodCloseReason.ANCHOR,
+                          trade_count=t, figures=_figures(net_pnl=pnl, total_trades=t,
+                                                          winning_trades=w, losing_trades=t - w,
+                                                          gross_profit=gp, gross_loss=gl,
+                                                          win_rate=w / t, final_equity=10_000.0))
+            for n, t, w, gp, gl, pnl in ((1, 1, 1, 10.0, 0.0, 10.0), (2, 3, 0, 0.0, 30.0, -30.0))]
+        report = build_booking_periods_report(
+            'r', [RunUnit(name='session', symbol='DOTUSD', booking_periods=periods)],
+            _summary(net_pnl=-20.0, total_trades=4))
+
+        total = report.unit_totals[0]
+        # 1 winner in 4 trades — NOT the mean of 100 % and 0 %
+        assert total.win_rate == pytest.approx(0.25)
+        assert total.profit_factor == pytest.approx(10.0 / 30.0)
+
+    def test_the_opening_equity_is_the_first_period_s(self):
+        first = _segment(1, 0, 60.0, 2)
+        first.period_opening_equity = 10_000.0
+        second = _segment(2, 1, -10.0, 1)
+        second.period_opening_equity = 10_060.0
+        report = build_booking_periods_report(
+            'r', _units(first, second), _summary(net_pnl=50.0, total_trades=3))
+
+        assert [row.opening_equity for row in report.periods] == [10_000.0, 10_060.0]
+        assert report.unit_totals[0].opening_equity == 10_000.0
 
 
 class TestWhenThereIsNothingToShow:

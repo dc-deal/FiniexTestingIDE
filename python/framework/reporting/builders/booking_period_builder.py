@@ -28,7 +28,7 @@ figures are captured while their records still exist.
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from python.framework.reporting.builders.report_aggregators import aggregate_trade_analytics
 from python.framework.reporting.builders.trade_history_report_builder import (
@@ -63,6 +63,8 @@ class PeriodSnapshot:
         period_min_equity: The lowest inside this period — tracked rather than derived, because
             the peak and the trough are different moments
         period_max_drawdown: The deepest decline inside this period against its own peak
+        period_opening_equity: The account value the period opened with, None when nothing was
+            observed — stamped by the recorder, which saw it
     """
     currency: str
     final_equity: float = 0.0
@@ -74,6 +76,7 @@ class PeriodSnapshot:
     period_max_equity: float = 0.0
     period_min_equity: float = 0.0
     period_max_drawdown: float = 0.0
+    period_opening_equity: Optional[float] = None
 
 
 def derive_booking_period(
@@ -117,6 +120,11 @@ def derive_booking_period(
         period_max_equity=snapshot.period_max_equity,
         period_min_equity=snapshot.period_min_equity,
         period_max_drawdown=snapshot.period_max_drawdown,
+        period_opening_equity=snapshot.period_opening_equity,
+        # The same rows `total_fees` is summed over, split the way each of them already is.
+        commission_cost=sum(r.commission_cost for r in rows),
+        swap_cost=sum(r.swap_cost for r in rows),
+        spread_cost=sum(r.spread_cost for r in rows),
     )
 
 

@@ -44,11 +44,11 @@ _NOT_COMBINED = {Reduction.DERIVE, Reduction.COMPANION}
 # IDENTITY joins them for a different reason: its contract is that the rows AGREE, so feeding
 # it two different values asks a question the declaration forbids. What it actually does with
 # disagreeing rows is pinned on its own below — that is §49's open example, not a property.
-_ORDER_SENSITIVE = {Reduction.LAST, Reduction.SPAN_START, Reduction.SPAN_END,
+_ORDER_SENSITIVE = {Reduction.LAST, Reduction.FIRST, Reduction.SPAN_START, Reduction.SPAN_END,
                     Reduction.IDENTITY}
 
 # The result of these must be a value that actually occurred — they SELECT, they do not compute.
-_SELECTORS = {Reduction.MAX, Reduction.MAX_ABS, Reduction.MIN, Reduction.LAST,
+_SELECTORS = {Reduction.MAX, Reduction.MAX_ABS, Reduction.MIN, Reduction.LAST, Reduction.FIRST,
               Reduction.IDENTITY, Reduction.SPAN_START, Reduction.SPAN_END}
 
 

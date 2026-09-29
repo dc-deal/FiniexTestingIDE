@@ -24,33 +24,39 @@ def get_tick_range_stats(
     logger.debug(f'  TradeSimulator ID: {id(trade_simulator)}')
     logger.debug(f'  Portfolio ID: {id(trade_simulator.portfolio)}')
 
-    # Extract tick time range
-    first_tick_time = None
-    last_tick_time = None
-    tick_timespan_seconds = None
-    tick_count = len(ticks)
-
-    if tick_count > 0:
-        first_tick = ticks[0]
-        last_tick = ticks[-1]
-        first_tick_time = first_tick.timestamp
-        last_tick_time = last_tick.timestamp
-
-        # Calculate timespan in seconds
-        if first_tick_time and last_tick_time:
-            tick_timespan_seconds = (
-                last_tick_time - first_tick_time).total_seconds()
-
+    if ticks:
+        first_tick, last_tick = ticks[0], ticks[-1]
         logger.debug(
             f'  First tick: {first_tick.timestamp} | {first_tick.symbol} | bid={first_tick.bid:.5f}')
         logger.debug(
             f'  Last tick:  {last_tick.timestamp} | {last_tick.symbol} | bid={last_tick.bid:.5f}')
 
+    return processed_tick_range_stats(ticks, len(ticks))
+
+
+def processed_tick_range_stats(ticks: Tuple[TickData, ...], processed: int) -> TickRangeStats:
+    """
+    The market time a unit actually processed — its first tick to the last one the loop reached.
+
+    Measured on what was PROCESSED, not on what was loaded: a session-end request stops the loop
+    early, and the glossary's *tick timespan* is the processed span.
+
+    Args:
+        ticks: The unit's ticks, in loop order
+        processed: How many of them the loop processed, from the first
+
+    Returns:
+        The range; empty when nothing was processed
+    """
+    if processed <= 0 or not ticks:
+        return TickRangeStats()
+    first_tick_time = ticks[0].timestamp
+    last_tick_time = ticks[min(processed, len(ticks)) - 1].timestamp
     return TickRangeStats(
-        tick_count=tick_count,
+        tick_count=processed,
         first_tick_time=first_tick_time,
         last_tick_time=last_tick_time,
-        tick_timespan_seconds=tick_timespan_seconds
+        tick_timespan_seconds=(last_tick_time - first_tick_time).total_seconds()
     )
 
 

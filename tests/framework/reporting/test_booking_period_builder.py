@@ -16,7 +16,10 @@ The six shapes a trade can have against two periods:
     T0  closed exactly ON the boundary                       → period 2   (end is exclusive)
 """
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from python.framework.reporting.builders.booking_period_builder import (
     PeriodSnapshot,
@@ -148,6 +151,30 @@ class TestThePeriodsPartitionTheRecords:
         assert first.trade_count == 4
         assert first.figures.open_position_count == 1
         assert first.figures.unrealized_pnl == -4.0
+
+
+class TestThePeriodSplitsItsCosts:
+    """
+    The split is summed over the SAME trades `total_fees` is — the ones the period closed — so
+    commission and swap add up to it, and the measured spread stands beside it.
+    """
+
+    def test_commission_and_swap_add_up_to_the_fees_and_the_spread_stands_apart(self):
+        trades = [
+            replace(_trade('T1', _MON, _MON + timedelta(hours=2), 5.0),
+                    commission_cost=0.8, swap_cost=0.2, total_fees=1.0, spread_cost=0.3),
+            replace(_trade('T2', _MON, _MON + timedelta(hours=3), -2.0),
+                    commission_cost=0.5, swap_cost=0.0, total_fees=0.5, spread_cost=0.1),
+            # closed the next day — belongs to the next period, and so do its costs
+            replace(_trade('T3', _MON, _TUE + timedelta(hours=1), 1.0),
+                    commission_cost=9.0, swap_cost=9.0, total_fees=18.0, spread_cost=9.0),
+        ]
+        period = derive_booking_period(
+            'session', 1, _MON, _TUE, PeriodCloseReason.ANCHOR, trades, _snapshot())
+
+        assert (period.commission_cost, period.swap_cost) == (pytest.approx(1.3), pytest.approx(0.2))
+        assert period.commission_cost + period.swap_cost == pytest.approx(period.figures.total_fees)
+        assert period.spread_cost == pytest.approx(0.4)
 
 
 class TestAPeriodThatTradedNothing:

@@ -195,6 +195,14 @@ class BookingPeriod:
             peak. Beside it, `figures.account_max_drawdown` carries the CUMULATIVE decline of
             the whole deployment, and both are needed: the cumulative one keeps `max()` correct
             over rows, the own one answers how far this single day fell
+        period_opening_equity: The account value the period OPENED with — the previous period's
+            close at the same instant, or a unit's first observed value for its first period.
+            None when nothing was observed. Stamped, never `final_equity - net_pnl`: net_pnl is
+            realised, while the equity also values what is still open
+        commission_cost / swap_cost / spread_cost: The period's costs split the way a trade row
+            splits them, summed over the same trades `figures.total_fees` is — the ones the
+            period CLOSED. `commission_cost + swap_cost` is `total_fees`; `spread_cost` is
+            measured and stands beside it, never inside it
     """
     period_no: int
     unit_name: str
@@ -206,6 +214,10 @@ class BookingPeriod:
     period_max_equity: float = 0.0
     period_min_equity: float = 0.0
     period_max_drawdown: float = 0.0
+    period_opening_equity: Optional[float] = None
+    commission_cost: float = 0.0
+    swap_cost: float = 0.0
+    spread_cost: float = 0.0
 
 
 class Reduction(Enum):
@@ -233,7 +245,15 @@ class Reduction(Enum):
     # positive one, which nothing had noticed because no account has gone negative yet.
     MAX_ABS = 'max_abs'
     DERIVE = 'derive'       # a rate, a mean, a quotient: NOT combinable, re-derive from records
-    LAST = 'last'           # a stock read at an instant; the most recent row wins
+    # A stock read at an instant, of ONE account: the most recent row wins. Over the rows of
+    # several accounts — the scenarios of one backtest — it has no value at all, because no
+    # account ever held their latest readings together; the fold answers None rather than
+    # whichever account happened to close last (measured 2026-09-29: a sweep row carried one
+    # scenario's equity out of eight).
+    LAST = 'last'
+    # A stock read at the OPENING instant, of one account: the earliest row wins — the account
+    # a unit began its window with. Undefined over several accounts, like LAST.
+    FIRST = 'first'
     IDENTITY = 'identity'   # must agree across the rows, or they were never comparable
     UNION = 'union'         # a comma-joined set: combine by union, never by concatenation
     MIN = 'min'             # a plain minimum — the trough, the mirror of MAX

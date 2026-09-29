@@ -113,7 +113,10 @@ class RunLedgerIndex(AbstractStoreIndex):
     # 13 → 14 (contract 15): `run_outcome`, `error_count`, `warning_count` and `log_warning_count`
     # appended — how a run ended and what its warnings-errors channels held, so the run list can
     # serve them from one read. An append like the ones above: an older fragment answers None.
-    LOGIC_VERSION: int = 14
+    # 14 → 15 (contract 17): `period_opening_equity` and the period's cost split appended —
+    # what a period opened with, and commission / swap / spread beside `total_fees`. An older
+    # fragment answers None, which the back-fill fills where the value is exactly derivable.
+    LOGIC_VERSION: int = 15
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

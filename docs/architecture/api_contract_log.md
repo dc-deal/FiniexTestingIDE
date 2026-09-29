@@ -26,6 +26,46 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 17 — 2026-09-29 (viewer#21)
+
+Every figure says which ACCOUNT it is about. A backtest of several scenarios is several independent
+accounts — one balance each — while an AutoTrader session is one, and three routes answered "final
+equity" three ways for the same run: a sum no account ever held, the last row's own account, and
+whichever account closed last.
+
+- `GET /api/v1/reports/runs/{run_id}/run-summary` and `…/portfolio` (`aggregates[]`): `final_equity`
+  is ONE account's closing equity and is `null` when the currency spans several; the sum is
+  `total_final_equity`, beside `total_initial_balance` and `unit_count`. `account_max_drawdown_unit`
+  names the account the drawdown, `max_equity` and `account_max_dd_pct` describe. `unrealized_pnl`
+  and `open_position_count` stay sums.
+- `GET /api/v1/reports/runs/{run_id}/aggregated-portfolio`: `max_equity` / `max_equity_scenario` are
+  `highest_equity` / `highest_equity_scenario` — the highest peak of ANY account. The peak the
+  drawdown fell from is `headline.max_equity`; the two shared one name. `recovery_factor` is `null`
+  over several accounts, since it divided their summed P&L by one account's decline.
+- `GET /api/v1/reports/runs/{run_id}/booking-periods`: every period carries `opening_equity` — the
+  previous period's close, or a unit's first observed value, never `final_equity − net_pnl`, which
+  would drop what was still open — and its costs split: `commission_cost` + `swap_cost` is
+  `total_fees`, `spread_cost` is measured and stands beside it. `unit_totals` folds each unit's
+  periods into its total by the ledger's own reductions (rates rebuilt from their components, the
+  drawdown from the period that owns it, a streak not at all). `keys` replaces `key`:
+  `{"periods": ["unit_name", "period_no"], "unit_totals": ["unit_name"]}`. `final_equity` is
+  `total_final_equity`, the sum over `unit_totals` — it was the last row's own figure.
+- `GET /api/v1/deployments/{deployment_id}/booking-periods`: the rows carry the same period fields.
+- `GET /api/v1/reports/runs/{run_id}/trade-history`: every execution carries `shared_by` — how many
+  trade rows of its UNIT carry that fill. Per unit, because two scenarios on one symbol mint the
+  same synthetic ids: counted across a whole run, one id of three scenarios reads as seven siblings.
+  A partial close's `commission_cost` includes its exit fee, so `commission_cost + swap_cost ==
+  total_fees` on every row; it fell short by exactly that fee at a maker/taker venue.
+- `GET /api/v1/reports/runs` and `GET /api/v1/directory` (`last_run_figures`): every run carries
+  `tick_timespan_seconds` — the market time its units PROCESSED, covered together so a stretch two
+  scenarios share counts once. `run-summary` carries it too, beside `tick_timespan_total_seconds`,
+  the sum. Measured on `20260929_075109_9c62dd40`: 464 h covered, 928 h summed.
+- `GET /api/v1/sweeps/{sweep_id}`: `final_equity`, `unrealized_pnl` and `open_position_count` are
+  `null` on a row that folds several accounts.
+
+The stored runs were back-filled with every value that is exactly derivable from what they already
+held; the rest answers `null`.
+
 ## Version 16 — 2026-09-29 (viewer#21)
 
 The directory names its brokers the way the run reports do, so one word means one thing across the

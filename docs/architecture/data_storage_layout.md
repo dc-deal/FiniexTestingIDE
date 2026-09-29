@@ -88,7 +88,10 @@ which is the shape the ledger had before — the grain widened, it did not chang
 `COLUMN_REDUCTION` beside `LEDGER_COLUMNS` states how every column combines — and a derivable
 copy kept next to its source is the pair that drifts. Keeping both would also be wrong in
 a way no reader could see: the deployment history SUMS rows and would count every month twice,
-the sweep ranking SORTS them and would see one candidate four times.
+the sweep ranking SORTS them and would see one candidate four times. One reduction has a limit
+the others do not: a STOCK (`final_equity`, `unrealized_pnl`, `open_position_count`) is the latest
+reading of ONE account, so folded over the rows of several units — a backtest's scenarios — it
+answers null rather than whichever account closed last.
 
 The three levels this produces are ordinary double-entry bookkeeping, and
 [accounting_periods.md](accounting_periods.md) names them: the trade records are the

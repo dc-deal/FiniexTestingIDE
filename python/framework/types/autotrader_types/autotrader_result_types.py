@@ -4,6 +4,7 @@ Result data structures for live AutoTrader sessions.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Optional
 
 from python.framework.types.autotrader_types.clipping_monitor_types import ClippingSessionSummary
@@ -42,6 +43,8 @@ class AutoTraderResult:
         session_duration_s: Total session duration in seconds
         ticks_processed: Total ticks processed
         ticks_clipped: Total ticks that experienced clipping
+        first_tick_time / last_tick_time: The first and the last tick the session processed —
+            its *tick timespan*; None when no tick arrived
         portfolio_stats: Portfolio performance statistics
         execution_stats: Order execution statistics
         trade_history: Completed trade records
@@ -81,6 +84,8 @@ class AutoTraderResult:
     session_duration_s: float = 0.0
     ticks_processed: int = 0
     ticks_clipped: int = 0
+    first_tick_time: Optional[datetime] = None
+    last_tick_time: Optional[datetime] = None
     portfolio_stats: Optional[PortfolioStats] = None
     execution_stats: Optional[ExecutionStats] = None
     trade_history: List[TradeRecord] = field(default_factory=list)

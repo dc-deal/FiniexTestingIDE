@@ -80,6 +80,11 @@ class BookingPeriodRecorder:
         self._peak_equity: Optional[float] = None
         self._max_equity: float = 0.0
         self._min_equity: float = 0.0
+        # What the open period began with: the previous period's close, or — for a unit's first
+        # period — its first observed value. Set at a seal from the value the seal READ, so both
+        # pipelines agree although the simulation observes before it checks the boundary and
+        # the AutoTrader after.
+        self._opening_equity: Optional[float] = None
         self._max_drawdown: float = 0.0
 
     def get_highest_period_no(self) -> int:
@@ -110,6 +115,8 @@ class BookingPeriodRecorder:
         Args:
             value: The account value at this instant
         """
+        if self._opening_equity is None:
+            self._opening_equity = value
         if self._peak_equity is None:
             self._peak_equity = value
             self._max_equity = value
@@ -119,7 +126,7 @@ class BookingPeriodRecorder:
         self._min_equity = min(self._min_equity, value)
         # A MAGNITUDE, like `account_max_drawdown`, `largest_mae` and `largest_mfe` beside it.
         # It was the one signed figure among them until #539. The ledger combined it correctly
-        # either way (`Reduction.MAX` is `max(key=abs)`), so nothing was ever wrong in the
+        # either way (`Reduction.MAX_ABS` combines by magnitude), so nothing was ever wrong in the
         # arithmetic — what it cost was READING: a consumer renders this table beside the
         # portfolio block, and one shared formatter turns one of the two into its own opposite
         # without anything going red. The sign is a DISPLAY decision and lives in the renderers.
@@ -210,6 +217,7 @@ class BookingPeriodRecorder:
         snapshot.period_max_equity = self._max_equity
         snapshot.period_min_equity = self._min_equity
         snapshot.period_max_drawdown = self._max_drawdown
+        snapshot.period_opening_equity = self._opening_equity
 
         period = derive_booking_period(
             unit_name=self._unit_name,
@@ -226,6 +234,8 @@ class BookingPeriodRecorder:
             self._log(describe_segment(period))
 
         self._opened_at = closed_at
+        # The next period opens at this instant, with the value this seal just read.
+        self._opening_equity = snapshot.final_equity
         self._peak_equity = None
         self._max_equity = 0.0
         self._min_equity = 0.0

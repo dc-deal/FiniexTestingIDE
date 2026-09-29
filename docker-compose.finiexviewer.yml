@@ -44,7 +44,13 @@ services:
     volumes:
       - ../FiniexViewer:/app
     ports:
-      - "5173:5173"
+      # Bound to the host's loopback, like the API in docker-compose.yml: the dev server proxies
+      # /api to it, so a port published on every interface would reach the API from the network
+      # after all — around the condition the browser client's `reports` grant was issued under.
+      - "127.0.0.1:5173:5173"
+      # `vite preview`, the production bundle — so its speed can be measured rather than the dev
+      # server's, which transforms every module on demand.
+      - "127.0.0.1:4173:4173"
     environment:
       # Vite dev proxy resolves this via the compose network (service name = DNS).
       - VITE_API_BASE_URL=http://finiex-dev:8000

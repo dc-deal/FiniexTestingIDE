@@ -92,7 +92,9 @@ cd FiniexTestingIDE
 docker compose -f docker-compose.yml -f docker-compose.finiexviewer.yml --profile viewer up -d
 ```
 
-The Vite dev server will be available at `http://localhost:5173`.
+The Vite dev server will be available at `http://localhost:5173` — from this machine only, like the
+API. A production build served with `vite preview` inside the container answers on
+`http://localhost:4173`.
 
 The container automatically installs npm dependencies on first start (`npm install && npm run dev`).
 
@@ -103,7 +105,12 @@ The container automatically installs npm dependencies on first start (`npm insta
 | Port | Service | Published as |
 |------|---------|---|
 | `8000` | FiniexTestingIDE FastAPI (HTTP API) | `127.0.0.1:8000` — loopback only |
-| `5173` | FiniexViewer Vite dev server | `5173` |
+| `5173` | FiniexViewer Vite dev server | `127.0.0.1:5173` — loopback only |
+| `4173` | FiniexViewer `vite preview` (the production bundle) | `127.0.0.1:4173` — loopback only |
+
+Both viewer ports are bound to the loopback for the API's reason: the Vite server forwards `/api`
+to the API, so a viewer port open on every interface would make the API reachable from the network
+through it.
 
 The Vite container does NOT reach the API through that published port: it resolves `finiex-dev` on
 the compose network (`VITE_API_BASE_URL`), which works regardless of what is published to the host.

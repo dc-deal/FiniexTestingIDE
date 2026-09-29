@@ -313,15 +313,19 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         # Use tick run time (excludes warmup)
         tickrun_time = self._run_meta.tickrun_time_s
         ticks_per_second = loop_ticks / tickrun_time if tickrun_time > 0 else 0
-        speedup = (in_time_stats['total_hours'] * 3600) / \
+        speedup = (in_time_stats['processed_hours'] * 3600) / \
             tickrun_time if tickrun_time > 0 else 0
 
-        # Render IN-TIME section
-        renderer.print_bold('IN-TIME PERFORMANCE (Simulated Market Time)')
+        # Render IN-TIME section — the MEASURED tick timespan, never the declared windows: a
+        # stretch two scenarios share is covered once and processed twice, and both are true.
+        renderer.print_bold('IN-TIME PERFORMANCE (tick timespan)')
         renderer.print_separator(width=68)
+        covered = in_time_stats['covered_hours']
+        print(f'Covered:            {covered:.1f} hours ({covered / 24:.1f} days, overlap once)')
         print(
-            f"Total Simulation:   {in_time_stats['total_hours']:.1f} hours ({in_time_stats['total_days']:.1f} days)")
-        print(f"Avg per Scenario:   {in_time_stats['avg_hours']:.2f} hours")
+            f"Processed:          {in_time_stats['processed_hours']:.1f} hours "
+            f"({self._run_summary.unit_count} scenarios summed, "
+            f"avg {in_time_stats['avg_hours']:.2f} h)")
         if has_clipping:
             print(f'Ticks Processed:    {loop_ticks:,} total ({algo_ticks:,} algo)')
         else:
@@ -362,7 +366,7 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         print(
             f'Ticks/Second:       {ticks_per_second:,.0f} (processing rate)')
         print(
-            f"Speedup:            {speedup:,.0f}x ({in_time_stats['total_hours']:.0f} hours → {tickrun_time:.0f} seconds)")
+            f"Speedup:            {speedup:,.0f}x ({in_time_stats['processed_hours']:.0f} hours → {tickrun_time:.0f} seconds)")
 
     def _render_portfolio_performance(self, renderer: ConsoleRenderer):
         """Render aggregated portfolio performance from the model (#397)."""
@@ -462,19 +466,34 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             print(
                 f'Open at end:        {h.open_position_count} position(s) '
                 f'({format_currency_simple(h.unrealized_pnl, currency)} unrealised)')
-            print(
-                f'Final Equity:       {format_currency_simple(h.final_equity, currency)}')
+            if h.final_equity is not None:
+                print(
+                    f'Final Equity:       {format_currency_simple(h.final_equity, currency)}')
+            else:
+                # Several accounts: their sum, said as one, beside the capital it began from.
+                print(
+                    f'Total Final Equity: {format_currency_simple(h.total_final_equity, currency)}'
+                    f'  ({h.unit_count} accounts, initial '
+                    f'{format_currency_simple(h.total_initial_balance, currency)})')
 
         print('')
+        # The drawdown trio is ONE account's; over several it names which one.
+        of_unit = f' — {h.account_max_drawdown_unit}' if h.unit_count > 1 else ''
         # "curve" names the measure (#497) — see portfolio_summary for why the word alone
         # is not enough once a second honest reading exists.
         print(
             f'Max Drawdown (account, curve): '
             f'{format_currency_simple(abs(h.account_max_drawdown), currency)} '
-            f'({row.account_max_dd_pct:.1f}%)')
-        print(
-            f'Max Equity:         {format_currency_simple(row.max_equity, currency)}')
-        print(f'Recovery Factor:    {row.recovery_factor:.2f}')
+            f'({row.account_max_dd_pct:.1f}%){of_unit}')
+        # The peak THAT account fell from — the highest peak of any account is a different
+        # figure and stands in the aggregated details with its own scenario.
+        equity_label = (f'Max Equity ({h.account_max_drawdown_unit}):' if h.unit_count > 1
+                        else 'Max Equity:')
+        print(f'{equity_label:<20}{format_currency_simple(h.max_equity, currency)}')
+        if row.recovery_factor is None:
+            print(f'Recovery Factor:    — ({h.unit_count} separate accounts)')
+        else:
+            print(f'Recovery Factor:    {row.recovery_factor:.2f}')
         print('')
         print(
             f'Spread Cost:        {format_currency_simple(row.total_spread_cost, currency)} (avg {format_currency_simple(row.avg_spread, currency)}/trade)')
@@ -717,12 +736,14 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
 
     def _calculate_in_time_stats(self) -> Dict[str, float]:
         """
-        Calculate in-time statistics from the run-meta + profiling models.
+        Calculate in-time statistics from the run-summary + profiling models.
 
         Returns:
-            Dict with total_hours, avg_hours, total_days, ticks_per_hour
+            Dict with covered_hours, processed_hours, avg_hours, ticks_per_hour
         """
-        total_hours = self._run_meta.total_hours
+        summary = self._run_summary
+        covered_hours = (summary.tick_timespan_seconds or 0.0) / 3600
+        total_hours = (summary.tick_timespan_total_seconds or 0.0) / 3600
 
         # Ticks per hour (market density = all ticks incl. clipped; fall back to the
         # coordination ticks when no clipping was active)
@@ -732,8 +753,8 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         ticks_per_hour = ticks_total / total_hours if total_hours > 0 else 0
 
         return {
-            'total_hours': total_hours,
-            'avg_hours': self._run_meta.avg_hours,
-            'total_days': self._run_meta.total_days,
+            'covered_hours': covered_hours,
+            'processed_hours': total_hours,
+            'avg_hours': total_hours / summary.unit_count if summary.unit_count else 0.0,
             'ticks_per_hour': ticks_per_hour
         }

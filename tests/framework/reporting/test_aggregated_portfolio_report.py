@@ -184,10 +184,56 @@ class TestTheWorstDrawdownIsDescribedByOneScenario:
         row = _build([deepest, richest]).currencies[0].combined
 
         assert row.account_max_drawdown_scenario == 'deep'
-        assert row.max_equity_scenario == 'rich'
+        assert row.highest_equity_scenario == 'rich'
         assert row.account_max_dd_pct == pytest.approx(30.0), (
             'the old construction gave 300 / 9000 = 3.3 % — one scenario\'s decline over '
             'another scenario\'s peak, which describes neither of them')
+
+    def test_the_peak_beside_the_drawdown_is_that_accounts_and_the_highest_is_named_apart(self):
+        # Both figures were `max_equity`: the headline carried the deepest account's peak, the
+        # rich row the highest of any, and the console printed the second under the first's
+        # drawdown. One name, two numbers.
+        deepest = _pf('deep', max_dd=300.0, max_eq=1_000.0, max_dd_pct=30.0)
+        richest = _pf('rich', max_dd=50.0, max_eq=9_000.0, max_dd_pct=0.6)
+
+        row = _build([deepest, richest]).currencies[0].combined
+
+        assert (row.headline.max_equity, row.headline.account_max_drawdown_unit) == (
+            1_000.0, 'deep')
+        assert (row.highest_equity, row.highest_equity_scenario) == (9_000.0, 'rich')
+
+
+class TestSeveralAccountsAddUpOnlyAsATotal:
+    """
+    A backtest of several scenarios is several independent accounts. Their closing equities
+    add up to a total no account ever held, so the total is served as one — beside the
+    capital it started from — and the one-account figure has none to describe.
+    """
+
+    def test_the_sum_is_a_total_and_final_equity_is_left_undefined(self):
+        a = _pf('a', initial=10_000.0).model_copy(update={'final_equity': 9_950.0})
+        b = _pf('b', initial=10_000.0).model_copy(update={'final_equity': 10_020.0})
+
+        headline = _build([a, b]).currencies[0].combined.headline
+
+        assert headline.final_equity is None
+        assert (headline.total_final_equity, headline.total_initial_balance) == (
+            pytest.approx(19_970.0), pytest.approx(20_000.0))
+
+    def test_one_account_is_its_own_total(self):
+        a = _pf('a', initial=10_000.0).model_copy(update={'final_equity': 9_950.0})
+
+        headline = _build([a]).currencies[0].combined.headline
+
+        assert headline.final_equity == headline.total_final_equity == pytest.approx(9_950.0)
+
+    def test_the_recovery_factor_is_undefined_over_several_accounts(self):
+        # Their summed P&L over one account's decline is a quotient of two populations.
+        several = _build([_pf('a', max_dd=10.0), _pf('b', max_dd=20.0)]).currencies[0].combined
+        one = _build([_pf('a', max_dd=10.0)]).currencies[0].combined
+
+        assert several.recovery_factor is None
+        assert one.recovery_factor == pytest.approx(one.balance_pnl / 10.0)
 
     def test_a_group_that_never_declined_reports_no_percentage(self):
         row = _build([_pf('a', max_dd=0.0, max_dd_pct=0.0)]).currencies[0].combined

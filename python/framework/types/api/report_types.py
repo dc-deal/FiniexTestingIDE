@@ -58,6 +58,12 @@ class ExecutionRow(BaseModel):
     fee_currency: str
     liquidity: str          # 'maker' | 'taker'
     timestamp: str          # ISO-8601 UTC, '' if absent
+    # How many trade rows of the SAME unit carry this execution — 1 is only its own. A partial
+    # close copies the position's entry fills onto every record it produces, so several rows
+    # show one fill; `volume` is the fill's, the row's own share is its `lots`. Counted when the
+    # report is built, over the whole unit, so it holds on a filtered list too. None on an
+    # artifact written before contract 17.
+    shared_by: int | None = None
 
 
 class TradeHistoryRow(BaseModel):
@@ -377,11 +383,20 @@ class PortfolioAggregateRow(BaseModel):
     # aggregate: amount, percentage and the unit they describe travel together.
     max_equity: float = 0.0
     account_max_dd_pct: float = 0.0
+    # WHICH account the three above describe. A backtest of several scenarios is several
+    # independent accounts, and the trio is the deepest one's — named, so it does not read as
+    # the run's own.
+    account_max_drawdown_unit: str = ''
     total_fees: float
     # #492 — the wealth view beside the realised one. Summed across the currency's units,
     # never folded into net_profit.
     unrealized_pnl: float = 0.0
-    final_equity: float = 0.0
+    # The closing equity of the ONE account this row describes; None when the currency spans
+    # several (a backtest of several scenarios), because no account ever held their sum. The
+    # sum is `total_final_equity`, beside the capital it started from.
+    final_equity: float | None = 0.0
+    total_final_equity: float = 0.0
+    total_initial_balance: float = 0.0
     open_position_count: int = 0
 
 
@@ -741,6 +756,9 @@ class RunListFigures(BaseModel):
     error_count: Optional[int] = None
     warning_count: Optional[int] = None
     log_warning_count: Optional[int] = None
+    # The market time the run processed, overlap counted once (contract 17); None where not
+    # recorded.
+    tick_timespan_seconds: Optional[float] = None
 
 
 class RunInfo(BaseModel):
@@ -804,6 +822,9 @@ class RunInfo(BaseModel):
     error_count: Optional[int] = None       # ERROR records in the error pot
     warning_count: Optional[int] = None     # Tier-1 findings (validator-produced)
     log_warning_count: Optional[int] = None # Tier-2 WARNING records in the log pot
+    # The market time the run processed — its units' tick timespans covered together, so a
+    # stretch two scenarios share counts once (contract 17). None where not recorded.
+    tick_timespan_seconds: Optional[float] = None
 
     @computed_field
     @property
@@ -852,6 +873,9 @@ class RunSummaryCurrency(BaseModel):
     # a live row is cumulative over its deployment and a reader comparing rows needs both.
     max_equity: float = 0.0
     account_max_dd_pct: float = 0.0
+    # ← PortfolioAggregateRow.account_max_drawdown_unit; '' on a booking period, which is one
+    # unit's own row.
+    account_max_drawdown_unit: str = ''
     total_fees: float       # ← PortfolioAggregateRow.total_fees
     # The two halves `profit_factor` is the quotient OF. Carried because a rate cannot be
     # folded out of two rows while its COMPONENTS can be summed on any level: without these,
@@ -868,7 +892,13 @@ class RunSummaryCurrency(BaseModel):
     # variant still HOLDING a winner below one that closed it, which is the same distortion
     # the force-close used to cause in the other direction.
     unrealized_pnl: float = 0.0
-    final_equity: float = 0.0
+    # The closing equity of ONE account — a booking period's always, the run's only when it has
+    # one account in this currency, None otherwise. The sum over several accounts is
+    # `total_final_equity`; how many there were is `unit_count` (None on a booking period).
+    final_equity: float | None = 0.0
+    total_final_equity: float | None = None
+    total_initial_balance: float | None = None
+    unit_count: int | None = None
     open_position_count: int = 0
     expectancy: float       # ← TradeAnalytics.expectancy (mean R) — the sweep objective
     avg_win_r: float | None     # ← TradeAnalytics (None = no R-defined winner)
@@ -906,14 +936,60 @@ class BookingPeriodRow(BaseModel):
     trade_count: int
     net_pnl: float
     total_fees: float
+    # The costs split the way a trade row splits them, over the same trades `total_fees` is
+    # summed from — the ones the period CLOSED. `commission_cost + swap_cost` is `total_fees`;
+    # `spread_cost` is measured and stands beside it, never inside it. None on a period recorded
+    # before contract 17.
+    commission_cost: float | None = None
+    swap_cost: float | None = None
+    spread_cost: float | None = None
     win_rate: float
     profit_factor: float | None
+    # What the account stood at when the period OPENED — the previous period's close, or a
+    # unit's first observed value. None where it was not recorded.
+    opening_equity: float | None = None
     final_equity: float
     # The period's OWN band and decline, not the cumulative ones: on this table the question is
     # what each period did, and the running figure would repeat the same number down the column.
     min_equity: float
     max_equity: float
     max_drawdown: float
+
+
+class BookingUnitTotalRow(BaseModel):
+    """
+    One unit's booking periods folded into its total, by the ledger's own declared reductions.
+
+    A unit is one account, so every figure here is defined — its equity included, which no row
+    over SEVERAL accounts can say. The rates are rebuilt from their summed components rather
+    than averaged, the band is the widest one, and a decline is the deepest SINGLE period's: a
+    fall that runs across a boundary is deeper than any period's own, and the account's curve
+    decline beside it is the figure that carries that.
+    """
+    unit_name: str
+    currency: str
+    period_count: int
+    opened_at: str
+    closed_at: str
+    trade_count: int
+    net_pnl: float
+    total_fees: float
+    commission_cost: float | None = None
+    swap_cost: float | None = None
+    spread_cost: float | None = None
+    gross_profit: float = 0.0
+    gross_loss: float = 0.0
+    win_rate: float
+    profit_factor: float | None
+    opening_equity: float | None = None
+    final_equity: float | None = None
+    min_equity: float | None = None
+    max_equity: float | None = None
+    deepest_period_drawdown: float | None = None
+    # The account's curve decline and the share it was, as the ledger records it — cumulative
+    # from the unit's start, and for a session in a deployment from the deployment's (#497).
+    account_max_drawdown: float = 0.0
+    account_max_dd_pct: float | None = None
 
 
 class BookingPeriodsReport(RunScopedReport):
@@ -931,9 +1007,13 @@ class BookingPeriodsReport(RunScopedReport):
     (§12: reports calculate and render, they do not judge).
     """
     # Run-scoped, so `run_id` is the report's own and not a column: the pair below is what
-    # separates the rows WITHIN it.
-    key: list[str] = ['unit_name', 'period_no']
+    # separates the rows WITHIN it. Two lists, so one key each (§49); both are of the one
+    # currency the report is about.
+    keys: dict[str, list[str]] = {'periods': ['unit_name', 'period_no'],
+                                  'unit_totals': ['unit_name']}
     periods: list[BookingPeriodRow] = Field(default_factory=list)
+    # Each unit's periods folded into its total — one account each, so its equity is defined.
+    unit_totals: list[BookingUnitTotalRow] = Field(default_factory=list)
     # Which currency the TOTALS are about, and every currency the ROWS carry. They differ on a
     # multi-currency run, where a sum across them would not be a number — so the rows keep
     # everything and the totals name their one currency (#539 audit).
@@ -953,7 +1033,10 @@ class BookingPeriodsReport(RunScopedReport):
     # The deepest single-period decline and the band across all of them — the column's own
     # extremes, which is what a reader scanning the table is comparing against.
     deepest_period_drawdown: float = 0.0
-    final_equity: float = 0.0
+    # The sum of the units' closing equities: a TOTAL over separate accounts, defined the same
+    # way `run-summary` defines it. It used to be the last row's own figure, i.e. one scenario
+    # of several. None when a unit's closing equity was not recorded.
+    total_final_equity: float | None = None
 
 
 class AbsentUnitRow(BaseModel):
@@ -1008,6 +1091,11 @@ class RunSummary(RunScopedReport):
     orders_rejected: int = 0
     sl_tp_triggered: int = 0
     unit_count: int = 0     # sim: N scenarios | live: 1
+    # The market time the run processed, as its units' TICK TIMESPANS: covered together (a
+    # stretch two scenarios share counts once) and summed (the work, each scenario simulating
+    # its own). None where no unit recorded one.
+    tick_timespan_seconds: float | None = None
+    tick_timespan_total_seconds: float | None = None
     # Which units are MISSING from the figures above, and why (contract 6). Before these, a run
     # of ten scenarios with two rejected read as a run of eight, with nothing on the response
     # saying so. `units_declared == units_disabled + len(units_absent) + unit_count` wherever
@@ -1100,6 +1188,7 @@ class RunResultRow(BaseModel):
     error_count: int | None = None          # ERROR records in the error pot
     warning_count: int | None = None        # Tier-1 findings (validator-produced)
     log_warning_count: int | None = None    # Tier-2 WARNING records in the log pot
+    tick_timespan_seconds: float | None = None   # the run's covered market time (contract 17)
     # WHEN this row's run directory was deleted by a prune, empty while it was not. The row
     # outlives its evidence on purpose; this is what stops it from silently claiming its figures
     # can still be checked against the records they came from (§48).
@@ -1117,6 +1206,10 @@ class RunResultRow(BaseModel):
     period_max_equity: float | None = None
     period_min_equity: float | None = None
     period_max_drawdown: float | None = None
+    period_opening_equity: float | None = None
+    period_commission_cost: float | None = None
+    period_swap_cost: float | None = None
+    period_spread_cost: float | None = None
     # What a period looks like beyond its net result.
     avg_mae_winners: float | None = None
     avg_mae_losers: float | None = None
@@ -1461,10 +1554,6 @@ class RunMetaReport(RunScopedReport):
     tickrun_time_s: float = 0.0
     pickle_time_s: float = 0.0
     pickle_sample_mb: float = 0.0
-    # In-time (simulated market time) — derived from the scenario config date windows
-    total_hours: float = 0.0
-    total_days: float = 0.0
-    avg_hours: float = 0.0
     # #137 performance-tracking layer presence (any scenario): A = worker stats, B = tick-loop profiling
     worker_tracking_on: bool = False
     profiling_tracking_on: bool = False
@@ -2237,12 +2326,16 @@ class AggregatedPortfolioRow(BaseModel):
     avg_initial: float = 0.0
     balance_pnl: float = 0.0        # final_balance - initial_balance (executive "Total P&L")
     balance_pnl_pct: float = 0.0
-    # Risk
-    recovery_factor: float = 0.0
+    # Risk. The recovery factor is None over several accounts: their summed P&L over one
+    # account's drawdown is a quotient of two different populations.
+    recovery_factor: float | None = 0.0
     account_max_dd_pct: float = 0.0
     account_max_drawdown_scenario: str = ''
-    max_equity: float = 0.0
-    max_equity_scenario: str = ''
+    # The highest peak ANY account reached, with its scenario — not the peak the drawdown above
+    # fell from, which is `headline.max_equity`. One name for both was how the console printed
+    # one scenario's decline beside another's peak.
+    highest_equity: float = 0.0
+    highest_equity_scenario: str = ''
     # Cost split
     total_spread_cost: float = 0.0
     total_commission: float = 0.0

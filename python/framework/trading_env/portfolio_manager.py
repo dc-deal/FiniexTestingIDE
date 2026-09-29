@@ -29,7 +29,11 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
     EntryType,
     TradeRecord,
 )
-from python.framework.types.portfolio_types.portfolio_types import Position, PositionStatus
+from python.framework.types.portfolio_types.portfolio_types import (
+    COMMISSION_FEE_TYPES,
+    Position,
+    PositionStatus,
+)
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import (
     FeeType,
@@ -611,6 +615,15 @@ class PortfolioManager:
 
         closed_net_pnl = closed_gross_pnl - closed_fees
 
+        # The exit fee is charged on the closed portion ALONE and never joins the position's
+        # fees, so the record's cost columns take it on top of their share — by its type, the
+        # way `total_fees` above already took it. Left out, `commission_cost + swap_cost` fell
+        # short of `total_fees` by exactly the exit fee on every partial close at a maker/taker
+        # venue (measured 2026-09-29).
+        exit_commission = (exit_fee.cost if exit_fee and exit_fee.fee_type in COMMISSION_FEE_TYPES
+                           else 0.0)
+        exit_swap = exit_fee.cost if exit_fee and exit_fee.fee_type == FeeType.SWAP else 0.0
+
         # --- Update balances ---
         if self._spot_mode:
             spec = self.broker_config.get_symbol_specification(position.symbol)
@@ -653,8 +666,8 @@ class PortfolioManager:
             contract_size=position.contract_size,
             spread_cost=position.spread_cost_for_partial(
                 close_ratio, exit_price, exit_bid, exit_ask, exit_tick_value),
-            commission_cost=position.get_commission_cost() * close_ratio,
-            swap_cost=position.get_swap_cost() * close_ratio,
+            commission_cost=position.get_commission_cost() * close_ratio + exit_commission,
+            swap_cost=position.get_swap_cost() * close_ratio + exit_swap,
             total_fees=closed_fees,
             gross_pnl=closed_gross_pnl,
             net_pnl=closed_net_pnl,

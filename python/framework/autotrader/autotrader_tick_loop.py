@@ -313,6 +313,10 @@ class AutotraderTickLoop:
         # here, a function there) and a recorder each would be two implementations of one rule.
         # It COLLECTS; the report coordinator writes every period at once when the run ends, so
         # the parquet write stays out of what the throughput benchmark measures.
+        # The market time this session processed — its first tick and the latest one the broker
+        # path saw (the glossary's *tick timespan*). Two assignments per tick, no allocation.
+        self._first_tick_time: Optional[datetime] = None
+        self._last_tick_time: Optional[datetime] = None
         self._booking = BookingPeriodRecorder(
             unit_name=config.get_unit_name(),
             anchor=self._day_anchor,
@@ -461,6 +465,9 @@ class AutotraderTickLoop:
 
             # === 1. Trade Executor — BROKER PATH (all ticks) ===
             self._executor.on_tick(tick)
+            if self._first_tick_time is None:
+                self._first_tick_time = tick.timestamp
+            self._last_tick_time = tick.timestamp
 
             # === DAILY LOG ROTATION ===
             # After on_tick, because that is what advances the canonical clock to this
@@ -1014,6 +1021,15 @@ class AutotraderTickLoop:
             List of DisturbanceEpisode (an episode still open is never-recovered)
         """
         return self._market_data_tracker.get_episodes(self._executor.get_current_time())
+
+    def get_tick_span(self) -> Tuple[Optional[datetime], Optional[datetime]]:
+        """
+        The first and the latest tick this session processed.
+
+        Returns:
+            (first, last) tick timestamps; (None, None) before the first tick
+        """
+        return self._first_tick_time, self._last_tick_time
 
     def get_market_data_tick_stats(self) -> MarketDataTickStats:
         """
