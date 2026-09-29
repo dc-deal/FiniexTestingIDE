@@ -42,7 +42,8 @@ run to open no longer has to open them one by one.
 - `GET /api/v1/reports/runs/{run_id}/warnings-errors`: `outcome` carries the same three counts. They
   are counted once, the same way in both pipelines; the warning ROWS are not a count, because a
   backtest summarizes its whole Tier-2 pot in one row while an AutoTrader session writes one per entry.
-  Null on an artifact written before this version.
+  Null on an artifact written before this version. The outcome's `run_outcome` is typed as its four
+  values: the JSON is unchanged, the schema now names what it may hold.
 - `GET /api/v1/directory` and `…/directory/{file}`: every row carries `last_run_figures` — what the
   newest run started from that file did, exactly the figures the run list carries for it; null when
   the file never ran or the ledger holds nothing for its newest run.

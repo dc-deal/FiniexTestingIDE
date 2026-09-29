@@ -223,6 +223,17 @@ class MockBrokerAdapter(AbstractAdapter):
         """The broker this mock stands in for."""
         return self._broker_type
 
+    def get_capability_label(self) -> str:
+        """
+        The mock carries market orders only, whatever the venue it stands in for offers, so a
+        refusal names the mock and never the venue. Measured 2026-09-29: "Venue 'Kraken' does not
+        offer: ['stop_limit']" sent the reader after a venue that offers it.
+
+        Returns:
+            The mock's own label, naming the venue it stands in for
+        """
+        return f"The mock adapter (standing in for '{self.get_broker_name()}')"
+
     def get_order_capabilities(self) -> OrderCapabilities:
         """Mock supports market orders only (feature gating). Trade-level
         reporting is True so the live executor exercises the trades-query

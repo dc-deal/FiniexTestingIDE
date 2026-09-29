@@ -93,7 +93,7 @@ def build_warnings_errors_report_from_session(
             logged_errors=logged_errors))
 
     outcome = WarningsErrorsOutcome(
-        run_outcome=result.get_outcome().value,
+        run_outcome=result.get_outcome(),
         failed_count=1 if result.emergency_reason else 0,
         total_units=1,
         failed_unit_names=[name] if result.emergency_reason else [],
@@ -192,7 +192,7 @@ def _batch_outcome(batch: BatchExecutionSummary) -> WarningsErrorsOutcome:
     failed = [r for r in results if not r.success]
     first = failed[0] if failed else None
     return WarningsErrorsOutcome(
-        run_outcome=batch.get_outcome().value,
+        run_outcome=batch.get_outcome(),
         failed_count=len(failed),
         total_units=len(results),
         failed_unit_names=[r.scenario_name for r in failed],

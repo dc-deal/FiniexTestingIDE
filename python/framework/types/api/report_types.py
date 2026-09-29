@@ -2158,10 +2158,10 @@ class UnitErrorRow(BaseModel):
 
 class WarningsErrorsOutcome(BaseModel):
     """Run-level outcome (#395) — the Executive headline reads this, it does not re-scan."""
-    # The canonical grading (#372), stamped once at DERIVE from the pipeline's own result object
-    # (RunOutcome value). Every surface — console, artifact, API — reads this instead of
-    # re-deriving a verdict from the counts below.
-    run_outcome: str = ''
+    # The canonical grading (#372), stamped once at DERIVE from the pipeline's own result object.
+    # Every surface — console, artifact, API — reads this instead of re-deriving a verdict from the
+    # counts below. None only where no grading was stamped.
+    run_outcome: Optional[RunOutcome] = None
     failed_count: int = 0
     total_units: int = 0
     failed_unit_names: list[str] = []

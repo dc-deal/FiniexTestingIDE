@@ -205,8 +205,8 @@ class AutotraderSessionSummary:
         if result.shutdown_mode == 'emergency' and result.emergency_reason:
             print(renderer.red(f'  ❌ EMERGENCY CAUSE: {result.emergency_reason}'))
         outcome = (self._warnings_errors_report.outcome.run_outcome
-                   if self._warnings_errors_report else '')
-        if outcome == RunOutcome.FINISHED_WITH_ERRORS.value:
+                   if self._warnings_errors_report else None)
+        if outcome is RunOutcome.FINISHED_WITH_ERRORS:
             print(renderer.yellow(
                 '  ⚠️  FINISHED WITH ERRORS — '
                 f'{result.count_logged(LogLevel.ERROR)} error(s) logged during the session'))

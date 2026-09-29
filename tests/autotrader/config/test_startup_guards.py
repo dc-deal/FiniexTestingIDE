@@ -191,14 +191,20 @@ class TestTheGuardsThatPredateThisFile:
         with pytest.raises(ValueError, match='on_cold_start'):
             setup_pipeline(config, _logger(tmp_path), 'run_startup_guards')
 
-    def test_and_the_same_profile_starts_with_it(self, tmp_path):
+    def test_and_the_same_profile_passes_the_cold_start_guard(self, tmp_path):
         """
         The other direction, so the refusal above cannot be read as "this profile is
-        broken". `CautiousMacd` declares STOP and overrides the hook — it must pass.
+        broken". `CautiousMacd` declares STOP and overrides the hook — the guard lets it pass.
+
+        It does not START in a mock session today, and the test says why instead of tolerating
+        any error: the profile rests a STOP_LIMIT entry and the mock adapter carries market
+        orders only, so the refusal that follows is the ORDER-TYPE one and names the mock. Once
+        the mock rests orders that refusal is gone, and this becomes the plain "it starts" it
+        was meant to be.
         """
         config = load_autotrader_config(_CAUTIOUS_MACD_PROFILE)
-        try:
+        with pytest.raises(ValueError) as refused:
             setup_pipeline(config, _logger(tmp_path), 'run_startup_guards')
-        except ValueError as error:
-            assert 'on_cold_start' not in str(error), (
-                f'A logic that DOES override the hook must not be refused for it: {error}')
+        assert 'on_cold_start' not in str(refused.value), (
+            f'A logic that DOES override the hook must not be refused for it: {refused.value}')
+        assert 'The mock adapter (standing in for' in str(refused.value)

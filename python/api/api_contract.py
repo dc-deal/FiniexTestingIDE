@@ -36,7 +36,8 @@ CHANGES: List[str] = [
     'nothing for the run and [] when it closed without figures; plus `run_outcome` and the counts '
     '`error_count`, `warning_count` (Tier 1) and `log_warning_count` (Tier 2), null where not recorded',
     'reports/runs/{run_id}/warnings-errors: `outcome` carries the same three counts, counted once '
-    'the same way in both pipelines; null on an artifact written before them',
+    'the same way in both pipelines; null on an artifact written before them. Its `run_outcome` is '
+    'typed as the four values — the JSON is unchanged, the schema now names them',
     'directory: every row carries `last_run_figures` — what its newest run did, the same figures '
     'the run list carries; null when there is no run or the ledger holds nothing for it',
     'sweeps/{sweep_id}: `key` is ["run_id", "currency"] — the ranked rows are folded per run and '

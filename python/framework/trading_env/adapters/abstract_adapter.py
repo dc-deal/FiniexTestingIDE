@@ -245,6 +245,15 @@ class AbstractAdapter(ABC):
         """Get broker company name (e.g., 'IC Markets')"""
         pass
 
+    def get_capability_label(self) -> str:
+        """
+        Whose order capabilities `get_order_capabilities()` declares, as a refusal names them.
+
+        Returns:
+            "Venue '<broker name>'" — an adapter that is not the venue says what it is instead
+        """
+        return f"Venue '{self.get_broker_name()}'"
+
     @abstractmethod
     def get_broker_type(self) -> BrokerType:
         """Get broker type identifier (e.g., 'mt5', 'kraken_spot')"""

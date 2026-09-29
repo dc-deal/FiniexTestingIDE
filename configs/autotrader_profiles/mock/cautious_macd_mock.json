@@ -1,6 +1,7 @@
 {
   "profile_name": "cautious_macd_mock",
   "bot_id": "cmacd01",
+  "_comment": "Does not start in a mock session today: CautiousMacd rests its entry (STOP_LIMIT here, STOP without use_stop_limit) and the mock adapter carries market orders only, so the start is refused naming the mock. The startup-guard test uses this profile for its cold-start hook; it starts once the mock adapter rests orders.",
   "symbol": "BTCUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "mock",

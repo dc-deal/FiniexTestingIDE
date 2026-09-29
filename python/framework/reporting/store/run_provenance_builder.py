@@ -44,7 +44,6 @@ from python.framework.types.log_layout_types import (
     RUN_TYPE_SIMULATION,
 )
 from python.framework.types.run_origin_types import CodeIdentity, ComponentRole
-from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_results_types import RunProvenance, SweepContext
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.scenario.scenario_set import ScenarioSet
@@ -379,7 +378,7 @@ def _run_counts(report: Optional[WarningsErrorsReport]) -> Dict[str, Any]:
         return {'run_outcome': None, 'error_count': None,
                 'warning_count': None, 'log_warning_count': None}
     outcome = report.outcome
-    return {'run_outcome': RunOutcome(outcome.run_outcome) if outcome.run_outcome else None,
+    return {'run_outcome': outcome.run_outcome,
             'error_count': outcome.error_count,
             'warning_count': outcome.warning_count,
             'log_warning_count': outcome.log_warning_count}

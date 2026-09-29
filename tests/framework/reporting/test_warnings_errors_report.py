@@ -144,20 +144,20 @@ class TestBuildFromBatch:
         """
         clean = _batch([_result('ok', 0)], [_scenario('ok', 0, 'BTCUSD')])
         assert build_warnings_errors_report_from_batch(_RUN_ID, clean).outcome.run_outcome == \
-            RunOutcome.SUCCESS.value
+            RunOutcome.SUCCESS
 
         crashed = _batch(
             [_result('bad', 0, success=False, error_type='ValueError', error_message='boom')],
             [_scenario('bad', 0, 'BTCUSD')])
         assert build_warnings_errors_report_from_batch(_RUN_ID, crashed).outcome.run_outcome == \
-            RunOutcome.FAILED.value
+            RunOutcome.FAILED
 
         pot = _batch(
             [_result('noisy', 0, success=False, error_type=LOGGED_ERRORS_TYPE,
                      error_message='Scenario logged 2 ERROR(s)')],
             [_scenario('noisy', 0, 'BTCUSD')])
         assert build_warnings_errors_report_from_batch(_RUN_ID, pot).outcome.run_outcome == \
-            RunOutcome.FINISHED_WITH_ERRORS.value
+            RunOutcome.FINISHED_WITH_ERRORS
 
 
 class TestNoRenderingReachesTheArtifact:
@@ -257,18 +257,18 @@ class TestBuildFromSession:
     def test_live_outcome_carries_the_canonical_grading(self):
         """The live half stamps the same field, so both pipelines answer identically."""
         clean = build_warnings_errors_report_from_session(_RUN_ID, AutoTraderResult(), 'p', 'BTCUSD')
-        assert clean.outcome.run_outcome == RunOutcome.SUCCESS.value
+        assert clean.outcome.run_outcome == RunOutcome.SUCCESS
 
         emergency = build_warnings_errors_report_from_session(_RUN_ID, 
             AutoTraderResult(shutdown_mode='emergency', emergency_reason='balance breach'),
             'p', 'BTCUSD')
-        assert emergency.outcome.run_outcome == RunOutcome.FAILED.value
+        assert emergency.outcome.run_outcome == RunOutcome.FAILED
 
         pot = build_warnings_errors_report_from_session(_RUN_ID, 
             AutoTraderResult(shutdown_mode='normal',
                              session_logger_buffer=[_record(LogLevel.ERROR, 'order rejected')]),
             'p', 'BTCUSD')
-        assert pot.outcome.run_outcome == RunOutcome.FINISHED_WITH_ERRORS.value
+        assert pot.outcome.run_outcome == RunOutcome.FINISHED_WITH_ERRORS
 
     def test_operator_stop_is_told_apart_from_a_crash(self):
         """Ctrl+C also arrives as 'emergency', so the outcome carries the discriminator."""
@@ -277,14 +277,14 @@ class TestBuildFromSession:
             'p', 'BTCUSD')
         assert interrupted.outcome.shutdown_mode == 'emergency'
         assert interrupted.outcome.operator_interrupted is True
-        assert interrupted.outcome.run_outcome == RunOutcome.SUCCESS.value
+        assert interrupted.outcome.run_outcome == RunOutcome.SUCCESS
         assert interrupted.outcome.emergency_reason == ''
 
         crashed = build_warnings_errors_report_from_session(_RUN_ID, 
             AutoTraderResult(shutdown_mode='emergency', emergency_reason='tick loop died'),
             'p', 'BTCUSD')
         assert crashed.outcome.operator_interrupted is False
-        assert crashed.outcome.run_outcome == RunOutcome.FAILED.value
+        assert crashed.outcome.run_outcome == RunOutcome.FAILED
 
     def test_sim_outcome_leaves_the_live_only_fields_empty(self):
         """shutdown_mode '' on a sim run means 'not applicable', not 'unknown'."""

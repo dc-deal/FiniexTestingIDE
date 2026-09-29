@@ -160,7 +160,7 @@ class DecisionTradingApi:
             raise ValueError(
                 f"❌ Required order types cannot be carried on this pipeline!\n"
                 f"Required: {[t.value for t in required_types]}\n"
-                f"Venue '{self._executor.broker.adapter.get_broker_name()}' does not offer: "
+                f"{self._executor.broker.adapter.get_capability_label()} does not offer: "
                 f"{[t.value for t in venue_lacks]}\n"
                 f"{executor_name} has not implemented: {[t.value for t in pipeline_lacks]}\n"
                 f"Usable here (venue AND pipeline): {[t.value for t in supported_types]}\n"
