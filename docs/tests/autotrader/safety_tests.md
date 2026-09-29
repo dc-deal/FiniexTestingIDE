@@ -110,7 +110,7 @@ across all tests in the module.
 
 End-to-end tests that run full AutoTrader mock sessions in **margin mode** with overridden safety
 configs. Uses `margin_safety_test.json` (mt5/EURUSD, 15K ticks, display off, INSTANT_FILL mock
-adapter, `backtesting_margin_stress` with deterministic `trade_sequence`). Three session scenarios.
+adapter, `margin_stress_probe` with deterministic `trade_sequence`). Three session scenarios.
 
 | Class | Safety Config | What it validates |
 |-------|--------------|-------------------|

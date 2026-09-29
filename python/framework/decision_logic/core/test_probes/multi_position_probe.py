@@ -1,12 +1,12 @@
 """
-FiniexTestingIDE - Backtesting Multi-Position Decision Logic
+FiniexTestingIDE - Multi-Position Probe Decision Logic
 Decision logic for multi-position validation testing (#114)
 
 Responsibilities:
 1. Execute overlapping deterministic trade sequence
 2. Track multiple simultaneous positions
 3. Close positions selectively by position_id (not blanket FLAT)
-4. Expose all validation data via get_statistics() → BacktestingMetadata
+4. Expose all validation data via get_statistics() → ProbeMetadata
 
 This decision logic is designed for TESTING, not production trading.
 It validates that the framework correctly handles:
@@ -16,7 +16,7 @@ It validates that the framework correctly handles:
 - Selective close (close one position, others unchanged)
 - Portfolio aggregation correctness (sum of parts = total)
 
-Unlike BacktestingDeterministic:
+Unlike DeterministicProbe:
 - Opens positions even when others are already open
 - Tracks multiple active_trades simultaneously (Dict, not singular)
 - Closes selectively by position_id when hold_ticks expires
@@ -51,7 +51,7 @@ Data Flow:
 1. Worker provides warmup_status in metadata (first tick)
 2. Decision opens positions at configured tick_numbers
 3. Decision closes positions selectively when hold_ticks expires
-4. get_statistics() returns BacktestingMetadata with all tracking data
+4. get_statistics() returns ProbeMetadata with all tracking data
 
 Position Lifecycle (example with 3 overlapping trades):
     Tick 100:  Open LONG #0      → 1 open
@@ -66,7 +66,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
@@ -82,14 +82,14 @@ from python.framework.types.trading_env_types.order_types import (
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
-class BacktestingMultiPosition(AbstractDecisionLogic):
+class MultiPositionProbe(AbstractDecisionLogic):
     """
     Multi-position decision logic for validation testing.
 
     Executes overlapping trades at predetermined ticks to validate
     that the framework correctly manages multiple simultaneous positions.
 
-    Key differences from BacktestingDeterministic:
+    Key differences from DeterministicProbe:
     - No `len(open_positions) == 0` guard — opens regardless
     - Tracks Dict[order_id, trade_info] instead of singular active_trade
     - Closes by position_id, not blanket FLAT
@@ -112,7 +112,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         trading_context: TradingContext = None
     ):
         """
-        Initialize BacktestingMultiPosition logic.
+        Initialize MultiPositionProbe logic.
 
         Args:
             name: Logic identifier
@@ -160,7 +160,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         self._partial_close_executed: Set[int] = set()
 
         # ============================================
-        # Backtesting Tracking (same pattern as BacktestingDeterministic)
+        # Probe tracking (same pattern as DeterministicProbe)
         # ============================================
         self.warmup_errors: List[str] = []
         self.bar_snapshots: Dict[str, Dict[str, Any]] = {}
@@ -168,7 +168,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         self.warmup_checked = False
 
         self.logger.info(
-            f'BacktestingMultiPosition initialized: '
+            f'MultiPositionProbe initialized: '
             f'{len(self.trade_sequence)} trades in sequence, '
             f'lot_size={self.default_lot_size}'
         )
@@ -179,7 +179,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
-        """Backtesting multi-position decision logic parameters."""
+        """Multi-position probe parameters."""
         return {
             'trade_sequence': InputParamDef(
                 param_type=list,
@@ -202,7 +202,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:
-        """BacktestingMultiPosition decision output parameters."""
+        """MultiPositionProbe decision output parameters."""
         return {
             'lot_size': OutputParamDef(
                 param_type=float, min_val=0.0,
@@ -236,7 +236,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         """
         Declare required order types.
 
-        BacktestingMultiPosition uses only Market orders.
+        MultiPositionProbe uses only Market orders.
 
         Returns:
             List containing OrderType.MARKET
@@ -247,15 +247,15 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         """
         Declare required worker instance + signals (#425).
 
-        Requires BacktestingSampleWorker for warmup validation. Worker is reused
-        from BacktestingDeterministic — no new worker needed. Reads all outputs
+        Requires SampleProbeWorker for warmup validation. Worker is reused
+        from DeterministicProbe — no new worker needed. Reads all outputs
         (SUBSCRIBE_ALL).
 
         Returns:
             Dict with worker instance mapping
         """
         return {
-            'backtesting_worker': WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
+            'probe_worker': WorkerRequirement.all('CORE/test_probes/sample_probe_worker')
         }
 
     def on_market_data_stale(self, status: MarketDataStatus) -> None:
@@ -281,14 +281,14 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         """
         Generate trading decision based on tick count.
 
-        Unlike BacktestingDeterministic:
+        Unlike DeterministicProbe:
         - Signals OPEN only ONCE per sequence entry (exact tick match)
         - FLAT means "no new position" — closes are handled in execute
         - No dependency on current open position count
 
         Args:
             tick: Current tick data
-            worker_results: Results from BacktestingSampleWorker
+            worker_results: Results from SampleProbeWorker
 
         Returns:
             Decision: BUY/SELL for new position, FLAT otherwise
@@ -359,7 +359,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         1. Close expired positions (selective, by position_id)
         2. Open new position if BUY/SELL signal
 
-        This is the key difference from BacktestingDeterministic:
+        This is the key difference from DeterministicProbe:
         - Closes happen independently of the decision signal
         - Opens happen without checking existing position count
         - Each position is tracked and closed individually
@@ -577,20 +577,20 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
 
     def _extract_worker_data(self, worker_results: Dict[str, WorkerResult]) -> None:
         """
-        Extract warmup validation data from BacktestingSampleWorker.
+        Extract warmup validation data from SampleProbeWorker.
 
-        Same pattern as BacktestingDeterministic — reuses worker
+        Same pattern as DeterministicProbe — reuses worker
         for warmup validation. Bar snapshots are captured but not
         required for multi-position testing.
 
         Args:
             worker_results: Results from all workers
         """
-        worker_result = worker_results.get('backtesting_worker')
+        worker_result = worker_results.get('probe_worker')
 
         if not worker_result:
             self.logger.warning(
-                '❌ BacktestingSampleWorker result not found - '
+                '❌ SampleProbeWorker result not found - '
                 'warmup validation skipped'
             )
             self.warmup_errors.append('Worker result not found')
@@ -618,7 +618,7 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
 
     def get_statistics(self) -> DecisionLogicStats:
         """
-        Get statistics with BacktestingMetadata.
+        Get statistics with ProbeMetadata.
 
         Overrides parent to include multi-position validation data:
         - warmup_errors
@@ -628,13 +628,13 @@ class BacktestingMultiPosition(AbstractDecisionLogic):
         - position_map, close_events, max_concurrent (in metadata)
 
         Returns:
-            DecisionLogicStats with backtesting_metadata populated
+            DecisionLogicStats with probe_metadata populated
         """
         # Get base stats from parent (signals + timing)
         base_stats = super().get_statistics()
 
-        # Create and attach BacktestingMetadata
-        base_stats.backtesting_metadata = BacktestingMetadata(
+        # Create and attach ProbeMetadata
+        base_stats.probe_metadata = ProbeMetadata(
             warmup_errors=self.warmup_errors,
             bar_snapshots=self.bar_snapshots,
             expected_trades=self.expected_trades,

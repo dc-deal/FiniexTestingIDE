@@ -375,7 +375,8 @@ def setup_pipeline(
         run_id: This session's run id — its random half becomes the client-order-id
             discriminator every order carries to the venue (#473)
         package: Prepared scenario data package (#438, mock) — its signal series is injected
-            into SIGNAL workers; None for live
+            into SIGNAL workers and its warmup bars into the bar controller; None for a
+            live-adapter session
 
     Returns:
         The pipeline bundle — every object the session needs, wired
@@ -428,7 +429,7 @@ def setup_pipeline(
     # === Phase 9: Warmup + Display Label Cache ===
     display_label_cache = _run_warmup(
         config, logger, workers, bar_controller, connection_policy,
-        decision_logic, balances, account)
+        decision_logic, balances, account, package)
 
     # === Phase 10: LiveClippingMonitor ===
     clipping_monitor = LiveClippingMonitor(
@@ -826,6 +827,7 @@ def _run_warmup(
     decision_logic: AbstractDecisionLogic,
     balances: Dict[str, float],
     account: AutotraderAccountModel,
+    package: Optional[ProcessDataPackage],
 ) -> DisplayLabelCache:
     """
     Phase 9 — fill the workers' history, build the display labels, and refuse a session that
@@ -840,6 +842,8 @@ def _run_warmup(
         decision_logic: The decision logic from phase 7
         balances: The balances from phase 1
         account: The account model from phase 3
+        package: A mock session's prepared data, whose warmup bars fill the history; None
+            for a live-adapter session, which fetches them from the venue
 
     Returns:
         The pre-resolved display labels
@@ -850,6 +854,7 @@ def _run_warmup(
         workers=workers,
         bar_controller=bar_controller,
         connection_policy=connection_policy,
+        package=package,
     )
     display_label_cache = warmup_preparator.build_display_label_cache(
         decision_logic=decision_logic,

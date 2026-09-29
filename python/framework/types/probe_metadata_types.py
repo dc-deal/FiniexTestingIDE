@@ -1,6 +1,6 @@
 """
-FiniexTestingIDE - Backtesting Metadata Types
-Type definitions for backtesting validation data
+FiniexTestingIDE - Probe Metadata Types
+Type definitions for the validation data the test probes collect
 
 Validation Testing:
 - Warmup validation errors
@@ -9,9 +9,9 @@ Validation Testing:
 - Tick count tracking
 
 Data Flow:
-1. BacktestingSampleWorker collects warmup_status + bar_snapshots
-2. BacktestingDeterministic extracts data and builds BacktestingMetadata
-3. get_statistics() returns DecisionLogicStats with backtesting_metadata
+1. SampleProbeWorker collects warmup_status + bar_snapshots
+2. DeterministicProbe extracts data and builds ProbeMetadata
+3. get_statistics() returns DecisionLogicStats with probe_metadata
 4. Test Suite validates against prerendered data + calculated delays
 
 IMPORTANT: All data must be JSON-serializable (no Bar objects directly).
@@ -23,9 +23,9 @@ from typing import Any, Dict, List
 
 
 @dataclass
-class BacktestingMetadata:
+class ProbeMetadata:
     """
-    Validation data collected during backtesting decision logic execution.
+    Validation data a test probe collects while it runs.
     
     This dataclass aggregates all validation-relevant data from:
     - Worker: warmup validation, bar snapshots
@@ -92,7 +92,7 @@ class BacktestingMetadata:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'BacktestingMetadata':
+    def from_dict(cls, data: Dict[str, Any]) -> 'ProbeMetadata':
         """
         Deserialize from dict.
         
@@ -102,7 +102,7 @@ class BacktestingMetadata:
             data: Dict from to_dict()
             
         Returns:
-            BacktestingMetadata instance
+            ProbeMetadata instance
         """
         return cls(
             warmup_errors=data.get('warmup_errors', []),

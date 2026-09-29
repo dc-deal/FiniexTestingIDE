@@ -214,7 +214,11 @@ def build_run_provenance_from_session(
         data_broker_type=config.broker_type,
         # A mock session REPLAYS the archive, so it records what it read exactly as a backtest
         # does. It used to be stamped as a stream like every AutoTrader session, which recorded
-        # "a socket, nothing read" for sessions that had read tick files.
+        # "a socket, nothing read" for sessions that had read tick files. Its `price_bases` is
+        # therefore MEASURED like a backtest's: the stamps of the bar files the shared mount
+        # read for its workers' warmup. Empty means no worker needed bars — never "not
+        # recorded", because the warmup bars travel through the same mount as a backtest's
+        # (`AutotraderWarmupPreparator._bars_from_package`), not past it.
         **(consumption_record([replayed_scenario]) if replayed_scenario is not None else {
             # A live-adapter session consumes a socket, not an archive, so the consumption
             # record is empty and `input_plane` is what says that on purpose rather than by

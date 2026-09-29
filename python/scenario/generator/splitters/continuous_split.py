@@ -13,10 +13,10 @@ from python.framework.types.market_types.market_volatility_profile_types import 
 )
 from python.framework.types.scenario_types.scenario_generator_types import GenerationStrategy
 from python.framework.types.scenario_types.window_set_types import GeneratedWindow
-from python.scenario.generator.splitters.abstract_profile_splitter import AbstractProfileSplitter
+from python.scenario.generator.splitters.abstract_volatility_profile_splitter import AbstractVolatilityProfileSplitter
 
 
-class ContinuousSplit(AbstractProfileSplitter):
+class ContinuousSplit(AbstractVolatilityProfileSplitter):
     """One window per continuous data region — no splitting."""
 
     def _get_strategy(self) -> GenerationStrategy:

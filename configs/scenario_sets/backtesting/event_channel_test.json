@@ -5,12 +5,12 @@
     "description": "Decision Event Channel (#348) — drives the event-probe decision logic (open -> partial close -> request_session_end) through the simulation pipeline and records the received event sequence for dual-world parity.",
     "global": {
         "strategy_config": {
-            "decision_logic_type": "CORE/backtesting/backtesting_event_probe",
+            "decision_logic_type": "CORE/test_probes/event_probe",
             "worker_instances": {
-                "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+                "probe_worker": "CORE/test_probes/sample_probe_worker"
             },
             "workers": {
-                "backtesting_worker": {
+                "probe_worker": {
                     "periods": {
                         "M5": 14,
                         "M30": 20

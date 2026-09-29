@@ -9,7 +9,7 @@
     "continuous": false
   },
   "strategy_config": {
-    "decision_logic_type": "CORE/backtesting/backtesting_outage_probe",
+    "decision_logic_type": "CORE/test_probes/outage_probe",
     "worker_instances": {
       "sentiment": "CORE/llm_sentiment"
     },

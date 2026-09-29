@@ -127,10 +127,16 @@ many periods, such as a deployment's total or a month's drawdown. Sealing one bo
 `ExecutorMode.LIVE`, `live_types/` — it names the live execution stack that every AutoTrader
 session runs, mock sessions included. For the kinds of run say *AutoTrader session*, *live-adapter
 session* or *real-money session*; for the other senses see *compute basis*, *live transport*,
-*stream state* and *data origin*.
+*stream state*, *data origin* and *live telemetry*.
 
 **live-adapter session** — An AutoTrader session on a real venue's adapter: a dry run or a
 real-money session.
+
+**live telemetry** — The real-time view of a run while it runs, in both pipelines: the progress
+display of a backtest batch and the dashboard of an AutoTrader session, fed by the stats a run
+exports as it goes. Here *live* means "as it happens", which is why the code under this name
+(`live_progress_display`, `live_stats_*`, `process_live_export`) belongs to every kind of run. See
+[Live Telemetry](architecture/live_telemetry_architecture.md).
 
 **live trading** — A real-money session. Nothing else is called live trading.
 

@@ -240,9 +240,9 @@ class TestBuildFromSession:
             session_logger_buffer=[_record(LogLevel.WARNING, 'stale tick'),
                                    _record(LogLevel.WARNING, 'reconnect'),
                                    _record(LogLevel.ERROR, 'order rejected')])
-        report = build_warnings_errors_report_from_session(_RUN_ID, result, 'dotusd_live', 'DOTUSD')
+        report = build_warnings_errors_report_from_session(_RUN_ID, result, 'dotusd_production', 'DOTUSD')
         assert [w.tier for w in report.warnings] == ['minor', 'minor']
-        assert all(w.scope == 'dotusd_live' for w in report.warnings)
+        assert all(w.scope == 'dotusd_production' for w in report.warnings)
         assert len(report.errors) == 1
         assert report.errors[0].error_message == 'balance breach'
         assert [e.message for e in report.errors[0].logged_errors] == ['order rejected']

@@ -16,7 +16,7 @@ from python.framework.autotrader.autotrader_startup import _data_windows, _order
 from python.framework.types.api.report_types import OrdersTo, TicksFrom
 
 _MOCK_PROFILE = 'configs/autotrader_profiles/mock/mock_session_test.json'
-_LIVE_PROFILE = 'configs/autotrader_profiles/production/dotusd_live.json'
+_LIVE_PROFILE = 'configs/autotrader_profiles/production/dotusd_production.json'
 _START = datetime(2026, 9, 28, 12, 0, tzinfo=timezone.utc)
 _RESOLVER_MANAGER = 'python.framework.autotrader.dry_run_resolver.MarketConfigManager'
 

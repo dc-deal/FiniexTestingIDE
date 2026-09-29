@@ -104,7 +104,7 @@ The #436 combined outage session (`market_data_outage_test.json`): the mock feed
 mid-replay (`freeze_after_ticks: 1500`, `freeze_duration_s: 2.0`, threshold 1 s) while the
 aged sentiment archive keeps the SIGNAL side stale — "runs fine → silence → notified →
 recovered", both staleness contracts in ONE fast session driven by the
-`CORE/backtesting/backtesting_outage_probe` decision logic.
+`CORE/test_probes/outage_probe` decision logic.
 
 | Test | What it validates |
 |------|-------------------|
@@ -193,7 +193,7 @@ Each class runs an independent session from its own profile. Sessions are module
 
 ### test_partial_close_live_pipeline.py
 
-Runs the `partial_close_lifecycle.json` profile (scripted `BacktestingMultiPosition` + mock adapter)
+Runs the `partial_close_lifecycle.json` profile (scripted `MultiPositionProbe` + mock adapter)
 end-to-end and verifies the multi-fill visibility paradigm (#330) on the AutoTrader side. Mirrors
 what the sim partial_close suite validates for the sim path.
 
@@ -222,6 +222,23 @@ Unit tests for `LiveClippingMonitor` — no external dependencies, no tick data,
 | `TestStrategy` | 2 | Default and custom strategy |
 
 **Runtime:** <0.5 seconds.
+
+### test_sim_at_parity.py
+
+A mock session prepares its data through the same shared mount a backtest uses. These tests hold
+it to that: the same ticks, the same signal sources and the same warmup bars for the same window,
+so no second preparation path can grow back beside the shared one.
+
+| Test | What it validates |
+|------|-------------------|
+| `test_mock_session_prepares_exactly_the_backtests_data` | Ticks, signal sources AND warmup bars equal those of a backtest over the same window |
+| `test_mock_session_warms_up_on_bars_before_its_window` | Every warmup bar lies before the replayed window's start — none from after it, which would be look-ahead |
+| `test_mock_session_records_the_price_basis_of_its_warmup_bars` | The consumption record carries the price basis of the bar files the warmup read, measured like a backtest's |
+
+**Data Dependency:** `configs/autotrader_profiles/mock/sentiment_mock_test.json` — BTCUSD, the
+`crypto_sentiment_mock` signal source, and an RSI on M5 that needs warmup bars.
+
+**Runtime:** ~30 seconds (the mock session's mount is prepared once per module, the backtest's once).
 
 ## Running the Tests
 

@@ -19,12 +19,12 @@ session keys its orders were sent under — lives in a file named after the bot.
 was composed from what the profile is CALLED:
 
 ```
-profile_name: "dotusd_live"  +  symbol: "DOTUSD"   ->   dotusd-live_dotusd.json
+profile_name: "dotusd_production"  +  symbol: "DOTUSD"   ->   dotusd-production_dotusd.json
 ```
 
 **That makes the identity move when the name does**, and a display name is exactly the thing an
-operator improves. Renaming `dotusd_live` to `dotusd_live_v2` points the next session at
-`dotusd-live-v2_dotusd.json`, which does not exist — so the bot starts, finds no carry-over, and
+operator improves. Renaming `dotusd_production` to `dotusd_production_v2` points the next session at
+`dotusd-production-v2_dotusd.json`, which does not exist — so the bot starts, finds no carry-over, and
 reads its own holding as flat. At spot that is not recoverable from the venue: a holding is a
 balance the venue cannot describe as a position, so our own record is the only one there is.
 
@@ -32,7 +32,7 @@ Declaring the identity separates the two:
 
 ```json
 {
-  "profile_name": "dotusd_live_v2",
+  "profile_name": "dotusd_production_v2",
   "bot_id": "dotlive01",
   "symbol": "DOTUSD"
 }

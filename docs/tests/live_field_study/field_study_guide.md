@@ -4,7 +4,7 @@ The Live Field Study is the **real-money acceptance gate**: an operator-driven, 
 phase sequence that drives the full AutoTrader pipeline against real Kraken Spot (real money,
 min-lot), records everything as analysis-ready JSONL, and produces a **PASS/FAIL
 acceptance certificate**. It is the real-money equivalent of the plan-driven
-`backtesting_margin_stress` decision logic and the production-readiness gate before a
+`margin_stress_probe` decision logic and the production-readiness gate before a
 release tag.
 
 It is **operator-driven by design** — there is no pytest equivalent for the real-money session.

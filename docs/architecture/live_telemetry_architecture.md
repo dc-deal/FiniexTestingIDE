@@ -120,4 +120,4 @@ stream is the fast, lossy live feed. The two never share code:
 - Consumers: `system/ui/live_progress_display.py` (sim), `system/ui/autotrader_live_display.py` (AutoTrader)
 - Model: `framework/types/live_types/live_core_snapshot_types.py`, `live_scenario_stats_types.py`, `framework/types/autotrader_types/autotrader_display_types.py`
 - Serializer: `framework/utils/live_frame_serialization_utils.py`
-- Tick-flow context: [simulation_vs_live_flow.md](simulation_vs_live_flow.md)
+- Tick-flow context: [simulation_vs_autotrader_flow.md](simulation_vs_autotrader_flow.md)

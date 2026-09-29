@@ -5,8 +5,8 @@
 Proves the planned stale-window stress rule (`stress_test_config.stale_data_stress`) drives
 BOTH staleness contracts deterministically in the backtesting pipeline — and that neither
 contract fires without a window (no false positives). The probe decision logic
-(`CORE/backtesting/backtesting_outage_probe`) records every hook firing into the
-cross-process `BacktestingMetadata.received_events` channel (the #348 event-probe pattern).
+(`CORE/test_probes/outage_probe`) records every hook firing into the
+cross-process `ProbeMetadata.received_events` channel (the #348 event-probe pattern).
 
 ## Test Structure
 

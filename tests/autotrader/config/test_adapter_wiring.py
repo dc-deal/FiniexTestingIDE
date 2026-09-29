@@ -14,7 +14,7 @@ import pytest
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.exceptions.live_execution_errors import AdapterWiringError
 
-_LIVE_PROFILE = 'configs/autotrader_profiles/production/dotusd_live.json'
+_LIVE_PROFILE = 'configs/autotrader_profiles/production/dotusd_production.json'
 _MOCK_PROFILE = 'configs/autotrader_profiles/mock/mock_session_test.json'
 
 

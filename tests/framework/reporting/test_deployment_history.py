@@ -445,18 +445,18 @@ class TestTheOverviewNamesTheBot:
     def test_two_deployments_of_one_bot_stand_together(self, capsys):
         rows = [
             row('old1', '2026-07-12T05:15:00+00:00', deployment='deploy_old',
-                scenario_set_name='dotusd_live'),
+                scenario_set_name='dotusd_production'),
             row('new1', '2026-09-01T06:00:00+00:00', deployment='deploy_new',
-                scenario_set_name='dotusd_live'),
+                scenario_set_name='dotusd_production'),
             row('other', '2026-08-20T09:00:00+00:00', deployment='deploy_other',
-                scenario_set_name='ethusd_live'),
+                scenario_set_name='ethusd_production'),
         ]
         histories = build_deployment_histories(rows)
         render_deployment_list(summarize_deployments(
             histories, {k: None for k in histories}))
 
         printed = capsys.readouterr().out
-        lines = [line for line in printed.splitlines() if 'deploy_' in line and 'usd_live' in line]
-        assert [l.split()[1] for l in lines] == ['ethusd_live', 'dotusd_live', 'dotusd_live'], (
+        lines = [line for line in printed.splitlines() if 'deploy_' in line and 'usd_production' in line]
+        assert [l.split()[1] for l in lines] == ['ethusd_production', 'dotusd_production', 'dotusd_production'], (
             'the two deployments of one bot did not end up adjacent')
         assert '--new-deployment' in printed, 'the list does not say what two rows mean'

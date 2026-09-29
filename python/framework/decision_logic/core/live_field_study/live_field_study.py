@@ -4,7 +4,7 @@ FiniexTestingIDE - Live Field Study Decision Logic (#332, CORE)
 Operator-driven acceptance-test decision logic: drives the full live pipeline
 through a deterministic, wall-clock phase sequence (every order type, modify/cancel
 path, rejection battery, partial close, idle heartbeat) against a real broker. It is
-the live equivalent of the plan-driven BacktestingMarginStress.
+the live equivalent of the plan-driven MarginStressProbe.
 
 The phase logic lives in FieldStudyPhaseMachine (a pure state machine). This class is
 the AbstractDecisionLogic adapter: it builds the per-tick observation, asks the machine

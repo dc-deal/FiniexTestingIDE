@@ -116,7 +116,7 @@ class TestRoundTrip:
         migration script being the first such caller (#538).
         """
         store = ColdStartStateStore(
-            root=tmp_path, profile='dotusd_live', symbol='DOTUSD',
+            root=tmp_path, profile='dotusd_production', symbol='DOTUSD',
             logger=logger, run_id='20260901_120000_abcdef12', bot_id='dot-usd-main')
         store.save(session_key='1641', highest_position_counter=1)
 
@@ -125,7 +125,7 @@ class TestRoundTrip:
         assert store.get_state_path().name == 'dot-usd-main_dotusd.json'
         assert raw['bot_id'] == 'dot-usd-main'
         # The composed name is NOT the file name here — which is the whole point.
-        assert raw['profile'] == 'dotusd_live' and raw['symbol'] == 'DOTUSD'
+        assert raw['profile'] == 'dotusd_production' and raw['symbol'] == 'DOTUSD'
 
 
 class TestTheRiskBaselineSurvivesTheDisk:

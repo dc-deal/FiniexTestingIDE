@@ -5,7 +5,7 @@ runs, mock sessions included — via the broker adapter API. This document cover
 specific to that stack, the broker polling flow, and its open issues.
 
 For shared architecture (AbstractTradeExecutor, fill processing, portfolio, design decisions): see [architecture_execution_layer.md](architecture_execution_layer.md)
-For tick flow comparison (Backtesting vs Live): see [simulation_vs_live_flow.md](simulation_vs_live_flow.md)
+For tick flow comparison (Backtesting vs Live): see [simulation_vs_autotrader_flow.md](simulation_vs_autotrader_flow.md)
 
 ---
 

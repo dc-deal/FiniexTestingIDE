@@ -5,7 +5,7 @@
     "description": "Stale-data stress integration (#436): planned stale windows block DATA SOURCES and drive BOTH staleness contracts deterministically \u2014 the tick source (status-plane, guard entry-block) and the signal source (data-plane carve, #434 chain). Includes a no-stress control, an overlap-guard warning case, and an unknown-source exclusion case.",
     "global": {
         "strategy_config": {
-            "decision_logic_type": "CORE/backtesting/backtesting_outage_probe",
+            "decision_logic_type": "CORE/test_probes/outage_probe",
             "worker_instances": {
                 "sentiment": "CORE/llm_sentiment"
             },

@@ -123,6 +123,22 @@ them to open, so the reference answers no question and makes the sentence look a
 a document leans on a convention, it states the convention's reason in a sentence of its own — or
 links to the document that explains it, by that document's heading.
 
+## 13. Show the one key, link the whole configuration
+
+An inline example shows the few lines a paragraph is about — the key, its value, and what it
+does — and nothing around them:
+
+```json
+"scenario_settings": { "start_date": "2026-01-25T16:00:00+00:00", "max_ticks": 5000 }
+```
+
+A complete scenario set or profile never lives in a document. It is copied once, drifts from the
+schema the day a key is renamed, and nothing notices, because no program reads it. Link to a file
+the suite loads instead (`configs/scenario_sets/backtesting/…`, `configs/autotrader_profiles/mock/…`,
+`tests/fixtures/…`): a renamed key then turns a test red rather than a reader's run. The large
+documentation projects settle it the same way — code examples that are compiled or run as tests,
+or kept as files in the repository beside the page that shows an excerpt.
+
 ---
 
 ## Three audiences, three depths
@@ -148,3 +164,4 @@ abstraction and that is the bug to fix.
 - One H1, headings named for their content, prose wrapped?
 - Is anything restated here that another document owns?
 - Does any sentence lean on a rule number (`§…`) instead of saying the rule?
+- Is every example either a few lines about one key, or a link to a file the suite loads?

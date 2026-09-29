@@ -180,7 +180,7 @@ can never fire).
 `SharedDataPreparator`) · `StaleDataStressDriver` (per-tick state machine, driven by
 `process_tick_loop` in the simulation and by `autotrader_tick_loop` in the AutoTrader).
 Demo scenario: `EURGBP_stale_market_13` in the EURGBP stress set; AutoTrader profile:
-`tick_outage_stress_test.json`; probe logic: `CORE/backtesting/backtesting_outage_probe`.
+`tick_outage_stress_test.json`; probe logic: `CORE/test_probes/outage_probe`.
 
 **This is also how signal-quality test cases are produced.** The per-tick
 fresh / stale / blind counters (#433) are validated by carving the anomalies into

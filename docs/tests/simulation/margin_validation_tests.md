@@ -3,7 +3,7 @@
 ## Overview
 
 The margin validation test suite validates margin exhaustion, recovery, order rejection, and edge
-case handling. It uses a dedicated decision logic (`BacktestingMarginStress`) that intentionally
+case handling. It uses a dedicated decision logic (`MarginStressProbe`) that intentionally
 exhausts margin, triggers rejections, recovers margin via explicit closes, and retries previously
 failed orders.
 
@@ -95,7 +95,7 @@ tests/
 | Fixture | Scope | Description |
 |---------|-------|-------------|
 | `portfolio_stats` | session | PortfolioStats (only successfully executed trades) |
-| `backtesting_metadata` | session | BacktestingMetadata with expected_trades, warmup errors |
+| `probe_metadata` | session | ProbeMetadata with expected_trades, warmup errors |
 | `execution_stats` | session | ExecutionStats with sent/executed/rejected counts |
 
 ### Trade Data Fixtures
@@ -293,9 +293,9 @@ python python/cli/strategy_runner_cli.py run backtesting/margin_validation_zero_
 
 ## Architecture
 
-### Decision Logic: BacktestingMarginStress
+### Decision Logic: MarginStressProbe
 
-Located at `python/framework/decision_logic/core/backtesting/backtesting_margin_stress.py`.
+Located at `python/framework/decision_logic/core/test_probes/margin_stress_probe.py`.
 
 Extends the multi-position pattern with four config-driven event types:
 
@@ -325,7 +325,7 @@ margin_required = (lots × contract_size × price) / leverage
 ### Key Data Flow
 
 ```
-BacktestingMarginStress.compute()
+MarginStressProbe.compute()
   ├→ trade_sequence entries     → send_order() → margin check → accept/reject
   ├→ edge_case_orders           → send_order() → lot validation → reject
   │                             → close_position() → not found → error
@@ -334,6 +334,6 @@ BacktestingMarginStress.compute()
 
 Results available via:
   ├→ execution_stats.orders_rejected     (all rejection types)
-  ├→ backtesting_metadata.expected_trades (successful opens only)
+  ├→ probe_metadata.expected_trades (successful opens only)
   └→ trade_history                        (closed trades only)
 ```

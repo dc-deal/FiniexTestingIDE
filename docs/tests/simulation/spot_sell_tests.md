@@ -20,7 +20,7 @@ tests/simulation/spot_trading/
 
 ### Scenario Tests
 
-End-to-end tests using `backtesting_margin_stress` decision logic with `trade_sequence` on kraken_spot (ETHUSD).
+End-to-end tests using `margin_stress_probe` decision logic with `trade_sequence` on kraken_spot (ETHUSD).
 
 | Class | What it validates |
 |-------|-------------------|

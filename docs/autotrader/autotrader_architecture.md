@@ -130,10 +130,10 @@ python/cli/
 
 configs/autotrader_profiles/          One folder per PURPOSE — the parent holds no profile
   production/                        the ones that trade for real, unattended
-    ethusd_live.json                 ETHUSD, Kraken API
-    solusd_live.json                 SOLUSD, Kraken API
-    dashusd_live.json                DASHUSD, Kraken API
-    dotusd_live.json                 DOTUSD — binds no signal source, a data-independence proof
+    ethusd_production.json                 ETHUSD, Kraken API
+    solusd_production.json                 SOLUSD, Kraken API
+    dashusd_production.json                DASHUSD, Kraken API
+    dotusd_production.json                 DOTUSD — binds no signal source, a data-independence proof
   observation/                       real feed, dry_run pinned true, nothing is placed at the venue
     dry_run_resting_probe.json       resting-order probe in a dry run
   field_study/                       the real-money acceptance test (#332)

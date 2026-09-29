@@ -24,9 +24,9 @@ The splitters create their data dependencies internally. Tests use `unittest.moc
 |-----------|-----------|--------------|
 | `DataCoverageReport` | `blocks_split` | Provides gaps, start/end times |
 | `TickIndexManager` | `blocks_split` | `build_index()` → no-op |
-| `DataCoverageReportCache` | `abstract_profile_splitter` | Region report for profile splitters |
-| `VolatilityProfileAnalyzerCache` | `abstract_profile_splitter` | Volatility periods |
-| `DiscoveryCacheManager` | `abstract_profile_splitter` | Discovery fingerprints |
+| `DataCoverageReportCache` | `abstract_volatility_profile_splitter` | Region report for profile splitters |
+| `VolatilityProfileAnalyzerCache` | `abstract_volatility_profile_splitter` | Volatility periods |
+| `DiscoveryCacheManager` | `abstract_volatility_profile_splitter` | Discovery fingerprints |
 
 ### Fixtures (`conftest.py`)
 

@@ -1,5 +1,5 @@
 """
-FiniexTestingIDE - Backtesting Outage Probe Decision Logic (#436)
+FiniexTestingIDE - Outage Probe Decision Logic (#436)
 
 Exercises BOTH staleness contracts deterministically in one scenario run:
 - on_signal_stale (#434): fired by the orchestrator when the SIGNAL feed dies
@@ -15,7 +15,7 @@ FLAT — it never trades for real.
 This decision logic is designed for TESTING, not production trading.
 
 Records (cross-process channel, same pattern as the event probe #348):
-    get_statistics().backtesting_metadata.received_events
+    get_statistics().probe_metadata.received_events
     - 'signal_stale:<worker>:<source>'
     - 'market_data_stale'
     - 'stale_entry_rejected'                (guard floor proven)
@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
@@ -43,7 +43,7 @@ from python.framework.types.trading_env_types.order_types import (
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
-class BacktestingOutageProbe(AbstractDecisionLogic):
+class OutageProbe(AbstractDecisionLogic):
     """
     Staleness-contract probe decision logic (#434 + #436).
 
@@ -230,7 +230,7 @@ class BacktestingOutageProbe(AbstractDecisionLogic):
 
     def get_statistics(self) -> DecisionLogicStats:
         base_stats = super().get_statistics()
-        base_stats.backtesting_metadata = BacktestingMetadata(
+        base_stats.probe_metadata = ProbeMetadata(
             tick_count=self.tick_count,
             received_events=list(self._received_events),
         )

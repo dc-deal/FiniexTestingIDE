@@ -1,14 +1,8 @@
 """
-FiniexTestingIDE - Bar Rendering Controller (WARMUP INJECTION FIX)
-Main orchestrator for bar rendering system
-
-CORRECTIONS:
-- inject_warmup_bars() now properly initializes bar history
-- Uses symbol from config (not bar_dict) as single source of truth
-- Correctly fills _warmup_data for get_all_bar_history()
-- Explicitly invalidates cache after warmup injection
-- Calls bar_renderer.initialize_historical_bars() for each timeframe
-- deserialize_bars_batch() moved here to avoid circular import
+FiniexTestingIDE - Bar Rendering Controller
+Main orchestrator for bar rendering system: renders bars from ticks for the timeframes the
+registered workers require, holds their history, and takes the prepared warmup bars at startup.
+The symbol comes from the configuration, never from a bar dict.
 """
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -40,8 +34,6 @@ class BarRenderingController:
         self.bar_renderer = BarRenderer(logger, max_history=max_history)
         self._workers = []
         self._required_timeframes = set()
-        self._warmup_data = {}  # Stores warmup bars for get_all_bar_history()
-        self._warmup_quality_metrics = {}
         self.logger = logger
 
         # PERFORMANCE OPTIMIZATION: Bar history caching
@@ -180,12 +172,9 @@ class BarRenderingController:
         """
         Inject prepared warmup bars WITHOUT validation.
 
-        REPLACES: prepare_warmup_from_parquet_bars() in ProcessPool mode.
-
-        Three critical operations:
-        1. Store warmup_bars in _warmup_data (for get_all_bar_history())
-        2. Convert bar dicts to Bar objects (via deserialize_bars_batch)
-        3. Initialize bar_renderer history (fills completed_bars deque)
+        Two operations per timeframe:
+        1. Convert bar dicts to Bar objects (via deserialize_bars_batch)
+        2. Initialize bar_renderer history (fills completed_bars deque)
 
         NO VALIDATION: Trusts SharedDataPreparator's pre-filtering.
 
@@ -193,19 +182,15 @@ class BarRenderingController:
             symbol: Trading symbol from config.symbol (authoritative)
             warmup_bars: {timeframe: tuple_of_bar_dicts}
 
-        Example:
-            warmup_bars = {'M5': (...), 'M30': (...)}
-            controller.inject_warmup_bars('EURUSD', warmup_bars)
+        Returns:
+            None
         """
-        # 1. Store metadata for get_all_bar_history()
-        self._warmup_data = warmup_bars
-
-        # 2. Convert bar dicts to Bar objects and initialize renderer
+        # 1. Convert bar dicts to Bar objects and initialize renderer
         for timeframe, bars_tuple in warmup_bars.items():
             # Deserialize using top-level function (no import needed)
             bars_list = deserialize_bars_batch(symbol, bars_tuple)
 
-            # 3. Initialize bar history in BarRenderer
+            # 2. Initialize bar history in BarRenderer
             self.bar_renderer.initialize_historical_bars(
                 symbol=symbol,
                 timeframe=timeframe,

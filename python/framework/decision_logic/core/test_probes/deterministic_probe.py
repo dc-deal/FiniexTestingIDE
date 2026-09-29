@@ -1,12 +1,12 @@
 """
-FiniexTestingIDE - Backtesting Deterministic Decision Logic
+FiniexTestingIDE - Deterministic Probe Decision Logic
 Decision logic for validation testing with deterministic trade sequences
 
 Responsibilities:
 1. Execute deterministic trade sequence based on tick count
-2. Extract warmup validation data from BacktestingSampleWorker
+2. Extract warmup validation data from SampleProbeWorker
 3. Track expected trades for validation
-4. Expose all data via get_statistics() → BacktestingMetadata
+4. Expose all data via get_statistics() → ProbeMetadata
 
 This decision logic is designed for TESTING, not production trading.
 It executes trades at predetermined ticks to validate:
@@ -80,9 +80,9 @@ Configuration Example:
 
 Data Flow:
 1. Worker provides warmup_status + bar_snapshots in metadata
-2. Decision extracts and stores for BacktestingMetadata
+2. Decision extracts and stores for ProbeMetadata
 3. Trade sequence executes at predetermined ticks
-4. get_statistics() returns DecisionLogicStats with backtesting_metadata
+4. get_statistics() returns DecisionLogicStats with probe_metadata
 """
 
 from typing import Any, Dict, List, Optional
@@ -93,7 +93,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
@@ -104,13 +104,13 @@ from python.framework.types.trading_env_types.order_types import OrderResult, Or
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
-class BacktestingDeterministic(AbstractDecisionLogic):
+class DeterministicProbe(AbstractDecisionLogic):
     """
     Deterministic decision logic for validation testing.
 
     Executes trades at predetermined tick numbers for reproducible testing.
-    Collects validation data from BacktestingSampleWorker and aggregates
-    into BacktestingMetadata for test suite validation.
+    Collects validation data from SampleProbeWorker and aggregates
+    into ProbeMetadata for test suite validation.
 
     Unlike production decision logics (AggressiveTrend, SimpleConsensus):
     - Ignores worker computation values
@@ -157,7 +157,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         trading_context: TradingContext = None
     ):
         """
-        Initialize BacktestingDeterministic logic.
+        Initialize DeterministicProbe logic.
 
         Args:
             name: Logic identifier
@@ -182,14 +182,14 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         self._pending_limit_order_id: Optional[str] = None
         self._pending_stop_order_id: Optional[str] = None
 
-        # Backtesting tracking
+        # Probe tracking
         self.warmup_errors: List[str] = []
         self.bar_snapshots: Dict[str, Dict[str, Any]] = {}
         self.expected_trades: List[Dict[str, Any]] = []
         self.warmup_checked = False
 
         self.logger.debug(
-            f'BacktestingDeterministic initialized: '
+            f'DeterministicProbe initialized: '
             f'{len(self.trade_sequence)} trades in sequence, '
             f'lot_size={self.default_lot_size}'
         )
@@ -200,7 +200,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
-        """Backtesting deterministic decision logic parameters."""
+        """Deterministic probe parameters."""
         return {
             'trade_sequence': InputParamDef(
                 param_type=list,
@@ -243,7 +243,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:
-        """BacktestingDeterministic decision output parameters."""
+        """DeterministicProbe decision output parameters."""
         return {
             'lot_size': OutputParamDef(
                 param_type=float, min_val=0.0,
@@ -342,14 +342,14 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         """
         Declare required worker instance + signals (#425).
 
-        Requires BacktestingSampleWorker for warmup validation and bar snapshot
+        Requires SampleProbeWorker for warmup validation and bar snapshot
         capture. Reads all outputs (SUBSCRIBE_ALL).
 
         Returns:
             Dict with worker instance mapping
         """
         return {
-            'backtesting_worker': WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
+            'probe_worker': WorkerRequirement.all('CORE/test_probes/sample_probe_worker')
         }
 
     def on_market_data_stale(self, status: MarketDataStatus) -> None:
@@ -379,7 +379,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
         Args:
             tick: Current tick data
-            worker_results: Results from BacktestingSampleWorker
+            worker_results: Results from SampleProbeWorker
 
         Returns:
             Decision object with action based on trade sequence
@@ -492,7 +492,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         """
         Execute trading decision via DecisionTradingApi.
 
-        Simplified execution for backtesting:
+        Simplified execution for the probe:
         - BUY → Open long position
         - SELL → Open short position
         - FLAT with active position → Close position
@@ -759,21 +759,21 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         """
         Extract warmup validation and bar snapshots from worker.
 
-        BacktestingSampleWorker provides:
+        SampleProbeWorker provides:
         - warmup_status: Dict[timeframe, {valid, expected, actual, error}]
         - bar_snapshots: Dict[key, bar_dict]
 
         Decision Logic aggregates errors and stores snapshots for
-        BacktestingMetadata.
+        ProbeMetadata.
 
         Args:
             worker_results: Results from all workers
         """
-        worker_result = worker_results.get('backtesting_worker')
+        worker_result = worker_results.get('probe_worker')
 
         if not worker_result:
             self.logger.warning(
-                '❌ BacktestingSampleWorker result not found - '
+                '❌ SampleProbeWorker result not found - '
                 'warmup validation skipped'
             )
             self.warmup_errors.append('Worker result not found')
@@ -806,22 +806,22 @@ class BacktestingDeterministic(AbstractDecisionLogic):
 
     def get_statistics(self) -> DecisionLogicStats:
         """
-        Get statistics with BacktestingMetadata.
+        Get statistics with ProbeMetadata.
 
-        Overrides parent to include backtesting validation data:
+        Overrides parent to include the probe's validation data:
         - warmup_errors
         - bar_snapshots
         - expected_trades
         - tick_count
 
         Returns:
-            DecisionLogicStats with backtesting_metadata populated
+            DecisionLogicStats with probe_metadata populated
         """
         # Get base stats from parent (signals + timing)
         base_stats = super().get_statistics()
 
-        # Create and attach BacktestingMetadata
-        base_stats.backtesting_metadata = BacktestingMetadata(
+        # Create and attach ProbeMetadata
+        base_stats.probe_metadata = ProbeMetadata(
             warmup_errors=self.warmup_errors,
             bar_snapshots=self.bar_snapshots,
             expected_trades=self.expected_trades,
@@ -829,7 +829,7 @@ class BacktestingDeterministic(AbstractDecisionLogic):
         )
 
         self.logger.debug(
-            f'📊 BacktestingMetadata: '
+            f'📊 ProbeMetadata: '
             f'errors={len(self.warmup_errors)}, '
             f'snapshots={len(self.bar_snapshots)}, '
             f'expected_trades={len(self.expected_trades)}, '

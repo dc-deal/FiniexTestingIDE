@@ -88,18 +88,18 @@ class TestTheKeyHasOneHome:
         declared identity the improvement points the bot at a new, empty document while the venue
         still holds its position.
         """
-        assert carry_over_key('dotusd_live', 'DOTUSD', bot_id='dot-usd-live') == \
+        assert carry_over_key('dotusd_production', 'DOTUSD', bot_id='dot-usd-live') == \
             'dot-usd-live_dotusd'
 
     def test_the_key_survives_a_rename_when_the_id_is_declared(self):
         renamed = carry_over_key('a completely different name', 'DOTUSD', bot_id='dot-usd-live')
 
-        assert renamed == carry_over_key('dotusd_live', 'DOTUSD', bot_id='dot-usd-live')
+        assert renamed == carry_over_key('dotusd_production', 'DOTUSD', bot_id='dot-usd-live')
 
     def test_no_declared_id_composes_from_the_name_as_before(self):
         """Optional by design — no profile changes key because this argument was added."""
-        assert carry_over_key('dotusd_live', 'DOTUSD') == carry_over_key(
-            'dotusd_live', 'DOTUSD', bot_id='')
+        assert carry_over_key('dotusd_production', 'DOTUSD') == carry_over_key(
+            'dotusd_production', 'DOTUSD', bot_id='')
 
     def test_two_spellings_of_one_name_still_collapse(self):
         # A DIFFERENT case, and it stays open on purpose: this is one bot written two ways, not
@@ -125,7 +125,7 @@ class TestEveryProfileMustDeclareItsIdentity:
 
     def test_a_profile_without_one_is_refused(self):
         with pytest.raises(BotIdRequiredError):
-            validate_bot_id('dotusd_live', 'DOTUSD', '')
+            validate_bot_id('dotusd_production', 'DOTUSD', '')
 
     def test_a_one_off_session_is_no_longer_exempt(self):
         """
@@ -164,7 +164,7 @@ class TestEveryProfileMustDeclareItsIdentity:
         validate_bot_id('An Extremely Long Profile Name', 'BTCUSD', suggestion)
 
     def test_a_declared_one_passes(self):
-        validate_bot_id('dotusd_live', 'DOTUSD', 'dotlive01')
+        validate_bot_id('dotusd_production', 'DOTUSD', 'dotlive01')
 
 
 class TestTheShapeOfADeclaredIdentity:
@@ -345,11 +345,11 @@ class TestTheCheckCrossesTheConfigBoundary:
         would adopt the first one's position book.
         """
         tracked, workspace = self._pair(tmp_path)
-        self._write(tracked / 'production' / 'sol.json', 'solusd_live', 'SOLUSD', 'sollive01')
-        mine = self._write(workspace / 'sol_copy.json', 'solusd_live', 'SOLUSD', 'sollive01')
+        self._write(tracked / 'production' / 'sol.json', 'solusd_production', 'SOLUSD', 'sollive01')
+        mine = self._write(workspace / 'sol_copy.json', 'solusd_production', 'SOLUSD', 'sollive01')
 
         with pytest.raises(CarryOverIdentityCollisionError) as raised:
-            validate_carry_over_identity_unique(mine, 'solusd_live', 'SOLUSD', 'sollive01')
+            validate_carry_over_identity_unique(mine, 'solusd_production', 'SOLUSD', 'sollive01')
 
         message = str(raised.value)
         assert 'sol.json' in message and 'sol_copy.json' in message, (
@@ -360,25 +360,25 @@ class TestTheCheckCrossesTheConfigBoundary:
         """Whichever of the two is started, the other is found — the pair is symmetric."""
         tracked, workspace = self._pair(tmp_path)
         mine = self._write(
-            tracked / 'production' / 'sol.json', 'solusd_live', 'SOLUSD', 'sollive01')
+            tracked / 'production' / 'sol.json', 'solusd_production', 'SOLUSD', 'sollive01')
         self._write(workspace / 'sol_copy.json', 'solusd_copy', 'SOLUSD', 'sollive01')
 
         with pytest.raises(CarryOverIdentityCollisionError):
-            validate_carry_over_identity_unique(mine, 'solusd_live', 'SOLUSD', 'sollive01')
+            validate_carry_over_identity_unique(mine, 'solusd_production', 'SOLUSD', 'sollive01')
 
     def test_distinct_ids_across_the_boundary_pass(self, tmp_path):
         """The guard against overcorrecting: two trees are not themselves a collision."""
         tracked, workspace = self._pair(tmp_path)
         mine = self._write(
-            tracked / 'production' / 'sol.json', 'solusd_live', 'SOLUSD', 'sollive01')
-        self._write(workspace / 'sol_copy.json', 'solusd_live', 'SOLUSD', 'sollive02')
+            tracked / 'production' / 'sol.json', 'solusd_production', 'SOLUSD', 'sollive01')
+        self._write(workspace / 'sol_copy.json', 'solusd_production', 'SOLUSD', 'sollive02')
 
-        validate_carry_over_identity_unique(mine, 'solusd_live', 'SOLUSD', 'sollive01')
+        validate_carry_over_identity_unique(mine, 'solusd_production', 'SOLUSD', 'sollive01')
 
     def test_a_missing_sibling_tree_is_not_an_error(self, tmp_path):
         """Most installations have no workspace profiles at all."""
         tracked = tmp_path / 'configs' / 'autotrader_profiles' / 'production'
         tracked.mkdir(parents=True)
-        mine = self._write(tracked / 'sol.json', 'solusd_live', 'SOLUSD', 'sollive01')
+        mine = self._write(tracked / 'sol.json', 'solusd_production', 'SOLUSD', 'sollive01')
 
-        validate_carry_over_identity_unique(mine, 'solusd_live', 'SOLUSD', 'sollive01')
+        validate_carry_over_identity_unique(mine, 'solusd_production', 'SOLUSD', 'sollive01')

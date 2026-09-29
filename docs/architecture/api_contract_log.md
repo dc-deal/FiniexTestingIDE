@@ -47,7 +47,9 @@ The vocabulary contract: the words the API serves follow the project glossary
 
 - `GET /api/v1/reports/runs`: `data_windows` — the market window each unit was DECLARED to cover,
   one per unit (`unit_name`, `start_date`, `end_date`; `end_date` null means open: a tick-limited
-  scenario, or a venue session that has not ended). Deliberately no single span over all units: it
+  scenario, or a venue session, whose window is recorded at its start and therefore stays open on
+  the record even after it ended — when it ended is the run's completion, not a window field).
+  Deliberately no single span over all units: it
   would cover the gaps between scenarios. What a scenario actually processed stays on
   `scenario-details`. All three fields are null on a run recorded before this version — unknown,
   never a guess.

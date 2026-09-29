@@ -16,7 +16,7 @@ Test Groups:
 
 from typing import Dict, List
 
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.process_data_types import ProcessTickLoopResult
@@ -454,37 +454,37 @@ class TestRecoveryAfterGap:
 # =============================================================================
 
 class TestMultiPositionMetadata:
-    """Validate BacktestingMetadata from multi-position decision logic."""
+    """Validate ProbeMetadata from multi-position decision logic."""
 
     def test_expected_trades_count(
         self,
-        backtesting_metadata: BacktestingMetadata,
+        probe_metadata: ProbeMetadata,
         trade_sequence: list
     ):
         """Expected trades in metadata should match config count."""
-        assert len(backtesting_metadata.expected_trades) == len(trade_sequence), (
+        assert len(probe_metadata.expected_trades) == len(trade_sequence), (
             f'Expected {len(trade_sequence)} expected_trades, '
-            f'got {len(backtesting_metadata.expected_trades)}'
+            f'got {len(probe_metadata.expected_trades)}'
         )
 
     def test_expected_trades_have_order_ids(
-        self, backtesting_metadata: BacktestingMetadata
+        self, probe_metadata: ProbeMetadata
     ):
         """Each expected trade should have an order_id assigned."""
-        for i, trade in enumerate(backtesting_metadata.expected_trades):
+        for i, trade in enumerate(probe_metadata.expected_trades):
             assert 'order_id' in trade and trade['order_id'], (
                 f'Expected trade {i} missing order_id: {trade}'
             )
 
     def test_expected_trades_directions_match_config(
         self,
-        backtesting_metadata: BacktestingMetadata,
+        probe_metadata: ProbeMetadata,
         trade_sequence: list
     ):
         """Expected trade directions should match config sequence."""
         for i, (expected, actual) in enumerate(zip(
             trade_sequence,
-            backtesting_metadata.expected_trades
+            probe_metadata.expected_trades
         )):
             assert expected['direction'] == actual['direction'], (
                 f"Trade {i}: config={expected['direction']}, "
@@ -493,13 +493,13 @@ class TestMultiPositionMetadata:
 
     def test_expected_trades_signal_ticks_match(
         self,
-        backtesting_metadata: BacktestingMetadata,
+        probe_metadata: ProbeMetadata,
         trade_sequence: list
     ):
         """Signal ticks in metadata should match config tick_numbers."""
         for i, (expected, actual) in enumerate(zip(
             trade_sequence,
-            backtesting_metadata.expected_trades
+            probe_metadata.expected_trades
         )):
             assert expected['tick_number'] == actual['signal_tick'], (
                 f"Trade {i}: config tick={expected['tick_number']}, "
@@ -508,7 +508,7 @@ class TestMultiPositionMetadata:
 
     def test_order_ids_match_trade_history(
         self,
-        backtesting_metadata: BacktestingMetadata,
+        probe_metadata: ProbeMetadata,
         trade_history: List[TradeRecord]
     ):
         """
@@ -516,7 +516,7 @@ class TestMultiPositionMetadata:
         This validates the pipeline: decision_logic → order → position → trade_record.
         """
         metadata_ids = set(
-            t['order_id'] for t in backtesting_metadata.expected_trades
+            t['order_id'] for t in probe_metadata.expected_trades
         )
         history_ids = set(t.position_id for t in trade_history)
 
@@ -524,10 +524,10 @@ class TestMultiPositionMetadata:
             f'ID mismatch - metadata: {metadata_ids}, history: {history_ids}'
         )
 
-    def test_no_warmup_errors(self, backtesting_metadata: BacktestingMetadata):
+    def test_no_warmup_errors(self, probe_metadata: ProbeMetadata):
         """Multi-position run should have no warmup errors."""
-        assert backtesting_metadata.warmup_errors == [], (
-            f'Warmup errors: {backtesting_metadata.warmup_errors}'
+        assert probe_metadata.warmup_errors == [], (
+            f'Warmup errors: {probe_metadata.warmup_errors}'
         )
 
     def test_no_rejected_orders(
@@ -541,11 +541,11 @@ class TestMultiPositionMetadata:
 
     def test_tick_count_matches_config(
         self,
-        backtesting_metadata: BacktestingMetadata,
+        probe_metadata: ProbeMetadata,
         scenario_config: Dict
     ):
         """Tick count should match config max_ticks."""
         expected = scenario_config['scenarios'][0]['max_ticks']
-        assert backtesting_metadata.tick_count == expected, (
-            f'Expected {expected} ticks, got {backtesting_metadata.tick_count}'
+        assert probe_metadata.tick_count == expected, (
+            f'Expected {expected} ticks, got {probe_metadata.tick_count}'
         )

@@ -20,8 +20,8 @@ fake executor + recording logic (no broker, no worker thread):
 
 ### Dual-world parity (full pipeline)
 
-A dedicated decision logic, `BacktestingEventProbe`
-(`CORE/backtesting/backtesting_event_probe`), runs the same deterministic plan in
+A dedicated decision logic, `EventProbe`
+(`CORE/test_probes/event_probe`), runs the same deterministic plan in
 both pipelines: open a MARKET position → partial-close it → `request_session_end`.
 It subscribes to every event and records the ordered sequence it receives. Both
 worlds must produce:
@@ -32,7 +32,7 @@ worlds must produce:
 
 | Pipeline | Test | Event log source |
 |---|---|---|
-| Simulation | `tests/simulation/event_channel/test_event_channel_sim.py` | `BacktestingMetadata.received_events` (cross-process) |
+| Simulation | `tests/simulation/event_channel/test_event_channel_sim.py` | `ProbeMetadata.received_events` (cross-process) |
 | Mock session | `tests/autotrader/integration/test_event_channel_live_pipeline.py` | `decision_logic.get_received_event_log()` (in-process) |
 
 The mock-session test also exercises `request_session_end` end-to-end — the bot

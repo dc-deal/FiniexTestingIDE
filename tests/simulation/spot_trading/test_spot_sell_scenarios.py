@@ -9,7 +9,7 @@ Validates three cases:
 2. SELL on spot sells held base currency (was blocked before OrderSide refactor)
 3. SELL without base balance produces INSUFFICIENT_FUNDS rejection
 
-Uses backtesting_margin_stress decision logic with trade_sequence on kraken_spot.
+Uses margin_stress_probe decision logic with trade_sequence on kraken_spot.
 """
 
 from typing import List

@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Partial Close Lifecycle through the AutoTrader Pipeline (#330)
 
-Runs the partial_close_lifecycle profile (scripted BacktestingMultiPosition decision
+Runs the partial_close_lifecycle profile (scripted MultiPositionProbe decision
 logic + mock adapter) end-to-end and verifies:
 - The three derived TradeRecords from one partially-closed position all share
   the same entry_trades (multi-fill visibility paradigm)

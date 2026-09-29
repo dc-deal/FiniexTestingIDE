@@ -5,12 +5,12 @@
     "description": "Multi-Position Validation Testing (#114) - Overlapping positions, hedging, selective close, margin recovery",
     "global": {
         "strategy_config": {
-            "decision_logic_type": "CORE/backtesting/backtesting_multi_position",
+            "decision_logic_type": "CORE/test_probes/multi_position_probe",
             "worker_instances": {
-                "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+                "probe_worker": "CORE/test_probes/sample_probe_worker"
             },
             "workers": {
-                "backtesting_worker": {
+                "probe_worker": {
                     "periods": {
                         "M5": 14,
                         "M30": 20

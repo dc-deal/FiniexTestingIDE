@@ -17,6 +17,11 @@ What it rewrites:
                and the ledger index are rebuilt, both from what is on disk.
   carry_over   the cold-start carry-over's `highest_segment_no` → `highest_period_no`, then its
                index is rebuilt.
+  probes       (2026-09-29) the CORE test components moved from `core/backtesting/` to
+               `core/test_probes/` under names without "backtesting", and their worker instance
+               `backtesting_worker` became `probe_worker`: the old strings are replaced in the stored
+               report artifacts (text, parsed back) and in the ledger fragments' text columns, then
+               the ledger index is rebuilt. Log files keep what they logged.
 
 The run-config store (run_configs/) is left alone on purpose: its index cannot be rebuilt without
 loss, its frozen copies are old versions and stay true of the runs that named them, and a changed
@@ -62,6 +67,16 @@ _PERIOD_KEY = re.compile(
     r'"(highest_)?segment_(no|opened_at|closed_at|close_reason|max_equity|min_equity|max_drawdown)"')
 _OLD_RUN_TYPE = 'live'
 _NEW_RUN_TYPE = 'autotrader'
+
+# The CORE test components renamed on 2026-09-29 (old string → new string).
+PROBE_RENAMES: Dict[str, str] = {
+    **{f'CORE/backtesting/backtesting_{old}': f'CORE/test_probes/{new}' for old, new in (
+        ('deterministic', 'deterministic_probe'), ('event_probe', 'event_probe'),
+        ('margin_stress', 'margin_stress_probe'), ('multi_position', 'multi_position_probe'),
+        ('outage_probe', 'outage_probe'), ('sample_worker', 'sample_probe_worker'))},
+    'backtesting_worker': 'probe_worker',
+}
+_PROBE_TOKEN = re.compile('|'.join(re.escape(old) for old in PROBE_RENAMES) + r'(?![A-Za-z0-9_])')
 
 
 def _config_files() -> List[Path]:
@@ -266,12 +281,67 @@ def migrate_carry_over(preview: bool) -> None:
         print(f'  rebuilt the carry-over index ({ColdStartStateIndex(root).rebuild()} entries)')
 
 
+def _rename_probes(text: str) -> str:
+    """
+    Replace every renamed probe string in one text.
+
+    Args:
+        text: A stored JSON document or a ledger cell
+
+    Returns:
+        The text with the new names
+    """
+    return _PROBE_TOKEN.sub(lambda m: PROBE_RENAMES[m.group(0)], text)
+
+
+def migrate_probes(preview: bool) -> None:
+    """
+    Rename the CORE test components in the stored artifacts and the ledger, then rebuild its index.
+
+    Args:
+        preview: List what would change and write nothing
+    """
+    file_logging = AppConfigManager().get_file_logging_config_object()
+    runs_root = Path(file_logging.run_index).parent
+    artifacts = 0
+    for artifact in runs_root.rglob('io/*.json'):
+        text = artifact.read_text(encoding='utf-8')
+        new_text = _rename_probes(text)
+        if new_text == text:
+            continue
+        json.loads(new_text)
+        artifacts += 1
+        if not preview:
+            artifact.write_text(new_text, encoding='utf-8')
+    print(f'  {"would rewrite" if preview else "rewrote"} {artifacts} report artifact(s)')
+
+    index = RunLedgerIndex(runs_root / 'ledger', LEDGER_COLUMNS)
+    touched = 0
+    for fragment in index.fragments():
+        frame = pd.read_parquet(fragment)
+        renamed = frame.copy()
+        for column in renamed.columns:
+            if pd.api.types.is_string_dtype(renamed[column]) or renamed[column].dtype == object:
+                renamed[column] = renamed[column].map(
+                    lambda v: _rename_probes(v) if isinstance(v, str) else v)
+        if renamed.equals(frame):
+            continue
+        touched += 1
+        if not preview:
+            temporary = fragment.with_suffix('.parquet.tmp')
+            renamed.to_parquet(temporary, index=False)
+            temporary.replace(fragment)
+    print(f'  {"would rewrite" if preview else "rewrote"} {touched} ledger fragment(s)')
+    if touched and not preview:
+        print(f'  rebuilt the ledger index ({index.rebuild()} rows)')
+
+
 def main() -> None:
     """Parse arguments and migrate."""
     parser = argparse.ArgumentParser(description='One-time vocabulary migration (2026-09-28)')
     parser.add_argument('--preview', action='store_true',
                         help='List what would change and write nothing')
-    parser.add_argument('--only', choices=['configs', 'runs', 'carry_over'], default=None,
+    parser.add_argument('--only', choices=['configs', 'runs', 'carry_over', 'probes'], default=None,
                         help='Run one part only')
     args = parser.parse_args()
     if args.only in (None, 'configs'):
@@ -284,6 +354,9 @@ def main() -> None:
     if args.only in (None, 'carry_over'):
         print('\nCold-start carry-over')
         migrate_carry_over(args.preview)
+    if args.only in (None, 'probes'):
+        print('\nRenamed test probes')
+        migrate_probes(args.preview)
     print()
 
 

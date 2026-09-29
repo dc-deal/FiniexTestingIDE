@@ -344,14 +344,14 @@
             }
         },
         {
-            "name": "🤖 AutoTrader: DASHUSD Live",
+            "name": "🤖 AutoTrader: DASHUSD Production",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/production/dashusd_live.json"
+                "configs/autotrader_profiles/production/dashusd_production.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -361,14 +361,14 @@
             }
         },
         {
-            "name": "🤖 AutoTrader: DOTUSD Live",
+            "name": "🤖 AutoTrader: DOTUSD Production",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/production/dotusd_live.json"
+                "configs/autotrader_profiles/production/dotusd_production.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -396,14 +396,14 @@
             }
         },
         {
-            "name": "🤖 AutoTrader: ETHUSD Live",
+            "name": "🤖 AutoTrader: ETHUSD Production",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/production/ethusd_live.json"
+                "configs/autotrader_profiles/production/ethusd_production.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
@@ -413,14 +413,14 @@
             }
         },
         {
-            "name": "🤖 AutoTrader: SOLUSD Live",
+            "name": "🤖 AutoTrader: SOLUSD Production",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
             "args": [
                 "run",
                 "--config",
-                "configs/autotrader_profiles/production/solusd_live.json"
+                "configs/autotrader_profiles/production/solusd_production.json"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,

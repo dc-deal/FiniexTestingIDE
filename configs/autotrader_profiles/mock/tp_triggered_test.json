@@ -9,12 +9,12 @@
     "continuous": false
   },
   "strategy_config": {
-    "decision_logic_type": "CORE/backtesting/backtesting_deterministic",
+    "decision_logic_type": "CORE/test_probes/deterministic_probe",
     "worker_instances": {
-      "backtesting_worker": "CORE/backtesting/backtesting_sample_worker"
+      "probe_worker": "CORE/test_probes/sample_probe_worker"
     },
     "workers": {
-      "backtesting_worker": {
+      "probe_worker": {
         "periods": {
           "M5": 1
         }

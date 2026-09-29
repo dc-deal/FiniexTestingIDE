@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
@@ -18,7 +18,7 @@ from python.framework.types.process_data_types import ProcessResult, ProcessTick
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
 from tests.shared.fixture_helpers import (
-    extract_backtesting_metadata,
+    extract_probe_metadata,
     extract_portfolio_stats,
     extract_process_result,
     extract_seeds_config,
@@ -57,9 +57,9 @@ def tick_loop_results(process_result: ProcessResult) -> ProcessTickLoopResult:
 
 
 @pytest.fixture(scope='session')
-def backtesting_metadata(tick_loop_results: ProcessTickLoopResult) -> BacktestingMetadata:
-    """Extract BacktestingMetadata from decision statistics."""
-    return extract_backtesting_metadata(tick_loop_results)
+def probe_metadata(tick_loop_results: ProcessTickLoopResult) -> ProbeMetadata:
+    """Extract ProbeMetadata from decision statistics."""
+    return extract_probe_metadata(tick_loop_results)
 
 
 @pytest.fixture(scope='session')

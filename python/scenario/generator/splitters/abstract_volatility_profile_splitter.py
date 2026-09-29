@@ -43,7 +43,7 @@ from python.scenario.generator.splitters.continuous_region_extractor import (
 vLog = get_global_logger()
 
 
-class AbstractProfileSplitter(AbstractSplitter):
+class AbstractVolatilityProfileSplitter(AbstractSplitter):
     """Base for volatility-profile-driven splitters (ATR-minima + continuous-region)."""
 
     def __init__(

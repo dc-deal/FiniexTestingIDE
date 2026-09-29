@@ -16,10 +16,10 @@ from python.framework.decision_logic.core.aggressive_trend import AggressiveTren
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
 from python.framework.types.parameter_types import REQUIRED, InputParamDef
 from python.framework.validators.parameter_validator import apply_defaults, validate_parameters
-from python.framework.workers.core.backtesting.backtesting_sample_worker import (
-    BacktestingSampleWorker,
+from python.framework.workers.core.test_probes.sample_probe_worker import (
+    SampleProbeWorker,
 )
-from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
+from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
@@ -160,10 +160,10 @@ class TestRealWorkerDefaults:
         for param_name, param_def in schema.items():
             assert param_name in merged, f'Missing default for {param_name}'
 
-    def test_backtesting_sample_worker_default(self):
-        """BacktestingSampleWorker: empty config → bar_snapshot_checks=[]."""
+    def test_sample_probe_worker_default(self):
+        """SampleProbeWorker: empty config → bar_snapshot_checks=[]."""
 
-        schema = BacktestingSampleWorker.get_parameter_schema()
+        schema = SampleProbeWorker.get_parameter_schema()
         merged = apply_defaults({}, schema)
         assert merged['bar_snapshot_checks'] == []
 

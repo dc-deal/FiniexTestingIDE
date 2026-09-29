@@ -27,10 +27,10 @@ from python.framework.validators.parameter_validator import apply_defaults
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 from python.framework.workers.abstract_signal_worker import AbstractSignalWorker
 from python.framework.workers.abstract_worker import AbstractWorker
-from python.framework.workers.core.backtesting.backtesting_sample_worker import (
-    BacktestingSampleWorker,
+from python.framework.workers.core.test_probes.sample_probe_worker import (
+    SampleProbeWorker,
 )
-from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
+from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.llm_sentiment_worker import LlmSentimentWorker
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
@@ -89,7 +89,7 @@ class WorkerFactory:
             self._registry['CORE/macd'] = (MacdWorker, None)
             self._registry['CORE/obv'] = (ObvWorker, None)
             self._registry['CORE/llm_sentiment'] = (LlmSentimentWorker, None)
-            self._registry['CORE/backtesting/backtesting_sample_worker'] = (BacktestingSampleWorker, None)
+            self._registry['CORE/test_probes/sample_probe_worker'] = (SampleProbeWorker, None)
 
             self._logger.debug(
                 f'Core workers registered: {list(self._registry.keys())}'

@@ -1,5 +1,5 @@
 """
-FiniexTestingIDE - Backtesting Margin Stress Decision Logic
+FiniexTestingIDE - Margin Stress Probe Decision Logic
 Decision logic for margin validation testing (Margin Validation Issue)
 
 Responsibilities:
@@ -8,7 +8,7 @@ Responsibilities:
 3. Close positions to recover margin
 4. Retry previously rejected orders
 5. Embed edge-case operations (invalid lots, non-existent close)
-6. Expose all validation data via get_statistics() → BacktestingMetadata
+6. Expose all validation data via get_statistics() → ProbeMetadata
 
 This decision logic is designed for TESTING, not production trading.
 It validates that the framework correctly handles:
@@ -89,14 +89,14 @@ Data Flow:
 4. Close events free margin for recovery tests
 5. Retry events verify margin recovery
 6. Edge case orders test validation paths
-7. get_statistics() returns BacktestingMetadata with all tracking data
+7. get_statistics() returns ProbeMetadata with all tracking data
 """
 
 from typing import Any, Dict, List, Optional, Set
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
@@ -112,7 +112,7 @@ from python.framework.types.trading_env_types.order_types import (
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
-class BacktestingMarginStress(AbstractDecisionLogic):
+class MarginStressProbe(AbstractDecisionLogic):
     """
     Margin stress decision logic for validation testing.
 
@@ -187,7 +187,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
         self._edge_case_results: List[Dict[str, Any]] = []
 
         # ============================================
-        # Backtesting Tracking (same pattern as BacktestingMultiPosition)
+        # Probe tracking (same pattern as MultiPositionProbe)
         # ============================================
         self.warmup_errors: List[str] = []
         self.bar_snapshots: Dict[str, Dict[str, Any]] = {}
@@ -195,7 +195,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
         self.warmup_checked = False
 
         self.logger.info(
-            f'BacktestingMarginStress initialized: '
+            f'MarginStressProbe initialized: '
             f'{len(self.trade_sequence)} trades, '
             f'{len(self.close_events)} close events, '
             f'{len(self.retry_events)} retry events, '
@@ -241,7 +241,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:
-        """BacktestingMarginStress decision output parameters."""
+        """MarginStressProbe decision output parameters."""
         return {
             'event_type': OutputParamDef(
                 param_type=str,
@@ -306,7 +306,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
 
     def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         return {
-            'backtesting_worker': WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
+            'probe_worker': WorkerRequirement.all('CORE/test_probes/sample_probe_worker')
         }
 
     def on_market_data_stale(self, status: MarketDataStatus) -> None:
@@ -697,7 +697,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
     # ============================================
 
     def _extract_worker_data(self, worker_results: Dict[str, WorkerResult]) -> None:
-        worker_result = worker_results.get('backtesting_worker')
+        worker_result = worker_results.get('probe_worker')
 
         if not worker_result:
             self.warmup_errors.append('Worker result not found')
@@ -719,7 +719,7 @@ class BacktestingMarginStress(AbstractDecisionLogic):
     def get_statistics(self) -> DecisionLogicStats:
         base_stats = super().get_statistics()
 
-        base_stats.backtesting_metadata = BacktestingMetadata(
+        base_stats.probe_metadata = ProbeMetadata(
             warmup_errors=self.warmup_errors,
             bar_snapshots=self.bar_snapshots,
             expected_trades=self.expected_trades,

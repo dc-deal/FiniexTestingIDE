@@ -1,5 +1,5 @@
 """
-FiniexTestingIDE - Backtesting Event Probe Decision Logic (#348)
+FiniexTestingIDE - Event Probe Decision Logic (#348)
 
 Exercises the Decision Event Channel end-to-end in BOTH pipelines (simulation
 and a mock AutoTrader session). It subscribes to every decision event, drives a small
@@ -15,7 +15,7 @@ of pipeline:
 
 The recorded sequence is exposed two ways:
 - get_received_event_log() — in-process access (mock-session test)
-- get_statistics().backtesting_metadata.received_events — cross-process channel
+- get_statistics().probe_metadata.received_events — cross-process channel
   (simulation test, where the decision logic runs in a subprocess)
 
 Configuration:
@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.decision_event_types import (
     DecisionEventType,
     OrderCancelledEvent,
@@ -56,7 +56,7 @@ from python.framework.types.trading_env_types.order_types import (
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
 
 
-class BacktestingEventProbe(AbstractDecisionLogic):
+class EventProbe(AbstractDecisionLogic):
     """
     Event-channel probe decision logic for dual-world validation testing.
 
@@ -93,7 +93,7 @@ class BacktestingEventProbe(AbstractDecisionLogic):
         self._received_events: List[str] = []
 
         self.logger.info(
-            f'BacktestingEventProbe initialized: open@{self._open_tick}, '
+            f'EventProbe initialized: open@{self._open_tick}, '
             f'partial_close@{self._partial_close_tick} ({self._partial_close_lots} lots), '
             f'session_end@{self._session_end_tick}'
         )
@@ -165,7 +165,7 @@ class BacktestingEventProbe(AbstractDecisionLogic):
 
     def get_required_workers(self) -> Dict[str, WorkerRequirement]:
         return {
-            'backtesting_worker': WorkerRequirement.all('CORE/backtesting/backtesting_sample_worker')
+            'probe_worker': WorkerRequirement.all('CORE/test_probes/sample_probe_worker')
         }
 
     # ============================================
@@ -307,7 +307,7 @@ class BacktestingEventProbe(AbstractDecisionLogic):
 
     def get_statistics(self) -> DecisionLogicStats:
         base_stats = super().get_statistics()
-        base_stats.backtesting_metadata = BacktestingMetadata(
+        base_stats.probe_metadata = ProbeMetadata(
             tick_count=self.tick_count,
             received_events=list(self._received_events),
         )

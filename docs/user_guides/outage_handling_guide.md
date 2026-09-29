@@ -209,7 +209,7 @@ There is no correct default — every answer is wrong for SOME strategy:
   `is_stale` and `on_signal_stale` fires. (A planned window on the tick source's status plane runs
   in a mock session too, since #444.)
 - Reference implementations: `CORE/hybrid_sentiment_reference` (hold + surface),
-  `CORE/backtesting/backtesting_outage_probe` (the test probe asserting the
+  `CORE/test_probes/outage_probe` (the test probe asserting the
   whole chain).
 
 ## How an Episode Is Recorded (AutoTrader)

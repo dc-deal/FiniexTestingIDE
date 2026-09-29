@@ -50,7 +50,7 @@
 | Document | Description |
 |----------|-------------|
 | [Execution Layer](architecture/architecture_execution_layer.md) | Core Sim/Live hybrid architecture, shared portfolio logic |
-| [Simulation vs Live Flow](architecture/simulation_vs_live_flow.md) | Side-by-side tick flow comparison |
+| [Simulation vs Live Flow](architecture/simulation_vs_autotrader_flow.md) | Side-by-side tick flow comparison |
 | [Live Execution](architecture/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveRequestProcessor |
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
 | [Broker Trade Records](architecture/broker_trade_records.md) | Order ↔ executions pairing model, BrokerTrade type, Tier-3 trades-query layer |

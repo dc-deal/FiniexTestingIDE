@@ -81,9 +81,9 @@ python python/cli/run_index_cli.py deployments
 ──────────────────────────────────────────────────────────────────────────────────────────────────
 deployment                     bot                    sessions since             net P&L    max DD  idle max
 ──────────────────────────────────────────────────────────────────────────────────────────────────
-deploy_20260820_090000_5e3f    ethusd_live                   1 2026-08-20 09:00    12.00    -30.00        —
-deploy_20260901_060000_ab12    dotusd_live                   2 2026-09-01 06:00    60.80   -212.75   14.5 d ⚠
-deploy_20260712_051500_77c1    dotusd_live                   2 2026-07-12 05:15  -402.88   -991.40    2.1 d
+deploy_20260820_090000_5e3f    ethusd_production                   1 2026-08-20 09:00    12.00    -30.00        —
+deploy_20260901_060000_ab12    dotusd_production                   2 2026-09-01 06:00    60.80   -212.75   14.5 d ⚠
+deploy_20260712_051500_77c1    dotusd_production                   2 2026-07-12 05:15  -402.88   -991.40    2.1 d
 ──────────────────────────────────────────────────────────────────────────────────────────────────
 ⚠ = the sessions were not all produced by the same configuration; the detail view draws the break.
 Two rows for one bot = it was restarted with --new-deployment. The older history stays readable.
@@ -91,7 +91,7 @@ Open one with `run_index_cli.py deployments --id <deployment>`.
 ```
 
 Deployments of the **same bot stand together**, newest first. That is what a reset looks like:
-`dotusd_live` appears twice because it was restarted with `--new-deployment`, and both
+`dotusd_production` appears twice because it was restarted with `--new-deployment`, and both
 histories stay readable under their own names.
 
 Note what the two number columns do: **`net P&L` adds up across the sessions, `max DD` does

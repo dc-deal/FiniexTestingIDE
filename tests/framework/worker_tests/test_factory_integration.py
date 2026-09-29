@@ -261,10 +261,10 @@ class TestDecisionLogicFactoryValidConfigs:
         )
         assert logic is not None
 
-    def test_create_backtesting_deterministic(self, strict_logic_factory, mock_logger):
-        """BacktestingDeterministic with trade sequence."""
+    def test_create_deterministic_probe(self, strict_logic_factory, mock_logger):
+        """DeterministicProbe with trade sequence."""
         logic = strict_logic_factory.create_logic(
-            logic_type='CORE/backtesting/backtesting_deterministic',
+            logic_type='CORE/test_probes/deterministic_probe',
             logger=mock_logger,
             logic_config={
                 'trade_sequence': [

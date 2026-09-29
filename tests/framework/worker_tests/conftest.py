@@ -11,14 +11,14 @@ from unittest.mock import MagicMock
 import pytest
 
 from python.framework.decision_logic.core.aggressive_trend import AggressiveTrend
-from python.framework.decision_logic.core.backtesting.backtesting_deterministic import (
-    BacktestingDeterministic,
+from python.framework.decision_logic.core.test_probes.deterministic_probe import (
+    DeterministicProbe,
 )
 from python.framework.decision_logic.core.simple_consensus import SimpleConsensus
-from python.framework.workers.core.backtesting.backtesting_sample_worker import (
-    BacktestingSampleWorker,
+from python.framework.workers.core.test_probes.sample_probe_worker import (
+    SampleProbeWorker,
 )
-from python.framework.workers.core.backtesting.heavy_rsi_worker import HeavyRsiWorker
+from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
 from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
@@ -39,13 +39,13 @@ ALL_WORKERS = [
     MacdWorker,
     ObvWorker,
     HeavyRsiWorker,
-    BacktestingSampleWorker,
+    SampleProbeWorker,
 ]
 
 ALL_DECISION_LOGICS = [
     SimpleConsensus,
     AggressiveTrend,
-    BacktestingDeterministic,
+    DeterministicProbe,
 ]
 
 ALL_COMPONENTS = ALL_WORKERS + ALL_DECISION_LOGICS

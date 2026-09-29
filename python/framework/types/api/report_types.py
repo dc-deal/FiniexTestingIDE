@@ -606,7 +606,7 @@ class DataWindow(BaseModel):
         unit_name: The unit the window belongs to (scenario name, or the session's unit name)
         start_date: Where the window starts, ISO-8601 UTC
         end_date: Where it ends, ISO-8601 UTC; None when it is open — a tick-limited scenario, or
-            a venue session that has not ended
+            a venue session, whose window is recorded at its start and stays open on the record
     """
     unit_name: str
     start_date: str

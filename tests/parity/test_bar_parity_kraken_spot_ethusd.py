@@ -19,8 +19,8 @@ from unittest.mock import MagicMock
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
-from python.framework.decision_logic.core.backtesting.backtesting_deterministic import (
-    BacktestingDeterministic,
+from python.framework.decision_logic.core.test_probes.deterministic_probe import (
+    DeterministicProbe,
 )
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_tick_loop import execute_tick_loop
@@ -211,9 +211,9 @@ def _build_mock_broker_config() -> BrokerConfig:
     return BrokerConfig(BrokerType.KRAKEN_SPOT, adapter)
 
 
-def _wire_decision_logic(executor, logger) -> BacktestingDeterministic:
-    """Create a BacktestingDeterministic instance wired to the given executor."""
-    logic = BacktestingDeterministic(
+def _wire_decision_logic(executor, logger) -> DeterministicProbe:
+    """Create a DeterministicProbe instance wired to the given executor."""
+    logic = DeterministicProbe(
         name='trade_parity_logic',
         logger=logger,
         config=_TRADE_LOGIC_CONFIG,
@@ -230,7 +230,7 @@ def _wire_decision_logic(executor, logger) -> BacktestingDeterministic:
 
 
 def _run_simulation_trades(ticks):
-    """Run execute_tick_loop with real TradeSimulator and BacktestingDeterministic."""
+    """Run execute_tick_loop with real TradeSimulator and DeterministicProbe."""
     logger = ScenarioLogger(
         scenario_set_name='parity',
         scenario_name='trade_parity_kraken_spot_ethusd_sim',
@@ -281,7 +281,7 @@ def _run_simulation_trades(ticks):
 
 
 def _run_autotrader_trades(ticks):
-    """Run AutotraderTickLoop with real LiveTradeExecutor and BacktestingDeterministic."""
+    """Run AutotraderTickLoop with real LiveTradeExecutor and DeterministicProbe."""
     tick_queue: queue.Queue = queue.Queue()
     for t in ticks:
         tick_queue.put(t)
@@ -370,7 +370,7 @@ def test_trade_parity_kraken_spot_ethusd():
     Uses 1000 flat-price ticks (bid=3500, ask=3503.5) to eliminate the 1-tick
     fill-timing asymmetry between pipelines.
 
-    BacktestingDeterministic opens LONG at tick 200, closes at tick 700 (hold 500).
+    DeterministicProbe opens LONG at tick 200, closes at tick 700 (hold 500).
     """
     ticks = make_flat_ethusd_ticks(count=1000)
 

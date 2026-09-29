@@ -15,7 +15,7 @@ UNIQUE KEYWORDS with prefixes for easy searching:
 from dataclasses import dataclass
 from typing import Optional
 
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 
 
 @dataclass
@@ -71,7 +71,7 @@ class DecisionLogicStats:
     decision_max_time_ms: float = 0.0
 
     # Optional backtesting metadata for validation
-    backtesting_metadata: Optional[BacktestingMetadata] = None
+    probe_metadata: Optional[ProbeMetadata] = None
 
     # True only when the decision tracker counted. Without one (the simulation's default,
     # `performance_tracking.worker_decision_tracking: false`) the counters above stay at their

@@ -172,6 +172,6 @@ in backtesting it ends the scenario early; in an AutoTrader session it shuts the
 ## Tests
 
 - Unit: `tests/autotrader/live_executor/test_decision_event_dispatcher.py` — filtering, FIFO, drain-to-completion, re-entrancy, outcome mapping.
-- Dual-world parity: the `BacktestingEventProbe` decision logic runs through both pipelines and must record the identical event sequence:
+- Dual-world parity: the `EventProbe` decision logic runs through both pipelines and must record the identical event sequence:
   - Simulation: `tests/simulation/event_channel/test_event_channel_sim.py`
   - AutoTrader-mock: `tests/autotrader/integration/test_event_channel_live_pipeline.py`

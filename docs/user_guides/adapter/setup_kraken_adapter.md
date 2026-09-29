@@ -96,11 +96,11 @@ Switch to real-money sessions by overriding in `user_configs/market_config.json`
 
 ## 4. AutoTrader Profile
 
-AutoTrader profiles contain only algorithm config — no broker connection fields needed. Example `configs/autotrader_profiles/production/ethusd_live.json`:
+AutoTrader profiles contain only algorithm config — no broker connection fields needed. Example `configs/autotrader_profiles/production/ethusd_production.json`:
 
 ```json
 {
-  "profile_name": "ethusd_live",
+  "profile_name": "ethusd_production",
   "symbol": "ETHUSD",
   "broker_type": "kraken_spot",
   "adapter_type": "live",
@@ -118,7 +118,7 @@ for P&L denomination.
 ## Config File Relationship
 
 ```
-AutoTrader Profile (ethusd_live.json)
+AutoTrader Profile (ethusd_production.json)
   "broker_type": "kraken_spot"
         |
         v
@@ -140,7 +140,7 @@ Credentials (user_configs/credentials/venues/kraken_credentials.json)
 ## 5. First Run (Dry Run)
 
 ```bash
-python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/production/ethusd_live.json
+python python/cli/autotrader_cli.py run --config configs/autotrader_profiles/production/ethusd_production.json
 ```
 
 Expected startup output:

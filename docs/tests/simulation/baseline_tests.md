@@ -81,7 +81,7 @@ The baseline `conftest.py` wraps shared helpers from `tests/shared/fixture_helpe
 | Fixture | Scope | Description |
 |---------|-------|-------------|
 | `portfolio_stats` | session | PortfolioStats with P&L, trade counts, and cost breakdown |
-| `backtesting_metadata` | session | BacktestingMetadata with snapshots, warmup errors, expected trades |
+| `probe_metadata` | session | ProbeMetadata with snapshots, warmup errors, expected trades |
 
 ### Trade Data Fixtures
 
@@ -224,7 +224,7 @@ Validates that warmup data was correctly loaded before tick processing.
 |------|-------------|
 | `test_no_warmup_errors` | No warmup validation errors occurred |
 | `test_warmup_errors_list_exists` | Warmup errors list is accessible (even if empty) |
-| `test_has_warmup_errors_method` | BacktestingMetadata provides has_warmup_errors() method |
+| `test_has_warmup_errors_method` | ProbeMetadata provides has_warmup_errors() method |
 
 ---
 

@@ -594,13 +594,13 @@ class TestDeployments:
                          run_timestamp='2026-09-01T06:00:00+00:00',
                          recorded_at_utc='2026-09-01T18:00:00+00:00',
                          currency='USD', deployment_id='deploy_1', bot_id='bot-a',
-                         scenario_set_name='dotusd_live', net_pnl=10.0,
+                         scenario_set_name='dotusd_production', net_pnl=10.0,
                          account_max_drawdown=5.0, account_max_drawdown_pct=1.0, status='ok'),
             RunResultRow(run_id='s2', param_hash='p1', profile_hash='o2',
                          run_timestamp='2026-09-02T06:00:00+00:00',
                          recorded_at_utc='2026-09-02T18:00:00+00:00',
                          currency='USD', deployment_id='deploy_1', bot_id='bot-a',
-                         scenario_set_name='dotusd_live', net_pnl=-4.0,
+                         scenario_set_name='dotusd_production', net_pnl=-4.0,
                          account_max_drawdown=9.0, account_max_drawdown_pct=1.8, status='ok'),
         ]
 
@@ -621,7 +621,7 @@ class TestDeployments:
         assert data['count'] == 1
         assert data['deployments'][0]['deployment_id'] == 'deploy_1'
         assert data['deployments'][0]['sessions'] == 2
-        assert data['deployments'][0]['bot'] == 'dotusd_live'
+        assert data['deployments'][0]['bot'] == 'dotusd_production'
 
     def test_a_deployments_pnl_sums_and_its_drawdown_does_not(self, client):
         """
@@ -707,8 +707,8 @@ class TestDeployments:
         def row(run_id, no, opened, closed, pnl, trades, reason='anchor'):
             return RunResultRow(
                 run_id=run_id, param_hash='p1', run_timestamp=opened, currency='USD',
-                deployment_id='deploy_1', scenario_set_name='dotusd_live', status='ok',
-                unit_name='dotusd_live', period_no=no, period_opened_at=opened,
+                deployment_id='deploy_1', scenario_set_name='dotusd_production', status='ok',
+                unit_name='dotusd_production', period_no=no, period_opened_at=opened,
                 period_closed_at=closed, period_close_reason=reason,
                 total_trades=trades, net_pnl=pnl,
                 period_min_equity=90.0, period_max_equity=110.0,
@@ -724,7 +724,7 @@ class TestDeployments:
                 reason='session_end'),
             RunResultRow(run_id='s0', param_hash='p1', currency='USD',
                          run_timestamp='2026-08-01T00:00:00+00:00',
-                         deployment_id='deploy_1', scenario_set_name='dotusd_live',
+                         deployment_id='deploy_1', scenario_set_name='dotusd_production',
                          status='ok', net_pnl=99.0),
         ]
 

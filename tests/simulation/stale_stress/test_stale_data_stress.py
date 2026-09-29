@@ -48,7 +48,7 @@ def _received_events(summary, index: int):
     result = summary.process_result_list[index]
     assert result.success, (
         f'Scenario {index} failed: {result.error_message}')
-    return result.tick_loop_results.decision_statistics.backtesting_metadata.received_events
+    return result.tick_loop_results.decision_statistics.probe_metadata.received_events
 
 
 class TestMarketDataWindow:

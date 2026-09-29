@@ -5,7 +5,7 @@ End-to-end tests through a mock AutoTrader session in margin mode.
 Validates that safety checks read the ACCOUNT VALUE (#356) correctly during
 a real tick loop session with mt5/EURUSD.
 
-Uses margin_safety_test.json as base profile (backtesting_margin_stress
+Uses margin_safety_test.json as base profile (margin_stress_probe
 decision logic with deterministic trade_sequence), overrides safety config
 programmatically. max_ticks=15000 ensures warmup completes and algo
 produces trades.

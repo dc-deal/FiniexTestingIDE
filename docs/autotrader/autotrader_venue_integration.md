@@ -93,7 +93,7 @@ accumulates silently on the Kraken account. This is expected Spot behavior. The 
 Broker-specific connection settings are stored in `market_config.json` alongside the broker entry — not in the AutoTrader profile:
 
 ```
-Profile (production/ethusd_live.json)           ← Algorithm config (strategy, workers, symbol)
+Profile (production/ethusd_production.json)           ← Algorithm config (strategy, workers, symbol)
   "broker_type": "kraken_spot"
         |
 market_config.json → kraken_spot     ← Broker connection config

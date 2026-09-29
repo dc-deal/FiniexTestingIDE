@@ -81,7 +81,7 @@ def prepare_mock_session_data(
         app_config=AppConfigManager(),
         requirements_collector=RequirementsCollector(logger=logger),
     )
-    mount = preparer.prepare_mount([scenario], include_warmup_bars=False)
+    mount = preparer.prepare_mount([scenario])
     package = mount.scenario_packages.get(scenario.scenario_index)
     if package is None or not scenario.is_valid():
         errors = '; '.join(

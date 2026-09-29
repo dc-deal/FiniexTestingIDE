@@ -10,7 +10,7 @@ The core insight: **Backtesting and the live execution stack share the same port
 difference is *how* orders reach the market and *how* fills are confirmed. Everything else —
 portfolio tracking, fee calculations, P&L accounting, margin checks — is identical.
 
-> **Tick flow comparison (Backtesting vs Live):** see [simulation_vs_live_flow.md](simulation_vs_live_flow.md)
+> **Tick flow comparison (Backtesting vs Live):** see [simulation_vs_autotrader_flow.md](simulation_vs_autotrader_flow.md)
 > **Live execution details (LiveTradeExecutor, broker polling, LiveRequestProcessor):** see [live_execution_architecture.md](live_execution_architecture.md)
 > **Pending order lifecycle (3 worlds: latency, limit, stop):** see [pending_order_architecture.md](pending_order_architecture.md)
 
@@ -520,7 +520,7 @@ The new design separates concerns completely:
 **`has_pending_orders()`** — Global check: "Is anything in flight across all worlds?" Concrete in
 `AbstractTradeExecutor` — combines `has_pipeline_orders()` + `_active_limit_orders` +
 `_active_stop_orders`. Used by market-only strategies (SimpleConsensus, AggressiveTrend,
-BacktestingDeterministic) as an early return guard:
+DeterministicProbe) as an early return guard:
 ```
 if self.trading_api.has_pending_orders():
     return None  # Wait for pending orders to resolve
@@ -536,7 +536,7 @@ if self.trading_api.has_pipeline_orders():
 # Active limit/stop orders are NOT blocking here
 ```
 
-**`is_pending_close(position_id)`** — Per-position check: "Is this specific position being closed?" Used by multi-position strategies (BacktestingMultiPosition, BacktestingMarginStress) to avoid duplicate close submissions:
+**`is_pending_close(position_id)`** — Per-position check: "Is this specific position being closed?" Used by multi-position strategies (MultiPositionProbe, MarginStressProbe) to avoid duplicate close submissions:
 ```
 if self.trading_api.is_pending_close(pos.position_id):
     continue  # Close already in flight

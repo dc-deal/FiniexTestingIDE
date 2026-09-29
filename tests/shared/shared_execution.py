@@ -9,7 +9,7 @@ Import these classes into suite-specific test_<suite>_trade_execution.py files.
 
 
 
-from python.framework.types.backtesting_metadata_types import BacktestingMetadata
+from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.process_data_types import ProcessTickLoopResult
 
@@ -19,13 +19,13 @@ class TestTradeExecution:
 
     def test_expected_trade_count(
         self,
-        backtesting_metadata: BacktestingMetadata,
+        probe_metadata: ProbeMetadata,
         trade_sequence: list
     ):
         """Expected trades should match config sequence length."""
-        assert len(backtesting_metadata.expected_trades) == len(trade_sequence), (
+        assert len(probe_metadata.expected_trades) == len(trade_sequence), (
             f'Expected {len(trade_sequence)} trades, '
-            f'got {len(backtesting_metadata.expected_trades)}'
+            f'got {len(probe_metadata.expected_trades)}'
         )
 
     def test_executed_trade_count(
@@ -55,13 +55,13 @@ class TestTradeExecution:
 
     def test_trade_directions_match(
         self,
-        backtesting_metadata: BacktestingMetadata,
+        probe_metadata: ProbeMetadata,
         trade_sequence: list
     ):
         """Trade directions should match config sequence."""
         for i, (expected, actual) in enumerate(zip(
             trade_sequence,
-            backtesting_metadata.expected_trades
+            probe_metadata.expected_trades
         )):
             assert expected['direction'] == actual['direction'], (
                 f"Trade {i}: expected {expected['direction']}, "
@@ -70,13 +70,13 @@ class TestTradeExecution:
 
     def test_trade_signal_ticks_match(
         self,
-        backtesting_metadata: BacktestingMetadata,
+        probe_metadata: ProbeMetadata,
         trade_sequence: list
     ):
         """Trade signal ticks should match config sequence."""
         for i, (expected, actual) in enumerate(zip(
             trade_sequence,
-            backtesting_metadata.expected_trades
+            probe_metadata.expected_trades
         )):
             assert expected['tick_number'] == actual['signal_tick'], (
                 f"Trade {i}: expected tick {expected['tick_number']}, "

@@ -1,5 +1,5 @@
 """
-FiniexTestingIDE - Backtesting Sample Worker
+FiniexTestingIDE - Sample Probe Worker
 Worker for validation testing
 
 Responsibilities:
@@ -29,7 +29,7 @@ Data Flow:
 1. First tick: validate warmup bars against periods config
 2. At configured ticks: capture bar snapshots
 3. Every tick: return metadata with validation status and snapshots
-4. BacktestingDeterministic extracts metadata for BacktestingMetadata
+4. DeterministicProbe extracts metadata for ProbeMetadata
 """
 
 from typing import Any, Dict, List, Optional
@@ -40,9 +40,9 @@ from python.framework.types.worker_types import ComputeBasis, WorkerResult, Work
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
 
 
-class BacktestingSampleWorker(AbstractIndicatorWorker):
+class SampleProbeWorker(AbstractIndicatorWorker):
     """
-    Validation worker for backtesting - captures warmup status and bar snapshots.
+    Validation worker for the test probes - captures warmup status and bar snapshots.
 
     This worker validates that warmup bars are correctly loaded and captures
     bar snapshots at specific ticks for comparison with prerendered bars.
@@ -62,7 +62,7 @@ class BacktestingSampleWorker(AbstractIndicatorWorker):
 
     def __init__(self, name, parameters, logger, trading_context=None):
         """
-        Initialize BacktestingSampleWorker.
+        Initialize SampleProbeWorker.
         """
         super().__init__(
             name=name, parameters=parameters,
@@ -79,7 +79,7 @@ class BacktestingSampleWorker(AbstractIndicatorWorker):
         self.tick_count = 0
 
         self.logger.debug(
-            f"BacktestingSampleWorker '{name}' initialized: "
+            f"SampleProbeWorker '{name}' initialized: "
             f"periods={self.periods}, "
             f"snapshot_checks={len(self.snapshot_checks)}"
         )
@@ -90,7 +90,7 @@ class BacktestingSampleWorker(AbstractIndicatorWorker):
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
-        """Backtesting sample worker parameters."""
+        """Sample probe worker parameters."""
         return {
             'bar_snapshot_checks': InputParamDef(
                 param_type=list,
@@ -101,7 +101,7 @@ class BacktestingSampleWorker(AbstractIndicatorWorker):
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:
-        """Backtesting sample worker output parameters."""
+        """Sample probe worker output parameters."""
         return {
             'warmup_status': OutputParamDef(
                 param_type=dict,
@@ -124,7 +124,7 @@ class BacktestingSampleWorker(AbstractIndicatorWorker):
 
     @classmethod
     def get_required_activity_metric(cls) -> Optional[str]:
-        """Backtesting sample worker has no market-data dependency."""
+        """The sample probe worker has no market-data dependency."""
         return None
 
     # ============================================

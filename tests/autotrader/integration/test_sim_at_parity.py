@@ -1,75 +1,76 @@
 """
 FiniexTestingIDE - Sim <-> Mock Session Data Parity (#438)
 
-The mock session replays scenario base data through the SAME shared MountPreparer the sim uses.
-This asserts the prepared ticks (and signal sources) are identical for the same scenario window —
-the mock session is truly "a scenario replayed through the AutoTrader decision path". The only
-difference is `include_warmup_bars`: the AT skips bar preparation (it loads warmup bars itself),
-the sim loads it.
+A mock session replays scenario base data through the SAME shared MountPreparer a backtest uses:
+the same ticks, the same signal sources, and the same warmup bars — the last N bars before the
+window's start. These tests hold the mock session to that. The mock path once loaded its warmup
+bars itself, taking a bar file's newest bars whatever the window, so a mock session replaying
+January warmed its indicators on September; the parity test below is what keeps a second path
+from growing back.
 """
 
+import pytest
+
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
+from python.framework.autotrader.autotrader_data_preparer import (
+    build_scenario_from_config,
+    prepare_mock_session_data,
+)
 from python.framework.batch.mount_preparer import MountPreparer
 from python.framework.batch.requirements_collector import RequirementsCollector
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
-from python.framework.utils.time_utils import parse_datetime
+
+# A BTCUSD mock profile with a SIGNAL source and a worker that needs bars (RSI on M5).
+_PROFILE = 'configs/autotrader_profiles/mock/sentiment_mock_test.json'
 
 
-def _scenario(name: str) -> SingleScenario:
-    """A BTCUSD scenario with warmup lead inside the crypto_sentiment_mock archive window."""
-    return SingleScenario(
-        name=name,
-        scenario_index=0,
-        symbol='BTCUSD',
-        data_broker_type='kraken_spot',
-        data_sentiment_type='crypto_sentiment_mock',
-        start_date=parse_datetime('2026-04-27T10:00:00+00:00'),
-        max_ticks=5000,
-        strategy_config={
-            'decision_logic_type': 'CORE/hybrid_sentiment_reference',
-            'worker_instances': {
-                'rsi_fast': 'CORE/rsi',
-                'sentiment': 'CORE/llm_sentiment',
-            },
-            'workers': {
-                'rsi_fast': {'periods': {'M5': 14}},
-                'sentiment': {'max_staleness_minutes': 30},
-            },
-            'decision_logic_config': {'lot_size': 0.001},
-        },
-        trade_simulator_config={'balances': {'USD': 10000.0, 'BTC': 0.0}},
-    )
-
-
-def _prepare(scenario: SingleScenario, include_warmup_bars: bool):
+def _prepare_as_backtest(scenario: SingleScenario):
+    """The package a backtest of this scenario runs on."""
     logger = get_global_logger()
     preparer = MountPreparer(
         logger=logger,
         app_config=AppConfigManager(),
         requirements_collector=RequirementsCollector(logger=logger),
     )
-    mount = preparer.prepare_mount([scenario], include_warmup_bars=include_warmup_bars)
+    mount = preparer.prepare_mount([scenario])
     return mount.scenario_packages[scenario.scenario_index]
 
 
-def test_at_mock_and_sim_share_the_same_ticks():
-    """The AT-mock (include_warmup_bars=False) and the sim (True) resolve identical ticks + signal sources."""
-    pkg_sim = _prepare(_scenario('sim'), include_warmup_bars=True)
-    pkg_at = _prepare(_scenario('at'), include_warmup_bars=False)
-
-    assert pkg_at.ticks == pkg_sim.ticks, (
-        'mock-session ticks diverge from the sim for the same scenario window'
-    )
-    assert pkg_at.signal_series.keys() == pkg_sim.signal_series.keys(), (
-        'mock-session signal sources diverge from the sim'
-    )
+@pytest.fixture(scope='module')
+def prepared():
+    """The mock session's prepared data — built once, because a mount load takes seconds."""
+    return prepare_mock_session_data(load_autotrader_config(_PROFILE), get_global_logger())
 
 
-def test_at_mock_skips_warmup_bars_the_sim_loads():
-    """The flag is the only difference: the AT skips bar preparation, the sim loads warmup bars."""
-    pkg_sim = _prepare(_scenario('sim2'), include_warmup_bars=True)
-    pkg_at = _prepare(_scenario('at2'), include_warmup_bars=False)
+def test_mock_session_prepares_exactly_the_backtests_data(prepared):
+    """Ticks, signal sources AND warmup bars are identical to a backtest of the same window."""
+    config = load_autotrader_config(_PROFILE)
+    backtest = _prepare_as_backtest(build_scenario_from_config(config))
+    mock = prepared.package
 
-    assert pkg_at.bars == {}, 'mock-session package must carry no warmup bars'
-    assert pkg_sim.bars, 'sim package must carry warmup bars'
+    assert mock.ticks == backtest.ticks, 'mock-session ticks diverge from the backtest'
+    assert mock.signal_series.keys() == backtest.signal_series.keys(), (
+        'mock-session signal sources diverge from the backtest')
+    assert mock.bars, 'the profile needs warmup bars, and the mock package carries none'
+    assert mock.bars == backtest.bars, 'mock-session warmup bars diverge from the backtest'
+
+
+def test_mock_session_warms_up_on_bars_before_its_window(prepared):
+    """No warmup bar may lie at or after the replayed window's start — that would be look-ahead."""
+    start = prepared.scenario.start_date
+    assert prepared.package.bars, 'no warmup bars prepared — this test would check nothing'
+
+    for (symbol, timeframe, _), bars in prepared.package.bars.items():
+        assert bars, f'{symbol} {timeframe}: no warmup bars'
+        late = [bar['timestamp'] for bar in bars if bar['timestamp'] >= start]
+        assert not late, (
+            f'{symbol} {timeframe}: {len(late)} warmup bar(s) at or after the window start '
+            f'{start.isoformat()}, first {late[0]}')
+
+
+def test_mock_session_records_the_price_basis_of_its_warmup_bars(prepared):
+    """The consumption record measures the bar files the warmup read, as a backtest's does."""
+    assert prepared.scenario.price_bases, (
+        'the mock session read warmup bar files and recorded no price basis for them')

@@ -120,12 +120,12 @@ held it. The key answers *which bot am I*, never *what does it currently look li
 **The structural answer is `bot_id`, which every profile DECLARES** — mandatory since 2026-09-24,
 so a profile without one is refused at boot. Composing an identity from what a profile is
 CALLED means the identity moves when the name does — and a display name is exactly the thing an
-operator improves: renaming `dot_live` to `dotusd_live_v2` would point a restarted bot at a new,
+operator improves: renaming `dotusd_production` to `dotusd_production_v2` would point a restarted bot at a new,
 empty document while the venue still held its position. A declared id survives every rename of
 everything else.
 
 ```json
-{ "profile_name": "dotusd_live_v2", "bot_id": "dotlive01", "symbol": "DOTUSD" }
+{ "profile_name": "dotusd_production_v2", "bot_id": "dotlive01", "symbol": "DOTUSD" }
                                               ↑ the key stays dotlive01_dotusd through any rename
 ```
 

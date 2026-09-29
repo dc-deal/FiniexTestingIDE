@@ -157,13 +157,13 @@ Workers need warmup bars before producing meaningful signals. Without warmup, a 
 
 ### Two Paths
 
-| Aspect | Mock session (parquet) | Live-adapter session (API) |
+| Aspect | Mock session (archive) | Live-adapter session (API) |
 |--------|----------------|------------|
-| **Source** | Pre-rendered bar parquet via `BarsIndexManager` | Kraken `GET /0/public/OHLC` |
-| **Reference time** | First tick timestamp from parquet file | `datetime.now(UTC)` |
+| **Source** | The bars the shared mount prepared — the same bars a backtest of the window warms up on | Kraken `GET /0/public/OHLC` |
+| **Reference time** | The replayed window's `start_date`: the last N bars BEFORE it | `datetime.now(UTC)` |
 | **Network** | No | Yes (public, no auth) |
 | **Extensibility** | Static data | ABC pattern → MT5 (#209) |
-| **On a short read** | warn and continue | **refuse to start** (#473) |
+| **On a short read** | the backtest's own warmup-quality check first, then warn and continue | **refuse to start** (#473) |
 
 ### Why a live-adapter session refuses rather than warns (#473)
 
@@ -185,7 +185,9 @@ reduced run, it is a different one.
 
 The mock path keeps warning: it reads a local archive, a short window is a data question
 the operator can see, and refusing would block replay runs that deliberately start near
-the edge of their data.
+the edge of their data. Before that warning, the mount has already judged the warmup the way
+it judges a backtest's (`warmup_quality_mode`), so a window a backtest would refuse is refused
+here too.
 
 ### Flow
 
@@ -196,11 +198,12 @@ Phase 9 in setup_pipeline():
      → warmup_by_timeframe = {"M5": 20, "M30": 20}
 
   2. Reference timestamp:
-     Mock:         first tick from parquet → 2026-01-24T14:19:46Z
+     Mock:         the replayed window's start_date → 2026-01-24T14:19:46Z
      Live adapter: now()
 
   3. Load bars:
-     Mock:         BarsIndexManager → parquet → filter before ref_ts → tail(count)
+     Mock:         the package the shared mount prepared (SharedDataPreparator.prepare_bars:
+                   bars before start_date → tail(count)) → deserialize_bars_batch → Bar objects
      Live adapter: KrakenOhlcBarFetcher → GET /0/public/OHLC → Bar objects
 
   4. Validate: mock warns if fewer bars than required — LIVE ADAPTER REFUSES (#473)
@@ -209,11 +212,13 @@ Phase 9 in setup_pipeline():
      → Workers have full history from tick 1
 ```
 
-### Direct Injection
+### Injection
 
-AutoTrader is single-process. Backtesting uses `inject_warmup_bars()` with bar dicts for subprocess
-transport (pickle, CoW). AutoTrader bypasses this — creates `Bar` objects directly and calls
-`bar_renderer.initialize_historical_bars()`. No serialization round-trip.
+AutoTrader is single-process, so it hands `Bar` objects to `bar_renderer.initialize_historical_bars()`
+directly. A mock session gets them from the mount's bar dicts through `deserialize_bars_batch` —
+the converter a backtest's subprocess uses — so a mock session and a backtest of the same window
+start from bar for bar the same history; a live-adapter session builds them from the venue's
+answer.
 
 ### Kraken OHLC API
 
@@ -239,4 +244,4 @@ fetcher for warmup.
 
 A mock session is the opposite by design: it replays the index-resolved `scenario_settings` window
 through the shared `MountPreparer` — the same index and validation stack a backtest uses — and
-reads its warmup bars via `BarsIndexManager`.
+takes its warmup bars from that same preparation rather than reading a bar file of its own.
