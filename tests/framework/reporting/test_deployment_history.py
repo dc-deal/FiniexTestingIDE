@@ -128,6 +128,20 @@ class TestMultiCurrency:
         assert {s.currency for s in summaries} == {'USD', 'BTC'}
         assert all(s.sessions == 1 for s in summaries)
 
+    def test_each_currency_is_its_own_series(self):
+        # The first session of the second currency has no predecessor in ITS currency: no gap
+        # and no change mark may be measured against the other currency's last session.
+        histories = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', currency='BTC'),
+            row('r2', '2026-09-02T06:00:00+00:00', currency='BTC', param_hash='changed'),
+            row('r1', '2026-09-01T06:00:00+00:00', currency='USD'),
+        ])
+        usd = [s for s in histories[DEPLOYMENT] if s.currency == 'USD']
+        btc = [s for s in histories[DEPLOYMENT] if s.currency == 'BTC']
+
+        assert (usd[0].index, usd[0].gap_hours, usd[0].strategy_changed) == (1, None, False)
+        assert [s.index for s in btc] == [1, 2]
+
 
 class TestWhatChangedBetweenSessions:
     """The two fingerprints, and why there are two of them."""

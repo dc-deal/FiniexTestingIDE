@@ -82,6 +82,14 @@ class TestEveryColumnClassIsFollowed:
         assert run.net_pnl == -20.0, 'a flow still adds up across accounts'
         assert per_unit == {'a': 9_960.0, 'b': 10_020.0}
 
+    def test_counts_a_period_never_carried_stay_unmeasured(self):
+        # A booking-period row carries no order counts. Folded, the absence must stay an
+        # absence: a default of 0 made every run that booked periods read "0 orders sent".
+        rows = [_period(1, 'd1', net_pnl=1.0), _period(2, 'd2', net_pnl=2.0)]
+        folded = aggregate_ledger_rows(rows)[0]
+        assert (folded.orders_sent, folded.orders_executed, folded.sl_tp_triggered) == (
+            None, None, None)
+
     def test_a_cumulative_extremum_takes_the_largest_magnitude(self):
         rows = [_period(1, 'd1', account_max_drawdown=-10.0),
                 _period(2, 'd2', account_max_drawdown=-180.0)]

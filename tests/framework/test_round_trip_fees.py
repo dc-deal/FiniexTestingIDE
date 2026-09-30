@@ -481,3 +481,86 @@ class TestTheDeclaredRateIsTheRateCharged:
 
         assert executor._fee_model() == FeeType.MAKER_TAKER
 
+
+
+class TestTheRunCountsWhatItClosed:
+    """
+    The stats count the trades a run CLOSED the way every other surface does: a trade that
+    realised nothing is neither a winner nor a loser, and `total_fees` is the fees of the
+    closed records — what the run charged, open positions included, is `fees_charged`.
+    """
+
+    @staticmethod
+    def _open_at(portfolio: PortfolioManager, position_id: str, mark: float,
+                 entry_fee_cost: float) -> Position:
+        position = Position(
+            position_id=position_id, symbol=_PF_SYMBOL, direction=OrderDirection.LONG,
+            lots=_PF_LOTS, original_lots=_PF_LOTS, entry_price=_PF_ENTRY,
+            entry_time=datetime(2026, 9, 8, 11, 0, tzinfo=timezone.utc),
+            entry_tick_value=1.0, digits=5, contract_size=100000)
+        if entry_fee_cost:
+            position.add_fee(_fee(entry_fee_cost))
+        portfolio.open_positions[position_id] = position
+        portfolio.mark_dirty(TickData(
+            timestamp=datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc),
+            symbol=_PF_SYMBOL, bid=mark, ask=mark))
+        portfolio._ensure_positions_updated()
+        return position
+
+    def test_a_trade_that_realised_nothing_is_neither_a_winner_nor_a_loser(self):
+        portfolio = _portfolio()
+        self._open_at(portfolio, 'p1', mark=_PF_ENTRY, entry_fee_cost=0.0)
+
+        portfolio.close_position_portfolio(
+            position_id='p1', exit_price=_PF_ENTRY, exit_tick_value=1.0, exit_tick_index=10,
+            exit_fee=None, close_reason=CloseReason.MANUAL)
+
+        stats = portfolio.get_portfolio_statistics()
+        assert (stats.total_trades, stats.winning_trades, stats.losing_trades) == (1, 0, 0)
+
+    def test_total_fees_are_the_closed_trades_and_leave_the_open_position_out(self):
+        portfolio = _portfolio()
+        self._open_at(portfolio, 'p1', mark=_PF_EXIT, entry_fee_cost=2.0)
+        self._open_at(portfolio, 'p2', mark=_PF_EXIT, entry_fee_cost=4.0)
+
+        portfolio.close_position_portfolio(
+            position_id='p1', exit_price=_PF_EXIT, exit_tick_value=1.0, exit_tick_index=10,
+            exit_fee=_fee(3.0), close_reason=CloseReason.MANUAL)
+
+        stats = portfolio.get_portfolio_statistics()
+        closed = sum(record.total_fees for record in portfolio.get_trade_history())
+        assert stats.total_fees == pytest.approx(closed) == pytest.approx(5.0)
+        assert 'p2' in portfolio.open_positions, "its 4.0 entry fee is not a closed trade's"
+
+
+class TestTheExcursionIsTrackedBetweenEntryAndClose:
+    """
+    MAE / MFE are measured where a position is marked. At spot the account value is read from
+    the balances and never marked the position, so a spot trade's excursion was its entry and
+    its close alone: a winner that dipped first read MAE 0 (measured: 31 of 40 spot trades).
+    The equity sample the loops take per tick now marks an open position whenever a quote takes
+    it past an extreme — both account models must report the dip.
+    """
+
+    @pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
+    def test_a_winner_that_dipped_first_reports_the_dip(self, spot_mode):
+        portfolio = _portfolio(spot_mode=spot_mode)
+        if spot_mode:
+            portfolio._balances['EUR'] = _PF_LOTS
+        position = Position(
+            position_id='p1', symbol=_PF_SYMBOL, direction=OrderDirection.LONG, lots=_PF_LOTS,
+            original_lots=_PF_LOTS, entry_price=_PF_ENTRY,
+            entry_time=datetime(2026, 9, 8, 11, 0, tzinfo=timezone.utc),
+            entry_tick_value=1.0, digits=5, contract_size=100000)
+        portfolio.open_positions['p1'] = position
+
+        # entry 1.10 → dips to 1.09 → recovers to 1.11, one equity sample per tick as the loops take it
+        for minute, price in enumerate((1.10, 1.095, 1.09, 1.10, 1.105, 1.11)):
+            portfolio.mark_dirty(TickData(
+                timestamp=datetime(2026, 9, 8, 11, minute, tzinfo=timezone.utc),
+                symbol=_PF_SYMBOL, bid=price, ask=price))
+            portfolio.sample_equity()
+
+        assert position.mae_price == pytest.approx(1.09)
+        assert position.mae_pnl < 0.0
+        assert position.mfe_price == pytest.approx(1.11)

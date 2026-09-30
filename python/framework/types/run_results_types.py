@@ -251,8 +251,9 @@ class Reduction(Enum):
     # whichever account happened to close last (measured 2026-09-29: a sweep row carried one
     # scenario's equity out of eight).
     LAST = 'last'
-    # A stock read at the OPENING instant, of one account: the earliest row wins — the account
-    # a unit began its window with. Undefined over several accounts, like LAST.
+    # A stock read at the OPENING instant, of one account: the earliest ROW's value — the account
+    # a unit began its window with. Unlike LAST it does not skip an unmeasured row: when the
+    # earliest did not record it, the opening is unknown. Undefined over several accounts.
     FIRST = 'first'
     IDENTITY = 'identity'   # must agree across the rows, or they were never comparable
     UNION = 'union'         # a comma-joined set: combine by union, never by concatenation

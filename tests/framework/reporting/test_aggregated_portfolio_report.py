@@ -36,6 +36,13 @@ def _pf(name, currency='USD', symbol='EURUSD', spot=False, trades=2, win=1, lose
         profit=100.0, loss=40.0, max_dd=12.0, max_eq=1000.0, max_dd_pct=0.0, fees=5.0,
         spread=3.0, maker=0.0, taker=0.0, initial=1000.0, current=1060.0, long=1, short=1,
         balances=None, initial_balances=None, last_price=0.0) -> PortfolioUnitRow:
+    # A spot row is stamped the way the portfolio builder stamps it: the currency split from the
+    # broker config and the unit's own value estimate — never read back out of the symbol.
+    base, quote = (symbol[:-3], symbol[-3:]) if spot else ('', '')
+    balances, initial_balances = balances or {}, initial_balances or {}
+    est = (lambda held: held.get(quote, 0.0) + held.get(base, 0.0) * last_price)
+    spot_current = est(balances) if spot and last_price > 0 else 0.0
+    spot_initial = est(initial_balances) if spot and last_price > 0 else 0.0
     return PortfolioUnitRow(
         name=name, symbol=symbol, currency=currency, total_trades=trades,
         winning_trades=win, losing_trades=lose, win_rate=(win / trades if trades else 0.0),
@@ -44,8 +51,9 @@ def _pf(name, currency='USD', symbol='EURUSD', spot=False, trades=2, win=1, lose
         total_long_trades=long, total_short_trades=short, max_equity=max_eq,
         account_max_dd_pct=max_dd_pct,
         current_balance=current, initial_balance=initial, total_spread_cost=spread,
-        maker_fee=maker, taker_fee=taker,
-        balances=balances or {}, initial_balances=initial_balances or {}, last_price=last_price)
+        maker_fee=maker, taker_fee=taker, base_currency=base, quote_currency=quote,
+        spot_est_current=spot_current, spot_est_initial=spot_initial,
+        balances=balances, initial_balances=initial_balances, last_price=last_price)
 
 
 def _ex(name, sent=2, executed=2, rejected=0, sl_tp=0, symbol='EURUSD') -> ExecutionStatsRow:
@@ -111,6 +119,20 @@ class TestBuild:
         assert s.base_currency == 'BTC' and s.quote_currency == 'USD'
         assert s.has_base_holdings and s.est_current == 500.0 + 2.0 * 100.0  # 700
         assert c.spot_total_est_current == 700.0 and c.spot_has_base_holdings
+
+    def test_the_spot_split_is_the_stamped_one_not_the_symbol_string(self):
+        # `BTCUSDT` split three from the end reads base BTCU, quote SDT — the stamped split
+        # from the broker config is the only one (#265).
+        row = _pf('s1', symbol='BTCUSD', spot=True, last_price=100.0,
+                  balances={'USDT': 500.0, 'BTC': 2.0}, initial_balances={'USDT': 1000.0})
+        row = row.model_copy(update={'symbol': 'BTCUSDT', 'base_currency': 'BTC',
+                                     'quote_currency': 'USDT', 'spot_est_current': 700.0,
+                                     'spot_est_initial': 1000.0})
+
+        s = _build([row]).currencies[0].combined.spot_scenarios[0]
+
+        assert (s.base_currency, s.quote_currency) == ('BTC', 'USDT')
+        assert (s.quote_balance, s.base_balance, s.est_current) == (500.0, 2.0, 700.0)
 
     def test_mixed_currency_split(self):
         rep = _build([
@@ -234,6 +256,14 @@ class TestSeveralAccountsAddUpOnlyAsATotal:
 
         assert several.recovery_factor is None
         assert one.recovery_factor == pytest.approx(one.balance_pnl / 10.0)
+
+    def test_a_group_where_no_account_declined_still_names_an_account_and_its_peak(self):
+        # Every drawdown 0.0 is a tie: the first account wins it, as in the ledger fold. It used
+        # to answer max_equity 0.0 and no account while the unit rows held their real peaks.
+        headline = _build([_pf('a', max_dd=0.0, max_eq=10_000.0),
+                           _pf('b', max_dd=0.0, max_eq=12_000.0)]).currencies[0].combined.headline
+
+        assert (headline.max_equity, headline.account_max_drawdown_unit) == (10_000.0, 'a')
 
     def test_a_group_that_never_declined_reports_no_percentage(self):
         row = _build([_pf('a', max_dd=0.0, max_dd_pct=0.0)]).currencies[0].combined

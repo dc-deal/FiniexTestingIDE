@@ -24,8 +24,8 @@ Two rules the suite exists to defend:
 
 | Group | Files | What they pin |
 |---|---|---|
-| **Trade & order** | `test_trade_history_report` · `test_trade_history_render` · `test_order_history_report` · `test_trade_excursion` · `test_trade_projection` | the trade record end to end: MAE/MFE in the instrument's own unit, R/expectancy, per-execution rows; a shared fill counted per UNIT, so two scenarios minting the same synthetic id do not share it, and the count holds on a filtered list |
-| **Portfolio & execution** | `test_portfolio_report` · `test_aggregated_portfolio_report` · `test_execution_stats_report` · `test_execution_header_summary` · `test_pending_orders_report` | balances and currency aggregation; execution counters; the header a reader sees first; the figures derived in the builder rather than the renderer (`max_dd_pct`, the spot estimate over the stamped currency split, `execution_rate_pct`); several scenarios are several ACCOUNTS — their closing equities add up only as `total_final_equity`, `final_equity` is undefined over them, the peak beside the drawdown is that account's and the highest peak is named apart, and the recovery factor is undefined over several |
+| **Trade & order** | `test_trade_history_report` · `test_trade_history_render` · `test_order_history_report` · `test_trade_excursion` · `test_trade_projection` | the trade record end to end: MAE/MFE in the instrument's own unit, R/expectancy, per-execution rows; a shared fill counted per UNIT, so two scenarios minting the same synthetic id do not share it, and the count holds on a filtered list; a streak is the longest of ONE account, never an interleaving of several |
+| **Portfolio & execution** | `test_portfolio_report` · `test_aggregated_portfolio_report` · `test_execution_stats_report` · `test_execution_header_summary` · `test_pending_orders_report` | balances and currency aggregation; execution counters; the header a reader sees first; the figures derived in the builder rather than the renderer (`max_dd_pct`, the spot estimate over the stamped currency split, `execution_rate_pct`); several scenarios are several ACCOUNTS — their closing equities add up only as `total_final_equity`, `final_equity` is undefined over them, the peak beside the drawdown is that account's and the highest peak is named apart, and the recovery factor is undefined over several; with no account declined the trio names the first account and its peak, and a spot row takes its currency split and value estimate from the unit, never from the symbol string |
 | **Run-level** | `test_run_summary` · `test_run_summary_render` · `test_run_meta_report` · `test_run_console_renderer` · `test_shared_report_coordinator` | the cross-section KPI model and the one coordinator both pipelines share; an undefined `profit_factor` survives the JSON round trip as `None`; the unit roster reaches the summary and holds `declared = disabled + absent + counted` — an AutoTrader session that aborted at startup is declared and ABSENT, one that ran is counted; the disabled count comes from the LOADER, never from a batch that cannot contain a disabled scenario; the run's market time — its units' tick timespans covered together (one window shared by two scenarios counts once) beside their sum, measured to the last tick PROCESSED |
 | **Signal** | `test_signal_report` | see below |
 | **Feed stability** | `test_feed_stability_report` | disturbance episodes across both staleness domains (#451) — every boundary derived from observed state, a stress config contributing only its label |
@@ -219,8 +219,9 @@ table nobody reads.
 
 `TestEachUnitIsFoldedIntoItsTotal` pins `unit_totals`: one per unit, folded by the ledger's own
 reductions — a rate rebuilt from its components (1 winner in 4 trades is 25 %, not the mean of
-100 % and 0 %), the opening equity the first period's — and a report total that SUMS the units'
-closing equities rather than taking the last row's.
+100 % and 0 %), the opening equity the first period's — unknown when that period recorded none,
+never a later period's — and a report total that SUMS the units' closing equities rather than
+taking the last row's.
 
 ## `test_signal_report.py` — two planes, and what each may claim
 
@@ -294,6 +295,7 @@ compared byte for byte across the move.
 | `test_a_one_off_row_joins_nothing` | not even a placeholder group — inventing one asserts a continuity nobody declared |
 | `test_sessions_are_ordered_by_start_not_by_arrival` | the ledger is a set of fragments; nothing about a read returns them in order |
 | `test_a_multi_currency_session_appears_once` | one run writes one row PER CURRENCY — counting rows would report a two-currency bot as twice-restarted |
+| `test_each_currency_is_its_own_series` | the first session of the second currency has no predecessor in ITS currency: index, gap and change marks restart per currency instead of measuring against the other one |
 | `test_a_changed_operation_is_marked_separately` | a raised stop level is not a different strategy; that separation is why there are two hashes |
 | `test_an_unreadable_timestamp_yields_no_gap_rather_than_a_wrong_one` | an unmeasurable duration reported as unmeasured costs a blank; reported as a figure it costs an investigation |
 | `test_the_rows_carry_the_running_figure` | the drawdown column is CUMULATIVE — `max()` is the deployment's reduction and a sum double-counts |

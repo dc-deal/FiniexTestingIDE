@@ -108,6 +108,7 @@ def _to_currency(
         account_max_dd_pct=agg.account_max_dd_pct,
         account_max_drawdown_unit=agg.account_max_drawdown_unit,
         total_fees=agg.total_fees,
+        fees_charged=agg.fees_charged,
         gross_profit=agg.total_profit,
         gross_loss=agg.total_loss,
         unrealized_pnl=agg.unrealized_pnl,

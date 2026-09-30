@@ -16,7 +16,7 @@ from fastapi import APIRouter
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.api.api_error_catalog import SWEEP_NOT_FOUND, api_error
-from python.framework.optimization.optimization_analysis import rank, summarize_sweeps
+from python.framework.optimization.optimization_analysis import rank_per_currency, summarize_sweeps
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import SweepDetailResponse, SweepListResponse
 
@@ -51,7 +51,7 @@ def get_sweep(sweep_id: str) -> SweepDetailResponse:
         sweep_id: The sweep's id
 
     Returns:
-        The ranked combinations, best first
+        The ranked combinations, best first within each account currency
     """
     rows = _ledger().read_rows(sweep_id=sweep_id)
     if not rows:
@@ -62,7 +62,7 @@ def get_sweep(sweep_id: str) -> SweepDetailResponse:
     head = rows[0]
     objective = head.sweep_objective or 'expectancy'
     maximize = head.sweep_maximize if head.sweep_maximize is not None else True
-    combinations = rank(rows, objective, maximize=maximize)
+    combinations = rank_per_currency(rows, objective, maximize=maximize)
     return SweepDetailResponse(
         sweep_id=sweep_id, objective=objective, maximize=maximize,
         combinations=combinations, count=len(combinations))

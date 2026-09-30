@@ -26,6 +26,44 @@ fails to parse.
 The server serves the current version's lines and this log keeps every version. A test holds the
 newest heading here to `API_CONTRACT_VERSION`, so step 3 cannot be skipped unnoticed.
 
+## Version 18 — 2026-09-29 (viewer#21, #557)
+
+The numbers the aggregate inventory for #557 found wrong, each corrected before that refactor
+starts — so the refactor can be held to changing no number.
+
+- `GET /api/v1/reports/runs/{run_id}/portfolio` and `…/run-summary`: `total_fees` is the fees of
+  the CLOSED trades — the population `trade-history`, `booking-periods` and the ledger sum. What the
+  run charged, open positions included, is the new `fees_charged`. One unit read 169.30 in one file
+  and 113.20 in the next; it now reads `total_fees 113.20 · fees_charged 169.30` in both.
+- `portfolio`, `run-summary` and the ledger rows: a trade that realised exactly nothing is neither
+  a winner nor a loser. `losing_trades` counted it; `win_rate` is unchanged, and `avg_loss` no
+  longer divides by a trade that lost nothing. Trades +10, 0, −5 are 1 winner and 1 loser.
+- `portfolio.aggregates` and `run-summary`: when no account declined, the drawdown trio names the
+  first account and its peak. It answered `max_equity 0.0` and no unit.
+- `run-summary` and the `trade-history` analytics: a streak is the longest of ONE account. Over
+  several scenarios their trades were interleaved by time, so A's win, B's win and A's win read as a
+  run of three that no account had.
+- `GET /api/v1/reports/runs/{run_id}/booking-periods`: `unit_totals[].opening_equity` is `null`
+  when the unit's first period did not record an opening. It showed the second period's.
+- `GET /api/v1/sweeps/{sweep_id}`: combinations are ranked within each account currency,
+  currencies in order — `net_pnl` in EUR and in USD is not one scale. `orders_sent`,
+  `orders_executed`, `orders_rejected` and `sl_tp_triggered` are `null` on a row folded from booking
+  periods, which carry no order counts; they read `0`.
+- `GET /api/v1/deployments/{deployment_id}`: each currency is its own series — `index`, `gap_hours`
+  and the change marks restart per currency instead of measuring against the other currency's last
+  session.
+- `GET /api/v1/reports/runs/{run_id}/aggregated-portfolio`: a spot row takes its base / quote split
+  and its value estimate from the unit, which stamps them from the broker config. The symbol string
+  was split three characters from the end, and the initial-value estimate dropped an initial base
+  holding whenever the account ended without one.
+- `GET /api/v1/reports/runs/{run_id}/trade-history`: a spot trade's excursion (`mae_*`, `mfe_*`) is
+  tracked between its entry and its close. It was measured at those two instants alone, so a winner
+  that dipped first read `mae_pnl 0` — 31 of 40 stored spot trades. Runs recorded before this
+  contract keep their values: the ticks would have to be replayed.
+
+The stored runs were corrected wherever their own records answer it exactly — every unit's trade
+rows were complete, and every rebuilt aggregate reproduced its stored net P&L.
+
 ## Version 17 — 2026-09-29 (viewer#21)
 
 Every figure says which ACCOUNT it is about. A backtest of several scenarios is several independent

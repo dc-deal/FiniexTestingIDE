@@ -208,6 +208,7 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         drawdown_restarts=stats.drawdown_restarts,
         drawdown_started_at=stats.drawdown_started_at,
         total_fees=stats.total_fees,
+        fees_charged=stats.fees_charged,
         data_broker_type=unit.data_broker_type,
         data_sentiment_type=unit.data_sentiment_type,
         broker_name=stats.broker_name,

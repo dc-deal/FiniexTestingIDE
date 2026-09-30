@@ -166,7 +166,7 @@ Validates profit/loss calculations through internal consistency checks using Tra
 | `test_exit_after_entry` | Exit tick index must be greater than entry tick index |
 | `test_positive_lots` | Lot size must be positive for all trades |
 | `test_spread_cost_positive` | Spread cost must be non-negative |
-| `test_winning_losing_count` | Winners (net_pnl > 0) and losers (net_pnl ≤ 0) match portfolio counts |
+| `test_winning_losing_count` | Winners (net_pnl > 0) and losers (net_pnl < 0) match portfolio counts — a trade that realised exactly nothing is neither |
 | `test_direction_counts` | LONG and SHORT trade counts match portfolio totals |
 | `test_valid_prices` | Entry and exit prices must be positive |
 | `test_valid_tick_value` | Tick value must be positive |

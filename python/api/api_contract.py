@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 17
+API_CONTRACT_VERSION = 18
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -31,26 +31,26 @@ CONTRACT_HEADER = 'X-Api-Contract'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "reports/runs/{run_id}/run-summary and …/portfolio: `final_equity` is ONE account's closing "
-    'equity and is null when the currency spans several accounts — a backtest of several '
-    'scenarios, whose sum no account ever held. The sum is `total_final_equity`, beside '
-    '`total_initial_balance` and `unit_count`; `account_max_drawdown_unit` names the account the '
-    'drawdown, `max_equity` and `account_max_dd_pct` describe',
-    'reports/runs/{run_id}/aggregated-portfolio: `max_equity` / `max_equity_scenario` are '
-    '`highest_equity` / `highest_equity_scenario` — the highest peak of ANY account, not the peak '
-    'beside the drawdown (that is `headline.max_equity`); `recovery_factor` is null over several '
-    'accounts',
-    'reports/runs/{run_id}/booking-periods: every period carries `opening_equity` and its costs '
-    "split (`commission_cost`, `swap_cost`, `spread_cost`); `unit_totals` folds each unit's "
-    'periods into its total, and `keys` replaces `key`; `final_equity` is `total_final_equity`, '
-    "the sum over the units — it was the last row's own figure. The rows of "
-    'deployments/{deployment_id}/booking-periods carry the same period fields',
-    'reports/runs/{run_id}/trade-history: every execution carries `shared_by` — how many trade '
-    "rows of its unit carry that fill; a partial close's `commission_cost` includes its exit "
-    'fee, so `commission_cost + swap_cost == total_fees` on every row',
-    'reports/runs and directory: every run carries `tick_timespan_seconds` — the market time its '
-    'units processed, covered together so a shared stretch counts once; run-summary adds '
-    '`tick_timespan_total_seconds`, the sum',
-    'sweeps/{sweep_id}: `final_equity`, `unrealized_pnl` and `open_position_count` are null on a '
-    "row that folds several accounts — the latest reading of one of them is not the run's",
+    'reports/runs/{run_id}/portfolio and …/run-summary: `total_fees` is the fees of the CLOSED '
+    'trades — the population trade-history, booking-periods and the ledger sum; what the run '
+    'charged, open positions included, is `fees_charged`. They differ by the fees of what is '
+    'still open',
+    'portfolio, run-summary and the ledger rows: a trade that realised exactly nothing is neither '
+    'a winner nor a loser — `losing_trades` no longer counts it (win_rate is unchanged, avg_loss '
+    'no longer divides by it)',
+    'portfolio.aggregates and run-summary: when no account declined, the drawdown trio names the '
+    'first account and its peak instead of max_equity 0.0 and no unit',
+    'run-summary and trade-history analytics: a streak is the longest of ONE account; over '
+    'several scenarios their trades are no longer interleaved into one sequence',
+    "booking-periods: `unit_totals[].opening_equity` is null when the unit's first period did "
+    "not record one — it no longer shows a later period's",
+    'sweeps/{sweep_id}: combinations are ranked within each account currency, currencies in '
+    'order; order counts (`orders_sent` and siblings) are null on a row folded from booking '
+    'periods, which carry none — they read 0',
+    'deployments/{deployment_id}: each currency is its own series — `index`, the gap and the '
+    'change marks restart per currency',
+    'aggregated-portfolio: a spot row takes its base / quote split and its value estimate from '
+    'the unit — the estimate of the initial value no longer drops an initial base holding',
+    "trade-history: a spot trade's `mae_*` / `mfe_*` are tracked between entry and close from "
+    'this contract on; runs recorded before it keep the values they were written with',
 ]

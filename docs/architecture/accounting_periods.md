@@ -128,7 +128,8 @@ whose account movement disagree, and conclude that something is broken.
 - **Each unit's total.** The booking-periods report folds each unit's periods into one row by the
   same declared reductions the ledger uses: rates are rebuilt from their summed components, the
   drawdown comes with the period that owns it, and a streak is not foldable at all. A unit is one
-  account, so its closing equity is defined there.
+  account, so its closing equity is defined there — and its opening is its FIRST period's, or
+  unknown when that period did not record one; a later period's opening is a different instant.
 
 **Over several units there is no single equity.** A backtest's scenarios each trade their own
 balance. Their closing equities add up to a TOTAL, which the report serves as one

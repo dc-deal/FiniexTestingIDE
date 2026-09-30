@@ -131,7 +131,7 @@ class TestDeriveAndPersist:
             total_loss=0.0, account_max_drawdown=0.0, max_equity=1000.0,
             account_max_drawdown_pct=0.0, win_rate=0.0, profit_factor=None,
             total_spread_cost=0.0, total_commission=0.0, total_swap=0.0, maker_fee=0.0,
-            taker_fee=0.0, total_fees=0.0, currency='USD', broker_name='Kraken',
+            taker_fee=0.0, total_fees=0.0, fees_charged=0.0, currency='USD', broker_name='Kraken',
             current_conversion_rate=1.0, current_balance=1000.0, initial_balance=1000.0))
 
         roster = unit_roster_from_session(result, 'my_profile')

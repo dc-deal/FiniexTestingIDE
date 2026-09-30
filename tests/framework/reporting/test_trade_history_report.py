@@ -273,3 +273,22 @@ class TestASharedFillIsCounted:
 
         assert len(report.trades) == 1
         assert report.trades[0].entry_executions[0].shared_by == 2
+
+
+class TestAStreakBelongsToOneAccount:
+    """
+    A backtest's scenarios are separate accounts. Interleaving their trades by exit time would
+    string A's win, B's win and A's win into a run of three that no account had.
+    """
+
+    def test_the_longest_streak_is_one_unit_s(self):
+        a = [_trade('a1', net_pnl=5.0, entry_offset_min=0), _trade('a2', net_pnl=5.0, entry_offset_min=20),
+             _trade('a3', net_pnl=-1.0, entry_offset_min=40)]
+        b = [_trade('b1', net_pnl=5.0, entry_offset_min=10), _trade('b2', net_pnl=-1.0, entry_offset_min=30)]
+        units = [RunUnit(name='A', symbol='EURUSD', trade_history=a),
+                 RunUnit(name='B', symbol='EURUSD', trade_history=b)]
+
+        analytics = build_trade_history_report(_RUN_ID, units).analytics[0]
+
+        # time order across both would read win, win, win (a1, b1, a2): 3
+        assert analytics.max_consecutive_wins == 2

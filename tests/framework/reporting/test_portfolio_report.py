@@ -58,7 +58,7 @@ def _stats(
         account_max_drawdown=account_max_drawdown, max_equity=1100.0, account_max_drawdown_pct=0.0,
         win_rate=win_rate, profit_factor=profit_factor,
         total_spread_cost=2.0, total_commission=2.0, total_swap=1.0,
-        maker_fee=0.7, taker_fee=0.9, total_fees=total_fees,
+        maker_fee=0.7, taker_fee=0.9, total_fees=total_fees, fees_charged=total_fees,
         currency=currency, broker_name='kraken', current_conversion_rate=1.0,
         current_balance=1060.0, initial_balance=1000.0, symbol='BTCUSD',
     )

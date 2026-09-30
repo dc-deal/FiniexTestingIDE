@@ -190,6 +190,25 @@ class Position:
             self.mfe_pnl = gross_pnl
             self.mfe_price = self.current_price
 
+    def extends_excursion(self, bid: float, ask: float) -> bool:
+        """
+        Whether a quote takes the price this position would close at past one of its extremes.
+
+        The cheap test in front of a mark: MAE / MFE are measured on the mark, so a quote that
+        stays inside the prices already seen cannot move them. Exact where the tick value is
+        constant — a quote in the account currency, which every spot pair traded here is.
+
+        Args:
+            bid: The symbol's current bid
+            ask: The symbol's current ask
+
+        Returns:
+            True when the close price lies beyond the adverse or the favourable extreme
+        """
+        if self.direction == OrderDirection.LONG:
+            return bid < self.mae_price or bid > self.mfe_price
+        return ask > self.mae_price or ask < self.mfe_price
+
     def add_fee(self, fee: AbstractTradingFee) -> None:
         """Add fee to position"""
         self.fees.append(fee)

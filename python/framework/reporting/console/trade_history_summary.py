@@ -270,8 +270,10 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         long_trades = sum(1 for r in rows if r.direction == 'long')
         short_trades = total_trades - long_trades
 
+        # A trade that realised nothing is neither — the rule the portfolio counters, the trade
+        # analytics and the booking periods share (contract 18).
         winning_trades = [r for r in rows if r.net_pnl > 0]
-        losing_trades = [r for r in rows if r.net_pnl <= 0]
+        losing_trades = [r for r in rows if r.net_pnl < 0]
 
         # P&L totals come straight from the model aggregate — analytics is always present here
         # (one per currency; render_aggregated returns early when there are no trades).

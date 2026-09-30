@@ -52,7 +52,11 @@ class BasePortfolioStats:
     total_swap: float
     maker_fee: float
     taker_fee: float
+    # The fees of the trades the run CLOSED — the population every trade row, booking period
+    # and trade analytic sums. The breakdown above is what the run CHARGED, open positions
+    # included and totalled in `fees_charged`; the two differ by the fees of what is still open.
     total_fees: float
+    fees_charged: float
 
     # Metadata
     currency: str

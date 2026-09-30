@@ -89,24 +89,30 @@ def _longest_streak(rows: List[TradeHistoryRow], winners: bool) -> int:
     """
     The longest unbroken run of winners or losers, in REALISATION order.
 
-    Ordered by exit time rather than taken as given: the rows arrive grouped by unit, and a
-    streak is a statement about the sequence the account actually experienced. A break-even
-    trade (net exactly zero) ends both streaks — it is neither, and treating it as either would
-    invent a run the account did not have.
+    Ordered by exit time rather than taken as given, and PER UNIT: a streak is a statement about
+    the sequence ONE account experienced, and a backtest's scenarios are separate accounts —
+    interleaving their trades by time strung A's win, B's win and A's win into a run of three
+    that no account had. The group's streak is the longest of its units'. A break-even trade
+    (net exactly zero) ends both streaks — it is neither, and treating it as either would invent
+    a run the account did not have.
 
     Args:
         rows: The trade rows of one currency group
         winners: True for the winning streak, False for the losing one
 
     Returns:
-        The longest run; 0 when the group holds none of that kind
+        The longest run of any one unit; 0 when the group holds none of that kind
     """
+    by_unit: Dict[str, List[TradeHistoryRow]] = {}
+    for row in rows:
+        by_unit.setdefault(row.scenario_name, []).append(row)
     longest = 0
-    current = 0
-    for row in sorted(rows, key=lambda r: r.exit_time):
-        hit = row.net_pnl > 0 if winners else row.net_pnl < 0
-        current = current + 1 if hit else 0
-        longest = max(longest, current)
+    for unit_rows in by_unit.values():
+        current = 0
+        for row in sorted(unit_rows, key=lambda r: r.exit_time):
+            hit = row.net_pnl > 0 if winners else row.net_pnl < 0
+            current = current + 1 if hit else 0
+            longest = max(longest, current)
     return longest
 
 
@@ -193,13 +199,17 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
     # peak it fell from and the share it was. Taking each by its own max would pair one
     # scenario's trough with another's peak — the defect #497 removed from the console
     # aggregate, and it would be back here the moment they are reduced separately.
-    max_drawdown, max_equity, max_dd_pct, max_dd_unit = 0.0, 0.0, 0.0, ''
+    # Ties — every unit flat included — go to the FIRST unit, the rule the ledger fold applies to
+    # its companions. Starting from an empty 0.0 instead answered `max_equity 0.0` and no unit
+    # for a run in which no account declined, beside unit rows holding their real peaks.
+    deepest = None
     for r in rows:
-        if abs(r.account_max_drawdown) > abs(max_drawdown):
-            max_drawdown = r.account_max_drawdown
-            max_equity = r.max_equity
-            max_dd_pct = r.account_max_dd_pct
-            max_dd_unit = r.name
+        if deepest is None or abs(r.account_max_drawdown) > abs(deepest.account_max_drawdown):
+            deepest = r
+    max_drawdown = deepest.account_max_drawdown if deepest else 0.0
+    max_equity = deepest.max_equity if deepest else 0.0
+    max_dd_pct = deepest.account_max_dd_pct if deepest else 0.0
+    max_dd_unit = deepest.name if deepest else ''
     # Each unit is its own account. Their closing equities add up to a TOTAL, which is served
     # as one and beside the capital it started from; `final_equity` stays the figure of one
     # account and has none to describe once there are several.
@@ -220,6 +230,7 @@ def _portfolio_aggregate(currency: str, rows: List[PortfolioUnitRow]) -> Portfol
         account_max_dd_pct=max_dd_pct,
         account_max_drawdown_unit=max_dd_unit,
         total_fees=sum(r.total_fees for r in rows),
+        fees_charged=sum(r.fees_charged for r in rows),
         unrealized_pnl=sum(r.unrealized_pnl for r in rows),
         final_equity=total_final_equity if len(rows) == 1 else None,
         total_final_equity=total_final_equity,
@@ -260,15 +271,14 @@ def aggregate_full_portfolio(
     # of the two aggregates: those two can come from DIFFERENT scenarios, so the old quotient
     # put one scenario's decline over another's peak, and the console line printed the result
     # beside a third figure's scenario name (#497).
-    max_dd = 0.0
-    max_dd_scn = ''
-    max_dd_pct = 0.0
+    # The deepest account is the headline's — one selection, not a second loop that could
+    # disagree with it.
+    max_dd = headline.account_max_drawdown
+    max_dd_scn = headline.account_max_drawdown_unit
+    max_dd_pct = headline.account_max_dd_pct
     max_eq = 0.0
     max_eq_scn = ''
     for r in rows:
-        if abs(r.account_max_drawdown) > abs(max_dd):
-            max_dd, max_dd_scn, max_dd_pct = (
-                r.account_max_drawdown, r.name, r.account_max_dd_pct)
         if r.max_equity > max_eq:
             max_eq, max_eq_scn = r.max_equity, r.name
 
@@ -340,23 +350,20 @@ def _spot_balances(rows: List[PortfolioUnitRow], currency: str) -> Dict:
     total_init = 0.0
     has_any_base = False
     for r in rows:
-        sym = r.symbol
-        base = sym[:-3] if len(sym) >= 6 else ''
-        quote = sym[-3:] if len(sym) >= 6 else currency
+        # The currency split and the estimate are the UNIT's own, stamped from the broker config
+        # (#265) and derived once in the portfolio builder. Splitting the symbol string here read
+        # `BTCUSDT` as base `BTCU` / quote `SDT`, and a second estimate dropped the initial base
+        # holding whenever the unit ended without one.
+        quote = r.quote_currency or currency
+        base = r.base_currency
         quote_bal = r.balances.get(quote, 0.0)
-        base_bal = r.balances.get(base, 0.0)
+        base_bal = r.balances.get(base, 0.0) if base else 0.0
         quote_init = r.initial_balances.get(quote, 0.0)
-        base_init = r.initial_balances.get(base, 0.0)
+        base_init = r.initial_balances.get(base, 0.0) if base else 0.0
         price = r.last_price
         has_base = price > 0 and base_bal != 0.0
-        if has_base:
-            est_cur = quote_bal + base_bal * price
-            est_init = quote_init + base_init * price
-            has_any_base = True
-        elif price > 0:
-            est_cur, est_init = quote_bal, quote_init
-        else:
-            est_cur, est_init = 0.0, 0.0
+        has_any_base = has_any_base or has_base
+        est_cur, est_init = r.spot_est_current, r.spot_est_initial
         total_cur += est_cur
         total_init += est_init
         spot_rows.append(AggregatedPortfolioSpotScenarioRow(

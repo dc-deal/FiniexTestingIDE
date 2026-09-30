@@ -146,6 +146,11 @@ without logging an error shows in the *run outcome*, not here. See
 `execution_time_ms` for a scenario, `execution_time_s` for a whole backtest run. It says nothing
 about how much market time was processed — that is the *tick timespan*.
 
+**fees charged** · **total fees** (`fees_charged`, `total_fees`) — Two fee totals of one run.
+*Total fees* are the fees of the trades it CLOSED — the population every trade row, booking period
+and trade analytic sums. *Fees charged* are everything the run charged, entry and exit fees and
+swap on every position, open ones included. They differ by the fees of what is still open.
+
 **field study** — The real-money acceptance test of the live execution stack, whose record becomes
 a release certificate. See [Field Study](tests/live_field_study/field_study_guide.md).
 
@@ -321,6 +326,10 @@ step backwards. Never the time a decision reads — that is the *canonical clock
 **warning count** (`warning_count`) — A run's Tier-1 findings: advisories a validator decided.
 Not the log's warnings, which are its *log warning count*. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
+
+**winning trade** · **losing trade** — A trade whose realised net P&L is above zero, or below
+it. A trade that realised exactly nothing is neither, so it counts toward `total_trades` and toward
+no side: `win_rate` is winners over all trades, and `avg_loss` divides by the losers alone.
 
 **worker** — A class, one per file, that computes named outputs every tick: an INDICATOR from bars
 and ticks, a SIGNAL from pre-collected external data. See [Worker Naming](user_guides/worker_naming_doc.md).

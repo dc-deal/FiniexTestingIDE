@@ -308,7 +308,11 @@ class PortfolioUnitRow(BaseModel):
     drawdown_carried_from: str = ''
     drawdown_restarts: int = 0
     drawdown_started_at: str = ''   # when the curve began, not when it was last handed over
+    # The fees of the trades the unit CLOSED — what every trade row, booking period and trade
+    # analytic sums. `fees_charged` is everything the run charged, open positions included;
+    # the two differ by the fees of what is still open (contract 18).
     total_fees: float
+    fees_charged: float = 0.0
     # Full projection — the per-scenario linear block renders purely from these (defaulted:
     # additive columns; the per-currency aggregated section stays on PortfolioAggregator).
     data_broker_type: str = ''     # the broker whose ticks the unit read (box line "Data broker: …")
@@ -387,7 +391,8 @@ class PortfolioAggregateRow(BaseModel):
     # independent accounts, and the trio is the deepest one's — named, so it does not read as
     # the run's own.
     account_max_drawdown_unit: str = ''
-    total_fees: float
+    total_fees: float               # Σ the units' closed-trade fees
+    fees_charged: float = 0.0       # Σ what the units charged, open positions included
     # #492 — the wealth view beside the realised one. Summed across the currency's units,
     # never folded into net_profit.
     unrealized_pnl: float = 0.0
@@ -876,7 +881,9 @@ class RunSummaryCurrency(BaseModel):
     # ← PortfolioAggregateRow.account_max_drawdown_unit; '' on a booking period, which is one
     # unit's own row.
     account_max_drawdown_unit: str = ''
-    total_fees: float       # ← PortfolioAggregateRow.total_fees
+    total_fees: float       # ← PortfolioAggregateRow.total_fees (closed trades)
+    # ← PortfolioAggregateRow.fees_charged; None on a booking period, whose costs are its trades'
+    fees_charged: float | None = None
     # The two halves `profit_factor` is the quotient OF. Carried because a rate cannot be
     # folded out of two rows while its COMPONENTS can be summed on any level: without these,
     # a session's profit factor is not recoverable from its booking periods and a
@@ -1253,10 +1260,13 @@ class RunResultRow(BaseModel):
     # declared on disk, dropped on the way in.
     r_win_count: int | None = None
     r_loss_count: int | None = None
-    orders_sent: int = 0
-    orders_executed: int = 0
-    orders_rejected: int = 0
-    sl_tp_triggered: int = 0
+    # None where not measured — a booking-period row carries no order counts (they are
+    # monotonic executor totals with no time argument, so a period's share is not derivable),
+    # and a default of 0 turned that absence into a measured zero on every folded row.
+    orders_sent: int | None = None
+    orders_executed: int | None = None
+    orders_rejected: int | None = None
+    sl_tp_triggered: int | None = None
     # Weakest SIGNAL channel of the run (#433); None = no SIGNAL worker was involved
     signal_fresh_ratio: float | None = None
 

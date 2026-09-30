@@ -237,7 +237,7 @@ Imported from `tests/shared/shared_pnl.py`. Validates P&L calculations for succe
 | `test_exit_after_entry` | Exit tick after entry tick |
 | `test_positive_lots` | Lot size positive |
 | `test_spread_cost_positive` | Spread cost non-negative |
-| `test_winning_losing_count` | Winner/loser counts match portfolio |
+| `test_winning_losing_count` | Winner/loser counts match portfolio; a trade that realised exactly nothing is neither — this scenario holds one, closed at its entry price on a broker with no per-side fee |
 | `test_direction_counts` | Long/short counts match portfolio |
 | `test_valid_prices` | Entry/exit prices positive |
 | `test_valid_tick_value` | Tick value positive |

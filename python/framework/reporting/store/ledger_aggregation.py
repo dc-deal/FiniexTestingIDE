@@ -154,8 +154,13 @@ def _fold(
     if reduction is Reduction.LAST:
         return _last_present(ordered, column) if one_account else None
     if reduction is Reduction.FIRST:
-        # The oldest measured value — `_last_present` walks its argument newest-first.
-        return _last_present(list(reversed(ordered)), column) if one_account else None
+        # The OLDEST row's own value, and nothing later in its place: an opening is a fact about
+        # the first instant, so when the first row did not record it the group's opening is
+        # unknown — a later row's opening would be a different instant's.
+        if not one_account or not ordered:
+            return None
+        value = _get(ordered[0], column)
+        return None if value == '' else value
     if reduction is Reduction.IDENTITY:
         return present[0] if present else None
     if reduction is Reduction.UNION:

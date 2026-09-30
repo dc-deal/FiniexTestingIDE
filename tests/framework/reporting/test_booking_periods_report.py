@@ -176,6 +176,17 @@ class TestEachUnitIsFoldedIntoItsTotal:
         assert [row.opening_equity for row in report.periods] == [10_000.0, 10_060.0]
         assert report.unit_totals[0].opening_equity == 10_000.0
 
+    def test_an_unrecorded_first_opening_leaves_the_unit_s_opening_unknown(self):
+        # A later period's opening is a different instant's — it must not stand in for the
+        # unit's start. Measured: a stored session showed its SECOND period's 9924.18.
+        first = _segment(1, 0, 60.0, 2)
+        second = _segment(2, 1, -10.0, 1)
+        second.period_opening_equity = 10_060.0
+        report = build_booking_periods_report(
+            'r', _units(first, second), _summary(net_pnl=50.0, total_trades=3))
+
+        assert report.unit_totals[0].opening_equity is None
+
 
 class TestWhenThereIsNothingToShow:
 
